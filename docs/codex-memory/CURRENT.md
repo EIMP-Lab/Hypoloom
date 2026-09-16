@@ -1,0 +1,586 @@
+# Current Hypoloom development state
+
+- Same evening, research-runtime session records relocated under the user's
+  request: this project's Claude Code transcripts moved from
+  `~/.claude/projects/-data-Gray-Project-Hypoloom` into ignored
+  `.local/claude/projects/` (0700), byte-identical (9 files, 7,121,623 bytes,
+  same aggregate checksum), with a compatibility symlink at the original path
+  so future sessions keep writing into the project tree (write probe passed;
+  `git check-ignore` confirms ignored). Hypoloom's own records needed no move:
+  Host state is `<repo>/state/`, sandboxed agent transcripts live under each
+  run's `sessions/` tree, never in the user directory. Not moved: shared
+  user-level `~/.claude/settings.json` / `~/.claude.json`, cross-project
+  empty `session-env/` residue and history, and the other project's slugs.
+  Full `CLAUDE_CONFIG_DIR` isolation documented as an optional operator
+  choice, not a second mechanism. CLAUDE.md notes the location.
+- Same evening, unified credential storage implemented under the user's
+  request and consolidated into one dotenv file under the user's follow-up:
+  `.local/credentials/hypoloom.env` (directory 0700, file 0600) now holds
+  `OPENALEX_API_KEY` and `UNPAYWALL_EMAIL` (migrated from the
+  `~/.config/prometheus/` originals, untouched) plus the
+  `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` lines the user fills in.
+  `hypoloom/credentials.py` parses the strict subset (`KEY=VALUE`, `#`
+  comments) with absolute-path/O_NOFOLLOW/regular/UTF-8/≤8 KiB/duplicate-key
+  checks; errors name keys and line numbers, never values. The Profile
+  declares the single path: `methodology.yaml` `literature.credentials_file`
+  (the autoresearch SKILL passes it as `--credentials-file` to serve,
+  profile-check and start; the legacy `--openalex-api-key-file` /
+  `--unpaywall-email-file` flags remain accepted, never mixed) and
+  `notify.yaml` `sinks.telegram.credentials_file` (the tailer reads the two
+  Telegram keys; `bot_token_env` / `chat_id_env` remain supported, exactly
+  one source enforced at validation and delivery). The path string (never
+  secret bytes) is projected into the contract. Public templates (en/zh),
+  `profiles/templates/hypoloom.env.example`, the rewritten bilingual
+  profiles/README section, the `docs/guides/notifications.md` and `SETUP.md`
+  credential guidance, and the local MERC-causal Profile follow the
+  convention. Local Profile admits clean; the offline literature preflight
+  builds from the real file without network I/O; focused suites pass (294
+  combined credentials/tailer/profile/operator-skill/template/CLI/Unpaywall/
+  admission/docs + 69 admission standalone + 218 literature-module; two
+  `component_batch_profile` fixture errors surface only when one pytest
+  invocation mixes `tests/` root modules with `tests/runtime/` modules —
+  reproduced with modules this change never touched, green standalone and
+  pairwise, and the standard qualify lanes never mix those roots, so a
+  pre-existing pytest-9 collection quirk rather than a regression). The
+  stopped run's frozen contract is unchanged; the new sources take effect on
+  the next run. Telegram delivery is unverified until the user fills the two
+  Telegram lines; no paid/online call was made.
+- Earlier: the stopped run's Telegram errors were the local Profile's
+  notify sink still pointing at the historical Prometheus project's
+  `PROMETHEUS_TELEGRAM_BOT_TOKEN` / `PROMETHEUS_TELEGRAM_CHAT_ID` variables
+  (absent in the Host environment; earlier qualification documented them as
+  an accepted binding with Telegram disabled, but the sink was later enabled
+  without renaming). The env-rename first aid was superseded the same
+  evening by the unified credential-file design above.
+- September 16 evening: the user stopped `MERC-causal-202609161513`
+  (CANCELLED r106 at 20:04:15 +08; 85 Agent + 17 Process Attempts, all 102
+  recorded groups absent, no socket) and authorized failure analysis plus
+  repair, explicitly asking about the 3→6 agent-slot change. One platform
+  defect is repaired in the uncommitted tree: `_unpack_provider_stream` now
+  tolerates the Claude Code 2.1.273 marked zero-turn resume result
+  (`origin.kind == "task-notification"`) before, and `system` lifecycle
+  notices after, the terminal result, which had discarded four Stop-hook
+  accepted EXPERIMENT_DESIGN_IMPLEMENT candidates as
+  `invalid_tool_workspace`. Strict rejection is kept for duplicate real
+  results, unmarked/non-zero earlier results, stream_event records and
+  post-terminal provider content. Focused 15+210+4 cases pass; read-only
+  replay of the four actual failed streams now selects the true terminal
+  result. Not repaired (by design or model-side): five capacity_unavailable
+  PROCESS LOST (designed bounded wait, amplified by max_active_processes 6
+  over ~3 effective GPU slots), five execution-Agent 3000 s timeouts
+  (designed handoff), two same-chain measurement declaration mismatches
+  (10.637398 + 5.263 USD, correctly retry=MODEL), and the expected
+  retryable model-output classes. No concurrency race was found; the slot
+  change's real effects are the ~0.9 USD/min peak burn (169.803377 USD
+  closed-Agent known cost, null USD caps) and capacity-wait churn. The user
+  confirmed per-card multi-experiment packing is intended, so slots are not
+  matched to card count: admission accounts 8192+4096=12288 MiB per slot
+  (2 per card, 8 theoretical) while the 8 succeeded Processes measured only
+  364-786 MiB owned resident peaks (card peaks 3.2-7.7 GiB; one 15.6 GiB
+  paired_ceiling_control outlier). Lowering `min_vram_per_experiment` in
+  profiles/local/MERC-causal for a future run raises packing density but
+  only paces admission, never physically caps usage. Evidence:
+  qualification's envelope section and
+  `.local/qualification/envelope-repair-20260916/`. No full G1/G4/G5, GPU,
+  paid or online run; no Profile/pool/settings mutation, commit or push.
+
+- The user-approved 55 USD supplementary qualification is complete; evidence is
+  `.local/qualification/qualification-recheck-20260916/`, qualification's first
+  section. Candidate remains 38d80533... / ACI 20, 518 shipped code/test/operator
+  files match the repair source package. No new runtime edit. G4 10 passed in
+  301.71s: total 64 MiB tensor/256 MiB allocator ceilings per Process, two GPUs
+  split 32/128 per card, context additional; real wait/calibration/overlap,
+  80 absent groups and two clean pools. Keep original scope deviation and the
+  supplemental census's initial pytest-symlink duplicate-count error.
+- DeepSeek resource PASS: 653.22s/4.992342 USD, standalone wrapper check, actual
+  GPU3 CUDA, 362 MiB owned peak, native measurement history and report. Reading
+  PASS: 603.95s/3.946811 USD, two successful readers overlap 1.718s, exact source
+  details/parent synthesis, CPU/analysis/report. Preserve first reader's FAILED
+  invalid_structured_output/additionalProperties and 0.078368 USD charge; its
+  allowed in-run retry succeeds. All 27 paid Attempts are CLOSED/27 groups
+  absent. Both paid samples actually report deepseek-v4-pro; 25 native archives,
+  no compaction boundary. One approved IJCAI PDF fetch still times out in 15.003s;
+  no extra metadata/model query, retry or timeout increase. Online full text
+  remains a source-specific gap, not established by synthetic reading success.
+- All 107 available test groups are absent, all three private pools clean/nine
+  reservations RELEASED, no socket/staging/live owner/GPU compute residue. Paid
+  fixtures/state are retained; existing research pool only queried, unchanged.
+  Live-effect cleanup finishes 48.81 minutes after G4 launch. Same ledger folds
+  15 databases once: 50.164374 model-reported +0.009 literature +1 unknown model
+  +0.20 unknown OpenAlex =51.373374/55 USD; 3.626626 remains, no new unknown call.
+  No more paid/GPU retry is authorized by that balance. Compatible prior G1–G3,
+  G5-common and local read-only replay remain scoped evidence, not a new full
+  invocation. Can prepare fresh research in CC, but selected full-text source
+  still needs to be available; MERC read_papers remains off. Formal topic/Host,
+  old runs/Profile/pool, notifications, commits and pushes were not changed.
+
+- Earlier September 16 qualification/launch-input repairs were implemented
+  under the user's repair request. See qualification's repair section and
+  `.local/qualification/qualification-repair-20260916/`. Four runtime files
+  (claude_agent_host, cli, literature, profile_v4), the operator manager and
+  qualification fixtures/tests change. Current runtime is 38d80533... / ACI 20,
+  still HEAD 6bd5bb9 plus the uncommitted tree. G4 now splits a total 64 MiB
+  tensor / 256 MiB allocator ceilings per Process across one/two cards; contexts
+  are additional and original scope deviation is retained. Local recognizer
+  accepts the evidenced inspection/cd prefix with exact red/edit/green checks;
+  complete read-only replay of the old G5-local passes, original FAIL/3.485287
+  bill/database unchanged. Resource fixture is clearer but its strict checker
+  and original FAIL remain. Local/reading Grounding now explicitly receives the
+  uncommissioned acceptance:null boundary; no new budget mechanism or 4 USD
+  success guarantee. Environment auth forwards selected base URL; settings auth
+  remains separate. OpenAlex enforces 0600. Existing model validator rejects both
+  documented placeholders and is reused for all Profile model overrides.
+- Focused evidence: 949 passing identities/five opt-in skips/zero unresolved,
+  not a full G1 repeat. Preserve red 19 failures and first-focused two fixture/
+  expectation failures; corrected follow-ups pass. Native local-provider CC
+  CPU/settings/bundle checks pass; 16 CLOSED Attempts/14 absent groups,
+  no sockets/staging/live test owners; 25 external preparation fixtures removed.
+  Fresh wheel's 133 runtime/resources and installed CLI/MCP imports pass; real
+  MERC Profile admission remains valid. No paid/GPU/public-network call, real
+  Profile/run/pool mutation, commit or push. Same conservative cohort stays
+  42.434221/50 USD, remaining 7.565779, unknown reserves 1.20 unchanged.
+  Those figures describe the repair stage before the supplementary approval.
+  The subsequently approved G4 GPU 0+3, resource GPU3/6 USD, reading CPU/6 USD
+  and single PDF samples are now complete; use the current results and 55 USD
+  accounting at the top of this file. No formal research was started.
+
+- September 16 post-dispatch qualification is in
+  `.local/qualification/full-20260916-post-dispatch/`; the earlier results below
+  are superseded where stated by the current result above. That candidate was
+  68f89d42... / ACI 20, HEAD
+  6bd5bb9 plus the imported uncommitted tree. No runtime/test code changed here.
+  G1 finishes 5665 passed/25 skipped/zero failures (5690 collected, 4997.54s),
+  including G2 174/174 and G3 7/7; no duplicate runs or overall promotion.
+  Fresh package/install/managed CPU closure and five-root retained read-only
+  cohort pass. G3 has 183 CLOSED Attempts/154 absent groups/seven clean Oracles;
+  five native reading/quarantine roots have 65 CLOSED/65 absent groups. All
+  1719 available groups across 979 readable G1 SQLite files are absent; keep
+  synthetic/invalid unit fixtures distinct from production completion.
+  G4 has eight passing
+  functional checks, but preflight wrongly described per-GPU 64 MiB/256 MiB
+  amounts as per-Process: four dual-GPU Processes held 128 MiB tensors each,
+  with summed configured allocator ceilings of 512 MiB plus context. Preserve
+  this approval-scope deviation; all 80 groups and both private pools are clean.
+  No more GPU execution is authorized by the completed sample.
+- Current paid binding is CC 2.1.273, deepseek-v4-pro, api.deepseek.com, existing
+  mode-0600 settings file. G5-common PASS: 767.48s / 5.110453 USD. Local FAIL:
+  recognizer misses real prefixed red/edit/green trace, 576.24s / 3.485287 USD;
+  propose a focused checker correction and read-only replay, not another call.
+  Resource FAIL: model combines cleanup and the required standalone wrapper
+  check, 719.85s / 4.278484 USD. Actual GPU 3 execution, measured history,
+  publication/report and pool/run Oracles pass independently; don't erase FAIL.
+  Reading FAIL: 565.68s / 4.052769 USD, exceeding its 4 USD threshold by 0.052769.
+  Keep Grounding's invalid-candidate failure and 0.432200 bill. Two readers
+  overlap 13.85s and their source/detail/parent collection checks pass, CPU
+  succeeds, but analysis hits error_max_budget_usd and report is rejected before
+  launch. FAILED remains valid, not COMPLETED. All 51 Attempts close; 50 actual
+  groups are absent, no sockets/staging/reservations. Four preparation fixtures
+  removed; paid source/data retained for read-only replay.
+- At that earlier stage the qualification cohort ceiling was 50 USD and
+  cohort-accounting.json folded 13 source DBs: 41.225221 known model +0.009
+  metered literature +1 unknown model +0.20 unknown OpenAlex =42.434221 USD;
+  7.565779 remains. This is Host/CLI accounting, not an invoice. No additional
+  paid rerun is authorized; no directory/model reset. One online academic
+  OpenAlex query and Unpaywall DOI lookup succeed; the single PDF fetch times
+  out, with no retry. Actual MERC Profile remains admitted and unchanged;
+  read_papers remains off, topic USD caps remain user-confirmed null/omitted.
+  Existing pool is only inspected; no formal Host/topic, notification, commit,
+  push, old-run mutation or automatic code repair occurred.
+
+- September 16 dispatch/academic repair is implemented under the later user
+  authorization. Seven runtime files change from 96d0f3f9...; current identity
+  is sha256:68f89d42805cd3db85182baf1d5539b6b6dbbc515815eb7854d5a5c3ddd7b2e7,
+  still ACI 20. Repeated argv survives real CPU submit/preregistration; quarantine
+  ends live model calls with non-retryable dispatch_paused, preserves submitted
+  work and honest costs, and blocks new readers. Explicit academic search is
+  wired independently of optional general-web fallback. CC init reuses/reviews
+  complete Host argv including pool and retrieval options; no auto-join/config file.
+  343 selected identities have passing evidence, including real CC 2.1.273 with
+  local scripted provider, CPU/MCP, readers, cancel/report and Oracle. Retain
+  original red runs, long socket-path failures, spy PGID mismatch and premature
+  native reader census; focused corrected reruns are documented, not erased.
+  Evidence: .local/qualification/dispatch-repair-20260916/. Four native roots:
+  45 CLOSED Attempts/45 absent groups; all 75 groups in 74 test DBs absent, no
+  socket/paper staging. Original failed reader root remains ACTIVE/no live work.
+  No full G0–G5/GPU/paid/online requalification; earlier k3 evidence does not
+  establish DeepSeek compatibility. No real Profile/run/pool/settings mutation.
+  Read-only 10:33 +08 observes old topic now CANCELLED r40, 31 CLOSED Attempts,
+  all 31 groups and previous Host absent; change occurred outside repair actions.
+  Existing bundles remain unchanged; no cross-version recovery or paid retry.
+
+- September 16 09:20 +08 read-only review: newest topic
+  MERC-causal-202609160508 is ACTIVE r37 but dispatch-quarantined since 06:35.
+  Host PID 3344509 lives; all 26 Agents/four Processes are CLOSED, 30 PGIDs absent,
+  four GPUs idle. Exact submitted argv repeats normal values 32 and 2;
+  domain.py:669 wrongly applies a unique-text tuple validator. This is a platform
+  defect reproduced with the actual argv, not a weak-model/GPU-capacity failure.
+  No repair, cancel, restart, recovery or state mutation is authorized by this
+  analysis request. Do not modify the saved bundle or settle pending outputs.
+  Two successful Processes remain EVALUATING with owned output residue; one
+  Agent got 189 blocked wait replies and hit max turns, two timed out after 3001s.
+  Three scored candidates remain below both targets; only the ML first result
+  is accepted CLEAN_REFUTATION, the other two are uncollected parser output.
+  No Debate/Judge/report yet. Known model cost 78.614773 USD plus two unknown
+  calls, separate from qualification's 35 USD; real-topic USD caps are null.
+  Actual binding is deepseek-v4-flash/api.deepseek.com, CC 2.1.273, overriding
+  settings' deepseek-v4-pro; all 133 bundle resources match checkout. No pool
+  socket/namespace, web OpenAlex fallback or Unpaywall startup option is present.
+  Native searches: six academic-client-missing/five timeout/four unsafe-DNS;
+  background OpenAlex material and two direct fetches exist. Parent experts
+  actually read method/page excerpts, but read_papers is disabled and no readers
+  ran. Eighteen distinct native compactions observed. Details in qualification's
+  latest paused-topic section and .local/qualification/run-analysis-20260916-0914/.
+
+- Full G0–G5 work is recorded in `.local/qualification/full-20260916/` and
+  qualification's first section. Current candidate is HEAD 6bd5bb9 plus the
+  uncommitted/imported tree, ACI 20. Runtime identity is now
+  sha256:96d0f3f99006de9f516812a5f3a8d77f082b4c86388c3de836e26177bce9487f.
+  Full G1 retained 5,641 passed/five failed/25 skipped. ACI-20 node projection
+  omitted 20; fixed in expert_loop. Four old test doubles were corrected.
+  Later paid reading exposed batch-document URLs missing from the existing
+  citation collector; grounding_background now includes available members.
+  Keep native pairing, unavailable-member exclusion and existing Oracle rules.
+  Final collection: 5,675 identities, 5,650 passing evidence/25 opt-in skips,
+  none missing; do not rewrite the original full invocation as green.
+- G2's 174 and G3's seven selections pass in G1. Four retained MERC roots pass
+  current read-only Oracle with unchanged database bytes/rows/artifact inventory;
+  original 0044 bundled reader retains two known archive errors. No historical
+  ACI-20 reader research cohort. G3/native-reader census: 198 CLOSED Attempts,
+  169 absent groups. All available G1 database group IDs were also checked:
+  889 readable databases / 1,678 distinct IDs (includes synthetic IDs), none live.
+- Approved G4 GPU 0 + 3/private pools passes all eight checks/two live cases in
+  299 seconds: real same-card overlap, capacity wait and calibrated dispatch.
+  Four roots have 80 CLOSED Attempts/80 absent groups; both pool audits pass.
+  GPU3-only G5-resource passes in 342.23 seconds, including strict standalone
+  wrapper CPU check, resource Skill, real CUDA, measured history and release.
+  Cost 2.591910 USD; 12 CLOSED Attempts/12 absent groups, clean Oracles.
+- Real k3-256k with existing settings-file auth passes G5-local (355.18s,
+  2.351091 USD, 13 CLOSED Attempts/13 absent groups) and G5-common (356.85s,
+  3.049820 USD, 12 CLOSED Attempts/12 absent groups). Retain local's first
+  Grounding invalid-candidate failure and its bill; common/resource have no
+  failed Attempts. These samples used runtime 7450c3f4..., and made no batch
+  document calls; their unaffected evidence is reused after the citation fix.
+- G5-reading FAIL was deliberately stopped after identifying the runtime bug:
+  four real readers succeeded, but two parent summaries with valid batch URLs
+  were rejected and no CPU experiment ran. Known cost 0.911025 USD plus a
+  1 USD unknown FINAL_REPORT reservation. Its state remains original, including
+  one OPEN durable report Attempt with an absent process group; no staging or
+  socket residue. Do not settle, resume, overwrite or label it passed.
+  The fix retains red reproduction, passes 180 focused cases and all three
+  native reader cases (46 CLOSED Attempts/46 absent groups). Read-only replay
+  validates both original rejected citations against their exact native replies.
+  Final wheel/install/CLI/MCP/CPU bundle match 133 resources and pass Oracle.
+- The same cohort ceiling is 35 USD. Current conservative total is
+  25.407228 USD: 24.298228 known model USD, 0.009 metered literature, 1 USD
+  unknown report reservation and 0.10 USD unknown OpenAlex reservation.
+  This is Host/CLI accounting, not an invoice. No directory/model budget reset.
+  The ONE approved additional CPU reading run completed in 350.89s, costing
+  2.398124 USD: 13 Agents/one CPU Process all successful and CLOSED, 14 absent
+  groups, no sockets/staging and Oracle pass. Two actual readers overlap 16.44s,
+  read exact method details, and are collected into an accepted parent synthesis;
+  the experiment and report close. Runtime identity above is unchanged.
+  Original postflight failed because the test expected summary on QUERY_PLAN.
+  MAIN-specific test correction retains all reading requirements; red regression,
+  29 offline passes and read-only completed-state verification are retained.
+  Do not overwrite the original failed result or call this another paid run.
+  Real recheck fetched documents individually; exact batch repair remains covered
+  by the original native replies/candidates and passing native batch case.
+  No further paid retry is authorized; 9.592772 USD remains in this cohort.
+- Current G1's ACI-20 three-expert native case has 90 CLOSED Attempts/90 absent
+  groups, six CPU experiments, six debate statements and one Judge; the separate
+  G3 restart scenario still uses ACI 14. A scan of 292 native transcripts and
+  14,703 events across current G3/readers/interaction/five paid samples observes
+  no native compaction. Keep that limit separate from historical topic evidence.
+  Eight paid/preparation fixture roots are removed, in addition to 28 G1 roots;
+  states/bundles/published source archives remain. Final installed CPU census:
+  four CLOSED Attempts/two absent groups.
+- Current real MERC Profile admission and existing shared-pool status pass
+  read-only. Public templates remain only en/zh six-file multi-expert forms.
+  Source/private-path and package checks pass; existing settings-file/exact-model
+  route is proven. Environment-auth URL forwarding and placeholder admission
+  are reproduced existing restrictions, still unresolved. Same-day OpenAlex/
+  Unpaywall online observations remain scoped evidence after source/config checks;
+  current real Poppler two-page offline extraction passes. No new public request.
+  MERC still has null invocation/total/per-expert USD caps, three Agent slots,
+  and no read_papers opt-in, as previously confirmed. Qualification's cap does
+  not constrain that topic. Review reading opt-in/parent-slot capacity and actual
+  Host pool argv in CC before using readers. No research Start, existing-state,
+  Profile, credential or shared-service mutation, commit, push or notification.
+
+- September 16 selective-reading implementation and bounded development checks
+  are complete in the uncommitted ACI-20 candidate. Retain exact originals and
+  page text under read-only /papers, reuse existing Agent publications, expose
+  explicit academic search/document mode and own-role reading history. Optional
+  read_papers belongs only to Literature MAIN; independent Read/Glob/Grep readers
+  inherit its model and use ordinary Agent capacity and expert/run accounting.
+  No fixed two-reader model ceiling, extra daemon/ledger, paper database or
+  scientific gate. Parent synthesis, question origins and notes use existing
+  summaries/MEMORY/cycle reports. Waiting parents still occupy Agent slots.
+  Source availability is not evidence of reading or understanding.
+- Evidence is .local/qualification/paper-reading-20260916/ and qualification's
+  current section. HEAD 6bd5bb9 excludes imported/uncommitted changes. Relative
+  to the previous repair wheel, 21 runtime/resources differ, including two new
+  modules. Focused 663 cases pass; later stop and backup corrections pass 11 and
+  59 overlapping cases. Native-4 normal closure passes three simultaneous real
+  CC readers, parent collection, CPU experiment and report; native-5 End run
+  passes. The provider/documents are local fixtures, not paid scientific models.
+  Both bilingual opt-in Profile checks and the installed CLI/MCP/CPU bundle pass.
+  Current runtime resources total 133 (112 Python files). This is not full G1
+  or G4/G5 promotion, a historical ACI-20 cohort, or proof of reading speed/quality.
+- Preserve failures: premature source deletion before archive, development
+  drift during native-2, missing PAPER_READ Oracle matrix, incorrect fixture
+  CANCEL_RUN, and new auxiliary cancellation records after STOPPING. Source
+  cleanup now follows publication; the existing Oracle and stop boundary remain.
+  G2 additionally reproduced backup omitting expert Git memory/plugins/views.
+  Existing backup/restore now copies those run-owned resources, retaining Git,
+  exact allowed directories, modes and full Oracle checks; no cross-version
+  recovery. Native backup/restore retains all 12 paper attachments; its restored
+  Host was never started. Initial/intermediate failures remain in the logs.
+- All 86 recorded native process groups are absent; final native cases have 26
+  CLOSED Agents and one CLOSED Process, with no owned paper staging, mounts,
+  temporary targets or sockets. The first failed sample retains one OPEN durable
+  Attempt with no live group, deliberately unmodified failure evidence. Installed
+  CPU probes close their own tasks and Host. Existing research runs, local
+  Profiles, keys, services and pools are unchanged. No commit/push, paid provider,
+  public-network retrieval or real-GPU experiment was performed for this feature.
+
+- September 16 authorized retrieval/pool-review repair is verified offline and
+  through native CPU paths, with bounded online retrieval samples.
+  Six runtime files changed: workflow_host, literature, grounding_web,
+  host_tools_server, cli and full_cc_runtime. Literature I/O now uses one worker
+  with owner-thread commits; semantic PDF fallback shares a 60-second 429
+  cooldown; expired queued web calls do not start new reads. Preserve late
+  observations and cancellation accounting. Initial focused 382 passes precede
+  new shutdown/accounting regressions. Full G1 retains 5,599 passes / five
+  failures / 25 skips; affected final selections pass 432 and five cases. Final
+  collection has 5,646 identities across 347 files, 5,621 with passing evidence
+  and 25 skips; no missing identities. Do not call the original invocation green.
+  Current evidence belongs in qualification's responsive-retrieval section and
+  `.local/qualification/retrieval-repairs-20260916/`, not the older repair cohort.
+- Native init now distinguishes shared-card permission from pool participation;
+  a limited socket search is not absence evidence. Carry an explicitly supplied
+  existing socket into CC's actual review, use an independent namespace and
+  preserve the latest approved UUID set. No new scheduler, pool service,
+  Profile field or automatic binding was introduced; retained runs are unchanged.
+- One current online OpenAlex fallback returned correctly labeled academic
+  metadata in 14.611 seconds, preserving DuckDuckGo `timed_out`. Explicit
+  `--web-search-fallback openalex` is Host-only and defaults off. Provider billing
+  was not returned and remains unknown; do not reset prior qualification spend.
+  No new paid-model or real-GPU test is authorized by this repair.
+- User selected Unpaywall DOI/full-text fallback and OpenAlex academic search.
+  Existing contact file `/home/gray/.config/prometheus/unpaywall.mail` stays
+  unchanged; never log its value. Explicit `--literature-pdf-fallback unpaywall`
+  plus `--unpaywall-email-file` travel in the common literature argv for serve,
+  profile-check and start. No Unpaywall title search or extra fallback chain.
+  One real CauAIN DOI/PDF lookup and extraction passed in 4.649 seconds; generic
+  web health and universal full-text coverage remain separate/unproven.
+- Current MERC-causal read-only admission with the selected literature options
+  passes. Preserve the earlier manual path-as-component CLI error. The wheel,
+  installation and CPU bundle match 131 runtime files; its two Agents/two
+  Processes close with clean Oracle and Host exit. Five other final state reads
+  show 59 Agent + nine Process Attempts CLOSED and 66 groups absent. All recorded
+  final temporary roots/mounts are removed; no test-bound worker remains. Original
+  G1 fixtures already collected by pytest do not receive an invented row census.
+  New real-GPU/paid-model qualification was not run; do not reuse old G4/G5 as
+  promotion of the six changed files. Preparation in CC is supported; actual
+  binding/model/budget review stays in its existing initialization flow.
+- Current read-only Oracle audits pass for all four retained September 15 roots
+  (0044/0849/1555/1803), with unchanged heads/database metadata/Attempt counts:
+  231 Agent + 35 Process Attempts CLOSED. This does not authorize recovery,
+  replace original bundled-reader failures or establish release-era compatibility.
+
+- Latest read-only review, September 15 at 23:38 +08: user manually stopped
+  `MERC-causal-202609151803`; CANCELLED r60 at 23:27:19 after accepted TUI cancel
+  at 23:18:10. All 57 Agents (38 success/15 failed/3 timed out/1 cancelled) and
+  eight Processes (4 success/3 failed/1 cancelled) CLOSED; all 65 PGIDs absent, exact managed units
+  inactive, no socket/work residue/Web listener. Own bundled Oracle passes;
+  preserve the separate wrong-artifact-root manual probe failure. No run state,
+  code, Profile, key or service was changed and no new paid/GPU/web test was made.
+- Actual model `kimi-for-coding` / CC2.1.272; 131 bundled runtime files matched the
+  worktree before the September 16 retrieval repairs. Four complete CLEAN_REFUTATIONs, three execution
+  faults and one cancelled experiment; no goal verdict. Known model cost
+  68.139247 USD plus four unknown calls; failed Agents account for 14.745211 USD
+  known. Frozen invocation/total USD caps are absent. Independent scientific
+  checkpoint audits/parser counterexamples were not rerun.
+- September 15–16 follow-up corrects the prior pool inference: the actual CC
+  operator transcript explicitly approved all four UUIDs at 18:20, nonpooled
+  at 18:22 and Start now at 18:27. The helper input already lacked pool flags;
+  no forwarding loss was found. CC's limited /run/user and /tmp search missed
+  the known Prometheus-local socket. Codex memory is not CC runtime context;
+  pool socket/namespace are Host argv, not six-file Profile fields. Carry the
+  known binding into the next CC review without silently overriding later choices.
+- Only two Affective Processes used GPU1; ML explicitly submitted gpus=0, Engineering
+  AUTO fell back to CPU when its frozen capacity excluded busy GPU1 and GPU0
+  had 11751 MiB free below the configured 12288 MiB threshold. Future idle
+  capacity does not change a committed CPU grant. Do not mutate this run or
+  automatically force GPU.
+- Retrieval follow-up: all ten DDG searches failed at socket.connect with
+  errno 101; 15/17 web_fetch calls succeeded. OpenAlex produced four packets
+  (125 entries/102 identities), with 24 retrieved-text entries including nine
+  cache hits. Semantic Scholar fallback received eight actual 429s and skipped
+  88 later lookups locally; that fallback does not use the OpenAlex key.
+- At the initial diagnosis, reproduced model-independent defect: synchronous literature
+  retrieve and query-coverage admission occupy the Host's servicing thread.
+  Actual prefetch took up to 102.87 seconds; overlapping 64.83/49.08-second
+  prefetch windows delayed ML web calls past the 30-second MCP deadline, then
+  produced late BrokenPipe replies. Isolated real-Host/socket diagnostic with
+  existing fake fixtures reproduces timeout with a 0.5-second prefetch and
+  0.2-second client bound; responsive control returns in 0.0047 seconds. Two
+  fake Agents CLOSED, zero Processes; threads/socket/temp root cleaned. Reuse
+  worker I/O plus owner-thread completion; guard mutable adapter batch traces.
+- New credential-free connectivity probes reproduce direct DDG IPv4 timeout /
+  IPv6 errno 101 while arxiv/ACL TCP connects work. GroundingWeb ignores proxy
+  environment variables; current loopback proxy probes also timed out, so no
+  working alternate route is established. Preserve curl's unsupported JSON
+  formatter error. No key, paid-model, GPU or service mutation occurred. Evidence
+  and detailed follow-up remain in qualification's latest-observation section.
+- OBSERVER proposed debate at 22:10:49 and paused ML/Affective, but ML's long
+  CPU experiment prevented draining until cancellation; no Debate/Judge/Leader
+  Attempt occurred. Three execution Agents hit 3000-second deadlines while
+  Processes continued; five real terminal MCP replies show repaired elapsed
+  values. Engineering fixed three data-alias startup failures before a completed
+  CPU experiment. Structural/reference failures and web transport failures persist.
+- Accepted final report contains count/chronology errors (five instead of four
+  complete results, invented ML post-failure success, wrong Attempt counts).
+  First report was rejected with exact missing refs; second structurally passed.
+  Preserve it as evidence; Oracle is not a free-text scientific fact checker.
+  Current findings and bounded follow-up are in qualification's latest-observation
+  section; local evidence is `.local/qualification/merc-1803-review-20260915/`.
+
+- Earlier operation, September 15 at 17:19 +08: the user requested stopping the
+  latest Host after reported API exhaustion, intending a new-key fresh run.
+  `MERC-causal-202609151555` had already reached FAILED r9 at 17:14:05 and its
+  managed Host had exited. Exact service/scope are inactive/not loaded, MainPID
+  0, no queued supervisor jobs, no socket or live recorded process groups.
+  All seven Agents are CLOSED (one success/six failed); no experiment workflow
+  or Process was created. No stop signal, run-state change, key change or new
+  run was needed/performed. Existing data remain preserved. Read-only evidence:
+  `.local/qualification/host-stop-20260915/`.
+
+- Source import is implemented from Git snapshot
+  `7b881b28020e7903f7e14f4584952c976268ec0f`. Keep work local until commit/push
+  is requested. HEAD `6bd5bb910c8b9385f828f530cf634f3bbd19bbda` alone does not
+  represent the imported, still uncommitted/untracked working candidate.
+- Canonical package/CLI is `hypoloom`, operator MCP `hypoloom-mcp`, environment
+  prefix `HYPOLOOM_*`, operator skill `/autoresearch`, fresh roots `state/`.
+  Public v4 starters contain only `multi-expert-en` and `multi-expert-zh`;
+  older parser fixtures stay under tests. Preserve native assets, migrations
+  and G0–G5 capabilities, without legacy bridges or historical data imports.
+  Cross-version recovery is outside scope; existing runs/data/services remain
+  read-only absent authorization for the exact operation.
+- Evidence belongs in `docs/qualification.md`, detailed local logs in ignored
+  `.local/qualification/`. Reuse existing facts, validators, Oracle and Git;
+  no parallel qualification mechanism or recursive agent reviews. Source-project
+  qualification does not promote Hypoloom.
+- Use the complete local Conda environment. Standalone wheel CLI/MCP and real
+  CPU closure work there. A venv whose interpreter symlink escapes its prefix
+  is outside the current sandbox binding; no venv feature was introduced.
+- The user confirmed `profiles/local/MERC-causal` values; Web port is 8766.
+  Formal operations belong in Claude Code through `/autoresearch init`, without
+  an extra Codex Start now approval. Settings source is
+  `/home/gray/.claude/settings.json`; OpenAlex key source is
+  `/home/gray/.config/prometheus/openalex.key`. Never print their secrets.
+- The authorized common-goal interaction repair reuses
+  `SharedAcceptanceHost.assessment_qualifies`; local SUPPORTED/REFUTED alone
+  does not determine common-goal closure. Preserve its red/green regressions.
+- Earlier authorized G5-common/G5-resource rechecks passed; retain the original
+  resource FAIL and bill. Qualification model spend is 12.996258 USD,
+  conservatively 13.005258 USD including recorded free OpenAlex usage, within
+  the same 20 USD cohort ceiling, with no unknown reservations. Research costs
+  are separate; unknown costs never become zero or reset with a new root.
+- Online OpenAlex/PDF/Poppler retrieval was bounded and observed. The user
+  confirmed the existing Prometheus pool, independent Hypoloom namespace and
+  reviewed two-GPU set. An isolated empty Host started with that binding and
+  was cleaned up. Approved linger enablement succeeded; no logout/reboot or
+  long-soak coverage is implied. Pool flags must reach the actual Host; do not
+  infer binding from a running pool or replace the service.
+- Earlier repaired-candidate G1: 5,581 passed/25 opt-in skips, no failures/errors,
+  346 files/5,606 cases. Eight real CPU closure scenarios have clean Oracles,
+  273 CLOSED Attempts and no recorded process residue. ERC cache checks retain
+  source-provenance warnings. These results qualify their selected glm/pool
+  scope, not every later model, generated evaluator or scientific topic.
+- Completed repair authorization: repair the two-topic findings while preserving framework
+  generality/stability; use generic changes for model-independent defects or
+  consequential reusable improvements. Runtime repairs and offline/CPU
+  verification are complete. No Profile/run-state change, real GPU/paid model call, research
+  start or commit. Evidence: qualification's current-repairs section and ignored
+  `.local/qualification/merc-repairs-20260915/`. The earlier synthesis and its
+  original evidence remain under `merc-two-hypoloom-synthesis-20260915/`.
+- First Hypoloom `202609150044`: actual `mimo-v2.5`/CC2.1.270, CANCELLED r108 at
+  08:32:15 +08 on September 15. 112 closed Agents (64 success/38 failed/8 timed
+  out/2 cancelled), 21 closed Processes; 8 CLEAN_REFUTATION/13 EXECUTION_FAILURE,
+  no goal success. Known cost 151.916606 USD plus 12 unknown calls. Third final
+  report accepted after two failures; 57 distinct compaction UUIDs.
+- Second Hypoloom `202609150849`: actual `glm-5.3-flash`/CC2.1.271, CANCELLED r63
+  at 12:58:42. 55 closed Agents (42/9/2/2), six closed Process records (4 success,
+  1 failure, 1 cancelled before spawn), four clean refutations/two execution
+  failures, no goal success. Known cost 84.265526 USD plus four unknown calls;
+  first final report accepted; 21 compaction UUIDs. Combined known research cost
+  236.182132 USD plus 16 unknown calls is not an invoice total.
+- Both actual Hosts used all four local GPU UUIDs without pool flags; each
+  bundle's 131 runtime files matched the checkout before this repair. Second affective experiment 2
+  froze GPU3 before external UID1023 occupancy, stayed READY despite idle GPUs0/1,
+  and never launched. Existing fixed-grant/pool alternate-card regressions pass;
+  preserve initial overlong socket fixture ERROR. No hot grant mutation/migration.
+- First generated parser accepts excessive drift, duplicate checkpoint audits,
+  empty core config and missing future-speaker perturbation. Second unchanged
+  parser rejects these; seven CPU controls/counterexamples behave correctly.
+  Its four completed bundles retain 40 checkpoint files and declared audit
+  records, but no independent checkpoint audit was rerun. Neither run meets
+  the joint F1 goal; their differing runs do not support a model ranking.
+- Repaired terminal elapsed reporting using stored Process end timestamps;
+  before repair a 4.737855-second failure appeared as 3604.737855 seconds an hour
+  later. Wrong durations entered second-run reports and SELF_EVOLVE plugin
+  `47719839add99fc197fbb247af27dc06bf7c6838`, used by seven later Agents.
+  Existing instructions now require checking original facts and validation-data
+  probes; retained learned plugins were not altered.
+- Both runs repeat adjudication/reference errors and execution-Agent 3000-second
+  timeouts against 108000-second Process limits. First had six real Debate
+  statements and a Judge after two failures; second OBSERVER chose none, with
+  no Debate/Judge/Leader. Native inputs/reads are observed; compaction counts
+  alone do not prove preserved context or useful scientific judgment.
+- Repaired existing Oracle's response-less failed Grounding archive path and
+  OPEN-Process lookup/workspace cases. Publication identity, digest, transcript
+  and CLOSED-residue checks remain; corruption tests reject invalid evidence.
+  Both retained runs now pass current-code read-only Oracle. Preserve first
+  bundled Oracle's original two failures; this is not cross-version recovery.
+- Final liveness at 12:59:36: both Hosts inactive/absent, sockets gone, all 193
+  recorded PGIDs absent, no OPEN Attempts or disposable work directories.
+  Remaining GPU processes belong to UID1023. Retained staging is stdout/stderr
+  logs only; research history is preserved. Seven temporary parser probes were
+  removed. This is the earlier research cleanup census, not the later repair
+  tests' residue count.
+- Bounded MCP wait now preserves queued/running state and exposes Host resource
+  waits. The existing pool handles new observations at reserve/activate; a new
+  capacity-flip regression selects A → B → A, executes once, publishes once and
+  releases every reservation. No replacement scheduler, hot grant rebind or
+  automatic pool choice was introduced. Operator Skill preserves reviewed argv;
+  STATUS/TUI show binding from the existing RUN creation record.
+- Adjudication/final-report validators identify exact missing/disallowed refs;
+  original acceptance rules remain. Grounding/experiment-repair/self-evolve
+  instructions improve counterexample isolation, raw evidence checks and small
+  training/validation probes without MERC-specific runtime rules. Their impact
+  on the next generated evaluator still needs bounded model testing.
+- Repair regressions retain original red and fixture-error results: seven valid
+  reproductions plus one bad manager fixture; 170 passes/one fixture failure,
+  then 10 dynamic-pool/manager passes and 133 other focused passes. Full G1 first
+  produced 5,584 passes/11 failures/25 skips; the eleven failures were one old
+  status-test double rejecting the added binding read. Only that fixture was
+  corrected and its 11 cases passed. Final 346-file/5,620-case coverage therefore
+  has 5,595 passing identities/25 skips, retaining the original failures and
+  serial interruption. Runtime bytes did not change during G1. Existing G2
+  selectors pass 169/169 and G3 7/7; five independently reread G3 states have
+  150 CLOSED Attempts/150 absent groups. Earlier GPU/paid results do not qualify
+  the twelve changed runtime files.
+- Current environment is complete local Conda Python 3.12.14/SQLite 3.53.4,
+  actual Claude Code 2.1.272 (also observed in native transcripts). The new wheel
+  contains all 131 runtime files and its separate installed CPU sample closes
+  cleanly; the source archive covers 544 checked files. Final process inspection
+  finds no worker bound to test roots; test-created live resources are cleaned.
+  At 15:20:54 +08 the retained research states/revisions were still unchanged,
+  with all 193 original groups absent. A relative-path manual Oracle probe failed;
+  absolute-path reads pass; preserve both probe records.
+- A Host-managed model-free waiting redesign is a separate lifecycle change;
+  independent deadlines and confirmed budgets remain. Next higher-model G4/G5
+  work needs explicit model/resource/cost inputs. No new allowance or scientific
+  success has been inferred.

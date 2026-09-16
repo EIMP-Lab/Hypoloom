@@ -1,0 +1,6 @@
+# These deliberately nonexistent absolute paths make the tracked template fail
+# admission until a copied local profile is bound to operator-reviewed data.
+allow_read_paths:
+  - /REPLACE_ME/dataset-alpha-read-root
+  - /REPLACE_ME/dataset-beta-read-root
+sandbox_os: auto

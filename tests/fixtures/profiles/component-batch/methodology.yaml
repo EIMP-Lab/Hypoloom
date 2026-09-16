@@ -1,0 +1,413 @@
+# Copy this directory into profiles/local/<topic>, then replace every
+# /REPLACE_ME path and review all example scientific names and thresholds.
+type: hg
+
+success_criteria:
+  primary:
+    - name: dataset_alpha_final_score
+      experiment_kind: dataset-alpha-final
+      target_overlay_policy: latest
+      metric: quality_score
+      dataset: DATASET_ALPHA
+      setting: frozen_evaluation
+      baseline: 0.79
+      direction: maximize
+      target: 0.80
+      seeds: [0, 1, 2, 3, 4]
+      required_artifacts: [per_trial_metrics, per_class_metrics, aggregate_results, resolved_config, checkpoints, provenance, candidate_manifest]
+      required_inputs:
+        - {resource: implementation-candidate-manifest, produced_by: must.method_implemented, artifact: candidate_manifest}
+
+    - name: dataset_beta_final_score
+      experiment_kind: dataset-beta-final
+      target_overlay_policy: latest
+      metric: quality_score
+      dataset: DATASET_BETA
+      setting: frozen_evaluation
+      baseline: 0.74
+      direction: maximize
+      target: 0.75
+      seeds: [0, 1, 2, 3, 4]
+      required_artifacts: [per_trial_metrics, per_class_metrics, aggregate_results, resolved_config, checkpoints, provenance, candidate_manifest]
+      required_inputs:
+        - {resource: implementation-candidate-manifest, produced_by: must.method_implemented, artifact: candidate_manifest}
+
+  must:
+    - name: mechanism_search_recorded
+      experiment_kind: mechanism-search
+      evaluation_kind: artifact_check
+      required_artifacts: [hypothesis_catalog, comparison_plan]
+
+    - name: method_implemented
+      experiment_kind: method-implementation
+      evaluation_kind: artifact_check
+      required_artifacts: [implementation_patch, runner_config, integration_notes, candidate_manifest]
+
+    - name: dataset_alpha_audit
+      experiment_kind: dataset-alpha-audit
+      target_overlay_policy: latest
+      metric: max_integrity_violation
+      dataset: DATASET_ALPHA
+      setting: frozen_evaluation
+      direction: minimize
+      target: 0
+      required_artifacts: [resolved_config, provenance, candidate_manifest, integrity_audit]
+      required_inputs:
+        - {resource: dataset-alpha-final-checkpoints, produced_by: primary.dataset_alpha_final_score, artifact: checkpoints, min_count: 5}
+        - {resource: dataset-alpha-candidate-manifest, produced_by: primary.dataset_alpha_final_score, artifact: candidate_manifest}
+
+    - name: dataset_beta_audit
+      experiment_kind: dataset-beta-audit
+      target_overlay_policy: latest
+      metric: max_integrity_violation
+      dataset: DATASET_BETA
+      setting: frozen_evaluation
+      direction: minimize
+      target: 0
+      required_artifacts: [resolved_config, provenance, candidate_manifest, integrity_audit]
+      required_inputs:
+        - {resource: dataset-beta-final-checkpoints, produced_by: primary.dataset_beta_final_score, artifact: checkpoints, min_count: 5}
+        - {resource: dataset-beta-candidate-manifest, produced_by: primary.dataset_beta_final_score, artifact: candidate_manifest}
+
+    - name: dataset_alpha_screen_completed
+      experiment_kind: dataset-alpha-paired-screen
+      target_overlay_policy: latest
+      metric: paired_quality_score_gain_vs_baseline
+      dataset: DATASET_ALPHA
+      setting: frozen_evaluation
+      direction: maximize
+      target: 0.02
+      seeds: [0, 1, 2]
+      required_artifacts: [per_trial_metrics, resolved_config, baseline_control, provenance, candidate_manifest]
+      required_inputs:
+        - {resource: implementation-candidate-manifest, produced_by: must.method_implemented, artifact: candidate_manifest}
+
+    - name: dataset_beta_screen_completed
+      experiment_kind: dataset-beta-paired-screen
+      target_overlay_policy: latest
+      metric: paired_quality_score_gain_vs_baseline
+      dataset: DATASET_BETA
+      setting: frozen_evaluation
+      direction: maximize
+      target: 0.02
+      seeds: [0, 1, 2]
+      required_artifacts: [per_trial_metrics, resolved_config, baseline_control, provenance, candidate_manifest]
+      required_inputs:
+        - {resource: implementation-candidate-manifest, produced_by: must.method_implemented, artifact: candidate_manifest}
+
+    - name: final_reported
+      experiment_kind: final-report
+      evaluation_kind: artifact_check
+      required_artifacts: [final_report, per_class_metrics, provenance, candidate_manifest]
+      required_inputs:
+        - {resource: dataset-alpha-final-metrics, produced_by: primary.dataset_alpha_final_score, artifact: aggregate_results}
+        - {resource: dataset-beta-final-metrics, produced_by: primary.dataset_beta_final_score, artifact: aggregate_results}
+
+  should:
+    - name: ablation_completed
+      experiment_kind: ablation-report
+      evaluation_kind: artifact_check
+      required_artifacts: [ablation_report, candidate_manifest]
+      required_inputs:
+        - {resource: dataset-alpha-final-checkpoints, produced_by: primary.dataset_alpha_final_score, artifact: checkpoints, min_count: 5}
+        - {resource: dataset-beta-final-checkpoints, produced_by: primary.dataset_beta_final_score, artifact: checkpoints, min_count: 5}
+
+component_owners:
+  primary.dataset_alpha_final_score: method-researcher
+  primary.dataset_beta_final_score: method-researcher
+  must.mechanism_search_recorded: method-researcher
+  must.method_implemented: method-researcher
+  must.dataset_alpha_audit: execution-reviewer
+  must.dataset_beta_audit: execution-reviewer
+  must.dataset_alpha_screen_completed: method-researcher
+  must.dataset_beta_screen_completed: method-researcher
+  must.final_reported: synthesis-reviewer
+  should.ablation_completed: synthesis-reviewer
+
+component_proposers:
+  must.mechanism_search_recorded: [method-researcher, synthesis-reviewer]
+  must.dataset_alpha_screen_completed: [method-researcher, synthesis-reviewer]
+  must.dataset_beta_screen_completed: [method-researcher, synthesis-reviewer]
+
+dependencies:
+  must.method_implemented: [must.mechanism_search_recorded]
+  must.dataset_alpha_screen_completed: [must.method_implemented]
+  must.dataset_beta_screen_completed: [must.method_implemented]
+  primary.dataset_alpha_final_score: [must.dataset_alpha_screen_completed, must.dataset_beta_screen_completed]
+  primary.dataset_beta_final_score: [must.dataset_alpha_screen_completed, must.dataset_beta_screen_completed]
+  must.final_reported: [must.dataset_alpha_audit, must.dataset_beta_audit]
+  should.ablation_completed: [must.final_reported]
+
+experiments:
+  protocols:
+    dataset-alpha-final:
+      result_kind: metric
+      requirements:
+        required_metrics: [quality_score, n_successful_seeds]
+        required_artifacts: [per_trial_metrics, per_class_metrics, aggregate_results, resolved_config, checkpoints, provenance, candidate_manifest]
+        required_paths:
+          - {scope: target, path: src/research/train.py, kind: file}
+          - {scope: target, path: data/alpha, kind: dir}
+          - {scope: target, path: splits/alpha.json, kind: file}
+        required_cli_flags: [--dataset, --model, --cache, --split-manifest, --raw-root, --mode, --seed, --out, --save-ckpt]
+        argv_bindings:
+          - {flag: --cache, role: dataset_alpha_cache, scope: target, path: data/alpha, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --split-manifest, role: dataset_alpha_split, scope: target, path: splits/alpha.json, kind: file, absolute: true, overlay_policy: immutable_data}
+          - {flag: --raw-root, role: dataset_alpha_raw, scope: absolute, path: /REPLACE_ME/dataset-alpha-read-root, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --mode, role: evaluation_mode, value: train}
+
+    dataset-beta-final:
+      result_kind: metric
+      requirements:
+        required_metrics: [quality_score, n_successful_seeds]
+        required_artifacts: [per_trial_metrics, per_class_metrics, aggregate_results, resolved_config, checkpoints, provenance, candidate_manifest]
+        required_paths:
+          - {scope: target, path: src/research/train.py, kind: file}
+          - {scope: target, path: data/beta, kind: dir}
+          - {scope: target, path: splits/beta.json, kind: file}
+        required_cli_flags: [--dataset, --model, --cache, --split-manifest, --raw-root, --mode, --seed, --out, --save-ckpt]
+        argv_bindings:
+          - {flag: --cache, role: dataset_beta_cache, scope: target, path: data/beta, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --split-manifest, role: dataset_beta_split, scope: target, path: splits/beta.json, kind: file, absolute: true, overlay_policy: immutable_data}
+          - {flag: --raw-root, role: dataset_beta_raw, scope: absolute, path: /REPLACE_ME/dataset-beta-read-root, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --mode, role: evaluation_mode, value: train}
+
+    mechanism-search:
+      result_kind: artifact
+      requirements:
+        required_artifacts: [hypothesis_catalog, comparison_plan]
+        artifact_validators:
+          - {type: text_contract, artifact: hypothesis_catalog, min_chars: 200, required_terms: [hypothesis, falsifier, negative result]}
+          - {type: text_contract, artifact: comparison_plan, min_chars: 200, required_terms: [DATASET_ALPHA, DATASET_BETA, shared method, adapter]}
+
+    method-implementation:
+      result_kind: artifact
+      requirements:
+        required_artifacts: [implementation_patch, runner_config, integration_notes, candidate_manifest]
+        artifact_validators:
+          - {type: unified_diff, artifact: implementation_patch, base_scope: target, apply_check: true}
+          - {type: text_contract, artifact: integration_notes, min_chars: 200, required_terms: [implementation_patch, runner, target repository, candidate_manifest]}
+
+    dataset-alpha-audit:
+      result_kind: metric
+      requirements:
+        required_metrics: [max_integrity_violation]
+        required_artifacts: [resolved_config, provenance, candidate_manifest, integrity_audit]
+        required_paths:
+          - {scope: target, path: src/research/audit.py, kind: file}
+        required_cli_flags: [--checkpoint, --dataset, --model, --mode, --seed, --out, --device]
+        argv_bindings:
+          - {flag: --mode, role: evaluation_mode, value: audit}
+
+    dataset-beta-audit:
+      result_kind: metric
+      requirements:
+        required_metrics: [max_integrity_violation]
+        required_artifacts: [resolved_config, provenance, candidate_manifest, integrity_audit]
+        required_paths:
+          - {scope: target, path: src/research/audit.py, kind: file}
+        required_cli_flags: [--checkpoint, --dataset, --model, --mode, --seed, --out, --device]
+        argv_bindings:
+          - {flag: --mode, role: evaluation_mode, value: audit}
+
+    dataset-alpha-paired-screen:
+      result_kind: metric
+      requirements:
+        required_metrics: [paired_delta, paired_quality_score_gain_vs_baseline]
+        required_artifacts: [per_trial_metrics, resolved_config, baseline_control, provenance, candidate_manifest]
+        required_paths:
+          - {scope: target, path: src/research/train.py, kind: file}
+          - {scope: target, path: data/alpha, kind: dir}
+          - {scope: target, path: splits/alpha.json, kind: file}
+        required_cli_flags: [--dataset, --model, --cache, --split-manifest, --raw-root, --mode, --seed, --out]
+        argv_bindings:
+          - {flag: --cache, role: dataset_alpha_cache, scope: target, path: data/alpha, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --split-manifest, role: dataset_alpha_split, scope: target, path: splits/alpha.json, kind: file, absolute: true, overlay_policy: immutable_data}
+          - {flag: --raw-root, role: dataset_alpha_raw, scope: absolute, path: /REPLACE_ME/dataset-alpha-read-root, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --mode, role: evaluation_mode, value: train}
+
+    dataset-beta-paired-screen:
+      result_kind: metric
+      requirements:
+        required_metrics: [paired_delta, paired_quality_score_gain_vs_baseline]
+        required_artifacts: [per_trial_metrics, resolved_config, baseline_control, provenance, candidate_manifest]
+        required_paths:
+          - {scope: target, path: src/research/train.py, kind: file}
+          - {scope: target, path: data/beta, kind: dir}
+          - {scope: target, path: splits/beta.json, kind: file}
+        required_cli_flags: [--dataset, --model, --cache, --split-manifest, --raw-root, --mode, --seed, --out]
+        argv_bindings:
+          - {flag: --cache, role: dataset_beta_cache, scope: target, path: data/beta, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --split-manifest, role: dataset_beta_split, scope: target, path: splits/beta.json, kind: file, absolute: true, overlay_policy: immutable_data}
+          - {flag: --raw-root, role: dataset_beta_raw, scope: absolute, path: /REPLACE_ME/dataset-beta-read-root, kind: dir, absolute: true, overlay_policy: immutable_data}
+          - {flag: --mode, role: evaluation_mode, value: train}
+
+    final-report:
+      result_kind: artifact
+      requirements:
+        required_artifacts: [final_report, per_class_metrics, provenance, candidate_manifest]
+        artifact_validators:
+          - {type: text_contract, artifact: final_report, min_chars: 300, required_terms: [DATASET_ALPHA, DATASET_BETA, method_family_id, negative, inconclusive]}
+
+    ablation-report:
+      result_kind: artifact
+      requirements:
+        required_artifacts: [ablation_report, candidate_manifest]
+        artifact_validators:
+          - {type: text_contract, artifact: ablation_report, min_chars: 200, required_terms: [leave-one-out, shared method, dataset-contingent, negative]}
+
+delivery_contracts:
+  enabled: true
+  schema_version: 1
+  protocols:
+    dataset-alpha-final:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: seeded_trials
+      delivery_goals: [target_integration, reproducible_execution]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [target_integration, reproducible_execution], path: src/research/train.py, module: research.train}
+        selector:
+          role: registry_or_factory
+          goals: [target_integration]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model, control_value: baseline_model}
+        config: {role: config, goals: [reproducible_execution], path_template: "configs/{model}_{dataset_lower}.yaml", path_flag: --config}
+        output:
+          role: output
+          goals: [reproducible_execution]
+          normalizer: {metric_paths: {metrics.quality_score: quality_score}, per_class_path: metrics.per_class, candidate_manifest_resource: implementation-candidate-manifest, checkpoint_torch_load: true}
+      proof_obligations:
+        - {id: execution_proven, goal: reproducible_execution, capabilities: [entrypoint, selector, config, output]}
+
+    dataset-beta-final:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: seeded_trials
+      delivery_goals: [target_integration, reproducible_execution]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [target_integration, reproducible_execution], path: src/research/train.py, module: research.train}
+        selector:
+          role: registry_or_factory
+          goals: [target_integration]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model, control_value: baseline_model}
+        config: {role: config, goals: [reproducible_execution], path_template: "configs/{model}_{dataset_lower}.yaml", path_flag: --config}
+        output:
+          role: output
+          goals: [reproducible_execution]
+          normalizer: {metric_paths: {metrics.quality_score: quality_score}, per_class_path: metrics.per_class, candidate_manifest_resource: implementation-candidate-manifest, checkpoint_torch_load: true}
+      proof_obligations:
+        - {id: execution_proven, goal: reproducible_execution, capabilities: [entrypoint, selector, config, output]}
+
+    dataset-alpha-audit:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: checkpoint_audit
+      delivery_goals: [reproducible_execution]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [reproducible_execution], path: src/research/audit.py, module: research.audit}
+        selector:
+          role: registry_or_factory
+          goals: [reproducible_execution]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model}
+        output:
+          role: output
+          goals: [reproducible_execution]
+          normalizer: {metric_paths: {audit.max_integrity_violation: max_integrity_violation}, audit_path: audit, audit_max: 0, candidate_manifest_resource: dataset-alpha-candidate-manifest, checkpoint_resource: dataset-alpha-final-checkpoints}
+      proof_obligations:
+        - {id: audit_proven, goal: reproducible_execution, capabilities: [entrypoint, selector, output]}
+
+    dataset-beta-audit:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: checkpoint_audit
+      delivery_goals: [reproducible_execution]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [reproducible_execution], path: src/research/audit.py, module: research.audit}
+        selector:
+          role: registry_or_factory
+          goals: [reproducible_execution]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model}
+        output:
+          role: output
+          goals: [reproducible_execution]
+          normalizer: {metric_paths: {audit.max_integrity_violation: max_integrity_violation}, audit_path: audit, audit_max: 0, candidate_manifest_resource: dataset-beta-candidate-manifest, checkpoint_resource: dataset-beta-final-checkpoints}
+      proof_obligations:
+        - {id: audit_proven, goal: reproducible_execution, capabilities: [entrypoint, selector, output]}
+
+    dataset-alpha-paired-screen:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: paired_control_treatment
+      delivery_goals: [target_integration, reproducible_execution, paired_effect]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [target_integration, reproducible_execution], path: src/research/train.py, module: research.train}
+        selector:
+          role: registry_or_factory
+          goals: [target_integration, paired_effect]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model, control_value: baseline_model}
+        config: {role: config, goals: [reproducible_execution], path_template: "configs/{model}_{dataset_lower}.yaml", path_flag: --config}
+        output:
+          role: output
+          goals: [reproducible_execution, paired_effect]
+          normalizer: {metric_paths: {metrics.quality_score: quality_score}, candidate_manifest_resource: implementation-candidate-manifest}
+      proof_obligations:
+        - {id: paired_effect_proven, goal: paired_effect, capabilities: [entrypoint, selector, config, output]}
+
+    dataset-beta-paired-screen:
+      delivery_mode: audited_overlay_adapter
+      production: true
+      execution_shape: paired_control_treatment
+      delivery_goals: [target_integration, reproducible_execution, paired_effect]
+      capabilities:
+        entrypoint: {role: entrypoint, goals: [target_integration, reproducible_execution], path: src/research/train.py, module: research.train}
+        selector:
+          role: registry_or_factory
+          goals: [target_integration, paired_effect]
+          selection: {argv_flag: --model, identity_input: model, expected_values: [candidate_model], expected_identity_input: model, control_value: baseline_model}
+        config: {role: config, goals: [reproducible_execution], path_template: "configs/{model}_{dataset_lower}.yaml", path_flag: --config}
+        output:
+          role: output
+          goals: [reproducible_execution, paired_effect]
+          normalizer: {metric_paths: {metrics.quality_score: quality_score}, candidate_manifest_resource: implementation-candidate-manifest}
+      proof_obligations:
+        - {id: paired_effect_proven, goal: paired_effect, capabilities: [entrypoint, selector, config, output]}
+
+hg:
+  domain_grounding: true
+  max_concurrent_experiments: auto
+  device_assignment: shared
+  scheduling_mode: workitem
+  experiment_isolation: attempt_overlay
+  autonomy:
+    mode: delegated
+    on_unresolved_policy: wait
+    goal_contract: immutable
+    budget: {hard_cap: true, allow_raise: false, on_breach: trim_or_stop}
+    terminal: {allow_external_actions: false, require_consistent_snapshot: true}
+    migration: {allowed_bundle_digests: [], allow_arbitrary_source_change: false}
+
+runtime:
+  mode: reference
+  conda_env: /REPLACE_ME/runtime-prefix
+  target_repo: /REPLACE_ME/target-repository
+  model_provider: claude-code
+  model_identity_probe: interactive
+
+budget:
+  agent_invocation:
+    max_turns: 4
+    max_tokens: 20000
+    max_output_bytes: 65536
+    wall_seconds: 180
+    max_cost: "0.25"
+    token_enforcement_mode: enforce
+  run_tokens: 300000
+  wallclock_hours: 24
+  per_expert_tokens: 100000
+  max_experiments: 24
+  max_papers: 12
+  experiment_timeout: 3600
+  max_active_hypotheses: 3
+  min_vram_per_experiment: 4096
+  gpu_vram_reserve_mb: 2048
+  max_turns: 60

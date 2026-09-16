@@ -1,0 +1,43 @@
+topic: Image classification
+
+objective: |
+  Improve validation accuracy for one bounded image-classification pilot while
+  preserving an auditable baseline comparison.
+
+context: |
+  This tracked template is an integration starting point. Replace the dataset,
+  metric, protocol, evidence, and target values before using it for science.
+
+completion:
+  rule: required_conjunction
+
+  signals:
+    - id: validation_accuracy
+      tier: primary
+      description: |
+        The frozen validation split reaches the target accuracy and publishes
+        the exact metric and resolved configuration used for evaluation.
+      protocol: image-classification-validation
+      depends_on: []
+      result:
+        kind: metric
+        metric: accuracy
+        dataset: IMAGE_CLASSIFICATION_PILOT
+        setting: frozen_validation_split
+        baseline: 0.50
+        direction: maximize
+        target: 0.55
+      seeds: [0, 1, 2, 3, 4]
+      evidence:
+        artifacts: [metrics, resolved_config]
+        inputs: []
+
+  evaluation_protocols:
+    image-classification-validation:
+      result_kind: metric
+      requirements:
+        required_metrics: [accuracy]
+        required_artifacts: [metrics, resolved_config]
+        artifact_validators: []
+
+  delivery_contracts: {}

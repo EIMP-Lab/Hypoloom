@@ -1,0 +1,53 @@
+schema_version: 4
+runtime:
+  target_repo: /REPLACE_ME/research-target
+  conda_env: /REPLACE_ME/project-runtime
+literature:
+  enabled: true
+  tools: [web_search, web_fetch]
+  max_sources: 8
+  # 可选的 Host 启动 dotenv 凭据文件，存放 OPENALEX_API_KEY 与
+  # UNPAYWALL_EMAIL（见 profiles/templates/hypoloom.env.example），操作员
+  # 流程以 --credentials-file 传给 Host。绝对路径，永不写入秘密明文：
+  # credentials_file: /absolute/path/to/hypoloom.env
+inner_loop:
+  max_iterations_per_hypothesis: 4
+  repair_attempts: 2
+output_correction:
+  max_failed_validations: 3
+interaction:
+  observer:
+    coalesce_reports: true
+  leader:
+    enabled: true
+    check_after: expert_round
+    min_rounds_before_leader: 1
+  debate:
+    enabled: true
+    rounds: 3
+    min_interval_seconds: 1800
+    min_new_outcomes: 2
+graph_evolution:
+  enabled: true
+  stagnation_rounds: 2
+memory:
+  retention: retain
+  max_transcript_bytes: 134217728
+  max_memory_bytes: 8388608
+  max_plugin_bytes: 1048576
+budget:
+  max_experiments: 96
+  max_active_hypotheses: 6
+  max_active_agents: 3
+  max_active_processes: 2
+  max_active_reviews: 3
+  max_retries: 2
+  max_infrastructure_retries: 2
+  max_process_lost_retries: 2
+  agent_invocation:
+    max_turns: 40
+    max_tokens: 80000
+    max_output_bytes: 262144
+    wall_seconds: 600
+    max_cost: "1"
+    token_enforcement_mode: enforce

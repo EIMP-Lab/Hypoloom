@@ -1,0 +1,38 @@
+schema_version: 2
+type: hg
+success_criteria:
+  primary:
+    - name: validation_accuracy
+      metric: accuracy
+      dataset: IMAGE_CLASSIFICATION_PILOT
+      setting: frozen_validation_split
+      baseline: 0.50
+      direction: maximize
+      target: 0.55
+      seeds: [0, 1, 2, 3, 4]
+      required_artifacts: [metrics, resolved_config]
+component_owners:
+  primary.validation_accuracy: ml-researcher
+component_proposers:
+  primary.validation_accuracy: [ml-researcher]
+hg:
+  research_loop: expert-six-node/1
+  domain_grounding: required
+  experiment_isolation: git_authoring_worktree
+  observer: disabled
+runtime:
+  target_repo: /REPLACE_ME/expert-loop-pilot-target
+budget:
+  max_active_hypotheses: 2
+  max_experiments: 2
+  max_retries: 5
+  max_infrastructure_retries: 2
+  max_process_lost_retries: 2
+  experiment_timeout: 300
+  agent_invocation:
+    max_turns: 24
+    max_tokens: 20000
+    max_output_bytes: 131072
+    wall_seconds: 300
+    max_cost: "0.5"
+    token_enforcement_mode: observe

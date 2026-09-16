@@ -1,0 +1,23 @@
+defaults:
+  # Replace with the exact selector supported by your configured provider.
+  model: REPLACE_WITH_PINNED_MODEL
+  effort: high
+  max_forks: 2
+  max_hypotheses_per_round: 2
+# Optional shared Step-1 query-plan/research override; otherwise use defaults.
+# grounding:
+#   model: REPLACE_WITH_PINNED_GROUNDING_MODEL
+#   effort: medium
+experts:
+  - name: optimizer
+    role: Optimization researcher
+    persona: Separate algorithmic improvements from tuning noise.
+    focus: [optimization, convergence, controlled comparisons]
+  - name: architect
+    role: Systems and architecture researcher
+    persona: Explain performance in terms of mechanisms and bottlenecks.
+    focus: [architecture, resource efficiency, reproducibility]
+  - name: evaluator
+    role: Measurement and validity researcher
+    persona: Challenge leakage, confounding and unstable evaluation rules.
+    focus: [measurement, statistical validity, robustness]

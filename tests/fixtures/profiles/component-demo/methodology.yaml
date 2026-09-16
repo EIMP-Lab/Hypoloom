@@ -1,0 +1,15 @@
+type: hg
+success_criteria:
+  primary:
+    metric: score
+    direction: maximize
+    target: 3
+
+budget:
+  agent_invocation:
+    max_turns: 2
+    max_tokens: 512
+    max_output_bytes: 16384
+    wall_seconds: 5
+    max_cost: "0"
+    token_enforcement_mode: enforce

@@ -1,0 +1,11 @@
+title: 改进一个可测量的研究系统
+description: >-
+  从三个互补视角研究目标项目。每位专家设计可复现的实验并明确测量方法与解析器；
+  被接受的结果必须支持相对于明确基线的具体改进。
+metric: null
+constraints:
+  - 保持原始仓库和数据集只读。
+  - 说明不确定性，并保留失败实验作为证据。
+stop_conditions:
+  max_rounds_per_expert: 4
+  max_wall_clock_hours: 6

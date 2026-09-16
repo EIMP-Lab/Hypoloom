@@ -1,0 +1,12 @@
+title: Improve a measured research system
+description: >-
+  Investigate the target project from three complementary perspectives. Each
+  expert defines a reproducible experiment and explicit measurement/parser;
+  accepted results must support a concrete improvement over a stated baseline.
+metric: null
+constraints:
+  - Keep the original repository and datasets read-only.
+  - Explain uncertainty and preserve failed experiments as evidence.
+stop_conditions:
+  max_rounds_per_expert: 4
+  max_wall_clock_hours: 6

@@ -1,0 +1,290 @@
+"""Native Stop validation preserves shape, correction limits and bounded IO."""
+
+from __future__ import annotations
+
+import json
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+import pytest
+
+from hypoloom import native_output
+
+
+SCHEMA = {
+    "type": "object",
+    "properties": {"typed_candidate": {
+        "type": "object", "properties": {"count": {"type": "integer", "minimum": 1}},
+        "required": ["count"], "additionalProperties": False}},
+    "required": ["typed_candidate"], "additionalProperties": False,
+}
+VALID = '{"typed_candidate":{"count":1}}'
+INVALID = '{"typed_candidate":"private-candidate-value"}'
+
+
+def _server(tmp_path, **kwargs):
+    return native_output.NativeOutputValidator(
+        tmp_path / "output.sock", output_schema=SCHEMA, session_id="session-owned",
+        max_failed_validations=kwargs.pop("cap", 3),
+        max_request_bytes=kwargs.pop("max_bytes", 4096),
+        deadline_at=kwargs.pop("deadline", time.monotonic() + 5), **kwargs)
+
+
+def _call(server, text=VALID, session_id="session-owned"):
+    return native_output.call_validator(
+        str(server.socket_path), session_id=session_id,
+        last_assistant_message=text, max_request_bytes=4096, timeout_seconds=2)
+
+
+@pytest.mark.parametrize("cap", [1, 3, 11])
+def test_rejection_cap_then_normal_invalid_completion(tmp_path, cap):
+    server = _server(tmp_path, cap=cap)
+    try:
+        assert server.snapshot()["status"] == "not_observed"
+        for ordinal in range(1, cap + 1):
+            answer = _call(server, INVALID)
+            if ordinal < cap:
+                assert answer["decision"] == "block"
+                assert "/typed_candidate" in answer["reason"]
+                assert "complete JSON object" in answer["reason"]
+            else:
+                assert answer == {}
+        observed = server.snapshot()
+        assert observed["status"] == "unresolved"
+        assert observed["call_count"] == observed["rejected_count"] == cap
+        assert observed["validation_source"] == "host_stop_hook"
+        assert [round_["ordinal"] for round_ in observed["rounds"]] == list(range(1, cap + 1))
+        assert observed["scope"] == "native_stop_validation"
+        assert observed["accepted"] is False
+        assert all(round_["status"] == "rejected" and round_["validation_error"]
+                   for round_ in observed["rounds"])
+        assert "private-candidate-value" not in json.dumps(observed)
+        assert "cost" not in observed and "last_valid" not in observed
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("failures", [0, 2, 9])
+def test_success_after_exact_same_invocation_corrections(tmp_path, failures):
+    server = _server(tmp_path, cap=failures + 1)
+    try:
+        for _ in range(failures):
+            assert _call(server, INVALID)["decision"] == "block"
+        assert _call(server) == {}
+        observed = server.snapshot()
+        assert observed["status"] == ("first_pass" if failures == 0 else "recovered")
+        assert observed["call_count"] == failures + 1
+        assert observed["rejected_count"] == failures
+        assert observed["accepted"] is True
+        assert observed["rounds"][-1] == {
+            "ordinal": failures + 1, "status": "accepted", "validation_error": None}
+        observed["rounds"].clear()
+        assert len(server.snapshot()["rounds"]) == failures + 1
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("text", [
+    "{} {}", "[]", "null", '"object"', "```json\n{}\n```", "{",
+    '{"typed_candidate":{"count":NaN}}', '{"typed_candidate":{"count":Infinity}}',
+    '{"typed_candidate":{"count":1e999}}', '{"typed_candidate":{},"typed_candidate":{}}',
+    '{"typed_candidate":{"count":true}}', '{"typed_candidate":{"count":0}}', INVALID,
+])
+def test_decode_rejects_invalid_json_and_schema_without_repair(text):
+    with pytest.raises(ValueError):
+        native_output.decode_output(text, SCHEMA)
+
+
+def test_decode_accepts_complete_object_and_checks_full_schema():
+    assert native_output.decode_output(" \n" + VALID + "\n", SCHEMA) == {"typed_candidate": {"count": 1}}
+    with pytest.raises(ValueError, match="required"):
+        native_output.decode_output("{}", SCHEMA)
+    with pytest.raises(ValueError, match="additionalProperties"):
+        native_output.decode_output('{"typed_candidate":{"count":1},"extra":true}', SCHEMA)
+    with pytest.raises(ValueError, match="schema"):
+        native_output.check_output_schema({"type": "not-a-type"})
+    with pytest.raises(ValueError):
+        native_output.decode_output("{}", {"$ref": "https://invalid.example/schema"})
+
+
+@pytest.mark.parametrize("cap", [0, -1, True, 1.5])
+def test_constructor_rejects_invalid_correction_cap(tmp_path, cap):
+    with pytest.raises(ValueError):
+        _server(tmp_path, cap=cap)
+    assert not (tmp_path / "output.sock").exists()
+
+
+def test_wrong_session_is_sticky_fail_closed(tmp_path):
+    server = _server(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="session"):
+            _call(server, session_id="foreign")
+        assert server.snapshot()["status"] == "validation_failed"
+        assert server.snapshot()["call_count"] == 0
+        with pytest.raises(ValueError):
+            _call(server)
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("payload", [b"{broken}\n", b"{}\n", b"x" * 129 + b"\n"])
+def test_invalid_or_oversized_transport_is_fail_closed(tmp_path, payload):
+    server = _server(tmp_path, max_bytes=128)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2)
+            client.connect(str(server.socket_path))
+            client.sendall(payload)
+            response = json.loads(client.makefile("rb").readline())
+        assert response["ok"] is False
+        assert server.snapshot()["status"] == "validation_failed"
+        assert server.snapshot()["call_count"] == 0
+    finally:
+        server.close()
+
+
+def test_deadline_exhaustion_and_close_remove_endpoint(tmp_path):
+    server = _server(tmp_path, deadline=time.monotonic() - 1)
+    try:
+        with pytest.raises((ValueError, OSError)):
+            _call(server)
+        assert server.snapshot()["status"] == "validation_failed"
+        assert "deadline" in server.snapshot()["error"]
+    finally:
+        server.close()
+    server.close()
+    assert not server.socket_path.exists()
+    assert not server.thread.is_alive()
+    with pytest.raises(OSError):
+        _call(server)
+
+
+def _client_process(socket_path, payload, *, timeout="2", max_bytes="4096"):
+    return subprocess.run(
+        [sys.executable, "-I", "-S", str(Path(native_output.__file__).resolve()),
+         "--socket", str(socket_path), "--max-bytes", max_bytes, "--timeout-seconds", timeout],
+        input=json.dumps(payload), text=True, capture_output=True, timeout=5,
+        env={"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"})
+
+
+def test_standalone_stdlib_client_selects_only_hook_fields(tmp_path):
+    server = _server(tmp_path)
+    try:
+        result = _client_process(server.socket_path, {
+            "session_id": "session-owned", "last_assistant_message": VALID,
+            "hook_event_name": "Stop", "stop_hook_active": True,
+            "transcript_path": "/do/not/read", "other": "do not forward"})
+        assert result.returncode == 0 and result.stderr == ""
+        assert json.loads(result.stdout) == {}
+        assert server.snapshot()["status"] == "first_pass"
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("payload", [{}, {"session_id": "session-owned"}, {
+    "session_id": "session-owned", "last_assistant_message": "x" * 500}])
+def test_standalone_client_input_failure_stops_native(tmp_path, payload):
+    result = _client_process(tmp_path / "absent.sock", payload, max_bytes="128")
+    answer = json.loads(result.stdout)
+    assert answer["continue"] is False and answer["stopReason"]
+    assert "x" * 50 not in result.stdout
+
+
+def test_standalone_transport_failure_stops_native(tmp_path):
+    result = _client_process(tmp_path / "absent.sock", {
+        "session_id": "session-owned", "last_assistant_message": VALID})
+    assert json.loads(result.stdout)["continue"] is False
+
+
+def test_existing_socket_path_is_never_overwritten(tmp_path):
+    path = tmp_path / "output.sock"
+    path.write_text("user-owned")
+    with pytest.raises(FileExistsError):
+        _server(tmp_path)
+    assert path.read_text() == "user-owned"
+
+
+def test_partial_request_deadline_is_fatal_without_candidate_round(tmp_path):
+    server = _server(tmp_path, deadline=time.monotonic() + 0.1)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2)
+            client.connect(str(server.socket_path))
+            client.sendall(b'{"session_id":')
+            response = json.loads(client.makefile("rb").readline())
+        assert response["ok"] is False
+        observed = server.snapshot()
+        assert observed["status"] == "validation_failed" and not observed["accepted"]
+        assert observed["call_count"] == 0 and "deadline" in observed["error"]
+    finally:
+        server.close()
+
+
+def test_close_unblocks_inflight_request(tmp_path):
+    server = _server(tmp_path)
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        client.connect(str(server.socket_path))
+        client.sendall(b'{"session_id":')
+        limit = time.monotonic() + 1
+        while not server._connections and time.monotonic() < limit:
+            time.sleep(0.005)
+        started = time.monotonic()
+        server.close()
+        assert time.monotonic() - started < 1
+        assert not server.thread.is_alive()
+    finally:
+        client.close()
+        server.close()
+
+
+def test_client_transport_timeout_stops_native(tmp_path):
+    path = tmp_path / "unresponsive.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(path))
+    listener.listen(1)
+    release = threading.Event()
+
+    def accept():
+        connection, _ = listener.accept()
+        with connection:
+            release.wait(timeout=2)
+
+    thread = threading.Thread(target=accept, daemon=True)
+    thread.start()
+    try:
+        result = _client_process(path, {"session_id": "session-owned",
+                                       "last_assistant_message": VALID}, timeout="0.05")
+        assert json.loads(result.stdout)["continue"] is False
+    finally:
+        release.set()
+        listener.close()
+        thread.join(timeout=2)
+
+
+def test_raw_hook_uses_existing_private_redacting_recorder(tmp_path):
+    from hypoloom.runtime_diagnostics import RuntimeDiagnostics
+
+    diagnostics = RuntimeDiagnostics(tmp_path / "diagnostics", secrets=["private-candidate-value"])
+    server = _server(tmp_path, diagnostics=diagnostics)
+    try:
+        _call(server, INVALID)
+        recorded = json.loads((diagnostics.root / "native-output/000001.json").read_text())
+        assert recorded["session_id"] == "session-owned"
+        assert "[REDACTED]" in recorded["last_assistant_message"]
+        assert "private-candidate-value" not in json.dumps(server.snapshot())
+        assert diagnostics.summary()["capture_errors"] == []
+    finally:
+        server.close()
+
+
+def test_arbitrary_positive_cap_is_not_limited_to_native_default(tmp_path):
+    server = _server(tmp_path, cap=10**30)
+    try:
+        assert _call(server, INVALID)["decision"] == "block"
+    finally:
+        server.close()

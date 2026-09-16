@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+"""Grounding parser for accuracy qualification task.
+
+Reads the expert's raw predictions from /raw/predictions.json,
+reads the canonical validation pairs from /input/validation.json,
+independently recomputes accuracy from the raw arrays, and checks
+that the expert's computed_accuracy matches.
+
+Outputs to /parsed/result.json:
+  measurements: {accuracy: decimal}
+  checks: {complete_pairs: boolean, computed_accuracy_matches: boolean}
+"""
+
+import json
+import os
+import sys
+
+RESULT_PATH = os.environ.get(
+    "HYPOLOOM_MEASUREMENT_RESULT_PATH", "/parsed/result.json"
+)
+RAW_ROOT = os.environ.get("HYPOLOOM_MEASUREMENT_RAW_ROOT", "/raw")
+INPUT_ROOT = "/input"
+
+
+def load_json(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def main():
+    # Load expert's raw output
+    raw_path = os.path.join(RAW_ROOT, "predictions.json")
+    raw = load_json(raw_path)
+
+    labels = raw["labels"]
+    predictions = raw["predictions"]
+    computed_accuracy = raw["computed_accuracy"]
+
+    # Load canonical validation pairs
+    validation_path = os.path.join(INPUT_ROOT, "validation.json")
+    validation = load_json(validation_path)
+    canonical_labels = validation["labels"]
+    canonical_predictions = validation["predictions"]
+
+    # Check 1: all eight original pairs are present and unchanged
+    complete_pairs = (
+        len(labels) == len(canonical_labels)
+        and len(predictions) == len(canonical_predictions)
+        and labels == canonical_labels
+        and predictions == canonical_predictions
+    )
+
+    # Independently recompute accuracy from the raw arrays
+    if len(labels) == 0:
+        recomputed = 0.0
+    else:
+        matches = sum(1 for l, p in zip(labels, predictions) if l == p)
+        recomputed = matches / len(labels)
+
+    # Check 2: computed_accuracy matches independent recomputation
+    computed_accuracy_matches = abs(computed_accuracy - recomputed) < 1e-9
+
+    result = {
+        "measurements": {"accuracy": recomputed},
+        "checks": {
+            "complete_pairs": complete_pairs,
+            "computed_accuracy_matches": computed_accuracy_matches,
+        },
+    }
+
+    os.makedirs(os.path.dirname(RESULT_PATH), exist_ok=True)
+    with open(RESULT_PATH, "w") as f:
+        json.dump(result, f, indent=2)
+
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()

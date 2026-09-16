@@ -1,0 +1,15 @@
+allow_read_paths: [/REPLACE_ME/research-data]
+sandbox_os: linux_bwrap
+# [] is a CPU-only starter. GPU use needs exact Host UUID authorization too.
+gpus: []
+max_gpus_per_experiment: 1
+experiment_timeout_minutes: 30
+per_expert_budget_usd: 15
+total_budget_usd: 45
+bash:
+  network_allowed: false
+  deny_patterns: ["rm -rf /", "git push", "sudo", "pip uninstall"]
+filesystem:
+  write_only_within_worktree: true
+  # Add existing project-relative protected paths (for example data/) as needed.
+  protected_paths: [.git/]

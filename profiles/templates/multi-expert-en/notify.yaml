@@ -1,0 +1,19 @@
+sinks:
+  log:
+    level: info
+    path: events.jsonl
+  telegram:
+    enabled: false
+    # One dotenv credentials file holds TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
+    # (see profiles/README.md and profiles/templates/hypoloom.env.example);
+    # absolute path, never a secret literal. Environment-variable sources are
+    # the supported alternative; use exactly one source:
+    # bot_token_env: HYPOLOOM_TELEGRAM_BOT_TOKEN
+    # chat_id_env: HYPOLOOM_TELEGRAM_CHAT_ID
+    credentials_file: /absolute/path/to/hypoloom.env
+  dashboard:
+    enabled: true
+    host: 127.0.0.1
+    port: 8765
+events:
+  telegram: [grounding_question, grounding_answered, new_best_result, leader_started, debate_started, expert_round_done, error, run_finished]

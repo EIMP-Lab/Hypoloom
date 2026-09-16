@@ -1,0 +1,55 @@
+enabled:
+  - method-researcher
+  - execution-reviewer
+  - synthesis-reviewer
+
+experiment_protocol_bindings:
+  method-researcher:
+    default_kind: method-implementation
+    allowed_kinds:
+      - mechanism-search
+      - method-implementation
+      - dataset-alpha-paired-screen
+      - dataset-beta-paired-screen
+      - dataset-alpha-final
+      - dataset-beta-final
+  execution-reviewer:
+    default_kind: dataset-alpha-audit
+    allowed_kinds:
+      - dataset-alpha-audit
+      - dataset-beta-audit
+  synthesis-reviewer:
+    default_kind: final-report
+    allowed_kinds:
+      - final-report
+      - ablation-report
+
+focus:
+  method-researcher: >-
+    Own competing hypotheses, the shared implementation, paired screens, and
+    final trials. Keep one method family across both dataset adapters.
+  execution-reviewer: >-
+    Independently audit data bindings, checkpoint integrity, and leakage or
+    contamination risks without changing the primary decision rule.
+  synthesis-reviewer: >-
+    Consume validated upstream artifacts and preserve negative, conditional,
+    and dataset-specific findings in the final synthesis.
+
+autonomy:
+  method-researcher: evidence_first
+  execution-reviewer: evidence_first
+  synthesis-reviewer: evidence_first
+
+budgets:
+  method-researcher:
+    per_expert_tokens: 100000
+    max_experiments: 12
+    max_papers: 8
+  execution-reviewer:
+    per_expert_tokens: 50000
+    max_experiments: 4
+    max_papers: 4
+  synthesis-reviewer:
+    per_expert_tokens: 50000
+    max_experiments: 2
+    max_papers: 4

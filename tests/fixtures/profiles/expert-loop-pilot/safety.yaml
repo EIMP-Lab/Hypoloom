@@ -1,0 +1,3 @@
+allow_read_paths:
+  - /REPLACE_ME/expert-loop-pilot-data
+sandbox_os: linux

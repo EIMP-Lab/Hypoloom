@@ -1,0 +1,23 @@
+defaults:
+  # 替换为已配置模型服务实际支持的精确模型标识。
+  model: REPLACE_WITH_PINNED_MODEL
+  effort: high
+  max_forks: 2
+  max_hypotheses_per_round: 2
+# 可选：单独配置共享 Grounding 查询与研究阶段；省略时使用 defaults。
+# grounding:
+#   model: REPLACE_WITH_PINNED_GROUNDING_MODEL
+#   effort: medium
+experts:
+  - name: optimizer
+    role: 优化研究专家
+    persona: 区分算法改进与调参噪声。
+    focus: [优化, 收敛, 受控比较]
+  - name: architect
+    role: 系统与架构研究专家
+    persona: 从机制与瓶颈解释性能变化。
+    focus: [架构, 资源效率, 可复现性]
+  - name: evaluator
+    role: 测量与有效性研究专家
+    persona: 检查数据泄漏、混杂因素与不稳定的评估规则。
+    focus: [测量, 统计有效性, 稳健性]

@@ -1,0 +1,62 @@
+---
+name: resource-planning
+description: Estimate an experiment's per-device GPU memory from comparable workload measurements, query live authorized capacity, and learn resource-planning lessons through cycle reports and SELF_EVOLVE.
+---
+
+Expert: {{ROLE}}
+Focus: {{FOCUS}}
+
+Use this skill for DESIGN or EXECUTION resource decisions, and when reporting or
+evolving a resource lesson. These instructions are stable strategy; injected
+resource experience is scoped evidence, and the initial capability snapshot is
+historical. When available, `mcp__host-tools__get_resources` returns timestamped
+authorized capacity, wait/unknown reasons and this expert's bounded history.
+DESIGN has read-only resource access, never submit or cancel permission.
+
+Choose `CPU` when GPU acceleration is immaterial, `AUTO` when CPU is scientifically
+valid, or `GPU_REQUIRED` for an evidenced GPU requirement. Do not change that
+scientific requirement merely because capacity is temporarily unavailable.
+
+For ACI18 EXECUTION on an explicitly pooled run, pass an optional
+`resource_estimate` to `submit_experiment`:
+
+- `workload`: 1–16 string-to-string configuration labels, with keys up to 64 and
+  values up to 256 characters. Distinguish model/method, batch, precision and
+  shapes when relevant; non-ML workloads need their own comparable labels.
+- `peak_memory_mib`: positive per-device workload peak including uncertainty
+  headroom, separate from the operator's device reserve.
+- `basis`: evidence, scaling assumptions and uncertainty, up to 1024 characters.
+- `measurement_attempt_ids`: up to 32 exact comparable CLOSED Process Attempt
+  IDs from this run/role/component/method-family; omit or use `[]` without any.
+
+Prefer same-workload attributed peaks, then explained scaling from nearby
+measurements, then conservative workload accounting. Device used/free memory is
+shared pressure, never this experiment's own use. Unknown or partial own-use
+samples remain unknown. Pressure cancellation alone is not an observed OOM.
+Do not invent a precise estimate; an omitted estimate keeps the Profile initial
+workload budget (or its floor when no initial value is configured) and is
+explicitly unestimated. A bounded measurement is useful when feasible.
+
+For pooled runs, the Host resolves matching measured history only at first
+submission and freezes those source references. Admission uses the maximum of
+the Profile floor, submitted estimate and compatible measured/OOM lower bounds
+with Host headroom. The pool chooses actual authorized devices for each Attempt;
+retries may use another card. Live observations cannot rewrite accepted sources.
+An optional operator `initial_vram_per_experiment` separates a conservative
+starting estimate from `min_vram_per_experiment`, the hard workload minimum.
+It remains binding until a comparable CLOSED Process has SUCCEEDED with complete
+attributed samples. Then a new submission may decrease its estimate, retaining
+the hard minimum, all applicable measured/OOM bounds and separate device reserve.
+An incomplete sample, failed/interrupted trial or low live free memory is not
+evidence for lowering it. Include successful measurement IDs and explain any
+reduction in `basis`; keep workload labels accurate when model/batch/shapes change.
+For retained nonpooled contracts, the Host's fixed-grant rules still apply.
+Never submit UUIDs, device indices, allowlists, reserve changes or runtime/mount
+overrides; never signal or inspect another owner's workload to gain capacity.
+
+In CYCLE_REPORT, preserve workload labels, estimate, actual attributed peak or
+unknown/OOM evidence, exact Attempt references and the resulting lesson. During
+SELF_EVOLVE only, make a focused strategy update under `/plugin-update`; preserve
+this entrypoint and the other wired skills. Do not embed a stale live snapshot
+as policy or copy private cross-run research. The Host validates the Git update
+for a later cycle; an already bound cycle and current grant never change.

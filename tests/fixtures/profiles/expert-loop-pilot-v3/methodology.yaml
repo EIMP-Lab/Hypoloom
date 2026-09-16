@@ -1,0 +1,32 @@
+schema_version: 3
+
+mode:
+  research_loop: expert-six-node/1
+  domain_grounding: required
+  experiment_isolation: git_authoring_worktree
+  observer: disabled
+  component_ownership: balanced
+
+runtime:
+  target_repo: /REPLACE_ME/expert-loop-pilot-target
+
+budget:
+  max_active_hypotheses: 2
+  max_experiments: 2
+  max_retries: 5
+  max_infrastructure_retries: 2
+  max_process_lost_retries: 2
+  experiment_timeout: 300
+
+  agent_invocation:
+    max_turns: 24
+    max_tokens: 20000
+    max_output_bytes: 131072
+    wall_seconds: 300
+    max_cost: "0.5"
+    token_enforcement_mode: observe
+
+  roles:
+    ml-researcher:
+      max_experiments: 2
+      max_papers: 4

@@ -1,0 +1,18 @@
+sinks:
+  log:
+    level: info
+    path: events.jsonl
+  telegram:
+    enabled: false
+    # 一个 dotenv 凭据文件统一存放 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
+    # （见 profiles/README.md 与 profiles/templates/hypoloom.env.example）；
+    # 绝对路径，永不写入秘密明文。也支持环境变量来源，二选一：
+    # bot_token_env: HYPOLOOM_TELEGRAM_BOT_TOKEN
+    # chat_id_env: HYPOLOOM_TELEGRAM_CHAT_ID
+    credentials_file: /absolute/path/to/hypoloom.env
+  dashboard:
+    enabled: true
+    host: 127.0.0.1
+    port: 8765
+events:
+  telegram: [grounding_question, grounding_answered, new_best_result, leader_started, debate_started, expert_round_done, error, run_finished]

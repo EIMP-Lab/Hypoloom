@@ -1,0 +1,10 @@
+enabled: [ml-researcher]
+focus:
+  ml-researcher: "Background: machine learning and experimental ML; own the complete six-node loop for the bounded component."
+autonomy:
+  ml-researcher: evidence_first
+budgets:
+  ml-researcher:
+    per_expert_tokens: 200000
+    max_experiments: 2
+    max_papers: 4
