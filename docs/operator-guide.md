@@ -68,10 +68,17 @@ simply re-enters cooldown on the next failure.
 ## Resources, observation and stopping
 
 CPU-only is the public template default. GPU starts require exact device UUIDs,
-a selected GPU runtime and matching Profile authorization. Pool status queries
-do not create services; joining, replacing or stopping a pool is a separate
-operator action. Shared capacity supports concurrent experiments on one card;
-reserve, memory estimates and concurrency limits remain enforced.
+a selected GPU runtime and matching Profile authorization. Init probes the
+conventional project pool endpoint (`.local/gpu-pools/shared/control.sock`)
+read-only and recalls prior runs' stored pool bindings as candidates; when
+pooled GPU work is wanted and no live pool exists, the final review carries an
+exact pool plan and the bounded `manage_gpu_pool.py ensure` helper deploys it
+as a transient user-systemd service immediately before the managed Host start.
+An external project's pool endpoint still enters only through explicit operator
+supply. Pool status queries do not create services; replacing, stopping or
+reconfiguring a pool remains a separate operator action. Shared capacity
+supports concurrent experiments on one card; reserve, memory estimates and
+concurrency limits remain enforced.
 
 Use `hypoloom status`, `hypoloom monitor` and `hypoloom oracle` with an exact
 `--state-root` and `--run-id`. A durable ACTIVE record does not establish process

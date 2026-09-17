@@ -294,20 +294,40 @@ scratch.
    accepted GPU count and workload intent, selecting actual UUIDs per Attempt;
    capacity wait before dispatch opens and consumes no PROCESS Attempt.
 
-   **Existing shared pool.** For coordinated sharing within or across runs,
-   review an existing shared pool: its absolute socket path, a stable namespace
-   unique to this state root, and optional expected server OS UID. This does not
-   replace the exact GPU allowlist/runtime or per-run `--allow-gpu` decision.
-   Sharing an occupied card is not the same choice as joining a shared pool.
-   When the operator refers to a previously confirmed pool, carry its supplied
-   endpoint into this review. If the endpoint is missing from this CC session,
-   ask for it or inspect the identified previous Host's stored binding/argv
-   read-only; Codex maintenance memory is not automatically CC runtime context.
-   A search limited to `/run/user` or `/tmp` does not establish that no pool
-   exists: sockets may be beneath a project directory. Do not recommend
-   "nonpooled, as before" merely because that search found nothing. Historical
-   bindings provide candidate values, not authorization to reuse an old
-   state-root namespace or silently override a newer explicit GPU/pool choice.
+   **Shared pool.** For coordinated sharing within or across runs, review a
+   pool binding: an absolute socket path, a stable namespace unique to this
+   state root, and an optional expected server OS UID. This does not replace
+   the exact GPU allowlist/runtime or per-run `--allow-gpu` decision. Sharing
+   an occupied card is not the same choice as joining a shared pool.
+
+   **Detection.** Probe once per init before concluding anything about pool
+   availability:
+
+   ```bash
+   "$CONTROL_PYTHON" -B \
+     "$REPOSITORY/.claude/skills/autoresearch/scripts/manage_gpu_pool.py" \
+     status --repository "$REPOSITORY"
+   ```
+
+   This probe is read-only: it never creates a pool, service, directory or
+   reservation. It reports each conventional project pool endpoint under
+   `$REPOSITORY/.local/gpu-pools/<name>/control.sock` as live, stale,
+   unauthorized or absent with its served UUIDs, and recalls the pool bindings
+   stored in prior runs' durable CREATED records (newest first, with current
+   liveness) as candidate values. Only an endpoint beneath this repository's
+   `.local/gpu-pools/` is this project's pool; any other endpoint, however
+   healthy, is external and enters this review solely through the operator's
+   explicit supply, labeled as external. When the operator refers to a
+   previously confirmed pool, carry its supplied endpoint into this review.
+   If the endpoint is missing from this CC session, ask for it or use the
+   read-only recall above; Codex maintenance memory is not automatically CC
+   runtime context. A search limited to `/run/user` or `/tmp` does not
+   establish that no pool exists: sockets may be beneath a project directory.
+   Do not recommend "nonpooled, as before" merely because that search found
+   nothing, and never infer a prior run's participation from socket absence:
+   its stored binding decides what it was. Historical bindings provide
+   candidate values, not authorization to reuse an old state-root namespace
+   or silently override a newer explicit GPU/pool choice.
    When the requested behavior includes choosing whichever authorized GPU has
    capacity after a queue wait, or learning per-experiment memory requirements
    through resource Skill updates, recommend this pooled path explicitly.
@@ -319,14 +339,17 @@ scratch.
    review, never an existing run or its frozen configuration. An
    allowlist with several GPUs alone does not provide deferred allocation:
    nonpooled requests can remain pinned to a low-capacity GPU while another
-   authorized GPU becomes available. If no pool is configured, explain that
-   limitation in the final review; prepare pool setup separately rather than
-   presenting the nonpooled launch as satisfying dynamic/shared scheduling.
-   If the operator explicitly chooses nonpooled after that explanation, retain
-   the choice in the final review. Explicit `gpus: 0` submissions remain CPU
-   work even with a pool; joining a pool does not migrate committed CPU grants.
-   Use the control Python for the read-only preflight below, passing
-   `--expected-server-uid` only when the same UID was reviewed:
+   authorized GPU becomes available. If no pool is configured and the operator
+   declines the reviewed creation below, explain that limitation in the final
+   review rather than presenting the nonpooled launch as satisfying
+   dynamic/shared scheduling. If the operator explicitly chooses nonpooled
+   after that explanation, retain the choice in the final review. Explicit
+   `gpus: 0` submissions remain CPU work even with a pool; joining a pool does
+   not migrate committed CPU grants.
+
+   **Live pool preflight.** For any reviewed live pool (project, recalled or
+   external), use the control Python for the read-only preflight below,
+   passing `--expected-server-uid` only when the same UID was reviewed:
 
    ```bash
    "$CONTROL_PYTHON" -B -m hypoloom.cli gpu-pool-status \
@@ -337,10 +360,41 @@ scratch.
    UUID subset to be present. An unavailable pool blocks `Start now`, but not
    preparation; a reachable pool with insufficient headroom is a disclosed
    capacity wait. Never substitute a private allocator or silently remove the
-   pool configuration. Do not run `gpu-pool-serve`, install a service, change
+   pool configuration.
+
+   **Pool creation.** When the operator wants pooled GPU work and no live
+   project pool or explicitly supplied external pool exists, include the exact
+   pool plan in the final launch review: pool root
+   `$REPOSITORY/.local/gpu-pools/shared`, socket `control.sock` inside it, the
+   derived `hypoloom-gpu-pool@<escaped-pool-root>.service` unit, the single
+   `--member <this-uid>=<approved UUID subset>` line, and `--reserve-mib`
+   equal to the admitted profile's `gpu_vram_reserve_mb`. Creation runs only
+   after **Start now** approval, immediately before the managed Host start,
+   through the bounded helper, never a hand-rolled service:
+
+   ```bash
+   "$CONTROL_PYTHON" -B \
+     "$REPOSITORY/.claude/skills/autoresearch/scripts/manage_gpu_pool.py" \
+     ensure --repository "$REPOSITORY" \
+     --pool-root "$REPOSITORY/.local/gpu-pools/shared" \
+     --socket-path "$REPOSITORY/.local/gpu-pools/shared/control.sock" \
+     --member "$(id -u)=GPU-...,GPU-..." --reserve-mib "$GPU_VRAM_RESERVE_MB"
+   ```
+
+   Require exit 0 with status `ready` or `reused`; verify the returned socket
+   and devices against the review and reuse that socket as `$GPU_POOL_SOCKET`.
+   Any refusal (`foreign_pool_root`, `member_uid_mismatch`, `service_busy`,
+   `pool_conflict`, `pool_ready_timeout`, `pool_verification_failed`) blocks
+   `Start now` and is reported verbatim; never fall back to nonpooled
+   silently. The helper deploys only beneath this repository's
+   `.local/gpu-pools/`, only for the invoking UID, never against a live or
+   conflicting service, and never forwards an ambient API key. A stale socket
+   from a dead pool is cleared by the pool service itself on start. Do not run
+   `gpu-pool-serve` directly, install a service by hand, change
    socket/directory permissions or groups, or enable linger as part of init.
-   Pool deployment needs separate operator authority. Different private pools
-   must not coordinate the same shared device set independently.
+   Pool stop, replacement and member reconfiguration are separate operator
+   actions outside init. Different private pools must not coordinate the same
+   shared device set independently.
 
    Show Profile workload floor, per-device reserve, known submitted/measured
    workload estimates and current effective capacity separately. Before any
@@ -647,7 +701,9 @@ the remaining profile research budgets; and
 the CPU/GPU decision with exact UUIDs/count cap, Profile workload floor/reserve
 and optional initial workload estimate with its pre-measurement threshold,
 estimate availability versus timestamped capacity, and shared pool
-socket/namespace/peer UID, participation and wait/blocker status; Profile-enabled notification
+socket/namespace/peer UID, participation and wait/blocker status, plus the
+exact pool plan (pool root, socket, derived unit, member line, reserve MiB)
+when pool creation is approved; Profile-enabled notification
 recipients/environment and dashboard host/port; retention choice; user-systemd readiness and linger
 limitation; and the exact bootstrap writes that each action would permit. For
 Profile v4, notification authority is
@@ -836,8 +892,10 @@ participation, append the literal `--gpu-pool-socket` path and
 `--gpu-pool-namespace` name, plus `--gpu-pool-server-uid` only when reviewed.
 The socket/namespace pair must travel unchanged in the existing managed Host
 `serve` argv; these Host-only options do not belong to `profile-check` or `start`.
-Do not infer endpoint or namespace from environment/global configuration or
-launch a pool service from this vector. Existing-settings auth
+Do not infer endpoint or namespace from environment/global configuration:
+the endpoint comes from the reviewed existing binding or the
+`manage_gpu_pool.py ensure` result, and the Host vector itself never deploys
+a pool. Existing-settings auth
 adds exactly one validated `--claude-settings` path. Environment auth omits it.
 A fake Agent must use explicit `--agent-adapter fake`, has no secret transport,
 and uses the helper's `none` service mode. Every Host launched by this managed
@@ -859,7 +917,12 @@ confirmed choices in this session; its omission is a launch mismatch, not a new
 default choice. No extra configuration file or launch manifest is needed.
 
 Invoke the existing lifecycle helper once, with fully resolved absolute values
-and no shell placeholder:
+and no shell placeholder. When the final review approved pool creation, the
+reviewed `manage_gpu_pool.py ensure` invocation runs first in this same turn;
+require its `ready` or `reused` result and carry its socket into
+`${REVIEWED_HOST_ARGUMENTS[@]}`. An `ensure` refusal blocks this path: report
+the verbatim status and stop before the helper call below rather than falling
+back to a nonpooled launch.
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
@@ -995,7 +1058,8 @@ terminal runs or units.
 ### Prepare only — compact fallback
 
 After the approved bootstrap writes, do not call `manage_host.py`, create the
-state root, start a unit, submit `start`, or contact a provider. Print no old
+state root, start a unit, run `manage_gpu_pool.py ensure`, submit `start`, or
+contact a provider. Print no old
 Host/check/start/status/monitor command bundle. If project settings was newly
 copied or the user wants a resumable fallback, print at most one compact,
 fully resolved and shell-quoted Claude relaunch command containing

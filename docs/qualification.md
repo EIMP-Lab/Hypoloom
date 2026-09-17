@@ -6,6 +6,50 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — project GPU-pool detection and managed creation in init, 2026-09-17
+
+Under the user's direction after a new run's init exited (the intake could
+neither find this project's pool nor create one): the `/autoresearch init`
+pool step now detects and — only through the reviewed plan — deploys the
+node-local project pool instead of relying on an operator-supplied external
+endpoint. The triggering mis-inference is preserved as context: the intake
+labeled the wedged `MERC-causal-202609170117` nonpooled from socket absence,
+while its durable CREATED payload carries the `gpu_pool` binding (socket under
+the Prometheus project's `.local/gpu-pools/shared-3090x4/`, namespace = run
+ID, server UID 1001). That pool is foreign-owned and stays untouched.
+
+New bounded helper `.claude/skills/autoresearch/scripts/manage_gpu_pool.py`
+mirrors `manage_host.py`'s user-systemd discipline. `status --repository`
+(read-only) reports each conventional project endpoint under
+`.local/gpu-pools/<name>/control.sock` (live/stale/unauthorized/absent with
+served UUIDs) and recalls prior runs' stored pool bindings newest-first from
+mode-ro state databases with current liveness probed; against this checkout
+it reports the project pool absent and both September 16–17 pooled bindings
+live. `ensure` deploys only beneath the repository's `.local/gpu-pools/` and
+only for the invoking UID, deriving `hypoloom-gpu-pool@<escaped-root>.service`;
+an active unit serving the exact reviewed device set is reused (`reused`),
+while a live unmanaged socket, a conflicting unit and a foreign root are
+refused (`service_busy`, `pool_conflict`, `foreign_pool_root`); a failed
+readiness stops the new unit. There is no stop/replace subcommand: pool
+teardown stays a separate operator action. The skill text keeps every existing
+pool caution and states the new boundary: deployment only through the reviewed
+plan and helper, after **Start now** approval, before the managed Host start;
+**Prepare only** never runs it.
+
+Focused evidence: 13 new `tests/runtime/test_manage_gpu_pool_script.py` cases
+(FakeSystemd plus a real pool-protocol server on a short AF_UNIX path):
+absent/live/stale detection, newest-first deduped recall with the source
+database byte-identical, exact unit/argv/property creation with no ambient-key
+leakage and a mode-0700 pool root, idempotent reuse, and foreign-root /
+busy-socket / conflict / ready-timeout refusals with bounded unit cleanup.
+Adjacent suites pass: 36 operator-skill + 23 manage-host + 4 documentation
++ 3 public-profile + 27 shared-GPU closure/integration cases. Default-ruff
+findings on the two new files are the same classes the sibling helper already
+carries; skill scripts are not held to default ruff. No GPU, paid or online
+lane ran; the first real project-pool creation happens at the next actual
+init as the operator-approved action. Existing runs, the Prometheus pool,
+Profiles and credentials are unchanged.
+
 ## Current development — wire-final input floor for bill completeness, 2026-09-17
 
 Implemented under the user's repair authorization after the read-only

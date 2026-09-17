@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- September 17 evening, under the user's direction: `/autoresearch init` now
+  detects and — only through the reviewed plan — deploys this project's own
+  GPU pool, replacing the reliance on an operator-supplied external endpoint.
+  Trigger: a new run's intake found no socket in its searched locations and
+  wrongly called `MERC-causal-202609170117` nonpooled (its durable CREATED
+  payload carries the `gpu_pool` binding); the user exited because that pool
+  belongs to the Prometheus project. New helper
+  `.claude/skills/autoresearch/scripts/manage_gpu_pool.py` mirrors
+  manage_host.py's user-systemd discipline: read-only `status` (conventional
+  `.local/gpu-pools/<name>/control.sock` liveness plus newest-first recall of
+  stored bindings from mode-ro state DBs) and bounded `ensure` (pool root only
+  beneath the repo's `.local/gpu-pools/`, invoking UID only,
+  `hypoloom-gpu-pool@<escaped-root>.service`, idempotent `reused` on an exact
+  match, `foreign_pool_root`/`service_busy`/`pool_conflict` refusals, new unit
+  stopped on readiness failure; no stop/replace). SKILL.md keeps all existing
+  pool cautions; deployment is helper-only, after Start now, before the
+  managed Host start; Prepare only never runs it. Evidence: 13 new helper
+  cases + 36/23/4/3/27 adjacent suites pass; details in qualification's top
+  section. The Prometheus pool, existing runs, Profiles and credentials are
+  unchanged; the first real project-pool creation happens at the next actual
+  init as the operator-approved action.
+
 - September 17 morning: read-only analysis found run `MERC-causal-202609170117`
   (ACTIVE r48, Host PID 2669721 alive but idle-spinning ~100% CPU by serve-loop
   design) wedged since 05:27:35 +08: a provider 403 window (five-hour rolling

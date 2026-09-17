@@ -40,7 +40,7 @@ def test_init_explains_private_settings_and_explicit_restore_without_old_run_reb
         assert expected in text
 
 
-def test_native_init_reviews_existing_pool_and_cli_options_without_deployment(tmp_path) -> None:
+def test_native_init_detects_and_deploys_project_pool_with_reviewed_binding(tmp_path) -> None:
     from hypoloom.cli import build_parser
 
     text = _init_contract()
@@ -48,9 +48,30 @@ def test_native_init_reviews_existing_pool_and_cli_options_without_deployment(tm
     for option in ("--gpu-pool-socket", "--gpu-pool-namespace", "--gpu-pool-server-uid",
                    "gpu-pool-status", "--expected-server-uid"):
         assert option in text
-    assert "existing shared pool" in normalized
+    assert "**Shared pool.**" in text
     assert "unavailable pool blocks `Start now`" in normalized
     assert "partial own-use samples remain unknown" in normalized
+    for marker in (
+        "manage_gpu_pool.py",
+        "status --repository",
+        "ensure --repository",
+        ".local/gpu-pools/",
+        "hypoloom-gpu-pool@",
+        "`ready` or `reused`",
+    ):
+        assert marker in text
+    for statement in (
+        "This probe is read-only",
+        "never infer a prior run's participation from socket absence",
+        "candidate values, not authorization",
+        "foreign_pool_root",
+        "service_busy",
+        "pool_conflict",
+        "gpu_vram_reserve_mb",
+        "separate operator actions outside init",
+        "Different private pools must not coordinate the same shared device set independently",
+    ):
+        assert statement in normalized
     parser = build_parser()
     socket_path = str(tmp_path / "operator pool" / "capacity.sock")
     status = parser.parse_args(("gpu-pool-status", "--socket-path", socket_path, "--expected-server-uid", "123"))
