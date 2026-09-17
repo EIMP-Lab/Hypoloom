@@ -2,7 +2,8 @@
 
 Current user entry points:
 
-- [README](../README.md): capabilities and the shortest start path.
+- [README](../README.md): capabilities and the shortest start path
+  ([中文版本](../README.zh-CN.md)).
 - [SETUP](../SETUP.md): installation, authentication and resource configuration.
 - [USAGE](../USAGE.md): monitoring, human answers, cancellation and recovery.
 - [Profile templates](../profiles/README.md): complete English/Chinese v4 examples.

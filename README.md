@@ -1,13 +1,32 @@
-# Hypoloom
+<p align="center">
+  <img src="docs/assets/hypoloom_vector.svg" alt="Hypoloom — an open-source engine for autonomous research">
+</p>
 
-An open-source framework for autonomous research, from hypothesis generation
-and experiment execution to evidence-driven iteration.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python 3.12">
+</p>
 
-Hypoloom coordinates persistent research experts through a resident Workflow
-Host. Experts investigate a goal, propose hypotheses, implement experiments,
-interpret measurements, and revise their work. The Host owns execution,
-resource allocation and durable state; an independent Oracle checks recorded
-outcomes and lifecycle consistency.
+<p align="center">
+  English · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+Hypoloom is an open-source framework for autonomous research, from hypothesis
+generation and experiment execution to evidence-driven iteration. Persistent
+research experts work through a resident Workflow Host; the Host owns
+execution, resource allocation and durable state, and an independent Oracle
+checks recorded outcomes and lifecycle consistency.
+
+- **Analyze.** Experts retrieve and read literature through OpenAlex and PDF
+  extraction, then ground the goal through explicit human clarification with
+  common acceptance criteria.
+- **Hypothesize.** Parallel expert chains propose hypotheses, preregister
+  experiment designs, and plan their resources.
+- **Experiment.** Real CPU/GPU execution: private Git worktrees, a selected
+  runtime, explicit GPU authorization, and an optional shared GPU pool that
+  packs several experiments onto one card when capacity permits.
+- **Evolve.** Experts interpret measurements, debate and adjudicate outcomes,
+  revise the line of inquiry, and evolve reusable research skills.
 
 ## What it provides
 

@@ -1,0 +1,353 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2036" height="772" viewBox="0 0 2036 772" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Hypoloom — Autonomous Research</title>
+  <desc id="desc">深色横幅，左侧为蓝金渐变的丝带 H 标志，中部为品牌与说明文字，右下为山脉、发光曲线和星体轨迹。全部由独立矢量元素组成。</desc>
+  <defs>
+    <!-- 背景与地平线 -->
+    <linearGradient id="sky" x1="360" y1="200" x2="2036" y2="772" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#02050C"/>
+      <stop offset=".52" stop-color="#040914"/>
+      <stop offset="1" stop-color="#0C1428"/>
+    </linearGradient>
+    <radialGradient id="atmosphere" cx="0" cy="0" r="1" gradientTransform="translate(1875 620) scale(660 386)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9394C5"/>
+      <stop offset=".27" stop-color="#6379B7" stop-opacity=".92"/>
+      <stop offset=".52" stop-color="#2C416E" stop-opacity=".64"/>
+      <stop offset=".77" stop-color="#19243F" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#101B32" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violet-haze" cx="0" cy="0" r="1" gradientTransform="translate(1875 575) scale(260 170)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFEBC9" stop-opacity=".95"/>
+      <stop offset=".2" stop-color="#D4AEB2" stop-opacity=".9"/>
+      <stop offset=".48" stop-color="#8B83B3" stop-opacity=".63"/>
+      <stop offset="1" stop-color="#6575A6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sunrise" cx="0" cy="0" r="1" gradientTransform="translate(1828 580) scale(148 103)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset=".12" stop-color="#FFF9DE"/>
+      <stop offset=".32" stop-color="#FFDEAE" stop-opacity=".98"/>
+      <stop offset=".6" stop-color="#F9C7A3" stop-opacity=".57"/>
+      <stop offset="1" stop-color="#EAB7A6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sun-core">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset=".4" stop-color="#FFF8D9" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#FFE9BC" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="distant-mountain" x1="1765" y1="571" x2="1746" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72748F"/>
+      <stop offset=".31" stop-color="#2C3A5C"/>
+      <stop offset="1" stop-color="#0A1427"/>
+    </linearGradient>
+    <linearGradient id="middle-mountain" x1="1517" y1="588" x2="1500" y2="718" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#121C31"/>
+      <stop offset=".54" stop-color="#071020"/>
+      <stop offset="1" stop-color="#030711"/>
+    </linearGradient>
+    <linearGradient id="right-mountain" x1="1870" y1="560" x2="1966" y2="744" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101425"/>
+      <stop offset=".43" stop-color="#080D1A"/>
+      <stop offset="1" stop-color="#02050C"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="1710" y1="602" x2="1700" y2="772" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#262C45"/>
+      <stop offset=".28" stop-color="#111C31"/>
+      <stop offset="1" stop-color="#02060F"/>
+    </linearGradient>
+    <linearGradient id="foreground" x1="1100" y1="674" x2="1120" y2="772" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#040811"/>
+      <stop offset="1" stop-color="#010309"/>
+    </linearGradient>
+    <!-- 独立光轨及光晕 -->
+    <linearGradient id="orbit" x1="1550" y1="620" x2="2036" y2="343" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#82BBEE" stop-opacity=".1"/>
+      <stop offset=".28" stop-color="#A4C9FA" stop-opacity=".75"/>
+      <stop offset=".64" stop-color="#D9D9EA" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#7794C6" stop-opacity=".24"/>
+    </linearGradient>
+    <linearGradient id="road-body" x1="1540" y1="728" x2="1685" y2="780" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A6D5FF"/>
+      <stop offset=".24" stop-color="#7294D8"/>
+      <stop offset=".49" stop-color="#525A88"/>
+      <stop offset=".77" stop-color="#9B88A0"/>
+      <stop offset="1" stop-color="#F9D4AB"/>
+    </linearGradient>
+    <linearGradient id="road-blue" x1="1500" y1="770" x2="1780" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#719CEC"/>
+      <stop offset=".29" stop-color="#A8DFFF"/>
+      <stop offset=".7" stop-color="#E1E9FF"/>
+      <stop offset="1" stop-color="#FFF6DC"/>
+    </linearGradient>
+    <linearGradient id="road-gold" x1="1575" y1="780" x2="1800" y2="593" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B69BD0"/>
+      <stop offset=".22" stop-color="#FFCCA0"/>
+      <stop offset=".58" stop-color="#FFE8C7"/>
+      <stop offset="1" stop-color="#FFFCEB"/>
+    </linearGradient>
+    <radialGradient id="blue-aura">
+      <stop stop-color="#BEF8FF" stop-opacity=".85"/>
+      <stop offset=".22" stop-color="#4AA8FF" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#2E76E8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gold-aura">
+      <stop stop-color="#FFF0CF" stop-opacity=".6"/>
+      <stop offset=".35" stop-color="#EAC6A5" stop-opacity=".23"/>
+      <stop offset="1" stop-color="#D3AE9D" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="road-glow" x="-20%" y="-40%" width="140%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <filter id="soft-glow" x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <!-- H 标志：立柱、丝带及星芒 -->
+    <linearGradient id="pillar-left" x1="305" y1="186" x2="362" y2="509" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9AEDF9"/>
+      <stop offset=".23" stop-color="#76AEFA"/>
+      <stop offset=".48" stop-color="#5D63CE"/>
+      <stop offset=".67" stop-color="#7D8CFA"/>
+      <stop offset="1" stop-color="#8DDDF9"/>
+    </linearGradient>
+    <linearGradient id="pillar-left-shade" x1="303" y1="350" x2="360" y2="350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B4F9FF" stop-opacity=".5"/>
+      <stop offset=".38" stop-color="#638DE0" stop-opacity="0"/>
+      <stop offset="1" stop-color="#121F56" stop-opacity=".26"/>
+    </linearGradient>
+    <linearGradient id="pillar-right" x1="535" y1="193" x2="503" y2="518" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B2BAD8"/>
+      <stop offset=".22" stop-color="#FFE4B5"/>
+      <stop offset=".4" stop-color="#F9D39D"/>
+      <stop offset=".63" stop-color="#938BBC"/>
+      <stop offset=".82" stop-color="#7383ED"/>
+      <stop offset="1" stop-color="#8DEDF9"/>
+    </linearGradient>
+    <linearGradient id="pillar-right-shade" x1="498" y1="360" x2="555" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E1D6DF" stop-opacity=".14"/>
+      <stop offset=".47" stop-color="#251950" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#EBD1CF" stop-opacity=".1"/>
+    </linearGradient>
+    <linearGradient id="ribbon-top" x1="285" y1="393" x2="552" y2="267" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72BCFF"/>
+      <stop offset=".29" stop-color="#97A9F0"/>
+      <stop offset=".56" stop-color="#D6C5D2"/>
+      <stop offset=".8" stop-color="#FFE0B8"/>
+      <stop offset="1" stop-color="#FFF2D7"/>
+    </linearGradient>
+    <linearGradient id="ribbon-middle" x1="282" y1="439" x2="552" y2="282" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8796F4"/>
+      <stop offset=".24" stop-color="#78A0FA"/>
+      <stop offset=".52" stop-color="#B8AEDA"/>
+      <stop offset=".79" stop-color="#E7C3B3"/>
+      <stop offset="1" stop-color="#A7B5E4"/>
+    </linearGradient>
+    <linearGradient id="ribbon-bottom" x1="319" y1="457" x2="548" y2="315" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6FA7ED"/>
+      <stop offset=".26" stop-color="#676CCD"/>
+      <stop offset=".53" stop-color="#847DCD"/>
+      <stop offset=".77" stop-color="#514974"/>
+      <stop offset="1" stop-color="#121B35"/>
+    </linearGradient>
+    <linearGradient id="ribbon-dark" x1="303" y1="423" x2="549" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#030815"/>
+      <stop offset=".44" stop-color="#0B1235"/>
+      <stop offset=".68" stop-color="#252849"/>
+      <stop offset="1" stop-color="#060D1E"/>
+    </linearGradient>
+    <linearGradient id="ribbon-edge" x1="272" y1="428" x2="557" y2="261" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BAFFFF"/>
+      <stop offset=".32" stop-color="#BFCAFF"/>
+      <stop offset=".66" stop-color="#FFF4E8"/>
+      <stop offset="1" stop-color="#FFF9E8"/>
+    </linearGradient>
+    <linearGradient id="star-fill" x1="398" y1="250" x2="452" y2="237" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A1E8FF"/>
+      <stop offset=".44" stop-color="#FEFDF9"/>
+      <stop offset="1" stop-color="#FFDEB6"/>
+    </linearGradient>
+    <!-- 标题轮廓渐变 -->
+    <linearGradient id="type-white" x1="1050" y1="239" x2="1050" y2="418" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFC"/>
+      <stop offset=".64" stop-color="#F8F8FA"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="type-blue" x1="1211" y1="285" x2="1217" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF8"/>
+      <stop offset=".29" stop-color="#DDE1EF"/>
+      <stop offset=".51" stop-color="#8098CC"/>
+      <stop offset=".74" stop-color="#71A9F0"/>
+      <stop offset="1" stop-color="#96EDFC"/>
+    </linearGradient>
+    <linearGradient id="type-gold-blue" x1="1332" y1="281" x2="1310" y2="383" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE0A7"/>
+      <stop offset=".3" stop-color="#EDC0A2"/>
+      <stop offset=".55" stop-color="#B1A5C5"/>
+      <stop offset=".8" stop-color="#6DABF6"/>
+      <stop offset="1" stop-color="#91E7FB"/>
+    </linearGradient>
+    <clipPath id="canvas-clip"><rect width="2036" height="772"/></clipPath>
+    <clipPath id="left-pillar-clip"><path d="M303 212 360 181V512L307 483Q300 479 303 463Z"/></clipPath>
+    <clipPath id="right-pillar-clip"><path d="M498 189 554 218V486L498 518Z"/></clipPath>
+  </defs>
+
+  <g id="artwork" clip-path="url(#canvas-clip)">
+    <!-- 01：背景，各层渐变可分别编辑 -->
+    <g id="background">
+      <rect id="background-base" width="2036" height="772" fill="url(#sky)"/>
+      <rect id="atmospheric-blue" x="1190" y="222" width="846" height="550" fill="url(#atmosphere)"/>
+      <ellipse id="horizon-violet" cx="1875" cy="575" rx="260" ry="170" fill="url(#violet-haze)"/>
+      <ellipse id="horizon-gold" cx="1828" cy="580" rx="148" ry="103" fill="url(#sunrise)"/>
+      <ellipse id="horizon-white" cx="1829" cy="577" rx="39" ry="19" fill="url(#sun-core)"/>
+    </g>
+
+    <!-- 02：天空轨迹，在山体后方 -->
+    <g id="celestial-orbits" stroke-linecap="round">
+      <path id="orbit-outer-base" d="M1556 627C1585 529 1645 467 1731 420S1931 322 2036 329" stroke="url(#orbit)" stroke-width=".65"/>
+      <path id="orbit-outer-dashes" d="M1556 627C1585 529 1645 467 1731 420S1931 322 2036 329" stroke="url(#orbit)" stroke-width="1.1" stroke-dasharray="3.3 5.4 1 5.4"/>
+      <path id="orbit-middle-base" d="M1620 618C1693 492 1843 397 1954 421Q2003 423 2036 441" stroke="url(#orbit)" stroke-width=".65"/>
+      <path id="orbit-middle-dashes" d="M1620 618C1693 492 1843 397 1954 421Q2003 423 2036 441" stroke="#B2C9EE" stroke-opacity=".67" stroke-width="1.3" stroke-dasharray="4.5 7.8 1 6"/>
+      <path id="orbit-inner" d="M1688 618C1762 496 1881 423 1991 481Q2016 496 2036 526" stroke="#9BA8D9" stroke-opacity=".49" stroke-width=".9" stroke-dasharray="3 6 1 7"/>
+      <path id="orbit-faint" d="M1745 612C1818 507 1931 454 2015 548" stroke="#B2ADD1" stroke-opacity=".25" stroke-width="1" stroke-dasharray="2 8"/>
+      <path id="orbit-innermost" d="M1788 615C1840 538 1893 518 1954 559" stroke="#F7D4C2" stroke-opacity=".16" stroke-width="1" stroke-dasharray="1 8"/>
+      <path d="M1634 493 1649 477M1789 440 1794 437M1879 423 1889 421M1920 420 1931 420" stroke="#DAE8FF" stroke-opacity=".64" stroke-width="1.2"/>
+      <circle cx="1837" cy="373.5" r="34" fill="url(#gold-aura)" stroke="none"/>
+      <circle id="gold-orbit-node" cx="1837" cy="373.5" r="9.3" fill="#FFF0D0" stroke="#FFF9E7" stroke-width="1"/>
+      <circle cx="1612" cy="519" r="27" fill="url(#blue-aura)" stroke="none"/>
+      <circle id="blue-orbit-node" cx="1612" cy="519" r="5.8" fill="#BEF6FF" stroke="#EDFFFF" stroke-width="1"/>
+      <circle cx="1991" cy="481" r="15" fill="url(#gold-aura)" stroke="none"/>
+      <circle id="small-gold-orbit-node" cx="1991" cy="481" r="4.2" fill="#FFF6DE" stroke="none"/>
+      <circle cx="1833" cy="476" r="1.1" fill="#F1E1DC" stroke="none" opacity=".75"/>
+    </g>
+
+    <!-- 03：远山、中景山脊与地面 -->
+    <g id="landscape">
+      <path id="far-ridge" d="M927 724 1009 698 1066 691 1122 674 1169 674 1208 659 1249 657 1288 640 1316 643 1346 627 1370 629 1405 618 1438 615 1471 611 1502 604 1537 607 1567 599 1590 602 1616 591 1643 600 1673 596 1709 593 1730 584 1748 588 1772 583 1805 577 1823 581 1846 576 1862 568 1873 571 1887 575 1915 569 1932 560 1946 565 1971 560 1990 551 2013 552 2036 547V772H927Z" fill="url(#distant-mountain)"/>
+      <path id="far-ridge-shadow" d="M1105 708 1251 666 1301 672 1380 640 1438 649 1501 620 1546 629 1588 615 1640 620 1686 608 1724 614 1762 602 1794 607 1825 597 1888 589 1915 578 1970 567 2036 561V772H1105Z" fill="#192541" opacity=".77"/>
+      <path d="M1605 613 1653 608 1684 612 1731 598 1748 600 1783 590 1805 585 1825 589 1863 575 1878 580 1929 566" stroke="#9A96AC" stroke-opacity=".3" stroke-width="1.4"/>
+      <path d="M1654 621 1704 613 1742 614 1787 603 1811 604 1861 591 1901 588" stroke="#D6B6B0" stroke-opacity=".22" stroke-width="2"/>
+      <path id="valley-ground" d="M1280 698 1432 674 1540 651 1641 629 1717 620 1765 606 1808 596 1871 581 1935 589 2036 616V772H1210Z" fill="url(#ground)"/>
+      <path d="M1618 634 1659 637 1722 625 1755 626 1818 614 1852 616 1917 606 1885 629 1810 640 1741 639 1685 650Z" fill="#34384F" opacity=".5"/>
+      <path d="M1574 660 1641 645 1703 652 1679 669 1618 681 1541 688Z" fill="#10182B"/>
+      <path d="M1775 649 1834 632 1918 625 1943 650 1887 674 1806 666Z" fill="#0D1424"/>
+      <path id="left-distant-mountain" d="M1053 715 1135 681 1224 655 1261 651 1296 638 1323 632 1346 621 1358 622 1371 614 1385 623 1403 626 1418 623 1430 626 1463 621 1496 615 1540 634 1596 657 1650 686 1630 734 1110 772Z" fill="#0D182B"/>
+      <path d="M1143 703 1249 671 1328 650 1372 621 1334 655 1284 677 1201 703Z" fill="#14203A" opacity=".53"/>
+      <path d="M1276 699 1373 654 1440 646 1502 625 1480 658 1409 680 1351 711Z" fill="#111D34" opacity=".58"/>
+      <path id="central-mountain" d="M1170 714 1247 684 1305 662 1355 651 1391 633 1422 616 1450 610 1469 600 1493 593 1517 588 1529 594 1545 594 1562 600 1575 607 1590 611 1606 618 1624 626 1643 632 1661 641 1680 647 1658 661 1626 673 1602 687 1568 697 1525 718 1447 743 1319 772H1170Z" fill="url(#middle-mountain)"/>
+      <path d="M1517 589 1502 609 1490 621 1473 649 1425 677 1401 695 1344 716 1396 676 1427 643 1460 618Z" fill="#0C1528"/>
+      <path d="M1519 590 1535 607 1538 620 1568 639 1599 664 1626 674 1587 670 1551 642 1532 625 1518 607 1498 600Z" fill="#172239" opacity=".81"/>
+      <path d="M1537 596 1556 609 1565 624 1593 639 1618 647 1637 662 1665 649 1645 636 1607 619 1583 611 1560 599Z" fill="#16213A" opacity=".62"/>
+      <path d="M1522 608 1513 629 1521 646 1496 662 1475 681 1495 705 1530 687 1565 685 1535 662 1541 649 1526 634Z" fill="#12203A" opacity=".52"/>
+      <path d="M1518 590 1527 599 1531 610 1541 616 1542 624 1552 629 1562 640 1574 646 1591 660" stroke="#59668A" stroke-opacity=".36" stroke-width="1.1"/>
+      <path d="M1531 595 1541 602 1554 610 1558 619 1571 624 1586 637 1599 642 1610 653M1547 597 1563 608 1576 612 1587 621 1606 628 1618 639" stroke="#7080A8" stroke-opacity=".22" stroke-width=".8"/>
+      <path d="M1497 603 1488 617 1475 627 1468 643 1454 657M1525 643 1514 654 1506 669 1494 678 1504 688 1514 697M1540 654 1549 662 1564 667 1570 676" stroke="#53688D" stroke-opacity=".2" stroke-width=".9"/>
+      <path d="M1397 697 1438 684 1467 686 1503 705 1541 712 1489 731 1449 728Z" fill="#060C19"/>
+      <path id="right-mountain-silhouette" d="M1745 701 1794 672 1829 645 1860 616 1888 595 1911 574 1934 565 1959 546 1982 535 2006 533 2020 537 2036 535V772H1730Z" fill="url(#right-mountain)"/>
+      <path d="M2005 534 1988 543 1968 551 1955 565 1937 576 1923 592 1907 601 1893 619 1864 638 1844 665 1797 687 1831 653 1859 624 1881 603 1903 581 1934 567 1960 547 1982 536Z" fill="#252237" opacity=".48"/>
+      <path d="M1968 550 1957 568 1945 578 1938 593 1917 606 1905 624 1889 630 1874 648 1849 663 1859 642 1887 615 1901 593 1926 578Z" fill="#343048" opacity=".28"/>
+      <path d="M2007 549 1993 578 1971 598 1957 622 1937 633 1920 651 1948 645 1964 635 1981 633 2010 608 2036 604V549Z" fill="#070C18"/>
+      <path d="M1963 550 1950 563 1938 570 1925 585 1914 592 1903 605 1888 615 1874 631 1860 640M1980 539 1966 550 1959 561 1948 569 1940 580 1924 590 1917 603" stroke="#9A7A80" stroke-opacity=".26" stroke-width="1.1"/>
+      <path d="M1994 587 1979 601 1963 608 1950 623 1934 628 1916 646 1900 650 1886 665 1862 674M2014 641 1998 635 1986 642 1971 645 1950 660 1933 666" stroke="#45557E" stroke-opacity=".22" stroke-width="1.1"/>
+      <path id="foreground-left" d="M653 772 750 745 826 720 902 701 978 687 1018 688 1067 697 1124 685 1164 676 1203 681 1236 677 1274 681 1302 677 1342 683 1370 689 1402 702 1450 710 1475 728 1499 741 1480 758 1435 772Z" fill="url(#foreground)"/>
+      <path d="M1056 716 1142 699 1197 688 1233 693 1270 686 1301 686 1341 692 1365 701 1396 707 1412 718 1444 726" stroke="#14213A" stroke-opacity=".47" stroke-width="1.2"/>
+      <path d="M1141 727 1214 713 1278 711 1321 724 1388 729 1422 744M1186 752 1243 742 1287 745 1322 736 1361 742" stroke="#122139" stroke-opacity=".35" stroke-width=".8"/>
+    </g>
+
+    <!-- 04：地面上的轨道，各条曲线互相独立 -->
+    <g id="ground-orbits" stroke-linecap="round">
+      <path d="M1251 780C1366 755 1483 744 1572 718S1633 677 1601 667 1584 642 1647 628" stroke="#5D88BD" stroke-opacity=".34" stroke-width="1.1"/>
+      <path id="ground-orbit-blue" d="M1251 780C1366 755 1483 744 1572 718S1633 677 1601 667 1584 642 1647 628" stroke="#94C5F4" stroke-opacity=".65" stroke-width="1.6" stroke-dasharray="6 7 1 7"/>
+      <path d="M1370 782C1520 753 1609 729 1667 704S1630 670 1625 653 1655 630 1701 624" stroke="#7B9AC7" stroke-opacity=".4" stroke-width="1" stroke-dasharray="2 6"/>
+      <path d="M1197 782C1355 765 1511 736 1564 715S1540 682 1554 660 1601 639 1623 632" stroke="#31557F" stroke-opacity=".5" stroke-width="1.4" stroke-dasharray="3 8"/>
+      <path d="M1645 786C1776 749 1805 713 1768 683S1667 650 1720 631" stroke="#8090BA" stroke-opacity=".35" stroke-width="1.3" stroke-dasharray="2 4"/>
+      <path d="M1714 788C1822 749 1850 715 1793 681S1690 652 1740 629" stroke="#5B7FAC" stroke-opacity=".44" stroke-width="1.3" stroke-dasharray="2 6"/>
+      <path d="M1809 787C1876 732 1847 698 1799 674S1722 650 1781 632" stroke="#44678E" stroke-opacity=".53" stroke-width="1.6" stroke-dasharray="8 8 2 8"/>
+      <path d="M1864 783C1921 715 1809 667 1764 651S1764 628 1820 617" stroke="#7992B4" stroke-opacity=".25" stroke-width="1.2"/>
+      <path id="ground-orbit-gold" d="M1976 787C1986 701 1882 665 1785 659S1706 638 1746 628" stroke="#E3D7D8" stroke-opacity=".63" stroke-width="1.05"/>
+      <path d="M1976 787C1986 701 1882 665 1785 659S1706 638 1746 628" stroke="#F9DCC9" stroke-opacity=".75" stroke-width="2.1" stroke-dasharray="1 7 3 9"/>
+      <path d="M1920 620C1866 620 1831 625 1808 632M1890 611C1852 614 1815 618 1791 624" stroke="#E1C6BE" stroke-opacity=".35" stroke-width="1.4" stroke-dasharray="1 9"/>
+    </g>
+
+    <!-- 05：蓝金色 S 形光路 -->
+    <g id="luminous-road">
+      <path id="road-diffuse-light" d="M1383 779C1485 753 1664 733 1710 708S1707 668 1676 659 1650 646 1666 638 1740 623 1781 616 1812 607 1790 603 1782 595 1809 591L1821 589C1799 594 1779 597 1794 601S1825 608 1806 614 1727 627 1700 638 1683 651 1699 657 1767 674 1771 692 1710 744 1605 779Z" fill="#C6B8E5" opacity=".5" filter="url(#road-glow)"/>
+      <path id="road-surface" d="M1383 779C1485 753 1664 733 1710 708S1707 668 1676 659 1650 646 1666 638 1740 623 1781 616 1812 607 1790 603 1782 595 1809 591L1821 589C1799 594 1779 597 1794 601S1825 608 1806 614 1727 627 1700 638 1683 651 1699 657 1767 674 1771 692 1710 744 1605 779Z" fill="url(#road-body)"/>
+      <path id="road-blue-band" d="M1383 779C1485 753 1664 733 1710 708S1707 668 1676 659 1650 646 1666 638 1740 623 1781 616C1741 625 1688 636 1680 646S1709 667 1729 678C1778 709 1651 744 1454 779Z" fill="url(#road-blue)" opacity=".87"/>
+      <path id="road-cool-rim" d="M1383 779C1485 753 1664 733 1710 708S1707 668 1676 659 1650 646 1666 638 1740 623 1781 616 1812 607 1790 603 1782 595 1809 591" stroke="url(#road-blue)" stroke-width="2.2"/>
+      <path id="road-warm-rim-glow" d="M1821 589C1799 594 1779 597 1794 601S1825 608 1806 614 1727 627 1700 638 1683 651 1699 657 1767 674 1771 692 1710 744 1605 779" stroke="#FFD2AC" stroke-width="6" opacity=".62" filter="url(#soft-glow)"/>
+      <path id="road-warm-rim" d="M1821 589C1799 594 1779 597 1794 601S1825 608 1806 614 1727 627 1700 638 1683 651 1699 657 1767 674 1771 692 1710 744 1605 779" stroke="url(#road-gold)" stroke-width="2.1"/>
+      <path id="road-inner-blue-line" d="M1454 779C1646 746 1776 711 1729 680S1662 658 1679 643 1756 621 1790 616" stroke="#BFD8FF" stroke-opacity=".85" stroke-width=".8"/>
+      <path id="road-dark-center" d="M1480 780C1629 746 1772 723 1735 686" stroke="#1C2344" stroke-opacity=".84" stroke-width="2.2"/>
+      <path d="M1518 780C1669 741 1773 719 1742 685" stroke="#E1D3DF" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="2 3"/>
+      <path d="M1568 780C1701 741 1781 715 1755 684" stroke="#F8DDCC" stroke-opacity=".57" stroke-width="1.1"/>
+      <path d="M1446 767 1459 764M1487 758 1500 755M1536 749 1549 746M1592 739 1605 736M1645 726 1653 724M1687 714 1692 712M1710 703 1714 700" stroke="#E1F5FF" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+      <path d="M1648 641 1639 646M1661 659 1669 664M1702 674 1710 677M1719 721 1715 724M1676 742 1669 745" stroke="#D3D9F1" stroke-opacity=".32" stroke-width="1"/>
+    </g>
+
+    <!-- 06：地表碎光与轨道节点 -->
+    <g id="landscape-highlights" stroke-linecap="round">
+      <path d="M1479 690 1482 692M1503 702 1506 704M1547 678 1550 679M1586 691 1589 692M1623 673 1626 674M1678 626 1680 626M1727 615 1730 615M1745 626 1748 625M1798 624 1800 624M1818 619 1821 619M1852 610 1854 610M1886 606 1888 605" stroke="#94ACD2" stroke-opacity=".6" stroke-width="1.6"/>
+      <path d="M1730 598 1732 598M1761 593 1764 593M1812 590 1815 589M1840 601 1842 601M1770 607 1772 607M1758 630 1761 630M1828 660 1832 661M1851 665 1854 666M1887 671 1891 672M1813 655 1816 656" stroke="#F9D9BC" stroke-opacity=".75" stroke-width="2"/>
+      <path d="M1614 765 1649 756 1663 757 1681 764 1710 770M1225 764 1273 755 1308 759 1344 768" stroke="#3A354C" stroke-opacity=".59" stroke-width="1.5"/>
+      <circle cx="1601" cy="667" r="20" fill="url(#blue-aura)"/>
+      <circle id="valley-blue-node" cx="1601" cy="667" r="3.8" fill="#E4FFFF" stroke="#B8E6FF" stroke-width="1"/>
+      <circle cx="1409" cy="751" r="24" fill="url(#blue-aura)"/>
+      <circle id="foreground-blue-node" cx="1409" cy="751" r="5.1" fill="#D9FFFF" stroke="#C8EEFF" stroke-width="1"/>
+    </g>
+
+    <!-- 07：H 图标，每根立柱、每条丝带和高光均为独立路径 -->
+    <g id="hypoloom-symbol">
+      <g id="left-pillar">
+        <path d="M303 212 360 181V512L307 483Q300 479 303 463Z" fill="url(#pillar-left)"/>
+        <rect x="302" y="181" width="59" height="332" fill="url(#pillar-left-shade)" clip-path="url(#left-pillar-clip)"/>
+        <path d="M304 212 359 182V511" stroke="#C3F6FF" stroke-opacity=".7" stroke-width="1.1"/>
+        <path d="M303 212V463" stroke="#97DEFF" stroke-opacity=".48" stroke-width="1"/>
+      </g>
+      <g id="right-pillar">
+        <path d="M498 189 554 218V486L498 518Z" fill="url(#pillar-right)"/>
+        <rect x="498" y="189" width="57" height="330" fill="url(#pillar-right-shade)" clip-path="url(#right-pillar-clip)"/>
+        <path d="M498.5 190V517L554 486" stroke="#E2F2FB" stroke-opacity=".75" stroke-width="1.2"/>
+        <path d="M500 192 553 218" stroke="#DADEE9" stroke-opacity=".4" stroke-width="1"/>
+      </g>
+      <path id="ribbon-cast-shadow" d="M303 359C366 322 465 322 527 280L554 256V325C521 376 410 391 360 421V369L303 400Z" fill="#0A1126" opacity=".6"/>
+      <path id="ribbon-lowest" d="M561 266C567 341 510 367 430 395S317 438 306 468C298 479 300 484 306 486C283 451 330 414 399 387S529 348 551 301C557 290 560 276 561 266Z" fill="url(#ribbon-bottom)"/>
+      <path id="ribbon-lowest-edge" d="M305 468C317 437 365 420 431 396S548 356 559 302" stroke="#BDB6EF" stroke-opacity=".76" stroke-width="1.2"/>
+      <path id="ribbon-dark-lower" d="M561 258C566 315 516 348 440 376S319 418 299 453C288 472 300 479 303 481C265 465 287 427 331 402S459 357 516 324C549 305 559 280 561 258Z" fill="url(#ribbon-dark)"/>
+      <path d="M301 462C311 429 363 404 429 382S537 345 554 309" stroke="#424580" stroke-width="2.1" opacity=".58"/>
+      <path id="ribbon-middle-shape" d="M558 250C575 306 510 327 438 354S303 401 285 442C274 465 284 477 295 482C282 477 275 470 278 453C265 416 310 384 363 362S481 315 522 291C544 277 554 265 558 250Z" fill="url(#ribbon-middle)"/>
+      <path id="ribbon-middle-lower-edge" d="M296 482C270 457 297 423 345 398S451 357 496 335 549 300 559 272" stroke="url(#ribbon-edge)" stroke-width="1.2" opacity=".94"/>
+      <path id="ribbon-dark-upper" d="M556 236C570 278 526 309 451 332S316 375 286 410C269 430 269 443 274 452C256 419 292 383 337 362S461 324 513 296C550 276 558 251 556 236Z" fill="#030A17"/>
+      <path d="M277 421C294 389 352 367 406 348S531 317 551 283" stroke="#27385F" stroke-opacity=".6" stroke-width="1.8"/>
+      <path id="ribbon-upper" d="M554 218C568 269 529 289 480 313S361 348 315 372C278 391 265 417 270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218Z" fill="url(#ribbon-top)"/>
+      <path id="ribbon-upper-highlight" d="M270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218" stroke="url(#ribbon-edge)" stroke-width="1.65"/>
+      <path d="M269 434C266 416 273 400 283 389" stroke="#BBFFFF" stroke-width="1.5"/>
+      <path d="M357 341C399 326 449 315 487 298M497 295C513 287 529 278 539 269" stroke="#FFFFED" stroke-width="2.4" opacity=".58" filter="url(#soft-glow)"/>
+      <path d="M314 437C337 418 376 405 414 392S507 364 532 338" stroke="#8D8ADF" stroke-opacity=".6" stroke-width="1"/>
+      <path d="M367 409C413 391 466 378 505 357" stroke="#C3ACED" stroke-opacity=".43" stroke-width="1.4" stroke-dasharray=".7 3.2"/>
+      <path d="M335 353 338 352M349 348 351 347M369 339 371 338M389 332 392 331M410 326 412 325M452 313 454 312M377 377 379 376M401 367 403 366M436 353 438 352M471 339 473 338" stroke="#F5F0FF" stroke-opacity=".62" stroke-width="1.1" stroke-linecap="round"/>
+      <path id="symbol-star" d="M430 216C426 238 425 241 398 246C424 251 426 254 430 276C434 253 437 250 461 246C436 241 434 238 430 216Z" fill="url(#star-fill)"/>
+      <path d="M430 217C427 237 424 242 400 246" stroke="#EFFAFF" stroke-opacity=".7" stroke-width=".8"/>
+    </g>
+
+    <!-- 08：主标题，逐字独立矢量轮廓，不依赖字体文件 -->
+    <g id="wordmark" aria-label="Hypoloom" fill-rule="evenodd">
+      <path id="letter-H" fill="url(#type-white)" d="M662 249H683V301H749V249H770V377H749V322H683V377H662Z"/>
+      <path id="letter-y" fill="url(#type-white)" d="M784 288H807L834 353 859 288H882L838 390C830 410 823 418 808 418H798C809 403 816 388 823 374Z"/>
+      <path id="letter-p" fill="url(#type-white)" d="M893 288H914V300C923 290 934 285 947 285C973 285 993 305 993 332C993 359 973 380 947 380C934 380 923 375 914 365V418H893ZM943 305C927 305 914 317 914 333C914 349 927 361 943 361C959 361 972 349 972 333C972 317 959 305 943 305Z"/>
+      <path id="letter-o1" fill="url(#type-white)" d="M1106 333C1106 360 1084 381 1056 381C1028 381 1006 360 1006 333C1006 306 1028 285 1056 285C1084 285 1106 306 1106 333ZM1085 333C1085 317 1072 305 1056 305C1040 305 1027 317 1027 333C1027 349 1040 361 1056 361C1072 361 1085 349 1085 333Z"/>
+      <path id="letter-l" fill="url(#type-white)" d="M1124 239H1145V377H1124Z"/>
+      <path id="letter-o2" fill="url(#type-blue)" d="M1263 333C1263 360 1241 381 1213 381C1185 381 1163 360 1163 333C1163 306 1185 285 1213 285C1241 285 1263 306 1263 333ZM1242 333C1242 317 1229 305 1213 305C1197 305 1184 317 1184 333C1184 349 1197 361 1213 361C1229 361 1242 349 1242 333Z"/>
+      <path id="letter-o3" fill="url(#type-gold-blue)" d="M1374 333C1374 360 1352 381 1324 381C1296 381 1274 360 1274 333C1274 306 1296 285 1324 285C1352 285 1374 306 1374 333ZM1353 333C1353 317 1340 305 1324 305C1308 305 1295 317 1295 333C1295 349 1308 361 1324 361C1340 361 1353 349 1353 333Z"/>
+      <path id="letter-m" fill="url(#type-white)" d="M1389 288H1409V299C1416 290 1423 286 1434 286C1445 286 1453 292 1458 302C1466 291 1475 286 1486 286C1508 286 1518 301 1518 326V377H1497V325C1497 312 1492 306 1482 306C1470 306 1464 314 1464 329V377H1443V325C1443 312 1438 306 1428 306C1416 306 1410 314 1410 329V377H1389Z"/>
+    </g>
+
+    <!-- 09：说明文字为独立、可编辑的 SVG 文本 -->
+    <text id="tagline" x="659" y="474" fill="#F2F1F1" font-family="'Inter Light', 'Lato Light', 'Helvetica Neue', Arial, sans-serif" font-size="36" font-weight="300" letter-spacing=".72" textLength="863" lengthAdjust="spacingAndGlyphs">An open-source engine for autonomous research.</text>
+    <g id="research-stages" fill="#A0B1D3" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="400" letter-spacing="3.2">
+      <text id="stage-analyze" x="660" y="554" textLength="122" lengthAdjust="spacingAndGlyphs">ANALYZE</text>
+      <path id="divider-1" d="M826 535V560" stroke="#B3C5E8" stroke-width="1.7"/>
+      <text id="stage-hypothesize" x="870" y="554" textLength="189" lengthAdjust="spacingAndGlyphs">HYPOTHESIZE</text>
+      <path id="divider-2" d="M1098 535V560" stroke="#B3C5E8" stroke-width="1.7"/>
+      <text id="stage-experiment" x="1141" y="554" textLength="173" lengthAdjust="spacingAndGlyphs">EXPERIMENT</text>
+      <path id="divider-3" d="M1357 535V560" stroke="#B3C5E8" stroke-width="1.7"/>
+      <text id="stage-evolve" x="1400" y="554" textLength="105" lengthAdjust="spacingAndGlyphs">EVOLVE</text>
+    </g>
+  </g>
+</svg>
