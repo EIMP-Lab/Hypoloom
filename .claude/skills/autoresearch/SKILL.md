@@ -1017,6 +1017,7 @@ include a Host or run command.
 | `pause <run-id> [--expert <role>] [--component <id>] [--chain <id>]` | Explicitly authorized participant pause through the resident Host; admitted work may finish |
 | `resume <run-id> [--expert <role>] [--component <id>] [--chain <id>]` | Remove only the operator pause reason; never start/resume a stopped Host implicitly |
 | `inject <run-id> --expert <role> "text"` | Submit one operator note for that expert's next eligible node |
+| `provider-retry-clear <run-id>` | Confirm credential recovery after a provider 401/403; clears the dispatch cooldown immediately, never edits attempts or resumes a stopped Host |
 | `plugin-pin/revert/unpin --run-id <id> --expert <role> [--owner-kind grounding] [--commit <full-sha>]` | Explicit Host control for future-cycle plugin selection; pin/revert lock until unpin, existing requests stay frozen |
 | `session-archive --run-id <id> [--member <path>] [--max-bytes <n>]` | Read-only standard-tar inventory or bounded base64 member; never trigger archive or restore |
 | `session-restore --run-id <id>` | Explicit local write restoring terminal hot session trees; never resume run or overwrite changed context |

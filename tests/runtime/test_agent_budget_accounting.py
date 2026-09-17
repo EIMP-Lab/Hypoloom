@@ -82,7 +82,8 @@ def test_unknown_observed_tokens_raise_reservation_without_settling_cost():
 
 
 @pytest.mark.parametrize("code,expected", [("input_too_long", None),
-    ("token_budget_exceeded", None), ("rate_limited", "INFRASTRUCTURE")])
+    ("token_budget_exceeded", None), ("rate_limited", "INFRASTRUCTURE"),
+    ("auth_failed", "INFRASTRUCTURE")])
 def test_transport_failures_do_not_blindly_replay_identical_context(code, expected):
     from hypoloom.agent_context import agent_retry_class
     assert agent_retry_class("nonzero_exit", {"diagnostics": {"provider_failure": {"code": code}}},
@@ -649,4 +650,21 @@ def test_new_run_retry_budgets_are_optional_nonnegative_integers(
 
     document["budget"][field] = True
     with pytest.raises(ValueError, match=rf"budget\.{field}"):
+        validate_new_run_budget(document, fallback)
+
+
+@pytest.mark.parametrize("value", [0, 18000, 18000.5, 604800])
+def test_provider_auth_cooldown_budget_accepts_bounded_numbers(value) -> None:
+    fallback = AgentBudget(max_turns=1, max_tokens=100, max_output_bytes=4096, wall_seconds=30, max_cost="0.25")
+    document = {"budget": {"agent_invocation": {**fallback.to_dict(), "token_enforcement_mode": "enforce"},
+        "provider_auth_cooldown_seconds": value}, "roles": []}
+    assert validate_new_run_budget(document, fallback) == fallback
+
+
+@pytest.mark.parametrize("value", [-1, True, "18000", 604801, float("inf"), float("nan")])
+def test_provider_auth_cooldown_budget_rejects_unbounded_values(value) -> None:
+    fallback = AgentBudget(max_turns=1, max_tokens=100, max_output_bytes=4096, wall_seconds=30, max_cost="0.25")
+    document = {"budget": {"agent_invocation": {**fallback.to_dict(), "token_enforcement_mode": "enforce"},
+        "provider_auth_cooldown_seconds": value}, "roles": []}
+    with pytest.raises(ValueError, match=r"budget\.provider_auth_cooldown_seconds"):
         validate_new_run_budget(document, fallback)

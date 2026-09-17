@@ -131,6 +131,37 @@ def summarize_exchanges(exchanges):
     return result
 
 
+def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now):
+    """Reduce durable provider-failure rows to the current dispatch gate.
+
+    An operator clear only supersedes failures recorded before it; a provider
+    that keeps failing after the clear re-engages the gate on its own.
+    """
+    gates = []
+    for row in entries:
+        ended_at = row.get("ended_at")
+        if type(ended_at) not in (int, float) or not math.isfinite(ended_at):
+            continue
+        if cleared_at is not None and ended_at <= cleared_at:
+            continue
+        until = None
+        if row.get("code") == "rate_limited":
+            retry_at = row.get("retry_at")
+            if type(retry_at) in (int, float) and math.isfinite(retry_at):
+                until = float(retry_at)
+        elif row.get("code") == "auth_failed" and cooldown_seconds > 0:
+            until = float(ended_at) + cooldown_seconds
+        if until is None:
+            continue
+        gates.append({"class": row.get("code"), "attempt_id": row.get("attempt_id"),
+            "http_status": row.get("http_status"), "attempt_ended_at": float(ended_at),
+            "until": until, "pending": until > now})
+    gates.sort(key=lambda item: item["until"])
+    return {"pending": any(item["pending"] for item in gates),
+        "cooldown_seconds": cooldown_seconds, "cleared_at": cleared_at,
+        "gates": gates, "now": now}
+
+
 def retry_after_seconds(value, *, now):
     """Parse the standard Retry-After header, never a timezone-free message."""
     if not isinstance(value, str):
@@ -157,6 +188,10 @@ def provider_failure(exchanges):
     status = last.get("upstream_status")
     if code in {"input_too_long", "token_budget_exceeded"}:
         return {"code": code, "http_status": status}
+    if status in (401, 403):
+        # Credential rejected (rolling quota window or rotation). The Host owns
+        # the cooldown length; the exchange only proves the rejection class.
+        return {"code": "auth_failed", "http_status": status}
     if status == 429 or code == "rate_limited":
         ended_at = last.get("ended_at")
         if type(ended_at) not in (int, float) or not math.isfinite(ended_at):

@@ -95,6 +95,16 @@ DISPATCH PAUSED 时使用只读诊断确认原因，不能通过重写 SQLite �
 这不等于 End run，需按实际诊断决定后续操作。源码修复仅用于新的运行；既有 bundle
 不会自动更新，也不支持把旧运行切换到新版本恢复。
 
+Provider 鉴权被拒绝（HTTP 401/403；五小时滚动额度与密钥失效无法区分）时，
+新的 Agent 调度会进入冷却而不是立刻烧掉节点重试额度：运行保持 ACTIVE，
+在途调用正常结束，冷却到期（`budget.provider_auth_cooldown_seconds`，默认
+18000 秒，0 表示关闭）后自动恢复。冷却状态由持久化失败记录推导，重启 Host
+不会清除或重置。通知事件 `provider_auth_cooldown`（每个冷却窗口一条，不逐次
+刷屏）与 `provider_auth_resumed` 经既有 Telegram/log 渠道投递，TUI 摘要区显示
+PROVIDER COOLDOWN 横幅。手动更换密钥后提前恢复：TUI 按 `p` 确认，或执行
+`hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID`；
+若凭证仍不可用，下一次失败会重新进入冷却。
+
 ## 故障反馈与模块排障
 
 ```bash

@@ -62,8 +62,10 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     root = Path(__file__).resolve().parents[2]
     # ADR-0022 explicitly reallocates authority, including new session lifecycle.
     # Optional dispatch extraction is counted if introduced, never free space.
-    allocations = {"domain": 1100, "lifecycle": 550, "ports": 100,
-        "state_store": 550, "research_kernel": 750, "workflow_host": 4500,
+    # Provider auth cooldown (operator recovery command + durable dispatch gate)
+    # added workflow core authority: workflow_host 4500→4550, lifecycle 550→500.
+    allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
+        "state_store": 550, "research_kernel": 750, "workflow_host": 4550,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
@@ -213,3 +215,14 @@ def test_guarded_same_command_alternatives_remain_distinct_rows() -> None:
         (ExperimentState.DRAFTED,),
         (ExperimentState.TERMINAL,),
     }
+
+
+def test_provider_retry_clear_is_an_operator_run_control_without_state_change() -> None:
+    for state in (RunState.CREATED, RunState.ACTIVE):
+        transition = validate_transition(Machine.RUN_WORKFLOW, state, Command.PROVIDER_RETRY_CLEAR, state)
+        assert transition.fact_type is None
+        assert transition.external_effect is None
+    for state in (RunState.WAITING_HUMAN, RunState.COMPLETING, RunState.STOPPING,
+                  RunState.COMPLETED, RunState.FAILED, RunState.CANCELLED):
+        with pytest.raises(UnknownTransition):
+            validate_transition(Machine.RUN_WORKFLOW, state, Command.PROVIDER_RETRY_CLEAR, state)

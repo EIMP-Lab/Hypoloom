@@ -1,5 +1,43 @@
 # Current Hypoloom development state
 
+- September 17 morning: read-only analysis found run `MERC-causal-202609170117`
+  (ACTIVE r48, Host PID 2669721 alive but idle-spinning ~100% CPU by serve-loop
+  design) wedged since 05:27:35 +08: a provider 403 window (five-hour rolling
+  quota, user-confirmed) produced 15 rapid auth failures (04:14–05:27) that
+  exhausted infrastructure retries on all three experts' nodes within seconds
+  each (next-tick redispatch), permanently closing every component's control
+  loop; durable totals: 3 CLEAN_REFUTATION experiments (all below the
+  MELD>0.6674 / IEMOCAP>0.7305 targets), 2 REFUTED assessments, 59 Agent + 3
+  Process Attempts all CLOSED, 23.242795 USD known model cost, pool
+  reservations all RELEASED. The run cannot resume science (final failures are
+  durable; Host restart does not un-exhaust them); cancel/restart awaits the
+  user's decision. Under the user's repair authorization (unattended 5h
+  cooldown plus TG/TUI alert with manual "credential restored" resume;
+  5h-limit and instability 403s are treated as one class), the uncommitted
+  tree now: classifies upstream 401/403 as `auth_failed` in
+  provider_observation; extends the durable `_provider_retry_pending` dispatch
+  gate (via `provider_retry_gate`) to hold new Agent dispatch until
+  `budget.provider_auth_cooldown_seconds` (default 18000, 0 disables, cap
+  604800; admitted through agent_budget/component_contract); adds the operator
+  control `PROVIDER_RETRY_CLEAR` (CREATED/ACTIVE self-loop) whose durable
+  transition supersedes only earlier failures, exposed as CLI
+  `provider-retry-clear`, TUI banner + `p` modal (provider_resume_tui.py), and
+  STATUS `provider_retry`; derives one-per-episode `provider_auth_cooldown`
+  and `provider_auth_resumed` product events (none when disabled) through the
+  existing tailer into the template/local Profile telegram lists. Focused
+  suites pass (80 new/extended + 162 + 179 + 43 adjacent); the LOC budget
+  allocation was explicitly reallocated (workflow_host 4500→4550, lifecycle
+  550→500). Evening: full G0–G5 batch ran at the user's request (evidence in
+  qualification's top section): G1 5,746/0 failed, G2 174/174 with the
+  retained cohort byte-identical, G3 7/7. G4 failed 2/10 purely on a foreign
+  tenant pinning GPU 0/3 memory (zero provider/auth involvement, roots
+  retained); both paid samples failed on a new systematic CC 2.1.274/k3-256k
+  token-accounting mismatch (`invalid_provider_metadata`, reported input 5
+  below observed lower bound) unrelated to the repair — G5-resource was then
+  left unlaunched, preserving its 5 USD. Known paid spend 11.082952 USD. The
+  repair does not revive the wedged run's exhausted components; that run was
+  never mutated and stayed byte-identical across G2.
+
 - Same evening, research-runtime session records relocated under the user's
   request: this project's Claude Code transcripts moved from
   `~/.claude/projects/-data-Gray-Project-Hypoloom` into ignored

@@ -19,6 +19,7 @@ from typing import Any, Mapping
 from .agent_aci import AgentACIError, AgentBudget
 from .agent_budget import (
     AGENT_INVOCATION_BUDGET_FIELDS,
+    MAX_PROVIDER_AUTH_COOLDOWN_SECONDS,
     PROFILE_BUDGET_FIELDS,
     validate_initial_vram_budget,
     ROLE_BUDGET_FIELDS,
@@ -1045,6 +1046,14 @@ class _Compiler:
                 self.block("contract_invalid_value", f"{location}.wallclock_hours", "value must be finite and positive")
             else:
                 result["wallclock_hours"] = hours
+        if "provider_auth_cooldown_seconds" in value:
+            cooldown = value["provider_auth_cooldown_seconds"]
+            if (isinstance(cooldown, bool) or not isinstance(cooldown, (int, float))
+                    or not 0 <= float(cooldown) <= MAX_PROVIDER_AUTH_COOLDOWN_SECONDS):
+                self.block("contract_invalid_value", f"{location}.provider_auth_cooldown_seconds",
+                    f"value must be a finite number from 0 to {int(MAX_PROVIDER_AUTH_COOLDOWN_SECONDS)}")
+            else:
+                result["provider_auth_cooldown_seconds"] = cooldown
         invocation_location = f"{location}.agent_invocation"
         if "agent_invocation" not in value:
             self.block(

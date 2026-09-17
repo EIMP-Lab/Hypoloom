@@ -620,6 +620,9 @@ class SummaryPanel(CockpitPanel):
                 state_label += " · HOST ABSENT (orphaned)"
             if status.get("dispatch_error"):
                 state_label += " · DISPATCH PAUSED (Host error)"
+            provider_retry = status.get("provider_retry") or {}
+            if provider_retry.get("pending"):
+                state_label += " · PROVIDER COOLDOWN (auth)"
         lines = ["[b #78dcff]RUN AT A GLANCE[/]  [dim]? legend · d details[/dim]",
             f"[b]{_value(state_label)}[/]",
             f"Goal: {_goal_objective(snapshot)}",
@@ -658,6 +661,13 @@ class SummaryPanel(CockpitPanel):
         pending = sum(item.get("state") == "OPEN" for item in status.get("grounding_dialogue", []))
         if pending:
             health.append(f"[yellow]Grounding: {pending} questions pending · w Web[/]")
+        provider_retry = status.get("provider_retry") or {}
+        if provider_retry.get("pending"):
+            gates = [item for item in provider_retry.get("gates", []) if item.get("pending")]
+            latest = max((float(item["until"]) for item in gates), default=None)
+            until = time.strftime("%H:%M", time.localtime(latest)) if latest is not None else "unknown"
+            health.append(f"[yellow]Provider auth rejected (401/403): dispatch paused until {until} · "
+                "p resume after credential restore[/]")
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1053,6 +1063,7 @@ class HypoloomVNextMonitor(App):
         Binding("w", "web_access", "Web / local access"),
         Binding("b", "support_export", "Report Issue", show=False),
         Binding("h", "human_decision", "Human decision"),
+        Binding("p", "provider_resume", "Provider resume"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
@@ -1240,6 +1251,7 @@ class HypoloomVNextMonitor(App):
         self._expert_roles: tuple[str, ...] = ()
         self._human_drafts: dict[str, dict] = {}
         self._end_run_draft: dict = {}
+        self._provider_resume_draft: dict = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1300,8 +1312,9 @@ class HypoloomVNextMonitor(App):
         human_button.label = f"{len(pending)} decision pending · Review and answer · h"
         from .human_decision_tui import HumanDecisionScreen
         from .end_run_tui import EndRunScreen
+        from .provider_resume_tui import ProviderResumeScreen
         for screen in self.screen_stack:
-            if isinstance(screen, (HumanDecisionScreen, EndRunScreen)) and screen.is_mounted:
+            if isinstance(screen, (HumanDecisionScreen, EndRunScreen, ProviderResumeScreen)) and screen.is_mounted:
                 screen.update_status(snapshot.status)
         selector = self.query_one("#expert-filter", Select)
         roles = tuple(item["role"] for item in snapshot.overview.get("experts", []))
@@ -1570,6 +1583,18 @@ class HypoloomVNextMonitor(App):
         self.push_screen(HumanDecisionScreen(decision, status,
             self._human_drafts.setdefault(decision["decision_id"], {}),
             [item for item in history if item["decision_id"] != decision["decision_id"]]))
+
+    def action_provider_resume(self) -> None:
+        from .provider_resume_tui import ProviderResumeScreen
+        if self._last_snapshot is None:
+            self.notify("Wait for a current snapshot, then press p.")
+            return
+        status = self._last_snapshot.status
+        if not status.get("provider_retry"):
+            self.notify("Provider cooldown state needs a live Host answer; the offline view cannot confirm it.")
+            return
+        if not isinstance(self.screen, ProviderResumeScreen):
+            self.push_screen(ProviderResumeScreen(status, self._provider_resume_draft))
 
     def action_human_browser(self) -> None:
         server = self._web_server

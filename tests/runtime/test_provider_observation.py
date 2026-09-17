@@ -78,3 +78,37 @@ def test_provider_failures_project_only_safe_classification_and_retry_time():
         "response_headers": {"retry-after": "Thu, 01 Jan 1970 00:05:00 GMT"}}])["retry_at"] == 300
     assert provider_failure([{"upstream_status": 429, "ended_at": 100},
         {"upstream_status": 200, "ended_at": 200}]) is None
+
+
+def test_auth_rejection_is_classified_without_message_sniffing():
+    from hypoloom.provider_observation import provider_failure
+    for status in (401, 403):
+        failure = provider_failure([{"upstream_status": status, "ended_at": 100}])
+        assert failure == {"code": "auth_failed", "http_status": status}
+    # The Host owns the cooldown length; a relay header never sets it here.
+    assert "retry_at" not in provider_failure([{"upstream_status": 403, "ended_at": 100,
+        "response_headers": {"retry-after": "30"}}])
+    # A later success clears a transient rejection, as with other classes.
+    assert provider_failure([{"upstream_status": 403, "ended_at": 100},
+        {"upstream_status": 200, "ended_at": 200}]) is None
+    assert provider_failure([{"upstream_status": 500, "ended_at": 100}]) is None
+
+
+def test_provider_retry_gate_episodes_clear_and_disabled():
+    from hypoloom.provider_observation import provider_retry_gate
+    rows = [{"attempt_id": "a1", "ended_at": 100.0, "code": "auth_failed", "http_status": 403},
+        {"attempt_id": "a2", "ended_at": 200.0, "code": "auth_failed", "http_status": 403}]
+    gate = provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=None, now=300.0)
+    assert gate["pending"] and gate["gates"][-1]["until"] == 200.0 + 18000.0
+    assert not provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=None, now=200.0 + 18001.0)["pending"]
+    # An operator clear supersedes only failures recorded before it.
+    assert not provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=250.0, now=300.0)["pending"]
+    assert provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=150.0, now=300.0)["pending"]
+    # Zero disables the auth gate entirely; rate limiting still honors retry_at.
+    assert not provider_retry_gate(rows, cooldown_seconds=0.0, cleared_at=None, now=300.0)["pending"]
+    rate = [{"attempt_id": "r1", "ended_at": 100.0, "code": "rate_limited", "retry_at": 400.0, "http_status": 429}]
+    assert provider_retry_gate(rate, cooldown_seconds=0.0, cleared_at=None, now=300.0)["pending"]
+    assert not provider_retry_gate(rate, cooldown_seconds=0.0, cleared_at=200.0, now=300.0)["pending"]
+    # Malformed rows never fabricate a gate.
+    assert not provider_retry_gate([{"attempt_id": "x", "ended_at": "soon", "code": "auth_failed"}],
+        cooldown_seconds=18000.0, cleared_at=None, now=300.0)["pending"]

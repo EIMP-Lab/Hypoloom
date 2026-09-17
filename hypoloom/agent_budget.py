@@ -8,6 +8,7 @@ the declared ceiling so retries cannot oversubscribe a profile budget.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -28,7 +29,7 @@ PROFILE_BUDGET_FIELDS = frozenset({
     "max_active_hypotheses", "min_vram_per_experiment",
     "gpu_vram_reserve_mb", "initial_vram_per_experiment", "max_turns",
     "total_budget_usd", "per_expert_budget_usd", "max_active_agents",
-    "max_active_processes", "max_active_reviews",
+    "max_active_processes", "max_active_reviews", "provider_auth_cooldown_seconds",
 })
 ROLE_BUDGET_FIELDS = frozenset({
     "per_expert_tokens", "max_experiments", "max_papers", "timeout", "max_turns", "per_expert_budget_usd",
@@ -37,6 +38,10 @@ AGENT_INVOCATION_BUDGET_FIELDS = frozenset({
     "max_turns", "max_tokens", "max_output_bytes", "wall_seconds", "max_cost",
     "token_enforcement_mode",
 })
+# Dispatch pause after a provider authentication rejection (rolling quota
+# windows included). Zero disables the gate; seven days caps operator input.
+DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS = 5 * 3600.0
+MAX_PROVIDER_AUTH_COOLDOWN_SECONDS = 7 * 86400.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +308,13 @@ def validate_new_run_budget(document: Mapping[str, Any], fallback: AgentBudget) 
     if "wallclock_hours" in budget and (isinstance(hours, bool) or not isinstance(hours, (int, float))
                                          or not 0 < float(hours) < float("inf")):
         raise ValueError("budget.wallclock_hours must be finite and positive")
+    cooldown = budget.get("provider_auth_cooldown_seconds")
+    if "provider_auth_cooldown_seconds" in budget and (
+            isinstance(cooldown, bool) or not isinstance(cooldown, (int, float))
+            or not math.isfinite(float(cooldown))
+            or not 0 <= float(cooldown) <= MAX_PROVIDER_AUTH_COOLDOWN_SECONDS):
+        raise ValueError("budget.provider_auth_cooldown_seconds must be a finite number "
+                         f"from 0 to {int(MAX_PROVIDER_AUTH_COOLDOWN_SECONDS)}")
     for name, maximum in (("run_tokens", invocation.max_tokens), ("per_expert_tokens", invocation.max_tokens),
                           ("max_turns", invocation.max_turns)):
         if isinstance(budget.get(name), int) and budget[name] < maximum:

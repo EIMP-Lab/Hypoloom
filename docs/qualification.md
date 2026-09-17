@@ -6,6 +6,125 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Supplementary qualification — provider-auth-cooldown repair candidate, 2026-09-17
+
+The user requested a complete G0–G5 batch for the uncommitted provider auth
+cooldown repair, then a commit to dev. The offline lanes pass in full. The
+GPU lane and both executed paid samples failed on independent environmental
+and provider-side causes, preserved with their roots below; none involve the
+repair. The third paid sample was not launched once two consecutive samples
+established a systematic provider-metadata wall, so its allocation survives.
+Detailed evidence stays in ignored `.local/qualification/full-20260917/`.
+
+### Candidate and environment
+
+HEAD `3f3bbd4a7f53b421dd6c118435ec2371ae4b9b08` (dev) plus the uncommitted
+repair tree; runtime identity
+`sha256:25f500a5090733520fe6e861bd3be98c73e4ca82005752430db5b36a88207303`,
+ACI 20 (`candidate-run-version.json`). Control Python is the project Conda
+3.12.14 / SQLite 3.53.4. Native CC pinned to the current
+`/home/gray/.local/share/claude/versions/2.1.274` (upgraded the same morning);
+model `k3-256k` through the existing mode-0600 settings file. Approved GPU
+UUIDs `GPU-d469e765-ad52-350d-2cd4-9b12e5e5bc84` and
+`GPU-20ca7d4a-89d1-ec85-9bee-690afdd3283a`; CUDA runtime
+`/home/gray/miniconda3/envs/erc-cu128`. Production `profile-check
+MERC-causal` admits with the existing credentials file (exit 0). A fresh
+cohort was declared: prior 0, ceiling 15 USD, 5 USD per paid sample, no
+automatic paid retry (`cohort-accounting.json`).
+
+### Executed evidence and limits
+
+| Stage | Actual result | Evidence and boundary |
+| --- | --- | --- |
+| G0 | Ready | `g0-environment.json`, `g0-gpu-inventory.txt`, `merc-profile-check.json` |
+| G1 | **5,746 passed / 25 opt-in skips / 0 failed**, 4,999.28 s | `g1.xml`; compileall, ruff F821/2/3 and `git diff --check` passed. An earlier invocation killed by a 3,600 s harness cap at ~61% is not evidence. The suite ran ~4× slower than the 9-16 invocation under foreign tenant load; per-test integrity is unaffected. The 25 skips are the documented paid/GPU/real-Telegram/tmpfs opt-ins. |
+| G2 | 174/174 portable; retained cohort unchanged | `g2-retained.json`: six terminal roots plus the wedged run kept byte-identical databases, identical logical rows, artifact inventories and bundle readers across the lane. Readers: 0044's bundle keeps its two known archive errors; 161513 shows one pre-existing `session_archive_missing` (candidate and bundled readers agree; data-carried, unrelated to the repair). |
+| G3 | 7/7, 470.30 s | `g3.xml` |
+| G4 | 8/10, 680.18 s | `g4-environmental-analysis.json`: foreign tenant PID 2833485 held 15.2 GiB on GPU 0 and 254 MiB on GPU 3 throughout. `…_initial_memory_waits_then_calibrates…` could never grant 16,384 MiB per card (9,356 MiB free on GPU 0; pool requests stayed QUEUED `capacity_unavailable`/`fairness_wait` to the 540 s deadline). `…_two_hosts_share_real_cuda…` failed `unknown_sample_count == 0` with exactly one unattributed sample per card (1/41). Both failed roots show zero provider failures, zero `auth_failed` classifications and zero rate-limit gates, and the repair changes no GPU/pool/attribution bytes. Roots retained at `/tmp/pytest-of-gray/pytest-4511/`. Not rerun: the foreign allocation persists. |
+| G5-local | **FAIL**, 774.17 s, 3.780730 USD known + 1 unknown attempt | `g5-local-result.json`. The run COMPLETED with GOAL_MET and the real CPU process succeeded, but the EXPERIMENT_EXECUTION agent attempt failed post-completion as `invalid_provider_metadata`: CC 2.1.274 reported `input_tokens` 415,342, five below the platform-observed assistant lower bound 415,347 (turn count also normalized 7→6). The strict accounting guard (`claude_agent_host.py:1768`) is untouched by the repair; the sample shows zero auth/rate-limit events. Closure requires a SUCCEEDED execution agent, so the sample stays failed. |
+| G5-common | **FAIL**, 903.60 s, 7.302222 USD known + 3 unknown attempts | `g5-common-result.json`. Same signature struck twice (EXPERIMENT_DESIGN_IMPLEMENT, CYCLE_REPORT), SELF_EVOLVE timed out and FINAL_REPORT hit `profile_budget_exhausted`; the run FAILED. |
+| G5-resource | Not executed | Two consecutive samples established the provider-metadata wall (4 events; the five 9-16 samples on CC 2.1.272/273 had none), and GPU 3 still carries foreign memory against the lane's identical `unknown_sample_count == 0` assertion. The 5 USD allocation survives. |
+
+### Findings and smallest next steps
+
+1. **CC 2.1.274 token accounting mismatch — new, systematic today.** Four
+   agent attempts across two paid runs reported aggregate `input_tokens`
+   five below the platform's assistant-message lower bound, failing closed as
+   `invalid_provider_metadata`. Five 9-16 samples on CC 2.1.272/2.1.273 never
+   produced it. Whether the CLI or the provider endpoint changed reporting is
+   undecided; retained redacted captures sit under each sample's
+   `state/diagnostics/`. Until adjudicated, paid qualification on CC 2.1.274
+   with k3-256k is unreliable; pinning 2.1.273 is the known-good fallback.
+2. **Foreign GPU tenancy blocks the approved pair.** All four cards carry
+   PID 2833485's allocations (15.2/15.8 GiB on 0/1, 254 MiB on 2/3). G4's
+   two failures and the G5-resource deferral follow from it. One G4 rerun
+   plus the deferred G5-resource remain admissible once the cards clear.
+3. **The repair's own evidence is fully green.** G1's 5,746 passes include
+   the new `tests/runtime/test_provider_auth_cooldown.py` and the extended
+   observation/budget/lifecycle suites; G2/G3 confirm durable and real-Host
+   behavior unchanged. No paid/GPU failure above involves repair code paths.
+
+### Costs and cleanup
+
+Known charged model usage is **11.082952 USD** (3.780730 local + 7.302222
+common). The four unknown-reserved attempts carry the standing 1 USD each
+convention, a conservative upper bound of **15.082952 USD** — marginally
+above the declared 15 USD cohort ceiling on that convention; the in-run
+guard on known charges (12.082952 peak) never exceeded it. The unlaunched
+resource sample's 5 USD was not spent. Cleanup census
+(`cleanup-census.json`): 693 databases across today's four pytest roots,
+6,582 CLOSED attempts, 74 OPEN attempts that are intentional
+crash/cancel/priority/tamper fixture states, 1,362 recorded process groups
+with **zero live**, one intentionally corrupt fixture unreadable. The wedged
+run `MERC-causal-202609170117` was never mutated and stayed byte-identical
+across G2. No real-Telegram, online-literature or soak lane ran.
+
+## Current development — provider auth cooldown and operator recovery, 2026-09-17
+
+Implemented under the user's repair request after a real incident: run
+`MERC-causal-202609170117` hit a provider 403 window (five-hour rolling quota)
+at 04:14–05:27 +08; each infrastructure failure retried on the next tick, so
+fifteen rapid rejections exhausted all three expert components' node budgets
+within seconds each and permanently closed their control loops, leaving the
+run ACTIVE with no dispatch, no escalation and a busy-poll Host. The user
+acknowledged five-hour-limit and provider-instability 403s are
+indistinguishable and asked for both unattended recovery and notified manual
+recovery.
+
+The repair reuses existing machinery, no parallel authority: exchange capture
+now classifies upstream 401/403 as `provider_failure.code="auth_failed"`
+(`provider_observation.py`; status-based, no message sniffing), retry class
+stays INFRASTRUCTURE. The existing durable dispatch gate
+(`_provider_retry_pending`, previously rate-limit only) now also gates on the
+latest auth failure until `budget.provider_auth_cooldown_seconds` (default
+18000, zero disables, cap 604800; validated in `agent_budget.py` and
+`component_contract.py`), computed read-only from durable rows via
+`provider_retry_gate`, so a Host reopen neither clears nor resets it. The new
+operator control `PROVIDER_RETRY_CLEAR` (lifecycle CREATED/ACTIVE self-loop,
+reason="operator") records a durable clear transition that supersedes only
+earlier failures; a still-broken credential re-engages the gate on the next
+failure. STATUS exposes `provider_retry`; the TUI shows a PROVIDER COOLDOWN
+banner with a `p` confirmation modal (`provider_resume_tui.py`, mirroring the
+end-run form); CLI `provider-retry-clear` mirrors pause/resume plumbing.
+Derived product events `provider_auth_cooldown` (one per episode, not per
+attempt) and `provider_auth_resumed` feed the existing notification tailer and
+templates/local Profile event lists; a disabled cooldown emits no events.
+
+Focused evidence: 80 passed across the new
+`tests/runtime/test_provider_auth_cooldown.py` (real Host gate blocking,
+reopen durability, operator clear, re-engage, expiry, event episode dedup,
+Telegram text, TUI form) plus extended `test_provider_observation.py`,
+`test_agent_budget_accounting.py` and `test_lifecycle_table.py`; adjacent
+suites pass: 162 (batch host, tailer, end-run UI, events, paper reading,
+public profiles), 179 (profile admission/v4, observer UI/reliability/services,
+human answer), 43 (live status, runtime diagnostics, projection, execution
+completion). The physical-LOC budget test's allocation table was explicitly
+reallocated for the added workflow-core authority (workflow_host 4500→4550,
+lifecycle 550→500; total unchanged), per its designed mechanism. The wedged
+run was not mutated, cancelled or restarted; no paid/GPU/online call, full
+G1–G5 lane, commit or push. The repair does not revive components whose node
+budgets were already exhausted in that run.
+
 ## Current development — project-local research-runtime session records, 2026-09-16
 
 Implemented under the user's relocation request after the credentials

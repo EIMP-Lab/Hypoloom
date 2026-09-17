@@ -24,6 +24,7 @@ class Command(str, Enum):
     PAUSE_PARTICIPANT = "PAUSE_PARTICIPANT"
     RESUME_PARTICIPANT = "RESUME_PARTICIPANT"
     INJECT_NOTE = "INJECT_NOTE"
+    PROVIDER_RETRY_CLEAR = "PROVIDER_RETRY_CLEAR"
     ACCEPT_ADJUDICATION = "ACCEPT_ADJUDICATION"
     ACCEPT_GRAPH_EVOLUTION = "ACCEPT_GRAPH_EVOLUTION"
     ACCEPT_EXPERT_INTERACTION = "ACCEPT_EXPERT_INTERACTION"
@@ -88,6 +89,8 @@ TRANSITIONS: tuple[Transition, ...] = (
     *(_t(R, state, command, state, "authorized_participant_scope_and_reason", "append_participant_control")
       for state in (RunState.CREATED, RunState.ACTIVE)
       for command in (Command.PAUSE_PARTICIPANT, Command.RESUME_PARTICIPANT, Command.INJECT_NOTE)),
+    *(_t(R, state, Command.PROVIDER_RETRY_CLEAR, state, "operator_confirmed_provider_recovery", "append_provider_retry_clear")
+      for state in (RunState.CREATED, RunState.ACTIVE)),
     *(_t(R, state, Command.SELECT_PLUGIN, state, "aci14_owner_native_commit_and_future_cycle_valid", "append_plugin_selection")
       for state in (RunState.CREATED, RunState.ACTIVE)),
     _t(R, RunState.ACTIVE, Command.REQUEST_HYPOTHESIS_CANDIDATE, RunState.ACTIVE, "agent_dispatch_allowed", "append_command_and_open_agent_attempt", external=EffectKind.AGENT),

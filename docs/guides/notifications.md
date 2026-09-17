@@ -15,7 +15,11 @@ only to the approved notification process.
 `events.telegram` chooses event types. Include `grounding_question` to receive
 pending-human reminders and `grounding_answered` for answer acknowledgment.
 The operator still answers through TUI/Web or the exact Host `answer` command;
-receiving a message is not an answer. Other supported template events include
+receiving a message is not an answer. Include `provider_auth_cooldown` to be
+told when a provider 401/403 pauses new Agent dispatch until the cooldown ends
+(default five hours) and `provider_auth_resumed` for the operator's confirmed
+recovery; early resume is TUI `p` or `hypoloom provider-retry-clear`. Other
+supported template events include
 new results, interaction starts, round completion, errors and run completion.
 
 ```bash

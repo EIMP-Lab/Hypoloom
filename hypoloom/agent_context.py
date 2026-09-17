@@ -83,7 +83,7 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
     failure = diagnostics.get("provider_failure")
     failure = failure if isinstance(failure, Mapping) else {}
     if failure.get("code") in {"input_too_long", "token_budget_exceeded"}: return None
-    if failure.get("code") == "rate_limited": return "INFRASTRUCTURE"
+    if failure.get("code") in {"rate_limited", "auth_failed"}: return "INFRASTRUCTURE"
     if subtype == "error_max_structured_output_retries": return "MODEL"
     if subtype == "error_during_execution": return "INFRASTRUCTURE"
     return (

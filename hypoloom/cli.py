@@ -260,6 +260,12 @@ def build_parser() -> argparse.ArgumentParser:
         if verb == "inject":
             participant.add_argument("text")
 
+    provider_clear = subparsers.add_parser("provider-retry-clear",
+        help="confirm operator credential recovery; clear the provider dispatch cooldown now")
+    _add_client_arguments(provider_clear)
+    provider_clear.add_argument("--run-id", required=True)
+    provider_clear.add_argument("--expected-revision", type=int)
+
     for action in ("pin", "revert", "unpin"):
         plugin = subparsers.add_parser("plugin-" + action,
             help="Host-only plugin selection for future cycles; pin/revert lock until explicit unpin")
@@ -684,6 +690,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise ValueError("operator note must be nonempty text")
                 payload["text"] = args.text
             return _submit(args, args.subcommand.upper(), payload)
+        if args.subcommand == "provider-retry-clear":
+            return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator"})
         if args.subcommand in {"plugin-pin", "plugin-revert", "plugin-unpin"}:
             from .expert_plugin import _component, _full_commit
             _component(args.role)

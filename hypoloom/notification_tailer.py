@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -277,6 +278,16 @@ class NotificationTailer:
                              "\nTelegram replies do not submit an answer.")
                 else:
                     text += "\nView the recorded answer and current run state in TUI/Web."
+            if event["type"] == "provider_auth_cooldown":
+                until = payload.get("cooldown_until")
+                when = (datetime.fromtimestamp(float(until), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                    if type(until) in (int, float) else "the configured cooldown end")
+                text += (f"\n⚠️ Provider authentication rejected (HTTP {payload.get('http_status')})."
+                    f"\nNew Agent dispatch is paused until {when}."
+                    "\nAfter rotating the credential: TUI press p → Confirm resume, or CLI: hypoloom provider-retry-clear."
+                    "\nWithout action, dispatch resumes automatically when the cooldown ends.")
+            if event["type"] == "provider_auth_resumed":
+                text += "\n✅ Provider dispatch cooldown cleared by operator; scheduling resumes."
             dashboard = self.sinks.get("dashboard", {})
             port = dashboard.get("port", 8765)
             if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"} and type(port) is int and 1 <= port <= 65535:

@@ -21,7 +21,7 @@ from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
 from .agent_capabilities import capabilities_for
-from .agent_budget import agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
+from .agent_budget import DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
@@ -321,6 +321,7 @@ class WorkflowHost:
             if request.command == "CANCEL": return self._cancel_run(request)
             if request.command == "ANSWER": return self.grounding_dialogue.answer(request)
             if request.command in {"PAUSE", "RESUME", "INJECT"}: return self._control_participant(request)
+            if request.command == "PROVIDER_RETRY_CLEAR": return self._provider_retry_clear(request)
             if request.command in {"PIN_PLUGIN", "REVERT_PLUGIN", "UNPIN_PLUGIN"}: return self._control_plugin(request)
             return ControlResponse.failure(request.request_id, "rejected", "unknown_command", request.command)
         except NonQuiescentBackup as exc: record(exc); return ControlResponse.failure(request.request_id, "rejected", "non_quiescent", str(exc))
@@ -470,6 +471,31 @@ class WorkflowHost:
         stored = self.store.execute_command({"command_id": request.request_id, "run_id": run_id, "workflow_id": run_id,
             "expected_revision": request.expected_revision, "command_type": command.value, "request": request.to_mapping()}, operation)
         return ControlResponse.accepted(request.request_id, stored.revision, stored.result or {})
+    def _provider_retry_clear(self, request: ControlRequest) -> ControlResponse:
+        payload = request.payload
+        if set(payload) != {"run_id", "reason"}: raise ValueError("PROVIDER_RETRY_CLEAR requires run_id and reason")
+        run_id = payload["run_id"]
+        if not isinstance(run_id, str) or payload["reason"] != "operator":
+            raise ValueError("provider retry clear requires the operator reason")
+        def operation(tx: StateTransaction) -> Mapping[str, Any]:
+            head = tx.latest_transition(run_id)
+            if head is None or head["workflow_kind"] != "RUN": raise ValueError(f"unknown run {run_id!r}")
+            if head["state"] not in {RunState.CREATED.value, RunState.ACTIVE.value}:
+                raise ValueError("provider retry clear requires a CREATED or ACTIVE run")
+            row = self._transition_record(tx, run_id, run_id, "RUN", Command.PROVIDER_RETRY_CLEAR, RunState(head["state"]),
+                request.request_id, payload={"provider_retry_clear": {"reason": "operator", "cleared_at": time.time()}})
+            tx.append_transition(row)
+            return {"status": "accepted", "revision": row["revision"], "result": {"run_id": run_id,
+                "run_state": head["state"]}}
+        stored = self.store.execute_command({"command_id": request.request_id, "run_id": run_id, "workflow_id": run_id,
+            "expected_revision": request.expected_revision, "command_type": Command.PROVIDER_RETRY_CLEAR.value,
+            "request": request.to_mapping()}, operation)
+        if stored.status != "accepted":
+            error = stored.error or {"code": "rejected", "message": "provider retry clear rejected"}
+            return ControlResponse.failure(request.request_id, "rejected", str(error.get("code")), str(error.get("message")), stored.revision)
+        # Read the gate after the commit so the reply reflects the recorded clear.
+        return ControlResponse.accepted(request.request_id, stored.revision,
+            {**dict(stored.result or {}), "provider_retry": self._provider_retry_status(run_id)})
     def _control_plugin(self, request: ControlRequest) -> ControlResponse:
         from .expert_plugin import ExpertPluginStore, _full_commit, select_plugin_commit
         from .profile_v4 import resolve_node_runtime
@@ -583,6 +609,7 @@ class WorkflowHost:
             quiescent_for_backup=self._backup_busy_reason() is None, attempts=attempts)
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
         result["dispatch_error"] = self.dispatch_errors.get(run_id)
+        result["provider_retry"] = self._provider_retry_status(run_id)
         result["participant_controls"] = self._participant_controls(run_id).to_dict()
         result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS); result["resource_waits"] = [{"experiment_id": workflow, "reason": reason} for workflow, (owner, reason) in sorted(self.resource_waits.items()) if owner == run_id]
         if self._cycle_reports_enabled(run_id): result["research_projection"] = {"path": f"{run_id}/projection", "error": self.projection_errors.get(run_id)}
@@ -2097,17 +2124,27 @@ class WorkflowHost:
                 job.cancelled.set(); job.future.cancel()
                 if job.future.done(): self._literature_jobs.pop(key, None)
         return progressed
-    def _provider_retry_pending(self, run_id: str) -> bool:
-        # The durable failed Attempt carries the provider's delay. Reopening a
-        # Host must not reset it, and another expert shares the same provider.
-        rows = self.store.inspect(
-            "SELECT json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at "
+    def _provider_retry_status(self, run_id: str) -> dict[str, Any]:
+        # Durable gate view: closed Attempts carry the failure, an operator
+        # clear transition ends it early. No in-memory authority, so a
+        # reopened Host computes the identical gate.
+        from .provider_observation import provider_retry_gate
+        cleared = self.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
+            "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
+        rows = self.store.inspect("SELECT attempt_id, ended_at, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status "
             "FROM execution_attempts WHERE run_id=? AND kind='AGENT' AND state='CLOSED' "
-            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code')='rate_limited'",
-            (run_id,))
-        now = time.time()
-        return any(type(row["retry_at"]) in (int, float) and math.isfinite(row["retry_at"])
-                   and row["retry_at"] > now for row in rows)
+            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IN ('rate_limited','auth_failed')", (run_id,))
+        try: cooldown = self._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
+        except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
+        if type(cooldown) not in (int, float) or not math.isfinite(float(cooldown)) or float(cooldown) < 0:
+            cooldown = DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
+        return provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
+            cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
+    def _provider_retry_pending(self, run_id: str) -> bool:
+        return bool(self._provider_retry_status(run_id)["pending"])
 
     def _expert_agent_step(self, run_id: str, owner_id: str, task: ResearchNodeTask | AuxiliaryTask,
                            role: str, component_id: str, method_family_id: str | None = None) -> None:

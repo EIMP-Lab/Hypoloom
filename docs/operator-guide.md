@@ -54,6 +54,17 @@ HTTP(S) access, Poppler paths and response/PDF limits together. Notifications
 require separate explicit recipient/transport approval and are disabled in
 public templates. See [notifications](guides/notifications.md).
 
+A provider that rejects authentication (HTTP 401/403 — rolling quota windows
+and broken keys look alike) pauses new Agent dispatch instead of burning retry
+budgets: the run stays ACTIVE, in-flight work finishes, and dispatch resumes
+on its own after `budget.provider_auth_cooldown_seconds` (default 18000, zero
+disables). The gate is derived from durable failure rows, so a Host restart
+neither clears nor resets it. Operators get `provider_auth_cooldown` /
+`provider_auth_resumed` notifications, a TUI banner, and can resume early
+after restoring access: TUI `p` → confirm, or
+`hypoloom provider-retry-clear --run-id <id>`. A still-broken credential
+simply re-enters cooldown on the next failure.
+
 ## Resources, observation and stopping
 
 CPU-only is the public template default. GPU starts require exact device UUIDs,

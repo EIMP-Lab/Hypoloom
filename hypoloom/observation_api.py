@@ -22,6 +22,7 @@ PRODUCT_EVENT_TYPES = frozenset({"run_started", "run_finished", "hypothesis_adde
     "debate_selected", "debate_started", "debate_finished", "debate_restarts_finished", "debate_failed",
     "leader_aborted", "debate_aborted",
     "new_best_result", "goal_verdict_recorded",
+    "provider_auth_cooldown", "provider_auth_resumed",
     "participant_pause_requested", "participant_resumed", "operator_note_injected",
     "grounding_question", "grounding_answered"})
 
@@ -96,9 +97,64 @@ def _best_results(run_id, facts, commands):
     return events
 
 
+def _provider_auth_events(run_id, facts, transitions, attempts):
+    """Derive cooldown episodes from durable auth failures and operator clears.
+
+    One event per episode, never per attempt: a rejection storm inside one
+    cooldown window is a single notification. A zero/disabled cooldown or a
+    missing contract yields no events, matching the absent dispatch gate.
+    """
+    goal = next((row for row in facts if row["fact_type"] == "GoalDefined"), None)
+    if goal is None:
+        return []
+    budget = _payload(goal).get("research_contract", {}).get("budget", {})
+    cooldown = budget.get("provider_auth_cooldown_seconds", 18000)
+    if isinstance(cooldown, bool) or not isinstance(cooldown, (int, float)) or not 0 <= float(cooldown) <= 7 * 86400:
+        cooldown = 18000.0
+    cooldown = float(cooldown)
+    if cooldown == 0:
+        return []  # A disabled gate never emits cooldown events either.
+
+    def clear_time(row):
+        value = _payload(row).get("provider_retry_clear", {}).get("cleared_at")
+        return float(value) if type(value) in (int, float) else None
+
+    points = []
+    for row in attempts:
+        if row["kind"] != "AGENT" or row["state"] != "CLOSED":
+            continue
+        observation = json.loads(row["observation_json"] or "{}")
+        failure = observation.get("diagnostics", {}).get("provider_failure", {})
+        if failure.get("code") != "auth_failed" or type(row["ended_at"]) not in (int, float):
+            continue
+        points.append((float(row["ended_at"]), 0, row["attempt_id"], failure.get("http_status"), None))
+    for row in transitions:
+        if row["workflow_kind"] != "RUN":
+            continue
+        cleared = clear_time(row)
+        if cleared is not None:
+            points.append((cleared, 1, row["command_id"], None, row["revision"]))
+    points.sort(key=lambda item: (item[0], item[1]))
+    events, until, episode = [], 0.0, 0
+    for at, kind, identity, http_status, revision in points:
+        if kind == 1:
+            until = min(until, at)
+            events.append(_event("provider-auth-clear", identity, revision, "provider_auth_resumed",
+                at, run_id, cleared_at=at, command_id=identity))
+            continue
+        if at <= until:
+            continue
+        until = at + cooldown
+        episode += 1
+        events.append(_event("provider-auth", identity, 1, "provider_auth_cooldown", at, run_id,
+            attempt_id=identity, http_status=http_status, cooldown_seconds=cooldown, cooldown_until=until))
+    return events
+
+
 def product_events(run_id: str, facts, transitions, attempts, *, commands=None) -> list[dict[str, Any]]:
     """Name only observed product events; never infer an accepted scientific fact."""
     result = _best_results(run_id, facts, commands or {})
+    result.extend(_provider_auth_events(run_id, facts, transitions, attempts))
     for row in facts:
         payload = _payload(row)
         kind = {"GoalDefined": "run_started", "HypothesisProposed": "hypothesis_added",
