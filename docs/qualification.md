@@ -6,6 +6,44 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — wire-final input floor for bill completeness, 2026-09-17
+
+Implemented under the user's repair authorization after the read-only
+adjudication recorded below: the k3 endpoint's stream-start usage runs a few
+tokens above its final per-request usage, and CC records that start snapshot
+in transcript assistant events, so the transcript-derived lower bound could
+exceed the exact billing ledger and fail completed attempts as
+`invalid_provider_metadata` (15 of 62 Agent attempts in the wedged run; both
+9-17 paid samples). The guarded quantity was right; its proxy was not.
+
+The repair reuses the existing exchange capture, no parallel authority:
+`provider_observation.observed_input_floor` reduces the already-retained wire
+exchanges to the per-request final input sum only when every `/v1/messages`
+exchange is complete, measured and single-model (otherwise None).
+`_provider_accounting` accepts an optional `observed_wire_input_floor`; when
+present it replaces the transcript bound as the floor the CLI ledger must
+cover (diagnostics label `provider_accounting_floor="wire_exchange"`), so the
+start/final skew cancels while a ledger below the wire still fails closed.
+The full-CC finalize path reads the capture once before response parsing and
+reuses it for the existing observed-usage/failure diagnostics; without a
+complete single-model capture the transcript guard is unchanged. The legacy
+direct-provider branch has no capture and keeps the transcript guard. No
+schema, identity or budget change.
+
+Focused evidence: 14 new `tests/runtime/test_provider_wire_floor.py` cases —
+floor reduction (complete/unmeasured/multi-model/non-generation), response
+level (skew accepted, below-wire ledger still rejected, non-integral floor
+keeps the transcript guard), and a real-CLI full-CC session whose scripted
+upstream emits start=2/final=1 usage per request: the design attempt closed
+SUCCEEDED with transcript bound 12 > ledger 6 == wire floor 6, while the same
+captured stdout replayed without the floor still fails
+`invalid_provider_metadata`. Adjacent suites pass: 165 (accounting guard
+files) + 196 (full-CC adapter, file-tool CLI, session CLI, full CC host,
+agent host). Full G1 after the repair: **5,760 passed / 25 opt-in skips / 0
+failed**, 4,999.79 s (`g1-wirefloor.xml`; pre-checks compileall, ruff,
+`git diff --check` pass). No paid/GPU lane was rerun; the k3 skew samples and
+the foreign GPU tenancy remain as recorded below.
+
 ## Supplementary qualification — provider-auth-cooldown repair candidate, 2026-09-17
 
 The user requested a complete G0–G5 batch for the uncommitted provider auth

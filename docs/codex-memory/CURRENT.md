@@ -42,7 +42,17 @@
   regression — the wedged run itself (2.1.273 + k3[1m]) already had 15 such
   failures in 62 Agent attempts, and pinning 2.1.273 is no remedy for k3.
   The repair does not revive the wedged run's exhausted components; that run
-  was never mutated and stayed byte-identical across G2.
+  was never mutated and stayed byte-identical across G2. Night, under the
+  user's follow-up authorization, the wire-final floor repair: the accounting
+  guard now prefers `provider_observation.observed_input_floor` (per-request
+  final usage from the retained exchange capture, only when complete and
+  single-model) over the transcript bound, labeled
+  `provider_accounting_floor="wire_exchange"`; incomplete captures keep the
+  transcript guard, and a ledger below the wire still fails closed. Evidence:
+  14 new wire-floor cases including a real-CLI skewed-session red→green
+  (transcript bound 12 > ledger 6 == wire floor 6, attempt SUCCEEDED),
+  adjacent 165 + 196, full G1 5,760/0 failed (`g1-wirefloor.xml`); details in
+  qualification's top section.
 
 - Same evening, research-runtime session records relocated under the user's
   request: this project's Claude Code transcripts moved from

@@ -894,6 +894,15 @@ class ClaudeAgentHost:
             },
         }
         reason = forced_reason
+        exchanges: list[Mapping[str, object]] | None = None
+        wire_input_floor: int | None = None
+        if handle._runtime_diagnostics is not None:
+            from .provider_observation import observed_input_floor, read_exchanges
+            try:
+                exchanges = read_exchanges(handle._runtime_diagnostics.root / "provider")
+                wire_input_floor = observed_input_floor(exchanges)
+            except (OSError, ValueError, TypeError):
+                exchanges = None
         output_limit = _transport_output_limit(handle.request)
         stdout_size = _stream_size(handle._stdout_file)
         stderr_size = _stream_size(handle._stderr_file)
@@ -912,7 +921,8 @@ class ClaudeAgentHost:
             output = _read_bounded(handle._stdout_file, output_limit)
             if output is not None:
                 _, _, parsed_diagnostics = _provider_response(
-                    handle.request, handle.model, output, final_text_output=final_text_output
+                    handle.request, handle.model, output, final_text_output=final_text_output,
+                    observed_wire_input_floor=wire_input_floor,
                 )
                 diagnostics.update(parsed_diagnostics)
             reason = AgentHostTerminalReason.FAILED
@@ -926,7 +936,9 @@ class ClaudeAgentHost:
                         _output_schema(handle.request, tool_workspace=True))
                 except ValueError:
                     _, failure_code, parsed_diagnostics = _provider_response(
-                        handle.request, handle.model, output or b"", final_text_output=True)
+                        handle.request, handle.model, output or b"", final_text_output=True,
+                        observed_wire_input_floor=wire_input_floor,
+                    )
                     diagnostics.update(parsed_diagnostics)
                     reason = AgentHostTerminalReason.INVALID_OUTPUT
         if reason is None:
@@ -982,6 +994,7 @@ class ClaudeAgentHost:
                                     "provider_observed_input_tokens_lower_bound", 0),
                                 observed_turn_count=stream_diagnostics.get("provider_observed_turn_count")
                                     if final_text_output else None,
+                                observed_wire_input_floor=wire_input_floor,
                             ))
         if reason is None:
             output = _read_bounded(handle._stdout_file, output_limit)
@@ -995,6 +1008,7 @@ class ClaudeAgentHost:
                     output,
                     workspace_artifacts=workspace_artifacts,
                     final_text_output=final_text_output,
+                    observed_wire_input_floor=wire_input_floor,
                 )
                 diagnostics.update(parsed_diagnostics)
                 reason = (
@@ -1038,7 +1052,8 @@ class ClaudeAgentHost:
             recorder = handle._runtime_diagnostics
             from .provider_observation import provider_failure, read_exchanges, summarize_exchanges
             try:
-                exchanges = read_exchanges(recorder.root / "provider")
+                if exchanges is None:
+                    exchanges = read_exchanges(recorder.root / "provider")
                 diagnostics["served_models"] = sorted({model for exchange in exchanges
                     for model in exchange.get("served_models", []) if isinstance(model, str)})
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
@@ -1362,6 +1377,7 @@ def _provider_response(
     *,
     workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None,
     final_text_output: bool = False,
+    observed_wire_input_floor: object = None,
 ) -> tuple[AgentResponse | None, str | None, Mapping[str, object]]:
     outer, stream_failure, stream_diagnostics = _unpack_provider_stream(raw)
     if stream_failure is not None:
@@ -1381,6 +1397,7 @@ def _provider_response(
                 "provider_observed_input_tokens_lower_bound", 0),
             observed_turn_count=stream_diagnostics.get("provider_observed_turn_count")
                 if final_text_output else None,
+            observed_wire_input_floor=observed_wire_input_floor,
         )
     )
     if isinstance(subtype, str):
@@ -1721,6 +1738,7 @@ def _provider_accounting(
     allow_model_usage_fallback: bool,
     observed_input_tokens_lower_bound: object = 0,
     observed_turn_count: object = None,
+    observed_wire_input_floor: object = None,
 ) -> Mapping[str, object]:
     normalization: dict[str, object] = {}
     try:
@@ -1748,6 +1766,14 @@ def _provider_accounting(
             turns = normalized_turns
         cost = _cost(outer.get("total_cost_usd"))
         observed_input = _nonnegative_int(observed_input_tokens_lower_bound, "observed input lower bound")
+        wire_floor = observed_wire_input_floor
+        if type(wire_floor) is not int or wire_floor < 0:
+            wire_floor = None
+        if wire_floor is not None:
+            # The wire-final usage is the same quantity the ledger bills; a
+            # transcript snapshot can exceed it (provider start/final skew).
+            observed_input = wire_floor
+            normalization["provider_accounting_floor"] = "wire_exchange"
     except (AgentACIError, TypeError, ValueError) as exc:
         return {**normalization, "provider_accounting_error": bounded_diagnostic_text(str(exc))}
     reported = {

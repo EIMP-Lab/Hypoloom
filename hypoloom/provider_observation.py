@@ -131,6 +131,25 @@ def summarize_exchanges(exchanges):
     return result
 
 
+def observed_input_floor(exchanges):
+    """Wire-final input floor from complete single-model generation exchanges.
+
+    The transcript's per-message usage can carry the provider's stream-start
+    snapshot, which may exceed the final per-request usage the bill actually
+    covers; the wire final usage is the same quantity as the ledger.
+    """
+    summary = summarize_exchanges(exchanges)
+    if summary["unmeasured_requests"] or not summary["completed_requests"]:
+        return None
+    models = {model for exchange in exchanges
+        if exchange.get("request_path") == "/v1/messages"
+        for model in exchange.get("served_models", ())}
+    if len(models) != 1:
+        return None
+    return sum(summary[key] for key in (
+        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+
+
 def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now):
     """Reduce durable provider-failure rows to the current dispatch gate.
 
