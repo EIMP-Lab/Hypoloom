@@ -47,14 +47,29 @@ automatic paid retry (`cohort-accounting.json`).
 
 ### Findings and smallest next steps
 
-1. **CC 2.1.274 token accounting mismatch — new, systematic today.** Four
-   agent attempts across two paid runs reported aggregate `input_tokens`
-   five below the platform's assistant-message lower bound, failing closed as
-   `invalid_provider_metadata`. Five 9-16 samples on CC 2.1.272/2.1.273 never
-   produced it. Whether the CLI or the provider endpoint changed reporting is
-   undecided; retained redacted captures sit under each sample's
-   `state/diagnostics/`. Until adjudicated, paid qualification on CC 2.1.274
-   with k3-256k is unreliable; pinning 2.1.273 is the known-good fallback.
+1. **k3 provider start/final usage skew trips the accounting guard —
+   adjudicated after the batch (read-only, wire-level).** Four agent attempts
+   across two paid runs reported aggregate `input_tokens` five below the
+   platform's assistant-message lower bound, failing closed as
+   `invalid_provider_metadata`. Adjudication: the failed sample's retained
+   `provider/NNNNNNN` wire captures show the k3 endpoint's stream-start usage
+   one token above its final per-request usage on 5 of 6 responses; the CLI
+   billing ledger (`modelUsage`, costUSD) exactly matches the per-request
+   final sums (415,342), while the transcript assistant events carry the
+   start snapshot (input-only, cache fields zero), summing to 415,347 — the
+   platform's max-per-message-id lower bound reproduces both exactly, so the
+   platform arithmetic is correct and the bill is exact; the skew is
+   provider-side. This is **not a 2.1.274 regression**: the wedged run on
+   2.1.273 + k3[1m] already recorded 15 such failures among 62 Agent attempts
+   (interleaved with successes — retries land on unskewed responses), while
+   2.1.272 + k3-256k on 9-16 recorded final split usage (sum == aggregate on
+   all 12 attempts) and 2.1.273 + deepseek-v4-pro shows start == final on its
+   endpoint. Pinning 2.1.273 is therefore **not** a remedy for k3. Real-run
+   implication: any CC version with k3 currently fails ~15–25% of agent
+   attempts post-completion, burning node retry budget but not corrupting
+   bills; a platform-side tolerance for the start/final skew pattern (or a
+   non-skewing endpoint) is a separate decision. Redacted captures retained
+   under each sample's `state/diagnostics/`.
 2. **Foreign GPU tenancy blocks the approved pair.** All four cards carry
    PID 2833485's allocations (15.2/15.8 GiB on 0/1, 254 MiB on 2/3). G4's
    two failures and the G5-resource deferral follow from it. One G4 rerun

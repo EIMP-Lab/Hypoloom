@@ -31,12 +31,18 @@
   qualification's top section): G1 5,746/0 failed, G2 174/174 with the
   retained cohort byte-identical, G3 7/7. G4 failed 2/10 purely on a foreign
   tenant pinning GPU 0/3 memory (zero provider/auth involvement, roots
-  retained); both paid samples failed on a new systematic CC 2.1.274/k3-256k
-  token-accounting mismatch (`invalid_provider_metadata`, reported input 5
-  below observed lower bound) unrelated to the repair — G5-resource was then
-  left unlaunched, preserving its 5 USD. Known paid spend 11.082952 USD. The
-  repair does not revive the wedged run's exhausted components; that run was
-  never mutated and stayed byte-identical across G2.
+  retained); both paid samples failed on a k3 token-accounting mismatch
+  (`invalid_provider_metadata`) unrelated to the repair — G5-resource was
+  then left unlaunched, preserving its 5 USD. Known paid spend 11.082952 USD.
+  Read-only adjudication after the batch: the k3 endpoint's stream-start
+  usage runs a few tokens above its final per-request usage (wire-confirmed,
+  5/6 responses by 1), transcript assistant events carry that start snapshot
+  while `modelUsage`/cost match the exact final sums; the platform lower
+  bound reproduces both exactly, so the skew is provider-side, not a 2.1.274
+  regression — the wedged run itself (2.1.273 + k3[1m]) already had 15 such
+  failures in 62 Agent attempts, and pinning 2.1.273 is no remedy for k3.
+  The repair does not revive the wedged run's exhausted components; that run
+  was never mutated and stayed byte-identical across G2.
 
 - Same evening, research-runtime session records relocated under the user's
   request: this project's Claude Code transcripts moved from
