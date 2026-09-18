@@ -507,7 +507,7 @@ def test_static_get_routes_lifecycle_and_security_headers(tmp_path: Path) -> Non
         assert b"research_contract" in script
         assert b"required-assessed" in script
         assert b"COMPLETED means lifecycle settlement, not GOAL_MET" in script
-        assert b"scientific process attempts" in script
+        assert b"durably open attempt" in script
         assert b"sessionStorage.setItem" in script
         assert script.index(b"sessionStorage.setItem") < script.index(
             b"history.replaceState"

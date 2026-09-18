@@ -766,7 +766,7 @@ def test_browser_session_corrections_literature_interactions_and_resource_detail
     browser, tmp_path: Path
 ) -> None:
     page = browser
-    page.click("#expert-list button")
+    page.click("#expert-list .detail-link")
     page.wait("document.querySelector('.session-attempt') !== null")
     lineage = page.evaluate("document.querySelector('#workbench-list').innerText")
     assert all(
@@ -1075,6 +1075,127 @@ def test_browser_shared_goal_presentation_and_exact_acceptance_observations(brow
     assert "Any condition may hold (ANY)" in page.text("#shared-acceptance-panel")
     page.click("#tab-map")
     assert not page.evaluate("document.querySelector('#show-components').hidden")
+
+
+def test_browser_shared_acceptance_metric_trends_per_hypothesis_chain(browser, tmp_path):
+    page = browser
+
+    def outcome(experiment_id, hypothesis_id, measurements):
+        return {"experiment_id": experiment_id, "scope": "GOAL",
+            "component_id": "component-a", "method_family_id": "candidate-a",
+            "outcome_id": f"outcome-{experiment_id}", "artifact_id": f"artifact-{experiment_id}",
+            "source_attempt_id": "grounding-accepted", "local_outcome": "SUCCESS",
+            "local_metric_value": "1", "hypothesis_id": hypothesis_id,
+            "goal_evaluation": {"measurements": measurements, "checks": {"reproducible": True}}}
+
+    common = {
+        "source_attempt_id": "grounding-accepted",
+        "acceptance": {
+            "summary": "Improve both held-out scores.",
+            "rule": "ALL",
+            "criteria": [
+                {"name": "iemocap_weighted_f1_mean", "operator": "GT", "target": "0.7305"},
+                {"name": "meld_weighted_f1_mean", "operator": "GT", "target": "0.6674"},
+                {"name": "reproducible", "operator": "IS_TRUE"},
+            ],
+            "validity_checks": [],
+        },
+        "outcomes": [
+            outcome("experiment-a1", "hypothesis-a",
+                    {"iemocap_weighted_f1_mean": "0.71", "meld_weighted_f1_mean": "0.65"}),
+            outcome("experiment-a2", "hypothesis-b",
+                    {"iemocap_weighted_f1_mean": "0.74", "meld_weighted_f1_mean": "not-a-number"}),
+            outcome("experiment-b1", "hypothesis-c", {"iemocap_weighted_f1_mean": "0.70"}),
+            outcome("experiment-b2", "hypothesis-d", {"iemocap_weighted_f1_mean": "0.72"}),
+            outcome("experiment-legacy", None, {"iemocap_weighted_f1_mean": "0.69"}),
+        ],
+    }
+    del common["outcomes"][4]["hypothesis_id"]
+    page.evaluate("fixture.snapshot.experts.push({role:'expert-b', slot_ordinal:2, owned_component_ids:['component-b']})")
+    page.evaluate("fixture.snapshot.components.push({component_id:'component-b', owner_role:'expert-b', state:'READY'})")
+    page.evaluate("fixture.snapshot.hypotheses.push("
+        "{hypothesis_id:'hypothesis-c', component_id:'component-b', proposer_role:'expert-b', claim:'expert-b root'},"
+        "{hypothesis_id:'hypothesis-d', component_id:'component-b', proposer_role:'expert-b', parent_hypothesis_id:'hypothesis-c', claim:'expert-b child'})")
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelectorAll('#shared-acceptance-panel .metric-chart').length === 2")
+    assert page.evaluate(
+        "Array.from(document.querySelectorAll('.metric-chart')).map(e => e.dataset.metric)"
+    ) == ["iemocap_weighted_f1_mean", "meld_weighted_f1_mean"]
+    assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 2
+    assert page.evaluate(
+        "Array.from(document.querySelectorAll('.metric-target-label')).map(e => e.textContent)"
+    ) == ["target > 0.7305", "target > 0.6674"]
+    iemocap = ".metric-chart[data-metric='iemocap_weighted_f1_mean']"
+    meld = ".metric-chart[data-metric='meld_weighted_f1_mean']"
+
+    def count(selector):
+        return page.evaluate(f'document.querySelectorAll("{selector}").length')
+
+    assert count(f"{iemocap} .metric-line") == 3
+    assert count(f"{iemocap} .metric-point") == 5
+    assert count(f"{meld} .metric-line") == 1
+    assert count(f"{meld} .metric-point") == 1
+    assert count(f"{iemocap} .metric-line.expert-1") == 2
+    assert count(f"{iemocap} .metric-line.expert-2") == 1
+    stroke_a = page.evaluate(f'getComputedStyle(document.querySelector("{iemocap} .metric-line.expert-1")).stroke')
+    stroke_b = page.evaluate(f'getComputedStyle(document.querySelector("{iemocap} .metric-line.expert-2")).stroke')
+    assert stroke_a != stroke_b
+    legend = page.text(".metric-legend")
+    assert "hypothesis-a" in legend
+    assert "component-a (no recorded hypothesis)" in legend
+    assert "hypothesis-c" in legend
+    assert "not-a-number" not in page.text("#shared-acceptance-panel .metric-trends")
+    page.click(".metric-legend-chip")
+    page.wait(f'document.querySelectorAll("{iemocap} .metric-line").length === 2')
+    assert count(f"{meld} .metric-line") == 0
+    assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 2
+    page.click(".metric-legend-chip")
+    page.wait(f'document.querySelectorAll("{iemocap} .metric-line").length === 3')
+    assert "Published experiment records · 5" in page.text("#shared-acceptance-panel")
+    assert page.evaluate("document.querySelector('#shared-acceptance-panel .acceptance-records').open") is False
+    assert page.evaluate("document.querySelectorAll('.acceptance-records > article').length") == 5
+    page.click(".acceptance-records > summary")
+    page.wait("document.querySelector('#shared-acceptance-panel .acceptance-records').open")
+    assert "experiment-a1" in page.text(".acceptance-records")
+    page.evaluate("document.querySelector('.metric-trends').scrollIntoView()")
+    page.screenshot(tmp_path / 'metric-trends.png')
+
+
+def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_path):
+    page = browser
+    assert page.evaluate("document.querySelector('.expert-preview h3 .breath-dot') === null")
+    assert page.evaluate("document.querySelector('.expert-preview .subagent-list') === null")
+    assert "scientific process attempts" not in page.text(".expert-identity")
+    page.evaluate("fixture.snapshot.attempts.push("
+        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
+        "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
+        "{attempt_id:'open-exe', kind:'PROCESS', state:'OPEN', role:'expert-a', command:'EXECUTE', gpu_uuid:'GPU-0', latest_utilization_percent:87, started_at:fixture.snapshot.observed_at-540},"
+        "{attempt_id:'open-other', kind:'AGENT', state:'OPEN', role:'expert-b', command:'RESULT_ANALYSIS', context_tokens:1200, session_id:'session-c'})")
+    page.wait("document.querySelectorAll('.expert-preview .subagent-row').length === 3")
+    assert "Working · 3" in page.text(".expert-preview .subagent-list")
+    rows = ".expert-preview .subagent-row"
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{rows} .subagent-stage')).map(e => e.textContent)") == ["RUN", "ANA", "EXE"]
+    contexts = page.evaluate(f"Array.from(document.querySelectorAll('{rows} .subagent-context')).map(e => e.textContent)")
+    assert contexts[0].startswith("context ≥45.2K")
+    assert contexts[1].startswith("context —")
+    assert contexts[2] == "GPU GPU-0 · 87%"
+    assert page.evaluate(f"document.querySelectorAll('{rows} .subagent-context .overdue-flag').length") == 1
+    assert page.evaluate(f"document.querySelector('{rows} .subagent-context .overdue-flag').textContent") == "overdue 50m/45m"
+    assert page.evaluate(f"document.querySelectorAll('{rows} .breath-dot').length") == 3
+    title = page.evaluate(f'document.querySelector("{rows}").title')
+    assert "Experiment execution" in title and "not process liveness" in title
+    assert "live context · last model turn read from the session transcript" in title
+    assert "elapsed 12m of 45m wall budget" in title
+    overdue_title = page.evaluate(f'document.querySelectorAll("{rows}")[1].title')
+    assert "no context reading yet" in overdue_title
+    assert "elapsed 50m of 45m wall budget · exceeded" in overdue_title
+    process_title = page.evaluate(f'document.querySelectorAll("{rows}")[2].title')
+    assert "Experiment process" in process_title
+    assert "GPU GPU-0 · latest sampled utilization 87%" in process_title
+    assert "3 durably open attempts" in page.evaluate("document.querySelector('.expert-preview h3 .breath-dot').title")
+    page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
+    page.evaluate("window.scrollBy(0, -110)")
+    page.screenshot(tmp_path / 'expert-working-subagents.png')
 
 
 def test_browser_refresh_is_sequential_pauses_hidden_and_preserves_unchanged_dom(browser):

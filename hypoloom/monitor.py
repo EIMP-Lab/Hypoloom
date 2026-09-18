@@ -94,6 +94,10 @@ class AttemptView:
     stdout_path: str | None = None
     stderr_path: str | None = None
     gpu_usage: tuple[dict[str, Any], ...] = ()
+    session_id: str | None = None
+    context_tokens: int | None = None
+    wall_seconds: float | None = None
+    context_source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,6 +338,7 @@ def _shared_acceptance_projection(
             "experiment_id": row["experiment_id"],
             "component_id": payload.get("component_id"),
             "method_family_id": payload.get("method_family_id"),
+            "hypothesis_id": specs.get(row["experiment_id"], {}).get("hypothesis_id"),
             "artifact_id": payload.get("artifact_id"),
             "scope": binding.get("scope"),
             "source_attempt_id": binding.get("source_attempt_id"),
@@ -599,6 +604,116 @@ def _attempt_phase(
     return command.lower()
 
 
+def _attempt_reported_tokens(observation: Mapping[str, Any]) -> int | None:
+    diagnostics = observation.get("diagnostics")
+    if not isinstance(diagnostics, Mapping):
+        return None
+    for key in ("provider_accounting", "provider_reported_lower_bound"):
+        report = diagnostics.get(key)
+        if not isinstance(report, Mapping):
+            continue
+        usage = report.get("token_usage")
+        if not isinstance(usage, Mapping):
+            continue
+        total = usage.get("total_tokens")
+        if type(total) is int and total >= 0:
+            return total
+    return None
+
+
+_TRANSCRIPT_TAIL_BYTES = 256 * 1024
+
+
+def _session_transcript_path(
+    root: Path,
+    run_id: str,
+    observation: Mapping[str, Any],
+) -> Path | None:
+    """Locate the live session transcript only through recorded identities."""
+    request, session = observation.get("request"), observation.get("session")
+    if not isinstance(request, Mapping) or not isinstance(session, Mapping):
+        return None
+    fields = tuple(
+        observation_value
+        for observation_value in (
+            request.get("role"), request.get("component_id"),
+            session.get("scope"), session.get("session_id"),
+        )
+    )
+    cycle = session.get("cycle")
+    if not all(isinstance(value, str) and value for value in fields) or not isinstance(cycle, int):
+        return None
+    role, component_id, scope, session_id = fields
+    candidate = (
+        root / run_id / "sessions" / role / f"c{cycle}"
+        / component_id / scope / "projects" / f"{session_id}.jsonl"
+    )
+    try:
+        resolved = candidate.resolve()
+        confined = resolved.is_relative_to(root.resolve())
+    except OSError:
+        return None
+    if not confined or not resolved.is_file():
+        return None
+    return resolved
+
+
+def _transcript_context_tokens(transcript: Path) -> int | None:
+    """Last model-turn input total from the live transcript tail, if readable."""
+    try:
+        size = transcript.stat().st_size
+        with transcript.open("rb") as handle:
+            if size > _TRANSCRIPT_TAIL_BYTES:
+                handle.seek(-_TRANSCRIPT_TAIL_BYTES, 2)
+            content = handle.read()
+    except OSError:
+        return None
+    lines = content.splitlines()
+    if size > _TRANSCRIPT_TAIL_BYTES and lines:
+        lines = lines[1:]
+    for line in reversed(lines):
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        message = record.get("message") if isinstance(record, dict) else None
+        if not isinstance(message, Mapping):
+            continue
+        usage = message.get("usage")
+        if not isinstance(usage, Mapping):
+            continue
+        total, found = 0, False
+        for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+            value = usage.get(key)
+            if type(value) is int and value >= 0:
+                total += value
+                found = True
+        if found:
+            return total
+    return None
+
+
+def _with_live_attempt_context(
+    root: Path,
+    run_id: str,
+    attempts: tuple[AttemptView, ...],
+    observations: Mapping[str, Mapping[str, Any]],
+) -> tuple[AttemptView, ...]:
+    rendered = []
+    for attempt in attempts:
+        if attempt.kind != "AGENT" or attempt.state != "OPEN":
+            rendered.append(attempt)
+            continue
+        observation = observations.get(attempt.attempt_id)
+        transcript = None if observation is None else _session_transcript_path(root, run_id, observation)
+        tokens = None if transcript is None else _transcript_context_tokens(transcript)
+        rendered.append(
+            attempt if tokens is None
+            else replace(attempt, context_tokens=tokens, context_source="transcript")
+        )
+    return tuple(rendered)
+
+
 def _attempt_views(
     reader: StateTransaction,
     run_id: str,
@@ -619,6 +734,7 @@ def _attempt_views(
     ).fetchall())
     rendered: list[AttemptView] = []
     scientific_process_attempt_ids: set[str] = set()
+    session_context: dict[str, int] = {}
     for row in rows:
         transition = _json_object(row["transition_payload_json"])
         observation = (observations[row["attempt_id"]] if observations is not None
@@ -648,6 +764,23 @@ def _attempt_views(
             else str(request.get("command", workflow_command))
         )
         attempt_id = str(row["attempt_id"])
+        session = observation.get("session")
+        session_value = session.get("session_id") if isinstance(session, Mapping) else None
+        session_id = (session_value if isinstance(session_value, str) and session_value
+                      and row["kind"] == "AGENT" else None)
+        # Latest completed call in the same session bounds the context the next
+        # call carries; an OPEN attempt's own usage is unknown until close.
+        reported_tokens = _attempt_reported_tokens(observation) if session_id is not None else None
+        if row["state"] == "CLOSED" and reported_tokens is not None and session_id is not None:
+            context_tokens = reported_tokens
+            session_context[session_id] = reported_tokens
+        else:
+            context_tokens = session_context.get(session_id) if session_id is not None else None
+        budget = request.get("budget")
+        wall_value = budget.get("wall_seconds") if isinstance(budget, Mapping) else None
+        wall_seconds = (float(wall_value) if row["kind"] == "AGENT"
+                        and isinstance(wall_value, (int, float)) and not isinstance(wall_value, bool)
+                        and 0 < float(wall_value) < float("inf") else None)
         if (
             row["kind"] == "PROCESS"
             and workflow_command == "EXECUTE"
@@ -710,6 +843,9 @@ def _attempt_views(
                 if isinstance(observation.get("stderr_path"), str)
                 else None
             ),
+            session_id=session_id,
+            context_tokens=context_tokens,
+            wall_seconds=wall_seconds,
         ))
     return tuple(rendered), frozenset(scientific_process_attempt_ids)
 
@@ -1194,6 +1330,7 @@ def build_monitor_snapshot(
                 (str(row["experiment_id"]), str(row["execution_id"]))
                 for row in facts_by_type.get("ExperimentPreregistered", ())
             )
+            attempt_observations = {row["attempt_id"]: row["observation"] for row in raw_attempts}
             attempts, scientific_process_attempt_ids = _attempt_views(
                 reader,
                 run_id,
@@ -1201,8 +1338,9 @@ def build_monitor_snapshot(
                 workflow_components,
                 rendezvous_phases,
                 scientific_execution_identities,
-                {row["attempt_id"]: row["observation"] for row in raw_attempts},
+                attempt_observations,
             )
+            attempts = _with_live_attempt_context(root, run_id, attempts, attempt_observations)
             workflows = tuple(WorkflowView(
                 workflow_id=str(row["workflow_id"]),
                 kind=str(row["workflow_kind"]),

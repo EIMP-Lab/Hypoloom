@@ -29,8 +29,12 @@ from hypoloom.monitor import (
     RendezvousView,
     WorkflowView,
     _attempt_phase,
+    _attempt_reported_tokens,
     _component_views,
     _expert_lineage_termination_components,
+    _session_transcript_path,
+    _transcript_context_tokens,
+    _with_live_attempt_context,
     build_monitor_snapshot,
     build_status_projection,
     main as monitor_main,
@@ -380,6 +384,101 @@ def test_aci9_and_retained_aci8_attempt_phases_include_subkind() -> None:
     assert _attempt_phase(
         "AGENT", auxiliary.command.value, {}, {}, request=auxiliary.to_dict(),
     ) == "grounding"
+
+
+def test_attempt_reported_tokens_accepts_settled_and_lower_bound_usage() -> None:
+    settled = {"diagnostics": {"provider_accounting": {
+        "token_usage": {"total_tokens": 45200}, "turn_count": 3}}}
+    lower_bound = {"diagnostics": {
+        "provider_reported_lower_bound": {"token_usage": {"total_tokens": 1200}}}}
+    assert _attempt_reported_tokens(settled) == 45200
+    assert _attempt_reported_tokens(lower_bound) == 1200
+    assert _attempt_reported_tokens({"diagnostics": {}}) is None
+    assert _attempt_reported_tokens({}) is None
+    assert _attempt_reported_tokens({"diagnostics": {
+        "provider_accounting": {"token_usage": {"total_tokens": "45200"}}}}) is None
+
+
+def _session_observation(**overrides):
+    observation = {
+        "request": {"role": "ml-expert", "component_id": "primary.ml-expert_goal"},
+        "session": {"scope": "chain-v1.abc", "cycle": 2, "session_id": "sid-1"},
+    }
+    for key, value in overrides.items():
+        observation[key].update(value)
+    return observation
+
+
+def test_session_transcript_path_resolves_only_recorded_identities(tmp_path: Path) -> None:
+    transcript = (tmp_path / "run/sessions/ml-expert/c2/primary.ml-expert_goal"
+        / "chain-v1.abc/projects/sid-1.jsonl")
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text("{}\n")
+    assert _session_transcript_path(tmp_path, "run", _session_observation()) == transcript.resolve()
+    assert _session_transcript_path(tmp_path, "run", _session_observation(
+        session={"session_id": "missing"})) is None
+    assert _session_transcript_path(tmp_path, "run", _session_observation(
+        session={"scope": ".."})) is None
+    assert _session_transcript_path(tmp_path, "run", _session_observation(
+        session={"cycle": None})) is None
+    assert _session_transcript_path(tmp_path, "run", {"request": {}, "session": {}}) is None
+
+
+def test_transcript_context_tokens_reads_last_turn_usage_from_tail(tmp_path: Path) -> None:
+    transcript = tmp_path / "sid-1.jsonl"
+    records = [
+        {"type": "user", "message": {"content": "hello"}},
+        {"type": "assistant", "message": {"usage": {
+            "input_tokens": 100, "cache_creation_input_tokens": 20,
+            "cache_read_input_tokens": 30, "output_tokens": 5}}},
+        {"type": "assistant", "message": {"usage": {
+            "input_tokens": 200, "output_tokens": 7}}},
+    ]
+    transcript.write_text("".join(json.dumps(item) + "\n" for item in records) + "{partial")
+    assert _transcript_context_tokens(transcript) == 200
+    transcript.write_text(json.dumps(records[1]) + "\n")
+    assert _transcript_context_tokens(transcript) == 150
+    transcript.write_text("{}\n")
+    assert _transcript_context_tokens(transcript) is None
+    assert _transcript_context_tokens(tmp_path / "absent.jsonl") is None
+
+
+def test_live_attempt_context_overrides_only_open_agent_attempts(tmp_path: Path) -> None:
+    transcript = (tmp_path / "run/sessions/ml-expert/c2/primary.ml-expert_goal"
+        / "chain-v1.abc/projects/sid-1.jsonl")
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"type": "assistant", "message": {"usage": {
+        "input_tokens": 321, "cache_read_input_tokens": 9, "output_tokens": 3}}}) + "\n")
+
+    def attempt(attempt_id, kind, state):
+        return AttemptView(
+            attempt_id=attempt_id, kind=kind, state=state, workflow_id="workflow",
+            command="LITERATURE_REVIEW", component_id="primary.ml-expert_goal",
+            phase="literature_review/main", role="ml-expert", slot_ordinal=1,
+            attempt_ordinal=1, terminal_reason=None, process_group_id=None,
+            started_at=1.0, ended_at=None, gpu_uuid=None,
+            minimum_free_memory_mib=None, latest_free_memory_mib=None,
+            latest_utilization_percent=None, resource_pressure_exceeded=None,
+            context_tokens=111,
+        )
+
+    opened = attempt("open-1", "AGENT", "OPEN")
+    closed = attempt("closed-1", "AGENT", "CLOSED")
+    process = attempt("process-1", "PROCESS", "OPEN")
+    observations = {
+        "open-1": _session_observation(),
+        "closed-1": _session_observation(),
+        "process-1": _session_observation(),
+    }
+    rendered = {item.attempt_id: item for item in _with_live_attempt_context(
+        tmp_path, "run", (opened, closed, process), observations)}
+    assert rendered["open-1"].context_tokens == 330
+    assert rendered["open-1"].context_source == "transcript"
+    assert rendered["closed-1"].context_tokens == 111
+    assert rendered["closed-1"].context_source is None
+    assert rendered["process-1"].context_tokens == 111
+    missing = _with_live_attempt_context(tmp_path, "run", (opened,), {})[0]
+    assert missing.context_tokens == 111 and missing.context_source is None
 
 
 def _v4_payload(

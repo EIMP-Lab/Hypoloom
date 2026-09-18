@@ -420,16 +420,17 @@
       card.append(review);
       history.append(card);
     });
-    renderSharedAcceptance(status);
+    renderSharedAcceptance(snapshot);
   }
 
-  function renderSharedAcceptance(status) {
+  function renderSharedAcceptance(snapshot) {
     let panel = byId("shared-acceptance-panel");
     if (!panel) {
       panel = element("section", "panel");
       panel.id = "shared-acceptance-panel";
       byId("grounding-dialogue-panel").after(panel);
     }
+    const status = object(snapshot.status);
     const common = status.shared_acceptance;
     const expanded = typeof panel.querySelectorAll === "function"
       ? Array.from(panel.querySelectorAll("details")).map((details) => details.open) : [];
@@ -457,8 +458,11 @@
     list(acceptance.validity_checks).forEach((name) => validity.append(element("li", "", `${name} must be true`)));
     if (!list(acceptance.validity_checks).length) validity.append(element("li", "", "No separate validity checks declared."));
     panel.append(validity, rawDetails("Technical source · declaration and parser", acceptance));
+    renderMetricTrends(panel, common, snapshot);
     const outcomes = list(common.outcomes);
     if (!outcomes.length) panel.append(element("p", "", "No published experiment outcomes yet."));
+    const records = element("details", "acceptance-records");
+    records.append(element("summary", "", `Published experiment records · ${outcomes.length}`));
     outcomes.forEach((item) => {
       const card = element("article", "panel");
       card.append(element("h3", "", `${item.experiment_id} · ${item.scope || "scope unavailable"}`),
@@ -476,9 +480,203 @@
       else card.append(element("p", "", item.scope === "LOCAL"
         ? "LOCAL: not a common-goal evaluation."
         : "No accepted common observations published for this outcome."));
-      panel.append(card);
+      records.append(card);
     });
+    if (outcomes.length) panel.append(records);
     if (typeof panel.querySelectorAll === "function") panel.querySelectorAll("details").forEach((details, index) => { details.open = expanded[index] || false; });
+  }
+
+  const METRIC_OPERATORS = {GT: ">", GE: "≥", LT: "<", LE: "≤", EQ: "="};
+  const hiddenMetricSeries = new Set();
+
+  function metricNumber(raw) {
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function formatMetric(value) {
+    const absolute = Math.abs(value);
+    if (absolute >= 1000 || (absolute > 0 && absolute < 0.001)) return value.toExponential(2);
+    return String(Number(value.toPrecision(4)));
+  }
+
+  function hypothesisRoot(hypotheses, id) {
+    let current = id;
+    const seen = new Set([id]);
+    let node = hypotheses.get(id);
+    while (node && typeof node.parent_hypothesis_id === "string" && node.parent_hypothesis_id && !seen.has(node.parent_hypothesis_id)) {
+      seen.add(node.parent_hypothesis_id);
+      current = node.parent_hypothesis_id;
+      node = hypotheses.get(current);
+    }
+    return current;
+  }
+
+  function hypothesisDepth(hypotheses, id) {
+    let depth = 0;
+    const seen = new Set([id]);
+    let node = hypotheses.get(id);
+    while (node && typeof node.parent_hypothesis_id === "string" && node.parent_hypothesis_id && !seen.has(node.parent_hypothesis_id)) {
+      seen.add(node.parent_hypothesis_id);
+      depth += 1;
+      node = hypotheses.get(node.parent_hypothesis_id);
+    }
+    return depth;
+  }
+
+  function compareMetricPoints(left, right) {
+    return left.depth - right.depth
+      || String(left.outcome.experiment_id).localeCompare(String(right.outcome.experiment_id))
+      || String(left.outcome.outcome_id).localeCompare(String(right.outcome.outcome_id));
+  }
+
+  function metricTrendModel(common, snapshot) {
+    const hypotheses = new Map(list(snapshot.hypotheses)
+      .filter((item) => item && typeof item.hypothesis_id === "string" && item.hypothesis_id)
+      .map((item) => [item.hypothesis_id, item]));
+    const ownerOf = (componentId) => {
+      const component = list(snapshot.components).find((item) => item && item.component_id === componentId);
+      return component ? component.owner_role : null;
+    };
+    const series = new Map();
+    const metrics = new Map();
+    list(common.outcomes).forEach((outcome) => {
+      const evaluation = outcome.goal_evaluation;
+      if (!evaluation || typeof evaluation !== "object") return;
+      const observed = Object.entries(object(evaluation.measurements))
+        .map(([name, raw]) => ({name, value: metricNumber(raw), raw}))
+        .filter((point) => point.value !== null);
+      if (!observed.length) return;
+      const hypothesisId = typeof outcome.hypothesis_id === "string" && outcome.hypothesis_id ? outcome.hypothesis_id : null;
+      const rootId = hypothesisId ? hypothesisRoot(hypotheses, hypothesisId) : null;
+      const root = rootId ? hypotheses.get(rootId) : null;
+      const key = rootId || `component:${outcome.component_id || "unknown"}`;
+      if (!series.has(key)) {
+        series.set(key, {
+          key,
+          label: rootId || `${outcome.component_id || "unknown"} (no recorded hypothesis)`,
+          title: root ? (root.claim || rootId)
+            : "These outcomes are not linked to a recorded hypothesis; they are grouped by component.",
+          accent: expertClass(snapshot, root ? root.proposer_role : ownerOf(outcome.component_id)),
+        });
+      }
+      const base = {
+        outcome,
+        hypothesisId,
+        depth: hypothesisId ? hypothesisDepth(hypotheses, hypothesisId) : 0,
+      };
+      observed.forEach(({name, value, raw}) => {
+        if (!metrics.has(name)) metrics.set(name, new Map());
+        const bucket = metrics.get(name);
+        if (!bucket.has(key)) bucket.set(key, []);
+        bucket.get(key).push({...base, value, raw});
+      });
+    });
+    metrics.forEach((bucket) => bucket.forEach((points) => points.sort(compareMetricPoints)));
+    const criteria = list(common.acceptance && common.acceptance.criteria);
+    const criteriaNames = criteria.map((criterion) => criterion && criterion.name)
+      .filter((name) => typeof name === "string");
+    const ordered = new Map();
+    Array.from(metrics.keys()).sort((left, right) => {
+      const a = criteriaNames.indexOf(left);
+      const b = criteriaNames.indexOf(right);
+      return (a === -1 ? criteriaNames.length : a) - (b === -1 ? criteriaNames.length : b) || left.localeCompare(right);
+    }).forEach((name) => ordered.set(name, metrics.get(name)));
+    const targets = new Map();
+    criteria.forEach((criterion) => {
+      if (!criterion || typeof criterion.name !== "string" || !METRIC_OPERATORS[criterion.operator]) return;
+      const value = metricNumber(criterion.target);
+      if (value !== null) targets.set(criterion.name, {operator: criterion.operator, value});
+    });
+    return {metrics: ordered, series, targets};
+  }
+
+  function renderMetricChart(metric, model) {
+    const figure = element("figure", "metric-chart");
+    figure.dataset.metric = metric;
+    const target = model.targets.get(metric);
+    const width = 640;
+    const height = 240;
+    const margin = {left: 58, right: 14, top: 14, bottom: 30};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const visible = [];
+    model.metrics.get(metric).forEach((points, key) => {
+      if (!hiddenMetricSeries.has(key)) visible.push({series: model.series.get(key), points});
+    });
+    const values = visible.flatMap((item) => item.points.map((point) => point.value));
+    if (target) values.push(target.value);
+    let low = values.length ? Math.min(...values) : 0;
+    let high = values.length ? Math.max(...values) : 1;
+    const pad = low === high ? Math.abs(low) * 0.05 || 0.05 : (high - low) * 0.08;
+    low -= pad;
+    high += pad;
+    const y = (value) => margin.top + innerHeight - ((value - low) / (high - low)) * innerHeight;
+    const maxLength = Math.max(1, ...visible.map((item) => item.points.length));
+    const x = (index) => margin.left + (maxLength === 1 ? innerWidth / 2 : (index / (maxLength - 1)) * innerWidth);
+    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "metric-svg", role: "img", "aria-label": `${metric} trend per hypothesis chain`});
+    for (let step = 0; step <= 3; step += 1) {
+      const value = low + ((high - low) * step) / 3;
+      const top = y(value);
+      svg.append(svgElement("line", {class: "metric-grid", x1: margin.left, x2: width - margin.right, y1: top, y2: top}));
+      const tick = svgElement("text", {class: "metric-tick", x: margin.left - 8, y: top + 3, "text-anchor": "end"});
+      tick.textContent = formatMetric(value);
+      svg.append(tick);
+    }
+    const xStep = Math.ceil(maxLength / 12);
+    for (let index = 0; index < maxLength; index += 1) {
+      if (index % xStep !== 0 && index !== maxLength - 1) continue;
+      const tick = svgElement("text", {class: "metric-tick", x: x(index), y: height - 8, "text-anchor": "middle"});
+      tick.textContent = String(index + 1);
+      svg.append(tick);
+    }
+    if (target) {
+      const top = y(target.value);
+      svg.append(svgElement("line", {class: "metric-target-line", x1: margin.left, x2: width - margin.right, y1: top, y2: top}));
+      const label = svgElement("text", {class: "metric-target-label", x: width - margin.right, y: top - 5, "text-anchor": "end"});
+      label.textContent = `target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}`;
+      svg.append(label);
+    }
+    visible.forEach(({series, points}) => {
+      const d = points.map((point, index) => `${index === 0 ? "M" : "L"} ${x(index).toFixed(1)} ${y(point.value).toFixed(1)}`).join(" ");
+      svg.append(svgElement("path", {class: `metric-line ${series.accent}`, d}));
+      points.forEach((point, index) => {
+        const dot = svgElement("circle", {class: `metric-point ${series.accent}`, cx: x(index).toFixed(1), cy: y(point.value).toFixed(1), r: 3.4});
+        const tooltip = svgElement("title");
+        tooltip.textContent = `${point.outcome.experiment_id}\n${metric} = ${point.raw}\n${point.hypothesisId ? `hypothesis ${point.hypothesisId}` : "no recorded hypothesis"}`;
+        dot.append(tooltip);
+        svg.append(dot);
+      });
+    });
+    figure.append(element("figcaption", "", target ? `${metric} · target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}` : metric), svg);
+    return figure;
+  }
+
+  function renderMetricTrends(panel, common, snapshot) {
+    const model = metricTrendModel(common, snapshot);
+    if (!model.metrics.size) return;
+    const section = element("section", "metric-trends");
+    section.append(element("h3", "", "Metric trends"),
+      element("p", "panel-copy", "Published observations connected per initial-hypothesis chain, in each chain's experiment order. Click a legend entry to hide or show that chain."));
+    const legend = element("div", "metric-legend");
+    model.series.forEach((item) => {
+      const hidden = hiddenMetricSeries.has(item.key);
+      const chip = element("button", `metric-legend-chip ${item.accent}${hidden ? " off" : ""}`);
+      chip.type = "button";
+      chip.title = item.title;
+      chip.setAttribute("aria-pressed", hidden ? "false" : "true");
+      chip.append(element("span", "metric-swatch"), element("span", "metric-label", item.label));
+      chip.addEventListener("click", () => {
+        if (hiddenMetricSeries.has(item.key)) hiddenMetricSeries.delete(item.key);
+        else hiddenMetricSeries.add(item.key);
+        renderSharedAcceptance(snapshot);
+      });
+      legend.append(chip);
+    });
+    const grid = element("div", "metric-grid-charts");
+    model.metrics.forEach((bucket, metric) => grid.append(renderMetricChart(metric, model)));
+    section.append(legend, grid);
+    panel.append(section);
   }
 
   function renderRuntime(snapshot) {
@@ -578,6 +776,15 @@
     return "?";
   }
 
+  function compactDuration(seconds) {
+    const value = Math.max(0, Math.round(seconds));
+    if (value < 60) return `${value}s`;
+    const minutes = Math.floor(value / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return minutes % 60 ? `${hours}h${minutes % 60}m` : `${hours}h`;
+  }
+
   function stageState(stage, host) {
     const status = stage.terminal_reason || stage.state || "UNKNOWN";
     return status === "OPEN" && host !== "responded" ? "unconfirmed" : status.toLowerCase();
@@ -633,9 +840,55 @@
       const card = element("article", `entity-card expert-preview expert-accent ${expertClass(snapshot, expert.role)}`);
       card.dataset.expertRole = expert.role;
       const identity = element("div", "expert-identity");
-      identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`),
-        element("h3", "", expert.role || "unnamed role"));
-      identity.append(element("p", "", `${expert.agent_attempts ?? "?"} agent · ${expert.process_attempts ?? "?"} scientific process attempts`));
+      const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN").length;
+      const heading = element("h3", "", expert.role || "unnamed role");
+      if (openAttempts) {
+        const breath = element("span", "breath-dot");
+        breath.title = `${openAttempts} durably open attempt${openAttempts === 1 ? "" : "s"} · OPEN is durable state, not process liveness`;
+        heading.prepend(breath);
+      }
+      identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
+      const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN"
+        && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
+      if (working.length) {
+        const stageByCommand = new Map(EXPERT_STAGES.map(([command, short, label]) => [command, [short, label]]));
+        const observedAt = Number(snapshot.observed_at) || Date.now() / 1000;
+        const subagents = element("div", "subagent-list");
+        subagents.append(element("p", "subagent-title", `Working · ${working.length}`));
+        working.slice(0, 6).forEach((attempt) => {
+          const isProcess = attempt.kind === "PROCESS";
+          const [chip, label] = isProcess ? ["EXE", "Experiment process"]
+            : stageByCommand.get(attempt.command)
+              || [String(attempt.command || "?").slice(0, 3).toUpperCase(), attempt.command || "unknown"];
+          const elapsed = Math.max(0, observedAt - (Number(attempt.started_at) || observedAt));
+          const hasWall = Number.isFinite(attempt.wall_seconds) && attempt.wall_seconds > 0;
+          const overdue = hasWall && elapsed > attempt.wall_seconds;
+          const lines = [
+            `${label} · attempt ${attempt.attempt_id}`,
+            `elapsed ${compactDuration(elapsed)}${hasWall ? ` of ${compactDuration(attempt.wall_seconds)} wall budget${overdue ? " · exceeded" : ""}` : ""} · OPEN is durable state, not process liveness`,
+          ];
+          const context = element("span", "subagent-context");
+          if (isProcess) {
+            const utilization = Number.isInteger(attempt.latest_utilization_percent) ? `${attempt.latest_utilization_percent}%` : null;
+            context.append(document.createTextNode(utilization === null ? "GPU —" : `GPU ${attempt.gpu_uuid || "?"} · ${utilization}`));
+            lines.push(utilization === null ? "no GPU utilization sample recorded yet"
+              : `GPU ${attempt.gpu_uuid || "?"} · latest sampled utilization ${utilization}`);
+          } else {
+            const known = Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
+            context.append(document.createTextNode(known ? `context ≥${compactNumber(attempt.context_tokens)}` : "context —"));
+            lines.push(!known ? "no context reading yet"
+              : attempt.context_source === "transcript" ? "live context · last model turn read from the session transcript"
+              : "context carried into the current call · observed lower bound");
+          }
+          if (overdue) context.append(element("span", "overdue-flag", `overdue ${compactDuration(elapsed)}/${compactDuration(attempt.wall_seconds)}`));
+          const row = element("div", "subagent-row");
+          row.append(element("span", "breath-dot"), element("span", "subagent-stage", chip), context);
+          row.title = lines.join("\n");
+          subagents.append(row);
+        });
+        if (working.length > 6) subagents.append(element("p", "subagent-note", `+${working.length - 6} more`));
+        identity.append(subagents);
+      }
       if (sharedGoal(snapshot)) {
         list(snapshot.components).filter((component) => component.owner_role === expert.role).forEach((component) => {
           identity.append(element("p", "expert-progress", `Progress: ${component.phase || "not started"} · ${component.state || "unavailable"}`));
@@ -1473,9 +1726,9 @@
     const filters = selectedFilters();
     const product = object(state.product);
     if (state.activeView === "operations") {
-      renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance], () => renderMission(snapshot));
+      renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
-      renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, filters, sharedGoal(snapshot)], () => {
+      renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, snapshot.attempts, filters, sharedGoal(snapshot)], () => {
         const byRole = new Map(list(product.experts).map((item) => [item.role, item]));
         renderExperts({...snapshot, experts: list(snapshot.experts).map((item) => ({...item, ...object(byRole.get(item.role))}))});
       });
