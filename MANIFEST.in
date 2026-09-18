@@ -1,5 +1,5 @@
 include LICENSE README.md README.zh-CN.md SETUP.md USAGE.md CONTRIBUTING.md AGENTS.md CLAUDE.md
-include docs/assets/hypoloom_vector.svg
+include docs/assets/hypoloom_vector.svg docs/assets/hypoloom_overview.svg
 include environment.yml .gitignore .gitattributes
 include .github/ISSUE_TEMPLATE/bug_report.yml
 include .claude/settings.example.json

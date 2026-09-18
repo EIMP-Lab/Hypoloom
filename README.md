@@ -30,19 +30,15 @@ checks recorded outcomes and lifecycle consistency.
 
 ## What it provides
 
-- Grounding with explicit human clarification and common acceptance criteria.
-- Parallel expert chains, literature retrieval through OpenAlex, private Git
-  worktrees, revision graphs, debate, adjudication and evolving research skills.
-- Real CPU/GPU experiments, explicit GPU authorization, and an optional shared
-  GPU pool supporting several experiments on one card when capacity permits.
-- Bounded interaction context and cadence, model/experiment budgets, execution
-  accounting, crash recovery using each run's own preserved runtime, and
-  explicit cancellation and cleanup.
-- A Textual TUI and local Web observer for progress, evidence and human answers.
-  The TUI's **q / Leave monitor** leaves the Host running; **x / End run** opens
-  the cancellation confirmation. Help and Report Issue are separate actions.
-- English and Chinese [Profile templates](profiles/README.md), plus the
-  [G0–G5 qualification workflow](docs/qualification.md) for maintainers.
+One resident Host coordinates the whole loop; operators keep explicit
+authority, and an independent Oracle checks the record.
+
+<p align="center">
+  <img src="docs/assets/hypoloom_overview.svg" alt="Hypoloom overview: parallel domain experts each run a six-node research cycle (literature, hypotheses with forked chains, design, execute, analyze, update), fed by run-scoped Grounding, coordinated through judged debates and an Observer-selected leader, with self-evolving per-role skill plugins, all executed by a resident Workflow Host on agents, processes, and a shared GPU pool, under operator authorization and independent Oracle checks">
+</p>
+
+[Profile templates](profiles/README.md) ship in English and Chinese, and
+maintainers get the [G0–G5 qualification workflow](docs/qualification.md).
 
 ## Start here
 

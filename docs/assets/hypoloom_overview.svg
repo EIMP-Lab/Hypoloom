@@ -1,0 +1,318 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="870" viewBox="0 0 1600 870" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Hypoloom — design overview</title>
+  <desc id="desc">深色示意图,蓝色表示 Hypoloom 框架自身设计,金色表示框架之外的人与外部资源:顶部为人类操作员(金)与独立 Oracle(蓝);中部左侧 Grounding 角色(蓝)汇聚外部证据源(金:OpenAlex、论文、Web、人工对话),其下为 Hypoloom 标志,中间为三位并行领域专家(各用蓝/紫/绿区分),各自运行六节点研究闭环并 fork 假设并行探索,假设更新后回到文献开始下一周期;右侧交互区:Observer 选出 leader(蓝,以 A 为例),leader 一对多把经验注入 B、C 的假设生成阶段,debate(品红,以 B、C 为例)多轮辩论后按判决(如 B 胜)把结果注入被说服方的假设生成阶段;右侧面板为按角色自进化的技能插件;底部为常驻 Workflow Host、Agent/Process 与外部共享 GPU 池(金)。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="870" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#040914"/>
+      <stop offset="1" stop-color="#0C1428"/>
+    </linearGradient>
+    <linearGradient id="host-edge" x1="400" y1="672" x2="960" y2="832" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#96EDFC"/>
+      <stop offset=".55" stop-color="#76AEFA"/>
+      <stop offset="1" stop-color="#4E7FD8"/>
+    </linearGradient>
+    <linearGradient id="interaction-title" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#E48FD0"/>
+      <stop offset="1" stop-color="#76AEFA"/>
+    </linearGradient>
+    <linearGradient id="evo-edge" x1="1280" y1="180" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#76AEFA"/>
+      <stop offset="1" stop-color="#2E4A7A"/>
+    </linearGradient>
+    <!-- H 标志渐变(摘自 hypoloom_vector.svg) -->
+    <linearGradient id="pillar-left" x1="305" y1="186" x2="362" y2="509" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9AEDF9"/>
+      <stop offset=".23" stop-color="#76AEFA"/>
+      <stop offset=".48" stop-color="#5D63CE"/>
+      <stop offset=".67" stop-color="#7D8CFA"/>
+      <stop offset="1" stop-color="#8DDDF9"/>
+    </linearGradient>
+    <linearGradient id="pillar-right" x1="535" y1="193" x2="503" y2="518" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B2BAD8"/>
+      <stop offset=".22" stop-color="#FFE4B5"/>
+      <stop offset=".4" stop-color="#F9D39D"/>
+      <stop offset=".63" stop-color="#938BBC"/>
+      <stop offset=".82" stop-color="#7383ED"/>
+      <stop offset="1" stop-color="#8DEDF9"/>
+    </linearGradient>
+    <linearGradient id="ribbon-top" x1="285" y1="393" x2="552" y2="267" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72BCFF"/>
+      <stop offset=".29" stop-color="#97A9F0"/>
+      <stop offset=".56" stop-color="#D6C5D2"/>
+      <stop offset=".8" stop-color="#FFE0B8"/>
+      <stop offset="1" stop-color="#FFF2D7"/>
+    </linearGradient>
+    <linearGradient id="ribbon-middle" x1="282" y1="439" x2="552" y2="282" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8796F4"/>
+      <stop offset=".24" stop-color="#78A0FA"/>
+      <stop offset=".52" stop-color="#B8AEDA"/>
+      <stop offset=".79" stop-color="#E7C3B3"/>
+      <stop offset="1" stop-color="#A7B5E4"/>
+    </linearGradient>
+    <linearGradient id="ribbon-bottom" x1="319" y1="457" x2="548" y2="315" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6FA7ED"/>
+      <stop offset=".26" stop-color="#676CCD"/>
+      <stop offset=".53" stop-color="#847DCD"/>
+      <stop offset=".77" stop-color="#514974"/>
+      <stop offset="1" stop-color="#121B35"/>
+    </linearGradient>
+    <linearGradient id="ribbon-dark" x1="303" y1="423" x2="549" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#030815"/>
+      <stop offset=".44" stop-color="#0B1235"/>
+      <stop offset=".68" stop-color="#252849"/>
+      <stop offset="1" stop-color="#060D1E"/>
+    </linearGradient>
+    <linearGradient id="ribbon-edge" x1="272" y1="428" x2="557" y2="261" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BAFFFF"/>
+      <stop offset=".32" stop-color="#BFCAFF"/>
+      <stop offset=".66" stop-color="#FFF4E8"/>
+      <stop offset="1" stop-color="#FFF9E8"/>
+    </linearGradient>
+    <linearGradient id="star-fill" x1="398" y1="250" x2="452" y2="237" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A1E8FF"/>
+      <stop offset=".44" stop-color="#FEFDF9"/>
+      <stop offset="1" stop-color="#FFDEB6"/>
+    </linearGradient>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#A8DFFF"/>
+    </marker>
+    <marker id="arrow-gold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#FFE0B8"/>
+    </marker>
+    <marker id="arrow-fade" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#5D88BD"/>
+    </marker>
+    <marker id="arrow-magenta" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#E48FD0"/>
+    </marker>
+  </defs>
+
+  <rect id="canvas" width="1600" height="870" rx="24" fill="url(#bg)"/>
+
+  <!-- 顶部:人类操作员(外部)与独立 Oracle(框架) -->
+  <g id="operator-plane" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="60" y="60" width="640" height="88" rx="14" fill="#0C1528" stroke="#C9A37E" stroke-width="1.5"/>
+    <text x="88" y="102" font-size="26" font-weight="600" fill="#FFE0B8">Operator</text>
+    <text x="88" y="130" font-size="15" fill="#9FB4D8">campaign contract · explicit authorization · TUI / Web observer</text>
+
+    <rect x="900" y="60" width="640" height="88" rx="14" fill="#0C1528" stroke="#76AEFA" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="928" y="102" font-size="26" font-weight="600" fill="#EAF2FF">Oracle</text>
+    <text x="928" y="130" font-size="15" fill="#9FB4D8">independent read-only closure · recorded outcomes</text>
+
+    <!-- 配色图例 -->
+    <rect x="722" y="76" width="12" height="12" rx="3" fill="#76AEFA"/>
+    <text x="742" y="87" font-size="11.5" fill="#9FB4D8">framework</text>
+    <rect x="722" y="102" width="12" height="12" rx="3" fill="#EAC6A5"/>
+    <text x="742" y="113" font-size="11.5" fill="#9FB4D8">external</text>
+  </g>
+
+  <!-- 运行级 Grounding(框架角色,汇聚外部资源;纵向压缩) -->
+  <g id="grounding" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="60" y="180" width="260" height="340" rx="16" fill="#0C1528" stroke="#2E4A7A" stroke-width="1.5"/>
+    <text x="84" y="220" font-size="20" font-weight="600" fill="#EAF2FF">Grounding</text>
+    <text x="84" y="244" font-size="13" fill="#7E93BC">run-scoped · role-neutral</text>
+    <g fill="#101D38" stroke="#C9A37E" stroke-width="1.2">
+      <rect x="84" y="260" width="212" height="34" rx="8"/>
+      <rect x="84" y="300" width="212" height="34" rx="8"/>
+      <rect x="84" y="340" width="212" height="34" rx="8"/>
+      <rect x="84" y="380" width="212" height="34" rx="8"/>
+    </g>
+    <g font-size="13" fill="#B9CBE8">
+      <text x="100" y="282">OpenAlex query planning</text>
+      <text x="100" y="322">paper reading · PDF</text>
+      <text x="100" y="362">public web reads</text>
+      <text x="100" y="402">human dialogue</text>
+    </g>
+    <g font-size="12" fill="#7E93BC">
+      <text x="84" y="450">external evidence enters</text>
+      <text x="84" y="470">every stage, shared by</text>
+      <text x="84" y="490">all experts</text>
+    </g>
+  </g>
+
+  <!-- Hypoloom 标志(H 图标摘自 hypoloom_vector.svg,省略小尺度下不可见的立柱阴影与辉光路径) -->
+  <g id="brand-logo" transform="translate(10.4 504.1) scale(0.28)">
+    <path d="M303 212 360 181V512L307 483Q300 479 303 463Z" fill="url(#pillar-left)"/>
+    <path d="M304 212 359 182V511" stroke="#C3F6FF" stroke-opacity=".7" stroke-width="1.1"/>
+    <path d="M303 212V463" stroke="#97DEFF" stroke-opacity=".48" stroke-width="1"/>
+    <path d="M498 189 554 218V486L498 518Z" fill="url(#pillar-right)"/>
+    <path d="M498.5 190V517L554 486" stroke="#E2F2FB" stroke-opacity=".75" stroke-width="1.2"/>
+    <path d="M500 192 553 218" stroke="#DADEE9" stroke-opacity=".4" stroke-width="1"/>
+    <path d="M303 359C366 322 465 322 527 280L554 256V325C521 376 410 391 360 421V369L303 400Z" fill="#0A1126" opacity=".6"/>
+    <path d="M561 266C567 341 510 367 430 395S317 438 306 468C298 479 300 484 306 486C283 451 330 414 399 387S529 348 551 301C557 290 560 276 561 266Z" fill="url(#ribbon-bottom)"/>
+    <path d="M305 468C317 437 365 420 431 396S548 356 559 302" stroke="#BDB6EF" stroke-opacity=".76" stroke-width="1.2"/>
+    <path d="M561 258C566 315 516 348 440 376S319 418 299 453C288 472 300 479 303 481C265 465 287 427 331 402S459 357 516 324C549 305 559 280 561 258Z" fill="url(#ribbon-dark)"/>
+    <path d="M301 462C311 429 363 404 429 382S537 345 554 309" stroke="#424580" stroke-width="2.1" opacity=".58"/>
+    <path d="M558 250C575 306 510 327 438 354S303 401 285 442C274 465 284 477 295 482C282 477 275 470 278 453C265 416 310 384 363 362S481 315 522 291C544 277 554 265 558 250Z" fill="url(#ribbon-middle)"/>
+    <path d="M296 482C270 457 297 423 345 398S451 357 496 335 549 300 559 272" stroke="url(#ribbon-edge)" stroke-width="1.2" opacity=".94"/>
+    <path d="M556 236C570 278 526 309 451 332S316 375 286 410C269 430 269 443 274 452C256 419 292 383 337 362S461 324 513 296C550 276 558 251 556 236Z" fill="#030A17"/>
+    <path d="M277 421C294 389 352 367 406 348S531 317 551 283" stroke="#27385F" stroke-opacity=".6" stroke-width="1.8"/>
+    <path d="M554 218C568 269 529 289 480 313S361 348 315 372C278 391 265 417 270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218Z" fill="url(#ribbon-top)"/>
+    <path d="M270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218" stroke="url(#ribbon-edge)" stroke-width="1.65"/>
+    <path d="M269 434C266 416 273 400 283 389" stroke="#BBFFFF" stroke-width="1.5"/>
+    <path d="M314 437C337 418 376 405 414 392S507 364 532 338" stroke="#8D8ADF" stroke-opacity=".6" stroke-width="1"/>
+    <path d="M367 409C413 391 466 378 505 357" stroke="#C3ACED" stroke-opacity=".43" stroke-width="1.4" stroke-dasharray=".7 3.2"/>
+    <path d="M335 353 338 352M349 348 351 347M369 339 371 338M389 332 392 331M410 326 412 325M452 313 454 312M377 377 379 376M401 367 403 366M436 353 438 352M471 339 473 338" stroke="#F5F0FF" stroke-opacity=".62" stroke-width="1.1" stroke-linecap="round"/>
+    <path d="M430 216C426 238 425 241 398 246C424 251 426 254 430 276C434 253 437 250 461 246C436 241 434 238 430 216Z" fill="url(#star-fill)"/>
+    <path d="M430 217C427 237 424 242 400 246" stroke="#EFFAFF" stroke-opacity=".7" stroke-width=".8"/>
+  </g>
+  <text x="180" y="610" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="24" font-weight="600" fill="#EAF2FF">Hypoloom</text>
+
+  <!-- 并行专家与六节点闭环(每位专家独立色相;右侧为交互区) -->
+  <g id="experts" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="360" y="180" width="880" height="460" rx="16" fill="#0D1730" stroke="#2E4A7A" stroke-width="1.5"/>
+    <text x="388" y="220" font-size="22" font-weight="600" fill="#EAF2FF">Parallel domain experts</text>
+    <text x="388" y="246" font-size="13.5" fill="#7E93BC">independent domain knowledge · each expert forks hypothesis chains</text>
+
+    <rect x="1010" y="196" width="214" height="30" rx="15" fill="#14203C" stroke="#76AEFA" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="1117" y="216" font-size="12.5" fill="#A8DFFF" text-anchor="middle">Observer · selects leader</text>
+
+    <!-- Expert A:蓝(加高泳道,容纳 fork 与迭代回路) -->
+    <g id="lane-a">
+      <rect x="376" y="272" width="696" height="118" rx="12" fill="#0C1830" stroke="#7FB8F0" stroke-width="1.2"/>
+      <text x="392" y="292" font-size="11.5" letter-spacing="1" fill="#7FB8F0">EXPERT A · DOMAIN 1</text>
+      <g fill="#101D38" stroke="#7FB8F0" stroke-opacity=".55" stroke-width="1.2">
+        <rect x="394" y="306" width="100" height="42" rx="9"/><rect x="506" y="306" width="100" height="42" rx="9"/><rect x="618" y="306" width="100" height="42" rx="9"/><rect x="730" y="306" width="100" height="42" rx="9"/><rect x="842" y="306" width="100" height="42" rx="9"/><rect x="954" y="306" width="100" height="42" rx="9"/>
+      </g>
+    </g>
+    <!-- Expert B:紫 -->
+    <g id="lane-b">
+      <rect x="376" y="400" width="696" height="100" rx="12" fill="#0C1830" stroke="#B49EF7" stroke-width="1.2"/>
+      <text x="392" y="420" font-size="11.5" letter-spacing="1" fill="#B49EF7">EXPERT B · DOMAIN 2</text>
+      <g fill="#101D38" stroke="#B49EF7" stroke-opacity=".55" stroke-width="1.2">
+        <rect x="394" y="434" width="100" height="42" rx="9"/><rect x="506" y="434" width="100" height="42" rx="9"/><rect x="618" y="434" width="100" height="42" rx="9"/><rect x="730" y="434" width="100" height="42" rx="9"/><rect x="842" y="434" width="100" height="42" rx="9"/><rect x="954" y="434" width="100" height="42" rx="9"/>
+      </g>
+    </g>
+    <!-- Expert C:绿 -->
+    <g id="lane-c">
+      <rect x="376" y="510" width="696" height="100" rx="12" fill="#0C1830" stroke="#63D1AE" stroke-width="1.2"/>
+      <text x="392" y="530" font-size="11.5" letter-spacing="1" fill="#63D1AE">EXPERT C · DOMAIN 3</text>
+      <g fill="#101D38" stroke="#63D1AE" stroke-opacity=".55" stroke-width="1.2">
+        <rect x="394" y="544" width="100" height="42" rx="9"/><rect x="506" y="544" width="100" height="42" rx="9"/><rect x="618" y="544" width="100" height="42" rx="9"/><rect x="730" y="544" width="100" height="42" rx="9"/><rect x="842" y="544" width="100" height="42" rx="9"/><rect x="954" y="544" width="100" height="42" rx="9"/>
+      </g>
+    </g>
+    <g id="stage-labels" font-size="13" font-weight="600" fill="#EAF2FF" text-anchor="middle">
+      <text x="444" y="332">Literature</text><text x="556" y="332">Hypotheses</text><text x="668" y="332">Design</text><text x="780" y="332">Execute</text><text x="892" y="332">Analyze</text><text x="1004" y="332">Update</text>
+      <text x="444" y="460">Literature</text><text x="556" y="460">Hypotheses</text><text x="668" y="460">Design</text><text x="780" y="460">Execute</text><text x="892" y="460">Analyze</text><text x="1004" y="460">Update</text>
+      <text x="444" y="570">Literature</text><text x="556" y="570">Hypotheses</text><text x="668" y="570">Design</text><text x="780" y="570">Execute</text><text x="892" y="570">Analyze</text><text x="1004" y="570">Update</text>
+    </g>
+
+    <!-- 假设 fork(仅画在 Expert A;虚线表示并行分叉,端点交叉互换;标签在左侧空白处) -->
+    <g id="forks" fill="none" stroke="#7FB8F0" stroke-width="1.3" stroke-opacity=".8" stroke-dasharray="5 4">
+      <path d="M548 348V360Q548 368 556 368H1020Q1028 368 1028 360V348" marker-end="url(#arrow-fade)"/>
+      <path d="M566 348V350Q566 358 574 358H986Q994 358 994 350V348" marker-end="url(#arrow-fade)"/>
+    </g>
+    <text x="540" y="365" font-size="10.5" fill="#7FB8F0" text-anchor="end">fork</text>
+
+    <!-- 迭代回路:Update → 下一周期的 Literature(REVISE_NEXT_CYCLE) -->
+    <path id="loop-back" d="M1046 348V372Q1046 380 1038 380H452Q444 380 444 372V352" fill="none" stroke="#7FB8F0" stroke-width="1.3" stroke-opacity=".8" marker-end="url(#arrow-fade)"/>
+    <text x="458" y="374" font-size="10.5" fill="#7FB8F0">loop</text>
+
+    <!-- 交互区:Observer 选出 leader;leader(蓝)注入 B、C 假设生成中点;debate(品红)判决后注入被说服方 C -->
+    <path d="M1117 226V300" fill="none" stroke="#76AEFA" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+    <text x="1194" y="420" font-size="15" font-weight="600" letter-spacing="1" fill="url(#interaction-title)" text-anchor="middle" transform="rotate(-90 1194 420)">INTERACTION</text>
+
+    <path d="M1096 330V452Q1096 488 1060 488H564Q556 488 556 478" fill="none" stroke="#76AEFA" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+    <path d="M1172 330V340Q1172 348 1180 348H1204Q1212 348 1212 356V560Q1212 598 1176 598H564Q556 598 556 588" fill="none" stroke="#76AEFA" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+    <rect x="1076" y="306" width="104" height="24" rx="12" fill="#14203C" stroke="#76AEFA" stroke-width="1.2"/>
+    <text x="1128" y="322" font-size="11.5" fill="#A8DFFF" text-anchor="middle">leader · A</text>
+
+    <path d="M1096 496H1074" fill="none" stroke="#E48FD0" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <path d="M1096 512H1074" fill="none" stroke="#E48FD0" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <path d="M1148 516V528Q1148 536 1140 536H564Q556 536 556 542V544" fill="none" stroke="#E48FD0" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrow-magenta)"/>
+    <rect x="1096" y="492" width="104" height="24" rx="12" fill="#14203C" stroke="#E48FD0" stroke-width="1.2"/>
+    <text x="1148" y="508" font-size="11.5" fill="#F0B9EE" text-anchor="middle">debate · B↔C</text>
+    <text x="850" y="530" font-size="10.5" fill="#E48FD0" text-anchor="middle">verdict: B wins</text>
+
+    <text x="388" y="630" font-size="12" fill="#7E93BC"><tspan fill="#A8DFFF" font-weight="600">leader</tspan> shares experience 1→N · <tspan fill="#F0B9EE" font-weight="600">debate</tspan> resolves divergence in judged rounds — both shape hypotheses</text>
+  </g>
+
+  <!-- 自进化插件(框架机制):技能芯片 + 进化迷你回路;亮底=更新的技能,虚线幽灵芯片=新建 -->
+  <g id="self-evolution" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="1280" y="180" width="260" height="460" rx="16" fill="#0C1528" stroke="url(#evo-edge)" stroke-width="1.5"/>
+    <text x="1304" y="222" font-size="20" font-weight="600" fill="#EAF2FF">Self-evolution</text>
+    <text x="1304" y="246" font-size="13" fill="#7E93BC">per-role native plugins</text>
+
+    <rect x="1304" y="268" width="212" height="118" rx="10" fill="#0C1830" stroke="#35507F" stroke-width="1.2"/>
+    <rect x="1316" y="280" width="11" height="11" rx="3" fill="none" stroke="#76AEFA" stroke-width="1.2"/>
+    <circle cx="1321.5" cy="285.5" r="2" fill="#76AEFA"/>
+    <text x="1334" y="290" font-size="14.5" font-weight="600" fill="#EAF2FF">expert</text>
+    <rect x="1446" y="278" width="64" height="16" rx="8" fill="#14203C" stroke="#2E4A7A"/>
+    <text x="1478" y="289" font-size="8.5" fill="#7E93BC" text-anchor="middle">v1.1.0 · Git</text>
+    <g fill="#101D38" stroke="#76AEFA" stroke-opacity=".55" stroke-width="1.1">
+      <rect x="1310" y="300" width="98" height="22" rx="11"/>
+      <rect x="1310" y="328" width="98" height="22" rx="11"/><rect x="1412" y="328" width="98" height="22" rx="11"/>
+      <rect x="1310" y="356" width="98" height="22" rx="11"/>
+    </g>
+    <rect x="1412" y="300" width="98" height="22" rx="11" fill="#14284A" stroke="#76AEFA" stroke-width="1.3"/>
+    <rect x="1412" y="356" width="98" height="22" rx="11" fill="none" stroke="#5D88BD" stroke-width="1.1" stroke-dasharray="4 3"/>
+    <g font-size="9.5" fill="#B9CBE8" text-anchor="middle">
+      <text x="1359" y="315">literature-summary</text><text x="1461" y="315">experiment-report</text>
+      <text x="1359" y="343">experiment-repair</text><text x="1461" y="343">resource-planning</text>
+      <text x="1359" y="371">self-evolve</text>
+    </g>
+    <text x="1461" y="371" font-size="9.5" fill="#5D88BD" text-anchor="middle">+ new skill</text>
+
+    <rect x="1304" y="400" width="212" height="118" rx="10" fill="#0C1830" stroke="#35507F" stroke-width="1.2"/>
+    <rect x="1316" y="412" width="11" height="11" rx="3" fill="none" stroke="#76AEFA" stroke-width="1.2"/>
+    <circle cx="1321.5" cy="417.5" r="2" fill="#76AEFA"/>
+    <text x="1334" y="422" font-size="14.5" font-weight="600" fill="#EAF2FF">grounding</text>
+    <rect x="1446" y="410" width="64" height="16" rx="8" fill="#14203C" stroke="#2E4A7A"/>
+    <text x="1478" y="421" font-size="8.5" fill="#7E93BC" text-anchor="middle">v1.0.0 · Git</text>
+    <g fill="#101D38" stroke="#76AEFA" stroke-opacity=".55" stroke-width="1.1">
+      <rect x="1310" y="432" width="98" height="22" rx="11"/>
+      <rect x="1310" y="460" width="98" height="22" rx="11"/><rect x="1412" y="460" width="98" height="22" rx="11"/>
+      <rect x="1310" y="488" width="98" height="22" rx="11"/><rect x="1412" y="488" width="98" height="22" rx="11"/>
+    </g>
+    <rect x="1412" y="432" width="98" height="22" rx="11" fill="#14284A" stroke="#76AEFA" stroke-width="1.3"/>
+    <g font-size="9.5" fill="#B9CBE8" text-anchor="middle">
+      <text x="1359" y="447">debate-trigger</text><text x="1461" y="447">debate-judge</text>
+      <text x="1359" y="475">leader-trigger</text><text x="1461" y="475">graph-evolve</text>
+      <text x="1359" y="503">final-report</text><text x="1461" y="503">self-evolve</text>
+    </g>
+
+    <path d="M1304 524H1516" stroke="#223A63" stroke-width="1"/>
+    <text x="1410" y="540" font-size="10" fill="#7E93BC" text-anchor="middle">observed cycle evidence</text>
+    <path d="M1410 546V556" fill="none" stroke="#76AEFA" stroke-width="1.3" marker-end="url(#arrow-blue)"/>
+    <rect x="1352" y="560" width="116" height="22" rx="11" fill="#14203C" stroke="#76AEFA" stroke-width="1.2"/>
+    <text x="1410" y="575" font-size="10" fill="#A8DFFF" text-anchor="middle">SELF_EVOLVE</text>
+    <path d="M1392 582C1384 590 1374 594 1366 598" fill="none" stroke="#76AEFA" stroke-width="1.2" marker-end="url(#arrow-blue)"/>
+    <path d="M1428 582C1436 590 1446 594 1454 598" fill="none" stroke="#76AEFA" stroke-width="1.2" marker-end="url(#arrow-blue)"/>
+    <text x="1362" y="612" font-size="9.5" fill="#9FB4D8" text-anchor="middle">↻ update existing</text>
+    <text x="1458" y="612" font-size="9.5" fill="#9FB4D8" text-anchor="middle">+ create new</text>
+    <text x="1410" y="632" font-size="10" fill="#7E93BC" text-anchor="middle">Git commit → effective next cycle</text>
+  </g>
+
+  <!-- 运行资源层:Agents/Host 为框架,GPU 池为外部硬件资源 -->
+  <g id="runtime-row" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="60" y="672" width="280" height="160" rx="14" fill="#0C1528" stroke="#2E4A7A" stroke-width="1.5"/>
+    <text x="200" y="720" font-size="20" font-weight="600" fill="#EAF2FF" text-anchor="middle">Agents · Processes</text>
+    <text x="200" y="752" font-size="14" fill="#9FB4D8" text-anchor="middle">persistent Claude Code sessions</text>
+    <text x="200" y="776" font-size="13" fill="#9FB4D8" text-anchor="middle">private worktrees · measured usage</text>
+    <text x="200" y="800" font-size="12.5" fill="#7E93BC" text-anchor="middle">real CPU / GPU experiment runs</text>
+
+    <rect x="400" y="672" width="560" height="160" rx="18" fill="#0E1A33" stroke="url(#host-edge)" stroke-width="2.5"/>
+    <text x="680" y="724" font-size="28" font-weight="600" fill="#F4F7FF" text-anchor="middle">Workflow Host</text>
+    <text x="680" y="760" font-size="16" fill="#B9CBE8" text-anchor="middle">execution · resource allocation · durable state</text>
+    <text x="680" y="788" font-size="14" fill="#7E93BC" text-anchor="middle">budgets · accounting · crash recovery · cancellation</text>
+    <text x="680" y="812" font-size="12.5" fill="#5E739B" text-anchor="middle">resident service · user-systemd</text>
+
+    <rect x="1020" y="672" width="520" height="160" rx="14" fill="#0C1528" stroke="#C9A37E" stroke-width="1.5"/>
+    <text x="1280" y="720" font-size="24" font-weight="600" fill="#FFE0B8" text-anchor="middle">Shared GPU pool</text>
+    <text x="1280" y="754" font-size="14" fill="#9FB4D8" text-anchor="middle">transactional GPU capacity authority · control.sock</text>
+    <text x="1280" y="778" font-size="12.5" fill="#9FB4D8" text-anchor="middle">AUTO → greatest-free qualified GPU, else CPU</text>
+    <text x="1280" y="802" font-size="12.5" fill="#7E93BC" text-anchor="middle">GPU_REQUIRED → freeze and wait when all busy</text>
+  </g>
+
+  <!-- 连接线:金色来自/去往外部(人、证据、GPU 容量),蓝色为框架内部 -->
+  <g id="links" fill="none">
+    <path d="M400 148C406 162 416 170 430 178" stroke="#EAC6A5" stroke-width="2" stroke-opacity=".9" marker-end="url(#arrow-gold)"/>
+    <path d="M1240 148C1234 162 1224 170 1210 178" stroke="#76AEFA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-blue)"/>
+    <path d="M322 400H354" stroke="#EAC6A5" stroke-width="2" marker-end="url(#arrow-gold)"/>
+    <path d="M1242 400H1276" stroke="#76AEFA" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+    <path d="M1276 428H1242" stroke="#5D88BD" stroke-width="1.5" marker-end="url(#arrow-fade)"/>
+    <path d="M760 640V664" stroke="#5D88BD" stroke-width="2" marker-end="url(#arrow-fade)"/>
+    <path d="M398 752H348" stroke="#5D88BD" stroke-width="2" marker-end="url(#arrow-fade)"/>
+    <path d="M962 752H1012" stroke="#C9A37E" stroke-width="2" marker-end="url(#arrow-gold)"/>
+  </g>
+</svg>

@@ -23,19 +23,16 @@ Hypoloom 是一个开源的自主研究框架,覆盖从假设生成、实验执�
 - **演化(Evolve)**：专家解释测量结果,经辩论与裁决修正研究路线,并演化可复用的
   研究技能。
 
-## 功能要点
+## 功能总览
 
-- 以显式人工澄清与公共验收准则接地研究目标。
-- 并行专家链、OpenAlex 文献检索、私有 Git 工作树、修订图谱、辩论、裁决与可演化的
-  研究技能。
-- 真实 CPU/GPU 实验、显式 GPU 授权,以及容量允许时支持同卡多实验的共享 GPU 池。
-- 有界交互上下文与节奏、模型/实验预算、执行核算、使用各运行自带保留运行时的崩溃
-  恢复,以及显式取消与清理。
-- 用于进度、证据与人工答复的 Textual TUI 与本地 Web observer。TUI 的
-  **q / Leave monitor** 保持 Host 运行;**x / End run** 打开取消确认。Help 与
-  Report Issue 是独立动作。
-- 中文与英文 [Profile 模板](profiles/README.md),以及面向维护者的
-  [G0–G5 资格工作流](docs/qualification.md)。
+一个常驻 Host 协调整个闭环;操作员保留显式授权,独立的 Oracle 校验记录。
+
+<p align="center">
+  <img src="docs/assets/hypoloom_overview.svg" alt="Hypoloom 总览:多个领域专家并行运行六节点研究闭环(文献、假设及其 fork 链、设计、执行、分析、演进),由运行级 Grounding 提供证据,通过带评判的 debate 与 Observer 选出的 leader 协调,各角色技能插件自进化,由常驻 Workflow Host 在 Agent、Process 与共享 GPU 池上执行,操作员保留授权,独立 Oracle 校验记录">
+</p>
+
+[Profile 模板](profiles/README.md) 提供中英文版本,维护者使用
+[G0–G5 资格工作流](docs/qualification.md)。
 
 ## 快速开始
 
