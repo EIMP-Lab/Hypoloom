@@ -1194,7 +1194,7 @@ class WorkflowHost:
             if any(item.selection is not None for item in history.batches):
                 from .agent_sessions import AgentSessions
                 AgentSessions(self.state_root, self.publisher).retire_adjudicated_worktrees(
-                    history, self.store.list_attempts(), creations=self.store.inspect(
+                    history, self.store.list_attempts(state="OPEN"), creations=self.store.inspect(
                         "SELECT run_id,workflow_id,payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (run_id,)))
             snapshot = self._policy_snapshot(self.store.latest_transition(run_id))
             selected_component = next(item for item in snapshot.components if item.component_id == component_id)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from dataclasses import replace
 
 import pytest
@@ -50,7 +51,7 @@ def test_cancel_requires_explicit_confirmation_and_does_not_claim_host_stopped(t
 
     def send(path, request, *, timeout):
         calls.append(request)
-        assert path == root / "control.sock" and timeout == 5
+        assert path == root / "control.sock" and timeout == 30
         assert request.command == "CANCEL"
         assert request.expected_revision == snapshot.status["run_revision"]
         assert request.payload == {"run_id": "end-ui", "cause": "operator_request_from_tui"}
@@ -129,6 +130,87 @@ def test_unconfirmed_cancel_retries_exact_request_after_reopen_and_revision_chan
             await pilot.pause()
             assert calls == [calls[0], calls[0]]
             assert app.screen.query_one("#end-run-confirm", Button).disabled
+
+    asyncio.run(exercise())
+
+
+def test_unconfirmed_cancel_renders_durably_accepted_command_without_retry(tmp_path, monkeypatch):
+    from hypoloom import end_run_tui as form
+    from hypoloom.workflow_host import WorkflowHost
+    root, snapshot = run_snapshot(tmp_path)
+    calls = []
+
+    def send(path, request, *, timeout):
+        # The Host durably accepts the exact request, but its reply is lost.
+        calls.append(request)
+        assert path == root / "control.sock" and timeout == 30
+        host = WorkflowHost(root)
+        try:
+            host.initialize()
+            assert host.handle(request).status == "accepted"
+        finally:
+            host.close()
+        raise TimeoutError("Host reply arrived after the timeout")
+
+    monkeypatch.setattr(form, "request_over_socket", send)
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        monkeypatch.setattr(app, "action_refresh", lambda: None)
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("x")
+            await pilot.click("#end-run-confirm")
+            await pilot.pause()
+            assert len(calls) == 1
+            message = str(app.screen.query_one("#end-run-status", Static).render())
+            assert "durably accepted" in message and "after the timeout" in message
+            assert str(app.screen.query_one("#end-run-confirm", Button).label) != "Retry same request"
+            assert app.screen.query_one("#end-run-confirm", Button).disabled
+            assert app._end_run_draft.get("accepted_revision") is not None
+            assert "pending" not in app._end_run_draft
+            await pilot.click("#end-run-confirm")
+            assert len(calls) == 1  # A durably accepted cancel is never retried.
+            await pilot.press("escape")
+            await pilot.press("x")
+            assert str(app.screen.query_one("#end-run-confirm", Button).label) != "Retry same request"
+            assert app.screen.query_one("#end-run-confirm", Button).disabled
+
+    asyncio.run(exercise())
+
+
+def test_unconfirmed_cancel_keeps_retry_path_when_reconciliation_read_fails(tmp_path, monkeypatch):
+    from hypoloom import end_run_tui as form
+    root, snapshot = run_snapshot(tmp_path)
+    calls = []
+
+    def send(path, request, *, timeout):
+        calls.append(request)
+        raise TimeoutError("Host reply lost")
+
+    class BusyStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def readonly_connection(self, **_kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(form, "request_over_socket", send)
+    monkeypatch.setattr(form, "StateStore", BusyStore)
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        monkeypatch.setattr(app, "action_refresh", lambda: None)
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("x")
+            await pilot.click("#end-run-confirm")
+            await pilot.pause()
+            assert len(calls) == 1
+            assert "not confirmed" in str(app.screen.query_one("#end-run-status", Static).render())
+            assert str(app.screen.query_one("#end-run-confirm", Button).label) == "Retry same request"
+            assert not app.screen.query_one("#end-run-confirm", Button).disabled
+            assert app._end_run_draft.get("pending") is not None
 
     asyncio.run(exercise())
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import uuid
 
 from textual.app import ComposeResult
@@ -11,6 +12,7 @@ from textual.widgets import Button, Static
 
 from .control_protocol import SCHEMA_VERSION, ControlRequest, ProtocolError, request_over_socket
 from .lifecycle import Machine, RunState, is_terminal
+from .state_store import StateStore, StateStoreError, StateTransaction
 
 
 class EndRunScreen(ModalScreen):
@@ -61,6 +63,41 @@ class EndRunScreen(ModalScreen):
     def _buttons(self) -> None:
         self.query_one("#end-run-confirm", Button).disabled = self.busy or not self.writable
 
+    def _durable_acceptance(self, request: ControlRequest) -> int | None:
+        """Return the accepted revision when the Host persisted this exact request.
+
+        The command row and the RUN transition commit in one transaction, so a
+        matching accepted command plus a stopping-or-terminal head proves the
+        cancellation is durable even though its reply never arrived. The store
+        is opened read-only and only briefly; any read failure leaves the
+        idempotent retry path in place.
+        """
+        try:
+            with StateStore(self.app.state_root).readonly_connection() as connection:
+                transaction = StateTransaction(connection)
+                command = transaction.get_command(request.request_id)
+                if (
+                    command is None
+                    or command["run_id"] != self.app.run_id
+                    or command["command_type"] != "CANCEL"
+                    or command["response_status"] != "accepted"
+                    or command["accepted_revision"] is None
+                ):
+                    return None
+                accepted_revision = int(command["accepted_revision"])
+                head = transaction.latest_transition(self.app.run_id)
+                if (
+                    head is None
+                    or head["workflow_kind"] != "RUN"
+                    or int(head["revision"]) < accepted_revision
+                    or not (head["state"] == RunState.STOPPING
+                        or is_terminal(Machine.RUN_WORKFLOW, head["state"]))
+                ):
+                    return None
+                return accepted_revision
+        except (OSError, sqlite3.Error, StateStoreError, ValueError):
+            return None
+
     def update_status(self, status: dict) -> None:
         self.status = dict(status)
         state = status["run_state"]
@@ -94,11 +131,21 @@ class EndRunScreen(ModalScreen):
         self._message("Requesting cancellation from Host…")
         try:
             response = await asyncio.to_thread(request_over_socket,
-                self.app.state_root / "control.sock", request, timeout=5)
+                self.app.state_root / "control.sock", request, timeout=30)
         except (OSError, ProtocolError):
-            self._message("Host reply not confirmed. The run may still be active or already stopping. "
-                "Retry sends the same request; refresh to inspect progress.")
-            self.query_one("#end-run-confirm", Button).label = "Retry same request"
+            accepted_revision = await asyncio.to_thread(self._durable_acceptance, request)
+            if accepted_revision is None:
+                self._message("Host reply not confirmed. The run may still be active or already stopping. "
+                    "Retry sends the same request; refresh to inspect progress.")
+                self.query_one("#end-run-confirm", Button).label = "Retry same request"
+            else:
+                self.draft.pop("pending", None)
+                self.draft["accepted_revision"] = accepted_revision
+                self.writable = False
+                self.update_status(self.status)
+                if not is_terminal(Machine.RUN_WORKFLOW, self.status["run_state"]):
+                    self._message("The Host durably accepted this cancellation; its reply arrived after the timeout. "
+                        "Waiting for task cleanup and the final report; the Host has not been confirmed stopped.")
         else:
             if response.status == "accepted":
                 self.draft.pop("pending", None)

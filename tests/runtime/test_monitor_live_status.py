@@ -24,7 +24,7 @@ from hypoloom.control_protocol import (
     request_over_socket,
     send_message,
 )
-from hypoloom.monitor import build_monitor_snapshot, build_observer_snapshot
+from hypoloom.monitor import HostStatusBackoff, build_monitor_snapshot, build_observer_snapshot
 from hypoloom.profile_admission import admit_profile
 from hypoloom.web_observer import create_server
 from hypoloom.workflow_host import WorkflowHost
@@ -396,6 +396,135 @@ def test_web_observer_default_snapshot_builder_uses_same_host_status_enrichment(
 def test_observer_snapshot_validates_live_status_timeout(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="host_timeout"):
         build_observer_snapshot(tmp_path / "unused", "unused", host_timeout=0)
+
+
+def test_host_status_backoff_defers_attempts_exponential_with_cap_and_resets() -> None:
+    now = [100.0]
+    backoff = HostStatusBackoff(base_seconds=3.0, cap_seconds=10.0, clock=lambda: now[0])
+    assert backoff.allows_attempt()
+    assert backoff.consecutive_failures == 0
+    backoff.record_failure()
+    assert backoff.consecutive_failures == 1
+    assert not backoff.allows_attempt()
+    now[0] = 102.9
+    assert not backoff.allows_attempt()
+    now[0] = 103.0
+    assert backoff.allows_attempt()
+    backoff.record_failure()
+    now[0] = 108.9
+    assert not backoff.allows_attempt()
+    now[0] = 109.0
+    assert backoff.allows_attempt()
+    backoff.record_failure()  # The 12-second step is capped at 10.
+    now[0] = 118.9
+    assert not backoff.allows_attempt()
+    now[0] = 119.0
+    assert backoff.allows_attempt()
+    backoff.record_success()
+    assert backoff.consecutive_failures == 0
+    assert backoff.allows_attempt()
+    with pytest.raises(ValueError, match="base_seconds"):
+        HostStatusBackoff(base_seconds=0)
+    with pytest.raises(ValueError, match="cap_seconds"):
+        HostStatusBackoff(base_seconds=5.0, cap_seconds=4.0)
+
+
+def test_observer_snapshot_status_backoff_defers_retry_and_recovers(
+    short_status_parent: Path, monkeypatch,
+) -> None:
+    state_root = short_status_parent / "backoff-observer"
+    run_id = "backoff-observer"
+    _create_run(state_root, run_id)
+    offline = build_monitor_snapshot(state_root, run_id)
+    live = dict(offline.status)
+    live.update({
+        "quiescent_for_backup": False,
+        "agent_usage": {"observed_lower_bound": {"tokens": 7, "turns": 1}},
+        "resource_waits": [],
+    })
+    monkeypatch.setattr(
+        "hypoloom.monitor.build_monitor_snapshot",
+        lambda _state_root, _run_id: offline,
+    )
+    now = [1000.0]
+    backoff = HostStatusBackoff(base_seconds=30.0, cap_seconds=120.0, clock=lambda: now[0])
+    socket_path = state_root / "control.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    listener.listen(8)
+    listener.settimeout(0.05)
+    stop = threading.Event()
+    accepted: list[socket.socket] = []
+    errors: list[BaseException] = []
+
+    def hold_connections() -> None:
+        try:
+            with listener:
+                while not stop.is_set():
+                    try:
+                        peer, _ = listener.accept()
+                    except TimeoutError:
+                        continue
+                    accepted.append(peer)  # Held open but never answered.
+        except BaseException as exc:  # pragma: no cover - asserted by caller
+            errors.append(exc)
+
+    thread = threading.Thread(target=hold_connections, daemon=True)
+    thread.start()
+    try:
+        first = build_observer_snapshot(
+            state_root, run_id, host_timeout=0.2, _host_backoff=backoff,
+        )
+        deadline = time.monotonic() + 2
+        while not accepted and time.monotonic() < deadline:
+            time.sleep(0.01)
+        deferred = build_observer_snapshot(
+            state_root, run_id, host_timeout=0.2, _host_backoff=backoff,
+        )
+        time.sleep(0.3)
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+        for peer in accepted:
+            peer.close()
+        socket_path.unlink(missing_ok=True)
+
+    assert not thread.is_alive()
+    assert errors == []
+    assert first is offline and deferred is offline
+    assert len(accepted) == 1  # The deferred poll never touched the socket.
+    assert backoff.consecutive_failures == 1
+
+    now[0] += 30.0
+    status_thread, requests, status_errors = _one_status_response(socket_path, live)
+    try:
+        recovered = build_observer_snapshot(
+            state_root, run_id, host_timeout=1.0, _host_backoff=backoff,
+        )
+    finally:
+        status_thread.join(timeout=2)
+        socket_path.unlink(missing_ok=True)
+
+    assert not status_thread.is_alive()
+    assert status_errors == []
+    assert len(requests) == 1
+    assert backoff.consecutive_failures == 0
+    assert recovered.status_source == "offline-state-store+resident-host-status"
+
+    # A reset backoff allows an immediate follow-up attempt.
+    follow_thread, follow_requests, follow_errors = _one_status_response(socket_path, live)
+    try:
+        followup = build_observer_snapshot(
+            state_root, run_id, host_timeout=1.0, _host_backoff=backoff,
+        )
+    finally:
+        follow_thread.join(timeout=2)
+        socket_path.unlink(missing_ok=True)
+
+    assert not follow_thread.is_alive()
+    assert follow_errors == []
+    assert len(follow_requests) == 1
+    assert followup.status_source == "offline-state-store+resident-host-status"
 
 
 def test_monitor_projects_existing_typed_rendezvous_without_writes(

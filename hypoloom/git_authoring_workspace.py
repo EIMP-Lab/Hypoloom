@@ -44,6 +44,10 @@ class GitAuthoringIntegrityError(GitAuthoringWorkspaceError):
     """The disposable worktree no longer has an acceptable shape."""
 
 
+class GitAuthoringDirtyWorktreeError(GitAuthoringIntegrityError):
+    """A retained dirty checkout is a by-design safe terminal cleanup state."""
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PreparedGitAuthoringWorkspace:
     """One disposable, detached worktree rooted below a state directory."""
@@ -209,7 +213,7 @@ class GitAuthoringWorkspace:
         dirty = _run_git(self.git_executable, ("-C", str(prepared.worktree_root), "status", "--porcelain",
             "--untracked-files=all", "--ignored"), timeout_seconds=self.timeout_seconds)
         if dirty:
-            raise GitAuthoringIntegrityError("dirty chain worktree is retained")
+            raise GitAuthoringDirtyWorktreeError("dirty chain worktree is retained")
         self._repository_git(prepared, "worktree", "remove", str(prepared.worktree_root))
         return True
 

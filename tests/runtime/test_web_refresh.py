@@ -115,6 +115,26 @@ def test_close_does_not_wait_for_busy_projection_lock_or_audit(tmp_path, monkeyp
     with pytest.raises(MonitorError, match='closed'): reader.get()
 
 
+def test_refresh_shares_one_host_status_backoff_with_the_snapshot_builder(tmp_path, monkeypatch):
+    from hypoloom import observer_refresh
+    from hypoloom.monitor import HostStatusBackoff, build_monitor_snapshot
+    root = tmp_path / 'state'
+    _create_fresh_run(root, 'refresh-run')
+    calls = []
+    def builder(state_root, run_id, **kwargs):
+        calls.append(kwargs)
+        return build_monitor_snapshot(state_root, run_id)
+    monkeypatch.setattr(observer_refresh, 'build_observer_snapshot', builder)
+    reader = ObserverRefresh(root, 'refresh-run', audit_seconds=3600)
+    try:
+        reader.get()
+        assert isinstance(reader._host_backoff, HostStatusBackoff)
+        assert [call.get('_host_backoff') for call in calls] == [reader._host_backoff]
+    finally:
+        reader.wait_for_audit(timeout=5)
+        reader.close()
+
+
 def test_refresh_preserves_injected_snapshot_source_without_inventing_activity(tmp_path):
     from test_web_observer import _SyntheticSnapshot
     calls = []

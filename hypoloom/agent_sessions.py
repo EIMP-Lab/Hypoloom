@@ -16,7 +16,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, Sequence
+from typing import Any, ClassVar, Mapping, Sequence
 
 from .agent_aci import AgentRequest, WorkspaceArtifact
 from .artifacts import AgentArtifactKey, ArtifactPublisher, ArtifactPublication
@@ -25,6 +25,7 @@ from .execution_workspace import GitTargetBinding
 from .expert_batch import BatchHistory
 from .expert_loop import ResearchNodeSubkind, ResearchNodeTask, chain_session_scope
 from .git_authoring_workspace import (
+    GitAuthoringDirtyWorktreeError,
     GitAuthoringIntegrityError,
     GitAuthoringWorkspaceError,
     GitAuthoringWorkspace,
@@ -472,6 +473,14 @@ class PreparedSessionWorkspace:
 
 
 class AgentSessions:
+    # Process-local memory: cleanup re-runs only when the accepted batch
+    # history moved past the last fully reconciled revision; a retained dirty
+    # worktree is a terminal state memorized per revision (a changed history or
+    # a Host restart replays once); it warns at most once per Host process.
+    _retirement_reconciled: ClassVar[dict[tuple[str, str, str, str], tuple[int, int]]] = {}
+    _retirement_retained: ClassVar[dict[tuple[tuple[str, str, str, str], str], tuple[tuple[int, int], str]]] = {}
+    _retirement_warned: ClassVar[set[tuple[str, str]]] = set()
+
     def __init__(self, state_root: Path, publisher: ArtifactPublisher) -> None:
         self.state_root = Path(state_root).resolve(strict=True)
         self.publisher = publisher
@@ -481,6 +490,12 @@ class AgentSessions:
                                     creations: Sequence[Mapping[str, Any]] = ()) -> dict[str, str]:
         """Reconcile accepted ADJ cleanup without changing any scientific row."""
         run, role, component = (_component(history.run_id), _component(history.role), _component(history.component_id))
+        latest = history.latest
+        revision = (0 if latest is None else latest.cycle,
+                    sum(1 for batch in history.batches if batch.selection is not None))
+        owner = (str(self.state_root), run, role, component)
+        if type(self)._retirement_reconciled.get(owner) == revision:
+            return {}
         busy = set()
         experiments = {row["workflow_id"]: json.loads(row["payload_json"]).get("hypothesis_id")
             for row in creations if row.get("run_id") == run}
@@ -497,6 +512,7 @@ class AgentSessions:
             if (request.get("role"), request.get("component_id")) == (role, component):
                 busy.add((key.get("cycle"), key.get("chain")))
         errors = {}
+        pending = False
         for batch in history.batches:
             if batch.selection is None:
                 continue
@@ -509,20 +525,32 @@ class AgentSessions:
                 raise ValueError("worktree cleanup requires a valid batch cycle")
             for chain in sorted(chains):
                 scope = chain_session_scope(chain)
-                if (batch.cycle, chain) in busy or batch.members[chain] in open_hypotheses:
-                    continue
                 source = self.state_root / run / "sessions" / role / f"c{batch.cycle}" / component / scope / "source"
                 hot = source / "git-authoring-worktrees" / "chain" / "worktree"
                 if not hot.exists() and not hot.is_symlink():
                     continue
+                if (batch.cycle, chain) in busy or batch.members[chain] in open_hypotheses:
+                    pending = True
+                    continue
                 identity = f"{run}/{role}/{component}/c{batch.cycle}/{scope}"
+                memorized = type(self)._retirement_retained.get((owner, identity))
+                if memorized is not None and memorized[0] == revision:
+                    errors[identity] = memorized[1]
+                    continue
                 try:
                     if source.resolve() != source:
                         raise GitAuthoringIntegrityError("chain cleanup source is not its canonical private path")
                     GitAuthoringWorkspace(source).retire_worktree("chain", branch=f"prom/{role}/r{batch.cycle}/{scope}")
                 except (GitAuthoringWorkspaceError, OSError, ValueError) as exc:
                     errors[identity] = str(exc)
-                    logging.getLogger(__name__).warning("chain worktree cleanup retained %s: %s", identity, exc)
+                    if isinstance(exc, GitAuthoringDirtyWorktreeError):
+                        type(self)._retirement_retained[(owner, identity)] = (revision, errors[identity])
+                    marker = (str(self.state_root), identity)
+                    if marker not in type(self)._retirement_warned:
+                        type(self)._retirement_warned.add(marker)
+                        logging.getLogger(__name__).warning("chain worktree cleanup retained %s: %s", identity, exc)
+        if not errors and not pending:
+            type(self)._retirement_reconciled[owner] = revision
         return errors
 
     @staticmethod

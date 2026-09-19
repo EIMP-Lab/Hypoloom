@@ -18,7 +18,7 @@ import sqlite3
 import sys
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -1444,6 +1444,50 @@ _HOST_STATUS_FIELDS = (
 _HOST_STATUS_TIMEOUT_SECONDS = 3.0
 
 
+class HostStatusBackoff:
+    """Defer STATUS attempts while the control socket stays unresponsive.
+
+    Every poll of a wedged socket waits out the full timeout and leaves one
+    more pending connection in the Host's bounded listen backlog. Consecutive
+    failures therefore delay the next attempt exponentially up to a cap, and
+    any response resets the delay. The owner of a polling loop keeps one
+    instance and shares it across refreshes; one-shot callers need none.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_seconds: float = _HOST_STATUS_TIMEOUT_SECONDS,
+        cap_seconds: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if not math.isfinite(base_seconds) or base_seconds <= 0:
+            raise ValueError("base_seconds must be a positive finite number")
+        if not math.isfinite(cap_seconds) or cap_seconds < base_seconds:
+            raise ValueError("cap_seconds must be a finite number not below base_seconds")
+        self.base_seconds = base_seconds
+        self.cap_seconds = cap_seconds
+        self._clock = clock
+        self._failures = 0
+        self._next_attempt_at = 0.0
+
+    @property
+    def consecutive_failures(self) -> int:
+        return self._failures
+
+    def allows_attempt(self) -> bool:
+        return self._clock() >= self._next_attempt_at
+
+    def record_failure(self) -> None:
+        self._failures += 1
+        delay = min(self.cap_seconds, self.base_seconds * 2 ** (self._failures - 1))
+        self._next_attempt_at = self._clock() + delay
+
+    def record_success(self) -> None:
+        self._failures = 0
+        self._next_attempt_at = 0.0
+
+
 def _compatible_host_status(
     offline: Mapping[str, Any], live: Mapping[str, Any], run_id: str,
 ) -> bool:
@@ -1478,12 +1522,16 @@ def build_observer_snapshot(
     host_timeout: float = _HOST_STATUS_TIMEOUT_SECONDS,
     _connection: sqlite3.Connection | None = None,
     _oracle: Mapping[str, Any] | None = None,
+    _host_backoff: HostStatusBackoff | None = None,
 ) -> MonitorSnapshot:
     """Build the canonical offline view and optionally enrich it via STATUS.
 
     The Unix-socket request is read-only and uses the existing Host projection.
     Absence, timeout, rejection, or an incompatible response leaves the offline
     snapshot unchanged; an observer never requires or starts a resident Host.
+    A polling caller may pass its own HostStatusBackoff so that consecutive
+    unresponsive polls defer further attempts instead of piling connections
+    into the Host's bounded listen backlog.
     """
 
     if not math.isfinite(host_timeout) or host_timeout <= 0:
@@ -1497,6 +1545,8 @@ def build_observer_snapshot(
     socket_path = Path(state_root).expanduser().resolve() / "control.sock"
     if not socket_path.is_socket():
         return snapshot
+    if _host_backoff is not None and not _host_backoff.allows_attempt():
+        return snapshot
     request = ControlRequest(
         schema_version=1,
         request_id=f"observer-status-{uuid.uuid4()}",
@@ -1507,7 +1557,11 @@ def build_observer_snapshot(
     try:
         response = request_over_socket(socket_path, request, timeout=host_timeout)
     except (ConnectionError, OSError, TimeoutError, ValueError):
+        if _host_backoff is not None:
+            _host_backoff.record_failure()
         return snapshot
+    if _host_backoff is not None:
+        _host_backoff.record_success()
     if response.status != "accepted" or response.result is None:
         return snapshot
     if not _compatible_host_status(snapshot.status, response.result, run_id):
@@ -1682,6 +1736,7 @@ __all__ = [
     "AttemptView",
     "ComponentView",
     "ExpertView",
+    "HostStatusBackoff",
     "HypothesisView",
     "MonitorError",
     "MonitorSnapshot",

@@ -10,6 +10,7 @@ from hypoloom.agent_sessions import AgentSessions
 from hypoloom.domain import AgentCommand
 from hypoloom.execution_workspace import GitTargetBinding
 from hypoloom.expert_batch import AcceptedBatch, BatchHistory
+from hypoloom.expert_loop import ResearchNodeSubkind
 from hypoloom.git_authoring_workspace import (
     GitAuthoringWorkspace,
     GitAuthoringWorkspaceError,
@@ -17,6 +18,7 @@ from hypoloom.git_authoring_workspace import (
 from hypoloom.lifecycle import Command, RunState
 from hypoloom.state_store import HostWriterCapability, StateStore
 from hypoloom.workflow_host import WorkflowHost
+from test_agent_aci import _pincer_request
 from test_agent_sessions import _chain_request, _transcript
 from test_debate_sessions import _request, _setup
 from test_git_authoring_workspace import git
@@ -143,6 +145,9 @@ def test_dirty_checkout_is_preserved_with_visible_retryable_error(tmp_path, capl
     )
     _transcript(retry, "Host subsequently closed the retry.", append=True)
     retry.finish_node()
+    # A retained dirty worktree is memorized per revision; a Host restart
+    # replays it once and observes the committed retry.
+    AgentSessions._retirement_retained.clear()
     assert manager.retire_adjudicated_worktrees(history(original), [row]) == {}
     assert not original.worktree_root.exists()
 
@@ -239,6 +244,149 @@ def test_absent_checkout_replay_does_not_spawn_git(tmp_path, monkeypatch):
     )
 
 
+def test_unchanged_history_does_not_reinvoke_git_and_permanent_dirty_warns_once(
+    tmp_path, monkeypatch, caplog
+):
+    manager, _, original, row, _ = _setup(tmp_path)
+    dirty = original.worktree_root / "uncommitted.txt"
+    dirty.write_text("Keep this interrupted authoring work.\n")
+    selected = history(original)
+    calls = []
+    real_retire = GitAuthoringWorkspace.retire_worktree
+
+    def counted(self, attempt_id, *, branch):
+        calls.append(attempt_id)
+        return real_retire(self, attempt_id, branch=branch)
+
+    monkeypatch.setattr(GitAuthoringWorkspace, "retire_worktree", counted)
+    for _ in range(3):
+        errors = manager.retire_adjudicated_worktrees(selected, [row])
+        assert len(errors) == 1 and "dirty" in next(iter(errors.values()))
+    # A retained dirty worktree is terminal per revision: git ran exactly once.
+    assert len(calls) == 1
+    retained = [
+        record
+        for record in caplog.records
+        if "chain worktree cleanup retained" in record.getMessage()
+    ]
+    assert len(retained) == 1
+    # A changed history replays the retained worktree exactly once more.
+    grown = replace(
+        selected,
+        batches=(
+            *selected.batches,
+            AcceptedBatch(
+                2,
+                "accepted-synthesis-2",
+                "actual-synthesis-2",
+                {"chain-b": "hypothesis-2"},
+            ),
+        ),
+    )
+    errors = manager.retire_adjudicated_worktrees(grown, [row])
+    assert len(errors) == 1 and "dirty" in next(iter(errors.values()))
+    assert len(calls) == 2
+    assert manager.retire_adjudicated_worktrees(grown, [row]) == errors
+    assert len(calls) == 2
+    retained = [
+        record
+        for record in caplog.records
+        if "chain worktree cleanup retained" in record.getMessage()
+    ]
+    assert len(retained) == 1
+    # A Host restart replays once and reconciles once the checkout is clean.
+    AgentSessions._retirement_retained.clear()
+    dirty.unlink()
+    assert manager.retire_adjudicated_worktrees(grown, [row]) == {}
+    assert not original.worktree_root.exists()
+    assert len(calls) == 3
+    poisoned = [
+        {"run_id": row["run_id"], "workflow_id": "exp-1", "payload_json": "not json"}
+    ]
+    assert (
+        manager.retire_adjudicated_worktrees(grown, [row], creations=poisoned)
+        == {}
+    )
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("a reconciled revision must not spawn Git")
+
+    monkeypatch.setattr("hypoloom.git_authoring_workspace._run_git", unexpected)
+    assert manager.retire_adjudicated_worktrees(grown, [row]) == {}
+
+
+def test_new_selection_on_existing_cycle_reruns_retirement(tmp_path):
+    manager, _, original, row, _ = _setup(tmp_path)
+    selected = history(original)
+    unselected = replace(
+        selected, batches=(replace(selected.batches[0], selection=None),)
+    )
+    assert manager.retire_adjudicated_worktrees(unselected, [row]) == {}
+    poisoned = [
+        {"run_id": row["run_id"], "workflow_id": "exp-1", "payload_json": "not json"}
+    ]
+    assert (
+        manager.retire_adjudicated_worktrees(unselected, [row], creations=poisoned)
+        == {}
+    )
+    assert original.worktree_root.exists()
+    assert manager.retire_adjudicated_worktrees(selected, [row]) == {}
+    assert not original.worktree_root.exists()
+
+
+def test_changed_history_revision_reruns_retirement(tmp_path):
+    manager, target, original, row, _ = _setup(tmp_path)
+    selected = history(original)
+    assert manager.retire_adjudicated_worktrees(selected, [row]) == {}
+    assert not original.worktree_root.exists()
+    assert manager.retire_adjudicated_worktrees(selected, [row]) == {}
+    request = _chain_request(
+        AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "cycle2-design", "chain-b"
+    )
+    task = replace(
+        request.task_context, key=replace(request.task_context.key, cycle=2)
+    )
+    request = replace(request, task_context=task, command_id=task.command_id)
+    synthesis = manager.prepare(
+        _pincer_request(
+            ResearchNodeSubkind.SYNTHESIS,
+            cycle=2,
+            parent_hypothesis_id="source-hypothesis",
+        ),
+        target,
+    )
+    _transcript(synthesis, "Second cycle proposal context.")
+    synthesis.finish_node()
+    peer = manager.prepare(request, target)
+    (peer.worktree_root / "experiment.py").write_text("print('cycle-2-source')\n")
+    _transcript(peer, "Second cycle expert conversation.")
+    peer.finish_node()
+    cycle2 = AcceptedBatch(
+        2,
+        "accepted-synthesis-2",
+        "actual-synthesis-2",
+        {"chain-b": "hypothesis-2"},
+        {
+            "cycle": 2,
+            "batch_command_id": "accepted-synthesis-2",
+            "candidate": {
+                "verdicts": [
+                    {
+                        "chain_id": "chain-b",
+                        "node_id": "hypothesis-2",
+                        "status": "refuted",
+                    }
+                ],
+                "prune": [],
+            },
+        },
+    )
+    grown = replace(selected, batches=(*selected.batches, cycle2))
+    assert manager.retire_adjudicated_worktrees(grown, [row]) == {}
+    assert not peer.worktree_root.exists()
+    assert manager.retire_adjudicated_worktrees(grown, [row]) == {}
+
+
 def test_io_failure_preserves_history_and_retry_uses_same_accepted_selection(
     tmp_path, monkeypatch, caplog
 ):
@@ -276,6 +424,8 @@ def test_symlink_hot_checkout_is_preserved_without_touching_another_asset(tmp_pa
     (external / "user-file.txt").write_text("Do not remove this unrelated data.\n")
     original.worktree_root.symlink_to(external, target_is_directory=True)
     before = files(external)
+    # Same-revision passes are reconciled in memory; a Host restart replays.
+    AgentSessions._retirement_reconciled.clear()
     assert manager.retire_adjudicated_worktrees(history(original), [row])
     assert original.worktree_root.is_symlink() and files(external) == before
 

@@ -158,8 +158,8 @@ class StateTransaction:
         except sqlite3.IntegrityError as exc: raise IdentityConflict(f"research reference conflict: {exc}") from exc
         return inserted
     def get_attempt(self, attempt_id: str) -> dict[str, Any] | None: return _dict(self.execute("SELECT * FROM execution_attempts WHERE attempt_id=?", (attempt_id,)).fetchone())
-    def list_attempts(self, *, workflow_id: str | None = None, command_id: str | None = None, execution_id: str | None = None) -> tuple[dict[str, Any], ...]:
-        filters = [(name, value) for name, value in (("workflow_id", workflow_id), ("command_id", command_id), ("execution_id", execution_id)) if value is not None]
+    def list_attempts(self, *, workflow_id: str | None = None, command_id: str | None = None, execution_id: str | None = None, state: str | None = None) -> tuple[dict[str, Any], ...]:
+        filters = [(name, value) for name, value in (("workflow_id", workflow_id), ("command_id", command_id), ("execution_id", execution_id), ("state", state)) if value is not None]
         where = " WHERE " + " AND ".join(f"{name}=?" for name, _ in filters) if filters else ""
         return tuple(dict(row) for row in self.execute("SELECT * FROM execution_attempts" + where + " ORDER BY workflow_id,command_id,attempt_ordinal", [value for _, value in filters]).fetchall())
     def open_attempt(self, attempt: Mapping[str, Any] | object) -> bool:

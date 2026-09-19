@@ -12,6 +12,7 @@ from hypoloom.agent_aci import AgentRequest, EmbeddedInput, WorkspaceArtifact
 from hypoloom.agent_sessions import AgentSessions, PreparedSessionWorkspace, node_memory_limit
 from hypoloom.artifacts import AgentArtifactKey, ArtifactPublisher
 from hypoloom.domain import AgentCommand
+from hypoloom.expert_batch import AcceptedBatch, BatchHistory
 from hypoloom.expert_loop import ResearchNodeSubkind, ResearchNodeTask, chain_session_scope
 from hypoloom.fake_agent import default_request
 from hypoloom.git_authoring_workspace import (
@@ -408,6 +409,90 @@ def test_expert_forks_receive_only_their_own_parent_transcript(tmp_path: Path) -
     assert b"private-context-alice" not in b"".join(
         path.read_bytes() for path in children[1].session_root.iterdir()
     )
+
+
+def _adjudicated_chain(root: Path):
+    root.mkdir()
+    _, binding = make_target(root)
+    manager = _manager(root)
+    _seed(manager, binding)
+    request = _chain_request(
+        AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "original-design", "chain-a"
+    )
+    original = manager.prepare(request, binding)
+    (original.worktree_root / "experiment.py").write_text("print('source')\n")
+    metadata = original.finish_node()
+    row = {
+        "run_id": request.run_id,
+        "attempt_id": request.attempt_id,
+        "kind": "AGENT",
+        "state": "CLOSED",
+        "terminal_reason": "SUCCEEDED",
+        "command_id": request.command_id,
+        "attempt_ordinal": request.attempt_ordinal,
+        "observation_json": json.dumps(
+            {
+                "request": request.to_dict(),
+                "session_binding": original.binding,
+                "session": metadata,
+            }
+        ),
+    }
+    batch = AcceptedBatch(
+        1,
+        "accepted-synthesis",
+        "actual-synthesis",
+        {"chain-a": "source-hypothesis"},
+        {
+            "cycle": 1,
+            "batch_command_id": "accepted-synthesis",
+            "candidate": {
+                "verdicts": [
+                    {
+                        "chain_id": "chain-a",
+                        "node_id": "source-hypothesis",
+                        "status": "refuted",
+                    }
+                ],
+                "prune": [],
+            },
+        },
+    )
+    selected = BatchHistory(
+        request.run_id, request.component_id, request.role, (batch,), {}
+    )
+    return manager, original, row, selected
+
+
+def test_retire_adjudicated_worktrees_defers_open_chain_identically_for_open_only_listing(
+    tmp_path: Path,
+) -> None:
+    manager, original, row, selected = _adjudicated_chain(tmp_path / "a")
+    opened = {**row, "state": "OPEN", "attempt_id": "still-open"}
+    assert manager.retire_adjudicated_worktrees(selected, [row, opened]) == {}
+    assert manager.retire_adjudicated_worktrees(selected, [opened]) == {}
+    assert original.worktree_root.exists()
+
+
+def test_retire_adjudicated_worktrees_retires_identically_for_open_only_listing(
+    tmp_path: Path,
+) -> None:
+    full_manager, full_original, full_row, full_selected = _adjudicated_chain(
+        tmp_path / "a"
+    )
+    open_manager, open_original, _, open_selected = _adjudicated_chain(
+        tmp_path / "b"
+    )
+    assert full_manager.retire_adjudicated_worktrees(full_selected, [full_row]) == {}
+    assert open_manager.retire_adjudicated_worktrees(open_selected, []) == {}
+    assert not full_original.worktree_root.exists()
+    assert not open_original.worktree_root.exists()
+
+
+def _cost_state_record(session_id: str, total: float, tokens: int) -> dict:
+    return {"type": "cost-state", "sessionId": session_id, "totalCostUSD": total,
+        "modelUsage": {"stub-model": {"inputTokens": tokens, "outputTokens": tokens,
+            "costUSD": total}}}
 
 
 def test_resume_and_fork_record_the_newest_saved_cost_state_as_usage_baseline(tmp_path: Path) -> None:

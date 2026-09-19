@@ -6,7 +6,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from .monitor import MonitorError, build_observer_snapshot
+from .monitor import HostStatusBackoff, MonitorError, build_observer_snapshot
 from .observation_api import build_product_observation
 from .oracle import Oracle
 from .state_store import StateStore
@@ -30,6 +30,7 @@ class ObserverRefresh:
         self._version_lock = threading.Lock()
         self._version_connection = self._version_context = None
         self._cached_version = None
+        self._host_backoff = HostStatusBackoff()
 
     def _data_version(self):
         # SQLite's connection-local change indication invalidates only this
@@ -83,7 +84,7 @@ class ObserverRefresh:
                 with StateStore(self.root).readonly_connection() as db:
                     db.execute('BEGIN')
                     snapshot = build_observer_snapshot(self.root, self.run_id, _connection=db,
-                        _oracle={'ok': None, 'issues': []})
+                        _oracle={'ok': None, 'issues': []}, _host_backoff=self._host_backoff)
                     activity = build_product_observation(self.root, self.run_id, _connection=db,
                         _snapshot=snapshot.to_dict())
                 self._cached = {'snapshot': snapshot, 'activity': activity}
