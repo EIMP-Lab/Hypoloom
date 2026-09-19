@@ -6,7 +6,6 @@ Git, four CPU Processes and final reporting use their production paths.
 import copy
 import json
 import secrets
-import sys
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -152,43 +151,9 @@ def test_real_cli_debate_three_rounds_restart_both_hypotheses_and_promote_only_w
     key = "host-only-debate-g3-" + secrets.token_hex(16)
     provider, thread = _start_provider(scenario, key); base_url = f"http://127.0.0.1:{provider.server_port}"
     (tmp_path / "settings.json").write_text("{}\n"); (tmp_path / "settings.json").chmod(0o600)
-    frozen_requests = {}
-    original_decoder = _request_from_provider
-
-    def decode_request(document):
-        try:
-            return original_decoder(document)
-        except KeyError as exc:
-            if str(exc) != "'content_base64'": raise
-            for message in reversed(document["messages"]):
-                content = message.get("content", [])
-                if isinstance(content, str): content = [{"text": content}]
-                for block in reversed(content):
-                    text = block.get("text", ""); start = text.find('{"agent_request_metadata":')
-                    if start < 0: continue
-                    prompt, _ = json.JSONDecoder().raw_decode(text[start:])
-                    request = frozen_requests[prompt["agent_request_metadata"]["attempt_id"]]
-                    assert request.command is AgentCommand.DEBATE_JUDGE
-                    assert prompt["agent_request_metadata"] == {name: value for name, value in request.to_dict().items() if name != "input_artifacts"}
-                    manifests = [item for item in prompt["rendered_inputs"] if "path" in item]
-                    assert len(manifests) == 1 and manifests[0]["ref"].endswith("--debate-judge-context")
-                    index = next(index for index, item in enumerate(request.input_artifacts) if item.ref == manifests[0]["ref"])
-                    assert manifests[0]["path"] == f"/inputs/{index:04d}.txt"
-                    assert manifests[0]["size_bytes"] == len(request.input_artifacts[index].content_bytes())
-                    return request
-            raise AssertionError("file-backed Judge lacks its actual frozen request")
-
-    for name in ("test_full_cc_host_g3", "test_expert_memory_g3", "test_claude_multichain_g3", "test_claude_final_report_g3", "test_claude_leader_host_g3", __name__):
-        monkeypatch.setattr(sys.modules[name], "_request_from_provider", decode_request)
 
     def new_host():
-        created_host = _new_host(tmp_path, executable, base_url, key)
-        start = created_host.claude_agent_host.start
-        def record_start(request, **kwargs):
-            frozen_requests[request.attempt_id] = request
-            return start(request, **kwargs)
-        monkeypatch.setattr(created_host.claude_agent_host, "start", record_start)
-        return created_host
+        return _new_host(tmp_path, executable, base_url, key)
 
     host = new_host(); web = _ScriptedDebateWeb(); host.grounding_web = web
     run_id = "native-debate-host-g3"; original_facts = None

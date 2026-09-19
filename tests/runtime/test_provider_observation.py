@@ -1,6 +1,16 @@
 import json
 
-from hypoloom.provider_observation import ProviderObservation
+from hypoloom.provider_observation import INPUT_TOO_LONG_PHRASES, ProviderObservation
+
+
+def test_input_too_long_phrase_constant_is_the_single_shared_source():
+    assert "prompt is too long" in INPUT_TOO_LONG_PHRASES
+    assert len(INPUT_TOO_LONG_PHRASES) == len(set(INPUT_TOO_LONG_PHRASES))
+    for phrase in INPUT_TOO_LONG_PHRASES:
+        parser = ProviderObservation()
+        parser.feed(json.dumps({"type": "error", "error": {"type": "invalid_request_error",
+            "message": phrase.upper()}}).encode())
+        assert parser.finish()["provider_error_code"] == "input_too_long"
 
 
 def test_split_sse_records_served_label_usage_and_actual_completion():

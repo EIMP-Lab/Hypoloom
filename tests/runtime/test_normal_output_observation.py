@@ -39,6 +39,7 @@ def test_normal_observation_keeps_validation_and_reported_billing_separate(
         model="stub-model", _stdout_file=io.BytesIO(_provider_ndjson(outer)), _stderr_file=io.BytesIO(),
         _output_validator=SimpleNamespace(snapshot=lambda: snapshot, close=lambda: None), tool_workspace=None,
         _runtime_diagnostics=None, _provider_relay=None, pid=123, process_group_id=123, started_at=0,
+        _prompt_manifest=None, _session_usage_baseline=None,
     )
     host = SimpleNamespace(kill_grace_seconds=0, _clock=lambda: 1, _finalize_resources=lambda _: None)
     monkeypatch.setattr(adapter, "_bounded_wait", lambda *_: None)

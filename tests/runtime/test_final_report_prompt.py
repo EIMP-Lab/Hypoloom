@@ -19,13 +19,25 @@ def test_final_report_names_native_skill_and_exact_input_files_without_losing_so
     assert "/report/FINAL_REPORT.md" in prompt["instruction"]
     assert "Read/Write/Edit/Glob/Grep/Bash/Skill" in prompt["instruction"]
     assert "NO_ACCEPTED_VERDICT" in prompt["instruction"]
-    for index, (source, rendered) in enumerate(zip(request.input_artifacts, prompt["rendered_inputs"], strict=True)):
-        assert rendered["path"] == f"/inputs/{index:04d}.txt"
-        assert rendered["ref"] == source.ref
-        assert rendered["content_utf8"].encode() == source.content_bytes()
+    assert "advertise their exact read-only /inputs paths" in prompt["instruction"]
+    assert "and complete content" not in prompt["instruction"]
+    background_rendered, context_rendered = prompt["rendered_inputs"]
+    assert background_rendered == {
+        "ref": background.ref,
+        "media_type": background.media_type,
+        "content_utf8": "Actual background",
+    }
+    context = request.input_artifacts[1]
+    assert context_rendered == {
+        "ref": context.ref,
+        "media_type": context.media_type,
+        "path": "/inputs/0001.txt",
+        "size_bytes": len(context.content_bytes()),
+    }
     assert request.to_dict() == before
 
 
-def test_report_without_a_mounted_workspace_does_not_advertise_input_files():
+def test_report_without_a_mounted_workspace_keeps_every_input_inline():
     prompt = json.loads(_prompt(report_request(), tool_workspace=False))
     assert all("path" not in item for item in prompt["rendered_inputs"])
+    assert all("content_utf8" in item for item in prompt["rendered_inputs"])

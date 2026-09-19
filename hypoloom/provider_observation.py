@@ -10,6 +10,10 @@ from email.utils import parsedate_to_datetime
 
 _TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
+INPUT_TOO_LONG_PHRASES = (
+    "prompt is too long", "prompt too long", "context length exceeded",
+    "maximum context length", "input is too long")
+
 
 class ProviderObservation:
     def __init__(self):
@@ -50,9 +54,7 @@ class ProviderObservation:
                 message = str(error.get("message", ""))[:4096].lower()
                 if error.get("type") == "rate_limit_error":
                     self.provider_error_code = "rate_limited"
-                elif any(phrase in message for phrase in (
-                        "prompt is too long", "prompt too long", "context length exceeded",
-                        "maximum context length", "input is too long")):
+                elif any(phrase in message for phrase in INPUT_TOO_LONG_PHRASES):
                     self.provider_error_code = "input_too_long"
         if kind == "content_block_delta" and self.first_content_at is None:
             self.first_content_at = time.time()

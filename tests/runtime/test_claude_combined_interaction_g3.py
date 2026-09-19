@@ -6,7 +6,6 @@ interaction stop choice. No fake Host/session/writer replaces production.
 """
 import json
 import secrets
-import sys
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -207,49 +206,6 @@ def _payload(tmp_path):
     return payload
 
 
-def _capture_file_backed_requests(monkeypatch, host):
-    frozen_requests = {}
-    decoder = _request_from_provider
-
-    def decode(document):
-        try:
-            return decoder(document)
-        except KeyError as exc:
-            if str(exc) != "'content_base64'":
-                raise
-            for message in reversed(document["messages"]):
-                content = message.get("content", [])
-                if isinstance(content, str):
-                    content = [{"text": content}]
-                for block in reversed(content):
-                    text = block.get("text", "")
-                    start = text.find('{"agent_request_metadata":')
-                    if start < 0:
-                        continue
-                    prompt, _ = json.JSONDecoder().raw_decode(text[start:])
-                    request = frozen_requests[prompt["agent_request_metadata"]["attempt_id"]]
-                    assert request.command is AgentCommand.DEBATE_JUDGE
-                    assert prompt["agent_request_metadata"] == {name: value for name, value in request.to_dict().items() if name != "input_artifacts"}
-                    manifests = [item for item in prompt["rendered_inputs"] if "path" in item]
-                    assert len(manifests) == 1 and manifests[0]["ref"].endswith("--debate-judge-context")
-                    index = next(index for index, item in enumerate(request.input_artifacts) if item.ref == manifests[0]["ref"])
-                    assert manifests[0]["path"] == f"/inputs/{index:04d}.txt"
-                    assert manifests[0]["size_bytes"] == len(request.input_artifacts[index].content_bytes())
-                    return request
-            raise AssertionError("file-backed Judge lacks its actual frozen request")
-
-    for name in ("test_full_cc_host_g3", "test_expert_memory_g3", "test_claude_multichain_g3",
-            "test_claude_final_report_g3", "test_claude_leader_host_g3", "test_claude_debate_host_g3", __name__):
-        monkeypatch.setattr(sys.modules[name], "_request_from_provider", decode)
-    start = host.claude_agent_host.start
-
-    def record_start(request, **kwargs):
-        frozen_requests[request.attempt_id] = request
-        return start(request, **kwargs)
-
-    monkeypatch.setattr(host.claude_agent_host, "start", record_start)
-
-
 def test_three_experts_native_leader_then_debate_six_cpu_and_final_report(tmp_path: Path, monkeypatch):
     executable = _installed_claude()
     scenario = _CombinedScenario(tmp_path)
@@ -260,7 +216,6 @@ def test_three_experts_native_leader_then_debate_six_cpu_and_final_report(tmp_pa
     host = _new_host(tmp_path, executable, f"http://127.0.0.1:{provider.server_port}", key)
     web = _ScriptedDebateWeb()
     host.grounding_web = web
-    _capture_file_backed_requests(monkeypatch, host)
     original_facts = None
     try:
         host.initialize()

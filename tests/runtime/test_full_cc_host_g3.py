@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 import yaml
 
 from hypoloom.agent_aci import AgentRequest, AgentResponse, CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, EmbeddedInput, WorkspaceArtifact
@@ -38,7 +39,7 @@ from hypoloom.fake_agent import FakeAgent
 from hypoloom.literature import FixedLiteratureIO, OpenAlexLiteratureFetcher
 from hypoloom.oracle import Oracle
 from hypoloom.profile_admission import admit_profile
-from hypoloom.workflow_host import WorkflowHost
+from hypoloom.workflow_host import WorkflowHost as _ProductionWorkflowHost
 
 from test_claude_file_tool_cli import (
     _handler_for,
@@ -89,6 +90,80 @@ class _CatalogTransport(RecordingOpenAlexTransport):
             self.body_override = None
 
 
+_FILE_BACKED_REQUESTS: dict[str, AgentRequest] = {}
+_FILE_BACKED_STATE_ROOTS: set[Path] = set()
+
+
+@pytest.fixture(autouse=True)
+def _clear_file_backed_requests():
+    # Faithful frozen requests carry input bytes; entries never outlive
+    # their test across a single-process G1 run.
+    _FILE_BACKED_REQUESTS.clear()
+    yield
+
+
+def _record_file_backed(adapter) -> None:
+    """Wrap one adapter's ``start`` so its faithful frozen request stays available.
+
+    ``request.json`` diagnostics intentionally omit opaque embedded content, so
+    only the in-memory request carries the exact offloaded ``/inputs`` bytes.
+    """
+    start = getattr(adapter, "start", None)
+    if start is None or getattr(start, "_file_backed_record", False):
+        return
+
+    def record_start(request, **kwargs):
+        _FILE_BACKED_REQUESTS[request.attempt_id] = request
+        return start(request, **kwargs)
+
+    record_start._file_backed_record = True
+    adapter.start = record_start
+
+
+class _FileBackedWorkflowHost(_ProductionWorkflowHost):
+    """Record every dispatched Agent request, whatever adapter runs it.
+
+    Probes replace ``claude_agent_host`` with routers that dispatch to fresh
+    adapters ``_new_host`` never wrapped; wrapping each assigned adapter's
+    ``start`` keeps the faithful frozen request reachable for reconstruction.
+    """
+
+    @property
+    def claude_agent_host(self):
+        return getattr(self, "_claude_agent_host_adapter", None)
+
+    @claude_agent_host.setter
+    def claude_agent_host(self, adapter) -> None:
+        if adapter is not None:
+            _record_file_backed(adapter)
+        self._claude_agent_host_adapter = adapter
+
+
+# ``_new_host`` constructs through this module attribute so probes can
+# monkeypatch Host construction; the file-backed subclass stays the default.
+WorkflowHost = _FileBackedWorkflowHost
+
+
+def _file_backed_request(metadata: Mapping[str, Any]) -> AgentRequest:
+    request = _FILE_BACKED_REQUESTS.get(metadata["attempt_id"])
+    if request is not None:
+        return request
+    # A recovered or crashed Host runs in a child process; its frozen request
+    # is only durable in that child's own diagnostics directory.
+    for root in sorted(_FILE_BACKED_STATE_ROOTS):
+        candidate = (
+            root
+            / "diagnostics"
+            / "agents"
+            / metadata["run_id"]
+            / metadata["attempt_id"]
+            / "request.json"
+        )
+        if candidate.is_file():
+            return AgentRequest.from_dict(json.loads(candidate.read_text()))
+    raise AssertionError("file-backed Agent request lacks its recorded frozen request")
+
+
 def _request_from_provider(document: Mapping[str, Any]) -> AgentRequest:
     decoder = json.JSONDecoder()
     for message in reversed(document.get("messages", [])):
@@ -105,8 +180,29 @@ def _request_from_provider(document: Mapping[str, Any]) -> AgentRequest:
             if start < 0:
                 continue
             prompt, _ = decoder.raw_decode(text[start:])
+            rendered = prompt["rendered_inputs"]
+            if any("path" in item for item in rendered):
+                metadata = prompt["agent_request_metadata"]
+                request = _file_backed_request(metadata)
+                assert metadata == {
+                    name: value
+                    for name, value in request.to_dict().items()
+                    if name != "input_artifacts"
+                }
+                for item in rendered:
+                    if "path" not in item:
+                        continue
+                    index = next(
+                        index
+                        for index, source in enumerate(request.input_artifacts)
+                        if source.ref == item["ref"]
+                    )
+                    assert item["path"] == f"/inputs/{index:04d}.txt"
+                    assert item["size_bytes"] == len(
+                        request.input_artifacts[index].content_bytes())
+                return request
             inputs = []
-            for item in prompt["rendered_inputs"]:
+            for item in rendered:
                 raw = (
                     item["content_utf8"].encode()
                     if "content_utf8" in item
@@ -416,6 +512,9 @@ def _start_provider(
     scenario: _HostScenario, host_key: str
 ) -> tuple[HTTPServer, threading.Thread]:
     base_handler = _handler_for(scenario)
+    private_root = getattr(scenario, "private_root", None)
+    if private_root is not None:
+        _FILE_BACKED_STATE_ROOTS.add((Path(private_root) / "state").resolve())
 
     class Handler(base_handler):
         def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
@@ -440,6 +539,10 @@ def _new_host(
     adapter = ClaudeAgentHost(
         claude_executable=executable, settings_path=tmp_path / "settings.json"
     )
+    # A monkeypatched factory may build a plain production Host with this
+    # adapter; recording here keeps its faithful frozen requests reachable.
+    _record_file_backed(adapter)
+    _FILE_BACKED_STATE_ROOTS.add((tmp_path / "state").resolve())
     return WorkflowHost(
         tmp_path / "state",
         fault_point=fault_point,

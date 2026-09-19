@@ -774,7 +774,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/61"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/62"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -1556,12 +1556,21 @@ def test_supported_hypothesis_update_is_local_and_must_terminate() -> None:
     assert candidate["properties"]["update_disposition"] == {
         "const": "TERMINATE_LINEAGE",
         "description": (
-            "Controls only the current local lineage. TERMINATE_LINEAGE ends it "
-            "but does not itself make a downstream dependent eligible. "
-            "Dependency readiness is separate and an ordinary dependency also "
-            "requires a current SUPPORTED assessment. "
-            "REVISE_NEXT_CYCLE requests another local scientific cycle but does "
-            "not bypass Host lifecycle or budget admission."
+            "Controls only the current local lineage. TERMINATE_LINEAGE closes "
+            "this component's research loop for the rest of the run: the Host "
+            "never opens another cycle for it, with the sole exception of a "
+            "Debate/Leader-designated restart. It does not itself make a "
+            "downstream dependent eligible. Dependency readiness is separate "
+            "and an ordinary dependency also requires a current SUPPORTED "
+            "assessment. REVISE_NEXT_CYCLE requests another local scientific "
+            "cycle but does not bypass Host lifecycle or budget admission. "
+            "To switch mechanisms next cycle, choose REVISE_NEXT_CYCLE and "
+            "propose a new chain with an appropriate relation; when the batch "
+            "selection's selected_tip is empty, ACI >= 17 also allows a "
+            "parent=None new batch. Registered sibling chains that have not "
+            "yet preregistered an experiment are silently abandoned when the "
+            "component closes; confirm that is intentional before choosing "
+            "TERMINATE_LINEAGE."
         ),
     }
     assert "current component's own current-tip assessment" in instruction
@@ -1570,6 +1579,10 @@ def test_supported_hypothesis_update_is_local_and_must_terminate() -> None:
     assert "global goal completion" in instruction
     assert "SUPPORTED" in instruction
     assert "must choose TERMINATE_LINEAGE" in instruction
+    assert "the Host never schedules another cycle for it" in instruction
+    assert "Debate/Leader-designated restart" in instruction
+    assert "To switch mechanisms next cycle, choose REVISE_NEXT_CYCLE" in instruction
+    assert "silently abandoned" in instruction
     assert "does not claim that downstream work or the global goal is complete" in instruction
     assert "does not by itself release or make any downstream dependent eligible" in instruction
     assert "ordinary scientific dependency usually requires" in instruction
@@ -1601,12 +1614,21 @@ def test_non_supported_hypothesis_update_keeps_honest_local_dispositions(
     assert candidate["properties"]["update_disposition"] == {
         "enum": ["REVISE_NEXT_CYCLE", "TERMINATE_LINEAGE"],
         "description": (
-            "Controls only the current local lineage. TERMINATE_LINEAGE ends it "
-            "but does not itself make a downstream dependent eligible. "
-            "Dependency readiness is separate and an ordinary dependency also "
-            "requires a current SUPPORTED assessment. "
-            "REVISE_NEXT_CYCLE requests another local scientific cycle but does "
-            "not bypass Host lifecycle or budget admission."
+            "Controls only the current local lineage. TERMINATE_LINEAGE closes "
+            "this component's research loop for the rest of the run: the Host "
+            "never opens another cycle for it, with the sole exception of a "
+            "Debate/Leader-designated restart. It does not itself make a "
+            "downstream dependent eligible. Dependency readiness is separate "
+            "and an ordinary dependency also requires a current SUPPORTED "
+            "assessment. REVISE_NEXT_CYCLE requests another local scientific "
+            "cycle but does not bypass Host lifecycle or budget admission. "
+            "To switch mechanisms next cycle, choose REVISE_NEXT_CYCLE and "
+            "propose a new chain with an appropriate relation; when the batch "
+            "selection's selected_tip is empty, ACI >= 17 also allows a "
+            "parent=None new batch. Registered sibling chains that have not "
+            "yet preregistered an experiment are silently abandoned when the "
+            "component closes; confirm that is intentional before choosing "
+            "TERMINATE_LINEAGE."
         ),
     }
     assert f"current-tip HypothesisAssessed is {assessment}" in instruction
@@ -1614,6 +1636,9 @@ def test_non_supported_hypothesis_update_keeps_honest_local_dispositions(
     assert "Neither disposition changes that assessment" in instruction
     assert "does not by itself release or make any downstream dependent eligible" in instruction
     assert "REVISE_NEXT_CYCLE requests another local scientific cycle" in instruction
+    assert "the Host never schedules another cycle for it" in instruction
+    assert "To switch mechanisms next cycle, choose REVISE_NEXT_CYCLE" in instruction
+    assert "silently abandoned" in instruction
     assert "does not allocate scientific budget" in instruction
     assert "Operational failures and diagnostics are not scientific evidence" in instruction
     assert "do not convert them into SUPPORTED or REFUTED" in instruction
@@ -3455,6 +3480,66 @@ def test_error_true_with_success_subtype_keeps_actual_api_failure(tmp_path: Path
     assert observation.response is None
     assert observation.diagnostics["provider_diagnostic"] == message
     assert observation.diagnostics["provider_accounting"]["token_usage"]["total_tokens"] == 26
+
+
+@pytest.mark.parametrize("command", [AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE])
+def test_cli_oversized_input_is_terminal_only_for_stateless_commands(command: AgentCommand) -> None:
+    from hypoloom.claude_agent_host import _classify_cli_oversized_input
+
+    diagnostics: dict[str, object] = {"provider_diagnostic": "Prompt is too long"}
+    _classify_cli_oversized_input(default_request(command), diagnostics)
+    assert diagnostics["provider_failure"] == {
+        "code": "input_too_long", "http_status": None, "source": "cli_compaction"}
+    assert "provider_failure_hint" not in diagnostics
+
+
+def test_cli_oversized_input_keeps_stateful_resume_retry() -> None:
+    from hypoloom.agent_context import agent_failure_stage, agent_retry_class
+    from hypoloom.claude_agent_host import _classify_cli_oversized_input
+
+    diagnostics: dict[str, object] = {"provider_diagnostic": "Prompt is too long"}
+    _classify_cli_oversized_input(default_request(AgentCommand.HYPOTHESIS_PROPOSAL), diagnostics)
+    assert "provider_failure" not in diagnostics
+    assert diagnostics["provider_failure_hint"] == {
+        "code": "input_too_long", "source": "cli_compaction"}
+    details = {"diagnostics": diagnostics}
+    assert agent_retry_class("nonzero_exit", details, retryable=True) == "INFRASTRUCTURE"
+    assert agent_failure_stage("nonzero_exit", details) == "provider_process"
+
+
+def test_cli_oversized_input_never_overrides_wire_or_unmatched_diagnostics() -> None:
+    from hypoloom.claude_agent_host import _classify_cli_oversized_input
+
+    wire = {"code": "rate_limited", "http_status": 429}
+    diagnostics: dict[str, object] = {
+        "provider_diagnostic": "Prompt is too long", "provider_failure": dict(wire)}
+    _classify_cli_oversized_input(default_request(AgentCommand.OBSERVER), diagnostics)
+    assert diagnostics["provider_failure"] == wire
+    diagnostics = {"provider_diagnostic": "Stop hook rejected the structured candidate"}
+    _classify_cli_oversized_input(default_request(AgentCommand.OBSERVER), diagnostics)
+    assert "provider_failure" not in diagnostics
+    assert "provider_failure_hint" not in diagnostics
+
+
+def test_cli_oversized_stateful_attempt_observation_keeps_infrastructure_retry(tmp_path: Path) -> None:
+    from hypoloom.agent_context import agent_failure_stage, agent_retry_class
+
+    host = _host(tmp_path)
+    output = json.dumps({"type": "result", "subtype": "success", "is_error": True,
+        "result": "Prompt is too long", "num_turns": 1, "total_cost_usd": 0.25,
+        "usage": {"input_tokens": 17, "output_tokens": 9}})
+    observation = host.wait(_start(host, mode="diagnostic", extra_environment={
+        "STUB_STDOUT_DIAGNOSTIC": output,
+        "STUB_DIAGNOSTIC": ""}))
+    assert observation.terminal_reason is AgentHostTerminalReason.FAILED
+    assert observation.failure_code == "nonzero_exit"
+    assert observation.diagnostics["provider_diagnostic"] == "Prompt is too long"
+    assert "provider_failure" not in observation.diagnostics
+    assert observation.diagnostics["provider_failure_hint"] == {
+        "code": "input_too_long", "source": "cli_compaction"}
+    details = {"diagnostics": observation.diagnostics}
+    assert agent_retry_class(observation.failure_code, details, retryable=True) == "INFRASTRUCTURE"
+    assert agent_failure_stage(observation.failure_code, details) == "provider_process"
 
 
 def test_nonzero_provider_result_preserves_reported_accounting(tmp_path: Path) -> None:

@@ -47,6 +47,9 @@ _INNER = frozenset(
 _WRITABLE = frozenset(
     {AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, AgentCommand.EXPERIMENT_EXECUTION}
 )
+# Judges reconstruct their context on every Attempt, including retries, so a
+# retry of these commands is a brand-new session with byte-identical input.
+STATELESS_SESSION_COMMANDS = frozenset({AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE})
 _MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 
 
@@ -556,9 +559,8 @@ class AgentSessions:
         )
         inner = request.command in _INNER
         chain = task.key.chain if isinstance(task, ResearchNodeTask) else None
-        # Judges reconstruct their context on every Attempt, including retries.
         # Expert chains and the graph manager keep their existing conversation.
-        stateless = request.command in {AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE}
+        stateless = request.command in STATELESS_SESSION_COMMANDS
         scope_key = request.command_id + "/" + request.attempt_id if stateless else request.command_id
         scope = (
             chain_session_scope(chain)

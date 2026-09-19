@@ -56,6 +56,19 @@ def test_retry_classification_separates_candidate_and_model_output_failures() ->
     ) == "agent_workspace"
 
 
+def test_cli_compaction_diagnostics_keep_existing_classification_rules() -> None:
+    stateless = {"diagnostics": {
+        "provider_diagnostic": "Prompt is too long",
+        "provider_failure": {"code": "input_too_long", "http_status": None, "source": "cli_compaction"}}}
+    assert agent_retry_class("nonzero_exit", stateless, retryable=True) is None
+    assert agent_failure_stage("nonzero_exit", stateless) == "provider_admission"
+    stateful = {"diagnostics": {
+        "provider_diagnostic": "Prompt is too long",
+        "provider_failure_hint": {"code": "input_too_long", "source": "cli_compaction"}}}
+    assert agent_retry_class("nonzero_exit", stateful, retryable=True) == "INFRASTRUCTURE"
+    assert agent_failure_stage("nonzero_exit", stateful) == "provider_process"
+
+
 def test_allowed_supporting_refs_projection_is_bounded_and_safe() -> None:
     from hypoloom.agent_context import _allowed_supporting_refs
 
