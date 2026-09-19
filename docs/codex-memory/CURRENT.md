@@ -1,5 +1,31 @@
 # Current Hypoloom development state
 
+- September 19 (repair round, uncommitted on dev @ f2de65a): read-only
+  analysis of the terminated run MERC-causal-202609172306 found four
+  defect classes; two independent audits (local records under `.local/`)
+  turned them into eight directives that are now implemented with their
+  audit must-dos. ①a oversized prompt inputs render as /inputs
+  advertisements (request bytes and oracles unchanged; OBSERVER-class
+  prompts 775→93 KB in replay), ①b CLI-uncompactable failures classify
+  as input_too_long only for stateless commands, ②c TERMINATE_LINEAGE
+  prompt text now matches the enforced permanent-close semantics, ①d
+  per-tick worktree retirement is history-gated and dirty-memorized
+  (~20 s/tick → flat ~5 ms), ②e End-Run modal reconciles durable
+  acceptance and monitor STATUS backs off, ③ the GPU pressure backstop
+  spares externally-attributed pressure (`free + owned ≥ reserve`,
+  exp-10's 3,901+552 ≥ 4,096), records attribution/grace in the renamed
+  payload, and uses a 30 s terminate grace with the zombie-reap fix.
+  Adapter /62, compute /6, runner /3; new runs only. Evidence:
+  qualification's top section — final-tree G1 5,843 passed (3 harness
+  failures fixed and refreshed), G2 retained 8/8 (7 clean + 1 known
+  historical, bytes unchanged), G4 pressure attribution lane green on
+  the two authorized UUIDs (main lane 9/10 with the documented
+  zero-unknown flake), G5-local paid sample passed (GOAL_MET, exact
+  2.83 USD accounting, real model reads offloaded /inputs).
+  Freeze leftovers: commit grouping C1–C4 awaits the user's explicit
+  request; the recorded residuals (single-sample unknown attribution,
+  non-blocking cancel, remaining full-table scans) are follow-ups.
+
 - September 19: the local Claude Code auto-updated to 2.1.277 (binary
   replaced 10:07), whose headless sessions now save cumulative cost/usage
   totals at exit and seed `--resume`/`--fork-session` launches from them.

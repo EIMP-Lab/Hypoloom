@@ -4923,8 +4923,8 @@ def _raw_owned_peak(observation: Mapping[str, Any], attempt: Mapping[str, Any], 
         if count == 0:
             if owned["latest"] is not None or owned["peak"] is not None: raise ValueError("empty sampler has invented evidence")
             complete = False; continue
-        latest = _raw_owned_sample(owned["latest"], row["gpu_uuid"], attempt, row["total_memory_mib"])
-        peak = None if owned["peak"] is None else _raw_owned_sample(owned["peak"], row["gpu_uuid"], attempt, row["total_memory_mib"])
+        latest = _raw_owned_sample(owned["latest"], row["gpu_uuid"], attempt, row.get("gpu_total_memory_mib", row.get("total_memory_mib")))
+        peak = None if owned["peak"] is None else _raw_owned_sample(owned["peak"], row["gpu_uuid"], attempt, row.get("gpu_total_memory_mib", row.get("total_memory_mib")))
         if (unknown == 0 and latest is None or unknown == count and peak is not None
                 or unknown < count and peak is None or owned["peak"] is not None and owned["peak"]["complete"] is not True
                 or latest is not None and (peak is None or peak < latest)
@@ -5471,29 +5471,39 @@ def _audit_process_resource_observation(
             and tuple(item.get("gpu_uuid") for item in usage) == tuple(devices))
         pressured = [item["gpu_uuid"] for item in usage if item.get("pressure_exceeded") is True] if valid else []
         if pressure is not None:
-            valid = valid and isinstance(pressure, Mapping) and set(pressure) == {"reason", "reserve_memory_mib", "gpu_uuids"} and pressure.get("gpu_uuids") == pressured and bool(pressured)
+            renamed = isinstance(pressure, Mapping) and set(pressure) == {"reason", "gpu_reserve_memory_mib", "owned_memory_mib_at_decision", "attribution", "terminate_grace_seconds", "gpu_uuids"}
+            valid = valid and isinstance(pressure, Mapping) and (
+                set(pressure) == {"reason", "reserve_memory_mib", "gpu_uuids"}
+                or renamed and pressure.get("attribution") == ("self" if any(item.get("pressure_attribution") == "self" for item in usage if item.get("gpu_uuid") in pressured) else "unknown")
+            ) and pressure.get("gpu_uuids") == pressured and bool(pressured)
         else:
-            valid = valid and not pressured
+            valid = valid and (not pressured or all(item.get("pressure_attribution") == "external" for item in usage if item["gpu_uuid"] in pressured))
         if not valid:
             issues.append(OracleIssue("process_resource_observation_mismatch", "multi-device usage or pressure differs from its exact frozen GPU set", (attempt_id,)))
             return
         for item in usage:
-            per_pressure = {key: value for key, value in pressure.items() if key != "gpu_uuids"} if pressure is not None and item["gpu_uuid"] in pressured else None
+            per_pressure = ({key: value for key, value in pressure.items() if key != "gpu_uuids"}
+                if pressure is not None and item["gpu_uuid"] in pressured and item.get("pressure_attribution") != "external" else None)
             _audit_process_resource_observation({**observation, "resource_usage": item, "resource_pressure": per_pressure},
                 {**resource, "gpu_uuid": item["gpu_uuid"], "gpu_uuids": ()}, attempt_id, issues)
         return
-    expected_keys = {
-        "gpu_uuid",
+    memory_keys = (
         "total_memory_mib",
         "initial_free_memory_mib",
         "minimum_free_memory_mib",
         "latest_free_memory_mib",
         "latest_used_memory_mib",
         "latest_utilization_percent",
+    )
+    renamed = isinstance(usage, Mapping) and any(f"gpu_{name}" in usage for name in memory_keys)
+    prefix = "gpu_" if renamed else ""
+    expected_keys = {f"{prefix}{name}" for name in memory_keys} | {
+        "gpu_uuid",
         "sample_count",
         "pressure_exceeded",
     }
     if resource.get("attributable") is True: expected_keys.add("owned_memory")
+    if renamed and usage.get("pressure_exceeded") is True: expected_keys.add("pressure_attribution")
     valid = isinstance(usage, Mapping) and set(usage) == expected_keys
     if valid and resource.get("attributable") is True:
         try:
@@ -5503,9 +5513,9 @@ def _audit_process_resource_observation(
             issues.append(OracleIssue("owned_gpu_measurement_invalid", str(exc), (attempt_id,)))
             valid = False
     if valid:
-        total = usage["total_memory_mib"]
+        total = usage[f"{prefix}total_memory_mib"]
         memory = tuple(
-            usage[name]
+            usage[f"{prefix}{name}"]
             for name in (
                 "initial_free_memory_mib",
                 "minimum_free_memory_mib",
@@ -5513,7 +5523,7 @@ def _audit_process_resource_observation(
                 "latest_used_memory_mib",
             )
         )
-        utilization = usage["latest_utilization_percent"]
+        utilization = usage[f"{prefix}latest_utilization_percent"]
         valid = (
             resource.get("expected_kind") == "GPU"
             and usage["gpu_uuid"] == resource.get("gpu_uuid")
@@ -5526,13 +5536,13 @@ def _audit_process_resource_observation(
                 and 0 <= value <= total
                 for value in memory
             )
-            and usage["minimum_free_memory_mib"]
+            and usage[f"{prefix}minimum_free_memory_mib"]
             <= min(
-                usage["initial_free_memory_mib"],
-                usage["latest_free_memory_mib"],
+                usage[f"{prefix}initial_free_memory_mib"],
+                usage[f"{prefix}latest_free_memory_mib"],
             )
-            and usage["latest_free_memory_mib"]
-            + usage["latest_used_memory_mib"]
+            and usage[f"{prefix}latest_free_memory_mib"]
+            + usage[f"{prefix}latest_used_memory_mib"]
             == total
             and (
                 utilization is None
@@ -5545,17 +5555,53 @@ def _audit_process_resource_observation(
             and usage["sample_count"] > 0
             and isinstance(usage["pressure_exceeded"], bool)
         )
-    pressure_valid = (
-        isinstance(pressure, Mapping)
-        and set(pressure) == {"reason", "reserve_memory_mib"}
-        and pressure.get("reason") == "sustained_free_memory_below_reserve"
-        and isinstance(pressure.get("reserve_memory_mib"), int)
-        and not isinstance(pressure.get("reserve_memory_mib"), bool)
-        and pressure["reserve_memory_mib"] == resource.get("reserve_memory_mib")
-        and observation.get("terminal_reason") == "FAILED" and valid and usage["minimum_free_memory_mib"] < pressure["reserve_memory_mib"] and usage["latest_free_memory_mib"] < pressure["reserve_memory_mib"]
-    )
+    if valid and renamed and usage["pressure_exceeded"] is True:
+        valid = usage.get("pressure_attribution") in {"external", "self", "unknown"}
+    if renamed:
+        reserve = pressure.get("gpu_reserve_memory_mib") if isinstance(pressure, Mapping) else None
+        grace = pressure.get("terminate_grace_seconds") if isinstance(pressure, Mapping) else None
+        pressure_valid = (
+            isinstance(pressure, Mapping)
+            and set(pressure) == {"reason", "gpu_reserve_memory_mib", "owned_memory_mib_at_decision", "attribution", "terminate_grace_seconds"}
+            and pressure.get("reason") == "sustained_free_gpu_memory_below_reserve"
+            and isinstance(reserve, int)
+            and not isinstance(reserve, bool)
+            and reserve == resource.get("reserve_memory_mib")
+            and pressure.get("attribution") in {"self", "unknown"}
+            and (
+                pressure.get("owned_memory_mib_at_decision") is None
+                or isinstance(pressure["owned_memory_mib_at_decision"], int)
+                and not isinstance(pressure["owned_memory_mib_at_decision"], bool)
+                and pressure["owned_memory_mib_at_decision"] >= 0
+            )
+            and isinstance(grace, (int, float))
+            and not isinstance(grace, bool)
+            and 0 < grace < float("inf")
+            and observation.get("terminal_reason") == "FAILED" and valid
+            and usage[f"{prefix}minimum_free_memory_mib"] < reserve
+            and usage[f"{prefix}latest_free_memory_mib"] < reserve
+        )
+    else:
+        pressure_valid = (
+            isinstance(pressure, Mapping)
+            and set(pressure) == {"reason", "reserve_memory_mib"}
+            and pressure.get("reason") == "sustained_free_memory_below_reserve"
+            and isinstance(pressure.get("reserve_memory_mib"), int)
+            and not isinstance(pressure.get("reserve_memory_mib"), bool)
+            and pressure["reserve_memory_mib"] == resource.get("reserve_memory_mib")
+            and observation.get("terminal_reason") == "FAILED" and valid and usage["minimum_free_memory_mib"] < pressure["reserve_memory_mib"] and usage["latest_free_memory_mib"] < pressure["reserve_memory_mib"]
+        )
     if valid:
-        valid = (usage["pressure_exceeded"] is True and pressure_valid) or (usage["pressure_exceeded"] is False and pressure is None)
+        attribution = usage.get("pressure_attribution") if renamed else None
+        valid = (
+            usage["pressure_exceeded"] is True
+            and (
+                attribution == "external"
+                and pressure is None
+                or attribution != "external"
+                and pressure_valid
+            )
+        ) or (usage["pressure_exceeded"] is False and pressure is None)
     if not valid:
         issues.append(
             OracleIssue(

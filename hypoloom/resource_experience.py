@@ -27,12 +27,14 @@ _TERMINAL_STATUSES = frozenset(
     {"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED", "LOST"}
 )
 _MINIMUM_FREE_KEYS = (
+    "gpu_minimum_free_memory_mib",
     "minimum_free_memory_mib",
     "minimum_observed_free_memory_mib",
     "min_free_memory_mib",
     "free_memory_mib",
 )
 _MAXIMUM_USED_KEYS = (
+    "gpu_latest_used_memory_mib",
     "maximum_used_memory_mib",
     "maximum_observed_used_memory_mib",
     "max_used_memory_mib",
@@ -286,7 +288,7 @@ def _valid_memory_mib(value: object) -> bool:
 def _device_peak_memory_mib(usage: Mapping[object, object]) -> int | None:
     """Device pressure history, deliberately not attributable workload usage."""
     latest_or_peak = _memory_extreme(usage, _MAXIMUM_USED_KEYS, minimum=False)
-    total = usage.get("total_memory_mib")
+    total = usage.get("gpu_total_memory_mib", usage.get("total_memory_mib"))
     free = _memory_extreme(usage, _MINIMUM_FREE_KEYS, minimum=True)
     if _valid_memory_mib(total) and free is not None and free <= total:
         return max(total - free, latest_or_peak or 0)

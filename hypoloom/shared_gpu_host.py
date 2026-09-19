@@ -153,6 +153,14 @@ class SharedGpuHost:
         self.sampled_at.pop(attempt_id, None)
         return {uuid: accumulator.summary for uuid, accumulator in self.owned_samples.pop(attempt_id, {}).items()}
 
+    def owned_latest_memory_mib(self, attempt_id: str, gpu_uuid: str) -> int | None:
+        """Latest complete owned sample for a live decision; None when unattributed."""
+        accumulator = self.owned_samples.get(attempt_id, {}).get(gpu_uuid)
+        latest = None if accumulator is None else accumulator.summary.get("latest")
+        if not isinstance(latest, Mapping) or latest.get("complete") is not True:
+            return None
+        return latest["resident_bytes"] // (1024 * 1024)
+
     @staticmethod
     def observe_oom(payload: dict[str, Any], stderr_path: Path) -> None:
         """Recognized workload-reported diagnosis; never infer OOM from pressure."""

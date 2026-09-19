@@ -1007,8 +1007,9 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
         started.append(handle)
         return handle
 
-    def cancel(handle):
+    def cancel(handle, *, terminate_grace_seconds=None):
         assert handle is started[0]
+        assert terminate_grace_seconds == 30.0
         handle.returncode = -15
         return True
 
@@ -1073,13 +1074,17 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
         assert process["terminal_reason"] == "FAILED"
         observation = json.loads(process["observation_json"])
         assert observation["resource_pressure"] == {
-            "reason": "sustained_free_memory_below_reserve",
-            "reserve_memory_mib": 4_096,
+            "reason": "sustained_free_gpu_memory_below_reserve",
+            "gpu_reserve_memory_mib": 4_096,
+            "owned_memory_mib_at_decision": None,
+            "attribution": "unknown",
+            "terminate_grace_seconds": 30.0,
         }
         assert observation["resource_usage"]["gpu_uuid"] == GPU_UUID
-        assert observation["resource_usage"]["minimum_free_memory_mib"] == 1_024
+        assert observation["resource_usage"]["gpu_minimum_free_memory_mib"] == 1_024
         assert observation["resource_usage"]["pressure_exceeded"] is True
-        host.runner.cancel.assert_called_once_with(started[0])
+        assert observation["resource_usage"]["pressure_attribution"] == "unknown"
+        host.runner.cancel.assert_called_once_with(started[0], terminate_grace_seconds=30.0)
         spec_payload = spec["payload"]
         experience = host._resource_experience(
             run_id,
@@ -1195,7 +1200,8 @@ def test_pressure_cancel_race_preserves_natural_terminal_and_consistent_usage(
         return SimpleNamespace(request=request, pid=41_002, process_group_id=41_002,
                                started_at=time.monotonic(), returncode=None)
 
-    def cancel(handle):
+    def cancel(handle, *, terminate_grace_seconds=None):
+        assert terminate_grace_seconds == 30.0
         handle.returncode = 0
         return False
 

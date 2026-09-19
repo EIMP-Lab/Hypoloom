@@ -6,6 +6,165 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — prompt offload, termination honesty, tick cost, and attribution-aware GPU pressure, 2026-09-19
+
+Candidate: uncommitted working tree on dev @ f2de65a carrying eight reviewed
+repair directives plus their audit follow-ups (44+ files; adapter
+`claude-code-bwrap/62`, compute `local-compute/6`, runner
+`local-process-group/3`; all changes apply to new runs only through the
+existing version pinning). Origin: read-only analysis of the terminated run
+`MERC-causal-202609172306` (its own evidence is untouched), which found four
+defect classes — monotonically growing prompts killing agent tasks (the
+OBSERVER interaction trigger died every cycle; zero DEBATE/LEADER tasks in
+the whole run), a TERMINATE_LINEAGE teach-vs-enforce semantic gap that
+permanently collapsed three-way expert parallelism to one, a GPU-pressure
+kill that discarded 4.2 h of completed scan work, and control-channel
+starvation that made the operator's (durably accepted) End Run look failed.
+Two local audit records drove the work: findings/fix plan and the directive
+audit with execution order (both under `.local/`, git-ignored); a second
+independent implementation audit (same place) adjudicated the eight
+directives and set the must-dos below.
+
+Changes. ①a: oversized prompt inputs (four context suffixes at any size, or
+any input ≥ 64 KB) render as `{ref, media_type, path, size_bytes}`
+advertisements under the existing DEBATE_JUDGE precedent; request bytes and
+`input_digest` are unchanged, so every oracle is unaffected; the common
+instruction teaches reading the advertised read-only `/inputs` source.
+①b: CLI-side uncompactable-single-turn failures classify as
+`input_too_long` only for the stateless commands (OBSERVER, DEBATE_JUDGE),
+whose byte-identical retries are futile; stateful `--resume` retries (which
+succeed through provider-side compaction) keep their existing
+classification. ①c: attempt diagnostics gain `prompt_bytes`,
+`rendered_input_bytes`, `offloaded_refs` (additive, not oracle-consumed).
+②c: the TERMINATE_LINEAGE schema description and system prompt now state
+the enforced semantics (the Host never schedules another cycle; only a
+Debate/Leader-designated restart reopens; untested sibling chains are
+silently abandoned); the SUPPORTED⇒TERMINATE ACI rule is unchanged.
+①d: the per-tick adjudicated-worktree retirement is gated on the accepted
+batch history actually moving (process-local memory, replayed once after a
+Host restart), lists OPEN attempts only, and memorizes the
+permanently-dirty retained outcome instead of re-running git every tick —
+the audited run's ~20 s/tick (~170 MB full-table load plus repeated git
+cleanup on three permanently-dirty worktrees) becomes flat ~5 ms.
+②e: the End-Run modal's socket timeout is 30 s, and on timeout it
+reconciles against the durable command row (idempotent request id) instead
+of declaring failure; the monitor's STATUS polling backs off exponentially
+instead of hammering a wedged socket.
+③c/③d: the device-level GPU pressure backstop now consults the already
+sampled pool ownership attribution — `free + owned ≥ reserve` means the
+pressure is external and the process is spared; `owned_memory_mib_at_decision`
+and `attribution` are recorded, and the payload is renamed with explicit
+`gpu_` fields. The oracle (single- and multi-GPU branches) accepts exactly
+the old or the new key set (version lives only in `configuration_id`, so
+shape is the evidence, per the oracle's existing idiom); the real run's
+old-shape payload re-audits clean. ③b: only the pressure-cancel path uses a
+30 s terminate grace (recorded in the payload); operator/timeout cancels
+keep 0.5 s. En route the real lane exposed that the grace loop never
+reaped the SIGTERMed zombie root, so a 30 s cancel blocked the Host tick
+for the full grace; one line (`runner.py` polls the child inside the loop)
+makes the cancel return once the group actually exits.
+
+Audit must-dos landed: ①d error-result memory (dirty worktrees no longer
+re-run git per tick; the test that codified the repetition was rewritten),
+③b applied grace in the payload (oracle both branches), ③c real-GPU
+evidence, the CC-carryover `clamped` marker, autouse clearing of the
+file-backed request registry, and direct attribute access with test
+doubles declaring fields (no production getattr tolerance).
+
+Evidence (archived under `.local/qualification/final-20260919/` unless
+named). Replays of the terminated run's real requests: OBSERVER
+775→93 KB, EXPERIMENT_EXECUTION 1766→345 KB, FINAL_REPORT 885→178 KB,
+expert nodes ~610→~300 KB (`.local/replay_offload_sizes.py`); failure
+classification replay: stateless → terminal, stateful → unchanged
+(`.local/replay-20260919-cli-oversize-classification.py`). Tick timing:
+549.6 ms → 19.9 ms full/OPEN at the audited 214-row shape, dirty case flat
+~5 ms after the memory fix. G1 full offline: `g1.xml` 5,843 passed / 26
+skipped with 3 native failures caused by a test-harness patch point lost
+in the file-backed fixture (not production); fixed and refreshed as
+`g1-refresh.xml` (49 passed including the three identities). G2 retained
+cohort: 8/8 runs audited with the current candidate oracle — 7 clean plus
+one verbatim-known historical finding — with database bytes proven
+unchanged (`g2-retained.json` and per-run reports); the portable fixture
+selection is 39/39 (independent audit run). G3 lane: the four scenarios
+this round had not covered pass (three inside `g1.xml`, the native
+learning scenario inside `g1-refresh.xml`). G4 shared CUDA on the two
+authorized UUIDs: the pressure-attribution lane
+(`.local/qualification/g4-pressure-20260919.xml` + retained roots) covers
+unknown-kill (exclusive mode), external-spare and self-kill (pool mode)
+on real workloads, with oracle validation of the new payload end-to-end;
+the main lane (`g4.xml` + `g4-roots/`) is 9/10 — the two-host case failed
+the closure's zero-unknown-tolerance owned-sample assertion, the same
+pre-existing flake seen in the 20260917 batch at the same assertion (the
+sampler records a bounded unknown when the device's CUDA process set
+changes mid-scan, a teardown race under concurrent workloads; the
+assertion is documented here as a known flaky surface and was not
+weakened — the same test passes on targeted reruns, 2/2 today). G5:
+one paid g5-local sample (`g5-local.xml` + `g5-local-roots/`, run root
+archived) passed on first execution — the real run reached
+COMPLETED/GOAL_MET (canonical SUCCESS, metric 0.875) on adapter /62
+with CC 2.1.277 and glm-5.3-flash, charging 2.827766 USD exactly equal
+to reported (zero unknown attempts; declared cohort 5 USD with zero
+prior, 2.172234 USD remaining). The offload contract held end-to-end
+with a real model: the FINAL_REPORT prompt advertises its 22,435-byte
+`--final-report-context` as a 342-rendered-byte manifest
+(`offloaded_refs` of record), the transcript shows the model issuing
+`Read /inputs/0002.txt` and consuming the offloaded source, and every
+attempt closed with exact accounting under the CC 2.1.277 carryover
+repair.
+
+AGENTS.md justification for the ③c mechanism (the round's one new
+decision rule): (1) reproducible failure and impact — run
+`MERC-causal-202609172306` attempt `…--component-3--experiment-10--process-1`:
+device free pinned at 3,901 MiB against the 4,096 MiB reserve (sustained,
+minimum == latest) while the process's own attributed resident peak was
+552 MiB of 20,675 MiB used; the device-level rule cancelled it, freeing
+almost nothing, and discarded 4.2 h of completed scan work
+(`EXECUTION_FAILURE` of record). (2) Failed asset and boundary — the
+Host-side pressure-cancel decision in `WorkflowHost._poll_processes`, at
+the boundary between the device-level tracker (documented to never
+signal or attribute) and the pool ownership sampler that already sampled
+every poll for evidence but was never consulted. (3) Why existing
+machinery is insufficient — the tracker deliberately never attributes;
+pool admission accounts capacity only at dispatch time, so a foreign
+tenant's in-run consumption is indistinguishable from self-consumption
+at cancel time. (4) Smallest mechanism — reuse the existing `sample_owned`
+accumulator: one read accessor and one pure decision rule
+(`free + owned_latest ≥ reserve` spares), recorded per device with the
+decision evidence in the renamed payload; no new sampler, no durable
+state, no parallel authority; removal is reverting the decision line.
+Old runs keep their frozen versions and audit against the old payload
+shape; nothing is migrated.
+
+CC version crossover of session transcripts (accepted risk). The
+per-Attempt billing repair below keys off `cost-state` transcript records
+that only CC ≥ 2.1.277 writes; session preparation records the newest
+such record as the deduction baseline whenever one exists. If a
+transcript carrying these records is later resumed or forked by an older
+CLI (< 2.1.277) — a binary downgrade mid-run, which auto-update never
+performs and only a manual version change can cause — the older CLI
+ignores the records and reports a zero-based ledger while the Host still
+deducts the recorded baseline: an over-deduction that under-accounts the
+attempt, with underflowed fields flooring at zero and named in
+`provider_session_carryover.clamped`. This direction stays fail-closed,
+not silently under-billing: once a deducted input total falls below the
+observed assistant/wire input floor, the existing lower-bound guard
+withholds `provider_accounting` and the attempt closes as
+`invalid_provider_metadata`. Upgrades are safe in both directions.
+
+Known residuals (recorded, not blocking): pressure decisions made on a
+single incomplete attribution sample stay conservative (a sustained-two-
+poll or last-complete-sample refinement is a follow-up); a pressure
+cancel blocks the serve tick only for the workload's actual remaining
+life after the zombie fix (a non-blocking cancel is a separate optional
+change); the twelve other unfiltered `list_attempts()` full-table scans
+in interaction/debate/workflow hosts are filed as a follow-up; the
+offload gate is the boolean `tool_workspace` (no legacy workspace is
+paired with schema ≥ 14 in practice; tightening it to the session
+workspace type is optional); the file-backed request registry clears
+per-test in its own module (suite-wide bounding would move the fixture
+to conftest); the G4 closure zero-unknown tolerance is a known flaky
+surface under concurrent CUDA churn (see above).
+
 ## Current development — per-Attempt billing under CC 2.1.277 cumulative session ledgers, 2026-09-19
 
 The local Claude Code auto-updated to 2.1.277 (`~/.local/bin/claude` replaced

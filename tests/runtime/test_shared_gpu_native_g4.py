@@ -19,6 +19,7 @@ from pathlib import Path
 import secrets
 import shutil
 import sys
+import tempfile
 import time
 
 import pytest
@@ -480,7 +481,7 @@ def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
         sampler=lambda: CapacitySample(observe_authorized_gpu_memory(authorized)),
         attribution_sampler=attribution.pool_residents,
     )
-    socket = tmp_path / "pool.sock"
+    socket = Path(tempfile.mkdtemp(prefix="hypoloom-g4-pool-")) / "pool.sock"
     entries, snapshots, admitted_targets, capacity_waits = [], [], [], []
     cleanup = ExitStack()
     server = PoolServer(pool, socket)

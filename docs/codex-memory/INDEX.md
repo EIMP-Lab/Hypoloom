@@ -1,6 +1,13 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Repair round 2026-09-19](../qualification.md#current-development--prompt-offload-termination-honesty-tick-cost-and-attribution-aware-gpu-pressure-2026-09-19):
+  prompt offload (/inputs advertisements), stateless input_too_long
+  classification, TERMINATE_LINEAGE honest semantics, history-gated
+  worktree retirement, End-Run reconciliation, and attribution-aware GPU
+  pressure with renamed payload and 30 s grace — candidate identity,
+  replay/timing numbers, G1/G2/G3/G4 evidence, the ③c AGENTS.md
+  justification, and the recorded residuals.
 - [Documentation](../README.md): current user and technical references.
 - [Architecture](../architecture.md): Host ownership and runtime boundaries.
 - [Project-local session records](../qualification.md#current-development--project-local-research-runtime-session-records-2026-09-16):

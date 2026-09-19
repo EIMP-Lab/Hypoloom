@@ -15,6 +15,8 @@ from hypoloom.compute_resources import (
     LocalComputeResources,
     ResourceCapacityUnavailable,
     ResourceUnavailable,
+    gpu_pressure_attribution,
+    gpu_pressure_payload,
 )
 from hypoloom.domain import ResourceGrant, ResourceKind, ResourcePreference
 
@@ -162,7 +164,7 @@ def test_cpu_only_never_calls_inventory_and_auto_falls_back_to_cpu() -> None:
         "fixed_environment": {"CUDA_VISIBLE_DEVICES": ""},
     }
     assert resources.configuration == {
-        "compute_resources": "local-compute/5",
+        "compute_resources": "local-compute/6",
         "gpu_device_uuids": [],
         "gpu_runtime_prefix": None,
     }
@@ -435,9 +437,9 @@ def test_pressure_tracker_recovers_from_transient_low_free_memory() -> None:
         utilization_percent=42,
     ))
     assert recovered.pressure_exceeded is False
-    assert recovered.minimum_free_memory_mib == 3_000
-    assert recovered.latest_free_memory_mib == 4_096
-    assert recovered.latest_utilization_percent == 42
+    assert recovered.gpu_minimum_free_memory_mib == 3_000
+    assert recovered.gpu_latest_free_memory_mib == 4_096
+    assert recovered.gpu_latest_utilization_percent == 42
     assert recovered.sample_count == 3
 
 
@@ -471,15 +473,76 @@ def test_pressure_tracker_reports_only_a_sustained_breach() -> None:
     assert summary.pressure_exceeded is True
     assert summary.to_dict() == {
         "gpu_uuid": GPU_A.uuid,
-        "total_memory_mib": GPU_A.total_memory_mib,
-        "initial_free_memory_mib": 3_000,
-        "minimum_free_memory_mib": 2_500,
-        "latest_free_memory_mib": 2_500,
-        "latest_used_memory_mib": GPU_A.total_memory_mib - 2_500,
-        "latest_utilization_percent": 88,
+        "gpu_total_memory_mib": GPU_A.total_memory_mib,
+        "gpu_initial_free_memory_mib": 3_000,
+        "gpu_minimum_free_memory_mib": 2_500,
+        "gpu_latest_free_memory_mib": 2_500,
+        "gpu_latest_used_memory_mib": GPU_A.total_memory_mib - 2_500,
+        "gpu_latest_utilization_percent": 88,
         "sample_count": 3,
         "pressure_exceeded": True,
     }
+
+
+@pytest.mark.parametrize(
+    "latest_free,owned,expected",
+    [
+        (3_901, 552, "external"),
+        (4_096, 0, "external"),
+        (3_901, 100, "self"),
+        (3_000, 0, "self"),
+        (3_901, None, "unknown"),
+        (1, None, "unknown"),
+    ],
+)
+def test_pressure_attribution_only_spares_externally_consumed_devices(
+    latest_free: int, owned: int | None, expected: str
+) -> None:
+    assert (
+        gpu_pressure_attribution(
+            latest_free_memory_mib=latest_free,
+            owned_latest_memory_mib=owned,
+            reserve_memory_mib=4_096,
+        )
+        == expected
+    )
+
+
+def test_pressure_payload_records_cancel_decision_evidence() -> None:
+    assert gpu_pressure_payload(
+        (("self", 552),), reserve_memory_mib=4_096, terminate_grace_seconds=30.0
+    ) == {
+        "reason": "sustained_free_gpu_memory_below_reserve",
+        "gpu_reserve_memory_mib": 4_096,
+        "owned_memory_mib_at_decision": 552,
+        "attribution": "self",
+        "terminate_grace_seconds": 30.0,
+    }
+    assert gpu_pressure_payload(
+        (("unknown", None),), reserve_memory_mib=4_096, terminate_grace_seconds=30.0
+    ) == {
+        "reason": "sustained_free_gpu_memory_below_reserve",
+        "gpu_reserve_memory_mib": 4_096,
+        "owned_memory_mib_at_decision": None,
+        "attribution": "unknown",
+        "terminate_grace_seconds": 30.0,
+    }
+    assert gpu_pressure_payload(
+        (("external", 552), ("unknown", None)),
+        reserve_memory_mib=4_096,
+        terminate_grace_seconds=30.0,
+    ) == {
+        "reason": "sustained_free_gpu_memory_below_reserve",
+        "gpu_reserve_memory_mib": 4_096,
+        "owned_memory_mib_at_decision": 552,
+        "attribution": "unknown",
+        "terminate_grace_seconds": 30.0,
+    }
+    assert gpu_pressure_payload(
+        (("self", 552), ("self", 100)),
+        reserve_memory_mib=4_096,
+        terminate_grace_seconds=30.0,
+    )["owned_memory_mib_at_decision"] == 652
 
 
 def test_workspace_kwargs_freeze_uuid_index_runtime_and_exact_devices(tmp_path: Path) -> None:
@@ -506,7 +569,7 @@ def test_workspace_kwargs_freeze_uuid_index_runtime_and_exact_devices(tmp_path: 
         },
     }
     assert resources.configuration == {
-        "compute_resources": "local-compute/5",
+        "compute_resources": "local-compute/6",
         "gpu_device_uuids": [GPU_A.uuid],
         "gpu_runtime_prefix": str(runtime.resolve()),
     }

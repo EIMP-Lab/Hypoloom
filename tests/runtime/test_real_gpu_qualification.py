@@ -16,6 +16,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import replace
@@ -29,7 +30,7 @@ from hypoloom.agent_aci import AgentCommand, WorkspaceArtifact, with_output_dige
 from hypoloom.compute_resources import LocalComputeResources
 from hypoloom.control_protocol import ControlRequest, request_over_socket
 from hypoloom.fake_agent import FakeAgent
-from hypoloom.oracle import Oracle
+from hypoloom.oracle import Oracle, audit_gpu_pool
 from hypoloom.profile_admission import admit_profile
 from hypoloom.workflow_host import WorkflowHost
 
@@ -124,6 +125,7 @@ def _start_host(
     runtime: Path,
     *,
     fault_point: str | None = None,
+    pool: tuple[Path, str] | None = None,
 ) -> subprocess.Popen[str]:
     arguments = [
         sys.executable,
@@ -137,6 +139,18 @@ def _start_host(
         "--gpu-device-uuid",
         gpu_uuid,
     ]
+    if pool is not None:
+        pool_socket, pool_namespace = pool
+        arguments.extend(
+            (
+                "--gpu-pool-socket",
+                str(pool_socket),
+                "--gpu-pool-namespace",
+                pool_namespace,
+                "--gpu-pool-server-uid",
+                str(os.getuid()),
+            )
+        )
     if fault_point is not None:
         arguments.extend(("--fault-point", fault_point))
     process = subprocess.Popen(
@@ -643,7 +657,7 @@ def test_component_v4_real_shared_gpu_pressure_guard(tmp_path: Path) -> None:
             transient_attempts[0]["observation_json"]
         )
         transient_usage = transient_observation["resource_usage"]
-        assert transient_usage["minimum_free_memory_mib"] < reserve
+        assert transient_usage["gpu_minimum_free_memory_mib"] < reserve
         assert transient_usage["pressure_exceeded"] is False
         assert "resource_pressure" not in transient_observation
         _assert_evidence(
@@ -667,10 +681,16 @@ def test_component_v4_real_shared_gpu_pressure_guard(tmp_path: Path) -> None:
         sustained_observation = json.loads(
             sustained_attempts[0]["observation_json"]
         )
-        assert sustained_observation["resource_usage"]["pressure_exceeded"] is True
+        sustained_usage = sustained_observation["resource_usage"]
+        assert sustained_usage["gpu_minimum_free_memory_mib"] < reserve
+        assert sustained_usage["pressure_exceeded"] is True
+        assert sustained_usage["pressure_attribution"] == "unknown"
         assert sustained_observation["resource_pressure"] == {
-            "reason": "sustained_free_memory_below_reserve",
-            "reserve_memory_mib": reserve,
+            "reason": "sustained_free_gpu_memory_below_reserve",
+            "gpu_reserve_memory_mib": reserve,
+            "owned_memory_mib_at_decision": None,
+            "attribution": "unknown",
+            "terminate_grace_seconds": 30.0,
         }
         _assert_evidence(
             _cuda_evidence(state_root, sustained_attempts[0]["attempt_id"])
@@ -680,3 +700,238 @@ def test_component_v4_real_shared_gpu_pressure_guard(tmp_path: Path) -> None:
     finally:
         _stop_host(host, require_clean=True)
     assert baseline_pids & _compute_pids(gpu_uuid)
+
+
+_FOREIGN_TENANT = '''
+import os, sys, time
+import torch
+baseline_mib, grow_mib = (int(arg) for arg in sys.argv[1:3])
+ready_path, grow_path, stop_path = sys.argv[3:6]
+held = []
+def allocate(mib):
+    tensor = torch.empty(mib * 1024 * 1024, dtype=torch.uint8, device="cuda")
+    tensor.fill_(1)
+    torch.cuda.synchronize()
+    held.append(tensor)
+allocate(baseline_mib)
+with open(ready_path, "w", encoding="utf-8") as stream:
+    stream.write("ready")
+grown = False
+deadline = time.monotonic() + 900
+while time.monotonic() < deadline and not os.path.exists(stop_path):
+    if not grown and grow_mib and os.path.exists(grow_path):
+        allocate(grow_mib)
+        grown = True
+    time.sleep(0.05)
+'''
+
+
+def _start_foreign_tenant(
+    runtime: Path,
+    gpu_uuid: str,
+    directory: Path,
+    *,
+    baseline_mib: int,
+    grow_mib: int,
+) -> subprocess.Popen[str]:
+    script = directory / "foreign_tenant.py"
+    script.write_text(_FOREIGN_TENANT, encoding="utf-8")
+    process = subprocess.Popen(
+        [
+            str(runtime / "bin" / "python"),
+            str(script),
+            str(baseline_mib),
+            str(grow_mib),
+            str(directory / "ready"),
+            str(directory / "grow"),
+            str(directory / "stop"),
+        ],
+        env={
+            **os.environ,
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "CUDA_VISIBLE_DEVICES": gpu_uuid,
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        if (directory / "ready").exists():
+            return process
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            raise AssertionError(
+                f"foreign tenant exited early: {stdout=!r} {stderr=!r}"
+            )
+        time.sleep(0.1)
+    os.killpg(process.pid, signal.SIGKILL)
+    raise AssertionError("foreign tenant did not establish its CUDA context")
+
+
+def _stop_foreign_tenant(directory: Path, process: subprocess.Popen[str]) -> None:
+    (directory / "stop").write_text("stop", encoding="utf-8")
+    try:
+        process.communicate(timeout=15)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate(timeout=15)
+
+
+def _start_pool_server(
+    pool_root: Path, socket_path: Path, gpu_uuid: str, *, reserve_mib: int
+) -> subprocess.Popen[str]:
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "hypoloom.cli",
+            "gpu-pool-serve",
+            "--pool-root",
+            str(pool_root),
+            "--socket-path",
+            str(socket_path),
+            "--member",
+            f"{os.getuid()}={gpu_uuid}",
+            "--reserve-mib",
+            str(reserve_mib),
+        ],
+        cwd=_PROJECT_ROOT,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if socket_path.is_socket():
+            return process
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            raise AssertionError(f"pool server exited early: {stdout=!r} {stderr=!r}")
+        time.sleep(0.05)
+    os.killpg(process.pid, signal.SIGKILL)
+    raise AssertionError("pool server did not create its socket")
+
+
+def test_component_v4_real_shared_gpu_pressure_attribution(tmp_path: Path) -> None:
+    if os.environ.get(_SHARED_ENABLE_ENV) != "1":
+        pytest.skip(
+            f"set {_SHARED_ENABLE_ENV}=1 with an authorized occupied UUID/runtime"
+        )
+    gpu_uuid = os.environ.get(_UUID_ENV)
+    runtime_raw = os.environ.get(_RUNTIME_ENV)
+    assert gpu_uuid and runtime_raw, f"{_UUID_ENV} and {_RUNTIME_ENV} are required"
+    runtime = Path(runtime_raw)
+    assert runtime.is_absolute() and not runtime.is_symlink()
+    runtime = runtime.resolve()
+    assert runtime.is_dir() and (runtime / "bin/python").is_file()
+
+    tenant_dir = tmp_path / "foreign-tenant"
+    tenant_dir.mkdir()
+    tenant = _start_foreign_tenant(
+        runtime, gpu_uuid, tenant_dir, baseline_mib=512, grow_mib=2048
+    )
+    pool_process: subprocess.Popen[str] | None = None
+    host: subprocess.Popen[str] | None = None
+    try:
+        baseline_pids = _compute_pids(gpu_uuid)
+        assert tenant.pid in baseline_pids
+        initial_free = _gpu_free_memory_mib(gpu_uuid)
+        minimum = 64
+        reserve = initial_free - 192
+        assert reserve > 0 and initial_free >= minimum + reserve
+        profiles_root, profile = _shared_profile(
+            tmp_path,
+            minimum_memory_mib=minimum,
+            reserve_memory_mib=reserve,
+        )
+        pool_root = tmp_path / "pool"
+        # AF_UNIX sun_path is bounded; the archived basetemp is deeper than 107 bytes.
+        pool_socket = Path(tempfile.mkdtemp(prefix="hyp-pool-")) / "pool.sock"
+        pool_process = _start_pool_server(pool_root, pool_socket, gpu_uuid, reserve_mib=512)
+        namespace = f"g4-pressure-{os.getpid()}"
+        state_root = tmp_path / "state"
+        host = _start_host(state_root, gpu_uuid, runtime, pool=(pool_socket, namespace))
+
+        external_run = "component-v4-real-shared-gpu-external-pressure"
+        _create(
+            state_root,
+            external_run,
+            delay=8,
+            profile=profile,
+            profiles_root=profiles_root,
+        )
+        _await_state(state_root, external_run, "COMPLETED")
+        external_attempts = _process_attempts(state_root, external_run)
+        assert len(external_attempts) == 1
+        assert external_attempts[0]["terminal_reason"] == "SUCCEEDED"
+        external_observation = json.loads(external_attempts[0]["observation_json"])
+        external_usage = external_observation["resource_usage"]
+        assert external_usage["gpu_minimum_free_memory_mib"] < reserve
+        assert external_usage["owned_memory"]["sample_count"] > 0
+        # An externally spared attempt recovers its reserve when its own
+        # context is released at exit, so the terminal flag reflects the
+        # teardown sample; the binding invariants are survival and no payload.
+        if external_usage["pressure_exceeded"]:
+            assert external_usage["pressure_attribution"] == "external"
+        assert "resource_pressure" not in external_observation
+        _assert_evidence(
+            _cuda_evidence(state_root, external_attempts[0]["attempt_id"])
+        )
+        _assert_oracle_clean(state_root, external_run, outcomes=1)
+
+        self_run = "component-v4-real-shared-gpu-self-pressure"
+        _create(
+            state_root,
+            self_run,
+            delay=20,
+            profile=profile,
+            profiles_root=profiles_root,
+        )
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and _gpu_free_memory_mib(gpu_uuid) >= initial_free - 128:
+            time.sleep(0.2)
+        assert _gpu_free_memory_mib(gpu_uuid) < initial_free - 128, (
+            "workload CUDA context never materialized"
+        )
+        (tenant_dir / "grow").write_text("grow", encoding="utf-8")
+        _await_state(state_root, self_run, "COMPLETED", timeout=180.0)
+        self_attempts = _process_attempts(state_root, self_run)
+        assert len(self_attempts) == 1
+        assert self_attempts[0]["terminal_reason"] == "FAILED"
+        self_observation = json.loads(self_attempts[0]["observation_json"])
+        self_usage = self_observation["resource_usage"]
+        assert self_usage["gpu_minimum_free_memory_mib"] < reserve
+        assert self_usage["pressure_exceeded"] is True
+        assert self_usage["pressure_attribution"] == "self"
+        self_pressure = self_observation["resource_pressure"]
+        owned_at_decision = self_pressure["owned_memory_mib_at_decision"]
+        assert type(owned_at_decision) is int and owned_at_decision > 0
+        assert self_pressure == {
+            "reason": "sustained_free_gpu_memory_below_reserve",
+            "gpu_reserve_memory_mib": reserve,
+            "owned_memory_mib_at_decision": owned_at_decision,
+            "attribution": "self",
+            "terminate_grace_seconds": 30.0,
+        }
+        _assert_oracle_clean(state_root, self_run, outcomes=1)
+        assert tenant.poll() is None
+        assert baseline_pids & _compute_pids(gpu_uuid), (
+            "the pressure kill signaled the foreign tenant"
+        )
+        assert audit_gpu_pool(pool_root)["ok"]
+    finally:
+        if host is not None:
+            _stop_host(host, require_clean=True)
+        if pool_process is not None:
+            os.killpg(pool_process.pid, signal.SIGTERM)
+            try:
+                pool_process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(pool_process.pid, signal.SIGKILL)
+                pool_process.communicate(timeout=10)
+        _stop_foreign_tenant(tenant_dir, tenant)

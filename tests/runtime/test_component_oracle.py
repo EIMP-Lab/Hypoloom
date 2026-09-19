@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -4070,6 +4071,192 @@ def test_gpu_pressure_reserve_must_match_goal_budget() -> None:
     assert {issue.code for issue in issues} == {
         "process_resource_observation_mismatch"
     }
+
+
+def renamed_pressure_usage(gpu_uuid: str, attribution: str | None) -> dict[str, object]:
+    usage: dict[str, object] = {
+        "gpu_uuid": gpu_uuid,
+        "gpu_total_memory_mib": 24_576,
+        "gpu_initial_free_memory_mib": 8_192,
+        "gpu_minimum_free_memory_mib": 1_024,
+        "gpu_latest_free_memory_mib": 1_024,
+        "gpu_latest_used_memory_mib": 23_552,
+        "gpu_latest_utilization_percent": 99,
+        "sample_count": 2,
+        "pressure_exceeded": True,
+    }
+    if attribution is not None:
+        usage["pressure_attribution"] = attribution
+    return usage
+
+
+@pytest.mark.parametrize("attribution,owned", [("self", 552), ("unknown", None)])
+def test_oracle_accepts_renamed_attributed_pressure_cancel(attribution, owned) -> None:
+    gpu_uuid = "GPU-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    resource = {
+        "expected_kind": "GPU",
+        "gpu_uuid": gpu_uuid,
+        "reserve_memory_mib": 4_096,
+        "telemetry_required": True,
+    }
+    observation = {
+        "terminal_reason": "FAILED",
+        "resource_usage": renamed_pressure_usage(gpu_uuid, attribution),
+        "resource_pressure": {
+            "reason": "sustained_free_gpu_memory_below_reserve",
+            "gpu_reserve_memory_mib": 4_096,
+            "owned_memory_mib_at_decision": owned,
+            "attribution": attribution,
+            "terminate_grace_seconds": 30.0,
+        },
+    }
+    issues: list[OracleIssue] = []
+    _audit_process_resource_observation(observation, resource, "attempt", issues)
+    assert issues == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "legacy_reason",
+        "legacy_reserve_key",
+        "missing_attribution",
+        "missing_owned_field",
+        "missing_grace",
+        "invalid_grace",
+        "usage_without_attribution",
+        "external_with_payload",
+        "self_without_payload",
+        "wrong_reserve",
+    ],
+)
+def test_oracle_rejects_rewritten_renamed_pressure_decisions(change) -> None:
+    gpu_uuid = "GPU-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    resource = {
+        "expected_kind": "GPU",
+        "gpu_uuid": gpu_uuid,
+        "reserve_memory_mib": 4_096,
+        "telemetry_required": True,
+    }
+    valid = {
+        "terminal_reason": "FAILED",
+        "resource_usage": renamed_pressure_usage(gpu_uuid, "self"),
+        "resource_pressure": {
+            "reason": "sustained_free_gpu_memory_below_reserve",
+            "gpu_reserve_memory_mib": 4_096,
+            "owned_memory_mib_at_decision": 552,
+            "attribution": "self",
+            "terminate_grace_seconds": 30.0,
+        },
+    }
+    if change == "legacy_reason":
+        observation = {
+            **valid,
+            "resource_pressure": {
+                **valid["resource_pressure"],
+                "reason": "sustained_free_memory_below_reserve",
+            },
+        }
+    elif change == "legacy_reserve_key":
+        observation = {
+            **valid,
+            "resource_pressure": {
+                "reason": "sustained_free_memory_below_reserve",
+                "reserve_memory_mib": 4_096,
+            },
+        }
+    elif change == "missing_attribution":
+        observation = copy.deepcopy(valid)
+        observation["resource_pressure"].pop("attribution")
+    elif change == "missing_owned_field":
+        observation = copy.deepcopy(valid)
+        observation["resource_pressure"].pop("owned_memory_mib_at_decision")
+    elif change == "missing_grace":
+        observation = copy.deepcopy(valid)
+        observation["resource_pressure"].pop("terminate_grace_seconds")
+    elif change == "invalid_grace":
+        observation = copy.deepcopy(valid)
+        observation["resource_pressure"]["terminate_grace_seconds"] = -1
+    elif change == "usage_without_attribution":
+        observation = {**valid, "resource_usage": renamed_pressure_usage(gpu_uuid, None)}
+    elif change == "external_with_payload":
+        observation = {
+            **valid,
+            "resource_usage": renamed_pressure_usage(gpu_uuid, "external"),
+        }
+    elif change == "self_without_payload":
+        observation = {**valid, "resource_pressure": None}
+    elif change == "wrong_reserve":
+        observation = copy.deepcopy(valid)
+        observation["resource_pressure"]["gpu_reserve_memory_mib"] = 2_048
+    issues: list[OracleIssue] = []
+    _audit_process_resource_observation(observation, resource, "attempt", issues)
+    assert {issue.code for issue in issues} == {
+        "process_resource_observation_mismatch"
+    }
+
+
+def test_external_pressure_attribution_keeps_the_owned_process_alive() -> None:
+    gpu_uuid = "GPU-e96b09e9-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    sample = {
+        "gpu_uuid": gpu_uuid,
+        "root_process_group_id": 100,
+        "root_start_time_ticks": 1000,
+        "complete": True,
+        "reason": None,
+        "observed_at": 15.0,
+        "duration_seconds": 0.01,
+        "resident_bytes": 552 * 1024**2,
+        "processes": [
+            {
+                "pid": 102,
+                "resident_bytes": 552 * 1024**2,
+                "ancestry": [
+                    {"pid": 102, "ppid": 101, "start_time_ticks": 1002},
+                    {"pid": 101, "ppid": 100, "start_time_ticks": 1001},
+                    {"pid": 100, "ppid": 1, "start_time_ticks": 1000},
+                ],
+            }
+        ],
+    }
+    resource = {
+        "expected_kind": "GPU",
+        "gpu_uuid": gpu_uuid,
+        "reserve_memory_mib": 4_096,
+        "telemetry_required": True,
+        "attributable": True,
+        "attribution_attempt": {
+            "process_group_id": 100,
+            "started_at": 10.0,
+            "ended_at": 20.0,
+            "terminal_reason": "SUCCEEDED",
+        },
+    }
+    observation = {
+        "terminal_reason": "SUCCEEDED",
+        "returncode": 0,
+        "resource_usage": {
+            "gpu_uuid": gpu_uuid,
+            "gpu_total_memory_mib": 24_576,
+            "gpu_initial_free_memory_mib": 19_579,
+            "gpu_minimum_free_memory_mib": 3_901,
+            "gpu_latest_free_memory_mib": 3_901,
+            "gpu_latest_used_memory_mib": 20_675,
+            "gpu_latest_utilization_percent": 53,
+            "sample_count": 339,
+            "pressure_exceeded": True,
+            "pressure_attribution": "external",
+            "owned_memory": {
+                "sample_count": 339,
+                "unknown_sample_count": 0,
+                "latest": sample,
+                "peak": copy.deepcopy(sample),
+            },
+        },
+    }
+    issues: list[OracleIssue] = []
+    _audit_process_resource_observation(observation, resource, "attempt-exp-10", issues)
+    assert issues == []
 
 
 def test_oracle_independently_recomputes_all_host_batch_commands(

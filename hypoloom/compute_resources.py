@@ -19,7 +19,7 @@ from typing import Any
 from .domain import ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, validate_physical_gpu_uuid
 
 
-COMPUTE_RESOURCES_VERSION = "local-compute/5"
+COMPUTE_RESOURCES_VERSION = "local-compute/6"
 COMPUTE_CAPABILITIES_SCHEMA_VERSION = 3
 COMPUTE_CAPABILITIES_MEDIA_TYPE = "application/json"
 _MIB = 1024 * 1024
@@ -157,24 +157,24 @@ class GpuPressureSummary:
     """Compact device-level usage summary produced by ``GpuPressureTracker``."""
 
     gpu_uuid: str
-    total_memory_mib: int
-    initial_free_memory_mib: int
-    minimum_free_memory_mib: int
-    latest_free_memory_mib: int
-    latest_used_memory_mib: int
-    latest_utilization_percent: int | None
+    gpu_total_memory_mib: int
+    gpu_initial_free_memory_mib: int
+    gpu_minimum_free_memory_mib: int
+    gpu_latest_free_memory_mib: int
+    gpu_latest_used_memory_mib: int
+    gpu_latest_utilization_percent: int | None
     sample_count: int
     pressure_exceeded: bool
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "gpu_uuid": self.gpu_uuid,
-            "total_memory_mib": self.total_memory_mib,
-            "initial_free_memory_mib": self.initial_free_memory_mib,
-            "minimum_free_memory_mib": self.minimum_free_memory_mib,
-            "latest_free_memory_mib": self.latest_free_memory_mib,
-            "latest_used_memory_mib": self.latest_used_memory_mib,
-            "latest_utilization_percent": self.latest_utilization_percent,
+            "gpu_total_memory_mib": self.gpu_total_memory_mib,
+            "gpu_initial_free_memory_mib": self.gpu_initial_free_memory_mib,
+            "gpu_minimum_free_memory_mib": self.gpu_minimum_free_memory_mib,
+            "gpu_latest_free_memory_mib": self.gpu_latest_free_memory_mib,
+            "gpu_latest_used_memory_mib": self.gpu_latest_used_memory_mib,
+            "gpu_latest_utilization_percent": self.gpu_latest_utilization_percent,
             "sample_count": self.sample_count,
             "pressure_exceeded": self.pressure_exceeded,
         }
@@ -231,12 +231,12 @@ class GpuPressureTracker:
     def summary(self) -> GpuPressureSummary:
         return GpuPressureSummary(
             gpu_uuid=self._gpu_uuid,
-            total_memory_mib=self._total_memory_mib,
-            initial_free_memory_mib=self._initial_free_memory_mib,
-            minimum_free_memory_mib=self._minimum_free_memory_mib,
-            latest_free_memory_mib=self._latest.free_memory_mib,
-            latest_used_memory_mib=self._latest.used_memory_mib,
-            latest_utilization_percent=self._latest.utilization_percent,
+            gpu_total_memory_mib=self._total_memory_mib,
+            gpu_initial_free_memory_mib=self._initial_free_memory_mib,
+            gpu_minimum_free_memory_mib=self._minimum_free_memory_mib,
+            gpu_latest_free_memory_mib=self._latest.free_memory_mib,
+            gpu_latest_used_memory_mib=self._latest.used_memory_mib,
+            gpu_latest_utilization_percent=self._latest.utilization_percent,
             sample_count=self._sample_count,
             pressure_exceeded=self._pressure_exceeded,
         )
@@ -269,6 +269,46 @@ class GpuPressureTracker:
             self._low_free_since = None
             self._pressure_exceeded = False
         return self.summary
+
+
+def gpu_pressure_attribution(
+    *,
+    latest_free_memory_mib: int,
+    owned_latest_memory_mib: int | None,
+    reserve_memory_mib: int,
+) -> str:
+    """Attribute one sustained breach; unknown ownership stays a device-level kill."""
+    if owned_latest_memory_mib is None:
+        return "unknown"
+    return (
+        "external"
+        if latest_free_memory_mib + owned_latest_memory_mib >= reserve_memory_mib
+        else "self"
+    )
+
+
+def gpu_pressure_payload(
+    decisions: Sequence[tuple[str, int | None]],
+    *,
+    reserve_memory_mib: int,
+    terminate_grace_seconds: float,
+) -> dict[str, Any]:
+    """Cancellation evidence over the pressured devices, without GPU identity."""
+    return {
+        "reason": "sustained_free_gpu_memory_below_reserve",
+        "gpu_reserve_memory_mib": reserve_memory_mib,
+        "owned_memory_mib_at_decision": (
+            None
+            if all(owned is None for _, owned in decisions)
+            else sum(owned or 0 for _, owned in decisions)
+        ),
+        "attribution": (
+            "self"
+            if any(attribution == "self" for attribution, _ in decisions)
+            else "unknown"
+        ),
+        "terminate_grace_seconds": terminate_grace_seconds,
+    }
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -974,6 +1014,8 @@ __all__ = [
     "GpuPressureTracker",
     "GpuRuntimeObservation",
     "LocalComputeResources",
+    "gpu_pressure_attribution",
+    "gpu_pressure_payload",
     "observe_authorized_gpu_memory",
     "ResourceUnavailable",
 ]

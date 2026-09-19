@@ -64,7 +64,7 @@ def test_host_records_process_group_before_any_workload_exec(tmp_path: Path) -> 
         _create(host, "registered")
         _finish(host, "registered")
         assert registrations
-        assert host.version.runner_version == RUNNER_VERSION == "local-process-group/2"
+        assert host.version.runner_version == RUNNER_VERSION == "local-process-group/3"
         process_rows = [row for row in host.store.list_attempts() if row["kind"] == "PROCESS"]
         assert {row["attempt_id"] for row in process_rows} == {item[0] for item in registrations}
         assert all(row["state"] == "CLOSED" for row in host.store.list_attempts())

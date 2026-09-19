@@ -79,6 +79,62 @@ def usage(uuid, *, pressure=False):
         "sample_count": 3, "pressure_exceeded": pressure}
 
 
+def renamed_usage(uuid, *, pressure=False, attribution=None):
+    result = {"gpu_uuid": uuid, "gpu_total_memory_mib": 24576, "gpu_initial_free_memory_mib": 8000,
+        "gpu_minimum_free_memory_mib": 500 if pressure else 6000, "gpu_latest_free_memory_mib": 500 if pressure else 7000,
+        "gpu_latest_used_memory_mib": 24076 if pressure else 17576, "gpu_latest_utilization_percent": 99,
+        "sample_count": 3, "pressure_exceeded": pressure}
+    if pressure: result["pressure_attribution"] = attribution
+    return result
+
+
+@pytest.mark.parametrize("attribution,owned", [("self", 552), ("unknown", None)])
+def test_multi_gpu_pressure_cancel_records_the_attributed_decision(attribution, owned):
+    resource = {"expected_kind": "GPU", "gpu_uuids": (GPU_A, GPU_B), "gpu_uuid": None,
+        "reserve_memory_mib": 1000, "telemetry_required": True}
+    observation = {"terminal_reason": "FAILED",
+        "resource_usage": [renamed_usage(GPU_A), renamed_usage(GPU_B, pressure=True, attribution=attribution)],
+        "resource_pressure": {"reason": "sustained_free_gpu_memory_below_reserve", "gpu_reserve_memory_mib": 1000,
+            "owned_memory_mib_at_decision": owned, "attribution": attribution,
+            "terminate_grace_seconds": 30.0, "gpu_uuids": [GPU_B]}}
+    issues = []
+    _audit_process_resource_observation(observation, resource, "process", issues)
+    assert issues == []
+
+
+def test_multi_gpu_external_pressure_survives_without_a_cancel_payload():
+    resource = {"expected_kind": "GPU", "gpu_uuids": (GPU_A, GPU_B), "gpu_uuid": None,
+        "reserve_memory_mib": 1000, "telemetry_required": True}
+    observation = {"terminal_reason": "SUCCEEDED",
+        "resource_usage": [renamed_usage(GPU_A), renamed_usage(GPU_B, pressure=True, attribution="external")]}
+    issues = []
+    _audit_process_resource_observation(observation, resource, "process", issues)
+    assert issues == []
+
+
+@pytest.mark.parametrize("change", ["legacy_reason", "missing_attribution", "wrong_aggregate",
+    "missing_owned_field", "missing_grace", "invalid_grace", "usage_without_attribution", "spared_device_blamed"])
+def test_multi_gpu_pressure_attribution_cannot_be_rewritten_or_dropped(change):
+    resource = {"expected_kind": "GPU", "gpu_uuids": (GPU_A, GPU_B), "gpu_uuid": None,
+        "reserve_memory_mib": 1000, "telemetry_required": True}
+    observation = {"terminal_reason": "FAILED",
+        "resource_usage": [renamed_usage(GPU_A), renamed_usage(GPU_B, pressure=True, attribution="self")],
+        "resource_pressure": {"reason": "sustained_free_gpu_memory_below_reserve", "gpu_reserve_memory_mib": 1000,
+            "owned_memory_mib_at_decision": 552, "attribution": "self",
+            "terminate_grace_seconds": 30.0, "gpu_uuids": [GPU_B]}}
+    if change == "legacy_reason": observation["resource_pressure"]["reason"] = "sustained_free_memory_below_reserve"
+    elif change == "missing_attribution": observation["resource_pressure"].pop("attribution")
+    elif change == "wrong_aggregate": observation["resource_pressure"]["attribution"] = "unknown"
+    elif change == "missing_owned_field": observation["resource_pressure"].pop("owned_memory_mib_at_decision")
+    elif change == "missing_grace": observation["resource_pressure"].pop("terminate_grace_seconds")
+    elif change == "invalid_grace": observation["resource_pressure"]["terminate_grace_seconds"] = 0
+    elif change == "usage_without_attribution": observation["resource_usage"][1].pop("pressure_attribution")
+    else: observation["resource_usage"][1]["pressure_attribution"] = "external"
+    issues = []
+    _audit_process_resource_observation(observation, resource, "process", issues)
+    assert {issue.code for issue in issues} == {"process_resource_observation_mismatch"}
+
+
 @pytest.mark.parametrize("pressured", [False, True])
 def test_multi_gpu_usage_and_pressure_account_for_every_device(pressured):
     resource = {"expected_kind": "GPU", "gpu_uuids": (GPU_A, GPU_B), "gpu_uuid": None,

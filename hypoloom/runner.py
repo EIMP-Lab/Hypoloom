@@ -21,7 +21,7 @@ from typing import Any, BinaryIO, Callable, Mapping
 from .domain import AttemptTerminalReason
 
 
-RUNNER_VERSION = "local-process-group/2"
+RUNNER_VERSION = "local-process-group/3"
 
 
 class RunnerError(RuntimeError):
@@ -459,7 +459,19 @@ class LocalRunner:
         finally:
             self._finalize(handle)
 
-    def cancel(self, handle_or_attempt: RunningProcess | str) -> bool:
+    def cancel(
+        self,
+        handle_or_attempt: RunningProcess | str,
+        *,
+        terminate_grace_seconds: float | None = None,
+    ) -> bool:
+        if terminate_grace_seconds is not None:
+            if isinstance(terminate_grace_seconds, bool) or not isinstance(
+                terminate_grace_seconds, (int, float)
+            ):
+                raise ValueError("terminate_grace_seconds must be numeric")
+            if not 0 < float(terminate_grace_seconds) < float("inf"):
+                raise ValueError("terminate_grace_seconds must be finite and positive")
         handle = self._resolve(handle_or_attempt)
         if handle is None:
             return False
@@ -467,7 +479,7 @@ class LocalRunner:
             if handle._process.poll() is not None:
                 return False
             handle._cancel_requested = True
-        self._terminate_group(handle)
+        self._terminate_group(handle, terminate_grace_seconds=terminate_grace_seconds)
         return True
 
     def cleanup(self, handle_or_attempt: RunningProcess | str) -> None:
@@ -478,13 +490,24 @@ class LocalRunner:
             self.cancel(handle)
         self._finalize(handle)
 
-    def _terminate_group(self, handle: RunningProcess) -> None:
+    def _terminate_group(
+        self,
+        handle: RunningProcess,
+        *,
+        terminate_grace_seconds: float | None = None,
+    ) -> None:
+        grace = (
+            handle.request.terminate_grace_seconds
+            if terminate_grace_seconds is None
+            else float(terminate_grace_seconds)
+        )
         with handle._lock:
             if handle._process.poll() is not None and not process_group_exists(handle.process_group_id):
                 return
             _signal_group(handle.process_group_id, signal.SIGTERM)
-            deadline = self._clock() + handle.request.terminate_grace_seconds
+            deadline = self._clock() + grace
             while self._clock() < deadline and process_group_exists(handle.process_group_id):
+                handle._process.poll()
                 self._sleep(0.01)
             if process_group_exists(handle.process_group_id):
                 _signal_group(handle.process_group_id, signal.SIGKILL)

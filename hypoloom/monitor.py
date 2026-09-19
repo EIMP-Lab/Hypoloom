@@ -401,7 +401,7 @@ def _gpu_usage(value: object) -> tuple[dict[str, Any], ...]:
         device = {"gpu_uuid": item["gpu_uuid"]}
         for name in ("total_memory_mib", "initial_free_memory_mib", "minimum_free_memory_mib",
                      "latest_free_memory_mib", "latest_used_memory_mib", "latest_utilization_percent", "sample_count"):
-            number = _optional_int(item.get(name))
+            number = _optional_int(item.get(name) if name == "sample_count" else item.get(f"gpu_{name}", item.get(name)))
             device[name] = number if number is not None and number >= 0 and (name != "latest_utilization_percent" or number <= 100) else None
         device["pressure_exceeded"] = item.get("pressure_exceeded") if isinstance(item.get("pressure_exceeded"), bool) else None
         if "owned_memory" in item:
@@ -812,13 +812,22 @@ def _attempt_views(
                 else None
             ),
             minimum_free_memory_mib=_optional_int(
-                resource_usage.get("minimum_free_memory_mib")
+                resource_usage.get(
+                    "gpu_minimum_free_memory_mib",
+                    resource_usage.get("minimum_free_memory_mib"),
+                )
             ),
             latest_free_memory_mib=_optional_int(
-                resource_usage.get("latest_free_memory_mib")
+                resource_usage.get(
+                    "gpu_latest_free_memory_mib",
+                    resource_usage.get("latest_free_memory_mib"),
+                )
             ),
             latest_utilization_percent=_optional_int(
-                resource_usage.get("latest_utilization_percent")
+                resource_usage.get(
+                    "gpu_latest_utilization_percent",
+                    resource_usage.get("latest_utilization_percent"),
+                )
             ),
             resource_pressure_exceeded=(
                 resource_usage.get("pressure_exceeded")

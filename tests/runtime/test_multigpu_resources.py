@@ -63,7 +63,7 @@ def test_exact_count_ranks_then_freezes_canonical_uuid_set(tmp_path):
         gpu_count=2, max_gpus_per_experiment=2)
     assert grant.device_uuids == (GPU_B.uuid, GPU_C.uuid)
     assert grant.gpu_uuid is None
-    assert resources.configuration["compute_resources"] == "local-compute/5"
+    assert resources.configuration["compute_resources"] == "local-compute/6"
     # Equal free memory uses UUID rather than arbitrary inventory order.
     tied = capabilities(GPU_A, replace(GPU_B, free_memory_mib=GPU_A.free_memory_mib),
         replace(GPU_C, free_memory_mib=GPU_A.free_memory_mib))

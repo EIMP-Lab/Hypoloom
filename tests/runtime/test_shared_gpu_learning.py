@@ -83,7 +83,7 @@ def test_oom_requires_failed_own_workload_exception_not_pressure(tmp_path, statu
     log.write_text("Traceback (most recent call last):\n  own function\n"
                    "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 8.00 GiB\n")
     payload = {"terminal_reason": status, "returncode": code}
-    if pressure: payload["resource_pressure"] = {"reason": "sustained_free_memory_below_reserve"}
+    if pressure: payload["resource_pressure"] = {"reason": "sustained_free_gpu_memory_below_reserve"}
     SharedGpuHost.observe_oom(payload, log)
     assert (payload.get("resource_failure") == "gpu_out_of_memory") is expected
     if expected: assert payload["resource_failure_excerpt"] in log.read_text()

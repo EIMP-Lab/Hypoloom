@@ -71,6 +71,49 @@ def test_explicit_cancel_has_one_cancelled_observation(tmp_path: Path) -> None:
     assert not process_group_exists(observation.process_group_id)
 
 
+def test_cancel_grace_override_lets_sigterm_handler_checkpoint(tmp_path: Path) -> None:
+    code = """
+import signal, time
+from pathlib import Path
+def handler(_sig, _frame):
+    Path('checkpoint').write_text('saved')
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, handler)
+Path('ready').write_text('armed')
+time.sleep(60)
+"""
+    runner = LocalRunner()
+    handle = runner.start(request(tmp_path, code))
+    deadline = time.monotonic() + 5
+    while not (tmp_path / "ready").exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert runner.cancel(handle, terminate_grace_seconds=5.0)
+    observation = runner.wait(handle)
+    assert observation.terminal_reason is AttemptTerminalReason.CANCELLED
+    assert (tmp_path / "checkpoint").read_text(encoding="utf-8") == "saved"
+    assert not process_group_exists(observation.process_group_id)
+
+
+def test_cancel_grace_override_rejects_non_positive_or_non_numeric() -> None:
+    runner = LocalRunner()
+    with pytest.raises(ValueError, match="terminate_grace_seconds must be numeric"):
+        runner.cancel("missing-attempt", terminate_grace_seconds="30")
+    with pytest.raises(ValueError, match="terminate_grace_seconds must be finite and positive"):
+        runner.cancel("missing-attempt", terminate_grace_seconds=0)
+
+
+def test_long_cancel_grace_returns_promptly_once_the_group_exits(tmp_path: Path) -> None:
+    runner = LocalRunner()
+    handle = runner.start(request(tmp_path, "import time; time.sleep(60)"))
+    started = time.monotonic()
+    assert runner.cancel(handle, terminate_grace_seconds=30.0)
+    elapsed = time.monotonic() - started
+    observation = runner.wait(handle)
+    assert observation.terminal_reason is AttemptTerminalReason.CANCELLED
+    assert elapsed < 10
+    assert not process_group_exists(observation.process_group_id)
+
+
 def test_hard_killed_runner_parent_guardian_cleans_entire_descendant_group(tmp_path: Path) -> None:
     pid_file = tmp_path / "owned.json"
     payload = """

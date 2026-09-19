@@ -29,7 +29,7 @@ from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepar
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
-from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable
+from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable, gpu_pressure_attribution, gpu_pressure_payload
 from .domain import ResourceIntent
 from .gpu_pool import PoolError
 from .component_contract import component_execution_blockers, component_execution_plan, component_is_production
@@ -60,6 +60,7 @@ from .state_store import HostWriterCapability, IdentityConflict, RevisionConflic
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _TERMINAL_RUNS = {state.value for state in (RunState.COMPLETED, RunState.FAILED, RunState.CANCELLED)}
 _VERSION_FIELDS = tuple(RunVersion.__dataclass_fields__)
+_PRESSURE_TERMINATE_GRACE_SECONDS = 30.0
 _CONFIG = {"agent_attempt_cap": 2, "agent_infrastructure_attempt_cap": 3, "process_attempt_cap": 2, "process_timeout": 10.0, "evaluator_retry_delay": 1.0}
 _RESOURCE_SKILL = Path(__file__).resolve().parent / "skills/experiment-resource-planning/SKILL.md"; _RESOURCE_SKILL_VERSION = "experiment-resource-planning/5"; _QUERY_SKILL = Path(__file__).resolve().parent / "skills/openalex-query-planning/SKILL.md"; _QUERY_SKILL_VERSION = "openalex-query-planning/6"
 _CPU_SANDBOX_PROFILE = "bwrap-cpu-no-network/2"; _GPU_SANDBOX_PROFILE = "bwrap-gpu-single-no-network/1"
@@ -198,7 +199,7 @@ class WorkflowHost:
         self.archive_errors: dict[str, str] = {}
         self.dispatch_errors: dict[str, dict[str, str]] = {}
         self._diagnostic_context: dict[str, Any] = {}
-        self.gpu_pressure: dict[str, tuple[tuple[GpuPressureTracker, ...], int]] = {}; self.resource_waits: dict[str, tuple[str, str]] = {}; self.stop_requested = False; self.operational_halt: str | None = None; self.terminal_exit_ready = False
+        self.gpu_pressure: dict[str, tuple[tuple[GpuPressureTracker, ...], int, dict[str, tuple[str, int | None]]]] = {}; self.resource_waits: dict[str, tuple[str, str]] = {}; self.stop_requested = False; self.operational_halt: str | None = None; self.terminal_exit_ready = False
     def initialize(self) -> None:
         try: self._initialize()
         except Exception as exc:
@@ -3836,7 +3837,7 @@ class WorkflowHost:
             self.resource_waits[experiment_id] = (run_id, str(exc)[:512]); return
         except (ExecutionWorkspaceError, ResourceUnavailable, OSError, ValueError) as exc: self._close_prestart_failure(run_id, experiment_id, prepared, exc); return
         self.running[attempt_id] = handle
-        if trackers: self.gpu_pressure[attempt_id] = (trackers, int(budget.get("gpu_vram_reserve_mb", 0)))
+        if trackers: self.gpu_pressure[attempt_id] = (trackers, int(budget.get("gpu_vram_reserve_mb", 0)), {})
         self._crash("after_spawn_before_observation")
     def _execution_inputs(self, run_id: str, experiment_id: str, *, actual_grant: ResourceGrant | None = None,
                           attempt_id: str | None = None, synthetic: bool = False) -> tuple[Any, ...]:
@@ -4067,20 +4068,26 @@ class WorkflowHost:
                     except ResourceUnavailable: pass
                 if self.shared_gpu is not None: self.shared_gpu.sample_owned(attempt_id, handle, tuple(tracker.summary.gpu_uuid for tracker in pressure[0]), devices)
                 pressure_summaries = tuple(tracker.summary for tracker in pressure[0])
-                if any(summary.pressure_exceeded for summary in pressure_summaries): pressure_cancelled = self.runner.cancel(handle)
+                for summary in (summary for summary in pressure_summaries if summary.pressure_exceeded):
+                    owned_mib = self.shared_gpu.owned_latest_memory_mib(attempt_id, summary.gpu_uuid) if self.shared_gpu is not None else None
+                    pressure[2][summary.gpu_uuid] = (gpu_pressure_attribution(latest_free_memory_mib=summary.gpu_latest_free_memory_mib, owned_latest_memory_mib=owned_mib, reserve_memory_mib=pressure[1]), owned_mib)
+                if any(pressure[2][summary.gpu_uuid][0] != "external" for summary in pressure_summaries if summary.pressure_exceeded): pressure_cancelled = self.runner.cancel(handle, terminate_grace_seconds=_PRESSURE_TERMINATE_GRACE_SECONDS)
             expired = time.monotonic() >= handle.started_at + handle.request.timeout_seconds
             if terminal or handle.returncode is not None or expired or run_expired:
                 observation = self.runner.wait(handle); run_expired = run_expired or self._run_wallclock_expired(attempt["run_id"]); self.running.pop(attempt_id, None); pressure = self.gpu_pressure.pop(attempt_id, None)
                 if not pressure_summaries and pressure is not None: pressure_summaries = tuple(tracker.summary for tracker in pressure[0])
                 reason = AttemptTerminalReason.TIMED_OUT if run_expired else AttemptTerminalReason.FAILED if pressure_cancelled else observation.terminal_reason; payload = {**observation.to_dict(), "terminal_reason": reason.value, "process_request": handle.request.to_dict()}
                 if pressure_summaries:
-                    usage = [{**summary.to_dict(), "pressure_exceeded": pressure_cancelled and summary.pressure_exceeded} for summary in pressure_summaries]
+                    decisions = pressure[2] if pressure is not None else {}
+                    usage = [{**summary.to_dict(), "pressure_exceeded": bool((pressure_cancelled or decisions.get(summary.gpu_uuid, (None,))[0] == "external") and summary.pressure_exceeded)} for summary in pressure_summaries]
+                    for item in usage:
+                        if item["pressure_exceeded"]: item["pressure_attribution"] = decisions[item["gpu_uuid"]][0]
                     if self.shared_gpu is not None:
                         owned = self.shared_gpu.finish_owned(attempt_id)
                         for item in usage: item["owned_memory"] = owned.get(item["gpu_uuid"], {"sample_count": 0, "unknown_sample_count": 0, "latest": None, "peak": None})
                     payload["resource_usage"] = usage[0] if len(usage) == 1 else usage
                 if pressure_cancelled:
-                    payload["resource_pressure"] = {"reason": "sustained_free_memory_below_reserve", "reserve_memory_mib": pressure[1] if pressure is not None else 0}
+                    payload["resource_pressure"] = gpu_pressure_payload(tuple(decisions[summary.gpu_uuid] for summary in pressure_summaries if summary.pressure_exceeded), reserve_memory_mib=pressure[1] if pressure is not None else 0, terminate_grace_seconds=_PRESSURE_TERMINATE_GRACE_SECONDS)
                     if len(pressure_summaries) > 1: payload["resource_pressure"]["gpu_uuids"] = [summary.gpu_uuid for summary in pressure_summaries if summary.pressure_exceeded]
                 if self.shared_gpu is not None and pressure_summaries: self.shared_gpu.observe_oom(payload, Path(handle.request.cwd) / handle.request.stderr_path)
                 with self.store.transaction() as tx:
