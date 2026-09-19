@@ -2965,6 +2965,26 @@
   helpDialog.addEventListener("click", (event) => {
     if (event.target === helpDialog && typeof helpDialog.close === "function") helpDialog.close();
   });
+
+  const TEXT_SIZE_STORAGE_KEY = "hypoloom.text-size";
+  const TEXT_SIZES = ["87.5", "100", "112.5", "125"];
+  const textSizeSelect = byId("text-size");
+  function applyTextSize(value) {
+    const size = TEXT_SIZES.includes(value) ? value : "112.5";
+    document.documentElement.style.fontSize = `${size}%`;
+    if (textSizeSelect.value !== size) textSizeSelect.value = size;
+    return size;
+  }
+  let storedTextSize = null;
+  try { storedTextSize = window.localStorage.getItem(TEXT_SIZE_STORAGE_KEY); } catch { storedTextSize = null; }
+  applyTextSize(storedTextSize);
+  textSizeSelect.addEventListener("change", () => {
+    const size = applyTextSize(textSizeSelect.value);
+    try { window.localStorage.setItem(TEXT_SIZE_STORAGE_KEY, size); } catch { /* preference stays session-only */ }
+    const label = textSizeSelect.selectedOptions.length ? textSizeSelect.selectedOptions[0].textContent : size;
+    setText("screen-status", `Text size set to ${label}.`);
+  });
+
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !drawer.hidden) closeDrawer();
   });

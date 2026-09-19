@@ -59,7 +59,7 @@
         </g>
       </svg>
       <div>
-        <p class="eyebrow">HYPOLOOM / HYPOLOOM</p>
+        <p class="eyebrow">HYPOLOOM</p>
         <h1>Research Observer</h1>
         <p class="boundary" id="observer-boundary"><span aria-hidden="true">◉</span> READ-ONLY · OFFLINE PROJECTION</p>
       </div>
@@ -92,8 +92,18 @@
         <button id="tab-activity" role="tab" type="button" aria-controls="view-activity" aria-selected="false" data-view="activity">Experiments &amp; logs</button>
         <button id="tab-workbench" role="tab" type="button" aria-controls="view-workbench" aria-selected="false" data-view="workbench">Workbench</button>
       </div>
-      <button id="open-support" class="help-button" type="button">Report issue</button>
-      <button id="open-help" class="help-button" type="button">Help / terms</button>
+      <div class="help-actions">
+        <label class="text-size">Text size
+          <select id="text-size">
+            <option value="87.5">Compact</option>
+            <option value="100">Standard</option>
+            <option value="112.5" selected>Comfortable</option>
+            <option value="125">Large</option>
+          </select>
+        </label>
+        <button id="open-support" class="help-button" type="button">Report issue</button>
+        <button id="open-help" class="help-button" type="button">Help / terms</button>
+      </div>
     </nav>
 
     <section id="human-pending" class="human-pending" aria-live="polite" hidden>

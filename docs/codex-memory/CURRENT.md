@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- September 20: Web observer UI fixes (uncommitted, `web_observer_assets`
+  only, no runtime/server change): single `HYPOLOOM` eyebrow (was the
+  duplicated `HYPOLOOM / HYPOLOOM`); Report issue + Help / terms grouped in
+  one right-flush `.help-actions` cluster (both had `margin-left: auto`,
+  which split the free space between them) with amber `#201C12/#EAC6A5`
+  styling distinct from the blue controls; added a Text size select
+  (Compact 87.5% / Standard 100% / Comfortable 112.5% / Large 125%) that
+  scales the rem-based page via root font-size, defaults to Comfortable
+  (`html { font-size: 112.5% }`), persists in `localStorage`
+  (`hypoloom.text-size`, storage-disabled contexts keep the session-only
+  default). Evidence: `test_web_observer.py` 13/13, two CDP browser tests,
+  headless-Chrome screenshots of the data-URL fixture at both scales.
+
 - September 19 (repair round, uncommitted on dev @ f2de65a): read-only
   analysis of the terminated run MERC-causal-202609172306 found four
   defect classes; two independent audits (local records under `.local/`)
