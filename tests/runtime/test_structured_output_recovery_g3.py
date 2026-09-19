@@ -19,7 +19,8 @@ import pytest
 
 from hypoloom.agent_aci import EmbeddedInput, required_output_schema
 from hypoloom.agent_budget import fold_agent_attempts
-from hypoloom.claude_agent_host import ClaudeAgentHost, _output_schema, process_group_exists
+from hypoloom.agent_sessions import _session_cost_state
+from hypoloom.claude_agent_host import ClaudeAgentHost, _output_schema, _session_usage_view, process_group_exists
 from hypoloom.expert_loop import ResearchNodeSubkind
 from hypoloom.fake_agent import FakeAgent
 from hypoloom.oracle import _raw_artifact_digest
@@ -227,9 +228,14 @@ def test_native_profile_correction_in_one_design_invocation(tmp_path: Path, corr
     assert observation.diagnostics["provider_accounting"]["token_usage"] == {
         "input_tokens": cap + 1, "output_tokens": cap + 1, "total_tokens": (cap + 1) * 2}
     assert charge.tokens == (cap + 1) * 2 and charge.turns == result["num_turns"] <= request.budget.max_turns
-    assert result["usage"]["input_tokens"] == result["modelUsage"][_MODEL]["inputTokens"] == cap + 1
-    assert result["usage"]["output_tokens"] == result["modelUsage"][_MODEL]["outputTokens"] == cap + 1
-    assert charge.cost == Decimal(str(result["total_cost_usd"])) > 0
+    # Since CC 2.1.277 the forked design session's result ledger accumulates
+    # over the seed's saved cost-state; deduct that exact carried baseline.
+    carried = _session_cost_state(
+        (manager.publisher.root / metadata["seed"]["transcript"]["path"] / "transcript.jsonl").read_bytes())
+    view = _session_usage_view(result, carried)
+    assert result["usage"]["input_tokens"] == view["modelUsage"][_MODEL]["inputTokens"] == cap + 1
+    assert result["usage"]["output_tokens"] == view["modelUsage"][_MODEL]["outputTokens"] == cap + 1
+    assert charge.cost == Decimal(str(view["total_cost_usd"])) > 0
     assert "provider_reported_lower_bound" not in observation.diagnostics
     if corrected:
         assert observation.response is not None and observation.failure_code is None

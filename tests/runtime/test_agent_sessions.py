@@ -408,3 +408,37 @@ def test_expert_forks_receive_only_their_own_parent_transcript(tmp_path: Path) -
     assert b"private-context-alice" not in b"".join(
         path.read_bytes() for path in children[1].session_root.iterdir()
     )
+
+
+def test_resume_and_fork_record_the_newest_saved_cost_state_as_usage_baseline(tmp_path: Path) -> None:
+    _, binding = make_target(tmp_path)
+    manager = _manager(tmp_path)
+    first = manager.prepare(_request(AgentCommand.GROUNDING, "attempt-grounding"), None)
+    assert first.session_usage_baseline is None
+    _transcript(first, "grounding-private")
+    resumed = manager.prepare(first.request, None)
+    assert resumed.session_arguments == ("--resume", first.binding["session_id"])
+    # Older CC transcripts carry no saved totals and start at zero.
+    assert resumed.session_usage_baseline is None
+    path = first.session_root / f"{first.binding['session_id']}.jsonl"
+    cost_state = _cost_state_record(first.binding["session_id"], 0.001, 7)
+    path.write_bytes(path.read_bytes() + json.dumps(cost_state).encode() + b"\n")
+    carried = manager.prepare(first.request, None)
+    assert carried.session_usage_baseline == cost_state
+    # A later exit record supersedes it; an unterminated tail is a partial write.
+    newer = _cost_state_record(first.binding["session_id"], 0.002, 11)
+    path.write_bytes(path.read_bytes() + json.dumps(newer).encode() + b"\n" + b'{"type": "cost')
+    assert manager.prepare(first.request, None).session_usage_baseline == newer
+
+    seed = _seed(manager, binding)
+    forked = manager.prepare(_chain_request(
+        AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "design-fork", "chain-a"), binding)
+    assert forked.session_arguments == ("--resume", seed.binding["session_id"],
+        "--fork-session", "--session-id", forked.binding["session_id"])
+    assert forked.session_usage_baseline is None
+    seed_path = seed.session_root / f"{seed.binding['session_id']}.jsonl"
+    seed_state = _cost_state_record(seed.binding["session_id"], 0.003, 13)
+    seed_path.write_bytes(seed_path.read_bytes() + json.dumps(seed_state).encode() + b"\n")
+    forked = manager.prepare(_chain_request(
+        AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "design-fork-2", "1"), binding)
+    assert forked.session_usage_baseline == seed_state

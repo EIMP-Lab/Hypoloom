@@ -16,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Iterable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -245,6 +246,8 @@ class RunningClaudeAgent:
     _runtime_diagnostics: RuntimeDiagnostics | None = field(default=None, repr=False)
     _provider_relay: ProviderRelay | None = field(default=None, repr=False)
     _output_validator: NativeOutputValidator | None = field(default=None, repr=False)
+    _prompt_manifest: Mapping[str, object] | None = field(default=None, repr=False)
+    _session_usage_baseline: Mapping[str, object] | None = field(default=None, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _cancel_requested: bool = field(default=False, repr=False)
     _closed: bool = field(default=False, repr=False)
@@ -737,6 +740,9 @@ class ClaudeAgentHost:
             _runtime_diagnostics=runtime_diagnostics,
             _provider_relay=relay,
             _output_validator=output_validator,
+            _prompt_manifest=prompt_manifest,
+            _session_usage_baseline=(tool_workspace.session_usage_baseline
+                if isinstance(tool_workspace, PreparedSessionWorkspace) else None),
         )
         with self._handles_lock:
             self._handles[request.attempt_id] = handle
@@ -923,6 +929,7 @@ class ClaudeAgentHost:
                 _, _, parsed_diagnostics = _provider_response(
                     handle.request, handle.model, output, final_text_output=final_text_output,
                     observed_wire_input_floor=wire_input_floor,
+                    session_usage_baseline=handle._session_usage_baseline,
                 )
                 diagnostics.update(parsed_diagnostics)
             reason = AgentHostTerminalReason.FAILED
@@ -938,6 +945,7 @@ class ClaudeAgentHost:
                     _, failure_code, parsed_diagnostics = _provider_response(
                         handle.request, handle.model, output or b"", final_text_output=True,
                         observed_wire_input_floor=wire_input_floor,
+                        session_usage_baseline=handle._session_usage_baseline,
                     )
                     diagnostics.update(parsed_diagnostics)
                     reason = AgentHostTerminalReason.INVALID_OUTPUT
@@ -987,6 +995,11 @@ class ClaudeAgentHost:
                         outer, stream_failure, stream_diagnostics = _unpack_provider_stream(output)
                         if stream_failure is None and outer is not None and outer.get("type") == "result":
                             diagnostics.update(stream_diagnostics)
+                            if handle._session_usage_baseline is not None:
+                                clamped: set[str] = set()
+                                outer = _session_usage_view(outer, handle._session_usage_baseline, clamped)
+                                diagnostics["provider_session_carryover"] = _carried_usage_summary(
+                                    handle._session_usage_baseline, clamped=clamped)
                             diagnostics.update(_provider_accounting(
                                 outer, handle.model,
                                 allow_model_usage_fallback=outer.get("subtype") != "success",
@@ -1009,6 +1022,7 @@ class ClaudeAgentHost:
                     workspace_artifacts=workspace_artifacts,
                     final_text_output=final_text_output,
                     observed_wire_input_floor=wire_input_floor,
+                    session_usage_baseline=handle._session_usage_baseline,
                 )
                 diagnostics.update(parsed_diagnostics)
                 reason = (
@@ -1378,6 +1392,7 @@ def _provider_response(
     workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None,
     final_text_output: bool = False,
     observed_wire_input_floor: object = None,
+    session_usage_baseline: Mapping[str, object] | None = None,
 ) -> tuple[AgentResponse | None, str | None, Mapping[str, object]]:
     outer, stream_failure, stream_diagnostics = _unpack_provider_stream(raw)
     if stream_failure is not None:
@@ -1387,6 +1402,11 @@ def _provider_response(
     diagnostics: dict[str, object] = dict(stream_diagnostics)
     if outer.get("type") != "result":
         return None, "invalid_provider_type", diagnostics
+    if session_usage_baseline is not None:
+        clamped: set[str] = set()
+        outer = _session_usage_view(outer, session_usage_baseline, clamped)
+        diagnostics["provider_session_carryover"] = _carried_usage_summary(
+            session_usage_baseline, clamped=clamped)
     subtype = outer.get("subtype")
     diagnostics.update(
         _provider_accounting(
@@ -1729,6 +1749,116 @@ def _provider_error_summary(value: object) -> str | None:
     ):
         return None
     return bounded_diagnostic_text("; ".join(value))
+
+
+_CARRIED_USAGE_FIELDS = (
+    "inputTokens",
+    "outputTokens",
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "webSearchRequests",
+    "thinkingTokens",
+)
+
+
+def _session_usage_view(
+    outer: Mapping[str, object], baseline: Mapping[str, object] | None,
+    clamped: set[str] | None = None,
+) -> Mapping[str, object]:
+    """Deduct carried session totals from a cumulative CC result ledger.
+
+    Since CC 2.1.277 a headless --resume/--fork-session launch seeds the
+    result event's modelUsage/total_cost_usd from the transcript's saved
+    cost-state record instead of starting at zero. The Host bills per Attempt,
+    so the baseline recorded at session preparation (the record it handed CC)
+    is deducted here; a model the invocation did not use drops out of the
+    ledger. Without a saved record (older CC, fresh session) the ledger is
+    already invocation-local and passes through unchanged. A deduction that
+    would go negative floors at zero and, when ``clamped`` is given, records
+    the model identity (or ``total_cost_usd``) there instead of staying
+    silent about the inconsistent ledger.
+    """
+    if baseline is None or not isinstance(outer, Mapping):
+        return outer
+    ledger = outer.get("modelUsage")
+    if not isinstance(ledger, Mapping):
+        return outer
+    carried_models = baseline.get("modelUsage")
+    if not isinstance(carried_models, Mapping):
+        carried_models = {}
+    adjusted_models = {}
+    for identity, entry in ledger.items():
+        if not isinstance(entry, Mapping):
+            return outer
+        carried = carried_models.get(identity)
+        carried = carried if isinstance(carried, Mapping) else {}
+        updated = dict(entry)
+        remaining = 0
+        for field_name in _CARRIED_USAGE_FIELDS:
+            value = entry.get(field_name, 0)
+            base = carried.get(field_name, 0)
+            if (isinstance(value, bool) or isinstance(base, bool)
+                    or not isinstance(value, (int, float))
+                    or not isinstance(base, (int, float))):
+                # The native ledger shape drifted; keep its exact reported
+                # bill rather than estimating a delta.
+                return outer
+            if value < base and clamped is not None:
+                clamped.add(identity)
+            updated[field_name] = max(0, value - base)
+            remaining += updated[field_name]
+        value = entry.get("costUSD")
+        base = carried.get("costUSD", 0)
+        if (value is not None and not isinstance(value, bool)
+                and isinstance(value, (str, int, float))
+                and not isinstance(base, bool) and isinstance(base, (str, int, float))):
+            try:
+                cost_delta = Decimal(str(value)) - Decimal(str(base))
+                if cost_delta < 0 and clamped is not None:
+                    clamped.add(identity)
+                updated["costUSD"] = float(max(Decimal(0), cost_delta))
+            except InvalidOperation:
+                return outer
+        if remaining > 0 or identity not in carried_models:
+            adjusted_models[identity] = updated
+    adjusted = dict(outer)
+    adjusted["modelUsage"] = adjusted_models
+    total = outer.get("total_cost_usd")
+    carried_total = baseline.get("totalCostUSD", 0)
+    if (not isinstance(total, bool) and isinstance(total, (str, int, float))
+            and not isinstance(carried_total, bool)
+            and isinstance(carried_total, (str, int, float))):
+        try:
+            total_delta = Decimal(str(total)) - Decimal(str(carried_total))
+            if total_delta < 0 and clamped is not None:
+                clamped.add("total_cost_usd")
+            adjusted["total_cost_usd"] = float(max(Decimal(0), total_delta))
+        except InvalidOperation:
+            return outer
+    return adjusted
+
+
+def _carried_usage_summary(
+    baseline: Mapping[str, object], *, clamped: Iterable[str] = ()
+) -> Mapping[str, object]:
+    models = baseline.get("modelUsage")
+    usage = {
+        identity: {
+            field_name: entry.get(field_name, 0)
+            for field_name in (
+                "inputTokens", "outputTokens",
+                "cacheReadInputTokens", "cacheCreationInputTokens",
+            )
+        }
+        for identity, entry in models.items()
+        if isinstance(entry, Mapping)
+    } if isinstance(models, Mapping) else {}
+    return {
+        "source": "session_cost_state",
+        "model_usage": usage,
+        "total_cost_usd": baseline.get("totalCostUSD", 0),
+        "clamped": sorted(clamped),
+    }
 
 
 def _provider_accounting(

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from hypoloom.claude_agent_host import _provider_response
+from hypoloom.claude_agent_host import _provider_response, _session_usage_view
 from tests.runtime.test_claude_agent_host import _host, _provider_ndjson, _start
 from tests.runtime.test_partial_cli_accounting import _charge, _messages, _request, _result
 from tests.runtime.test_rejected_workspace_accounting import (
@@ -196,3 +196,87 @@ def test_workspace_capture_rejection_preserves_model_usage_without_accepting_can
     charge = _workspace_charge(request, observed)
     assert (charge.source, charge.tokens, charge.cost) == (
         "provider", 82, Decimal("0.108265"))
+
+
+@pytest.mark.parametrize("subtype", ["success", "error_max_structured_output_retries"])
+def test_resumed_cumulative_ledger_bills_only_the_invocation_after_deducting_carry(subtype):
+    # Since CC 2.1.277 a --resume/--fork-session result ledger accumulates over
+    # the transcript's saved cost-state record; the recorded baseline restores
+    # the exact per-Attempt bill, and an unused carried model drops out before
+    # the one-exact-identity validation.
+    result = _ledger_result(subtype)
+    result["total_cost_usd"] = 0.021
+    result["modelUsage"] = {
+        "stub-model": {"inputTokens": 16, "cacheCreationInputTokens": 13,
+            "cacheReadInputTokens": 40, "outputTokens": 25, "costUSD": "0.0200"},
+        "carried-model": {"inputTokens": 1, "outputTokens": 1, "costUSD": 0.001},
+    }
+    baseline = {"type": "cost-state", "totalCostUSD": 0.011, "modelUsage": {
+        "stub-model": {"inputTokens": 6, "outputTokens": 6, "costUSD": 0.01},
+        "carried-model": {"inputTokens": 1, "outputTokens": 1, "costUSD": 0.001}}}
+    request = _request()
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*_messages(), result), session_usage_baseline=baseline)
+    assert failure == (None if subtype == "success" else "provider_not_success")
+    assert diagnostics["provider_session_carryover"] == {
+        "source": "session_cost_state",
+        "model_usage": {
+            "stub-model": {"inputTokens": 6, "outputTokens": 6,
+                "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0},
+            "carried-model": {"inputTokens": 1, "outputTokens": 1,
+                "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0}},
+        "total_cost_usd": 0.011, "clamped": []}
+    assert diagnostics["provider_accounting"] == {
+        "token_usage": {"input_tokens": 63, "output_tokens": 19, "total_tokens": 82},
+        "turn_count": 1, "cost": "0.01", "cost_currency": "USD"}
+    if response is not None:
+        assert response.token_usage == diagnostics["provider_accounting"]["token_usage"]
+    charge = _charge(request, response, diagnostics)
+    assert (charge.source, charge.tokens, charge.cost) == (
+        "response" if subtype == "success" else "provider", 82, Decimal("0.01"))
+    # The same cumulative ledger without its recorded carry is a different bill.
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*_messages(), result))
+    assert response is None and failure is not None
+    assert "provider_session_carryover" not in diagnostics
+    accounting = diagnostics.get("provider_accounting")
+    assert accounting is None or accounting["token_usage"] != {
+        "input_tokens": 63, "output_tokens": 19, "total_tokens": 82}
+
+
+def test_carryover_clamped_flag_marks_only_negative_deductions():
+    # A carry exceeding the invocation's own ledger is an inconsistent bill:
+    # the deduction still floors at zero, but the summary names what clamped.
+    result = _ledger_result()
+    baseline = {"type": "cost-state", "totalCostUSD": 0.005, "modelUsage": {
+        "stub-model": {"inputTokens": 0, "outputTokens": 0, "costUSD": 0.005}}}
+    request = _request()
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*_messages(), result), session_usage_baseline=baseline)
+    assert failure is None and response is not None
+    assert diagnostics["provider_session_carryover"]["clamped"] == []
+    assert diagnostics["provider_accounting"] == {
+        "token_usage": {"input_tokens": 63, "output_tokens": 19, "total_tokens": 82},
+        "turn_count": 1, "cost": "0.005", "cost_currency": "USD"}
+
+    result = _ledger_result()
+    baseline = {"type": "cost-state", "totalCostUSD": 0.02, "modelUsage": {
+        "stub-model": {"inputTokens": 11, "outputTokens": 6, "costUSD": 0.005}}}
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*_messages(), result), session_usage_baseline=baseline)
+    summary = diagnostics["provider_session_carryover"]
+    # inputTokens 10 - 11 and total 0.01 - 0.02 both underflow; costUSD and
+    # outputTokens still deduct cleanly, so only those two are named.
+    assert summary["clamped"] == ["stub-model", "total_cost_usd"]
+    model = summary["model_usage"]["stub-model"]
+    assert model == {"inputTokens": 11, "outputTokens": 6,
+        "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0}
+    # The inconsistent ledger still fails closed on the existing guards.
+    assert response is None and failure == "invalid_provider_metadata"
+
+    # Deduction semantics are unchanged: clamped fields floor at zero.
+    view = _session_usage_view(result, baseline)
+    adjusted = view["modelUsage"]["stub-model"]
+    assert (adjusted["inputTokens"], adjusted["outputTokens"]) == (0, 13)
+    assert view["total_cost_usd"] == 0.0
+    assert adjusted["costUSD"] == 0.005

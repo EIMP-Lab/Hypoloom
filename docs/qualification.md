@@ -6,6 +6,59 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — per-Attempt billing under CC 2.1.277 cumulative session ledgers, 2026-09-19
+
+The local Claude Code auto-updated to 2.1.277 (`~/.local/bin/claude` replaced
+2026-09-19 10:07; `~/.local/share/claude/versions/` shows daily builds
+2.1.273 → 2.1.274 → 2.1.275 → 2.1.277). Its changelog entry "Fixed a headless
+resume (`claude -p --resume`, the SDK, a VS Code extension window reload)
+starting the session's cost and usage totals at zero; headless sessions now
+save their totals at exit" changed the result-event contract Hypoloom bills
+from: CC ≥ 2.1.277 appends a cumulative `cost-state` record
+(`totalCostUSD` + per-model `modelUsage`) to the session transcript at each
+headless exit, and a `--resume`/`--fork-session` launch seeds its reported
+`modelUsage`/`total_cost_usd` from that record instead of starting at zero.
+CC ≤ 2.1.275 writes no such record (verified: zero `cost-state` occurrences in
+a 2.1.275 fixture's session files, 14 in the same fixture under 2.1.277).
+
+Four native G3 tests failed on the unmodified tree under 2.1.277 and all
+passed under 2.1.275 without any tree change, exonerating the five in-flight
+workstreams:
+
+- `test_model_usage_accounting_g3`: a same-session FINAL_REPORT retry
+  reported cumulative modelUsage 35 (invocation 29 + failed attempt 6) and
+  cumulative cost; `assert 35 == 29`.
+- `test_partial_cli_accounting_g3`: the same mechanism recorded retry
+  `token_usage.input_tokens` 11 (5 + 6); `assert 11 == 5`.
+- `test_execution_completion_g3`: a chain fork inherited the synthesis
+  parent's saved totals under the parent's different model identity, so the
+  design attempt's ledger held two model keys and failed
+  `multiple_model_identities`; the run COMPLETED with zero outcomes.
+- `test_structured_output_recovery_g3` (3 cases, found during diagnosis):
+  forked design accounting recorded cap+2 (cap+1 + seed 1).
+
+Repair (no assertion weakened): `agent_sessions.prepare` records the newest
+`cost-state` record of the exact transcript bytes it hands CC as
+`PreparedSessionWorkspace.session_usage_baseline` (`_session_cost_state`;
+absent for older CC/fresh sessions, so behavior there is unchanged).
+`claude_agent_host` deducts that recorded carry from the result ledger
+(`_session_usage_view`) before every per-Attempt accounting path; models the
+invocation did not use drop out of the ledger, cost is deducted in Decimal,
+and `provider_session_carryover` is recorded in diagnostics. The two
+harnesses that assert on the raw native ledger now derive the same
+invocation view from the archived prior transcript (which is byte-identical
+to what preparation handed CC); every asserted quantity (29/11, the
+17/3/5/7 fallback delta, cap+1, cost equality) is unchanged.
+
+Focused evidence: 3 new unit cases (resumed cumulative ledger deducts carry
+and drops the unused carried model, with and without structured-output
+failure; resume/fork preparation records the newest cost-state, supersedes
+older records, skips an unterminated partial tail, and records none for
+pre-2.1.277 transcripts); 306 focused cases pass. Native evidence: all four
+failing files plus `test_full_cc_host_g3.py` green under CC 2.1.277
+(1+1+1+3+3) and under CC 2.1.275 (1+1+1+3+3). No paid, GPU or online lane
+ran; existing runs, Profiles and credentials are unchanged.
+
 ## Current development — project GPU-pool detection and managed creation in init, 2026-09-17
 
 Under the user's direction after a new run's init exited (the intake could

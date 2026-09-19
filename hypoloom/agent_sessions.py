@@ -143,6 +143,29 @@ def _validate_transcript(content: bytes, binding: dict[str, Any]) -> bool:
     return complete
 
 
+def _session_cost_state(content: bytes) -> dict[str, Any] | None:
+    """Newest saved session totals in a transcript, or None.
+
+    Since CC 2.1.277 a headless session appends a cumulative "cost-state"
+    record at exit, and a --resume/--fork-session launch seeds its reported
+    modelUsage/total_cost_usd from it instead of starting at zero. The record
+    current at preparation time is exactly the carry the next invocation
+    reports back, so the Host deducts it to keep per-Attempt accounting
+    invocation-exact. Older CC transcripts have no such record.
+    """
+    complete = content.endswith(b"\n")
+    records = content.splitlines()
+    state = None
+    for raw in records if complete else records[:-1]:
+        try:
+            record = json.loads(raw)
+        except (ValueError, UnicodeError):
+            continue
+        if isinstance(record, dict) and record.get("type") == "cost-state":
+            state = record
+    return state
+
+
 def _git(prepared: PreparedGitAuthoringWorkspace, *args: str) -> bytes:
     return _run_git(
         prepared.git_executable,
@@ -228,6 +251,7 @@ class PreparedSessionWorkspace:
     acceptance_root: Path | None = None
     captured_acceptance_files: dict[str, bytes] = field(default_factory=dict)
     papers: Any = None
+    session_usage_baseline: Mapping[str, Any] | None = None
 
     @property
     def attempt_id(self) -> str:
@@ -606,11 +630,12 @@ class AgentSessions:
                 raise GitAuthoringIntegrityError("session transfer source is not its canonical private path")
             retained_source = GitAuthoringWorkspace(source_root).retained("chain", base_commit=session["base_commit"])
             if not transfer[0] and not own_transcript.exists(): _write_new(own_transcript, source_content)
+        session_usage_baseline = None
         if own_transcript.exists():
-            _validate_transcript(
-                _regular(own_transcript, transcript_limit), descriptor
-            )
+            own_content = _regular(own_transcript, transcript_limit)
+            _validate_transcript(own_content, descriptor)
             session_arguments = ("--resume", descriptor["session_id"])
+            session_usage_baseline = _session_cost_state(own_content)
         elif descriptor["parent_session_id"] is not None:
             parent = (
                 common
@@ -641,6 +666,7 @@ class AgentSessions:
                 "--session-id",
                 descriptor["session_id"],
             )
+            session_usage_baseline = _session_cost_state(content)
         else:
             session_arguments = ("--session-id", descriptor["session_id"])
         # Exact node inputs remain independently named even though CC now also
@@ -729,6 +755,7 @@ class AgentSessions:
             git_workspace=prepared,
             binding=descriptor,
             session_arguments=session_arguments,
+            session_usage_baseline=session_usage_baseline,
         )
         if request.command is AgentCommand.FINAL_REPORT:
             workspace.final_report_root = _directory(root / "report" / _component(request.attempt_id))

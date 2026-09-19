@@ -6,8 +6,11 @@ import copy
 import json
 from decimal import Decimal
 from pathlib import Path
+from typing import Mapping
 
 from hypoloom.agent_budget import fold_agent_attempts
+from hypoloom.agent_sessions import _session_cost_state
+from hypoloom.claude_agent_host import _session_usage_view
 from hypoloom.domain import AgentCommand
 
 import test_claude_file_tool_cli as provider_fixture
@@ -110,6 +113,16 @@ def _assert_closed_billing(tmp_path: Path):
     assert len(finals) == 2
     failed, accepted = finals
     charges = {item.attempt_id: item for item in fold_agent_attempts(attempts)}
+    # Since CC 2.1.277 the result event's modelUsage/total_cost_usd accumulate
+    # over a resumed session (saved cost-state records); the archived prior
+    # transcript holds exactly the carry the next invocation was seeded with.
+    baselines: dict[str, Mapping[str, object] | None] = {}
+    previous = None
+    for row, observation in finals:
+        baselines[row["attempt_id"]] = None if previous is None else _session_cost_state(
+            (tmp_path / "state/artifacts" / previous["session"]["transcript"]["path"]
+             / "transcript.jsonl").read_bytes())
+        previous = observation
     records = {}
     checks = []
     for row, observation in finals:
@@ -117,14 +130,15 @@ def _assert_closed_billing(tmp_path: Path):
         records[row["attempt_id"]] = [json.loads(line) for line in source.read_text().splitlines()]
         events = records[row["attempt_id"]]
         outer = events[-1]
-        model = outer["modelUsage"][observation["request"]["required_model_identity"]]
+        view = _session_usage_view(outer, baselines[row["attempt_id"]])
+        model = view["modelUsage"][observation["request"]["required_model_identity"]]
         model_input = model["inputTokens"] + model["cacheCreationInputTokens"] + model["cacheReadInputTokens"]
         observed = {}
         for event in events:
             if event.get("type") == "assistant":
                 message = event["message"]
                 observed[message["id"]] = max(observed.get(message["id"], 0), _normalized_input(message["usage"]))
-        assert Decimal(str(model["costUSD"])) == Decimal(str(outer["total_cost_usd"]))
+        assert Decimal(str(model["costUSD"])) == Decimal(str(view["total_cost_usd"]))
         diagnostics = observation["diagnostics"]
         assert diagnostics["provider_usage_normalization"]["source"] == "modelUsage"
         charge = charges[row["attempt_id"]]
@@ -136,23 +150,27 @@ def _assert_closed_billing(tmp_path: Path):
             accounting = diagnostics["provider_accounting"]
             assert charge.source == "provider"
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
-            assert charge.cost == Decimal(str(outer["total_cost_usd"]))
+            assert charge.cost == Decimal(str(view["total_cost_usd"]))
         else:
             assert model_input == sum(observed.values()) == 29 > _normalized_input(outer["usage"]) == 4
             accounting = diagnostics["provider_accounting"]
             assert charge.source == "response"
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
-            assert charge.cost == Decimal(str(outer["total_cost_usd"]))
+            assert charge.cost == Decimal(str(view["total_cost_usd"]))
         assert accounting["token_usage"] == {"input_tokens": model_input,
             "output_tokens": model["outputTokens"], "total_tokens": model_input + model["outputTokens"]}
         checks.append({"attempt_id": row["attempt_id"], "terminal_reason": row["terminal_reason"],
             "cli_stdout": str(source), "outer_usage": outer["usage"], "model_usage": model,
+            "cli_session_totals": {"model_usage": outer["modelUsage"][
+                observation["request"]["required_model_identity"]],
+                "total_cost_usd": outer["total_cost_usd"]},
             "observed_input_by_message_id": observed, "cli_reported_accounting": accounting,
             "charge_source": charge.source, "charge_cost": str(charge.cost)})
     assert failed[1].get("response") is None and failed[1]["failure_code"] == "invalid_structured_output"
     assert accepted[1]["response"]["token_usage"] == accepted[1]["diagnostics"]["provider_accounting"]["token_usage"]
     outer = records[accepted[0]["attempt_id"]][-1]
-    model = outer["modelUsage"][accepted[1]["request"]["required_model_identity"]]
+    model = _session_usage_view(outer, baselines[accepted[0]["attempt_id"]])[
+        "modelUsage"][accepted[1]["request"]["required_model_identity"]]
     assert model["inputTokens"] - outer["usage"]["input_tokens"] == 17
     assert model["cacheCreationInputTokens"] - outer["usage"].get("cache_creation_input_tokens", 0) == 3
     assert model["cacheReadInputTokens"] - outer["usage"].get("cache_read_input_tokens", 0) == 5

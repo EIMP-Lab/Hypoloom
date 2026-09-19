@@ -1,5 +1,25 @@
 # Current Hypoloom development state
 
+- September 19: the local Claude Code auto-updated to 2.1.277 (binary
+  replaced 10:07), whose headless sessions now save cumulative cost/usage
+  totals at exit and seed `--resume`/`--fork-session` launches from them.
+  Four native G3 tests failed on the unmodified tree (all green under
+  2.1.275): same-session retries double-billed their predecessor
+  (`assert 35 == 29`, `assert 11 == 5`), and a chain fork inheriting the
+  synthesis parent's different-model ledger failed
+  `multiple_model_identities`, completing a run with zero outcomes. Root
+  cause was external, not one of the five in-flight workstreams. Repair:
+  `agent_sessions.prepare` records the newest `cost-state` record of the
+  transcript it hands CC as `session_usage_baseline` (none for older
+  CC/fresh sessions); `claude_agent_host` deducts that exact carry
+  (`_session_usage_view`) before per-Attempt accounting, drops models the
+  invocation did not use, and records `provider_session_carryover` in
+  diagnostics. The two harnesses asserting on the raw native ledger
+  (model-usage, structured-output-recovery) derive the same invocation view
+  from the archived prior transcript; no assertion was weakened. All four
+  native files plus `test_full_cc_host_g3.py` are green under both 2.1.277
+  and 2.1.275; 306 focused cases pass. Details in qualification's top
+  section.
 - September 17 evening, under the user's direction: `/autoresearch init` now
   detects and — only through the reviewed plan — deploys this project's own
   GPU pool, replacing the reliance on an operator-supplied external endpoint.
