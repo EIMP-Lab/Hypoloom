@@ -196,39 +196,50 @@ def test_web_common_panel_renders_raw_values_and_reuses_its_read_only_node(tmp_p
         Path(__file__).resolve().parents[2]
         / "hypoloom/web_observer_assets/app.js"
     ).read_text()
-    renderer = script[
-        script.index("  function renderSharedAcceptance(") : script.index(
-            "  function renderRuntime("
-        )
-    ]
-    element = script[
-        script.index("  function element(") : script.index("  function svgElement(")
-    ]
+
+    def extract(start, end):
+        return script[script.index(start) : script.index(end)]
+
+    renderer = extract(
+        "  function renderSharedAcceptance(", "  function renderRuntime("
+    )
+    helpers = "".join(
+        [
+            extract("  function element(", "  function svgElement("),
+            extract("  function svgElement(", "  function setText("),
+            extract("  function object(", "  function sharedGoal("),
+            extract("  function expertClass(", "  function appendDefinition("),
+        ]
+    )
     attempts, facts = recorded_evidence()
     payload = status(tmp_path, attempts, facts)
+    snapshot = {"status": payload, "hypotheses": [], "components": [], "experts": []}
     harness = r"""
 const registry = new Map();
 let insertions = 0;
+const SVG_NS = "http://www.w3.org/2000/svg";
 class Node {
-  constructor() { this.children = []; this.textContent = ""; this.hidden = false; }
+  constructor() { this.children = []; this.textContent = ""; this.hidden = false; this.dataset = {}; }
   set id(value) { registry.set(value, this); }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
   after(_item) { insertions += 1; }
+  setAttribute(name, value) { (this.attributes || (this.attributes = {}))[name] = String(value); }
+  addEventListener() {}
 }
-const document = {createElement: () => new Node()};
+const document = {createElement: () => new Node(), createElementNS: () => new Node()};
 const byId = (id) => registry.get(id);
 const list = (value) => Array.isArray(value) ? value : [];
 registry.set("grounding-dialogue-panel", new Node());
 const content = (node) => [node.textContent, ...node.children.map(content)].join("\n");
 """
     tail = """
-renderSharedAcceptance(payload);
+renderSharedAcceptance(snapshot);
 const first = byId("shared-acceptance-panel");
 const rendered = content(first);
-renderSharedAcceptance(payload);
+renderSharedAcceptance(snapshot);
 const reused = first === byId("shared-acceptance-panel");
-renderSharedAcceptance({shared_acceptance: null});
+renderSharedAcceptance({status: {shared_acceptance: null}});
 process.stdout.write(JSON.stringify({rendered, reused, insertions, hidden: first.hidden, remaining: first.children.length}));
 """
     observed = json.loads(
@@ -237,10 +248,10 @@ process.stdout.write(JSON.stringify({rendered, reused, insertions, hidden: first
                 node,
                 "-e",
                 harness
-                + element
+                + helpers
                 + renderer
-                + "const payload = "
-                + json.dumps(payload)
+                + "const snapshot = "
+                + json.dumps(snapshot)
                 + ";"
                 + tail,
             ],
