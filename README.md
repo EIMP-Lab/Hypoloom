@@ -28,7 +28,7 @@ checks recorded outcomes and lifecycle consistency.
 - **Evolve.** Experts interpret measurements, debate and adjudicate outcomes,
   revise the line of inquiry, and evolve reusable research skills.
 
-## What it provides
+## 🧩 What it provides
 
 One resident Host coordinates the whole loop; operators keep explicit
 authority, and an independent Oracle checks the record.
@@ -40,7 +40,7 @@ authority, and an independent Oracle checks the record.
 [Profile templates](profiles/README.md) ship in English and Chinese, and
 maintainers get the [G0–G5 qualification workflow](docs/qualification.md).
 
-## Inside a run
+## 🔍 Inside a run
 
 A running research loop is observable at two surfaces, both read-only
 projections of the Host's durable state: a browser-based Research Observer
@@ -49,7 +49,7 @@ Operations UI (`hypoloom monitor`). Neither mutates the run. Operator
 interventions — answering a Grounding question, resuming after a provider
 outage, ending the run — are explicit, recorded commands.
 
-### Run overview
+### 📊 Run overview
 
 The Operations view tracks the whole run: durable state, revision and the
 last Oracle verdict; counts of experiments, hypotheses, literature evidence,
@@ -61,7 +61,7 @@ required actions); and filters over every recorded attempt.
   <img src="docs/assets/web-overview.png" alt="Web Research Observer operations overview of an ACTIVE run: header with run ID, durable state, pending scientific verdict, revision, observed time and last-clean Oracle status; counter tiles for experiments, hypotheses, literature, skills, effective evolutions, leader and debate; cumulative execution reliability tiles; observation filters and the shared research goal">
 </p>
 
-### Expert cards
+### 🧑‍🔬 Expert cards
 
 Each expert runs its own six-node research cycle and gets a live card: its
 current stage, the agents working for it with context used against budget,
@@ -73,7 +73,7 @@ Observer-selected leader.
   <img src="docs/assets/web-expert.png" alt="Expert cards in the Web observer: the ml-expert is in cycle 3 running two experiment processes with breathing-light agent tiles and per-expert reliability tiles, while the experiment-engineering expert shows an amber debate-proposed dispatch pause over its completed result analyses, with stage pipeline, token accounting and browse-history entry per card">
 </p>
 
-### Hypothesis lineage
+### 🧬 Hypothesis lineage
 
 The lineage graph shows how the inquiry itself evolves. Every durable
 hypothesis appears once, colored by its expert; edge styles distinguish
@@ -84,7 +84,7 @@ branches record control decisions — pruning is not a scientific verdict.
   <img src="docs/assets/Hypo.png" alt="Hypothesis lineage topology of a run: twelve durable hypothesis nodes colored by owning expert and marked refuted, initial or pending, connected by edges distinguishing execution repair, experiment revision, scientific revision and unclear revision, with a legend noting that pruned-by edges are control decisions, not refutations">
 </p>
 
-### Metric trends
+### 📈 Metric trends
 
 Metric trends connect each published measurement to its initial-hypothesis
 chain in experiment order, against the target lines preregistered in the
@@ -95,7 +95,7 @@ glance.
   <img src="docs/assets/web-metrics.png" alt="Metric trends in the Web observer: one chart per preregistered metric, plotting published observations per initial-hypothesis chain in experiment order against dashed target lines, with clickable legend entries to show or hide each chain">
 </p>
 
-### Terminal UI
+### 💻 Terminal UI
 
 The terminal UI presents the same durable snapshot in the shell: the run at a
 glance (goal, verdict, budget and tokens, execution reliability), per-expert
@@ -110,7 +110,7 @@ decision, provider resume, diagnostics and End run.
 [USAGE](USAGE.md) covers launching the Web observer and the TUI, sharing
 read-only links, and the operator actions.
 
-## Start here
+## 🚀 Start here
 
 Use Linux with bubblewrap, Git and a current Claude Code CLI. The pinned
 [environment.yml](environment.yml) supplies Python 3.12 and a suitable SQLite;
@@ -136,7 +136,7 @@ exact selector and either approved environment credentials or an eligible
 existing mode-0600 settings file. Read [SETUP](SETUP.md) before using real
 models or resources.
 
-## Documentation
+## 📚 Documentation
 
 - [Setup and configuration](SETUP.md)
 - [Usage: monitoring, human answers, cancellation and recovery](USAGE.md)
@@ -152,7 +152,21 @@ models or resources.
 Each guide above links its 简体中文 version at the top; the
 [中文主页](README.zh-CN.md) links the Chinese versions directly.
 
-## Development status
+## 🗺️ Roadmap
+
+Current directions, in no fixed order — plans, not commitments; sequencing
+follows qualification results.
+
+- **More agent runtimes.** The framework currently drives research experts
+  through Claude Code. We plan to extend the same Host-owned research loop to
+  other coding-agent runtimes — Codex, Kimi Code, OpenCode and similar —
+  behind the existing per-binding qualification path.
+- **AutoResearch benchmarks.** We are considering academic follow-up around
+  the emerging AutoResearch benchmark line: adapting the Hypoloom workflow to
+  those tasks, then designing and running comparative evaluations of academic
+  quality against them.
+
+## 🚧 Development status
 
 Hypoloom is a development framework with no frozen release: interfaces,
 Profile schemas and internal contracts can change between candidates.
@@ -164,6 +178,6 @@ current validation scope is recorded in [qualification](docs/qualification.md).
 Preserved runs use their own runtime bundle; cross-version run migration is
 not provided.
 
-## License
+## ⚖️ License
 
 [MIT](LICENSE), copyright © 2026 EIMP Lab and the Hypoloom Authors.

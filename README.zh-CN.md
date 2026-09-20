@@ -23,7 +23,7 @@ Hypoloom 是一个开源的自主研究框架,覆盖从假设生成、实验执�
 - **演化(Evolve)**：专家解释测量结果,经辩论与裁决修正研究路线,并演化可复用的
   研究技能。
 
-## 功能总览
+## 🧩 功能总览
 
 一个常驻 Host 协调整个闭环;操作员保留显式授权,独立的 Oracle 校验记录。
 
@@ -34,14 +34,14 @@ Hypoloom 是一个开源的自主研究框架,覆盖从假设生成、实验执�
 [Profile 模板](profiles/README.md) 提供中英文版本,维护者使用
 [G0–G5 资格工作流](docs/qualification.zh-CN.md)。
 
-## 运行实况
+## 🔍 运行实况
 
 一次运行有两个观察入口,都是 Host 持久状态的只读投影:浏览器中的 Research
 Observer(`hypoloom web`,仅监听 loopback 并携带 bearer 链接)与终端 Research
 Operations 界面(`hypoloom monitor`)。两者都不会修改运行。操作员干预——答复
 Grounding 人工问题、在供应方故障后恢复、结束运行——都是显式且被记录的命令。
 
-### 运行总览
+### 📊 运行总览
 
 Operations 总览页跟踪整个运行:持久状态、修订号与最近一次 Oracle 结论;实验、
 假设、文献证据、演化技能与 Leader/Debate 活动的计数;累计执行可靠性(首轮输出
@@ -52,7 +52,7 @@ Operations 总览页跟踪整个运行:持久状态、修订号与最近一次 O
   <img src="docs/assets/web-overview.png" alt="Web Research Observer 的运行总览:头部显示 Run ID、持久状态 ACTIVE、待定的科学结论、修订号、观测时间与 Oracle 最近清洁状态;实验、假设、文献、技能、有效演化、Leader 与 Debate 的计数卡片;累计执行可靠性卡片;观测过滤器与共享研究目标">
 </p>
 
-### 专家卡片
+### 🧑‍🔬 专家卡片
 
 每位专家各自运行六节点研究闭环,并有一张实时卡片:当前所处阶段、正在工作的
 Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠性,以及协调状态——
@@ -62,7 +62,7 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
   <img src="docs/assets/web-expert.png" alt="Web observer 的专家卡片:ml-expert 处于第 3 轮并运行两个实验进程,Agent 瓦片以呼吸灯和上下文用量胶囊显示,另有该专家的可靠性卡片;experiment-engineering-expert 显示琥珀色的 debate 提议暂停提示,覆盖其已完成的结果分析;每张卡片含阶段流水线、token 账目与历史浏览入口">
 </p>
 
-### 假设谱系
+### 🧬 假设谱系
 
 谱系图展示研究路线本身的演化。每个持久假设只出现一次,按所属专家着色;边的
 样式区分执行修复、实验修订与科学修订;被剪枝的分支记录的是控制决策——剪枝
@@ -72,7 +72,7 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
   <img src="docs/assets/Hypo.png" alt="假设谱系拓扑图:十二个持久假设节点按所属专家着色并标记为已否定、初始或待评估,连线区分执行修复、实验修订、科学修订与不明确修订;图例说明 pruned_by 边是控制决策而非科学否定">
 </p>
 
-### 指标趋势
+### 📈 指标趋势
 
 指标趋势把每条已发表的测量按实验顺序连接到其初始假设链,并对照研究合同中
 预注册的目标线——通向验收准则的进展一目了然。
@@ -81,7 +81,7 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
   <img src="docs/assets/web-metrics.png" alt="Web observer 的指标趋势:每个预注册指标一张图,按实验顺序把已发表观测连接到各自的初始假设链,并对照虚线目标线;图例可点击以显示或隐藏对应链">
 </p>
 
-### 终端 UI
+### 💻 终端 UI
 
 终端界面在 shell 中呈现同一份持久快照:运行一览(目标、结论、预算与 token、
 执行可靠性)、各专家泳道及其当前工作、假设链、下一条持久命令,以及操作员
@@ -94,7 +94,7 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
 [USAGE](USAGE.zh-CN.md) 介绍如何启动 Web observer 与 TUI、分享只读链接,以及各操作员
 动作。
 
-## 快速开始
+## 🚀 快速开始
 
 需要 Linux、bubblewrap、Git 与当前的 Claude Code CLI。固定的
 [environment.yml](environment.yml) 提供 Python 3.12 与合适的 SQLite;GPU 实验使用
@@ -117,7 +117,7 @@ Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固�
 经批准的环境凭据或符合条件的现有 0600 权限设置文件。使用真实模型或资源前请阅读
 [SETUP](SETUP.zh-CN.md)。
 
-## 文档
+## 📚 文档
 
 - [安装与配置](SETUP.zh-CN.md)
 - [运行、监控与停止](USAGE.zh-CN.md)
@@ -132,7 +132,18 @@ Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固�
 以上各指南顶部都链接了对应的 English 版本;[English homepage](README.md)
 直接链接英文版本。
 
-## 开发状态
+## 🗺️ 后续计划
+
+当前方向,不分先后——是计划而非承诺;先后顺序以资格验证结果为准。
+
+- **更多 Agent 运行时**:框架目前通过 Claude Code 驱动研究专家。后续计划把同一
+  Host 拥有的研究闭环扩展到其他编程 Agent 运行时——Codex、Kimi Code、OpenCode
+  等——并沿用现有的按绑定资格验证路径。
+- **AutoResearch 基准**:我们正考虑围绕业界新兴的 AutoResearch benchmark 开展
+  学术性质的后续工作:让 Hypoloom 工作流适配这些任务,进而设计并运行具有学术
+  质量的对比评测。
+
+## 🚧 开发状态
 
 Hypoloom 是开发中的框架,尚无冻结发布:接口、Profile schema 与内部合同可能随候选
 变化。资格结论仅适用于某个确切的被测候选与环境;模型与 provider 兼容性按已采样
@@ -141,6 +152,6 @@ Hypoloom 是开发中的框架,尚无冻结发布:接口、Profile schema 与内
 [qualification](docs/qualification.zh-CN.md)。保留的运行使用其自带运行时包;不提供
 跨版本运行迁移。
 
-## 许可证
+## ⚖️ 许可证
 
 [MIT](LICENSE),版权 © 2026 EIMP Lab and the Hypoloom Authors。

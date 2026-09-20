@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- September 20 (ninth round, uncommitted): homepage section headers (## and
+  ###, both languages) gain one semantic emoji each — 🧩 capabilities,
+  🔍 inside a run, 📊 overview, 🧑‍🔬 experts, 🧬 lineage, 📈 metrics,
+  💻 terminal, 🚀 start, 📚 docs, 🗺️ roadmap, 🚧 status, ⚖️ license —
+  applied by an exact-match script (12 unique headers per file); no in-repo
+  anchor links to README sections exist, so GitHub anchor changes are safe.
+  No runtime change; documentation-structure 4/4.
+
+- September 20 (eighth round, uncommitted): both homepages gain a Roadmap /
+  后续计划 section (placed before Development status) naming two directions
+  in no fixed order, phrased as plans-not-commitments: extending the
+  Claude-Code-driven expert runtime to other coding-agent runtimes (Codex,
+  Kimi Code, OpenCode and similar) behind the existing per-binding
+  qualification path, and academic follow-up around the emerging AutoResearch
+  benchmark line (adaptation plus comparative evaluation design). No runtime
+  change; documentation-structure 4/4.
+
 - September 20 (seventh round, uncommitted): README polish. Development
   status sections (en/zh) now state the concrete meaning of "development
   framework" — no frozen release, interfaces/Profile schemas/internal
