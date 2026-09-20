@@ -765,6 +765,7 @@
     ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", "RUN", "Experiment execution"],
     ["RESULT_ANALYSIS", "ANA", "Result analysis"], ["HYPOTHESIS_UPDATE", "UPD", "Hypothesis update"],
     ["CYCLE_REPORT", "REP", "Cycle report"], ["ADJUDICATE", "JDG", "Adjudication"], ["SELF_EVOLVE", "EVO", "Self-evolution"],
+    ["DEBATE", "DEB", "Debate round"], ["DEBATE_JUDGE", "JUD", "Debate judge"], ["LEADER", "LEAD", "Leader round"],
   ];
 
   function compactNumber(value) {
@@ -863,6 +864,8 @@
     const hasWall = Number.isFinite(attempt.wall_seconds) && attempt.wall_seconds > 0;
     const overdue = hasWall && elapsed > attempt.wall_seconds;
     tile.classList.toggle("overdue", overdue);
+    tile.classList.toggle("debate", attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE");
+    tile.classList.toggle("leader", attempt.command === "LEADER");
     const isProcess = attempt.kind === "PROCESS";
     const known = !isProcess && Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
     const limit = Number.isInteger(attempt.budget_max_tokens) && attempt.budget_max_tokens > 0 ? attempt.budget_max_tokens : null;
@@ -879,6 +882,26 @@
     }
     tile.title = lines.join("\n");
     tile.setAttribute("aria-label", `${label}: ${valueText}`);
+  }
+
+  function pauseNotice(pause, inDebate) {
+    const reason = typeof pause.reason === "string" ? pause.reason : "";
+    const scope = [pause.scope?.component_id, pause.scope?.chain].filter(Boolean).join(" / ");
+    const debatePause = reason.startsWith("debate:");
+    const active = debatePause && inDebate;
+    const notice = element("div", `pause-notice${active ? " in-debate" : debatePause ? "" : " neutral"}`);
+    const title = element("p", "pause-title");
+    title.append(element("span", "pause-glyph", active ? "⚔" : "⏸"),
+      document.createTextNode(active ? "Debate in progress · this expert is a debater"
+        : debatePause ? "Debate proposed · dispatch paused" : "Dispatch paused"));
+    notice.append(title, element("p", "pause-scope", `${scope ? `${scope} · ` : ""}admitted work may finish`));
+    if (active) notice.append(actionButton("Leader & Debate →", () => openWorkbench("interactions"), "detail-link pause-link"));
+    notice.title = [
+      `Pause reason: ${reason || "unspecified"}`,
+      scope ? `Scope: ${scope}` : "Scope: all admitted work of this expert",
+      "Pause blocks new design / experiment / literature dispatch only; OPEN remains durable state, not process liveness.",
+    ].join("\n");
+    return notice;
   }
 
   function renderExperts(snapshot) {
@@ -911,6 +934,11 @@
       identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
+      if (working.some((attempt) => attempt.command === "LEADER")) {
+        const crown = element("span", "leader-crown", "♛");
+        crown.title = "Leader round in progress · durable OPEN state, not a verdict";
+        heading.append(crown);
+      }
       if (working.length) {
         const stageByCommand = new Map(EXPERT_STAGES.map(([command, short, label]) => [command, label]));
         const observedAt = Number(snapshot.observed_at) || Date.now() / 1000;
@@ -944,8 +972,7 @@
         identity.append(element("p", "", `proposes: ${list(expert.proposing_component_ids).join(", ") || "—"}`));
       }
       list(expert.pause_requested).forEach((pause) => {
-        const scope = [pause.scope?.component_id, pause.scope?.chain].filter(Boolean).join(" / ");
-        identity.append(element("p", "blocked", `Pause requested: ${pause.reason}${scope ? ` (${scope})` : ""}; admitted work may finish`));
+        identity.append(pauseNotice(pause, working.some((attempt) => attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE")));
       });
       const inspect = actionButton("Browse expert history", () => {
         byId("filter-expert").value = expert.role;

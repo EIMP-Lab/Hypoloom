@@ -501,6 +501,19 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .agent-tile.more { border-style: dashed; color: var(--muted); font-size: 0.62rem; cursor: default; }
 .agent-tile.more:hover { border-color: var(--line); color: var(--muted); }
 .agent-tile.leaving { opacity: 0; transform: scale(0.92); transition: opacity 0.25s ease, transform 0.25s ease; }
+.agent-tile.debate { border-color: var(--violet); }
+.agent-tile.leader { border-color: var(--amber); }
+.leader-crown { margin-left: 0.35rem; color: var(--amber); font-size: 0.82rem; }
+.pause-notice { display: grid; gap: 0.18rem; margin: 0.45rem 0 0; padding: 0.42rem 0.55rem; border: 1px solid #6B5836; border-radius: 6px; background: rgba(234, 198, 165, 0.06); font-size: 0.66rem; }
+.pause-title { margin: 0; display: flex; gap: 0.4rem; align-items: center; color: var(--amber); font-weight: 600; }
+.pause-glyph { flex: none; }
+.pause-scope { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.pause-notice.in-debate { border-color: #4A3A6B; background: rgba(187, 156, 255, 0.07); }
+.pause-notice.in-debate .pause-title { color: var(--violet); }
+.pause-notice.neutral { border-color: var(--line); background: var(--panel-deep); }
+.pause-notice.neutral .pause-title { color: var(--muted); }
+.pause-notice .pause-link { margin: 0; padding: 0; border: none; background: none; color: var(--cyan); font-size: 0.64rem; text-align: left; justify-self: start; }
+.pause-notice .pause-link:hover { border: none; color: var(--cyan); text-decoration: underline; }
 @media (prefers-reduced-motion: no-preference) {
   .agent-tile-light { animation: breath 2.4s ease-in-out infinite; }
   .agent-tile.tile-enter { animation: tile-in 0.25s ease-out; }

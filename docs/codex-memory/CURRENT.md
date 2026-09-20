@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- September 20 (fourth round, uncommitted): debate/leader presentation on
+  expert cards, all derived from existing snapshot fields (no backend
+  change). The red `.blocked` pause text is replaced by a structured
+  `.pause-notice`: amber "Debate proposed · dispatch paused" while a
+  debate-reason pause (`debate:<attempt id>`) has no OPEN DEBATE attempt,
+  violet "Debate in progress · this expert is a debater" with a
+  Leader & Debate workbench link once that expert holds an OPEN
+  DEBATE/DEBATE_JUDGE attempt, neutral gray for non-debate reasons;
+  tooltip keeps the full reason, scope and dispatch-only semantics. An
+  amber ♛ `.leader-crown` marks the expert heading while it holds an OPEN
+  LEADER attempt; debate tiles get a violet border, leader tiles amber;
+  EXPERT_STAGES gains Debate round / Debate judge / Leader round labels.
+  Verified live against MERC-causal-202609200023: the two active pauses
+  (engineering + affective, from OBSERVER attempt 5e40190f at 03:12 UTC)
+  are durable participant_control records with no resume yet and no DEBATE
+  attempt dispatched — the pre-debate state is genuine run dynamics, not a
+  display defect. Evidence: browser/monitor/web suites 74/74 including new
+  notice-state, crown and tile-class assertions.
+
 - September 20 (third round, uncommitted): Working rows replaced by compact
   agent tiles per the user's reviewed design. `monitor.AttemptView` gains
   `budget_max_tokens` (durable `request.budget.max_tokens`, AGENT-only,

@@ -1196,6 +1196,28 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     page.evaluate("fixture.snapshot.overview.host_observation={availability:'absent'}")
     page.wait(f"document.querySelectorAll('{tiles}.host-unconfirmed').length === 3")
     assert "3 durably open attempts" in page.evaluate("document.querySelector('.expert-preview h3 .breath-dot').title")
+    page.evaluate("fixture.activity.experts.push({role:'expert-a', pause_requested:[{scope:{role:'expert-a', component_id:'component-a', chain:'chain-x'}, reason:'debate:agent-5e40-1', command_id:'cmd-pause'}]})")
+    page.wait("document.querySelector('.expert-preview .pause-notice') !== null")
+    notice = ".expert-preview .pause-notice"
+    assert page.evaluate(f"document.querySelector('{notice}').classList.contains('in-debate')") is False
+    assert "Debate proposed" in page.text(notice)
+    assert "component-a / chain-x" in page.text(notice)
+    assert "admitted work may finish" in page.text(notice)
+    assert "debate:agent-5e40-1" in page.evaluate(f"document.querySelector('{notice}').title")
+    page.evaluate("fixture.snapshot.attempts.push("
+        "{attempt_id:'open-debate', kind:'AGENT', state:'OPEN', role:'expert-a', command:'DEBATE', context_tokens:88000, context_source:'transcript', budget_max_tokens:1000000, session_id:'session-d', started_at:fixture.snapshot.observed_at-120, wall_seconds:2700},"
+        "{attempt_id:'open-lead', kind:'AGENT', state:'OPEN', role:'expert-a', command:'LEADER', context_tokens:null, budget_max_tokens:1000000, session_id:'session-e', started_at:fixture.snapshot.observed_at-60, wall_seconds:2700})")
+    page.wait(f"document.querySelector('{notice}.in-debate') !== null")
+    assert "Debate in progress" in page.text(notice)
+    assert page.evaluate(f"document.querySelector('{notice} .pause-link') !== null")
+    assert page.evaluate(f"document.querySelectorAll('{tiles}').length") == 5
+    assert page.evaluate(f"document.querySelectorAll('{tiles}.debate').length") == 1
+    assert page.evaluate(f"document.querySelectorAll('{tiles}.leader').length") == 1
+    assert page.evaluate("document.querySelector('.expert-preview h3 .leader-crown')?.textContent") == "♛"
+    debate_title = page.evaluate(f'document.querySelector("{tiles}.debate").title')
+    assert "Debate round" in debate_title
+    leader_title = page.evaluate(f'document.querySelector("{tiles}.leader").title')
+    assert "Leader round" in leader_title
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
     page.evaluate("window.scrollBy(0, -110)")
     page.screenshot(tmp_path / 'expert-working-subagents.png')
