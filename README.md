@@ -40,6 +40,76 @@ authority, and an independent Oracle checks the record.
 [Profile templates](profiles/README.md) ship in English and Chinese, and
 maintainers get the [G0–G5 qualification workflow](docs/qualification.md).
 
+## Inside a run
+
+A running research loop is observable at two surfaces, both read-only
+projections of the Host's durable state: a browser-based Research Observer
+(`hypoloom web`, loopback-only behind a bearer link) and a terminal Research
+Operations UI (`hypoloom monitor`). Neither mutates the run. Operator
+interventions — answering a Grounding question, resuming after a provider
+outage, ending the run — are explicit, recorded commands.
+
+### Run overview
+
+The Operations view tracks the whole run: durable state, revision and the
+last Oracle verdict; counts of experiments, hypotheses, literature evidence,
+evolved skills and Leader/Debate activity; cumulative execution reliability
+(first output pass, correction recovery, nodes needing retry, final delivery,
+required actions); and filters over every recorded attempt.
+
+<p align="center">
+  <img src="docs/assets/web-overview.png" alt="Web Research Observer operations overview of an ACTIVE run: header with run ID, durable state, pending scientific verdict, revision, observed time and last-clean Oracle status; counter tiles for experiments, hypotheses, literature, skills, effective evolutions, leader and debate; cumulative execution reliability tiles; observation filters and the shared research goal">
+</p>
+
+### Expert cards
+
+Each expert runs its own six-node research cycle and gets a live card: its
+current stage, the agents working for it with context used against budget,
+observed tokens and per-expert reliability, and coordination states — a
+proposed debate pauses dispatch for that expert, and a crown marks the
+Observer-selected leader.
+
+<p align="center">
+  <img src="docs/assets/web-expert.png" alt="Expert cards in the Web observer: the ml-expert is in cycle 3 running two experiment processes with breathing-light agent tiles and per-expert reliability tiles, while the experiment-engineering expert shows an amber debate-proposed dispatch pause over its completed result analyses, with stage pipeline, token accounting and browse-history entry per card">
+</p>
+
+### Hypothesis lineage
+
+The lineage graph shows how the inquiry itself evolves. Every durable
+hypothesis appears once, colored by its expert; edge styles distinguish
+execution repair, experiment revision and scientific revision, and pruned
+branches record control decisions — pruning is not a scientific verdict.
+
+<p align="center">
+  <img src="docs/assets/Hypo.png" alt="Hypothesis lineage topology of a run: twelve durable hypothesis nodes colored by owning expert and marked refuted, initial or pending, connected by edges distinguishing execution repair, experiment revision, scientific revision and unclear revision, with a legend noting that pruned-by edges are control decisions, not refutations">
+</p>
+
+### Metric trends
+
+Metric trends connect each published measurement to its initial-hypothesis
+chain in experiment order, against the target lines preregistered in the
+research contract — progress toward the acceptance criteria is visible at a
+glance.
+
+<p align="center">
+  <img src="docs/assets/web-metrics.png" alt="Metric trends in the Web observer: one chart per preregistered metric, plotting published observations per initial-hypothesis chain in experiment order against dashed target lines, with clickable legend entries to show or hide each chain">
+</p>
+
+### Terminal UI
+
+The terminal UI presents the same durable snapshot in the shell: the run at a
+glance (goal, verdict, budget and tokens, execution reliability), per-expert
+lanes with their current work, the hypothesis chains, the next durable
+commands, and the operator actions — refresh, Web/local access, human
+decision, provider resume, diagnostics and End run.
+
+<p align="center">
+  <img src="docs/assets/TUI.png" alt="Terminal Research Operations UI of an ACTIVE read-only run: run-at-a-glance panel with goal, pending verdict, research activity counters, budget and token usage, execution reliability and run health; expert lanes with stage progress and open attempts; next durable commands; hypothesis chains tree; operator key hints including human decision, provider resume, diagnostics and end run">
+</p>
+
+[USAGE](USAGE.md) covers launching the Web observer and the TUI, sharing
+read-only links, and the operator actions.
+
 ## Start here
 
 Use Linux with bubblewrap, Git and a current Claude Code CLI. The pinned

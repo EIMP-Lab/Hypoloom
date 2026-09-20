@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- September 20 (fifth round, uncommitted): README homepage gains an "Inside a
+  run" section (中文 README 对应 "运行实况") showcasing the two read-only
+  observation surfaces with the five user-supplied screenshots, moved from the
+  repo root into `docs/assets/`: web-overview.png (Operations overview:
+  durable state/revision/Oracle verdict, counters, execution reliability,
+  filters), web-expert.png (expert cards with stage pipeline, breathing-light
+  agent tiles, debate pause and leader crown), Hypo.png (hypothesis lineage
+  with edge semantics and pruning as control decision), web-metrics.png
+  (metric trends per initial-hypothesis chain against preregistered target
+  lines) and TUI.png (terminal Research Operations snapshot and operator
+  actions). Both files point to USAGE for `hypoloom web` / `hypoloom monitor`.
+  No runtime change; `tests/test_documentation_structure.py` 4/4 passes.
+
 - September 20 (fourth round, uncommitted): debate/leader presentation on
   expert cards, all derived from existing snapshot fields (no backend
   change). The red `.blocked` pause text is replaced by a structured

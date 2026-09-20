@@ -34,6 +34,66 @@ Hypoloom 是一个开源的自主研究框架,覆盖从假设生成、实验执�
 [Profile 模板](profiles/README.md) 提供中英文版本,维护者使用
 [G0–G5 资格工作流](docs/qualification.md)。
 
+## 运行实况
+
+一次运行有两个观察入口,都是 Host 持久状态的只读投影:浏览器中的 Research
+Observer(`hypoloom web`,仅监听 loopback 并携带 bearer 链接)与终端 Research
+Operations 界面(`hypoloom monitor`)。两者都不会修改运行。操作员干预——答复
+Grounding 人工问题、在供应方故障后恢复、结束运行——都是显式且被记录的命令。
+
+### 运行总览
+
+Operations 总览页跟踪整个运行:持久状态、修订号与最近一次 Oracle 结论;实验、
+假设、文献证据、演化技能与 Leader/Debate 活动的计数;累计执行可靠性(首轮输出
+通过、纠错恢复、需要重试的节点、最终交付、必要动作);以及对全部已记录 Attempt
+的过滤器。
+
+<p align="center">
+  <img src="docs/assets/web-overview.png" alt="Web Research Observer 的运行总览:头部显示 Run ID、持久状态 ACTIVE、待定的科学结论、修订号、观测时间与 Oracle 最近清洁状态;实验、假设、文献、技能、有效演化、Leader 与 Debate 的计数卡片;累计执行可靠性卡片;观测过滤器与共享研究目标">
+</p>
+
+### 专家卡片
+
+每位专家各自运行六节点研究闭环,并有一张实时卡片:当前所处阶段、正在工作的
+Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠性,以及协调状态——
+被提议的 debate 会暂停该专家的派发,皇冠标记 Observer 选出的 leader。
+
+<p align="center">
+  <img src="docs/assets/web-expert.png" alt="Web observer 的专家卡片:ml-expert 处于第 3 轮并运行两个实验进程,Agent 瓦片以呼吸灯和上下文用量胶囊显示,另有该专家的可靠性卡片;experiment-engineering-expert 显示琥珀色的 debate 提议暂停提示,覆盖其已完成的结果分析;每张卡片含阶段流水线、token 账目与历史浏览入口">
+</p>
+
+### 假设谱系
+
+谱系图展示研究路线本身的演化。每个持久假设只出现一次,按所属专家着色;边的
+样式区分执行修复、实验修订与科学修订;被剪枝的分支记录的是控制决策——剪枝
+不等于科学否定。
+
+<p align="center">
+  <img src="docs/assets/Hypo.png" alt="假设谱系拓扑图:十二个持久假设节点按所属专家着色并标记为已否定、初始或待评估,连线区分执行修复、实验修订、科学修订与不明确修订;图例说明 pruned_by 边是控制决策而非科学否定">
+</p>
+
+### 指标趋势
+
+指标趋势把每条已发表的测量按实验顺序连接到其初始假设链,并对照研究合同中
+预注册的目标线——通向验收准则的进展一目了然。
+
+<p align="center">
+  <img src="docs/assets/web-metrics.png" alt="Web observer 的指标趋势:每个预注册指标一张图,按实验顺序把已发表观测连接到各自的初始假设链,并对照虚线目标线;图例可点击以显示或隐藏对应链">
+</p>
+
+### 终端 UI
+
+终端界面在 shell 中呈现同一份持久快照:运行一览(目标、结论、预算与 token、
+执行可靠性)、各专家泳道及其当前工作、假设链、下一条持久命令,以及操作员
+动作——刷新、Web/本地访问、人工决策、供应方恢复、诊断与 End run。
+
+<p align="center">
+  <img src="docs/assets/TUI.png" alt="终端 Research Operations 界面:只读 ACTIVE 运行的快照,包含运行一览(目标、待定结论、研究活动计数、预算与 token、执行可靠性、运行健康)、专家泳道及其进行中的 Attempt、下一条持久命令、假设链树,以及人工决策、供应方恢复、诊断和结束运行等操作员按键提示">
+</p>
+
+[USAGE](USAGE.md) 介绍如何启动 Web observer 与 TUI、分享只读链接,以及各操作员
+动作。
+
 ## 快速开始
 
 需要 Linux、bubblewrap、Git 与当前的 Claude Code CLI。固定的
