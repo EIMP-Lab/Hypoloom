@@ -129,8 +129,17 @@ credentials, budgets and CPU/GPU allocation, then choose **Prepare only** or
 user-systemd to start a Host, verify `control.sock`, create the reviewed run and
 return status in the same interaction. No CLI `init` subcommand is required.
 
-Template paths are placeholders and must be bound before admission. The
-default Run ID is `<profile>-<YYYYMMDDHHMM>` and Request ID is that identity
+A Profile is six YAML files (goal, experts, methodology, language, notify and
+safety); init copies one reviewed template set into `profiles/local/<name>`
+and refuses to overwrite, and you bind its placeholders — the model selector
+and the target/data/runtime paths. Secrets never enter the Profile: a single
+mode-0600 dotenv file in an ignored directory (template
+[profiles/templates/hypoloom.env.example](profiles/templates/hypoloom.env.example))
+holds keys such as `OPENALEX_API_KEY`, and the Profile references it by
+absolute path. The full construction rules are in
+[profiles/README](profiles/README.md) and [SETUP](SETUP.md).
+
+The default Run ID is `<profile>-<YYYYMMDDHHMM>` and Request ID is that identity
 plus `-create-1`; state roots are unique. Model authentication requires a pinned
 exact selector and either approved environment credentials or an eligible
 existing mode-0600 settings file. Read [SETUP](SETUP.md) before using real

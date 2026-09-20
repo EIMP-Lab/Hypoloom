@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- September 20 (eleventh round, uncommitted): profiles/README.md intro now
+  explains `schema_version` in one bilingual sentence — v4 is the format of
+  this open-source release; earlier versions predate it and survive only as
+  parser test fixtures — so a public reader is not left wondering what v1–v3
+  were. The version number and the v3 parser/fixtures stay: they are honest
+  lineage and live regression tests. No runtime change;
+  documentation-structure 4/4.
+
+- September 20 (tenth round, uncommitted): Start here gains a compact
+  Profile/credentials orientation instead of duplicated rules — six YAML
+  files (goal, experts, methodology, language, notify, safety) copied by
+  init into `profiles/local/<name>`, placeholders bound by the user, and a
+  single mode-0600 dotenv credentials file in an ignored directory
+  (`profiles/templates/hypoloom.env.example`) referenced by absolute path —
+  pointing to profiles/README.md and SETUP as the authoritative
+  construction rules. The now-redundant "template paths are placeholders"
+  sentence is folded in. No runtime change; documentation-structure 4/4.
+
 - September 20 (ninth round, uncommitted): homepage section headers (## and
   ###, both languages) gain one semantic emoji each — 🧩 capabilities,
   🔍 inside a run, 📊 overview, 🧑‍🔬 experts, 🧬 lineage, 📈 metrics,

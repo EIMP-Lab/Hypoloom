@@ -112,7 +112,15 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,de
 user-systemd 启动 Host、验证 `control.sock`、创建已审查的运行,并在同一会话中返回
 状态,无需 CLI `init` 子命令。
 
-模板路径是占位符,准入前必须绑定。默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,
+Profile 由六个 YAML 文件组成(goal、experts、methodology、language、notify、
+safety);init 会将一套审阅过的模板复制到 `profiles/local/<name>` 且拒绝覆盖,
+你再绑定其中的占位符——模型选择器与目标/数据/运行时路径。秘密不写入 Profile:
+一个位于已忽略目录的 mode-0600 dotenv 文件(模板
+[profiles/templates/hypoloom.env.example](profiles/templates/hypoloom.env.example))
+存放 `OPENALEX_API_KEY` 等密钥,Profile 以绝对路径引用它。完整构建规则见
+[profiles/README](profiles/README.md) 与 [SETUP](SETUP.zh-CN.md)。
+
+默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,
 Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固定的精确选择器,以及
 经批准的环境凭据或符合条件的现有 0600 权限设置文件。使用真实模型或资源前请阅读
 [SETUP](SETUP.zh-CN.md)。

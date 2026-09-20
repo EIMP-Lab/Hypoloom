@@ -1,7 +1,13 @@
 # Profile templates / 双语模板
 
-Public templates use schema v4 and the multi-expert research workflow. Choose
-one complete English or Chinese set:
+Public templates use schema v4 and the multi-expert research workflow.
+`schema_version` numbers the Profile authoring format: v4 is the format of
+this open-source release, and earlier versions predate it, surviving only as
+parser test fixtures — there is nothing older to seek or choose. Choose one
+complete English or Chinese set:
+
+中文:`schema_version` 是创作格式的版本号;v4 是本次开源发布的格式,更早的版本
+早于公开发布,仅以解析器测试夹具形式保留,无需查找或选择。
 
 | Template | Language | Experts | Purpose |
 |---|---|---:|---|
