@@ -6,8 +6,9 @@ body:
       value: |
         Use **Report issue** in the Web observer, or press **b** in TUI, to preview and download a support copy.
         使用 Web 的 **Report issue** 或 TUI 的 **b** 入口预览诊断包。
-        Review the package before attaching it. Do not post API keys, private datasets, or a private-research ZIP here.
-        发布前检查内容；不要在公开 issue 中上传密钥、私有数据集或包含研究正文的私有包。需要时与维护者约定私有传递方式。
+        Review the package before attaching it. Do not post API keys, private datasets, or a private-research ZIP here. Sensitive bundles may be sent privately to the project authors — used only for diagnosis, with your personal information kept safe.
+        发布前检查内容；不要在公开 issue 中上传密钥、私有数据集或包含研究正文的私有包。需要时与维护者约定私有传递方式；含敏感内容的包可私下发送给项目作者，仅用于诊断并保障个人信息安全。
+        Full rules and disclosure levels: [CONTRIBUTING](https://github.com/Gray-OREO/Hypoloom/blob/dev/CONTRIBUTING.md#reporting-issues)（[中文](https://github.com/Gray-OREO/Hypoloom/blob/dev/CONTRIBUTING.zh-CN.md#报告-issue)）。
   - type: textarea
     id: symptom
     attributes:

@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- September 20 (twelfth round, uncommitted): CONTRIBUTING (en/zh) gains a
+  "Reporting issues / 报告 Issue" section combining the GitHub issue rules
+  with the project's Report issue machinery and its three disclosure levels:
+  local-only `debug inspect` (payloads stay on the machine), the default
+  support bundle (run/Attempt IDs pseudonymized; research text, free-form
+  errors, local paths and attachment names filtered/reduced — public-issue
+  safe after user review), and `--include-private-data` (sanitized prompts,
+  transcripts and research attachments inside; known credentials and raw
+  environment variables still excluded — private channel only). It also
+  states preview-before-export, review-before-attaching, no auto-upload, and
+  no keys/credentials/private datasets anywhere. A follow-up sentence states
+  that sensitive bundles may be sent privately to the project authors, who
+  use submitted material only for diagnosing the reported issue, restrict it
+  to the maintainers involved, never redistribute it, and delete it after
+  resolution or on request — a joint commitment to personal-information
+  safety; the bug-report template links the section and carries the short
+  bilingual form. No runtime change; documentation-structure 4/4.
+
 - September 20 (eleventh round, uncommitted): profiles/README.md intro now
   explains `schema_version` in one bilingual sentence — v4 is the format of
   this open-source release; earlier versions predate it and survive only as

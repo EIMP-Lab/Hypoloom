@@ -27,3 +27,26 @@ tests. New hashes, authority files, gates or custom process protocols require a
 concrete failure justification; avoid duplicating the production reducer in a
 test oracle. Preserve authentication, authorization and irreversible-operation
 protections. Record test scope honestly, including skips and unknown costs.
+
+## Reporting issues
+
+GitHub issues are public. Diagnose first with the read-only local tools, then
+attach only material whose disclosure level you have reviewed:
+
+| Level | Produced by | Contents | Where it may go |
+| --- | --- | --- | --- |
+| Local diagnosis | `hypoloom debug inspect` | Status summary on your terminal; `--include-payloads` adds exact research inputs, still local only | Nowhere — it never leaves your machine |
+| Default support bundle | Web **Report issue**, TUI **b**, or `hypoloom debug export --support-bundle [--archive]` | Diagnostics with run/Attempt IDs pseudonymized; research text, free-form errors and local paths filtered out; attachment names reduced | A public GitHub issue, after you review the actual package |
+| Private support bundle | add `--include-private-data` | Additionally sanitized prompts, transcripts and research attachments — your research content is inside; known credentials and raw environment variables are still excluded | Only a private channel agreed with the maintainers, never a public issue |
+
+A bundle that must include sensitive content may instead be sent privately to
+the project authors for support. The authors use submitted material only to
+diagnose the reported issue, restrict it to the maintainers involved, never
+redistribute it, and delete it once the issue is resolved or on your request —
+we are jointly committed to keeping your personal information safe.
+
+Use `--preview` to inspect a report before creating any file, and open the
+exported package itself before attaching it. Exports are never uploaded
+automatically; sharing is always your separate, explicit action. Never post
+API keys, credentials files or private datasets anywhere. If the export
+itself fails, say so in the issue text — that is reportable too.
