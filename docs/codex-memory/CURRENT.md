@@ -1,5 +1,13 @@
 # Current Hypoloom development state
 
+- September 20 (thirteenth round, uncommitted): homepage badge row gains two
+  fact-based shields — `platform-linux` (hard requirement: bubblewrap, user
+  namespaces, user-systemd) and `requires-Claude Code` (the agent runtime
+  dependency). Deliberately not added: build/coverage/code-style badges (no
+  CI workflows and no ruff config exist to back them), version badges
+  (0.0.1, no frozen release). No runtime change; documentation-structure
+  4/4.
+
 - September 20 (twelfth round, uncommitted): CONTRIBUTING (en/zh) gains a
   "Reporting issues / 报告 Issue" section combining the GitHub issue rules
   with the project's Report issue machinery and its three disclosure levels:

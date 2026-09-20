@@ -5,6 +5,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/platform-linux-blue.svg" alt="Platform: Linux">
+  <img src="https://img.shields.io/badge/requires-Claude%20Code-blue.svg" alt="Requires: Claude Code">
 </p>
 
 <p align="center">

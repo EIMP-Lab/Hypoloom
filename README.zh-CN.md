@@ -5,6 +5,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="许可证: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/platform-linux-blue.svg" alt="平台: Linux">
+  <img src="https://img.shields.io/badge/requires-Claude%20Code-blue.svg" alt="依赖: Claude Code">
 </p>
 
 <p align="center">
