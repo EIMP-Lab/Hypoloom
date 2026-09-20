@@ -1,5 +1,7 @@
 # Qualification: G0–G5
 
+English · [简体中文](qualification.zh-CN.md)
+
 Qualification belongs to an exact candidate and environment. Hypoloom retains
 the existing G0–G5 promotion model, runtime oracles and regression fixtures.
 The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its

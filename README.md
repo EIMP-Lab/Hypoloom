@@ -138,15 +138,19 @@ models or resources.
 
 ## Documentation
 
-- [安装与配置 / Setup](SETUP.md)
-- [运行、监控与停止 / Usage](USAGE.md)
-- [English operator guide](docs/operator-guide.md)
-- [中文与英文 Profile 模板](profiles/README.md)
+- [Setup and configuration](SETUP.md)
+- [Usage: monitoring, human answers, cancellation and recovery](USAGE.md)
+- [Operator guide](docs/operator-guide.md)
+- [Profile templates](profiles/README.md) (bilingual English/Chinese)
 - [Architecture](docs/architecture.md)
 - [Qualification and current validation status](docs/qualification.md)
 - [Documentation index](docs/README.md)
-- [Contributing](CONTRIBUTING.md), [Codex instructions](AGENTS.md), and
-  [Claude Code runtime instructions](CLAUDE.md)
+- [Contributing](CONTRIBUTING.md), [Codex instructions](AGENTS.md) and
+  [Claude Code runtime instructions](CLAUDE.md) (maintainer/runtime
+  references, English only)
+
+Each guide above links its 简体中文 version at the top; the
+[中文主页](README.zh-CN.md) links the Chinese versions directly.
 
 ## Development status
 

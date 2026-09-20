@@ -1,0 +1,94 @@
+# 操作员指南
+
+[English](operator-guide.md) · 简体中文
+
+按照 [SETUP](../SETUP.zh-CN.md) 安装固定的控制环境。正常入口是在仓库根目录的
+Claude Code 中使用 `/autoresearch init`。它会检查依赖、Profile 语义、模型/文献
+认证、资源绑定与 user-systemd 就绪情况,最后由你一次性选择 **Start now** 或
+**Prepare only**。公开[模板](../profiles/README.md)是完整的 v4 中英文成对版本,
+目标/数据/运行时路径均为占位符。
+
+使用解释器位于前缀内部的完整运行时前缀,即固定 Conda 环境所提供的形式。Python
+符号链接解析到前缀之外的普通 venv 不满足默认 CPU 沙箱绑定;仅靠包导入和 `--help`
+不能验证该执行路径。
+
+## 托管启动
+
+默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,Request ID 为该标识加 `-create-1`;
+时间戳只取一次,状态根必须全新。显式替换标识会一并审阅。全新根助手拒绝已存在的
+根;它从不接管保留的运行。
+
+`manage_host.py` 在同一个 Claude Code 会话中运行。它以 `Restart=on-failure` 启动
+瞬态用户服务,或使用受支持的 user-systemd scope 回退,然后通过 `control.sock`
+检查期望的只读 STATUS。只有当 Host 设置匹配时,才发送已准入的精确 CREATE_RUN
+请求。就绪超时是有限的,必须大于 0 且不超过 300 秒;默认 30 秒。含义不明的
+CREATE 回复保留原请求标识,并通过查询 Host 来对账。
+
+scope 回退无法自动重启失败的 Host。`Linger=no` 限制最后一个登录会话结束后的
+持续运行;init 从不修改 linger。Textual TUI 是可选的观察器;TUI 启动失败不会
+取消一个本来有效的运行中 Host。Prepare only 只创建被显式批准的 Profile/设置
+文件,并在任何生命周期效果之前停止。
+
+## 凭据与预算
+
+使用固定的精确模型选择器。优先使用经批准的 environment auth,即
+`ANTHROPIC_API_KEY`;否则用 `--claude-settings` 选择已有的合格 mode-0600 普通
+设置文件。校验其路径和支持的认证字段,不暴露内容。交互式 `/login` OAuth 不是
+隔离 Host 认证的证明,`apiKeyHelper` 也不能凭 JSON 合法性通过资格。不要把项目
+交互设置交给 Agent 会话,也不要临时拼凑 `--bare` 启动变体。Host 负责建立实际的
+沙箱与工具范围。
+
+唯一的调用预算来源是
+`create_run_payload.research_contract.budget.agent_invocation`。它的五个数值
+上限和 `token_enforcement_mode` 必须与 Host 匹配。token 观察模式不改变
+费用/时间/实验限制。`max_cost` 是单次调用额度;总额与每专家 USD 上限是独立的。
+未知费用保留其预留额。
+
+OpenAlex 需要一个显式选择的已有 mode-0600 密钥文件。HTTP(S) 访问、Poppler 路径
+和响应/PDF 上限一并审阅。通知需要单独显式批准接收方/传输方式,公开模板默认
+关闭。见 [notifications](guides/notifications.md)(英文)。
+
+provider 拒绝鉴权时(HTTP 401/403——滚动额度窗口与密钥失效表现相同),新的
+Agent 派发会暂停,而不是烧掉重试预算:运行保持 ACTIVE,在途工作正常结束,
+并在 `budget.provider_auth_cooldown_seconds`(默认 18000,0 表示关闭)之后自动
+恢复。该门控由持久化失败记录推导,重启 Host 既不清除也不重置。操作员会收到
+`provider_auth_cooldown` / `provider_auth_resumed` 通知和 TUI 横幅,并可在恢复
+访问后提前恢复:TUI 按 `p` 确认,或执行
+`hypoloom provider-retry-clear --run-id <id>`。仍然不可用的凭据只会在下一次
+失败时重新进入冷却。
+
+## 资源、观察与停止
+
+公开模板默认仅 CPU。GPU 启动需要精确的设备 UUID、选定的 GPU 运行时和匹配的
+Profile 授权。init 会只读探测项目约定的池端点
+(`.local/gpu-pools/shared/control.sock`),并召回历史运行存储的池绑定作为候选;
+当需要池化 GPU 工作而没有存活池时,最终审查携带精确的池计划,由有界的
+`manage_gpu_pool.py ensure` 助手在托管 Host 启动前一刻将其部署为瞬态
+user-systemd 服务。外部项目的池端点仍只能由操作员显式提供。池状态查询不会创建
+服务;替换、停止或重新配置池始终是独立的操作员动作。共享容量支持同卡并发
+实验;reserve、显存估算和并发上限仍然执行。
+
+使用 `hypoloom status`、`hypoloom monitor` 和 `hypoloom oracle`,并给出精确的
+`--state-root` 与 `--run-id`。持久的 ACTIVE 记录不能证明进程存活。
+`q / Leave monitor` 让后台工作继续运行。`x / End run` 确认取消,随后是任务清理
+和托管 Host 的终态退出。不要把超时回复当作取消成功,也不要据此用新的请求标识
+再次发送。
+
+TUI 的 `h` 动作和显式授予的 Web 操作员链接会向待处理的 Grounding 决策提交真实
+人工答复。只读分享链接不能提交。Help、Report Issue 与 Web 访问是不同的界面
+用途。
+
+## 研究与恢复边界
+
+核心专家闭环使用私有工作树和持久会话完成文献、假设、设计、执行、分析与演进。
+Grounding、研究 Observer、Leader 与 Debate/Judge 各有自己的角色。若选择公共
+验收,一个 GOAL 候选必须满足完整、被接受的声明;不同专家的部分结果不能拼成
+成功。
+
+保留的运行使用其原始保留的运行时。工作树修复只面向新运行。备份与同版本恢复
+需要精确的源/目标选择,从不覆盖已有根。`debug rehearse-chain` 创建新的有界
+测试运行;它需要显式的效果/资源授权,并保持其来源只读。不提供跨版本恢复。
+
+在昂贵课题运行前,完成适用的 [G0–G5 资格](qualification.zh-CN.md)(框架与摘要;
+完整台账为[英文版](qualification.md))。仅有安装成功、Profile 准入或一次完成的
+模型调用是不够的。日常命令与支持包导出示例见 [USAGE](../USAGE.zh-CN.md)。

@@ -1,5 +1,7 @@
 # Hypoloom documentation
 
+English · [简体中文](README.zh-CN.md)
+
 Current user entry points:
 
 - [README](../README.md): capabilities and the shortest start path
@@ -12,6 +14,10 @@ Current user entry points:
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
 - [Contributing](../CONTRIBUTING.md): local development and validation.
+
+Each linked guide has a 简体中文 version linked at its top (except the bilingual
+Profile guide and the notifications guide); the [Chinese index](README.zh-CN.md)
+links the Chinese versions directly.
 
 The root tutorials are the main user entry points. Qualification results belong
 in the qualification document, rather than duplicated status tables throughout

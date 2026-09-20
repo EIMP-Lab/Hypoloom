@@ -1,4 +1,4 @@
-include LICENSE README.md README.zh-CN.md SETUP.md USAGE.md CONTRIBUTING.md AGENTS.md CLAUDE.md
+include LICENSE README.md README.zh-CN.md SETUP.md SETUP.zh-CN.md USAGE.md USAGE.zh-CN.md CONTRIBUTING.md CONTRIBUTING.zh-CN.md AGENTS.md CLAUDE.md
 include docs/assets/hypoloom_vector.svg docs/assets/hypoloom_overview.svg
 include environment.yml .gitignore .gitattributes
 include .github/ISSUE_TEMPLATE/bug_report.yml

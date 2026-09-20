@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- September 20 (sixth round, uncommitted): user-facing docs are now bilingual
+  pairs following the README convention (`X.md` = English, `X.zh-CN.md` =
+  中文), each with a language-switcher line at the top. The Chinese-primary
+  SETUP/USAGE moved to SETUP.zh-CN.md / USAGE.zh-CN.md (git mv, internal
+  links re-pointed) and gained faithful English versions as SETUP.md /
+  USAGE.md; English docs gained Chinese translations:
+  docs/operator-guide.zh-CN.md, docs/architecture.zh-CN.md (full),
+  docs/qualification.zh-CN.md (frame, promotion rules and G2–G5 lanes fully
+  translated, plus a current-status summary of the 2026-09-19 entry and a
+  dated index linking the English ledger, which stays the canonical single
+  source for full evidence), docs/README.zh-CN.md and
+  CONTRIBUTING.zh-CN.md. Both homepages now link same-language docs from
+  their Documentation sections (English README → English files, 中文主页 →
+  zh-CN files; profiles/README.md stays one bilingual file; AGENTS.md /
+  CLAUDE.md stay English-only maintainer/runtime references, labeled as
+  such). MANIFEST.in includes the new root zh files. No runtime change;
+  evidence: documentation-structure 4/4, public-profiles 3/3 and
+  operator-skills 36/36 suites pass (43 total).
+
 - September 20 (fifth round, uncommitted): README homepage gains an "Inside a
   run" section (中文 README 对应 "运行实况") showcasing the two read-only
   observation surfaces with the five user-supplied screenshots, moved from the

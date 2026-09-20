@@ -1,5 +1,7 @@
 # Operator guide
 
+English · [简体中文](operator-guide.zh-CN.md)
+
 Install the pinned control environment using [SETUP](../SETUP.md). The normal
 entry is `/autoresearch init` in Claude Code at the repository root. It checks
 dependencies, Profile semantics, model/literature authentication, resource

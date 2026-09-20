@@ -1,5 +1,7 @@
 # Architecture
 
+English · [简体中文](architecture.zh-CN.md)
+
 Hypoloom is a durable multi-agent research workflow with one resident Workflow
 Host per state root. Python code lives in `hypoloom/`; packaged SQL migrations,
 native skill/plugin resources and Web assets are required runtime inputs.

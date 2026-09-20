@@ -1,5 +1,7 @@
 # Contributing
 
+English · [简体中文](CONTRIBUTING.zh-CN.md)
+
 Use the pinned [environment](environment.yml), then install `.[dev,monitor]`.
 Read [AGENTS](AGENTS.md) for repository conventions and [architecture](docs/architecture.md)
 for runtime ownership. Claude Code instructions are in [CLAUDE](CLAUDE.md).

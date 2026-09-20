@@ -32,7 +32,7 @@ Hypoloom 是一个开源的自主研究框架,覆盖从假设生成、实验执�
 </p>
 
 [Profile 模板](profiles/README.md) 提供中英文版本,维护者使用
-[G0–G5 资格工作流](docs/qualification.md)。
+[G0–G5 资格工作流](docs/qualification.zh-CN.md)。
 
 ## 运行实况
 
@@ -91,7 +91,7 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
   <img src="docs/assets/TUI.png" alt="终端 Research Operations 界面:只读 ACTIVE 运行的快照,包含运行一览(目标、待定结论、研究活动计数、预算与 token、执行可靠性、运行健康)、专家泳道及其进行中的 Attempt、下一条持久命令、假设链树,以及人工决策、供应方恢复、诊断和结束运行等操作员按键提示">
 </p>
 
-[USAGE](USAGE.md) 介绍如何启动 Web observer 与 TUI、分享只读链接,以及各操作员
+[USAGE](USAGE.zh-CN.md) 介绍如何启动 Web observer 与 TUI、分享只读链接,以及各操作员
 动作。
 
 ## 快速开始
@@ -115,25 +115,28 @@ user-systemd 启动 Host、验证 `control.sock`、创建已审查的运行,并�
 模板路径是占位符,准入前必须绑定。默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,
 Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固定的精确选择器,以及
 经批准的环境凭据或符合条件的现有 0600 权限设置文件。使用真实模型或资源前请阅读
-[SETUP](SETUP.md)。
+[SETUP](SETUP.zh-CN.md)。
 
 ## 文档
 
-- [安装与配置 / Setup](SETUP.md)
-- [运行、监控与停止 / Usage](USAGE.md)
-- [English operator guide](docs/operator-guide.md)
-- [中文与英文 Profile 模板](profiles/README.md)
-- [架构(英文)](docs/architecture.md)
-- [资格与当前验证状态](docs/qualification.md)
-- [文档索引](docs/README.md)
-- [贡献指南](CONTRIBUTING.md)、[Codex 指令](AGENTS.md) 与
-  [Claude Code 运行时指令](CLAUDE.md)
+- [安装与配置](SETUP.zh-CN.md)
+- [运行、监控与停止](USAGE.zh-CN.md)
+- [操作员指南](docs/operator-guide.zh-CN.md)
+- [Profile 模板](profiles/README.md)(中英双语)
+- [架构](docs/architecture.zh-CN.md)
+- [资格与当前验证状态](docs/qualification.zh-CN.md)(框架与摘要;完整台账为英文)
+- [文档索引](docs/README.zh-CN.md)
+- [贡献指南](CONTRIBUTING.zh-CN.md)、[Codex 指令](AGENTS.md) 与
+  [Claude Code 运行时指令](CLAUDE.md)(维护者/运行时参考,仅英文)
+
+以上各指南顶部都链接了对应的 English 版本;[English homepage](README.md)
+直接链接英文版本。
 
 ## 开发状态
 
 本项目是开发框架。公开模板用于演示配置,并非科学基准。资格结论仅适用于被测候选与
 环境,不构成对科学主张的证明。当前验证范围记录于
-[qualification](docs/qualification.md)。保留的运行使用其自带运行时包;不提供跨版本
+[qualification](docs/qualification.zh-CN.md)。保留的运行使用其自带运行时包;不提供跨版本
 运行迁移。
 
 ## 许可证

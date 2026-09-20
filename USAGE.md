@@ -1,18 +1,24 @@
-# 运行、监控与停止 / Usage
+# Usage: running, monitoring and stopping
 
-首次配置见 [SETUP](SETUP.md)。在项目目录启动 Claude Code 后使用 `/autoresearch init`，
-选择 Profile 和语言，审阅真实路径、模型、预算、通知对象及 CPU/GPU，然后选择
-`Start now` 或 `Prepare only`。默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`，Request ID
-为同一标识加 `-create-1`；所有命令都针对明确的状态目录和 Run ID。
+English · [简体中文](USAGE.zh-CN.md)
 
-## 启动与状态
+First-time configuration is in [SETUP](SETUP.md). After starting Claude Code
+in the project directory, use `/autoresearch init`, choose a Profile and a
+language, review the real paths, models, budgets, notification recipients and
+CPU/GPU, then choose `Start now` or `Prepare only`. The default Run ID is
+`<profile>-<YYYYMMDDHHMM>` and the Request ID is that identity plus
+`-create-1`; every command targets an explicit state root and Run ID.
 
-托管启动由 `.claude/skills/autoresearch/scripts/manage_host.py` 使用 user-systemd
-完成。它先验证新根和 `control.sock` 的只读 STATUS，再发送明确的创建请求。
-若回复丢失，需要查询并核对原 Request ID；不能用新 ID 重复创建运行。
-已有运行属于只读对象，修复工作树不会修改它保存的运行代码。
+## Start and status
 
-以下示例中的路径和 ID 必须替换为实际已审阅值：
+Managed start uses `.claude/skills/autoresearch/scripts/manage_host.py` with
+user-systemd. It first verifies a read-only STATUS of the fresh root and
+`control.sock`, then sends the explicit create request. If a reply is lost,
+query and reconcile the original Request ID; never recreate a run with a new
+ID. Existing runs are read-only objects; repairing the worktree does not
+modify the runtime code a run preserved.
+
+Replace the paths and IDs in these examples with the actual reviewed values:
 
 ```bash
 hypoloom status --state-root /absolute/state/run --run-id RUN_ID
@@ -21,96 +27,139 @@ hypoloom monitor --state-root /absolute/state/run --run-id RUN_ID --json
 hypoloom oracle --state-root /absolute/state/run --run-id RUN_ID
 ```
 
-`status` 查询 Host；`oracle` 是离线只读审计。状态文件可能保留历史 ACTIVE，不能据此
-断言 Host 仍在运行。诊断时结合持久状态、Host 服务状态及进程检查。
+`status` queries the Host; `oracle` is an offline read-only audit. A state
+file may retain a historical ACTIVE record; that alone does not prove the
+Host is still running. Diagnose from durable state, Host service state and
+process checks together.
 
-真实 Agent 的 environment auth 来自已批准的 `ANTHROPIC_API_KEY`；只有明确选择已有
-合格设置文件时才使用 `--claude-settings`，该文件必须为 mode-0600。`apiKeyHelper`
-不能通过资格检查，交互式 `/login` OAuth 也不等于隔离会话可用；不要自行切换 `--bare`。
-Host 的六项调用预算来自 `create_run_payload.research_contract.budget.agent_invocation`，
-包括 `token_enforcement_mode`，不是可独立调整的第二预算来源。
+Real-Agent environment auth comes from the approved `ANTHROPIC_API_KEY`;
+only an explicitly selected existing eligible settings file uses
+`--claude-settings`, and that file must be mode-0600. An `apiKeyHelper`
+cannot pass qualification, and interactive `/login` OAuth does not mean an
+isolated session works; do not switch to `--bare` on your own. The Host's six
+invocation budgets come from
+`create_run_payload.research_contract.budget.agent_invocation`, including
+`token_enforcement_mode`; there is no independently tunable second budget
+source.
 
-## TUI、Web 与人工决策
+## TUI, Web and human decisions
 
-- **q / Leave monitor**：退出当前监控窗口，后台 Host 和任务继续。
-- **x / End run**：打开明确的取消确认；等待任务清理、最终报告和托管 Host 退出。
-- **? / Help**：窗口与可靠性指标简介。
-- **b / Report Issue**：预览、导出故障支持包。
-- **h**：查看并答复待处理的 Grounding 人工问题。
+- **q / Leave monitor**: leaves the current monitor window; the background
+  Host and tasks continue.
+- **x / End run**: opens an explicit cancellation confirmation; wait for task
+  cleanup, the final report and the managed Host exit.
+- **? / Help**: a brief introduction to the window and the reliability
+  metrics.
+- **b / Report Issue**: preview and export a support bundle.
+- **h**: view and answer pending Grounding human questions.
 
-Web / local access 位于独立的连接信息区域。启动 Web observer：
+Web / local access sits in its own connection-information area. Start the
+Web observer:
 
 ```bash
 hypoloom web --state-root /absolute/state/run --run-id RUN_ID
 ```
 
-默认仅监听 loopback，并使用 bearer 链接。普通分享链接只读。
-`--allow-human-answers` 明确创建可提交人工答复的操作者链接；不要公开该链接。
-`WAITING_HUMAN` 需要用户真实答复；建议选项不能被自动提交。
+By default it listens on loopback only and uses a bearer link. Ordinary share
+links are read-only. `--allow-human-answers` explicitly creates an operator
+link that can submit human answers; never publish that link. `WAITING_HUMAN`
+needs a real user answer; suggested options cannot be submitted
+automatically.
 
-## 研究闭环与完成标准
+## Research loop and completion
 
-Grounding 读取目标和数据，建立研究约束。专家按 LITERATURE_REVIEW、HYPOTHESIS_PROPOSAL、
-EXPERIMENT_DESIGN_IMPLEMENT、EXPERIMENT_EXECUTION、RESULT_ANALYSIS、HYPOTHESIS_UPDATE
-推进，并使用 Host-owned 链工作树。原生工具、Bash、MCP 与网络访问受每次请求权限约束。
-OpenAlex 检索和可用 PDF 组成带来源的文献证据。
+Grounding reads the goal and data and establishes the research constraints.
+Experts progress through LITERATURE_REVIEW, HYPOTHESIS_PROPOSAL,
+EXPERIMENT_DESIGN_IMPLEMENT, EXPERIMENT_EXECUTION, RESULT_ANALYSIS and
+HYPOTHESIS_UPDATE, using Host-owned chain worktrees. Native tools, Bash, MCP
+and network access are bounded by per-request permissions. OpenAlex retrieval
+and available PDFs form the literature evidence with sources.
 
-研究 Observer、Leader、Debate/Judge 与界面的 Monitor/Web observer 是不同职责。
-交互受间隔、新增结果门槛及上下文预算约束。执行节点只有在已接收的实验真正结束并完成
-结果提交后才能结束；调度暂停或仍有排队实验不代表完成。
+The research Observer, Leader, Debate/Judge and the interface Monitor/Web
+observer are different responsibilities. Interactions are bounded by
+intervals, new-outcome thresholds and context budgets. An execution node may
+only finish after the experiments it accepted have genuinely ended and
+submitted their results; a dispatch pause or still-queued experiments do not
+count as completion.
 
-模板默认采用 shared goal：被接受的 SUPPORTED 结果可能触发整个运行停止。
-需要统一跨专家验收时，在 `goal.yaml` 设置 `evaluation: grounding`。此时只有一个 GOAL
-候选满足全部公共验收规则才能完成目标，LOCAL 支持和不同专家的部分分数不能拼成成功。
-成功后进入 STOPPING、清理任务并生成最终报告，不继续 Leader/Debate 或寻优。
+Templates default to a shared goal: an accepted SUPPORTED result can stop the
+whole run. For unified cross-expert acceptance, set `evaluation: grounding`
+in `goal.yaml`. Then only one GOAL candidate satisfying all common acceptance
+rules completes the goal; LOCAL support and partial scores from different
+experts cannot be assembled into a success. On success the run enters
+STOPPING, cleans up tasks and produces the final report, without continuing
+Leader/Debate or further optimization.
 
-## GPU 调度
+## GPU scheduling
 
-同卡共享需要显式连接 GPU pool。资源池的成员 UUID、Host allowlist、实际可用容量、
-reserve、工作负载估算和运行并发预算共同决定调度；专家没有永久绑定一张卡。
-非池化路径在同一个状态根内按 UUID 串行化，也不协调其他独立 Host。
+Same-card sharing requires explicitly connecting a GPU pool. The pool's
+member UUIDs, the Host allowlist, actual free capacity, reserve, workload
+estimates and the run's concurrency budget together determine scheduling; an
+expert is never permanently bound to one card. The nonpooled path serializes
+by UUID within one state root and does not coordinate other independent
+Hosts either.
 
-init 会只读探测本项目约定位置（`.local/gpu-pools/shared/control.sock`）并召回历史运行
-存储的池绑定作为候选；需要池化而没有存活池时，最终审查列出精确池计划，Start now 批准后
-由 `manage_gpu_pool.py ensure` 在托管 Host 启动前创建瞬态用户服务。外部项目的池端点仍需
-显式提供；池的停止、替换与成员变更始终是独立的操作员动作。
+Init read-only probes this project's conventional location
+(`.local/gpu-pools/shared/control.sock`) and recalls pool bindings stored by
+historical runs as candidates. When pooling is wanted but no live pool
+exists, the final review lists the exact pool plan, and once Start now
+approves it, `manage_gpu_pool.py ensure` creates a transient user service
+before the managed Host start. An external project's pool endpoint must
+still be supplied explicitly; stopping, replacing or changing pool members is
+always a separate operator action.
 
-池化 Profile 可以分别设置 `budget.min_vram_per_experiment` 与
-`budget.initial_vram_per_experiment`。初始估算只能在获得完整、成功且可比较的实验测量后
-下调；工作负载下限、OOM 反馈和 reserve 仍然有效。旧运行不会随模板更新自动改变预算。
+A pooled Profile can set `budget.min_vram_per_experiment` and
+`budget.initial_vram_per_experiment` separately. An initial estimate may only
+be lowered after complete, successful and comparable experiment measurements;
+the workload floor, OOM feedback and reserve stay in effect. Old runs do not
+change budgets automatically with template updates.
 
-## 结束运行
+## Ending a run
 
-优先使用 TUI 的 End run。CLI 需要先取得当前 revision，再提交取消：
+Prefer the TUI's End run. The CLI needs the current revision before
+submitting a cancellation:
 
 ```bash
 hypoloom cancel --state-root /absolute/state/run --run-id RUN_ID \
   --request-id RUN_ID-cancel-1 --expected-revision REVISION
 ```
 
-请求超时表示回复未知。先查询同一请求和运行状态，保留原 Request ID；不要重复提交新身份。
-被接受的取消与 Host 已退出是两个观察点。托管 Host 使用 `--exit-when-terminal` 等待终态
-及副作用清理后退出；手工启动的常驻 `serve` 可以继续等待其他显式请求。
+A timed-out request means the reply is unknown. Query that same request and
+the run state first, keeping the original Request ID; do not resubmit with a
+new identity. An accepted cancellation and an exited Host are two separate
+observation points. A managed Host uses `--exit-when-terminal` to wait for
+the terminal state and side-effect cleanup before exiting; a manually started
+resident `serve` can keep waiting for other explicit requests.
 
-`pause`/`resume` 是参与者控制，不是退出服务或跨版本恢复命令。
-DISPATCH PAUSED 时使用只读诊断确认原因，不能通过重写 SQLite 强行推进状态。
-当前候选在运行级调度异常后，会结束该运行中仍在执行的 Agent 调用，以
-`dispatch_paused` 记录失败并保留会话和费用观察，避免反复等待消耗模型调用。
-已提交的实验仍按原执行路径结束；暂停期间尚未收集的结果不会被宣称为成功或丢弃。
-这不等于 End run，需按实际诊断决定后续操作。源码修复仅用于新的运行；既有 bundle
-不会自动更新，也不支持把旧运行切换到新版本恢复。
+`pause`/`resume` are participant controls, not service-exit or cross-version
+recovery commands. Under DISPATCH PAUSED, use read-only diagnosis to confirm
+the cause; never force state forward by rewriting SQLite. After a run-wide
+dispatch exception, the current candidate ends the Agent calls still running
+in that run, records them as failed with `dispatch_paused`, and preserves
+session and cost observations, avoiding repeated waits that burn model calls.
+Submitted experiments still finish through their original execution path;
+results not yet collected during the pause are neither declared successful
+nor discarded. This is not the same as End run; decide follow-up from the
+actual diagnosis. Source repairs only apply to new runs; existing bundles are
+not updated automatically, and switching an old run to a new version for
+recovery is not supported.
 
-Provider 鉴权被拒绝（HTTP 401/403；五小时滚动额度与密钥失效无法区分）时，
-新的 Agent 调度会进入冷却而不是立刻烧掉节点重试额度：运行保持 ACTIVE，
-在途调用正常结束，冷却到期（`budget.provider_auth_cooldown_seconds`，默认
-18000 秒，0 表示关闭）后自动恢复。冷却状态由持久化失败记录推导，重启 Host
-不会清除或重置。通知事件 `provider_auth_cooldown`（每个冷却窗口一条，不逐次
-刷屏）与 `provider_auth_resumed` 经既有 Telegram/log 渠道投递，TUI 摘要区显示
-PROVIDER COOLDOWN 横幅。手动更换密钥后提前恢复：TUI 按 `p` 确认，或执行
-`hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID`；
-若凭证仍不可用，下一次失败会重新进入冷却。
+When a provider rejects authentication (HTTP 401/403; five-hour rolling
+quota and a broken key are indistinguishable), new Agent dispatch enters a
+cooldown instead of immediately burning the nodes' retry budgets: the run
+stays ACTIVE, in-flight calls finish normally, and dispatch resumes
+automatically when the cooldown (`budget.provider_auth_cooldown_seconds`,
+default 18000 seconds, 0 disables) expires. The cooldown is derived from
+durable failure records; restarting the Host neither clears nor resets it.
+The `provider_auth_cooldown` notification (one per cooldown window, not one
+per failure) and `provider_auth_resumed` are delivered through the existing
+Telegram/log channels, and the TUI summary shows a PROVIDER COOLDOWN banner.
+To resume early after manually replacing the key: press `p` in the TUI and
+confirm, or run `hypoloom provider-retry-clear --state-root
+/absolute/state/run --run-id RUN_ID`; if the credential is still unusable,
+the next failure re-enters cooldown.
 
-## 故障反馈与模块排障
+## Issue reporting and module diagnosis
 
 ```bash
 hypoloom debug inspect --state-root /absolute/state/run --run-id RUN_ID
@@ -118,16 +167,25 @@ hypoloom debug export --state-root /absolute/state/run --run-id RUN_ID \
   --support-bundle --preview
 ```
 
-确认范围后，增加 `--archive --output /absolute/new-support.zip` 导出支持包。
-默认过滤研究正文、自由文本错误及本地路径；私有内容需要显式 `--include-private-data`。
-导出不会自动上传。`debug rehearse-chain` 会在全新状态根运行后继模块，属于需要明确授权的
-实验操作；源运行始终只读。参数见 `hypoloom debug rehearse-chain --help`。
+After confirming the scope, add `--archive --output /absolute/new-support.zip`
+to export a support bundle. Research text, free-form errors and local paths
+are filtered by default; private content requires an explicit
+`--include-private-data`. Exports are never uploaded automatically.
+`debug rehearse-chain` runs subsequent modules in a fresh state root; it is
+an experimental operation that needs explicit authorization, and the source
+run stays read-only. See `hypoloom debug rehearse-chain --help` for
+parameters.
 
-## 备份与同版本恢复
+## Backup and same-version restore
 
-`backup` 通过 Host 取得一致快照；`restore` 离线写入尚不存在的新根，保留运行原有版本边界。
-恢复所需的私有模型设置单独提供，不进入备份。不要将恢复解释为当前工作树接管旧运行，
-也不要覆盖已有状态根。具体参数见 `hypoloom backup --help` 和 `hypoloom restore --help`。
+`backup` takes a consistent snapshot through the Host; `restore` writes
+offline into a new root that does not exist yet, preserving the run's
+original version boundary. The private model settings needed for recovery are
+supplied separately and never enter the backup. Do not interpret a restore as
+the current worktree taking over an old run, and never overwrite an existing
+state root. See `hypoloom backup --help` and `hypoloom restore --help` for
+parameters.
 
-通知配置见 [notifications](docs/guides/notifications.md)。新的昂贵课题运行前，核对
-[资格状态与验收规则](docs/qualification.md)。
+Notification configuration is in [notifications](docs/guides/notifications.md).
+Before a new expensive topic run, check the [qualification status and
+acceptance rules](docs/qualification.md).
