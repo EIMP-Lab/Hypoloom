@@ -1164,34 +1164,37 @@ def test_browser_shared_acceptance_metric_trends_per_hypothesis_chain(browser, t
 def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_path):
     page = browser
     assert page.evaluate("document.querySelector('.expert-preview h3 .breath-dot') === null")
-    assert page.evaluate("document.querySelector('.expert-preview .subagent-list') === null")
+    assert page.evaluate("document.querySelector('.expert-preview .agent-tile-list') === null")
     assert "scientific process attempts" not in page.text(".expert-identity")
+    page.evaluate("fixture.snapshot.overview.host_observation = {availability:'responded'}")
     page.evaluate("fixture.snapshot.attempts.push("
-        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
-        "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
+        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
+        "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, budget_max_tokens:1000000, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
         "{attempt_id:'open-exe', kind:'PROCESS', state:'OPEN', role:'expert-a', command:'EXECUTE', gpu_uuid:'GPU-0', latest_utilization_percent:87, started_at:fixture.snapshot.observed_at-540},"
         "{attempt_id:'open-other', kind:'AGENT', state:'OPEN', role:'expert-b', command:'RESULT_ANALYSIS', context_tokens:1200, session_id:'session-c'})")
-    page.wait("document.querySelectorAll('.expert-preview .subagent-row').length === 3")
-    assert "Working · 3" in page.text(".expert-preview .subagent-list")
-    rows = ".expert-preview .subagent-row"
-    assert page.evaluate(f"Array.from(document.querySelectorAll('{rows} .subagent-stage')).map(e => e.textContent)") == ["RUN", "ANA", "EXE"]
-    contexts = page.evaluate(f"Array.from(document.querySelectorAll('{rows} .subagent-context')).map(e => e.textContent)")
-    assert contexts[0].startswith("context ≥45.2K")
-    assert contexts[1].startswith("context —")
-    assert contexts[2] == "GPU GPU-0 · 87%"
-    assert page.evaluate(f"document.querySelectorAll('{rows} .subagent-context .overdue-flag').length") == 1
-    assert page.evaluate(f"document.querySelector('{rows} .subagent-context .overdue-flag').textContent") == "overdue 50m/45m"
-    assert page.evaluate(f"document.querySelectorAll('{rows} .breath-dot').length") == 3
-    title = page.evaluate(f'document.querySelector("{rows}").title')
+    page.wait("document.querySelectorAll('.expert-preview .agent-tile').length === 3")
+    assert "Working · 3" in page.text(".expert-preview .working-agents")
+    tiles = ".expert-preview .agent-tile"
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-value')).map(e => e.textContent)") == ["—", "45.2K", "9m"]
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-fill')).map(e => e.style.width)") == ["0%", "4.5%", "0%"]
+    assert page.evaluate(f"document.querySelectorAll('{tiles}.overdue').length") == 1
+    assert page.evaluate(f"document.querySelectorAll('{tiles} .agent-tile-light').length") == 3
+    assert page.evaluate(f"new Set(Array.from(document.querySelectorAll('{tiles} .agent-tile-light')).map(e => e.style.animationDelay)).size") == 3
+    assert page.evaluate(f"document.querySelectorAll('{tiles}.host-unconfirmed').length") == 0
+    title = page.evaluate(f'document.querySelectorAll("{tiles}")[1].title')
     assert "Experiment execution" in title and "not process liveness" in title
+    assert "context ≥45.2K of 1M attempt token budget" in title
     assert "live context · last model turn read from the session transcript" in title
     assert "elapsed 12m of 45m wall budget" in title
-    overdue_title = page.evaluate(f'document.querySelectorAll("{rows}")[1].title')
+    overdue_title = page.evaluate(f'document.querySelectorAll("{tiles}")[0].title')
     assert "no context reading yet" in overdue_title
     assert "elapsed 50m of 45m wall budget · exceeded" in overdue_title
-    process_title = page.evaluate(f'document.querySelectorAll("{rows}")[2].title')
+    process_title = page.evaluate(f'document.querySelectorAll("{tiles}")[2].title')
     assert "Experiment process" in process_title
-    assert "GPU GPU-0 · latest sampled utilization 87%" in process_title
+    assert "elapsed 9m" in process_title
+    assert "GPU" not in process_title
+    page.evaluate("fixture.snapshot.overview.host_observation={availability:'absent'}")
+    page.wait(f"document.querySelectorAll('{tiles}.host-unconfirmed').length === 3")
     assert "3 durably open attempts" in page.evaluate("document.querySelector('.expert-preview h3 .breath-dot').title")
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
     page.evaluate("window.scrollBy(0, -110)")

@@ -86,6 +86,7 @@
     detailTab: "overview",
     detailRequest: 0,
     renderInputs: new Map(),
+    workingTiles: new Map(),
     pollTimer: null,
     polling: false,
     pollController: null,
@@ -824,10 +825,70 @@
     parent.append(activity);
   }
 
+  function workingTilePhase(attemptId) {
+    let hash = 0;
+    for (const ch of String(attemptId)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return -(hash % 24) / 10;
+  }
+
+  function workingTile(attempt, role) {
+    let entry = state.workingTiles.get(attempt.attempt_id);
+    if (entry) return entry;
+    const light = element("span", "agent-tile-light");
+    light.style.animationDelay = `${workingTilePhase(attempt.attempt_id)}s`;
+    const fill = element("span", "agent-tile-fill");
+    const value = element("span", "agent-tile-value");
+    const bar = element("span", "agent-tile-bar");
+    bar.append(fill, value);
+    const tile = element("button", "agent-tile");
+    tile.type = "button";
+    tile.dataset.attempt = attempt.attempt_id;
+    tile.append(light, bar);
+    tile.addEventListener("click", () => {
+      byId("filter-expert").value = role;
+      renderFilteredViews();
+      openWorkbench("sessions");
+    });
+    tile.classList.add("tile-enter");
+    window.setTimeout(() => tile.classList.remove("tile-enter"), 320);
+    entry = {tile, fill, value, role, leaving: false};
+    state.workingTiles.set(attempt.attempt_id, entry);
+    return entry;
+  }
+
+  function updateWorkingTile(entry, attempt, label, hostResponded, observedAt) {
+    const {tile, fill, value} = entry;
+    tile.classList.toggle("host-unconfirmed", !hostResponded);
+    const elapsed = Math.max(0, observedAt - (Number(attempt.started_at) || observedAt));
+    const hasWall = Number.isFinite(attempt.wall_seconds) && attempt.wall_seconds > 0;
+    const overdue = hasWall && elapsed > attempt.wall_seconds;
+    tile.classList.toggle("overdue", overdue);
+    const isProcess = attempt.kind === "PROCESS";
+    const known = !isProcess && Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
+    const limit = Number.isInteger(attempt.budget_max_tokens) && attempt.budget_max_tokens > 0 ? attempt.budget_max_tokens : null;
+    const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens) : "—";
+    value.textContent = valueText;
+    fill.style.width = known && limit ? `${Math.min(100, Math.round((attempt.context_tokens / limit) * 1000) / 10)}%` : "0%";
+    const lines = [`${label} · attempt ${attempt.attempt_id}`];
+    if (isProcess) {
+      lines.push(`elapsed ${compactDuration(elapsed)} · OPEN is durable state, not process liveness`);
+    } else {
+      lines.push(!known ? "no context reading yet"
+        : `context ≥${compactNumber(attempt.context_tokens)}${limit ? ` of ${compactNumber(limit)} attempt token budget` : " · attempt token budget not recorded"} · ${attempt.context_source === "transcript" ? "live context · last model turn read from the session transcript" : "context carried into the current call · observed lower bound"}`);
+      lines.push(`elapsed ${compactDuration(elapsed)}${hasWall ? ` of ${compactDuration(attempt.wall_seconds)} wall budget${overdue ? " · exceeded" : ""}` : ""} · OPEN is durable state, not process liveness`);
+    }
+    tile.title = lines.join("\n");
+    tile.setAttribute("aria-label", `${label}: ${valueText}`);
+  }
+
   function renderExperts(snapshot) {
     const experts = list(snapshot.experts).filter((expert) => expertMatches(expert));
     const container = byId("expert-list");
+    const previousTiles = new Set();
+    container.querySelectorAll(".agent-tile[data-attempt]").forEach((tile) => previousTiles.add(tile.dataset.attempt));
     container.replaceChildren();
+    const seenTiles = new Set();
+    const tileLists = new Map();
     byId("experts-panel").classList.toggle("shared-goal-experts", sharedGoal(snapshot));
     setText("expert-count", experts.length);
     if (!experts.length) {
@@ -851,43 +912,26 @@
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (working.length) {
-        const stageByCommand = new Map(EXPERT_STAGES.map(([command, short, label]) => [command, [short, label]]));
+        const stageByCommand = new Map(EXPERT_STAGES.map(([command, short, label]) => [command, label]));
         const observedAt = Number(snapshot.observed_at) || Date.now() / 1000;
-        const subagents = element("div", "subagent-list");
-        subagents.append(element("p", "subagent-title", `Working · ${working.length}`));
-        working.slice(0, 6).forEach((attempt) => {
-          const isProcess = attempt.kind === "PROCESS";
-          const [chip, label] = isProcess ? ["EXE", "Experiment process"]
-            : stageByCommand.get(attempt.command)
-              || [String(attempt.command || "?").slice(0, 3).toUpperCase(), attempt.command || "unknown"];
-          const elapsed = Math.max(0, observedAt - (Number(attempt.started_at) || observedAt));
-          const hasWall = Number.isFinite(attempt.wall_seconds) && attempt.wall_seconds > 0;
-          const overdue = hasWall && elapsed > attempt.wall_seconds;
-          const lines = [
-            `${label} · attempt ${attempt.attempt_id}`,
-            `elapsed ${compactDuration(elapsed)}${hasWall ? ` of ${compactDuration(attempt.wall_seconds)} wall budget${overdue ? " · exceeded" : ""}` : ""} · OPEN is durable state, not process liveness`,
-          ];
-          const context = element("span", "subagent-context");
-          if (isProcess) {
-            const utilization = Number.isInteger(attempt.latest_utilization_percent) ? `${attempt.latest_utilization_percent}%` : null;
-            context.append(document.createTextNode(utilization === null ? "GPU —" : `GPU ${attempt.gpu_uuid || "?"} · ${utilization}`));
-            lines.push(utilization === null ? "no GPU utilization sample recorded yet"
-              : `GPU ${attempt.gpu_uuid || "?"} · latest sampled utilization ${utilization}`);
-          } else {
-            const known = Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
-            context.append(document.createTextNode(known ? `context ≥${compactNumber(attempt.context_tokens)}` : "context —"));
-            lines.push(!known ? "no context reading yet"
-              : attempt.context_source === "transcript" ? "live context · last model turn read from the session transcript"
-              : "context carried into the current call · observed lower bound");
-          }
-          if (overdue) context.append(element("span", "overdue-flag", `overdue ${compactDuration(elapsed)}/${compactDuration(attempt.wall_seconds)}`));
-          const row = element("div", "subagent-row");
-          row.append(element("span", "breath-dot"), element("span", "subagent-stage", chip), context);
-          row.title = lines.join("\n");
-          subagents.append(row);
+        const hostResponded = object(snapshot.overview).host_observation?.availability === "responded";
+        const sorted = [...working].sort((a, b) => (Number(a.started_at) - Number(b.started_at))
+          || String(a.attempt_id).localeCompare(String(b.attempt_id)));
+        const wrap = element("div", "working-agents");
+        wrap.append(element("p", "subagent-title", `Working · ${working.length}`));
+        const tiles = element("div", "agent-tile-list");
+        sorted.slice(0, 6).forEach((attempt) => {
+          const entry = workingTile(attempt, expert.role);
+          seenTiles.add(attempt.attempt_id);
+          const label = attempt.kind === "PROCESS" ? "Experiment process"
+            : stageByCommand.get(attempt.command) || attempt.command || "unknown";
+          updateWorkingTile(entry, attempt, label, hostResponded, observedAt);
+          tiles.append(entry.tile);
         });
-        if (working.length > 6) subagents.append(element("p", "subagent-note", `+${working.length - 6} more`));
-        identity.append(subagents);
+        if (working.length > 6) tiles.append(element("span", "agent-tile more", `+${working.length - 6} more`));
+        wrap.append(tiles);
+        identity.append(wrap);
+        tileLists.set(expert.role, tiles);
       }
       if (sharedGoal(snapshot)) {
         list(snapshot.components).filter((component) => component.owner_role === expert.role).forEach((component) => {
@@ -924,6 +968,18 @@
       card.append(identity, work);
       container.append(card);
     });
+    for (const [attemptId, entry] of state.workingTiles) {
+      if (seenTiles.has(attemptId) || entry.leaving) continue;
+      const tiles = tileLists.get(entry.role);
+      if (previousTiles.has(attemptId) && tiles) {
+        entry.leaving = true;
+        entry.tile.classList.add("leaving");
+        tiles.append(entry.tile);
+        window.setTimeout(() => { entry.tile.remove(); state.workingTiles.delete(attemptId); }, 300);
+      } else {
+        state.workingTiles.delete(attemptId);
+      }
+    }
   }
 
   function selectByComponent(componentId) {

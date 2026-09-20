@@ -1,6 +1,48 @@
 # Current Hypoloom development state
 
-- September 20: Web observer UI fixes (uncommitted, `web_observer_assets`
+- September 20 (third round, uncommitted): Working rows replaced by compact
+  agent tiles per the user's reviewed design. `monitor.AttemptView` gains
+  `budget_max_tokens` (durable `request.budget.max_tokens`, AGENT-only,
+  positive int); asdict flows it to the web snapshot. Each tile is a square
+  breathing light (expert round dot stays aggregate) plus a capsule bar:
+  fill = context_tokens / budget_max_tokens capped at 100% (observe mode
+  may exceed; a compaction shows as a visible drop), embedded right-aligned
+  tabular K/M value (`—` when unknown), PROCESS tiles show elapsed instead.
+  Light encodes the poll's host observation (expert-accent breathing with a
+  deterministic negative-delay phase hashed from attempt_id when
+  `overview.host_observation.availability == "responded"`, amber static
+  otherwise; reduced-motion static); overdue = amber capsule border; tiles
+  are keyed by attempt_id and reused across renders, sorted by
+  started_at/attempt_id, enter with opacity/scale only, fade out 300 ms on
+  close, cap 6 + dashed "+N more" tile; click opens expert history.
+  Evidence: monitor 44 + web 13 + observer-summary/live-status/support 41 +
+  browser 17/17 (rewritten working-subagents case asserts order, fill
+  widths, overdue/host-unconfirmed classes, per-tile breath phases); live
+  read-only snapshot of MERC-causal-202609200023 yields context 81.8–164.5K
+  with 1M budgets for all five OPEN agents. Same caveat as round two: a
+  running observer keeps its imported monitor.py until restarted; run
+  bundles stay read-only.
+
+- September 20 (second round, uncommitted): expert-card "Working" rows
+  always showed `context —` / `GPU —`. Root cause: an OPEN attempt's
+  durable observation carries only `request` + `session_binding`
+  (state_store/oracle validated); `observation["session"]` and
+  `resource_usage` exist only after close, and
+  `monitor._session_transcript_path` read only `session` — so the live
+  transcript lookup never resolved for OPEN agents since the feature
+  shipped in f2de65a. Fix: `_session_transcript_path` falls back to the
+  `session_binding` identity (same confinement/is_file validation;
+  verified against run MERC-causal-202609200023's live transcripts, e.g.
+  ml-expert CYCLE_REPORT ctx=133,629 from the tail). Per user direction,
+  PROCESS rows no longer show GPU (utilization is close-time data anyway)
+  and now show `elapsed <duration>`; AGENT rows keep
+  `context ≥<K/M>`. Evidence: monitor/web-observer/browser-subagent
+  suites 58/58 including new binding-fallback cases; real-run read-only
+  snapshot now yields live context. The running observer keeps its
+  already-imported monitor.py until restarted; run bundles stay
+  read-only.
+
+- September 20: Web observer UI fixes (committed 3ffdb5b on dev, `web_observer_assets`
   only, no runtime/server change): single `HYPOLOOM` eyebrow (was the
   duplicated `HYPOLOOM / HYPOLOOM`); Report issue + Help / terms grouped in
   one right-flush `.help-actions` cluster (both had `margin-left: auto`,

@@ -478,15 +478,34 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .expert-current-work { margin: .5rem 0 .7rem; overflow-wrap: anywhere; }
 .breath-dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: var(--expert-accent); flex: none; }
 .expert-identity h3 .breath-dot { margin-right: .45rem; }
-.subagent-list { display: grid; gap: .22rem; margin: .65rem 0; }
-.subagent-title, .subagent-note { margin: 0; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
-.subagent-note { letter-spacing: 0; text-transform: none; }
-.subagent-row { display: grid; grid-template-columns: auto 1fr; column-gap: .45rem; row-gap: .12rem; align-items: center; padding: .22rem .1rem; font-size: .74rem; }
-.subagent-row .breath-dot { grid-row: 1; }
-.subagent-row .subagent-stage { grid-row: 1; justify-self: start; }
-.subagent-stage { padding: .02rem .34rem; border: 1px solid var(--line-bright); border-radius: 4px; color: var(--text); font-size: .62rem; font-weight: 600; letter-spacing: .04em; }
-.subagent-context { grid-column: 2; grid-row: 2; color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .68rem; }
-.subagent-context .overdue-flag { color: var(--amber); margin-left: .5rem; }
+.subagent-title { margin: 0; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
+.agent-tile-list { display: flex; flex-wrap: wrap; gap: .3rem; margin: .3rem 0 .65rem; }
+.agent-tile {
+  display: inline-flex;
+  gap: 0.38rem;
+  align-items: center;
+  padding: 0.2rem 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-deep);
+  font: inherit;
+  letter-spacing: normal;
+}
+.agent-tile:hover { border-color: var(--line-bright); color: var(--text); }
+.agent-tile-light { width: 0.45rem; height: 0.45rem; border-radius: 2px; background: var(--expert-accent); flex: none; }
+.agent-tile-bar { position: relative; width: 3.3rem; height: 0.95rem; overflow: hidden; border: 1px solid var(--line-bright); border-radius: 999px; background: var(--bg); }
+.agent-tile-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--expert-accent) 32%, transparent); transition: width 0.3s ease; }
+.agent-tile-value { position: relative; display: block; padding-right: 0.28rem; color: var(--text); font-family: "IBM Plex Mono", monospace; font-size: 0.58rem; line-height: 0.95rem; text-align: right; font-variant-numeric: tabular-nums; }
+.agent-tile.overdue .agent-tile-bar { border-color: var(--amber); }
+.agent-tile.host-unconfirmed .agent-tile-light { background: var(--amber); animation: none; }
+.agent-tile.more { border-style: dashed; color: var(--muted); font-size: 0.62rem; cursor: default; }
+.agent-tile.more:hover { border-color: var(--line); color: var(--muted); }
+.agent-tile.leaving { opacity: 0; transform: scale(0.92); transition: opacity 0.25s ease, transform 0.25s ease; }
+@media (prefers-reduced-motion: no-preference) {
+  .agent-tile-light { animation: breath 2.4s ease-in-out infinite; }
+  .agent-tile.tile-enter { animation: tile-in 0.25s ease-out; }
+  @keyframes tile-in { from { opacity: 0; transform: scale(0.92); } }
+}
 @media (prefers-reduced-motion: no-preference) {
   .breath-dot { animation: breath 2.4s ease-in-out infinite; }
   @keyframes breath {

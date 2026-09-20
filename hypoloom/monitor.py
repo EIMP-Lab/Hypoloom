@@ -98,6 +98,7 @@ class AttemptView:
     context_tokens: int | None = None
     wall_seconds: float | None = None
     context_source: str | None = None
+    budget_max_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -630,7 +631,10 @@ def _session_transcript_path(
     observation: Mapping[str, Any],
 ) -> Path | None:
     """Locate the live session transcript only through recorded identities."""
-    request, session = observation.get("request"), observation.get("session")
+    request = observation.get("request")
+    session = observation.get("session")
+    if not isinstance(session, Mapping):
+        session = observation.get("session_binding")
     if not isinstance(request, Mapping) or not isinstance(session, Mapping):
         return None
     fields = tuple(
@@ -781,6 +785,9 @@ def _attempt_views(
         wall_seconds = (float(wall_value) if row["kind"] == "AGENT"
                         and isinstance(wall_value, (int, float)) and not isinstance(wall_value, bool)
                         and 0 < float(wall_value) < float("inf") else None)
+        max_tokens_value = budget.get("max_tokens") if isinstance(budget, Mapping) else None
+        budget_max_tokens = (max_tokens_value if row["kind"] == "AGENT"
+                             and type(max_tokens_value) is int and max_tokens_value > 0 else None)
         if (
             row["kind"] == "PROCESS"
             and workflow_command == "EXECUTE"
@@ -855,6 +862,7 @@ def _attempt_views(
             session_id=session_id,
             context_tokens=context_tokens,
             wall_seconds=wall_seconds,
+            budget_max_tokens=budget_max_tokens,
         ))
     return tuple(rendered), frozenset(scientific_process_attempt_ids)
 

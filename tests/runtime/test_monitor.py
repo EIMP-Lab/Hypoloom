@@ -424,6 +424,26 @@ def test_session_transcript_path_resolves_only_recorded_identities(tmp_path: Pat
     assert _session_transcript_path(tmp_path, "run", {"request": {}, "session": {}}) is None
 
 
+def test_session_transcript_path_falls_back_to_open_attempt_session_binding(tmp_path: Path) -> None:
+    transcript = (tmp_path / "run/sessions/ml-expert/c2/primary.ml-expert_goal"
+        / "chain-v1.abc/projects/sid-1.jsonl")
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text("{}\n")
+
+    def open_observation(**binding_overrides):
+        binding = {"scope": "chain-v1.abc", "cycle": 2, "session_id": "sid-1",
+                   "parent_session_id": None, "chain": None,
+                   "branch": "prom/ml-expert/r2/chain-v1.abc", "version": "chain-session/1"}
+        binding.update(binding_overrides)
+        return {"request": {"role": "ml-expert", "component_id": "primary.ml-expert_goal"},
+                "session_binding": binding}
+
+    assert _session_transcript_path(tmp_path, "run", open_observation()) == transcript.resolve()
+    assert _session_transcript_path(tmp_path, "run", open_observation(session_id="missing")) is None
+    assert _session_transcript_path(tmp_path, "run", open_observation(scope="..")) is None
+    assert _session_transcript_path(tmp_path, "run", open_observation(cycle="2")) is None
+
+
 def test_transcript_context_tokens_reads_last_turn_usage_from_tail(tmp_path: Path) -> None:
     transcript = tmp_path / "sid-1.jsonl"
     records = [
@@ -466,7 +486,11 @@ def test_live_attempt_context_overrides_only_open_agent_attempts(tmp_path: Path)
     closed = attempt("closed-1", "AGENT", "CLOSED")
     process = attempt("process-1", "PROCESS", "OPEN")
     observations = {
-        "open-1": _session_observation(),
+        "open-1": {"request": {"role": "ml-expert", "component_id": "primary.ml-expert_goal"},
+                   "session_binding": {"scope": "chain-v1.abc", "cycle": 2, "session_id": "sid-1",
+                                       "parent_session_id": None, "chain": None,
+                                       "branch": "prom/ml-expert/r2/chain-v1.abc",
+                                       "version": "chain-session/1"}},
         "closed-1": _session_observation(),
         "process-1": _session_observation(),
     }
