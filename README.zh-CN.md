@@ -134,11 +134,13 @@ Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固�
 
 ## 开发状态
 
-本项目是开发框架。公开模板用于演示配置,并非科学基准。资格结论仅适用于被测候选与
-环境,不构成对科学主张的证明。当前验证范围记录于
-[qualification](docs/qualification.zh-CN.md)。保留的运行使用其自带运行时包;不提供跨版本
-运行迁移。
+Hypoloom 是开发中的框架,尚无冻结发布:接口、Profile schema 与内部合同可能随候选
+变化。资格结论仅适用于某个确切的被测候选与环境;模型与 provider 兼容性按已采样
+的绑定建立,不作普遍保证。公开模板用于演示配置,并非科学基准;任何资格结果都不
+构成对科学主张的证明。当前验证范围记录于
+[qualification](docs/qualification.zh-CN.md)。保留的运行使用其自带运行时包;不提供
+跨版本运行迁移。
 
 ## 许可证
 
-[MIT](LICENSE),版权 © 2026 Hui Li。
+[MIT](LICENSE),版权 © 2026 EIMP Lab and the Hypoloom Authors。

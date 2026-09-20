@@ -154,13 +154,16 @@ Each guide above links its 简体中文 version at the top; the
 
 ## Development status
 
-This is a development framework. Public templates demonstrate configuration;
-they are not scientific benchmarks. Qualification applies to the tested
-candidate and environment, and does not prove a scientific claim. The current
-Hypoloom validation scope is recorded in [qualification](docs/qualification.md).
+Hypoloom is a development framework with no frozen release: interfaces,
+Profile schemas and internal contracts can change between candidates.
+Qualification applies to one exact tested candidate and environment; model
+and provider compatibility is established per sampled binding, not in
+general. Public templates demonstrate configuration; they are not scientific
+benchmarks, and no qualification result proves a scientific claim. The
+current validation scope is recorded in [qualification](docs/qualification.md).
 Preserved runs use their own runtime bundle; cross-version run migration is
 not provided.
 
 ## License
 
-[MIT](LICENSE), copyright © 2026 Hui Li.
+[MIT](LICENSE), copyright © 2026 EIMP Lab and the Hypoloom Authors.

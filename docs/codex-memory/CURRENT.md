@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- September 20 (seventh round, uncommitted): README polish. Development
+  status sections (en/zh) now state the concrete meaning of "development
+  framework" — no frozen release, interfaces/Profile schemas/internal
+  contracts can change between candidates — and add that model/provider
+  compatibility is established per sampled binding, not in general; all
+  original caveats (no scientific benchmarks/claims, per-candidate
+  qualification, no cross-version migration) are kept. License notice moves
+  from the individual "Hui Li" to the organization identity the user named:
+  `Copyright (c) 2026 EIMP Lab and the Hypoloom Authors`, identical in
+  LICENSE and both homepages (legal holder string kept verbatim, untranslated
+  in the Chinese README). No runtime change; documentation-structure 4/4.
+
 - September 20 (sixth round, uncommitted): user-facing docs are now bilingual
   pairs following the README convention (`X.md` = English, `X.zh-CN.md` =
   中文), each with a language-switcher line at the top. The Chinese-primary
