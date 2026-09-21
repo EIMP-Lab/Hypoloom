@@ -100,6 +100,38 @@ and data read-only. GPU starts require both an updated local Profile and exact
 Host UUID authorization. Shared-pool estimates live in `methodology.yaml.budget`;
 the workload floor and reserve remain enforced after measurement-based learning.
 
+## Research controls and framework boundaries / 研究控制与框架边界
+
+Profile controls express research and resource policy. For example,
+`interaction.leader.min_rounds_before_leader` counts the contributing expert's
+closed research cycles, not its experiment count. The templates use `1`; a
+local topic may deliberately choose a larger value or disable Leader/Debate.
+Leader can coordinate from verified intermediate contributions before the final
+goal. The Host still validates evidence and eligibility; skills explain the
+scientific rationale using the admitted evaluation protocol.
+
+Agent, Process and review capacities are separate upper bounds. Raising them
+does not automatically parallelize seeds or variants inside an experiment;
+that partitioning belongs in the target implementation and must preserve its
+evaluation protocol. GPU availability is live Host information, not permanent
+skill memory. Public templates and local topics keep their own budget choices.
+
+In fresh ACI-22 runs, EXECUTION can hand a submitted experiment to Host waiting,
+then resume the same node/session after collection. Both invocations consume
+normal budgets; waiting does not extend an invocation deadline. An expected
+short experiment may finish after one bounded wait in the same invocation.
+Agent and experiment timeouts remain independent. Framework ownership, publication,
+archival validation and resource safeguards cannot be disabled by a skill.
+
+中文：Profile 表达研究策略和资源政策。Leader 的 `min_rounds_before_leader` 按贡献
+专家已收尾的研究周期计数，不按实验数量；模板采用 `1`，本地课题可选择更大值或
+关闭交互。Leader 可依据最终目标达成前的已验证贡献协调研究，Host 仍验证资格与
+证据，skill 按实际评测协议解释科学判断。Agent／Process／review 并发是各自上限，
+不会自动拆分单个实验的 seed 或变体；拆分应在目标实现中保持评测协议。GPU 空闲
+情况由 Host 实时观察，不能固化为 skill 记忆。新 ACI-22 运行可提交后交还 Host
+等待，结果收集后继续同一节点／会话；前后调用均计入预算，独立时限不延长。
+框架的所有权、发布、归档验证与资源保护不由 skill 覆盖。
+
 ## Selective paper reading / 选择性精读
 
 Literature MAIN can use retained originals and bounded text under `/papers`.

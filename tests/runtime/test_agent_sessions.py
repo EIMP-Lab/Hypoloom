@@ -527,3 +527,31 @@ def test_resume_and_fork_record_the_newest_saved_cost_state_as_usage_baseline(tm
     forked = manager.prepare(_chain_request(
         AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "design-fork-2", "1"), binding)
     assert forked.session_usage_baseline == seed_state
+
+
+def test_session_commits_removed_directory_and_archives_transcript(tmp_path):
+    _, binding = make_target(tmp_path)
+    manager = _manager(tmp_path)
+    workspace = _seed(manager, binding)
+    (workspace.worktree_root / 'src/value.txt').unlink()
+    (workspace.worktree_root / 'src').rmdir()
+    result = workspace.finish_node()
+    assert result['transcript_complete'] is True
+    assert b'src/value.txt' not in git(workspace.worktree_root, 'ls-tree', '-r', '--name-only', 'HEAD')
+
+
+def test_failed_git_commit_preserves_transcript_and_partial_closure(tmp_path, monkeypatch):
+    from hypoloom.agent_sessions import SessionFinishError
+    _, binding = make_target(tmp_path)
+    manager = _manager(tmp_path)
+    workspace = manager.prepare(_pincer_request(ResearchNodeSubkind.SYNTHESIS), binding)
+    content = _transcript(workspace, 'failed commit still has independent evidence')
+    def fail_commit(self):
+        raise GitAuthoringIntegrityError('injected commit failure')
+    monkeypatch.setattr(PreparedSessionWorkspace, '_commit_node', fail_commit)
+    with pytest.raises(SessionFinishError, match='injected commit failure') as failure:
+        workspace.finish_node()
+    metadata = failure.value.metadata
+    assert metadata['commit'] is None and metadata['commit_error'] == 'injected commit failure'
+    assert metadata['transcript_complete'] is True
+    assert (manager.publisher.root / metadata['transcript']['path'] / 'transcript.jsonl').read_bytes() == content

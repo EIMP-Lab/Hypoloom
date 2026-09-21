@@ -75,6 +75,25 @@ def predecessor_patch() -> bytes:
     ).encode()
 
 
+def test_capture_accepts_git_deletion_of_entire_directory(tmp_path):
+    _, binding = make_target(tmp_path)
+    prepared = make_workspace(tmp_path).prepare(binding, "delete-directory")
+    (prepared.worktree_root / "src/value.txt").unlink()
+    (prepared.worktree_root / "src").rmdir()
+    patch = prepared.capture_patch(max_bytes=4096, max_files=1)
+    assert b"deleted file mode" in patch and b"-base" in patch
+
+
+def test_deleted_path_still_rejects_a_replaced_symlink_parent(tmp_path):
+    _, binding = make_target(tmp_path)
+    prepared = make_workspace(tmp_path).prepare(binding, "symlink-directory")
+    (prepared.worktree_root / "src/value.txt").unlink()
+    (prepared.worktree_root / "src").rmdir()
+    (prepared.worktree_root / "src").symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(GitAuthoringIntegrityError):
+        prepared.capture_patch(max_bytes=4096, max_files=2)
+
+
 def test_prepare_uses_private_clone_exact_commit_and_leaves_target_unchanged(
     tmp_path: Path,
 ) -> None:

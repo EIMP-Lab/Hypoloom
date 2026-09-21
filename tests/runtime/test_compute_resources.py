@@ -164,7 +164,7 @@ def test_cpu_only_never_calls_inventory_and_auto_falls_back_to_cpu() -> None:
         "fixed_environment": {"CUDA_VISIBLE_DEVICES": ""},
     }
     assert resources.configuration == {
-        "compute_resources": "local-compute/6",
+        "compute_resources": "local-compute/7",
         "gpu_device_uuids": [],
         "gpu_runtime_prefix": None,
     }
@@ -487,10 +487,11 @@ def test_pressure_tracker_reports_only_a_sustained_breach() -> None:
 @pytest.mark.parametrize(
     "latest_free,owned,expected",
     [
-        (3_901, 552, "external"),
-        (4_096, 0, "external"),
-        (3_901, 100, "self"),
-        (3_000, 0, "self"),
+        (3_901, 552, "self"),
+        (4_096, 0, "self"),
+        (3_901, 100, "external"),
+        (3_000, 0, "external"),
+        (1_911, 770, "external"),
         (3_901, None, "unknown"),
         (1, None, "unknown"),
     ],
@@ -569,7 +570,7 @@ def test_workspace_kwargs_freeze_uuid_index_runtime_and_exact_devices(tmp_path: 
         },
     }
     assert resources.configuration == {
-        "compute_resources": "local-compute/6",
+        "compute_resources": "local-compute/7",
         "gpu_device_uuids": [GPU_A.uuid],
         "gpu_runtime_prefix": str(runtime.resolve()),
     }

@@ -617,7 +617,8 @@ def _profile_environment_payload(
 
 
 def _exercise_full_cc_host(
-    tmp_path: Path, *, profile_environment: bool = False, timeout_seconds: float = 180
+    tmp_path: Path, *, profile_environment: bool = False, timeout_seconds: float = 180,
+    execution_handoffs: int = 0
 ) -> None:
     # Fifteen native invocations plus tools exceeded the old 90s test-only
     # deadline on a shared server. Agent/run production budgets are unchanged.
@@ -683,7 +684,7 @@ def _exercise_full_cc_host(
                 and json.loads(row["observation_json"])["request"]["command"]
                 == AgentCommand.EXPERIMENT_EXECUTION.value
             ]
-            assert len(executions) == 1
+            assert len(executions) == 1 + execution_handoffs
             assert all(row["state"] == "CLOSED" for row in attempts)
             assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2
             contracts = [
@@ -691,7 +692,7 @@ def _exercise_full_cc_host(
                 for row in host.store.list_facts(run_id, "ExperimentPreregistered")
             ]
             assert {item["source_agent_attempt_id"] for item in contracts} == {
-                executions[0]["attempt_id"]
+                row["attempt_id"] for row in (executions[:-1] if execution_handoffs else executions)
             }
             assert len({item["source_submit_command_id"] for item in contracts}) == 2
             assert not host.running and not host.running_agents

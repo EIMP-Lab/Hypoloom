@@ -660,7 +660,9 @@ def derive_research_node_views(
     agent_aci_version: str | int = 10,
 ) -> tuple[ResearchNodeView, ...]:
     """Derive retry-safe work state without persisting a node-status mirror."""
-    if str(agent_aci_version) not in {"7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"}:
+    from .agent_aci import execution_handoff
+    import json
+    if str(agent_aci_version) not in {"7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"}:
         return ()
     command_ids = {str(row["command_id"]) for row in commands}
     by_command: dict[str, list[Mapping[str, Any]]] = {}
@@ -693,6 +695,7 @@ def derive_research_node_views(
         if any(str(row["state"]) == "OPEN" for row in observed):
             state = DerivedWorkState.OPEN
         elif any(str(row["state"]) == "CLOSED" and str(row.get("terminal_reason")) == "SUCCEEDED"
+                 and not execution_handoff(json.loads(row.get("observation_json", "{}")))
                  for row in observed):
             state = DerivedWorkState.CLOSED
         else:

@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Execution handoff and session repair 2026-09-22](../qualification.md#current-development--execution-handoff-and-session-repair-2026-09-22):
+  ACI-22 Host waiting with normal accounting, tracked directory deletion and
+  partial archive closure, corrected GPU reserve attribution, Profile/skill
+  boundaries, focused/native CPU evidence and GPU/paid qualification limits.
 - [Dynamic Web ports 2026-09-22](../qualification.md#current-development--dynamic-web-ports-2026-09-22):
   OS-assigned listener defaults, Profile/template compatibility, actual-port
   notifications, fixed-port conflict behavior, concurrent ownership and

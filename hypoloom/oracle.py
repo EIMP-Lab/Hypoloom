@@ -1153,6 +1153,52 @@ def _audit_grounding_sources(artifact_root: Path, attempts: Sequence[Mapping[str
             issues.append(OracleIssue("grounding_sources_unobserved", str(exc), (str(row["attempt_id"]),)))
 
 
+def _audit_execution_handoffs(attempts, payloads, transitions, transition_payloads, issues):
+    """Check existing submission identities and lifecycle timestamps independently."""
+    def stamp(row):
+        return datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00")).timestamp()
+
+    submitted = []
+    terminals = {}
+    for row in transitions:
+        if row["workflow_kind"] != "EXPERIMENT":
+            continue
+        if row["revision"] == 1:
+            submitted.append((row, transition_payloads.get(_row_identifier(row), {})))
+        if row["state"] == "TERMINAL":
+            terminals[str(row["workflow_id"])] = stamp(row)
+    handed = {}
+    for row in sorted(attempts, key=lambda item: (str(item["command_id"]), int(item["attempt_ordinal"]))):
+        identity = str(row["attempt_id"])
+        observed = payloads.get(identity, {})
+        request = observed.get("request", {})
+        if request.get("schema_version", 0) < 22 or request.get("command") != "EXPERIMENT_EXECUTION":
+            continue
+        try:
+            prior = handed.get(str(row["command_id"]))
+            if prior is not None and float(row["started_at"]) < terminals.get(prior, float("inf")):
+                raise ValueError("execution resumed before its handed-off experiment became terminal")
+            if row["state"] != "CLOSED" or row["terminal_reason"] != "SUCCEEDED":
+                continue
+            own = [(created, payload) for created, payload in submitted
+                   if created["run_id"] == request["run_id"]
+                   and payload.get("execution_node_command_id") == request["command_id"]
+                   and stamp(created) <= float(row["ended_at"])]
+            if not own:
+                raise ValueError("execution response lacks a prior owned submission")
+            latest = max(own, key=lambda item: int(item[1].get("experiment_ordinal", 1)))[0]
+            experiment = str(latest["workflow_id"])
+            waiting = observed.get("response", {}).get("typed_candidate", {}).get("waiting_for_experiment_id")
+            if waiting is not None:
+                if waiting != experiment or prior == waiting:
+                    raise ValueError("execution handoff is duplicate or differs from its latest owned submission")
+                handed[str(row["command_id"])] = waiting
+            elif float(row["ended_at"]) < terminals.get(experiment, float("inf")):
+                raise ValueError("execution completed before its latest submitted experiment became terminal")
+        except (KeyError, TypeError, ValueError) as exc:
+            issues.append(OracleIssue("execution_handoff_invalid", str(exc), (identity,)))
+
+
 def _audit_agent_attempts(
     research_contract_version: str | None,
     agent_aci_version: str | None,
@@ -1472,6 +1518,7 @@ def _audit_agent_attempts(
             continue
         successful[attempt_id] = (request, response)
 
+    _audit_execution_handoffs(agent_attempts, attempt_payloads, transitions, transition_payloads, issues)
     _audit_literature_query_plan_causation(
         agent_attempts, attempt_payloads, successful, issues,
     )

@@ -26,6 +26,20 @@ change production-driver data bindings.
 Use `mapping.get(original_path, original_path)` for data roots: disjoint roots
 have no alias entry and retain their original path.
 
+For ACI 22 and later, normally submit and return the typed summary with
+`waiting_for_experiment_id` equal to the latest submitted experiment ID. This
+hands waiting to Host, releases the invocation, and does not claim completion.
+Host invokes the same node/session after the experiment becomes terminal;
+first list_my_experiments and inspect its result. Each experiment permits one
+handoff (`can_handoff` in the list view). An expected short experiment may use
+one bounded wait within the remaining invocation wall budget and complete if
+terminal; hand pending work to Host instead of waiting repeatedly.
+A repaired replacement can be handed
+off once too. Omit the field only when finishing after the latest terminal
+result. Both invocations use the admitted budgets; waiting does not extend an
+Agent deadline. The terminal-only waiting instructions below apply to earlier
+ACI versions; all repair and evidence requirements apply to both.
+
 For a failed Host experiment, inspect get_experiment_log, edit/test the own chain
 checkout, then submit with replaces_experiment_id equal to the exact predecessor.
 Wait for the Host's canonical terminal result. A wait timeout returns the latest

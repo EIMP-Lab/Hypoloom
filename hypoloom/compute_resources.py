@@ -19,7 +19,7 @@ from typing import Any
 from .domain import ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, validate_physical_gpu_uuid
 
 
-COMPUTE_RESOURCES_VERSION = "local-compute/6"
+COMPUTE_RESOURCES_VERSION = "local-compute/7"
 COMPUTE_CAPABILITIES_SCHEMA_VERSION = 3
 COMPUTE_CAPABILITIES_MEDIA_TYPE = "application/json"
 _MIB = 1024 * 1024
@@ -277,13 +277,17 @@ def gpu_pressure_attribution(
     owned_latest_memory_mib: int | None,
     reserve_memory_mib: int,
 ) -> str:
-    """Attribute one sustained breach; unknown ownership stays a device-level kill."""
+    """Would releasing this workload restore reserve? This is not causal history.
+
+    If reserve would still be breached, other occupancy alone suffices and
+    killing this workload cannot restore it. Unknown ownership stays fail-closed.
+    """
     if owned_latest_memory_mib is None:
         return "unknown"
     return (
-        "external"
+        "self"
         if latest_free_memory_mib + owned_latest_memory_mib >= reserve_memory_mib
-        else "self"
+        else "external"
     )
 
 

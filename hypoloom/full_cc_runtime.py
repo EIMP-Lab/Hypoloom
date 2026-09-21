@@ -582,6 +582,26 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "relative paths to real files, never inline contents. Never use placeholder digests. "
             "CPU/AUTO/GPU_REQUIRED expresses a preference, not a GPU authorization. "
         )
+    if request.command.value == "EXPERIMENT_EXECUTION" and request.schema_version >= 22:
+        return common + (
+            "First list_my_experiments. If none exist, submit the accepted candidate through "
+            "submit_experiment; Host captures actual workspace bytes and owns execution. "
+            "After a new submission, normally return the typed summary with waiting_for_experiment_id "
+            "equal to that latest experiment ID, handing waiting to Host and ending this invocation. "
+            "This is not experiment completion or a scientific result. Host collects the Process "
+            "and invokes this same node/session again when terminal, under ordinary invocation "
+            "and cumulative budgets. Only one handoff per submitted experiment is permitted; "
+            "list_my_experiments exposes can_handoff. For an expected short experiment, one bounded "
+            "wait_experiment within the remaining invocation wall budget is also allowed: finish "
+            "directly if terminal, otherwise hand off instead of repeatedly waiting. "
+            "On collection, inspect the latest accepted result and get_experiment_log. If an "
+            "operational failure is repairable within the frozen declaration, edit/test here and "
+            "submit with replaces_experiment_id equal to the exact failed predecessor, then hand "
+            "off that new experiment. Do not repeat a submission to evade the handoff limit. "
+            "Otherwise omit waiting_for_experiment_id and summarize the terminal result honestly. "
+            "Native Stop and Host both validate the latest owned experiment. GPU grants, slots, "
+            "run stops and independent Agent/Process deadlines remain Host-owned. "
+        )
     if request.command.value == "EXPERIMENT_EXECUTION":
         return common + (
             "Use mcp__host-tools__submit_experiment with the validated candidate and optional "

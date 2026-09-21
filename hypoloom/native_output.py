@@ -279,7 +279,10 @@ class NativeOutputValidator:
                             cancel_event=self._closed)["experiments"]
                     except (ValueError, OSError, KeyError) as exc:
                         raise _ValidationUnavailable("execution completion state is unavailable") from exc
-                    validate_execution_completion(None if not submitted else submitted[-1]["state"])
+                    latest = {} if not submitted else submitted[-1]
+                    validate_execution_completion(latest.get("state"),
+                        waiting_for=output.get("typed_candidate", {}).get("waiting_for_experiment_id"),
+                        latest_experiment_id=latest.get("exp_id"), can_handoff=latest.get("can_handoff", False))
                 if self.acceptance_smoke or self.measurement_smoke:
                     key = "acceptance" if self.acceptance_smoke else "measurement"
                     label = "common" if self.acceptance_smoke else "local C5"

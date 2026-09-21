@@ -100,7 +100,8 @@ def test_pressure_on_second_uuid_cancels_once_and_records_both_devices():
         "terminate_grace_seconds": 30.0, "gpu_uuids": [GPU_B.uuid]}
 
 
-def test_external_pressure_attribution_spares_the_process_and_records_evidence():
+@pytest.mark.parametrize("owned,spared", [(700, True), (1900, False)])
+def test_pressure_counterfactual_spares_external_and_stops_self(owned, spared):
     from hypoloom.compute_resources import GpuPressureTracker, GpuRuntimeObservation
     from hypoloom.domain import AttemptTerminalReason
     sample = GpuRuntimeObservation(uuid=GPU_A.uuid, total_memory_mib=16000,
@@ -112,29 +113,41 @@ def test_external_pressure_attribution_spares_the_process_and_records_evidence()
         timeout_seconds=30, cwd="/nonexistent", stderr_path="stderr.log",
         to_dict=lambda: {"attempt_id": "spared-process"}))
     shared = SimpleNamespace(sample_owned=lambda *args: None,
-        owned_latest_memory_mib=lambda attempt_id, gpu_uuid: 1900,
+        owned_latest_memory_mib=lambda attempt_id, gpu_uuid: owned,
         finish_owned=lambda attempt_id: {}, observe_oom=lambda payload, stderr_path: None)
     observed = SimpleNamespace(terminal_reason=AttemptTerminalReason.SUCCEEDED, process_group_id=100,
         to_dict=lambda: {"terminal_reason": "SUCCEEDED"})
     tx = SimpleNamespace(close_attempt=lambda *args, **kwargs: closed.append(kwargs),
         append_transition=lambda transition: None)
+    def cancel(handle, **kwargs):
+        assert kwargs == {"terminate_grace_seconds": 30.0}
+        cancelled.append(handle)
+        handle.returncode = -15
+        return True
     host = SimpleNamespace(running={"spared-process": process}, spec_validations={}, shared_gpu=shared,
         gpu_pressure={"spared-process": ((tracker,), 2000, {})},
         store=SimpleNamespace(get_attempt=lambda attempt: {"run_id": "r", "workflow_id": "e"},
             transaction=lambda: nullcontext(tx)), _run_wallclock_expired=lambda run: False,
         compute_resources=SimpleNamespace(observe_runtime=lambda uuid: low),
-        runner=SimpleNamespace(cancel=lambda handle, **kwargs: cancelled.append(handle) or True,
+        runner=SimpleNamespace(cancel=cancel,
             wait=lambda handle: observed),
         _transition_record=lambda *args, **kwargs: {}, _crash=lambda point: None)
-    assert WorkflowHost._poll_processes(host) is False
-    assert cancelled == []
-    process.returncode = 0
-    assert WorkflowHost._poll_processes(host) is True
+    assert WorkflowHost._poll_processes(host) is (not spared)
+    if spared:
+        assert cancelled == []
+        process.returncode = 0
+        assert WorkflowHost._poll_processes(host) is True
+    else:
+        assert cancelled == [process]
     payload = closed[0]["payload"]
-    assert payload["terminal_reason"] == "SUCCEEDED"
-    assert "resource_pressure" not in payload
+    assert payload["terminal_reason"] == ("SUCCEEDED" if spared else "FAILED")
+    if spared:
+        assert "resource_pressure" not in payload
+    else:
+        assert payload["resource_pressure"]["attribution"] == "self"
+        assert payload["resource_pressure"]["owned_memory_mib_at_decision"] == owned
     assert payload["resource_usage"]["pressure_exceeded"] is True
-    assert payload["resource_usage"]["pressure_attribution"] == "external"
+    assert payload["resource_usage"]["pressure_attribution"] == ("external" if spared else "self")
     assert payload["resource_usage"]["gpu_minimum_free_memory_mib"] == 1000
     assert payload["resource_usage"]["owned_memory"] == {
         "sample_count": 0, "unknown_sample_count": 0, "latest": None, "peak": None}

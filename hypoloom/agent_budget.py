@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping
 
-from .agent_aci import AgentACIError, AgentBudget
+from .agent_aci import AgentACIError, AgentBudget, execution_handoff
 from .agent_context import (
     RETRYABLE_AGENT_FAILURES,
     agent_retry_class,
@@ -228,6 +228,8 @@ def agent_attempts_exhausted(
 ) -> bool:
     closed = sorted((row for row in attempts if row["state"] == "CLOSED"),
                     key=lambda row: int(row["attempt_ordinal"]))
+    closed = [row for row in closed if not (row["terminal_reason"] == "SUCCEEDED"
+        and execution_handoff(json.loads(row["observation_json"])))]
     if not closed: return False
     limits = agent_attempt_limits(document, model_fallback=model_fallback,
                                   infrastructure_fallback=infrastructure_fallback)

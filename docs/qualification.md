@@ -8,6 +8,85 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — execution handoff and session repair, 2026-09-22
+
+Scope: fresh runs only; retained research runs and local Profile choices remain
+unchanged. The observed long-experiment failure is a controller reaching its
+wall deadline while its separately owned Process continues. Existing ownership,
+submission IDs, transactions and budgets already protect the experiment; they
+cannot express a successful controller handoff under the old terminal-only
+output rule. Extend the existing ACI to version 22 with one optional
+`waiting_for_experiment_id` on EXECUTION output. This is an existing experiment
+primary key, not a second journal, receipt or scheduler. A successful handoff
+closes and charges that invocation but does not complete the research node.
+Host derives readiness from the existing experiment state and permits only one
+accepted handoff per experiment. The maintenance cost is one versioned output
+case in existing validation, scheduling and audit; retained versions keep their
+old rule; that compatibility branch can be removed when retained ACI <=21 is
+no longer supported. No new Profile switch, timer exemption or increased budget
+is needed.
+
+The same candidate fixes deletion of a tracked directory being rejected as an
+unavailable parent during patch capture or session commit. Git's existing deleted
+path list authorizes only those absent paths; existing ancestor/symlink and
+single-link checks remain. Session closure attempts transcript publication even
+when Git commit fails, and carries partial metadata and the discarded provider
+response into the failed Attempt. Missing commit/archive evidence remains an
+Oracle finding; failed authoring is never promoted to accepted science.
+
+GPU attribution now uses the reserve counterfactual correctly (`local-compute/7`):
+free 1,911 MiB plus owned 770 MiB is still below the 4,096 MiB reserve, so other
+occupancy alone suffices; terminating this workload cannot restore reserve.
+When releasing owned memory would restore reserve, the existing self-pressure
+termination applies. Unknown ownership still fails closed. Reserve, sampling
+and terminate grace, process ownership, GPU grants and pool enforcement are
+unchanged. The real-GPU fixture now places external growth in the external
+case; this changed candidate has **not** rerun G4.
+
+The existing Leader/Debate skills now compare actual evaluator/split/aggregation
+and audit protocols instead of assuming different expert components imply
+incomparable measurements. They preserve LOCAL/GOAL distinctions, joint-candidate
+requirements and honest no-Debate decisions. No MERC metric, threshold, seed
+count, device identity or budget is embedded in framework defaults. Profile
+Leader thresholds, budgets and capacities remain unchanged; bilingual guidance
+explains their separate roles. A short experiment can still finish in one
+invocation after a bounded wait; handoff is available for pending work.
+
+Development verification (groups overlap; these counts are not a summed suite):
+245 execution/ACI/budget/loop/GPU-host/Oracle checks passed; 202 GPU/protocol,
+operator-skill and documentation checks passed; the cross-Profile/session/batch
+selection had 225 passes and one batch-limit assertion failure, followed by a
+passing unchanged single-case recheck. The original sample is retained as a
+failure; its precise Process-level cause was not recovered. Nine handoff
+regressions cover collection, same-version Host reconstruction, cancellation,
+ordinary budget charging, retained-protocol rejection and negative independent
+audit. Native CC with a local provider completed two actual CPU Processes
+(failure then repaired success), three successful controller invocations and
+one shared session; original terminal-only Stop correction also passed.
+The existing oracle and process-group census are clean in these native samples.
+
+Initial sandbox-only socket/`/var/tmp` checks failed before Host execution and
+were rerun with the required Host permissions. Development also exposed and
+fixed a continuation-context insertion error; the new budget and cancellation
+fixtures initially used zero-cost fake usage and an incomplete cancel payload,
+then passed with explicit usage and a valid request. One native run correctly
+rejected code changes made during its execution (`PinnedRuntimeError`); the
+fixed-tree recheck passed. These samples are not erased or claimed as passes.
+Final fixed-candidate selection: **134 passed in 148.97 s**, recorded in
+`.local/qualification/aci22-repair-20260922/focused.xml`. A strengthened native
+handoff case additionally passed in 70.25 s (`native-timing.xml`): the repaired
+CPU Process runs for 12 seconds, and independent durable timestamps prove its
+submitting controller closed before Process exit, with collection starting
+after exit. All three controller calls share the same session. This refreshes
+one identity in the 134-case selection, not an additional distinct test.
+
+Limits: this is repair/G0 plus bounded native CPU evidence, not a frozen G1–G5
+promotion. No paid provider request, real GPU experiment, performance percentile
+qualification, retained-run migration or live-run mutation was performed.
+The user subsequently reported terminating the retained run and authorized
+committing/pushing this repair to dev. Scientific decision quality and the
+changed GPU policy still require their appropriate future bounded qualification.
+
 ## Current development — dynamic Web ports, 2026-09-22
 
 The approved repair addresses shared-server listener collisions: TUI and

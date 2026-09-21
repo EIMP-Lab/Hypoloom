@@ -857,33 +857,8 @@ def test_component_v4_real_shared_gpu_pressure_attribution(tmp_path: Path) -> No
         state_root = tmp_path / "state"
         host = _start_host(state_root, gpu_uuid, runtime, pool=(pool_socket, namespace))
 
-        external_run = "component-v4-real-shared-gpu-external-pressure"
-        _create(
-            state_root,
-            external_run,
-            delay=8,
-            profile=profile,
-            profiles_root=profiles_root,
-        )
-        _await_state(state_root, external_run, "COMPLETED")
-        external_attempts = _process_attempts(state_root, external_run)
-        assert len(external_attempts) == 1
-        assert external_attempts[0]["terminal_reason"] == "SUCCEEDED"
-        external_observation = json.loads(external_attempts[0]["observation_json"])
-        external_usage = external_observation["resource_usage"]
-        assert external_usage["gpu_minimum_free_memory_mib"] < reserve
-        assert external_usage["owned_memory"]["sample_count"] > 0
-        # An externally spared attempt recovers its reserve when its own
-        # context is released at exit, so the terminal flag reflects the
-        # teardown sample; the binding invariants are survival and no payload.
-        if external_usage["pressure_exceeded"]:
-            assert external_usage["pressure_attribution"] == "external"
-        assert "resource_pressure" not in external_observation
-        _assert_evidence(
-            _cuda_evidence(state_root, external_attempts[0]["attempt_id"])
-        )
-        _assert_oracle_clean(state_root, external_run, outcomes=1)
-
+        # First, this workload alone pushes free memory below reserve;
+        # releasing its owned context restores reserve and must stop it.
         self_run = "component-v4-real-shared-gpu-self-pressure"
         _create(
             state_root,
@@ -892,13 +867,6 @@ def test_component_v4_real_shared_gpu_pressure_attribution(tmp_path: Path) -> No
             profile=profile,
             profiles_root=profiles_root,
         )
-        deadline = time.monotonic() + 90
-        while time.monotonic() < deadline and _gpu_free_memory_mib(gpu_uuid) >= initial_free - 128:
-            time.sleep(0.2)
-        assert _gpu_free_memory_mib(gpu_uuid) < initial_free - 128, (
-            "workload CUDA context never materialized"
-        )
-        (tenant_dir / "grow").write_text("grow", encoding="utf-8")
         _await_state(state_root, self_run, "COMPLETED", timeout=180.0)
         self_attempts = _process_attempts(state_root, self_run)
         assert len(self_attempts) == 1
@@ -919,6 +887,39 @@ def test_component_v4_real_shared_gpu_pressure_attribution(tmp_path: Path) -> No
             "terminate_grace_seconds": 30.0,
         }
         _assert_oracle_clean(state_root, self_run, outcomes=1)
+        external_run = "component-v4-real-shared-gpu-external-pressure"
+        _create(
+            state_root,
+            external_run,
+            delay=20,
+            profile=profile,
+            profiles_root=profiles_root,
+        )
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and _gpu_free_memory_mib(gpu_uuid) >= initial_free - 128:
+            time.sleep(0.2)
+        assert _gpu_free_memory_mib(gpu_uuid) < initial_free - 128, (
+            "workload CUDA context never materialized"
+        )
+        (tenant_dir / "grow").write_text("grow", encoding="utf-8")
+        _await_state(state_root, external_run, "COMPLETED")
+        external_attempts = _process_attempts(state_root, external_run)
+        assert len(external_attempts) == 1
+        assert external_attempts[0]["terminal_reason"] == "SUCCEEDED"
+        external_observation = json.loads(external_attempts[0]["observation_json"])
+        external_usage = external_observation["resource_usage"]
+        assert external_usage["gpu_minimum_free_memory_mib"] < reserve
+        assert external_usage["owned_memory"]["sample_count"] > 0
+        # The foreign tenant grows after admission. Its allocation alone
+        # breaches reserve; releasing our own context cannot restore it.
+        if external_usage["pressure_exceeded"]:
+            assert external_usage["pressure_attribution"] == "external"
+        assert "resource_pressure" not in external_observation
+        _assert_evidence(
+            _cuda_evidence(state_root, external_attempts[0]["attempt_id"])
+        )
+        _assert_oracle_clean(state_root, external_run, outcomes=1)
+
         assert tenant.poll() is None
         assert baseline_pids & _compute_pids(gpu_uuid), (
             "the pressure kill signaled the foreign tenant"

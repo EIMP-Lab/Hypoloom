@@ -284,13 +284,22 @@ class WorkflowHost:
                     from .agent_sessions import AgentSessions
                     target = self._run_config(request.run_id)["execution"].get("target")
                     binding = None if not isinstance(target, Mapping) else GitTargetBinding(checkout=Path(str(target["checkout"])), commit=str(target["commit"]))
+                    prepared = None
                     try:
                         prepared = AgentSessions(self.state_root, self.publisher).prepare(request, None if request.command is AgentCommand.PAPER_READ else binding)
                         from .paper_sources import restore_sources
                         restore_sources(self, prepared)
-                        self.agent_session_metadata[request.attempt_id] = {**prepared.finish_node(), "launch_arguments": None, "archive_after_loss": True}; prepared.cleanup(); prepared.discard_papers()
+                        self.agent_session_metadata[request.attempt_id] = {**prepared.finish_node(), "launch_arguments": None, "archive_after_loss": True}
                     except (OSError, ValueError, GitAuthoringPreparationError, GitAuthoringIntegrityError) as exc:
+                        from .agent_sessions import SessionFinishError
+                        if isinstance(exc, SessionFinishError):
+                            self.agent_session_metadata[request.attempt_id] = {**exc.metadata,
+                                "launch_arguments": None, "archive_after_loss": True}
                         observation["session_recovery_error"] = str(exc)[:1024]
+                    finally:
+                        if prepared is not None:
+                            prepared.cleanup()
+                            prepared.discard_papers()
                 self._agent_failure(request, AttemptTerminalReason.LOST, "host_restart", retryable=True, details=observation)
             else:
                 with self.store.transaction() as tx:
@@ -1444,10 +1453,12 @@ class WorkflowHost:
             (task.command_id,),
         ))
     def _expert_success(self, task: ResearchNodeTask | AuxiliaryTask) -> Mapping[str, Any] | None:
+        from .agent_aci import execution_handoff
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING and task.ordinal == 1:
             task = self._grounding_task(task.run_id)
         return next((row for row in reversed(self._expert_attempts(task))
                      if row["state"] == "CLOSED" and row["terminal_reason"] == AttemptTerminalReason.SUCCEEDED.value
+                     and not execution_handoff(json.loads(row["observation_json"]))
                      and not (isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING
                          and json.loads(row["observation_json"]).get("response", {}).get("typed_candidate", {}).get("clarification") is not None)), None)
     def _grounding_task(self, run_id: str) -> AuxiliaryTask:
@@ -2667,8 +2678,10 @@ class WorkflowHost:
         if request.command is AgentCommand.EXPERIMENT_EXECUTION:
             from .agent_aci import validate_execution_completion
             submitted = self._owned_tool_experiments(request)
-            validate_execution_completion(None if not submitted else
-                self.store.latest_transition(str(submitted[-1]["exp_id"]))["state"])
+            latest = None if not submitted else str(submitted[-1]["exp_id"])
+            validate_execution_completion(None if latest is None else self.store.latest_transition(latest)["state"],
+                waiting_for=validated.candidate.waiting_for_experiment_id, latest_experiment_id=latest,
+                can_handoff=latest is not None and self._execution_can_handoff(request, latest))
         if isinstance(validated.candidate, (GroundingCandidate, LiteratureSummaryCandidate)) or request.command is AgentCommand.DEBATE and request.schema_version >= 14:
             from .grounding_background import validate_web_sources
             try: validate_web_sources(validated.candidate.web_sources or (), self._grounding_retrieved_urls(request))
@@ -2874,8 +2887,12 @@ class WorkflowHost:
                     if observation.response is not None and (not isinstance(session.get("transcript"), Mapping) or session.get("transcript_complete") is not True):
                         raise ValueError("successful Agent requires a complete archived transcript")
                 except (OSError, ValueError, GitAuthoringPreparationError, GitAuthoringIntegrityError) as exc:
+                    from .agent_sessions import SessionFinishError
+                    if isinstance(exc, SessionFinishError):
+                        self.agent_session_metadata[attempt_id] = exc.metadata
                     self._agent_failure(handle.request, AttemptTerminalReason.FAILED, "session_archive_failed", retryable=False,
-                        details={**details, "session_error": str(exc)[:1024]})
+                        details={**details, "session_error": str(exc)[:1024],
+                            **({"discarded_response": observation.response.to_dict()} if observation.response is not None else {})})
                     self.claude_agent_host.cleanup(handle); self.agent_session_metadata.pop(attempt_id, None); continue
             if run_head is not None and run_head["state"] == RunState.STOPPING.value and not self._is_final_report_request(handle.request):
                 self._agent_failure(handle.request, AttemptTerminalReason.CANCELLED, "run_stopping", retryable=False, details=details, owner_transition=False)
@@ -3374,7 +3391,9 @@ class WorkflowHost:
         owned = {str(item["exp_id"]): item for item in self._owned_tool_experiments(request)}
         if tool == "list_my_experiments":
             if arguments: raise AgentACIError("tool_arguments", "list_my_experiments takes no arguments")
-            return {"experiments": [self._experiment_tool_view(request.run_id, experiment_id) for experiment_id in owned]}
+            return {"experiments": [{**self._experiment_tool_view(request.run_id, experiment_id),
+                **({"can_handoff": self._execution_can_handoff(request, experiment_id)} if request.schema_version >= 22 else {})}
+                for experiment_id in owned]}
         if tool not in {"wait_experiment", "get_experiment_log", "cancel_experiment"}:
             raise AgentACIError("unknown_tool", "unknown Host experiment tool")
         allowed = {"exp_id", "max_wait_seconds"} if tool == "wait_experiment" else {"exp_id", "max_bytes"} if tool == "get_experiment_log" else {"exp_id"}
@@ -3393,6 +3412,13 @@ class WorkflowHost:
             return {"exp_id": experiment_id, "tail_log": self._experiment_tool_log(experiment_id, limit)}
         if tool == "cancel_experiment": self._cancel_tool_experiment(request, experiment_id)
         return self._experiment_tool_view(request.run_id, experiment_id)
+
+    def _execution_can_handoff(self, request: AgentRequest, experiment_id: str) -> bool:
+        from .agent_aci import execution_handoff
+        return request.schema_version >= 22 and not any(
+            row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED"
+            and execution_handoff(json.loads(row["observation_json"])) == experiment_id
+            for row in self._expert_attempts(request.task_context))
 
     def _submit_experiment(self, request: AgentRequest, arguments: Mapping[str, Any]) -> dict[str, Any]:
         from .agent_aci import validate_experiment_submission
@@ -3683,8 +3709,12 @@ class WorkflowHost:
                     self.handle_agent_tool(attempt_id, "submit_experiment", {"candidate": packet["typed_candidate"], "workspace_files": packet["proposed_workspace_artifacts"]})
                     progressed = True; continue
                 view = self.handle_agent_tool(attempt_id, "wait_experiment", {"exp_id": owned[-1]["exp_id"], "max_wait_seconds": 0})
-                if not view["terminal"]: continue
+                if not view["terminal"] and request.schema_version < 22: continue
                 response = self.agent.invoke(request)
+                if not view["terminal"]:
+                    from .agent_aci import with_output_digest
+                    response = with_output_digest(replace(response, typed_candidate={**response.typed_candidate,
+                        "waiting_for_experiment_id": owned[-1]["exp_id"]}))
             self._finish_fake_agent(request, response)
             self.local_execution_agents.pop(attempt_id); progressed = True
         return progressed

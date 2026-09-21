@@ -2396,6 +2396,9 @@ def _output_schema(
             "supporting_refs": supporting_refs,
         }
         candidate_required = ["task_kind", "summary", "supporting_refs"]
+        if request.command.value == "EXPERIMENT_EXECUTION" and request.schema_version >= 22:
+            candidate_properties["waiting_for_experiment_id"] = {"type": "string", "minLength": 1,
+                "description": "Hand the latest owned experiment to Host waiting; omit only for terminal completion."}
         from .agent_aci import supports_literature_web
         if _is_literature_main(request) and supports_literature_web(request.schema_version):
             candidate_properties["web_sources"] = {"type": "array", "uniqueItems": True,

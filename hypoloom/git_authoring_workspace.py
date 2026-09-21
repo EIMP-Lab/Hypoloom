@@ -103,7 +103,8 @@ class PreparedGitAuthoringWorkspace:
             raise GitAuthoringIntegrityError(
                 "authoring patch exceeds its changed-file bound"
             )
-        _audit_changed_paths(self.worktree_root, changed_paths)
+        _audit_changed_paths(self.worktree_root, changed_paths,
+                             deleted_paths=_deleted_paths(self, base_ref=base_ref))
         patch = _capture_readonly_patch(
             self,
             tracked_paths=tracked_paths,
@@ -362,7 +363,8 @@ class GitAuthoringWorkspace:
                     timeout_seconds=self.timeout_seconds,
                     input_bytes=patch_bytes,
                 )
-                _audit_changed_paths(worktree_root, _changed_paths(prepared))
+                _audit_changed_paths(worktree_root, _changed_paths(prepared),
+                                     deleted_paths=_deleted_paths(prepared))
         except BaseException:
             _remove_attempt_root(
                 attempt_id=attempt_id,
@@ -687,6 +689,14 @@ def _changed_paths(prepared: PreparedGitAuthoringWorkspace) -> tuple[str, ...]:
     return _merge_paths(_tracked_paths(prepared), _untracked_paths(prepared))
 
 
+def _deleted_paths(prepared: PreparedGitAuthoringWorkspace, *, base_ref: str = "HEAD") -> tuple[str, ...]:
+    payload = _run_git(prepared.git_executable, (
+        "-C", str(prepared.worktree_root), "diff", "--name-only", "-z",
+        "--no-renames", "--diff-filter=D", base_ref, "--"),
+        timeout_seconds=prepared.timeout_seconds)
+    return tuple(_decode_git_path(raw) for raw in _nul_records(payload))
+
+
 def _merge_paths(*groups: Sequence[str]) -> tuple[str, ...]:
     return tuple(sorted({path for group in groups for path in group}, key=os.fsencode))
 
@@ -748,7 +758,7 @@ def _capture_readonly_patch(
     return b"".join(parts)
 
 
-def _audit_changed_paths(root: Path, paths: Sequence[str]) -> None:
+def _audit_changed_paths(root: Path, paths: Sequence[str], *, deleted_paths: Sequence[str] = ()) -> None:
     _real_directory(root, "authoring worktree")
     resolved_root = root.resolve()
     for relative in paths:
@@ -758,6 +768,14 @@ def _audit_changed_paths(root: Path, paths: Sequence[str]) -> None:
             current /= part
             try:
                 metadata = current.lstat()
+            except FileNotFoundError as exc:
+                if relative in deleted_paths:
+                    # Git proves a tracked deletion. Existing ancestors were
+                    # checked above; a removed directory is not an escape.
+                    break
+                raise GitAuthoringIntegrityError(
+                    f"changed path has an unavailable parent: {relative!r}"
+                ) from exc
             except OSError as exc:
                 raise GitAuthoringIntegrityError(
                     f"changed path has an unavailable parent: {relative!r}"

@@ -572,6 +572,11 @@ scratch.
    never infer a total from `max_cost`, token references, or experiment counts.
    Profile v4 exposes these optional financial limits in `safety.yaml`; changing
    them requires editing the prospective profile and repeating admission.
+   For ACI 22 or later, explain that EXECUTION may hand a submitted experiment
+   to Host waiting and resume the same node/session after terminal collection.
+   Both invocations use these admitted budgets; the handoff does not grant an
+   extra allowance or extend a wall deadline. Read the actual runtime version,
+   preserving terminal-only completion for earlier bundles.
    Also compare invocation `wall_seconds` with admitted `experiment_timeout`:
    these independently limit the controlling CC invocation and the scientific
    Process. A long experiment timeout does not keep its CC controller alive;

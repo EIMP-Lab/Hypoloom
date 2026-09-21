@@ -22,10 +22,16 @@ research sandbox. Experiments run in the selected research environment and
 publish validated outcomes through the Host. Native final text is schema checked
 at Stop and again at Host postflight; a process exit code alone is not acceptance.
 
-The execution Stop check waits for accepted experiment work, validates parser
-inputs using the production execution path, and remains interruptible by cancel
-or deadline. A retry reuses accepted experiment identities. Pending work and
-dispatch pauses cannot be reported as completed execution.
+Execution Stop validates parser inputs using the production execution path and
+remains interruptible by cancel or deadline. In ACI 22, an EXECUTION response
+may name `waiting_for_experiment_id` to hand the latest submitted experiment to
+Host waiting. That invocation closes and is charged normally; the research node
+remains unfinished. Host invokes the same node/session again only after terminal
+collection, under the remaining Profile budget. Each experiment allows one
+accepted handoff, including an exact repaired replacement; no new scheduler or
+waiting journal is introduced. Omitting the field still requires the latest
+experiment to be terminal. Earlier ACI versions retain terminal-only completion.
+Pending work and dispatch pauses cannot be reported as completed execution.
 
 A run-wide dispatch exception quarantines that run. On the next observation
 tick, the Host cancels its live Agent calls and records non-retryable

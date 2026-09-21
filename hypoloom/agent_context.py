@@ -424,7 +424,7 @@ def agent_retry_inputs(
 def infrastructure_retry_request(
     store: Any, workflow_id: str, command_id: str,
 ) -> tuple[AgentRequest, bool] | None:
-    """Return the direct prior request and whether retrieval must run again.
+    """Restore an infrastructure retry or successful execution handoff request.
 
     Every infrastructure retry reuses the durable request's exact pre-effect
     context while receiving a fresh Attempt identity, deadline and budget.
@@ -433,6 +433,11 @@ def infrastructure_retry_request(
     """
 
     latest = _latest_closed_agent_attempt(store, workflow_id, command_id)
+    if latest is not None and latest["terminal_reason"] == "SUCCEEDED":
+        from .agent_aci import execution_handoff
+        observation = json.loads(latest["observation_json"])
+        if execution_handoff(observation):
+            return AgentRequest.from_dict(observation["request"]), False
     if latest is None or latest["terminal_reason"] not in {
         AttemptTerminalReason.FAILED.value,
         AttemptTerminalReason.TIMED_OUT.value,

@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- September 22: local repair candidate uses ACI 22 for an optional EXECUTION
+  handoff to Host waiting. It closes/charges the invocation, resumes the same
+  node/session only after collection, and permits one handoff per experiment;
+  short experiments can still complete directly. Existing budgets, IDs and
+  lifecycle state remain authoritative. Tracked directory deletion now passes
+  Git capture/commit without relaxing live path checks; failed commit/archive
+  closure retains available transcript, metadata and provider accounting.
+  GPU reserve attribution is corrected in local-compute/7; unknown ownership
+  and reserve/grace protections remain. Leader/Debate skills compare actual
+  evaluation protocols; local/public Profile parameter choices are unchanged.
+  Final focused selection: 134 passed; a strengthened native CC/local-provider
+  CPU timing case also passes (same identity refreshed), proving controller
+  release before Process exit and collection afterward. Evidence is in the
+  [repair entry](../qualification.md#current-development--execution-handoff-and-session-repair-2026-09-22).
+  New runs only; no live-run mutation or paid/GPU qualification. The user reports
+  the retained run is terminated and authorizes committing/pushing this repair
+  to dev; this does not authorize restarting or migrating that run.
+
 - September 22: Web listeners default to OS-assigned port 0 across TUI,
   standalone CLI and automatic dashboards. Profile v4 now accepts 0; public
   en/zh templates and ignored local MERC notify configuration are updated.

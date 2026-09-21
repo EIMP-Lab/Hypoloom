@@ -64,7 +64,8 @@ RESOURCE_LEARNING_ACI_SCHEMA_VERSION = 18
 REFERENCE_ALIAS_ACI_SCHEMA_VERSION = 19
 PAPER_READING_ACI_SCHEMA_VERSION = 20
 DIRECTED_RESEARCH_ACI_SCHEMA_VERSION = 21
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = DIRECTED_RESEARCH_ACI_SCHEMA_VERSION
+EXECUTION_HANDOFF_ACI_SCHEMA_VERSION = 22
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = EXECUTION_HANDOFF_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -82,6 +83,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         REFERENCE_ALIAS_ACI_SCHEMA_VERSION,
         PAPER_READING_ACI_SCHEMA_VERSION,
         DIRECTED_RESEARCH_ACI_SCHEMA_VERSION,
+        EXECUTION_HANDOFF_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -108,6 +110,7 @@ _COMMANDS_BY_SCHEMA = {
     REFERENCE_ALIAS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     PAPER_READING_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     DIRECTED_RESEARCH_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    EXECUTION_HANDOFF_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -579,8 +582,11 @@ class ExpertLoopCandidate:
     supporting_refs: tuple[str, ...]
     update_disposition: HypothesisUpdateDisposition | None = None
     iteration_disposition: IterationDisposition | None = None
+    waiting_for_experiment_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.waiting_for_experiment_id is not None:
+            _text(self.waiting_for_experiment_id, "waiting_for_experiment_id")
         _text(self.task_kind, "task_kind")
         _text(self.summary, "summary")
         _text_tuple(self.supporting_refs, "supporting_refs", allow_empty=True)
@@ -1348,8 +1354,21 @@ class ValidatedSubmission:
     output_digest: str
 
 
-def validate_execution_completion(latest_state: str | None) -> None:
-    """Share the existing terminal-submission rule with native Stop preflight."""
+def execution_handoff(observation: Mapping[str, Any]) -> str | None:
+    """Read a handoff from the existing typed response, never a node-state mirror."""
+    request = observation.get("request", {})
+    if request.get("schema_version", 0) < EXECUTION_HANDOFF_ACI_SCHEMA_VERSION or request.get("command") != "EXPERIMENT_EXECUTION":
+        return None
+    return observation.get("response", {}).get("typed_candidate", {}).get("waiting_for_experiment_id")
+
+
+def validate_execution_completion(latest_state: str | None, *, waiting_for: str | None = None,
+                                  latest_experiment_id: str | None = None, can_handoff: bool = False) -> None:
+    """Share terminal completion and one-time handoff validation with native Stop."""
+    if waiting_for is not None:
+        if waiting_for != latest_experiment_id or not can_handoff:
+            raise AgentACIError("invalid_candidate", "handoff requires the latest owned experiment without a prior accepted handoff")
+        return
     if latest_state != "TERMINAL":
         guidance = ("Submit an experiment first." if latest_state is None else
             f"Latest state is {latest_state}; use wait_experiment until terminal. "
@@ -1700,6 +1719,12 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
         optional = {"update_disposition"}
         iteration = command is AgentCommand.RESULT_ANALYSIS and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION
         web_summary = command is AgentCommand.LITERATURE_REVIEW and _is_literature_main(request.task_context) and supports_literature_web(request.schema_version)
+        handoff = command is AgentCommand.EXPERIMENT_EXECUTION and request.schema_version >= EXECUTION_HANDOFF_ACI_SCHEMA_VERSION
+        if handoff:
+            allowed.add("waiting_for_experiment_id")
+            optional.add("waiting_for_experiment_id")
+            if "waiting_for_experiment_id" in raw:
+                _text(raw["waiting_for_experiment_id"], "waiting_for_experiment_id")
         if iteration:
             allowed.add("iteration_disposition")
         if web_summary:
@@ -1715,6 +1740,7 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
                 update_disposition=(None if disposition is None else
                                     HypothesisUpdateDisposition(disposition)),
                 iteration_disposition=IterationDisposition(raw["iteration_disposition"]) if iteration else None,
+                waiting_for_experiment_id=raw.get("waiting_for_experiment_id") if handoff else None,
                 **({"web_sources": _tuple(raw.get("web_sources", ()), "web_sources")} if web_summary else {}),
             )
         except (KeyError, TypeError, ValueError) as exc:

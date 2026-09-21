@@ -31,6 +31,7 @@ from .git_authoring_workspace import (
     GitAuthoringWorkspace,
     PreparedGitAuthoringWorkspace,
     _audit_changed_paths,
+    _deleted_paths,
     _changed_paths,
     _run_git,
     _validate_prepared,
@@ -232,6 +233,14 @@ def _session_transfer(request: AgentRequest):
     return debate, context, original, session
 
 
+class SessionFinishError(GitAuthoringIntegrityError):
+    """Partial closure evidence; never an accepted research output."""
+
+    def __init__(self, message: str, metadata: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.metadata = metadata
+
+
 @dataclass(slots=True, kw_only=True)
 class PreparedSessionWorkspace:
     request: AgentRequest
@@ -373,11 +382,11 @@ class PreparedSessionWorkspace:
             WorkspaceArtifact.from_bytes("implementation.patch", patch).to_dict(),
         ]
 
-    def finish_node(self) -> dict[str, Any]:
-        """Called by the Host after the process group exits, before durable close."""
+    def _commit_node(self) -> str:
         _validate_prepared(self.git_workspace)
         changed = _changed_paths(self.git_workspace)
-        _audit_changed_paths(self.worktree_root, changed)
+        _audit_changed_paths(self.worktree_root, changed,
+                             deleted_paths=_deleted_paths(self.git_workspace))
         message = (
             f"Hypoloom node {self.request.command_id}\n\nAttempt: {self.attempt_id}"
         )
@@ -397,14 +406,33 @@ class PreparedSessionWorkspace:
                 "-m",
                 message,
             )
-        commit = _git(self.git_workspace, "rev-parse", "HEAD").decode().strip()
+        return _git(self.git_workspace, "rev-parse", "HEAD").decode().strip()
+
+    def finish_node(self) -> dict[str, Any]:
+        """Archive independent evidence even if committing the workspace fails."""
         result = {
             **self.binding,
             "base_commit": self.git_workspace.base_commit,
-            "commit": commit,
+            "commit": None,
             "launch_arguments": list(self.session_arguments),
             "transcript": None,
         }
+        errors = []
+        try:
+            result["commit"] = self._commit_node()
+        except (OSError, ValueError, GitAuthoringWorkspaceError) as exc:
+            result["commit_error"] = str(exc)[:1024]
+            errors.append(exc)
+        try:
+            self._archive_node(result)
+        except (OSError, ValueError, GitAuthoringWorkspaceError) as exc:
+            result["archive_error"] = str(exc)[:1024]
+            errors.append(exc)
+        if errors:
+            raise SessionFinishError(str(errors[0]), result) from errors[0]
+        return result
+
+    def _archive_node(self, result: dict[str, Any]) -> None:
         if self.expert_resources is not None:
             result["expert_resources"] = self.expert_resources
         if self.leader_resources is not None:
@@ -412,7 +440,7 @@ class PreparedSessionWorkspace:
         transcript = self.session_root / f"{self.binding['session_id']}.jsonl"
         if not transcript.exists():
             result["transcript_missing"] = True
-            return result
+            return
         content = _regular(transcript, node_memory_limit(self.request, "max_transcript_bytes", _MAX_TRANSCRIPT_BYTES))
         # A partial final CC write is evidence of interruption, not a completed
         # record; preserve those exact bytes in the archive and label it.
@@ -451,7 +479,6 @@ class PreparedSessionWorkspace:
         # metadata uses the existing portable stable artifact identity.
         archive = {**publication.to_dict(), "path": "/".join(key.as_tuple())}
         result.update(transcript=archive, transcript_complete=complete)
-        return result
 
     def cleanup(self) -> None:
         """Reap per-invocation transports; preserve the chain's recovery context."""
