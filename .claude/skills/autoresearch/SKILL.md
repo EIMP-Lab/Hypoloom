@@ -63,8 +63,8 @@ profile is a stopped Hypoloom admission. No legacy runtime bridge is provided.
 
 `/autoresearch init` has no corresponding `hypoloom.cli init`
 subcommand. Implement it with Claude Code's read-only inspection,
-`AskUserQuestion`, the existing read-only `profile-check`, the narrowly scoped
-file operations described here, and the existing Host/CLI lifecycle. It is the
+`AskUserQuestion`, `python -B -m hypoloom.bootstrap`, the existing read-only
+`profile-check`, and the existing Host/CLI lifecycle. It is the
 single interactive flow for preparing a local profile and, only after one final
 authorization, optionally starting a fresh run. It adds no configuration or
 workflow authority.
@@ -73,10 +73,27 @@ The suggested repository-local layout is:
 
 ```text
 <repo>/.conda/envs/hypoloom/bin/python
+<repo>/config/hypoloom.env.example               # public credential template
+<repo>/.local/credentials/hypoloom.env           # private credentials, mode 0600
 <repo>/profiles/templates/<template-safe-name>   # tracked copy source
 <repo>/profiles/local/<profile-safe-name>        # ignored real profile
 <repo>/state/<profile-safe-name>-<YYYYMMDDHHMM> # ignored future state root
 ```
+
+Start by running `python -B -m hypoloom.bootstrap paths --repository <repo>`;
+add `--profile <name>` when selected. Show the actual private credential path,
+its existence/permissions, the public `config/hypoloom.env.example`, and the local
+Profile/template directories. Declared external credential paths appear separately
+from the default. Never display values. The dotenv file covers literature and
+notifications; model auth remains the separately selected environment/settings.
+Explain that `.local` is hidden and ignored, not missing by design.
+
+Use the deterministic helper for prospective Profile validation and launch
+assembly. It reuses admission, credentials, model-source inspection and the
+existing managed lifecycle. It creates no launch manifest. Models choose and
+explain user policy; they must not manually reimplement these checks or invent
+command arguments. A passing configuration is not provider availability or a
+scientific-quality qualification; preview performs no provider probe.
 
 ### Read-only decision and qualification phase
 
@@ -166,8 +183,9 @@ scratch.
    Review the exact topic, objective, completion signals, roles, runtime,
    budgets and permissions. Never modify the source profile in place or infer
    missing scientific choices from old Attempts. Show the proposed field-level
-   changes before final confirmation; withhold `Start now` until `profile-check`
-   admits the new destination. Do not offer automatic format migration.
+   changes before final confirmation; withhold `Start now` until the existing
+   admission validator accepts the in-memory candidate. After writing,
+   `profile-check` must admit the actual new destination before Host launch. Do not offer automatic format migration.
 
    A schema-v2, schema-v3 or schema-v4 real `expert-six-node/1` run requires the explicit `openalex`
    literature adapter and one operator-selected, already-existing absolute
@@ -678,21 +696,38 @@ path. If a required `git check-ignore --no-index` command fails, stop with zero
 writes. Do not edit `.gitignore` from this skill and do not treat `git status`
 as a substitute.
 
-Run `PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom` with the existing
-`-m hypoloom.cli profile-check` read-only, using the selected profile,
-prospective run ID, process delay, and exact GPU decision. Include exactly one
-of `--allow-gpu` or `--cpu-only`, and verify that
-`create_run_payload.execution.allow_gpu` matches that reviewed decision.
-Host GPU capability alone never grants run authorization. For adoption, use
-the local profiles root and record that exact command for the automatic repeat.
-For copy mode, check the byte-identical tracked template from the templates root
-before confirmation and record the exact intended command against the future
-local destination; that local command can run only after the exclusive copy.
-Capture the source command's exit status and full JSON report, including
-`create_run_payload`. Do not create the state root, contact the Host, call a
-provider, or turn blockers into a smaller hand-written payload. A blocked
-starter may still be copied for later editing, but init must withhold automatic
-start and must not call it ready.
+Run `python -B -m hypoloom.bootstrap prepare <profile> --repository <repo>
+--run-id <reviewed-id>` with exactly one of `--allow-gpu` or `--cpu-only` and the
+reviewed literature arguments. For adoption, omit `--template` and `--set`:
+the existing local Profile is read-only. For a new destination, select
+`--template multi-expert-en` or `--template multi-expert-zh`; apply each reviewed
+field with `--set 'section.field=YAML-value'`, for example
+`--set 'experts.defaults.model=exact-provider-model'`. This is the existing
+six-file Profile syntax, not a second configuration schema. Whole lists may be
+replaced with a YAML list; never pass secret literals.
+
+Without `--write` this is a zero-write preview: the helper applies edits in memory
+and runs the same admission validator on the **filled candidate**, not on the
+unbound template. Inspect `candidate_files`, `admission` and `literature_preflight`.
+Use the actual admitted payload for budgets. Retain these exact in-memory inputs
+and outputs for the current review. A blocked starter may be prepared for later
+editing, but cannot be started. Never treat exit 2 as ready.
+
+Run `bootstrap launch` with the same profile/template/field/run/GPU/literature
+choices, the reviewed `--state-root`, `--control-python`, `--request-id`,
+`--auth-transport` and selected Host options. This read-only command derives the
+exact `profile_check`, `host_start`, `start`, `status` and `host_stop` arrays.
+It propagates one literature vector and the admitted invocation budget, including
+literal `--agent-max-cost-usd null` when applicable. A declared
+`literature.credentials_file` is used when no explicit credential source is given.
+Host-only `--gpu-pool-socket`, `--gpu-pool-namespace`, `--gpu-pool-server-uid`
+and `--web-search-fallback` never enter client commands; CPU/GPU authorization
+never enters `serve`. Host GPU inputs are `--gpu-device-uuid` and
+`--gpu-runtime-prefix`. The helper derives `--agent-max-turns`,
+`--agent-max-tokens`, `--agent-max-output-bytes`, `--agent-wall-seconds` and
+`--agent-max-cost-usd` from admission. There is no token-mode CLI flag:
+`token_enforcement_mode` stays in the admitted Profile. Do not assemble those arrays in chat. Pool inventory,
+sharing approval, systemd readiness and the final user choice below still apply.
 
 Present one final review containing the profile version/mode and its exact six files;
 profile, profiles, state, and interpreter paths; run/request IDs and delay; the
@@ -796,41 +831,13 @@ run effect.
 ### Confirmed bootstrap writes
 
 After final confirmation, recheck all no-overwrite preconditions. Adoption
-mode makes no profile write. In copy mode, create only the required
-`profiles/local` parent and new destination, then copy the six files named above individually with shell-enforced exclusive-create
-semantics. Never use a recursive or wildcard copy, never copy another template
-entry, and never overwrite or merge an existing destination. If a precondition
-changed or a copy fails, stop and report the exact partial result; never repair
-it by overwriting.
-
-A tracked template copy remains byte-identical until its documented placeholders
-are explicitly edited. Apply only the destination changes shown in the final
-review. Existing local profiles are read-only inputs to this bootstrap;
-never silently import their values into a new template.
-
-Use an explicit six-name loop, not directory recursion or a glob:
-
-Bind `PROFILE_LAYOUT` to `v4` for a public template. Older local profiles
-can be adopted unchanged only if their exact admission is explicitly selected. `TEMPLATE_SOURCE` remains the exact tracked template directory.
-These shell variables are not persisted configuration.
-
-```bash
-mkdir -p -- "$REPOSITORY/profiles/local" || exit 1
-mkdir -- "$PROFILE_DESTINATION" || exit 1
-(
-  umask 077
-  set -o noclobber
-  test "$PROFILE_LAYOUT" = v4 || exit 1
-  PROFILE_FILES=(
-    goal.yaml experts.yaml methodology.yaml language.yaml notify.yaml safety.yaml
-  )
-  for PROFILE_FILE in "${PROFILE_FILES[@]}"
-  do
-    cat -- "$TEMPLATE_SOURCE/$PROFILE_FILE" \
-      > "$PROFILE_DESTINATION/$PROFILE_FILE" || exit 1
-  done
-) || exit 1
-```
+mode makes no profile write. For a new Profile, run the exact reviewed
+`bootstrap prepare` command with `--write`. The helper creates the new directory
+exclusively and writes the six individually named files at mode 0600; it never
+overwrites or merges an existing destination. Never use a recursive or wildcard copy.
+Its emitted candidate and admitted payload must match the reviewed preview.
+If writing fails, report the partial result and stop; never overwrite to repair it.
+Public source templates and existing local Profiles stay unchanged.
 
 Only when project settings was absent and the user separately opted in may the
 skill copy `.claude/settings.example.json` to `.claude/settings.json`. Use an
@@ -869,172 +876,53 @@ before creating a Host/root. Never attach this flow to
 an existing state root or infer an existing run. Existing roots and runs remain
 read-only unless a later operation receives its own exact authorization.
 
-Migration mode has one additional fail-closed ordering constraint. Because the
-new v3 destination did not exist during the read-only phase, run its exact
-reviewed schema-v3 `profile-check` after the exclusive writes and before
-`manage_host.py start`. Pass the same run, GPU, process-delay, OpenAlex, and
-Poppler values reviewed above. Only an admitted report with the intended exact
-`expert-six-node/1` controls may proceed; otherwise return the blockers inline,
-leave the source untouched, and create no state root, unit, Host, or run. This
-is still the same `/autoresearch init` interaction, not a manual-command
-handoff. The ordinary post-ready repeat below remains required to detect a
-benign intervening profile change.
+There is no migration mode. The helper rereads and admits the actual local
+Profile before any Host launch, including freshly written v4 Profiles.
 
-Build the complete `serve` argument vector from the reviewed values. For a real
-Agent it includes `--claude-executable`, `--claude-model`, `--claude-bwrap`,
-`--agent-max-turns`, `--agent-max-tokens`, `--agent-max-output-bytes`,
-`--agent-wall-seconds`, and `--agent-max-cost-usd`. The five Agent flag values
-must be the exact transport projection of the admitted
-`research_contract.budget.agent_invocation`; they are not another source of
-authority or another user choice. Transport an admitted `max_cost: null` as the
-literal two arguments `--agent-max-cost-usd null`; omitting the flag selects a
-different default. There is no token-mode CLI flag: preserve the
-exact admitted `token_enforcement_mode` in the profile/run payload and never
-infer or override it from the five transport flags. Repeat
-`--gpu-device-uuid` for each accepted GPU and include the exact
-`--gpu-runtime-prefix`; CPU-only omits every GPU form. For reviewed pool
-participation, append the literal `--gpu-pool-socket` path and
-`--gpu-pool-namespace` name, plus `--gpu-pool-server-uid` only when reviewed.
-The socket/namespace pair must travel unchanged in the existing managed Host
-`serve` argv; these Host-only options do not belong to `profile-check` or `start`.
-Do not infer endpoint or namespace from environment/global configuration:
-the endpoint comes from the reviewed existing binding or the
-`manage_gpu_pool.py ensure` result, and the Host vector itself never deploys
-a pool. Existing-settings auth
-adds exactly one validated `--claude-settings` path. Environment auth omits it.
-A fake Agent must use explicit `--agent-adapter fake`, has no secret transport,
-and uses the helper's `none` service mode. Every Host launched by this managed
-fresh-root path includes exactly one `--exit-when-terminal`. `--allow-gpu` and
-`--cpu-only` are client-only choices for the repeated `profile-check` and `start`
-commands; carry the same required choice to all three invocations and never
-place either in the `serve` argument vector. For schema-v2/v3/v4 real
-expert loops, include the already reviewed OpenAlex literature argument vector
-unchanged in this `serve` vector, and reuse those identical arguments for the
-post-write admission and run creation below.
+Run `bootstrap launch` once without `--start` against the prepared local Profile
+(omit `--template` and `--set`). Compare its admitted `create_run_payload` and
+command arrays with the approved preview. A mismatch requires a new review,
+never silently substitute defaults. When an approved new pool is needed, first
+use `manage_gpu_pool.py ensure` as reviewed and retain its exact binding;
+a refusal blocks launch, without a nonpooled fallback.
 
-Keep the selected Unpaywall PDF fallback and contact-file option in that common
-literature vector. Keep the chosen `--web-search-fallback openalex` in the Host
-vector only, alongside the pool socket/namespace/UID. Neither option is implied
-by `--literature-adapter openalex`: that adapter alone enables explicit academic
-search, with general-web fallback off and the default PDF provider unchanged.
-Use the complete vector already displayed in the final review, including earlier
-confirmed choices in this session; its omission is a launch mismatch, not a new
-default choice. No extra configuration file or launch manifest is needed.
+Then run those same bootstrap arguments with `--start`. This flag is the explicit
+execution choice, available only after the user's Start-now authorization.
+The helper performs the existing lifecycle in order: read-only `profile-check`,
+optional pool status, `manage_host.py` start, repeated admission and payload
+comparison, one `hypoloom.cli start` with the stable request ID, then `status`.
+A failed pre-create check stops only the newly created managed Host. No state
+root or log is deleted. A managed launch failure remains a failure; never fall
+back to an ad-hoc `systemd-run`, shell background process or foreground Host.
 
-Invoke the existing lifecycle helper once, with fully resolved absolute values
-and no shell placeholder. When the final review approved pool creation, the
-reviewed `manage_gpu_pool.py ensure` invocation runs first in this same turn;
-require its `ready` or `reused` result and carry its socket into
-`${REVIEWED_HOST_ARGUMENTS[@]}`. An `ensure` refusal blocks this path: report
-the verbatim status and stop before the helper call below rather than falling
-back to a nonpooled launch.
+On ambiguous creation, the helper queries STATUS immediately. If the run exists,
+it does not retry or stop it. Only a conclusive `not_found` allows cleanup;
+otherwise it reports `creation_uncertain`, preserves the unit, and requires
+operator reconciliation. Never invent another request ID or automatically rerun
+`--start`; an existing state root is rejected. Before creation, a failed initial
+check opens no Host. After creation, a failed status read does not undo the run.
+Every helper and CLI subprocess uses the selected repository as its working
+directory, including when init was invoked from a different directory.
 
-```bash
-PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
-"$CONTROL_PYTHON" \
-  "$REPOSITORY/.claude/skills/autoresearch/scripts/manage_host.py" start \
-  --state-root "$STATE_ROOT" \
-  --working-directory "$REPOSITORY" \
-  --ready-timeout "$READY_TIMEOUT" \
-  --auth-transport "$AUTH_TRANSPORT" -- \
-  "$CONTROL_PYTHON" -m hypoloom.cli serve \
-  --state-root "$STATE_ROOT" --exit-when-terminal \
-  "${REVIEWED_HOST_ARGUMENTS[@]}"
-```
-
-The actual invocation must expand the reviewed Host arguments before execution;
-never pass the illustrative array expression above literally. Use
-`--auth-transport none` only with the fake adapter and no
-`--claude-settings`. Use `--auth-transport settings` only with the Claude
-adapter and exactly one validated settings path; both modes start an exact
-transient user systemd service without forwarding an ambient API key. Use
-`--auth-transport environment` only with the Claude adapter, no settings flag,
-and inherited-key auth; the helper starts the detached user systemd scope with
-the key inherited from its environment, never in argv, unit properties, JSON,
-logs, or chat. Do not call `systemd-run` or `systemctl` independently to invent
-another lifecycle. The managed service retains `Restart=on-failure`, but its
-restart rate is bounded by the helper's finite 30-second window and burst of
-three; do not replace that interval with `infinity`. Exit statuses 2 and 78
-stop automatic service restart. Existing readiness failure
-cleanup still stops the newly derived unit. An environment-auth scope has no
-automatic restart.
-
-The helper itself waits for the control socket and checks the newly created
-unit. Require its ready JSON fields `status`, `supervisor`, `unit`,
-`state_root`, and `control_socket`, with `supervisor` exactly `user-systemd`.
-Socket readiness establishes Host liveness, not GPU pool participation. Inspect
-the new unit's actual `serve` arguments before submitting `start`: the reviewed
-pool options, UUIDs/runtime, model/settings path, web-search fallback and complete
-literature/PDF arguments must all match the displayed vector. On a mismatch,
-stop this newly created Host with the existing helper before creating a run;
-report the missing or different options without substituting a default. Read only the non-secret launch
-arguments; never dump the service environment. After run creation, its existing
-STATUS `gpu_pool` field projects the stored binding (null means no shared pool).
-Verify its socket, namespace and peer UID against the review after run creation;
-use the existing stored run configuration for `grounding_web` and `literature`.
-These are observations of the actual launch, not new sources of configuration.
-The monitor shows that same binding alongside live resource waits.
-The returned unit must end in `.service` for `none`/settings mode and `.scope`
-for environment auth. A helper readiness failure cleans up its own newly
-created exact unit and is a stopped launch, not permission to start by hand.
-Immediately before systemd launch, the helper exclusively creates the reviewed
-canonical state-root leaf itself with mode `0700`; this standard atomic mkdir
-prevents a benign concurrent creator from substituting an existing root between
-the final absence check and `serve`. If the leaf appeared first, launch stops.
-If a later launch/readiness step fails, the helper leaves its newly created
-state root for explicit reconciliation and never deletes or reuses it
-automatically.
-
-Every helper and CLI subprocess in this automatic sequence—including the
-repeated profile check, `start`, reconciliation/status, and rollback—must carry
-the literal environment assignments `PYTHONDONTWRITEBYTECODE=1` and
-`HYPOLOOM_RUNTIME_FAMILY=hypoloom`. Do not depend on either value being present
-in the Claude parent.
-
-After ready, execute the exact intended post-write `profile-check` recorded at
-confirmation, with the same control Python, final local profile and profiles
-root, run ID, process delay, GPU decision, and literature arguments, again setting
-`PYTHONDONTWRITEBYTECODE=1` and `HYPOLOOM_RUNTIME_FAMILY=hypoloom`. In adoption
-mode this repeats the pre-confirmation command exactly. In copy mode it is the
-reviewed local-destination command whose byte-identical source was checked
-before confirmation. Require exit 0, no blockers, and the same reviewed
-`create_run_payload`, including its `execution.allow_gpu`; a mismatch is a
-pre-start failure. Use only this second
-report's payload. Then invoke `-m hypoloom.cli start` exactly once with
-those same values and literature arguments, the fresh state root, and the one
-reviewed stable request ID.
-Do not hand-build, shrink, or rewrite the payload.
-
-If any failure occurs after the helper created its unit but before run creation
-is confirmed, stop that exact managed Host through the same helper and auth
-transport:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
-"$CONTROL_PYTHON" \
-  "$REPOSITORY/.claude/skills/autoresearch/scripts/manage_host.py" stop \
-  --state-root "$STATE_ROOT" --auth-transport "$AUTH_TRANSPORT"
-```
-
-The stop helper is only the rollback for this current Start-now flow before run
-creation is confirmed. It recomputes the exact unit from the state root; never
-substitute a PID or user-supplied unit name, and never delete state or logs as
-cleanup. Do not use it to stop a terminal run, scan old roots or units, or
-clean up any retained run without a separate exact lifecycle authorization.
-
-Treat an interrupted, timed-out, or otherwise ambiguous `start` transport
-result differently from a proved pre-start failure. Keep the managed unit
-running and query `status` immediately for the exact reviewed run ID before any
-retry. If status proves the run exists, do not retry. If status conclusively
-proves it absent, at most one transport retry may reuse the exact same profile,
-root, run ID, request ID, delay, GPU decision, and request values. Never invent
-another request ID. If status is itself ambiguous, neither retry nor stop a Host
-that may own a created run; report the uncertainty and exact unit inline for
-operator reconciliation.
+`--auth-transport environment` uses the managed scope with the inherited key,
+never in argv, unit properties, JSON, logs, or chat. `--auth-transport settings`
+(and fake `none`) uses the transient user systemd service without forwarding an
+ambient API key. The helper keeps secrets out of argv,
+reports and unit properties. Existing managed readiness cleanup,
+`RestartPreventExitStatus=2 78`, finite 30-second window and burst of three remain;
+do not replace that interval with `infinity`. No additional launch config or
+receipt is persisted. `Prepare only` never passes `--start`.
 
 Once creation is confirmed, fetch `status` for the exact run and report the
 Host unit/supervisor, run ID, revision, lifecycle state, and any resource waits
-inline in this same Claude interaction. Do not print a multi-terminal handoff
+inline in this same Claude interaction. Confirm the returned supervisor is
+`user-systemd` and the unit is a `.service` for none/settings or a `.scope` for
+environment auth. Inspect the actual non-secret `serve` arguments and compare
+the existing STATUS `gpu_pool` binding and stored `grounding_web`/`literature`
+configuration with the reviewed choices. Socket readiness alone does not prove
+pool participation. Report any discrepancy without claiming readiness or
+automatically stopping an already-created run; never dump the unit environment.
+Do not print a multi-terminal handoff
 or require the TUI. If mentioning the optional later Textual view, describe the
 actual `/autoresearch monitor <run-id>` behavior precisely: it opens a new
 window when this Claude Code session is already inside tmux, and otherwise

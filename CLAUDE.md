@@ -18,6 +18,13 @@ Review exact target/data paths, model authentication, budgets, GPU UUIDs,
 literature access and notification recipients before one final Start now or
 Prepare only choice. Reuse the tracked model/Host/monitor helpers.
 
+Init uses `python -B -m hypoloom.bootstrap`: `paths` displays private/default
+locations without values, `prepare` validates filled template contents in memory
+(`--write` exclusively creates a new Profile), and `launch` derives all arguments
+(`--start` performs the authorized managed sequence). Read-only previews create
+no Host or state. The public credential template is `config/hypoloom.env.example`;
+the private default remains `.local/credentials/hypoloom.env`. Model auth is separate.
+
 Existing runs remain read-only without explicit operation authorization.
 Their frozen runtime determines their execution identity. Never migrate a run
 to the working tree or write SQLite directly. An ACTIVE record alone does not

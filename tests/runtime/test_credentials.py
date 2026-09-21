@@ -12,6 +12,7 @@ from hypoloom.credentials import (CREDENTIALS_FILE_MAX_BYTES, CredentialError, c
 def _write(tmp_path, text, name="hypoloom.env"):
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
     return path
 
 
@@ -41,10 +42,12 @@ def test_rejects_empty_oversize_and_non_utf8(tmp_path):
         read_credentials_file(str(_write(tmp_path, "")))
     oversized = tmp_path / "oversized"
     oversized.write_bytes(b"A" * (CREDENTIALS_FILE_MAX_BYTES + 1))
+    oversized.chmod(0o600)
     with pytest.raises(CredentialError, match="outside its bound"):
         read_credentials_file(str(oversized))
     binary = tmp_path / "binary"
     binary.write_bytes(b"\xff\xfe\x00")
+    binary.chmod(0o600)
     with pytest.raises(CredentialError, match="UTF-8"):
         read_credentials_file(str(binary))
 
@@ -72,7 +75,27 @@ def test_credential_requires_present_non_empty_values():
         credential({"TELEGRAM_BOT_TOKEN": ""}, "TELEGRAM_BOT_TOKEN")
 
 
-def test_shipped_template_lists_every_conventional_key():
-    template = Path(__file__).resolve().parents[2] / "profiles/templates/hypoloom.env.example"
-    entries = read_credentials_file(str(template))
+def test_shipped_template_lists_every_conventional_key(tmp_path):
+    template = Path(__file__).resolve().parents[2] / "config/hypoloom.env.example"
+    entries = read_credentials_file(str(_write(tmp_path, template.read_text())))
     assert set(entries) == {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "OPENALEX_API_KEY", "UNPAYWALL_EMAIL"}
+
+
+@pytest.mark.parametrize("mode", [0o400, 0o640, 0o644, 0o660, 0o700])
+def test_rejects_nonprivate_permissions_without_disclosing_or_changing_file(tmp_path, mode):
+    path = _write(tmp_path, "OPENALEX_API_KEY=private-value\n")
+    path.chmod(mode)
+    with pytest.raises(CredentialError, match="mode 0600") as captured:
+        read_credentials_file(str(path))
+    assert "private-value" not in str(captured.value)
+    assert path.stat().st_mode & 0o777 == mode
+
+
+def test_literature_preflight_rejects_public_dotenv(tmp_path):
+    from hypoloom.cli import build_parser, _literature_preflight
+    path = _write(tmp_path, "OPENALEX_API_KEY=private-value\n")
+    path.chmod(0o644)
+    args = build_parser().parse_args(["profile-check", "sample", "--run-id", "sample-1", "--cpu-only",
+        "--literature-adapter", "openalex", "--credentials-file", str(path)])
+    with pytest.raises(CredentialError, match="mode 0600"):
+        _literature_preflight(args)

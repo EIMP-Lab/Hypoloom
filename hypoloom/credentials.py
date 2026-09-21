@@ -1,8 +1,8 @@
 """One dotenv-style credentials file shared by Host-facing adapters.
 
 A Profile references the file by absolute path (`literature.credentials_file`,
-`sinks.telegram.credentials_file`) so every local secret lives in a single
-ignored mode-0600 file instead of one file per secret. The parser accepts a
+`sinks.telegram.credentials_file`) so literature and notification credentials
+share one ignored mode-0600 file. Model authentication is separate. The parser accepts a
 strict auditable subset: blank lines and `#` comments, `KEY=VALUE` pairs, no
 quoting, expansion, or `export`. Errors name keys and line numbers, never
 values.
@@ -40,8 +40,11 @@ def read_credentials_file(value: object) -> dict[str, str]:
     except OSError:
         raise CredentialError("credentials file is unavailable") from None
     try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
             raise CredentialError("credentials file must be a regular file")
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise CredentialError("credentials file must have mode 0600")
         raw = bytearray()
         while len(raw) <= CREDENTIALS_FILE_MAX_BYTES:
             block = os.read(descriptor, CREDENTIALS_FILE_MAX_BYTES + 1 - len(raw))

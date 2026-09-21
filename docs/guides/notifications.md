@@ -6,7 +6,7 @@ Read-only diagnosis or opening the monitor does not authorize delivery.
 
 In a local v4 Profile, configure `notify.yaml.sinks.telegram.enabled` and one
 credential source. The standard source is `credentials_file`: an absolute path
-to one dotenv file (template: `profiles/templates/hypoloom.env.example`)
+to one dotenv file (template: `config/hypoloom.env.example`)
 holding `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The alternative is
 `bot_token_env` and `chat_id_env`, whose values name environment variables,
 never literal credentials. Use exactly one source, and supply either secret
@@ -42,7 +42,7 @@ test proves local request behavior, not actual delivery to a public recipient.
 
 中文：请在本地 Profile 中开启通知并明确接收对象。密钥集中存放在一个 dotenv 凭据文件
 （`sinks.telegram.credentials_file` 声明其绝对路径；模板见
-`profiles/templates/hypoloom.env.example`），或改用环境变量方式（`bot_token_env` /
+`config/hypoloom.env.example`），或改用环境变量方式（`bot_token_env` /
 `chat_id_env`），二者选其一；秘密不能写进 YAML 或公开 Issue。提醒只是返回 TUI/Web
 操作的入口，不会自动接受建议或恢复调度。
 

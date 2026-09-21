@@ -11,6 +11,22 @@ settings must be merged manually and are never overwritten. A normal
 leaving Claude Code or reopening the session, and does not ask you to open
 separate Host/monitor terminals.
 
+Personal configuration is indexed in [config/README.md](config/README.md).
+The public template is `config/hypoloom.env.example`; your real file remains
+`.local/credentials/hypoloom.env` in a hidden, ignored directory. Use
+`python -B -m hypoloom.bootstrap paths --profile <name>` with the control Python
+to see defaults and Profile-declared paths, existence and permissions, without
+showing values. Model authentication remains separate from this dotenv file.
+
+Init uses `hypoloom.bootstrap prepare` to validate filled template values in
+memory, with zero writes. Only the explicit `--write` preparation creates a
+fresh six-file Profile. `bootstrap launch` previews arguments; `--start` invokes
+the existing managed lifecycle after authorization, rereading the Profile
+before and after Host readiness. Profile changes during preparation stop the
+launch. A configuration check makes no provider request and does not certify
+model availability or scientific quality. Exact helper usage is in
+[the Profile guide](profiles/README.md#deterministic-preparation--确定性准备).
+
 ## 1. Control environment
 
 The runtime topology targets Linux: Git, bubblewrap (`bwrap`), working user
@@ -60,7 +76,7 @@ key.
 Literature retrieval uses OpenAlex. The complete native expert path needs an
 approved dotenv credentials file (recommended
 `.local/credentials/hypoloom.env`; template at
-`profiles/templates/hypoloom.env.example`) holding `OPENALEX_API_KEY` and,
+`config/hypoloom.env.example`) holding `OPENALEX_API_KEY` and,
 when the Unpaywall PDF fallback is selected, `UNPAYWALL_EMAIL`; it must be an
 existing, absolute-path, non-symlink, mode-0600 file. A local v4 Profile
 declares this path in `literature.credentials_file`; the init/operator flow

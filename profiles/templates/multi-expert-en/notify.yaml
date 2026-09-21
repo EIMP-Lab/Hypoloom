@@ -5,7 +5,7 @@ sinks:
   telegram:
     enabled: false
     # One dotenv credentials file holds TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
-    # (see profiles/README.md and profiles/templates/hypoloom.env.example);
+    # (see profiles/README.md and config/hypoloom.env.example);
     # absolute path, never a secret literal. Environment-variable sources are
     # the supported alternative; use exactly one source:
     # bot_token_env: HYPOLOOM_TELEGRAM_BOT_TOKEN

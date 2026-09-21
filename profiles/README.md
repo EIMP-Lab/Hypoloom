@@ -20,11 +20,11 @@ keys, mixed layouts and unbound runtime paths fail admission.
 
 ## Credential file / 凭据文件
 
-Keep every local credential (OpenAlex key, Unpaywall contact, Telegram bot
+Keep literature and notification credentials (OpenAlex key, Unpaywall contact, Telegram bot
 token/chat ID) in **one dotenv file** in an ignored directory, for example the
 project's `.local/credentials/hypoloom.env` (`/.local/` is Git-ignored):
 `mkdir -m 700 -p .local/credentials`, copy
-[templates/hypoloom.env.example](templates/hypoloom.env.example) there, keep
+[config/hypoloom.env.example](../config/hypoloom.env.example) there, keep
 the file mode 0600, and fill in the values you use. The format is a strict
 subset: `KEY=VALUE` lines and `#` comments. Profiles reference the file by
 absolute path — never inline secret literals:
@@ -36,13 +36,17 @@ absolute path — never inline secret literals:
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`; or the environment-variable
   alternative `bot_token_env` / `chat_id_env`. Use exactly one source.
 
-中文：所有本地凭据（OpenAlex 密钥、Unpaywall 联系方式、Telegram bot
+中文：文献和通知凭据（OpenAlex 密钥、Unpaywall 联系方式、Telegram bot
 令牌/会话 ID）集中存放在一个 dotenv 文件中（如项目
 `.local/credentials/hypoloom.env`，`/.local/` 已被 Git 忽略；目录 0700、
-文件 0600）。复制 `templates/hypoloom.env.example` 后按需填写，格式为严格
+文件 0600）。复制 `config/hypoloom.env.example` 后按需填写，格式为严格
 子集（`KEY=VALUE` 行与 `#` 注释）。Profile 里只写绝对路径
 （`literature.credentials_file`、`sinks.telegram.credentials_file`），不写
 秘密明文；Telegram 也可用环境变量方式，两种方式二选一。
+
+Model authentication uses the separately selected environment or Claude settings;
+this file is not automatically sourced into your shell. 模型认证仍使用单独选定的
+环境变量或 Claude 设置文件，此 dotenv 文件不会自动加载到 shell 环境。
 
 | File | Meaning / 职责 |
 |---|---|
@@ -72,9 +76,9 @@ TUI 自己的 Web 监听由 `monitor --web-port` 配置，也默认使用 `0`。
 
 ## Create a local topic / 创建本地课题
 
-Use `/autoresearch init` to copy one reviewed template into a fresh ignored
-`profiles/local/<name>` directory. It copies the six files individually and
-rejects an existing destination. Adopt an existing local Profile unchanged when
+Use `/autoresearch init` to preview a filled template, then write its six files
+into a fresh ignored `profiles/local/<name>` directory after confirmation.
+It rejects an existing destination. Adopt an existing local Profile unchanged when
 its admitted semantics already match the request.
 
 Replace `REPLACE_WITH_PINNED_MODEL` with the exact model selector supported by
@@ -87,6 +91,50 @@ from silently selecting a machine, account or research project.
 中文：通过 `/autoresearch init` 选择模板并审阅复制目标。中文模板不仅翻译本说明，也翻译
 目标、专家背景、研究原则及注释。两种语言的字段名、专家 ID、预算、权限和数值控制保持
 一致；`language.yaml` 分别选择 `en` 或 `zh-CN`。实际模型、数据和运行环境必须由你填写。
+
+## Deterministic preparation / 确定性准备
+
+The interactive entry stays `/autoresearch init`. Its tracked implementation
+uses `python -B -m hypoloom.bootstrap` with the qualified control Python:
+
+- `paths [--profile <name>]`: show the default and selected credential paths,
+  existence, permissions and template locations without displaying values.
+- `prepare <name> --template <template> --set section.field=YAML ...`: fill
+  the prospective six files in memory and run ordinary Profile admission.
+  Add `--write` only after approving those contents. It creates a new private
+  directory and never edits the source or an existing Profile.
+- `launch <name> ...`: derive the managed Host and client arguments. Add
+  `--start` only for an authorized fresh run, after the local Profile exists.
+  It checks the actual Profile before/after Host readiness and reconciles an
+  ambiguous create response by querying the exact run, without duplicate creation.
+
+For example, this command previews only; replace paths and the exact model:
+
+```bash
+./.conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap prepare my-topic \
+  --template multi-expert-en --run-id my-topic-202609221010 --cpu-only \
+  --set 'experts.defaults.model=your-exact-provider-model' \
+  --set 'methodology.runtime.target_repo=/absolute/research-target' \
+  --set 'methodology.runtime.conda_env=/absolute/research-runtime' \
+  --set 'safety.allow_read_paths=[/absolute/research-data]'
+```
+
+`--set` uses the existing section/field names and YAML values; replace an entire
+list when necessary. Budgets, research policy and scientific text remain explicit
+Profile choices. An unbound starter can be written for later editing, but exit 2
+and admission blockers never authorize a launch. For real work, include the
+reviewed `--literature-adapter openalex` options; the Profile's declared
+`literature.credentials_file` is used unless an explicit credential source is
+selected. Configuration checks do not contact providers. The helper neither
+creates credentials nor deploys a GPU pool; existing pool selection and consent
+remain in the interactive flow.
+
+中文：`paths` 让隐藏的个人配置位置可见；`prepare` 在内存中填写并校验新模板，
+默认不写文件，确认后加 `--write` 才创建新目录。已有 Profile 只读复用，拒绝用
+`--set` 或 `--write` 覆盖。`launch` 默认只展示由同一参数源生成的命令；已授权真实
+启动时才加 `--start`，并在 Host 就绪前后复查实际配置。请求结果不明确时先查状态，
+不重复创建。课题目标、预算、并发与交互策略仍由 Profile 决定；模型可用性和科学
+质量需要单独验证。真实凭据仍由用户在私有文件中填写，不能放入 `--set`。
 
 ## Budgets and GPU use / 预算与 GPU
 

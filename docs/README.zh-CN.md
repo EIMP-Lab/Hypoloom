@@ -7,6 +7,7 @@
 - [README](../README.zh-CN.md):能力与最短开始路径
   ([English](../README.md))。
 - [SETUP](../SETUP.zh-CN.md):安装、认证与资源配置。
+- [个人配置入口](../config/README.md):凭据、模板与本地 Profile 路径(双语)。
 - [USAGE](../USAGE.zh-CN.md):监控、人工答复、取消与恢复。
 - [Profile 模板](../profiles/README.md):完整的中英文 v4 示例(双语)。
 - [操作员指南](operator-guide.zh-CN.md):操作参考。

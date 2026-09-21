@@ -508,7 +508,7 @@ def test_public_skill_creates_fresh_v4_profiles_without_rewriting_existing_sourc
         "new ignored `profiles/local/<new-safe-name>` destination",
         "Never modify the source profile in place",
         "exact topic, objective, completion signals, roles, runtime",
-        "withhold `Start now` until `profile-check` admits the new destination",
+        "admission validator accepts the in-memory candidate",
         "Do not offer automatic format migration",
     ):
         assert requirement in text
@@ -572,12 +572,11 @@ def test_public_skill_init_can_adopt_local_profile_or_copy_tracked_template() ->
         "safety.yaml",
     ):
         assert filename in text
-    assert "six files named above individually with shell-enforced exclusive-create" in text
+    # Actual exclusivity, modes and preview/admission equality are exercised in
+    # test_bootstrap.py, rather than requiring a hand-written shell copy loop.
+    assert "bootstrap prepare" in text and "`--write`" in text
     assert "Never use a recursive or wildcard copy" in text
-    assert "never overwrite or merge an existing destination" in text
-    assert 'cat -- "$TEMPLATE_SOURCE/$PROFILE_FILE"' in text
-    assert 'set -o noclobber' in text
-    assert 'mkdir -- "$PROFILE_DESTINATION" || exit 1' in text
+    assert "Public source templates and existing local Profiles stay unchanged" in text
 
 
 def test_public_skill_init_uses_one_server_minute_launch_identity() -> None:
@@ -627,35 +626,13 @@ def test_public_skill_start_now_runs_the_existing_lifecycle_in_order() -> None:
 
     assert "fresh run" in normalized
     assert "state-root leaf is still absent" in normalized
-    assert "manage_host.py\" start" in automatic
-    for flag in (
-        "--state-root",
-        "--working-directory",
-        "--ready-timeout",
-        "--auth-transport",
-    ):
-        assert flag in automatic
-    assert "-m hypoloom.cli serve" in automatic
-    assert "--exit-when-terminal" in automatic
-    assert "`--allow-gpu` and `--cpu-only` are client-only choices" in normalized
-    assert "carry the same required choice to all three invocations" in normalized
-    assert "never place either in the `serve` argument vector" in normalized
-    assert "PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom" in automatic
-    assert "`supervisor` exactly `user-systemd`" in normalized
-    assert "`.service` for `none`/settings mode" in normalized
-    assert "`.scope` for environment auth" in normalized
-    assert "`--auth-transport none` only with the fake adapter" in normalized
-    assert "execute the exact intended post-write `profile-check`" in normalized
-    assert "same reviewed `create_run_payload`" in normalized
-    assert "-m hypoloom.cli start` exactly once" in normalized
+    assert "bootstrap launch" in automatic and "`--start`" in automatic
+    assert "admitted `create_run_payload`" in normalized
+    assert "one `hypoloom.cli start` with the stable request ID" in normalized
     assert "fetch `status` for the exact run" in normalized
-    _assert_ordered(
-        automatic,
-        "manage_host.py\" start",
-        "After ready, execute the exact intended post-write `profile-check`",
-        "-m hypoloom.cli start` exactly once",
-        "Once creation is confirmed, fetch `status`",
-    )
+    _assert_ordered(automatic, "read-only `profile-check`", "`manage_host.py` start",
+                   "repeated admission and payload", "one `hypoloom.cli start`",
+                   "Once creation is confirmed, fetch `status`")
     assert "report" in normalized and "inline" in normalized
     assert "Do not print a multi-terminal handoff" in normalized
     assert "TUI" in automatic and "optional" in normalized
@@ -997,19 +974,14 @@ def test_public_skill_rolls_back_pre_start_failures_and_reconciles_ambiguity() -
     automatic = automatic.split("### Prepare only — compact fallback", 1)[0]
     normalized = _normalized(automatic)
 
-    assert "manage_host.py\" stop" in automatic
-    assert "before run creation is confirmed" in normalized
-    assert "--state-root \"$STATE_ROOT\" --auth-transport \"$AUTH_TRANSPORT\"" in automatic
-    assert "recomputes the exact unit from the state root" in normalized
-    assert "only the rollback for this current Start-now flow" in normalized
-    assert "Do not use it to stop a terminal run, scan old roots or units" in normalized
-    assert "never substitute a PID or user-supplied unit name" in normalized
-    assert "query `status` immediately" in normalized
-    assert "before any retry" in normalized
-    assert "If status proves the run exists, do not retry" in normalized
-    assert "at most one transport retry may reuse the exact same" in normalized
+    assert "failed pre-create check stops only the newly created managed Host" in normalized
+    assert "No state root or log is deleted" in normalized
+    assert "queries STATUS immediately" in normalized
+    assert "If the run exists, it does not retry or stop it" in normalized
+    assert "Only a conclusive `not_found` allows cleanup" in normalized
+    assert "reports `creation_uncertain`, preserves the unit" in normalized
     assert "Never invent another request ID" in normalized
-    assert "If status is itself ambiguous, neither retry nor stop" in normalized
+    assert "an existing state root is rejected" in normalized
 
 
 def test_root_claude_bootstrap_matches_the_canonical_family_boundary() -> None:

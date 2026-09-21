@@ -131,12 +131,23 @@ credentials, budgets and CPU/GPU allocation, then choose **Prepare only** or
 user-systemd to start a Host, verify `control.sock`, create the reviewed run and
 return status in the same interaction. No CLI `init` subcommand is required.
 
+| Configuration entry | Location |
+|---|---|
+| Private credential setup | [config/README.md](config/README.md) |
+| Empty credential template | [config/hypoloom.env.example](config/hypoloom.env.example) |
+| Your credential file | `.local/credentials/hypoloom.env` (hidden, Git-ignored) |
+| Topic templates / your Profiles | `profiles/templates/` / `profiles/local/<name>/` |
+
+Init previews filled template values through the existing validator before
+writing. The `hypoloom.bootstrap` helper derives launch arguments and performs
+the managed sequence; model choices do not change the required checks.
+
 A Profile is six YAML files (goal, experts, methodology, language, notify and
-safety); init copies one reviewed template set into `profiles/local/<name>`
-and refuses to overwrite, and you bind its placeholders — the model selector
-and the target/data/runtime paths. Secrets never enter the Profile: a single
+safety); init previews your model selector and target/data/runtime bindings,
+then writes the reviewed files into a new `profiles/local/<name>` without
+overwriting existing Profiles. Secrets never enter the Profile: a single
 mode-0600 dotenv file in an ignored directory (template
-[profiles/templates/hypoloom.env.example](profiles/templates/hypoloom.env.example))
+[config/hypoloom.env.example](config/hypoloom.env.example))
 holds keys such as `OPENALEX_API_KEY`, and the Profile references it by
 absolute path. The full construction rules are in
 [profiles/README](profiles/README.md) and [SETUP](SETUP.md).

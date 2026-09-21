@@ -7,7 +7,7 @@ literature:
   tools: [web_search, web_fetch]
   max_sources: 8
   # Optional Host-launch dotenv credentials file holding OPENALEX_API_KEY and
-  # UNPAYWALL_EMAIL (see profiles/templates/hypoloom.env.example); the
+  # UNPAYWALL_EMAIL (see config/hypoloom.env.example); the
   # operator flow passes it to the Host as --credentials-file.
   # Absolute path, never a secret literal:
   # credentials_file: /absolute/path/to/hypoloom.env

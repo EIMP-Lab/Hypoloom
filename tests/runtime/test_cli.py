@@ -216,11 +216,11 @@ def test_serve_builds_the_same_explicit_openalex_adapter(
     assert secret not in repr(literature_io.configuration)
 
 
-def test_current_new_write_identity_tracks_token_policy_wire_change() -> None:
+def test_current_new_write_identity_tracks_execution_handoff() -> None:
     version = installed_run_version()
 
     assert version.research_contract_version == "hypoloom-research-v10"
-    assert version.agent_aci_version == "21"
+    assert version.agent_aci_version == "22"
     assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/62"
 
 

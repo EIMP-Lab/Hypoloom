@@ -8,6 +8,91 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — deterministic init and configuration entry, 2026-09-22
+
+The reproduced failures were (1) init requiring admission of an unbound public
+template before allowing its placeholders to be filled, and (2) a synthetic
+mode-0644 dotenv file passing the shared reader and literature configuration
+preflight despite the documented 0600 requirement. Init also relied on model
+copying of the same budget/literature/resource options into several commands.
+These are preparation and credential-read boundary problems. Ordinary Profile
+validation, open-file metadata checks and exclusive creation are sufficient;
+there is no new hash, manifest, receipt, protocol version or persisted authority.
+
+`hypoloom.bootstrap` now provides metadata-only path discovery, an in-memory
+filled-template preview through `admit_profile`, exclusive six-file preparation,
+and launch-argument projection from the admitted budget and one literature
+argument vector. Optional `--start` uses existing managed Host/CLI lifecycle
+functions, checks the actual Profile before and after readiness, submits one
+stable CREATE_RUN request and reconciles ambiguous replies with STATUS.
+Only a conclusive absent run permits failed-creation cleanup; an uncertain or
+existing run is not stopped or resubmitted. Existing Profiles cannot be changed
+by preparation; a present state root is rejected. The skill retains scientific
+choices, exact GPU/sharing approval and final launch authorization, with the
+deterministic preparation moved out of prose. No provider-availability claim
+follows from configuration checks.
+
+The credentials reader checks the opened descriptor's mode before reading any
+values, preserving absolute-path, non-symlink, regular-file and parsing checks.
+The sole public template is now `config/hypoloom.env.example`; config/README,
+root guides and init show the private `.local/credentials/hypoloom.env` location
+and distinguish it from model authentication. Public Profile comments change,
+not their numerical or scientific controls. The real local credentials file
+remains 0600 in a 0700 directory, and MERC-causal passes read-only admission
+without edits. No credential contents were printed or copied into reports.
+
+Validation: **369 passed in 22.12 s**, no failures/errors/skips, in
+`.local/qualification/init-repair-20260922/final.xml`. This covers bootstrap,
+credentials, notification delivery/proxy, Profile admission/v4, operator skill,
+managed Host helper, CLI, Unpaywall, public templates and documentation. New
+behavior tests cover bilingual preview/write equivalence, no overwrite, invalid
+inputs, retained local adoption, secret suppression, real auth-source resolver,
+null invocation cost, literature/PDF propagation, GPU-pool argument separation,
+pre-create cleanup and ambiguous-create reconciliation. The bootstrap CLI/Host
+test uses real subprocesses, control socket and CPU execution; only its systemd
+transport is substituted. It verifies normal Host exit, clean Oracle and absent
+owned process groups/socket.
+
+The existing tracked-v4 three-expert/two-chain CPU closure additionally passed
+in **11.80 s** (`template-cpu.xml`), using FakeAgent and blocked public web, with
+the original public controls preserved and a clean independent Oracle. An
+independent retained-file census finds 33 Agent and four Process Attempts,
+all closed (36 SUCCEEDED, one CANCELLED), and zero remaining owned groups. An
+offline sdist build succeeded (`build.log`, `dist/`), and its archive contains
+the new module, configuration guide, single relocated dotenv template and both
+Profile templates; the obsolete template path is absent.
+
+Preserved development failures: the first selection had 174 passes and nine
+failures, consisting of two new test-fixture mistakes (CLI vector offset and
+incorrect YAML budget key) plus obsolete shell-text assertions replaced by
+behavior tests. The expanded selection had 368 passes and one stale CLI identity
+assertion expecting ACI 21 even though prior commit 491666a already uses 22;
+the assertion now explicitly expects 22, retaining the other identity checks.
+The failed expanded sample remains in `focused.xml`; final results are separate.
+
+Final pre-commit review reproduced malformed nested credential sections raising
+AttributeError during path discovery/preview, and module lookup following the
+caller's directory instead of the selected checkout. Credential-reference
+traversal now reports ordinary structured input errors; all helper/CLI calls
+receive the selected working directory. No extra Profile schema or authority
+is introduced. Five initially failing regressions are retained in
+`review-red.xml`; the selected-checkout case first exposed the missing cwd
+argument, and a separate subprocess probe confirmed transport failure when the
+module existed only in the selected directory. The repaired bootstrap selection
+passed 29/29 (`review-bootstrap.xml`). Four additional lifecycle cases cover a
+confirmed create followed by unavailable STATUS, explicit create rejection,
+known Host launch failure and uncertain launch transport.
+
+The final combined focused and tracked-v4 CPU selection passes **379/379 in
+36.08 s**, no failures/errors/skips (`review-final.xml`). Source-distribution
+contents are rechecked after the review fixes. The remote dev branch was fetched
+and had no divergence before this user's explicitly authorized commit/push.
+
+Limits: no real-provider/cross-model comparison, GPU allocation, live user-systemd
+or formal G1–G5 promotion was performed. Existing research runs, private
+credentials and local Profile files were not changed. Commit/push authorization
+does not authorize starting or mutating a research run.
+
 ## Current development — execution handoff and session repair, 2026-09-22
 
 Scope: fresh runs only; retained research runs and local Profile choices remain

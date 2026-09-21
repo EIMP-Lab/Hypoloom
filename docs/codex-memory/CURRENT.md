@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- September 22: local init/configuration repair adds `hypoloom.bootstrap`
+  paths/prepare/launch. Filled template previews reuse ordinary admission;
+  only explicit --write creates a new Profile, and --start uses the existing
+  managed Host/CLI sequence with payload rechecks and ambiguous-create STATUS
+  reconciliation. No launch manifest, protocol version or state authority is
+  added. Credentials now enforce 0600 on the opened file; the single public
+  template moves to config/hypoloom.env.example with visible bilingual entry
+  points. Private credentials and local Profile parameters remain unchanged;
+  MERC-causal still admits read-only. Final review also fixes malformed nested
+  credential references and runs helper/CLI subprocesses in the selected
+  checkout. Final focused/CPU selection: 379 passed. Source distribution includes
+  all new entry assets. No paid/GPU/systemd-live qualification or research-run
+  mutation; the user explicitly authorized committing and pushing this repair
+  to dev after rechecking. See the
+  [init repair evidence](../qualification.md#current-development--deterministic-init-and-configuration-entry-2026-09-22).
+
 - September 22: local repair candidate uses ACI 22 for an optional EXECUTION
   handoff to Host waiting. It closes/charges the invocation, resumes the same
   node/session only after collection, and permits one handoff per experiment;

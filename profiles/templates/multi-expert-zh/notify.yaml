@@ -5,7 +5,7 @@ sinks:
   telegram:
     enabled: false
     # 一个 dotenv 凭据文件统一存放 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
-    # （见 profiles/README.md 与 profiles/templates/hypoloom.env.example）；
+    # （见 profiles/README.md 与 config/hypoloom.env.example）；
     # 绝对路径，永不写入秘密明文。也支持环境变量来源，二选一：
     # bot_token_env: HYPOLOOM_TELEGRAM_BOT_TOKEN
     # chat_id_env: HYPOLOOM_TELEGRAM_CHAT_ID

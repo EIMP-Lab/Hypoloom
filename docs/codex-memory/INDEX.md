@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Init/configuration repair 2026-09-22](../qualification.md#current-development--deterministic-init-and-configuration-entry-2026-09-22):
+  in-memory template admission, exclusive preparation, derived managed launch,
+  private dotenv permission enforcement and visible configuration entry;
+  focused, CPU and source-distribution evidence, unchanged local Profile.
 - [Execution handoff and session repair 2026-09-22](../qualification.md#current-development--execution-handoff-and-session-repair-2026-09-22):
   ACI-22 Host waiting with normal accounting, tracked directory deletion and
   partial archive closure, corrected GPU reserve attribution, Profile/skill

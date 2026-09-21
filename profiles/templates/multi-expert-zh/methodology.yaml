@@ -7,7 +7,7 @@ literature:
   tools: [web_search, web_fetch]
   max_sources: 8
   # 可选的 Host 启动 dotenv 凭据文件，存放 OPENALEX_API_KEY 与
-  # UNPAYWALL_EMAIL（见 profiles/templates/hypoloom.env.example），操作员
+  # UNPAYWALL_EMAIL（见 config/hypoloom.env.example），操作员
   # 流程以 --credentials-file 传给 Host。绝对路径，永不写入秘密明文：
   # credentials_file: /absolute/path/to/hypoloom.env
 inner_loop:

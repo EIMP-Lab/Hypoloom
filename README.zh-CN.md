@@ -114,11 +114,22 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,de
 user-systemd 启动 Host、验证 `control.sock`、创建已审查的运行,并在同一会话中返回
 状态,无需 CLI `init` 子命令。
 
+| 配置入口 | 位置 |
+|---|---|
+| 个人凭据配置说明 | [config/README.md](config/README.md) |
+| 凭据空白模板 | [config/hypoloom.env.example](config/hypoloom.env.example) |
+| 真实凭据文件 | `.local/credentials/hypoloom.env`（隐藏、Git 忽略） |
+| 课题模板 / 本地 Profile | `profiles/templates/` / `profiles/local/<name>/` |
+
+init 会先在内存中填写模板并复用既有校验器检查，再写入新 Profile。
+`hypoloom.bootstrap` 辅助程序统一生成启动参数、执行托管启动顺序；更换基模
+不会改变这些必要检查。
+
 Profile 由六个 YAML 文件组成(goal、experts、methodology、language、notify、
-safety);init 会将一套审阅过的模板复制到 `profiles/local/<name>` 且拒绝覆盖,
-你再绑定其中的占位符——模型选择器与目标/数据/运行时路径。秘密不写入 Profile:
+safety);init 先预览模型选择器与目标/数据/运行时路径的绑定，确认后写入新的
+`profiles/local/<name>`，且拒绝覆盖已有 Profile。秘密不写入 Profile:
 一个位于已忽略目录的 mode-0600 dotenv 文件(模板
-[profiles/templates/hypoloom.env.example](profiles/templates/hypoloom.env.example))
+[config/hypoloom.env.example](config/hypoloom.env.example))
 存放 `OPENALEX_API_KEY` 等密钥,Profile 以绝对路径引用它。完整构建规则见
 [profiles/README](profiles/README.md) 与 [SETUP](SETUP.zh-CN.md)。
 

@@ -8,6 +8,18 @@
 不能覆盖。正常 `Start now` 不需要先 export 四组变量、退出 Claude Code 或重开会话，
 也不要求用户另开 Host/monitor 终端。
 
+个人配置入口见 [config/README.md](config/README.md)。公开空白模板位于
+`config/hypoloom.env.example`，真实文件仍位于隐藏且被 Git 忽略的
+`.local/credentials/hypoloom.env`。使用控制 Python 执行
+`python -B -m hypoloom.bootstrap paths --profile <name>`，可查看默认路径和
+Profile 实际引用路径、存在性、权限，不显示秘密内容。模型认证仍单独配置。
+
+init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默认零写入；
+明确添加 `--write` 才创建新六文件 Profile。`bootstrap launch` 默认只预览启动
+参数，授权后添加 `--start` 才执行既有托管流程，在 Host 就绪前后重读并核对 Profile。
+准备期间配置变化会中止启动。配置检查不调用模型服务，不等于模型实际可用或科学
+质量已验证。辅助命令用法见 [Profile 指南](profiles/README.md#deterministic-preparation--确定性准备)。
+
 ## 1. 控制环境
 
 运行拓扑面向 Linux：需要 Git、bubblewrap（`bwrap`）、可用的用户命名空间和 Claude
@@ -42,7 +54,7 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
   明确构造；不要把交互项目的设置直接交给 Agent，也不要自行追加 `--bare` 改变入口。
 
 文献检索使用 OpenAlex。完整原生专家路径需要一个已批准的 dotenv 凭据文件（建议
-`.local/credentials/hypoloom.env`，模板见 `profiles/templates/hypoloom.env.example`），
+`.local/credentials/hypoloom.env`，模板见 `config/hypoloom.env.example`），
 其中存放 `OPENALEX_API_KEY`，选用 Unpaywall PDF 后备时还需 `UNPAYWALL_EMAIL`；要求为
 已有、绝对路径、非符号链接、mode-0600 文件。本地 v4 Profile 在
 `literature.credentials_file` 声明该路径，init/操作员流程将其作为 `--credentials-file`

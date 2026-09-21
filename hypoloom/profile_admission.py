@@ -141,8 +141,13 @@ def admit_profile(
     run_id: str,
     allow_gpu: bool = False,
     delay_seconds: float = 0.0,
+    source_texts: Mapping[str, str] | None = None,
 ) -> ProfileAdmissionReport:
-    """Read and admit a six-file profile without writes or runtime actions."""
+    """Admit files or prospective file texts through the same compiler.
+
+    source_texts previews a new Profile without creating its directory. It
+    grants no runtime authority; start always rereads the actual six files.
+    """
 
     root = Path(profile_dir)
     blockers: list[ProfileBlocker] = []
@@ -152,18 +157,26 @@ def admit_profile(
     def block(code: str, location: str, message: str) -> None:
         blockers.append(ProfileBlocker(code=code, location=location, message=message))
 
-    if not root.is_dir():
+    if source_texts is None and not root.is_dir():
         block(
             "profile_directory_missing", str(root), "profile path must be a directory"
         )
         return _report(root, mapped, blockers, None)
 
-    present = {entry.name for entry in root.iterdir()}
+    present = set(source_texts) if source_texts is not None else {entry.name for entry in root.iterdir()}
     profile_v3 = bool(present & {"goal.yaml", "language.yaml"})
     expected_files = PROFILE_V3_FILES if profile_v3 else LEGACY_PROFILE_FILES
     yaml_files = PROFILE_V3_FILES if profile_v3 else _LEGACY_YAML_FILES
     for name in expected_files:
         path = root / name
+        if source_texts is not None:
+            if name not in present:
+                block("missing_profile_file", name, "all six profile files are required")
+            elif not isinstance(source_texts[name], str):
+                block("profile_read_error", name, "profile content must be text")
+            else:
+                texts[name] = source_texts[name]
+            continue
         if name not in present or not path.is_file():
             block("missing_profile_file", name, "all six profile files are required")
             continue

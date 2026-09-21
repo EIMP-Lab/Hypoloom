@@ -100,6 +100,7 @@ def _credentials_notify(tmp_path, token_text="123:file-token", chat_text="file-c
     store = tmp_path / "secrets" / "hypoloom.env"
     store.parent.mkdir(mode=0o700)
     store.write_text(f"# test credentials\nTELEGRAM_BOT_TOKEN={token_text}\nTELEGRAM_CHAT_ID={chat_text}\n", encoding="utf-8")
+    store.chmod(0o600)
     config = _notify(telegram=True)
     config["sinks"]["telegram"] = {
         "enabled": True,
@@ -419,6 +420,7 @@ def test_starter_question_reminder_requires_enable_and_event_subscription(tmp_pa
     if enabled:
         store = tmp_path / "hypoloom.env"
         store.write_text("TELEGRAM_BOT_TOKEN=123:test-token\nTELEGRAM_CHAT_ID=test-chat\n", encoding="utf-8")
+        store.chmod(0o600)
         sink["credentials_file"] = str(store)
     result = _tailer(tmp_path, environ={}, transport=transport).poll_once()
     assert not result.errors
