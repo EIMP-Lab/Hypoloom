@@ -187,7 +187,7 @@ def _notify(v: _Validator, value: Mapping[str, Any]) -> None:
             location = f"notify.yaml.sinks.{name}.{field}"
             if field == "enabled": v.boolean(item, location)
             elif field == "port":
-                v.number(item, location, integer=True)
+                v.number(item, location, integer=True, zero=True)
                 if isinstance(item, int) and item > 65535: v.error(location, "port exceeds 65535")
             else:
                 text = v.text(item, location)

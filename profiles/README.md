@@ -53,6 +53,23 @@ absolute path — never inline secret literals:
 | `notify.yaml` | Notification sinks/events; secrets referenced by absolute file path or environment-variable name |
 | `safety.yaml` | Read roots, GPU permission, sandbox, experiment timeout and USD ceilings |
 
+## Dashboard port / 看板端口
+
+Both templates set `notify.yaml.sinks.dashboard.port: 0`. Zero (or an omitted
+port) asks the OS to assign a free loopback port when the Host starts the
+dashboard. Its startup log prints the actual bearer URL; keep it private and
+use the new URL after restart. Set an integer from 1 to 65535 only when a fixed
+port is needed. A fixed-port conflict is reported and retried on that same
+port. Profile edits apply to newly created runs; existing runs keep their
+admitted settings. A TUI owns a separate Web listener, configured by
+`monitor --web-port` (also defaults to `0`).
+
+中文：两套模板均使用 `notify.yaml.sinks.dashboard.port: 0`。填写 `0` 或省略端口时，
+系统在 Host 启动看板时分配空闲 loopback 端口，启动日志输出实际 bearer 地址；
+请保密，并在重启后使用新地址。需要固定端口时填写 1–65535，被占用时会报错并在
+原端口重试。Profile 修改仅影响新建运行，既有运行保留已接纳的设置。
+TUI 自己的 Web 监听由 `monitor --web-port` 配置，也默认使用 `0`。
+
 ## Create a local topic / 创建本地课题
 
 Use `/autoresearch init` to copy one reviewed template into a fresh ignored

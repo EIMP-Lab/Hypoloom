@@ -60,6 +60,16 @@ Web observer:
 hypoloom web --state-root /absolute/state/run --run-id RUN_ID
 ```
 
+TUI Web, standalone Web and the Profile dashboard default to port `0`: the
+OS assigns a free port when each listener starts, allowing multiple instances
+on one server. Find the actual URL and SSH command in the TUI's
+**Web / local access** panel, or the URL in the standalone/Host startup log.
+The port and token may change after restart; use the new address.
+For a fixed port, use `monitor --web-port 18080`, `web --port 18081`, or
+`notify.yaml.sinks.dashboard.port`. An occupied fixed port reports a conflict
+without switching ports; the TUI remains usable. `monitor --no-web` disables
+only that TUI's Web listener.
+
 By default it listens on loopback only and uses a bearer link. Ordinary share
 links are read-only. `--allow-human-answers` explicitly creates an operator
 link that can submit human answers; never publish that link. `WAITING_HUMAN`

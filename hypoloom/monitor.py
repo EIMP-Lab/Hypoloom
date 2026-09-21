@@ -1720,7 +1720,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--web-port",
         type=int,
         default=DEFAULT_PORT,
-        help="TUI Web port on 127.0.0.1 (0 lets the OS choose; default: 8770)",
+        help="TUI Web port on 127.0.0.1 (default: 0, OS-selected free port)",
     )
     parser.add_argument(
         "--no-web",

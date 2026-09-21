@@ -1489,6 +1489,7 @@ class HypoloomVNextMonitor(App):
                 f"ssh -N -L <local-port>:127.0.0.1:{port} "
                 "<ssh-user>@<research-server>"
             )
+            port_help = "OS-selected port; the address may change after restart.\n\n" if self.web_port == 0 else ""
             clipboard_help = (
                 "Clipboard: the button sends one explicit tmux passthrough "
                 "request and does not change tmux settings. Paste to verify; "
@@ -1505,6 +1506,7 @@ class HypoloomVNextMonitor(App):
             return (
                 "[b #78dcff]WEB OBSERVER READY[/]  "
                 "[dim]TUI-owned · loopback-only · read-only[/dim]\n\n"
+                f"{port_help}"
                 f"Browser URL (contains the ephemeral token):\n{escape(url)}\n\n"
                 "Run this on your local workstation:\n"
                 f"{escape(tunnel)}\n\n"
@@ -1535,14 +1537,13 @@ class HypoloomVNextMonitor(App):
             "--run-id",
             self.run_id,
             "--web-port",
-            "<free-port>",
+            "0",
         ))
         return (
             "[b #ff6b7a]WEB OBSERVER UNAVAILABLE[/]\n\n"
             f"Requested loopback port: {self.web_port}\n"
             f"Start error: {escape(self._web_error or 'unknown error')}\n\n"
-            "The TUI remains read-only and usable. Stop the conflicting listener "
-            "or restart with another port:\n"
+            "The TUI remains usable. Restart with an OS-selected free port:\n"
             f"{escape(restart)}"
         )
 

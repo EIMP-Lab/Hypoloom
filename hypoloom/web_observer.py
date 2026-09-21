@@ -38,7 +38,7 @@ from .state_store import StateStoreError
 
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8770
+DEFAULT_PORT = 0
 _ASSET_ROOT = Path(__file__).with_name("web_observer_assets")
 _ASSETS: Mapping[str, tuple[str, str]] = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -692,7 +692,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--state-root", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+        help="loopback Web port (default: 0, OS-selected free port)")
     parser.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
     parser.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     parser.add_argument("--gpu-pool-server-uid", type=int)

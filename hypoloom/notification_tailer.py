@@ -162,7 +162,8 @@ def post_json(url: str, document: Mapping[str, Any], *, headers: Mapping[str, st
 class NotificationTailer:
     def __init__(self, state_root: str | Path, run_id: str, output_root: str | Path, *,
                  environ: Mapping[str, str] | None = None, transport: Callable[..., HTTPResponse] | None = None,
-                 proxy_env: str | None = None, observation_reader: Callable[[], Mapping[str, Any]] | None = None):
+                 proxy_env: str | None = None, observation_reader: Callable[[], Mapping[str, Any]] | None = None,
+                 dashboard_port: Callable[[], int | None] | None = None):
         if not isinstance(run_id, str) or _SAFE_ID.fullmatch(run_id) is None:
             raise NotificationError("invalid notification run identity")
         self.state_root = Path(state_root).resolve()
@@ -174,6 +175,7 @@ class NotificationTailer:
             raise NotificationError("notification output root must be disjoint from state root")
         self.run_id = run_id
         self.observation_reader = observation_reader
+        self.dashboard_port = dashboard_port
         self.directory = self.output_root / run_id
         self.environ = os.environ if environ is None else environ
         self.transport = post_json if transport is None else transport
@@ -289,9 +291,15 @@ class NotificationTailer:
             if event["type"] == "provider_auth_resumed":
                 text += "\n✅ Provider dispatch cooldown cleared by operator; scheduling resumes."
             dashboard = self.sinks.get("dashboard", {})
-            port = dashboard.get("port", 8765)
-            if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"} and type(port) is int and 1 <= port <= 65535:
-                text += f"\nDashboard (local/tunnel): http://127.0.0.1:{port}/"
+            if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"}:
+                # The owning service supplies its actual bound port, including
+                # None on bind failure. Standalone delivery cannot discover it.
+                port = self.dashboard_port() if self.dashboard_port is not None else dashboard.get("port")
+                if type(port) is int and 1 <= port <= 65535:
+                    label = "local/tunnel" if self.dashboard_port is not None else "configured; local/tunnel"
+                    text += f"\nDashboard ({label}): http://127.0.0.1:{port}/"
+                else:
+                    text += "\nDashboard: see TUI Web / local access or Host startup log for the current address."
             if len(text) > 4096:
                 raise NotificationError("Telegram event identity exceeds message limit")
             document = {"chat_id": chat_id, "text": text}

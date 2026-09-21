@@ -698,7 +698,8 @@ def test_monitor_snapshot_and_json_carry_revision_breaker_fields(
     assert rendered["revision_warning"] is None
 
 
-def test_cli_monitor_forwards_tui_web_controls(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("port_args, expected_port", [([], 0), (["--web-port", "0"], 0), (["--web-port", "43210"], 43210)])
+def test_cli_monitor_forwards_tui_web_controls(tmp_path: Path, monkeypatch, port_args, expected_port) -> None:
     state_root = tmp_path / "monitor-web-controls"
     calls: list[dict[str, object]] = []
 
@@ -732,8 +733,7 @@ def test_cli_monitor_forwards_tui_web_controls(tmp_path: Path, monkeypatch) -> N
         "monitor-web-controls",
         "--interval",
         "1.5",
-        "--web-port",
-        "43210",
+        *port_args,
         "--no-web",
     ]) == 0
     assert calls == [{
@@ -743,7 +743,7 @@ def test_cli_monitor_forwards_tui_web_controls(tmp_path: Path, monkeypatch) -> N
         "export_dir": None,
         "interval": 1.5,
         "web_enabled": False,
-        "web_port": 43210,
+        "web_port": expected_port,
     }]
 
 
@@ -1270,6 +1270,7 @@ def test_textual_tui_owns_web_observer_and_releases_its_port(
                 app.screen.query_one("#web-access-content", Static).render()
             )
             assert "WEB OBSERVER READY" in help_text
+            assert "OS-selected port" in help_text
             assert url in help_text
             assert f"ssh -N -L {bound_port}:127.0.0.1:{bound_port}" in help_text
             assert "stops when the TUI exits" in help_text
@@ -1373,7 +1374,7 @@ def test_textual_tui_survives_web_port_collision_and_explains_recovery(
                     strip.text for strip in app.screen._compositor.render_strips()
                 )
                 assert "--web-port" in visible
-                assert "<free-port>" in visible
+                assert "--web-port 0" in app._web_access_content()
 
         asyncio.run(exercise())
 

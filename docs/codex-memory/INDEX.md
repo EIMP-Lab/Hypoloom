@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Dynamic Web ports 2026-09-22](../qualification.md#current-development--dynamic-web-ports-2026-09-22):
+  OS-assigned listener defaults, Profile/template compatibility, actual-port
+  notifications, fixed-port conflict behavior, concurrent ownership and
+  cleanup evidence; focused regressions only, no existing-run mutation.
 - [Readiness continuation 2026-09-21](../qualification.md#readiness-qualification-continuation-2026-09-21):
   approved 13 USD glm-5.3-flash cohort, GPU reassignment from 2/3 to free 0/1, installed package,
   unchanged ten-run retained cohort, native ACI-21 interaction, complete offline

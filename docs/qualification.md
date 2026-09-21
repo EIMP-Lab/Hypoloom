@@ -8,6 +8,55 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — dynamic Web ports, 2026-09-22
+
+The approved repair addresses shared-server listener collisions: TUI and
+standalone Web previously defaulted to 8770, while automatic dashboards and
+public templates defaulted to 8765 (local MERC used 8766). Profile-v4 admission
+rejected port 0 even though the Web server already supported it. Telegram
+messages derived addresses from configuration rather than the owned listener.
+Pre-fix regressions reproduced the Profile rejection and both CLI defaults.
+
+TUI, standalone Web and automatic dashboards now default to 0; the existing
+server binds directly to `127.0.0.1:0`, with the OS choosing the port atomically.
+The existing validator accepts integer ports 0–65535 and rejects booleans and
+invalid bounds/types. Explicit positive ports retain fixed binding and visible
+conflicts; automatic services retry that same port, and TUI recovery suggests
+`--web-port 0`. Startup URLs and TUI tunnel commands use the bound socket.
+Notifications obtain the port from the owning service's existing dashboard
+objects; an unavailable listener or standalone dynamic configuration produces
+local-access guidance. Standalone fixed addresses are labeled as configured,
+not checked for liveness. Bearer tokens stay out of notifications. No port
+scanner, reservation, persisted address or new registry was introduced.
+
+Both public templates and the ignored local `MERC-causal/notify.yaml` now use
+port 0. Existing research runs and their admitted settings were not changed.
+Local MERC's six-document v4 projection has zero issues. Raw public templates
+still intentionally reject the unbound model placeholder; their tests bind
+model/runtime paths and admit both languages successfully.
+
+Focused regression: **273 passed in 42.88 s**, with this selection:
+
+```bash
+.conda/envs/hypoloom/bin/python -B -m pytest -q -p no:cacheprovider \
+  tests/runtime/test_profile_v4.py tests/runtime/test_observer_services.py \
+  tests/runtime/test_web_observer.py tests/runtime/test_monitor.py \
+  tests/runtime/test_notification_tailer.py tests/test_public_profiles.py \
+  tests/runtime/test_cli.py tests/runtime/test_monitor_launcher.py \
+  tests/runtime/test_operator_skills.py tests/test_documentation_structure.py
+```
+
+Tests cover simultaneous independent roots with explicit 0 and omitted ports,
+distinct listeners/tokens, cross-token rejection, one owner's exit while the
+other stays available, source-state census/byte preservation, port release,
+fixed-port conflict/recovery, a real CLI Host lifecycle using the printed
+dynamic address, actual-port Telegram content through a fake transport, and
+TUI/CLI access controls. The initial socket selection was blocked by sandbox
+`EPERM` (7 failures / 18 passes); the unchanged selection passed outside the
+sandbox (25 passes), followed by the complete selection above. No real remote
+notification, paid-model/GPU experiment or existing-run mutation was performed.
+This is focused development evidence, not a new G0–G5 candidate freeze.
+
 ## Current development — responsive control and evidence-directed research, 2026-09-21
 
 Uncommitted development repair, using the existing ACI version mechanism

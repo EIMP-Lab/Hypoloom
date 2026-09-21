@@ -22,6 +22,14 @@ recovery; early resume is TUI `p` or `hypoloom provider-retry-clear`. Other
 supported template events include
 new results, interaction starts, round completion, errors and run completion.
 
+The Profile dashboard uses an OS-selected port by default (`port: 0`). When
+the Host owns both services, Telegram notices use the dashboard's actual bound
+port without sending its bearer token. If its listener is unavailable, or an
+independent `notify` process cannot know the dynamic port, the notice directs
+you to TUI **Web / local access** or the Host startup log. Standalone delivery
+may display an explicitly configured fixed port, labeled as configured; that
+is not a liveness check. Use the locally displayed token URL to authenticate.
+
 ```bash
 hypoloom notify --state-root /absolute/state/run --run-id RUN_ID \
   --output-root /absolute/separate-notification-output --once
@@ -37,3 +45,9 @@ test proves local request behavior, not actual delivery to a public recipient.
 `profiles/templates/hypoloom.env.example`），或改用环境变量方式（`bot_token_env` /
 `chat_id_env`），二者选其一；秘密不能写进 YAML 或公开 Issue。提醒只是返回 TUI/Web
 操作的入口，不会自动接受建议或恢复调度。
+
+Dashboard 默认使用动态端口（`port: 0`）。Host 同时管理看板和通知时，Telegram
+提醒使用实际监听端口，不发送 bearer 令牌。监听不可用，或独立 `notify` 无法获知
+动态端口时，提醒会引导查看 TUI 的 **Web / local access** 或 Host 启动日志。
+独立通知可展示明确配置的固定端口，并标为 configured；这不代表已验证服务存活。
+认证请使用本地展示的令牌地址。

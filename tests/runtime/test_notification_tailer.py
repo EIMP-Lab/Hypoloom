@@ -309,6 +309,48 @@ def test_telegram_notice_has_safe_summary_and_dashboard_link_without_note_text(t
     assert "private operator text" not in text and "private-token" not in text
 
 
+@pytest.mark.parametrize("port", [0, None])
+def test_standalone_dynamic_dashboard_notice_points_to_local_access(tmp_path, monkeypatch, port):
+    config = _notify(telegram=True)
+    config["sinks"]["dashboard"] = {"enabled": True}
+    if port is not None:
+        config["sinks"]["dashboard"]["port"] = port
+    _mock_run(monkeypatch, config, [_event()])
+    messages = []
+
+    def transport(_url, document, **_kwargs):
+        messages.append(document["text"])
+        return notifier.HTTPResponse(200, b'{"ok":true}')
+
+    result = _tailer(tmp_path, environ={"TEST_BOT": "123:test-bot", "TEST_CHAT": "test-chat"}, transport=transport).poll_once()
+    assert not result.errors
+    assert "TUI Web / local access" in messages[0] and "Host startup log" in messages[0]
+    assert "http://127.0.0.1:" not in messages[0]
+
+
+def test_managed_dashboard_notice_follows_live_listener_after_bind_recovery(tmp_path, monkeypatch):
+    config = _notify(telegram=True)
+    config["sinks"]["dashboard"] = {"enabled": True, "port": 8765}
+    events = [_event()]
+    _mock_run(monkeypatch, config, events)
+    messages = []
+    live_port = None
+
+    def transport(_url, document, **_kwargs):
+        messages.append(document["text"])
+        return notifier.HTTPResponse(200, b'{"ok":true}')
+
+    tailer = _tailer(tmp_path, environ={"TEST_BOT": "123:test-bot", "TEST_CHAT": "test-chat"},
+        transport=transport, dashboard_port=lambda: live_port)
+    assert not tailer.poll_once().errors
+    assert "Host startup log" in messages[0] and ":8765/" not in messages[0]
+    live_port = 43210
+    events.append(_event(2))
+    assert not tailer.poll_once().errors
+    assert "http://127.0.0.1:43210/" in messages[1]
+    assert "#token=" not in messages[1]
+
+
 def test_grounding_telegram_events_deliver_and_restart_without_replay(tmp_path, monkeypatch):
     from hypoloom.observation_api import product_events
 

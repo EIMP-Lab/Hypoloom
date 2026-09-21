@@ -1467,7 +1467,7 @@ subprocess or try to reproduce its panels in chat. The slash invocation itself
 authorizes starting only this read-only observer; it authorizes no run write or
 lifecycle action. Resolve `INTERVAL` to `2.0` when the flag is omitted or to
 the exact user-supplied positive finite value. Accept `WEB_PORT` only as an
-integer from 0 through 65535; omission uses 8770 and zero asks the OS for an
+integer from 0 through 65535; omission uses 0, asking the OS for a free
 ephemeral port. Preserve an exact `--no-web` choice. Then route the exact run
 to the bounded launcher:
 
@@ -1504,7 +1504,7 @@ must paste to verify, with client-owned `Shift`-selection as fallback. tmux
 copy-mode guarantees only the tmux buffer; describe the extra paste plus
 client-selection step when workstation clipboard delivery matters. A
 port collision degrades only Web: the TUI stays usable and its Web access screen
-shows the error and `--web-port <free-port>` recovery. `--no-web` starts no
+shows the error and `--web-port 0` recovery. `--no-web` starts no
 listener. When `TMUX` is absent, the launcher starts nothing and prints exactly
 one complete, shell-quoted command; return that command to the user for an
 external interactive terminal and do not execute it inside Claude Code.
@@ -1584,9 +1584,13 @@ review sink recipients, secret environment names and dashboard host/port as part
 of that launch. Prepare-only starts no service.
 
 Automatic serve services are ordinary lifecycle-owned readers, not a second
-Host: start only after the sole lock/initialize/socket, use configured loopback
-dashboard port and ephemeral Bearer, fail visibly on conflict without choosing
-another port. Delivery defaults to the disjoint sibling
+Host: start only after the sole lock/initialize/socket, use the configured
+loopback dashboard port (0 or omitted means an OS-selected free port) and
+ephemeral Bearer. Explicit fixed ports fail visibly on conflict and retry the
+same port. Startup logs and owned notifications use the actual bound port;
+notifications never include the Bearer. Without a known dynamic port, direct
+the operator to local access information rather than inventing a URL.
+Delivery defaults to the disjoint sibling
 `<state-root-name>-notifications`; review any `--notification-output-root`
 override. Exclude runs already terminal before this Host lifetime; newly created
 or previously active runs retain final polling/dashboard until serve exits.

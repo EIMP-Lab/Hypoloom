@@ -12,6 +12,23 @@ from hypoloom.domain import ResearchContract
 from test_profile_admission import _materialize_expert_loop_pilot_v3
 
 
+@pytest.mark.parametrize("port", [0, 8766, 65535])
+def test_dashboard_accepts_dynamic_or_fixed_port(port):
+    source = documents()
+    source["notify"]["sinks"]["dashboard"]["port"] = port
+    result = project_profile_v4(**source)
+    assert not result.issues
+    assert result.settings["notify"]["sinks"]["dashboard"]["port"] == port
+
+
+@pytest.mark.parametrize("port", [-1, 65536, True, 1.5, "0"])
+def test_dashboard_rejects_invalid_port(port):
+    source = documents()
+    source["notify"]["sinks"]["dashboard"]["port"] = port
+    result = project_profile_v4(**source)
+    assert any(issue.location == "notify.yaml.sinks.dashboard.port" for issue in result.issues)
+
+
 @pytest.mark.parametrize("section,key,value", [
     ("debate", "min_interval_seconds", -1), ("debate", "min_interval_seconds", True),
     ("debate", "min_new_outcomes", 1.5), ("debate", "min_new_outcomes", -1),

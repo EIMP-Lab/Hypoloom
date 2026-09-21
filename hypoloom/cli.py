@@ -165,6 +165,8 @@ def _submit(args: argparse.Namespace, command: str, payload: dict[str, object]) 
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from .web_observer import DEFAULT_PORT
+
     parser = argparse.ArgumentParser(prog="hypoloom")
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
@@ -315,8 +317,8 @@ def build_parser() -> argparse.ArgumentParser:
     monitor.add_argument(
         "--web-port",
         type=int,
-        default=8770,
-        help="TUI Web port on 127.0.0.1 (0 lets the OS choose; default: 8770)",
+        default=DEFAULT_PORT,
+        help="TUI Web port on 127.0.0.1 (default: 0, OS-selected free port)",
     )
     monitor.add_argument(
         "--no-web",
@@ -331,7 +333,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     web.add_argument("--state-root")
     web.add_argument("--run-id", required=True)
-    web.add_argument("--port", type=int, default=8770)
+    web.add_argument("--port", type=int, default=DEFAULT_PORT,
+        help="loopback Web port (default: 0, OS-selected free port)")
     web.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
     web.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     web.add_argument("--gpu-pool-server-uid", type=int)

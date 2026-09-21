@@ -16,7 +16,7 @@ from pathlib import Path
 from .notification_tailer import NotificationError, NotificationTailer, post_json
 from .observer_refresh import ObserverRefresh
 from .state_store import StateStore
-from .web_observer import create_server
+from .web_observer import DEFAULT_PORT, create_server
 
 
 class ObserverServices:
@@ -77,7 +77,7 @@ class ObserverServices:
     def _dashboard(self, run_id, config):
         if run_id in self.dashboards or not config.get("enabled", False):
             return
-        host, port = config.get("host", "127.0.0.1"), config.get("port", 8765)
+        host, port = config.get("host", "127.0.0.1"), config.get("port", DEFAULT_PORT)
         try:
             server = create_server(self.state_root, run_id, host=host, port=port)
             server.log_requests = False
@@ -105,7 +105,9 @@ class ObserverServices:
                 self._notification_readers[run_id] = reader
                 self._notifiers[run_id] = NotificationTailer(self.state_root, run_id, self.output_root,
                     environ=self.environ, transport=self._post, proxy_env=self.proxy_env,
-                    observation_reader=lambda: reader.get(force=self._stop.is_set())["activity"])
+                    observation_reader=lambda: reader.get(force=self._stop.is_set())["activity"],
+                    dashboard_port=lambda: (self.dashboards[run_id].server_port
+                        if run_id in self.dashboards else None))
             result = self._notifiers[run_id].poll_once()
             for message in result.errors + result.warnings:
                 self._diagnostic(f"{run_id}/notification/{message.split(':', 1)[0]}", message)

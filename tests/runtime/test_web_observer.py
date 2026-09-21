@@ -188,9 +188,9 @@ def test_server_defaults_to_loopback_accepts_port_zero_and_generates_token(
 ) -> None:
     signature = inspect.signature(create_server)
     assert signature.parameters["host"].default == DEFAULT_HOST == "127.0.0.1"
-    assert signature.parameters["port"].default == DEFAULT_PORT
+    assert signature.parameters["port"].default == DEFAULT_PORT == 0
 
-    server = create_server(tmp_path / "unused", "explicit-run", port=0)
+    server = create_server(tmp_path / "unused", "explicit-run")
     try:
         assert server.server_address[0] == "127.0.0.1"
         assert server.server_address[1] != 0
@@ -795,9 +795,12 @@ def test_foreground_entry_prints_the_tokenized_url_once(monkeypatch) -> None:
     assert preflight_calls == [(Path("/explicit/state"), "explicit-run")]
 
 
+@pytest.mark.parametrize("port_args, expected_port", [([], 0), (["--port", "0"], 0), (["--port", "43210"], 43210)])
 def test_cli_web_routes_one_explicit_run_to_the_loopback_observer(
     tmp_path: Path,
     monkeypatch,
+    port_args,
+    expected_port,
 ) -> None:
     calls: list[tuple[Path, str, int]] = []
 
@@ -816,7 +819,6 @@ def test_cli_web_routes_one_explicit_run_to_the_loopback_observer(
         str(state_root),
         "--run-id",
         "explicit-run",
-        "--port",
-        "43210",
+        *port_args,
     ]) == 0
-    assert calls == [(state_root.resolve(), "explicit-run", 43210)]
+    assert calls == [(state_root.resolve(), "explicit-run", expected_port)]

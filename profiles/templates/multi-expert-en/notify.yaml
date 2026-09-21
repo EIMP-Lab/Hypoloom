@@ -14,6 +14,6 @@ sinks:
   dashboard:
     enabled: true
     host: 127.0.0.1
-    port: 8765
+    port: 0  # OS-selected free port; use 1–65535 to pin a fixed port.
 events:
   telegram: [grounding_question, grounding_answered, new_best_result, leader_started, debate_started, expert_round_done, provider_auth_cooldown, provider_auth_resumed, error, run_finished]

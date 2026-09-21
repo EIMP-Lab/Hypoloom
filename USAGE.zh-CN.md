@@ -46,6 +46,14 @@ Web / local access 位于独立的连接信息区域。启动 Web observer：
 hypoloom web --state-root /absolute/state/run --run-id RUN_ID
 ```
 
+TUI Web、独立 Web 和 Profile dashboard 默认使用端口 `0`，由系统在启动监听时
+分配空闲端口，支持同一服务器上的多个实例。实际地址与 SSH 命令见 TUI 的
+**Web / local access** 面板；独立 Web 和 Host 的启动日志也会输出各自地址。
+重启后端口和令牌可能变化，请使用新地址。
+需要固定端口时，可指定 `monitor --web-port 18080`、`web --port 18081`，或设置
+`notify.yaml.sinks.dashboard.port`。固定端口被占用时会报告冲突，不会自动换端口，
+TUI 仍可使用。`monitor --no-web` 仅关闭该 TUI 自己的 Web 监听。
+
 默认仅监听 loopback，并使用 bearer 链接。普通分享链接只读。
 `--allow-human-answers` 明确创建可提交人工答复的操作者链接；不要公开该链接。
 `WAITING_HUMAN` 需要用户真实答复；建议选项不能被自动提交。

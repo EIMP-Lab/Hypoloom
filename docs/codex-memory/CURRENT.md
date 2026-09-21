@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- September 22: Web listeners default to OS-assigned port 0 across TUI,
+  standalone CLI and automatic dashboards. Profile v4 now accepts 0; public
+  en/zh templates and ignored local MERC notify configuration are updated.
+  Explicit fixed ports keep conflict/retry behavior. Notifications use the
+  owned socket port or local-access guidance without bearer tokens. Existing
+  socket/dashboard ownership is reused; no port registry or run migration.
+  Focused validation: 273 passed (42.88 s), local MERC projection has no issues;
+  no real remote delivery, paid/GPU run or new full qualification. See
+  [port repair evidence](../qualification.md#current-development--dynamic-web-ports-2026-09-22).
+
 - September 21 readiness continuation: the user approved `glm-5.3-flash`,
   a fresh 13 USD cohort (CPU 7 / GPU 6). Following the user's report that GPU
   0+1 are free, G4 now uses GPU 0+1 and G5 GPU 1; the original GPU 2+3 wait

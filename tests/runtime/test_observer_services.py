@@ -10,22 +10,22 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
 from hypoloom.observer_services import ObserverServices
+from hypoloom.notification_tailer import HTTPResponse
 from test_notification_tailer import _create_profile_run, _notify
 from test_web_observer import _row_census
 
 
 def configured(tmp_path, *, dashboard=True, webhook=False, telegram=False, port=0):
-    if port == 0:
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
     config = _notify(webhook=webhook, telegram=telegram)
     config["sinks"]["dashboard"] = {"enabled": dashboard, "host": "127.0.0.1", "port": port}
+    if port is None:
+        del config["sinks"]["dashboard"]["port"]
     return _create_profile_run(tmp_path, config)
 
 
@@ -67,10 +67,10 @@ def wait_for(predicate, *, timeout=5):
     raise AssertionError("service condition did not become true")
 
 
-def request(server, *, authorized=True):
+def request(server, *, authorized=True, token=None):
     connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
     try:
-        connection.request("GET", "/api/events", headers={"Authorization": "Bearer " + server.access_token} if authorized else {})
+        connection.request("GET", "/api/events", headers={"Authorization": "Bearer " + (server.access_token if token is None else token)} if authorized else {})
         response = connection.getresponse()
         return response.status, response.read()
     finally:
@@ -100,6 +100,72 @@ def test_profile_starts_one_authenticated_reader_and_disjoint_delivery_without_s
     assert not services.running
     with pytest.raises(OSError):
         socket.create_connection(("127.0.0.1", server.server_port), timeout=0.1)
+
+
+@pytest.mark.parametrize("port", [0, None])
+def test_concurrent_dashboards_use_distinct_ports_tokens_and_lifetimes(tmp_path, port):
+    services = []
+    before = []
+    barrier = threading.Barrier(2)
+
+    def start(service):
+        barrier.wait(timeout=5)
+        service.poll_once()
+
+    try:
+        for index in range(2):
+            directory = tmp_path / str(index)
+            directory.mkdir()
+            root = configured(directory, port=port)
+            before.append(_row_census(root / "state.sqlite"))
+            services.append(ObserverServices(root, output=io.StringIO(), errors=io.StringIO()))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            list(executor.map(start, services))
+        for service in services:
+            assert "notifications" in service.dashboards, service.errors.getvalue()
+        first, second = [service.dashboards["notifications"] for service in services]
+        assert 0 < first.server_port != second.server_port > 0
+        assert first.access_token != second.access_token
+        for index, server in enumerate((first, second)):
+            status, body = request(server)
+            assert status == 200 and json.loads(body)["run_id"] == "notifications"
+            assert request(server, authorized=False)[0] == 401
+            assert server.startup_url() in services[index].output.getvalue()
+            assert f":{server.server_port}/" in server.startup_url()
+        assert request(first, token=second.access_token)[0] == 401
+        assert request(second, token=first.access_token)[0] == 401
+        services[0].close()
+        assert request(second)[0] == 200
+    finally:
+        for service in services:
+            service.close()
+    for index, service in enumerate(services):
+        assert _row_census(service.state_root / "state.sqlite") == before[index]
+        server = service.dashboards["notifications"]
+        assert not service._web_threads["notifications"].is_alive()
+        with pytest.raises(OSError):
+            socket.create_connection(("127.0.0.1", server.server_port), timeout=0.1)
+
+
+def test_managed_telegram_uses_actual_dynamic_port_without_access_token(tmp_path):
+    root = configured(tmp_path, telegram=True)
+    messages = []
+
+    def transport(_url, document, **_kwargs):
+        messages.append(document["text"])
+        return HTTPResponse(200, b'{"ok":true}')
+
+    services = ObserverServices(root, output=io.StringIO(), errors=io.StringIO(),
+        environ={"TEST_BOT": "123:test-bot", "TEST_CHAT": "test-chat"}, transport=transport)
+    try:
+        services.poll_once()
+        server = services.dashboards["notifications"]
+        assert messages
+        assert all(f"http://127.0.0.1:{server.server_port}/" in message for message in messages)
+        assert all(server.access_token not in message and "#token=" not in message for message in messages)
+        assert not services.errors.getvalue()
+    finally:
+        services.close()
 
 
 def test_disabled_sinks_create_neither_listener_nor_output(tmp_path):
@@ -254,11 +320,8 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
     reader.start()
     process = None
     try:
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
         config = _notify(webhook=True)
-        config["sinks"]["dashboard"] = {"enabled": True, "host": "127.0.0.1", "port": port}
+        config["sinks"]["dashboard"] = {"enabled": True, "host": "127.0.0.1", "port": 0}
         config["events"]["webhook"] = config["events"]["log"] = ["run_started", "run_finished"]
         root = _create_profile_run(tmp_path, config)
         stdout, stderr = tmp_path / "host.stdout", tmp_path / "host.stderr"
@@ -267,9 +330,10 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
                 env={**os.environ, "TEST_WEBHOOK_URL": f"http://127.0.0.1:{receiver.server_port}/events", "TEST_WEBHOOK_TOKEN": "loopback-only-secret"})
             wait_for(lambda: "#token=" in stdout.read_text() or process.poll() is not None, timeout=15)
             assert process.poll() is None, stdout.read_text() + stderr.read_text()
-            match = re.search(r"#token=([^\s]+)", stdout.read_text())
+            match = re.search(r"http://127\.0\.0\.1:(\d+)/#token=([^\s]+)", stdout.read_text())
             assert match is not None
-            token = match.group(1)
+            port, token = int(match.group(1)), match.group(2)
+            assert port > 0
             duplicate = subprocess.run([sys.executable, "-m", "hypoloom.cli", "serve", "--state-root", str(root)],
                 capture_output=True, text=True, timeout=10)
             assert duplicate.returncode == 2 and "another Workflow Host" in duplicate.stderr
