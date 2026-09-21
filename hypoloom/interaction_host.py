@@ -54,19 +54,50 @@ class InteractionHost:
         return run is not None and int(run["agent_aci_version"]) >= 14 and any(
             self._settings(run_id).get(kind, {}).get("enabled", False) for kind in ("leader", "debate"))
 
+    def _version(self, run_id):
+        return int(self.store.get_run(run_id)["agent_aci_version"])
+
+    def _facts(self, run_id, rows):
+        return InteractionFacts.from_rows(run_id, rows, agent_aci_version=self._version(run_id))
+
+    def directed_round(self, run_id, role, component_id, cycle):
+        if self._version(run_id) < 21: return None
+        from .expert_batch import directed_research_plan
+        plan = directed_research_plan(self._rows(run_id), run_id, role, component_id, cycle)
+        if plan is not None:
+            self._facts(run_id, self.store.list_facts(run_id)).hypothesis(
+                plan["parent_hypothesis_id"], ParticipantScope(role, component_id))
+            if not self._closed(run_id, role, component_id, cycle - 1):
+                raise ValueError("directed research precedes its admitted cycle closure")
+        return plan
+
+    def _eligible_contributions(self, run_id, facts, reports, minimum):
+        result = []
+        for item in self._facts(run_id, facts).leader_qualifications():
+            history = self.host._batch_history(run_id, str(item.component_id), item.role)
+            cycles = [batch.cycle for batch in history.batches if item.hypothesis_id in batch.members.values()]
+            if (len(cycles) == 1 and cycles[0] >= minimum
+                    and self._closed(run_id, item.role, item.component_id, cycles[0], reports=reports)
+                    and history.latest.cycle < batch_limits(self.host._research_contract(run_id).document, item.role)["rounds"]
+                    and self.host._batch_creation_available(run_id, item.role)):
+                result.append(item)
+        return result
+
     def _reports(self, run_id):
         result = []
-        for row in self.store.list_attempts():
-            if row["run_id"] != run_id or row["kind"] != "AGENT" or row["state"] != "CLOSED" or row["terminal_reason"] != "SUCCEEDED":
-                continue
+        commands = [row["command_id"] for row in self._rows(run_id)
+            if row["command_type"] == "REQUEST_RESEARCH_NODE" and
+            json.loads(row["payload_json"]).get("task_context", {}).get("key", {}).get("node_kind") == "CYCLE_REPORT"]
+        for row in (attempt for command in commands for attempt in self.store.list_attempts(
+                command_id=command, run_id=run_id, kind="AGENT", state="CLOSED", terminal_reason="SUCCEEDED")):
             observation = json.loads(row["observation_json"])
             request = observation.get("request", {})
             if request.get("command") == "CYCLE_REPORT" and request.get("schema_version", 0) >= 14:
                 result.append((row, request, observation))
         return result
 
-    def _closed(self, run_id, role, component_id, cycle):
-        report = next((item for item in self._reports(run_id) if (item[1]["role"], item[1]["component_id"],
+    def _closed(self, run_id, role, component_id, cycle, *, reports=None):
+        report = next((item for item in (self._reports(run_id) if reports is None else reports) if (item[1]["role"], item[1]["component_id"],
             item[1]["task_context"]["key"]["cycle"]) == (role, component_id, cycle)), None)
         if report is None:
             return False
@@ -121,9 +152,10 @@ class InteractionHost:
 
     def _triggers(self, run_id):
         ready = []
-        for report in self._reports(run_id):
+        reports = self._reports(run_id)
+        for report in reports:
             request = report[1]
-            if self._closed(run_id, request["role"], request["component_id"], request["task_context"]["key"]["cycle"]):
+            if self._closed(run_id, request["role"], request["component_id"], request["task_context"]["key"]["cycle"], reports=reports):
                 task = self._task(run_id, report)
                 if not self._handled(run_id, task) and not self._covered_report(run_id, report):
                     ready.append((task, report))
@@ -198,7 +230,7 @@ class InteractionHost:
             if key not in latest or report[1]["task_context"]["key"]["cycle"] > latest[key][1]["task_context"]["key"]["cycle"]:
                 latest[key] = report
         included = {item[0]["attempt_id"]: item for item in (*latest.values(), source)}
-        qualifications = InteractionFacts.from_rows(run_id, facts).leader_qualifications()
+        qualifications = self._facts(run_id, facts).leader_qualifications()
         hypotheses = {item.hypothesis_id for item in qualifications}
         for component in self.host._research_contract(run_id).components:
             history = self.host._batch_history(run_id, str(component.component_id), component.owner_role)
@@ -207,11 +239,14 @@ class InteractionHost:
         cited = [ref for report in included.values() for ref in report[2]["response"]["typed_candidate"].get("supporting_refs", ())]
         facts = select_interaction_facts(facts, hypothesis_ids=hypotheses, reference_ids=cited)
         minimum = self._settings(run_id).get("leader", {}).get("min_rounds_before_leader", 1)
-        eligible = sorted({str(item.component_id) for item in InteractionFacts.from_rows(run_id, facts).leader_qualifications()
+        eligible = sorted({str(item.component_id) for item in self._facts(run_id, facts).leader_qualifications()
             if any(report[1]["role"] == item.role and report[1]["component_id"] == item.component_id
                 and report[1]["task_context"]["key"]["cycle"] >= minimum
                 and self._closed(run_id, item.role, item.component_id, report[1]["task_context"]["key"]["cycle"])
                 for report in reports)})
+        eligible_contributions = self._eligible_contributions(run_id, facts, reports, minimum) if self._version(run_id) >= 21 else []
+        if self._version(run_id) >= 21:
+            eligible = sorted({str(item.component_id) for item in eligible_contributions})
         allowed = ["none"]
         if eligible and self._settings(run_id).get("leader", {}).get("enabled", False) and not self._closing(run_id):
             allowed.append("leader")
@@ -221,6 +256,8 @@ class InteractionHost:
         context = {"facts": [{name: row[name] for name in ("fact_id", "fact_type", "run_id", "payload_json")} for row in facts],
             "source_report_ref": source[0]["attempt_id"] + "--response", "allowed_actions": allowed,
             "eligible_leader_components": eligible, "debate_participants": debating}
+        if self._version(run_id) >= 21:
+            context["eligible_leader_hypotheses"] = sorted(item.hypothesis_id for item in eligible_contributions)
         if deferred is not None:
             context["debate_deferred"] = deferred
         maximum = config.get("node_runtime", {}).get("memory", {}).get("max_plugin_bytes", 1024 * 1024)
@@ -258,7 +295,7 @@ class InteractionHost:
     def _accept(self, run_id, task, row):
         observation = json.loads(row["observation_json"])
         request, response = observation["request"], observation["response"]
-        facts = InteractionFacts.from_rows(run_id, self.store.list_facts(run_id))
+        facts = self._facts(run_id, self.store.list_facts(run_id))
         # Fake adapters are explicit test transports, not evidence of CC sessions.
         if request.get("required_adapter_version") == "fake-agent/4":
             proposal = admit_observer_proposal(response["typed_candidate"], facts=facts)
@@ -268,7 +305,7 @@ class InteractionHost:
         context = json.loads(next(EmbeddedInput.from_dict(item).content_bytes() for item in request["input_artifacts"] if item["ref"].endswith("--interaction-context")))
         if proposal.action not in context["allowed_actions"]:
             raise ValueError("Observer action is disabled in its actual request")
-        admit_observer_proposal(proposal.to_dict(), facts=InteractionFacts.from_rows(run_id, context["facts"]))
+        admit_observer_proposal(proposal.to_dict(), facts=self._facts(run_id, context["facts"]))
         if proposal.debate is not None:
             self.debate.accept_observer(run_id, task, row, proposal, context)
             return
@@ -280,6 +317,8 @@ class InteractionHost:
             component_id = cited_leader_component(proposal.to_dict(), facts=facts)
             if component_id not in context["eligible_leader_components"]:
                 raise ValueError("Leader component has not reached its admitted minimum round")
+            if self._version(run_id) >= 21 and proposal.leader.contributions[0].hypothesis_id not in context["eligible_leader_hypotheses"]:
+                raise ValueError("Leader contribution cycle has not closed or lacks research budget")
             history = self.host._batch_history(run_id, component_id, proposal.leader.role)
             if history.latest is None:
                 raise ValueError("qualified Leader has no accepted component batch")
@@ -291,9 +330,7 @@ class InteractionHost:
     def _drained(self, run_id, leader):
         peers = {(item.owner_role, str(item.component_id)) for item in self.host._research_contract(run_id).components
             if (item.owner_role, str(item.component_id)) != (leader["role"], leader["component_id"])}
-        for row in self.store.list_attempts():
-            if row["run_id"] != run_id or row["state"] != "OPEN":
-                continue
+        for row in self.store.list_attempts(run_id=run_id, state="OPEN"):
             if row["kind"] == "AGENT":
                 request = json.loads(row["observation_json"])["request"]
                 if (request["role"], request["component_id"]) in peers:
@@ -317,17 +354,21 @@ class InteractionHost:
         return next((event["leader"] for _, event in reversed(self._events(run_id)) if event.get("action") == "leader_round_started"
             and event["source_attempt_id"] == active["source_attempt_id"]), None)
 
-    def _admitted_cycle(self, run_id, leader):
-        latest = self.host._batch_history(run_id, leader["component_id"], leader["role"]).latest
-        cycles = [0 if latest is None else latest.cycle]
-        for row in self.store.list_attempts():
-            if row["run_id"] != run_id or row["kind"] != "AGENT":
-                continue
-            request = json.loads(row["observation_json"])["request"]
-            key = request.get("task_context", {}).get("key")
-            if key and (request["role"], request["component_id"]) == (leader["role"], leader["component_id"]):
+    def _admitted_cycle(self, run_id, leader, *, before_revision=None):
+        cycles = [0]
+        # Request intents are small, durable and already carry the admitted key.
+        for row in self._rows(run_id):
+            if before_revision is not None and row["revision"] >= before_revision: continue
+            if row["command_type"] != "REQUEST_RESEARCH_NODE": continue
+            key = json.loads(row["payload_json"]).get("task_context", {}).get("key", {})
+            if (key.get("expert_slot"), key.get("component_id")) == (leader["role"], leader["component_id"]):
                 cycles.append(key["cycle"])
         return max(cycles)
+
+    def _selection_revision(self, run_id, active):
+        return next(row["revision"] for row, event in self._events(run_id)
+            if event["action"] in {"leader_selected", "debate_proposed"}
+            and event["source_attempt_id"] == active["source_attempt_id"])
 
     def _round_failure(self, run_id, leader):
         for failure in self.host._expert_final_failures(run_id):
@@ -354,12 +395,22 @@ class InteractionHost:
             return
         history = self.host._batch_history(run_id, leader["component_id"], leader["role"])
         latest = history.latest
-        if latest is None or latest.cycle < self._admitted_cycle(run_id, leader) or not self._closed(run_id, leader["role"], leader["component_id"], latest.cycle) or not self._drained(run_id, leader):
+        admitted = self._admitted_cycle(run_id, leader, before_revision=self._selection_revision(run_id, active) if self._version(run_id) >= 21 else None)
+        if self._version(run_id) >= 21 and self._round_failure(run_id, {**leader, "cycle": admitted}) is not None:
+            self._append(run_id, source + "--leader-not-started", {"action": "leader_not_started", "source_attempt_id": source,
+                "leader": leader, "reason": "source_cycle_failed"}, resume=True)
+            return
+        if latest is None or latest.cycle < admitted or not self._closed(run_id, leader["role"], leader["component_id"], latest.cycle) or not self._drained(run_id, leader):
             return
         cycle = latest.cycle + 1
+        parent = None if history.selected_tip is None else history.selected_tip["node_id"]
+        if self._version(run_id) >= 21:
+            selected = admit_observer_proposal(active["proposal"], facts=self._facts(run_id, self.store.list_facts(run_id)))
+            parent = selected.leader.contributions[0].hypothesis_id
         unavailable = ("round_budget_exhausted" if cycle > batch_limits(self.host._research_contract(run_id).document, leader["role"])["rounds"]
             else "experiment_budget_exhausted" if not self.host._batch_creation_available(run_id, leader["role"])
-            else "no_selected_parent" if history.selected_tip is None else None)
+            else "no_selected_parent" if parent is None
+            else "agent_budget_unavailable" if self._version(run_id) >= 21 and not self.host._agent_budget_available(run_id, leader["role"]) else None)
         if unavailable is not None:
             self._append(run_id, source + "--leader-not-started", {"action": "leader_not_started", "source_attempt_id": source,
                 "leader": leader, "reason": unavailable}, resume=True)
@@ -367,7 +418,7 @@ class InteractionHost:
         memory = ExpertMemory(self.host.state_root)
         peers = {role: memory.ensure(run_id, role) for role in self.host._research_contract(run_id).role_ids if role != leader["role"]}
         designated = {"role": leader["role"], "component_id": leader["component_id"], "cycle": cycle,
-            "parent_hypothesis_id": history.selected_tip["node_id"], "peer_memory_commits": peers}
+            "parent_hypothesis_id": parent, "peer_memory_commits": peers}
         self._append(run_id, source + "--leader-started", {"action": "leader_round_started", "source_attempt_id": source, "leader": designated})
 
     def drive(self, run_id: str) -> None:
@@ -416,7 +467,7 @@ class InteractionHost:
         active = self._active(run_id)
         if active is not None and active["leader"]["component_id"] == component_id:
             started = self.leader_round(run_id, component_id)
-            return cycle > (self._admitted_cycle(run_id, active["leader"]) if started is None else started["cycle"])
+            return cycle > (self._admitted_cycle(run_id, active["leader"], before_revision=self._selection_revision(run_id, active) if self._version(run_id) >= 21 else None) if started is None else started["cycle"])
         return any(report[1]["component_id"] == component_id and task.cycle < cycle for task, report in self._triggers(run_id))
 
     def priority_roles(self, run_id: str) -> tuple[str, ...]:

@@ -25,6 +25,35 @@ def app_for(root, snapshot):
         interval=3600, web_enabled=False)
 
 
+def test_fatal_monitor_exception_is_recorded_and_nonzero_exit_is_preserved(tmp_path, monkeypatch):
+    import json
+    from textual.app import App
+    from hypoloom import tui
+    root, snapshot = run_snapshot(tmp_path)
+    app = app_for(root, snapshot)
+    seen = []
+    monkeypatch.setattr(App, "_handle_exception", lambda self, exc: seen.append(exc))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "private-test-key")
+    error = ValueError("render failed private-test-key")
+    app._handle_exception(error)
+    record = json.loads((root / "diagnostics/host.jsonl").read_text().splitlines()[-1])
+    assert record["phase"] == "tui" and record["run_id"] == "end-ui"
+    assert record["exception_type"] == "ValueError" and seen == [error]
+    assert "private-test-key" not in json.dumps(record)
+
+    class FailedApp:
+        return_code = 1
+
+        def __init__(self, *args, **kwargs): pass
+        def run(self): pass
+        def close_web_observer(self): seen.append("closed")
+
+    monkeypatch.setattr(tui, "HypoloomVNextMonitor", FailedApp)
+    with pytest.raises(SystemExit) as failure:
+        tui.run_tui(root, "end-ui")
+    assert failure.value.code == 1 and seen[-1] == "closed"
+
+
 def test_leaving_monitor_preserves_run_and_explains_background_work(tmp_path):
     root, snapshot = run_snapshot(tmp_path)
 
@@ -265,6 +294,10 @@ def test_revision_conflict_requires_review_before_new_cancel(tmp_path, monkeypat
             await pilot.click("#end-run-confirm")
             await pilot.pause()
             assert len(calls) == 1 and app.screen.query_one("#end-run-confirm", Button).disabled
+            app.screen.update_status({**snapshot.status, "run_revision": snapshot.status["run_revision"] + 1})
+            message = str(app.screen.query_one("#end-run-status", Static).render())
+            assert "Cancellation not accepted: Run revision changed" in message
+            assert "The run changed" not in message
             await pilot.click("#end-run-confirm")
             assert len(calls) == 1
             await pilot.press("escape")

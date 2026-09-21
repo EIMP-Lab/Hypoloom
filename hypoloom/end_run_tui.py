@@ -33,6 +33,7 @@ class EndRunScreen(ModalScreen):
         self.draft = draft
         self.busy = False
         self.writable = True
+        self.draft.pop("rejection", None)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="end-run-form"):
@@ -111,7 +112,7 @@ class EndRunScreen(ModalScreen):
             self.draft.pop("pending", None)
             self._message("STOPPING: waiting for task cleanup and the final report. "
                 "Host has not been confirmed stopped.")
-        elif status["run_revision"] != self.revision and not self.draft.get("pending"):
+        elif status["run_revision"] != self.revision and not self.draft.get("pending") and not self.draft.get("rejection"):
             self.writable = False
             self._message("The run changed. Close and reopen this form to review its current state.")
         self._buttons()
@@ -155,9 +156,8 @@ class EndRunScreen(ModalScreen):
             elif response.status in {"conflict", "rejected"}:
                 self.draft.pop("pending", None)
                 self.writable = False
-                self._message("Cancellation not accepted: "
-                    + str((response.error or {}).get("message", response.status))
-                    + ". Close and reopen to review current state.")
+                self.draft["rejection"] = "Cancellation not accepted: " + str((response.error or {}).get("message", response.status))
+                self._message(self.draft["rejection"] + ". Close and reopen to review current state.")
             else:
                 self._message("Host reply did not confirm acceptance. Retry the same request or refresh to inspect progress.")
                 self.query_one("#end-run-confirm", Button).label = "Retry same request"

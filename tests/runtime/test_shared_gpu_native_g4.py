@@ -420,7 +420,7 @@ def _assert_host_closure(host, scenario, uuids, root, key, initial_memory_mib=No
     for command in ("ADJUDICATE", "CYCLE_REPORT", "SELF_EVOLVE", "FINAL_REPORT"):
         assert sum(row["request"]["command"] == command for row in agents) == 1
     for observation in agents:
-        assert observation["request"]["schema_version"] == 20
+        assert observation["request"]["schema_version"] == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
         session = observation["session"]
         assert session["transcript_complete"]
         transcript = (

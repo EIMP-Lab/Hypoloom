@@ -12,12 +12,14 @@ def _fact(hypothesis_id, parent=None):
 
 def _batch(cycle, chains, command=None):
     return {"command": "ACCEPT_HYPOTHESIS", "workflow_kind": "RUN", "workflow_id": "run",
+            "run_id": "run", "revision": 2 * cycle - 1,
             "payload_json": json.dumps({"component_id": "c", "role": "r", "node_command_id": command or f"s{cycle}",
                 "agent_attempt_id": f"a{cycle}", "hypothesis_batch": {"cycle": cycle, "chains": chains}})}
 
 
 def _selection(cycle, chain, hypothesis_id, experiment_id="e1", outcome_id="o1"):
     return {"command": "ACCEPT_ADJUDICATION", "workflow_kind": "RUN", "workflow_id": "run",
+            "run_id": "run", "revision": 2 * cycle,
             "payload_json": json.dumps({"component_id": "c", "role": "r", "node_command_id": f"j{cycle}",
                 "agent_attempt_id": f"ja{cycle}", "adjudication": {"cycle": cycle, "batch_command_id": f"s{cycle}",
                     "candidate": {}, "pruned_by": [], "selected_tip": {"chain_id": chain, "node_id": hypothesis_id,

@@ -1,6 +1,7 @@
 import copy
 import json
 import tempfile
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -110,9 +111,11 @@ def reading_host(tmp_path, request):
             result = host.handle(ControlRequest(schema_version=1, request_id="create-paper-test", expected_revision=0,
                 command="CREATE_RUN", payload=payload))
             assert result.status == "accepted", result
-            for _ in range(12):
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
                 host.tick()
                 if len(held) == count: break
+                time.sleep(0.01)
             assert len(held) == count, host.dispatch_errors
             parent = next(iter(held.values()))[0]
             papers = PaperWorkspace(host.state_root / "paper-staging", parent)

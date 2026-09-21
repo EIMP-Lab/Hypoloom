@@ -114,6 +114,68 @@ def test_host_research_files_do_not_replay_audit_or_historical_call_diagnostics(
     assert snapshot["fact_counts"]["GoalDefined"] == 1
 
 
+def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(tmp_path, monkeypatch):
+    import threading
+    import time
+    from concurrent.futures import wait
+    from hypoloom import research_projection, workflow_host
+    from hypoloom.control_protocol import ControlRequest
+    from test_monitor import _v4_payload
+
+    root, run_id = tmp_path / "state", "slow-projection"
+    entered, release = threading.Event(), threading.Event()
+    prepared_states, published_states, threads = [], [], []
+    original_prepare = research_projection.prepare_research_projection
+    original_publish = research_projection.publish_research_projection
+
+    def prepare(*args):
+        prepared = original_prepare(*args)
+        prepared_states.append(json.loads((prepared[0] / "run.json").read_text())["status"]["run_state"])
+        threads.append(threading.get_ident())
+        if len(prepared_states) == 1:
+            entered.set()
+            assert release.wait(10)
+        return prepared
+
+    def publish(prepared):
+        published_states.append(json.loads((prepared[0] / "run.json").read_text())["status"]["run_state"])
+        return original_publish(prepared)
+
+    monkeypatch.setattr(research_projection, "prepare_research_projection", prepare)
+    monkeypatch.setattr(research_projection, "publish_research_projection", publish)
+    monkeypatch.setattr(workflow_host.WorkflowHost, "_drive_active", lambda *_: None)
+    host = workflow_host.WorkflowHost(root)
+    try:
+        host.initialize()
+        payload = _v4_payload(run_id)
+        payload["research_contract"]["methodology"]["controls"]["research_loop"] = "expert-six-node/1"
+        assert host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", payload)).status == "accepted"
+        host.tick()
+        assert entered.wait(5)
+        for number in range(2):
+            assert host.handle(ControlRequest(1, f"status-{number}", None, "STATUS", {"run_id": run_id})).status == "accepted"
+        head = host.store.latest_transition(run_id)
+        assert host.handle(ControlRequest(1, "cancel", head["revision"], "CANCEL", {"run_id": run_id, "cause": "test"})).status == "accepted"
+        deadline = time.monotonic() + 5
+        while host.store.latest_transition(run_id)["state"] != "CANCELLED" and time.monotonic() < deadline:
+            host.tick()
+        assert host.store.latest_transition(run_id)["state"] == "CANCELLED"
+        assert not host.terminal_exit_ready
+        release.set()
+        wait([job[0] for job in host._projection_jobs.values()])
+        host.tick()  # Discards the prepared ACTIVE view and requests the terminal view.
+        wait([job[0] for job in host._projection_jobs.values()])
+        host.tick()
+        assert prepared_states == ["ACTIVE", "CANCELLED"]
+        assert published_states == ["CANCELLED"]
+        assert all(identity != threading.get_ident() for identity in threads)
+        assert host.terminal_exit_ready and not host.projection_errors
+        assert not list((root / run_id).glob(".projection-*"))
+    finally:
+        release.set()
+        host.close()
+
+
 def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tmp_path, monkeypatch):
     from hypoloom import research_projection, workflow_host
     from hypoloom.control_protocol import ControlRequest
@@ -127,17 +189,24 @@ def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tm
     def publish(*args):
         published.append(args)
 
-    monkeypatch.setattr(research_projection, "update_research_projection", publish)
+    monkeypatch.setattr(research_projection, "prepare_research_projection", lambda *args: None)
+    monkeypatch.setattr(research_projection, "publish_research_projection", publish)
+    def refresh(host):
+        from concurrent.futures import wait
+        host.tick()
+        wait([job[0] for job in host._projection_jobs.values()])
+        host._collect_research_projection(run_id)
+
     host = workflow_host.WorkflowHost(root)
     try:
         host.initialize()
         payload = _v4_payload(run_id)
         payload["research_contract"]["methodology"]["controls"]["research_loop"] = "expert-six-node/1"
         assert host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", payload)).status == "accepted"
-        host.tick()
+        refresh(host)
         assert len(published) == 1
         clock[0] += 2
-        host.tick()
+        refresh(host)
         assert len(published) == 1
         revision = host.store.latest_transition(run_id)["revision"]
         with host.store.transaction() as tx:
@@ -147,11 +216,11 @@ def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tm
                 "command_id": "agent-command", "kind": "AGENT", "host_generation": host.generation,
                 "attempt_ordinal": 1, "started_at": 1.0, "observation": {"request": {}}})
         clock[0] += 2
-        host.tick()
+        refresh(host)
         assert len(published) == 2
         clock[0] += 2
-        host.tick()
-        assert len(published) == 3  # Open Attempts may append logs without DB writes.
+        refresh(host)
+        assert len(published) == 2  # Live monitor fields do not require rebuilding all historical files.
         with host.store.transaction() as tx:
             tx.close_attempt("agent-attempt", terminal_reason="FAILED", ended_at=2.0, observation={})
         assert host.store.latest_transition(run_id)["revision"] == revision
@@ -160,23 +229,23 @@ def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tm
         def unavailable(*args):
             raise research_projection.ResearchProjectionError("temporary publication failure")
 
-        monkeypatch.setattr(research_projection, "update_research_projection", unavailable)
-        host.tick()
+        monkeypatch.setattr(research_projection, "prepare_research_projection", unavailable)
+        refresh(host)
         assert run_id in host.projection_errors
-        monkeypatch.setattr(research_projection, "update_research_projection", publish)
+        monkeypatch.setattr(research_projection, "prepare_research_projection", lambda *args: None)
         clock[0] += 2
-        host.tick()
-        assert len(published) == 4 and run_id not in host.projection_errors
+        refresh(host)
+        assert len(published) == 3 and run_id not in host.projection_errors
         clock[0] += 2
-        host.tick()
-        assert len(published) == 4
+        refresh(host)
+        assert len(published) == 3
     finally:
         host.close()
     restarted = workflow_host.WorkflowHost(root)
     try:
         restarted.initialize()
-        restarted.tick()
-        assert len(published) == 5  # No persisted cache can hide the first refresh.
+        refresh(restarted)
+        assert len(published) == 4  # No persisted cache can hide the first refresh.
     finally:
         restarted.close()
 

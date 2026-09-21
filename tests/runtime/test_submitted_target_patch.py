@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 import hypoloom.workflow_host as host_module
-from hypoloom.agent_aci import AgentCommand, WorkspaceArtifact, with_output_digest
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, AgentCommand, WorkspaceArtifact, with_output_digest
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.fake_agent import FakeAgent
 from hypoloom.oracle import Oracle, _oracle_uses_submitted_target
@@ -247,7 +247,7 @@ def test_submitted_target_patch_changes_actual_cpu_metric_only_for_successor(
         argv = json.loads(processes[0]["observation_json"])["process_request"]["argv"]
         assert Path(argv[0]).name == "bwrap"
         assert argv[argv.index("--") + 2:][:2] == ["-m", "frozen_target.runner"]
-        assert host.store.get_run(run_id)["agent_aci_version"] == "20"
+        assert host.store.get_run(run_id)["agent_aci_version"] == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
     finally:
         host.close()
     assert {name: (target / name).read_bytes() for name in before} == before

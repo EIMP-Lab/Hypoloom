@@ -450,7 +450,7 @@ def _participant_roles(value):
     return roles
 
 
-def _interactions(transitions, selectors):
+def _interactions(transitions, selectors, attempts=(), facts=()):
     groups = {}
     for row in transitions:
         if row.get("workflow_kind") != "RUN":
@@ -488,6 +488,38 @@ def _interactions(transitions, selectors):
         elif action == "debate_verdict":
             item["verdict"] = event
             item["state"] = "RESTARTING"
+    research = [(row, _object(_object(row.get("observation", _object(row.get("observation_json")))).get("request"))) for row in attempts if row.get("kind") == "AGENT"]
+    for item in groups.values():
+        if item["kind"] != "debate": continue
+        proposal = next((stage for stage in item["stages"] if stage["action"] == "debate_proposed"), None)
+        if proposal is None: continue
+        plans = [plan for stage in item["stages"] if stage["action"] == "debate_restarts_designated" for plan in stage["plans"]]
+        skipped = [entry for stage in item["stages"] if stage["action"] == "debate_restarts_designated" for entry in stage["not_started"]]
+        item["restarts"] = []
+        for participant in proposal["proposal"]["debate"]["participants"]:
+            scope = participant["scope"]
+            role, component = scope["role"], scope["component_id"]
+            plan = next((plan for plan in plans if (plan["role"], plan["component_id"]) == (role, component)), None)
+            absent = next((entry for entry in skipped if (entry["role"], entry["component_id"]) == (role, component)), None)
+            entered = [_object(_payload(row).get("task_context")).get("key", {}) for row in transitions
+                if row["workflow_kind"] == "RUN" and row["revision"] < proposal["revision"]]
+            source_cycle = max((key["cycle"] for key in entered if (key.get("expert_slot"), key.get("component_id")) == (role, component)), default=0)
+            target_cycle = source_cycle + 1 if plan is None else plan["cycle"]
+            owned = [row for row, request in research if (request.get("role"), request.get("component_id"),
+                _object(_object(request.get("task_context")).get("key")).get("cycle")) == (role, component, target_cycle)]
+            experiments = [row["workflow_id"] for row in transitions if row["workflow_kind"] == "EXPERIMENT"
+                and row["revision"] == 1 and (lambda value: (value.get("role"), value.get("component_id"), value.get("expert_cycle"))
+                    == (role, component, target_cycle))(_payload(row))]
+            outcomes = [_payload(fact)["outcome_id"] for fact in facts if fact["fact_type"] == "CanonicalOutcomeAccepted"
+                and _payload(fact).get("experiment_id") in experiments]
+            state = ("NOT_STARTED" if absent is not None else "OUTCOMES_RECORDED" if outcomes
+                else "EXPERIMENT_STARTED" if experiments else "RESEARCH_STARTED" if owned
+                else "PLANNED" if plan is not None else "WAITING_FOR_SOURCE_CYCLE" if item["verdict"] else "WAITING_FOR_JUDGMENT")
+            item["restarts"].append({"role": role, "component_id": component, "state": state,
+                "source_cycle": source_cycle, "target_cycle": target_cycle,
+                "parent_hypothesis_id": participant["hypothesis_id"] if plan is None else plan["parent_hypothesis_id"],
+                "reason": None if absent is None else absent["reason"],
+                "research_attempt_ids": [row["attempt_id"] for row in owned], "experiment_ids": experiments, "outcome_ids": outcomes})
     values = [item for item in groups.values() if not selectors.get("role") or selectors["role"] in item["participants"]]
     return _page("interactions", values, selectors)
 
@@ -631,7 +663,7 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
                 (run_id, selectors["attempt_id"]))]
         else:
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
-        facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind == "resources" else []
+        facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions"} else []
         transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources"} else []
         commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind == "resources" else []
     if kind == "skills":
@@ -650,7 +682,7 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
     elif kind == "attempt":
         result = _attempt_detail(root, run_id, attempts, selectors)
     elif kind == "interactions":
-        result = _interactions(transitions, selectors)
+        result = _interactions(transitions, selectors, attempts, facts)
     else:
         result = _resources(facts, transitions, attempts, commands, selectors)
     return _clean({"run_id": run_id, "kind": kind, **result})

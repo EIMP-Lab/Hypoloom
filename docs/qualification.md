@@ -8,6 +8,340 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — responsive control and evidence-directed research, 2026-09-21
+
+Uncommitted development repair, using the existing ACI version mechanism
+(new runs: ACI 21). This is not a frozen or fully qualified release. Origin:
+the closed ACI-20 run `MERC-causal-202609200023` exposed repeated decoding of
+large historical observations on the control thread, two completed debates
+with empty restart plans, and no eligible Leader. Its 44 outcomes included
+35 clean refutations and 9 execution failures; all eight adjudications left
+`best_chain` empty. The user selected coordination from verified intermediate
+contributions as the intended Leader responsibility.
+
+Implementation:
+
+- Attempt metadata and command identities narrow status, retry, report and
+  participant reads. Budget admission and usage share compact cached results
+  of the original charge fold; OPEN attempts are reread and transaction-local
+  closes cannot poison the cache on rollback. General StateStore copy
+  isolation remains intact.
+- Human view rendering and exact-node private view preparation use one bounded
+  worker, independent read transactions and existing atomic publication.
+  Refresh requests coalesce; OPEN attempts alone no longer rebuild historical
+  files. The Host rejects a completed ACTIVE view after terminal closure and
+  waits for a terminal view or records its failure. Private task admission is
+  rechecked before dispatch. Component rotation and a 250 ms soft dispatch
+  budget introduce control-service opportunities between agent dispatches;
+  they do not preempt transactions or bound every collection/postflight step.
+- ACI-21 Debate plans are accepted separately for each participant after its
+  own admitted cycle closes. The scientific parent is its exact proposed
+  hypothesis, including an earlier-cycle hypothesis or a null ordinary
+  selection. Existing verdict, plan, command IDs and source-cycle boundaries
+  authorize the restart. Public Judge guidance reaches FORWARD/BACKWARD/
+  SYNTHESIS; private winner-session promotion retains its original source and
+  owner checks. Failure and unavailable budgets produce explicit reasons.
+- Leader eligibility includes verified clean refutations with matching
+  evidence and assessment, excludes execution failure, and requires the
+  contribution's own cycle closure and research budget. An Observer must cite
+  one own hypothesis plus its qualifying evidence. That exact contribution
+  authorizes the bounded Leader round; ordinary termination, peer-pause
+  ownership and goal-completion priority remain enforced.
+- Interaction detail distinguishes waiting, designated research, experiment
+  creation, actual outcomes and not-started reasons. An empty finished
+  interaction does not imply a completed experiment. Independent batch and
+  interaction audits check parent authorization, ordering, participant
+  coverage, budgets and actual closure. Downstream nodes are checked against
+  the admitted batch's budget time, not against budget consumed by its own
+  subsequent experiment.
+- End-run rejection details survive background refresh. Unexpected TUI
+  exceptions enter the existing sanitized `diagnostics/host.jsonl`, and the
+  CLI preserves a nonzero application exit code. Missing final-report outcome
+  citations are fed back through the native Stop validator within the same
+  invocation; Host acceptance reuses the same complete-citation validator.
+  The mandatory final report still gates run closure.
+
+Assurance scope: the failed assets were control-thread service time, the
+accepted-interaction-to-scientific-parent relationship, and the eligibility
+definition. Existing primary keys, transactions, version binding, atomic
+publication and validators suffice. No new persistent queue, contribution
+ledger, hash, schema, checkpoint or parallel source of authority was added.
+Caches, scheduling cursors and worker jobs are disposable; restart rebuilds
+them from existing records. Closed charges rely on the existing immutable
+CLOSED-Attempt lifecycle.
+
+Read-only profiling of the retained 320-Attempt run, using the current reader
+and no Host initialization (`.local/analysis/run-repairs-20260921/`):
+
+| Operation | Earlier observation | Repaired observation |
+| --- | --- | --- |
+| Interaction trigger lookup | 3.26 s; about 845 MB decoded | 0.424 s; 5.06 MB decoded |
+| Full research projection | 5.92 s; about 867 MB decoded | 3.255 s; 160 MB decoded, now prepared off the control thread |
+| Warm Host STATUS | See original diagnostic for the queued live failures | 0.107–0.116 s in two local samples; 0.713 MB decoded |
+| First Host STATUS, empty charge cache | Not sampled equivalently | 1.539 s; 119.5 MB decoded to reconstruct closed charges |
+
+These are individual local read measurements with profiling overhead, not
+socket p95/p99 under concurrent CPU/GPU research. The profiler's `status_cold`
+label was already charge-cache warm because `agent_usage` ran first; the
+separate `status-repeat/profile-summary.json` measures a genuinely empty
+charge cache. Generic standalone status construction
+still performs a full historical read. The proposed two-client load latency
+targets remain unqualified.
+
+Final focused selection: 859 passed in 184.33 s across 28 test files
+(`focused.xml`), covering ACI, accounting, interaction scheduling and audits,
+control sockets, End-run/TUI, native output, final reports, views, monitoring,
+seed skills and documentation. Compilation and `git diff --check` passed.
+This selection is G0 repair evidence, not a full G1 run.
+
+The two cases in `test_combined_interaction_g3.py` passed in
+196.70 s. Each has 90 successful closed Attempts, six actual CPU Process
+executions and six canonical outcomes, one bounded Leader round, six Debate
+statements, a Judge, two participant restart plans and one final report. The
+negative case keeps every outcome CLEAN_REFUTATION and every best_chain null.
+Both independent Oracles passed; recorded process groups were checked absent
+again after Host cleanup. Copies of Attempts, interaction events and audits
+are in `combined-g3/`, with counts in `combined-g3-summary.json`. The transport
+is explicitly fake-agent/4 through real AgentSessions, Host, sandboxed CPU
+execution and publication; this is not native model-choice evidence.
+
+The negative case then passed with actual same-version Host close/reinitialize
+after both `leader_round_started` and `debate_restarts_designated` (108.72 s,
+`recovery-g3.xml` and retained root `recovery-g3/`). Three Host generations
+jointly produced the same 90 successful closed Attempts and six CPU outcomes,
+with exactly one Leader round and two participant plans. The independent
+Oracle and process-residue checks passed. These are quiescent committed-boundary
+restarts, not injected SIGKILL while an experiment is running.
+
+The installed native Claude CLI final-report G3 test passed (50.02 s), using a
+local scripted provider with no paid model. The native-output regression
+separately demonstrates missing outcome citations rejected and repaired within
+one invocation. Audit counterexamples reject a foreign/uncited Leader parent,
+wrong Debate parent, duplicate participant plans and premature restart finish.
+Focused slow-view tests accept status/cancel while rendering is blocked and
+publish only the final terminal view. Source-path/private-view isolation and
+budget rollback protections remain covered by their existing tests.
+
+During development the first CPU sample rejected runtime drift after source
+was edited while the test was active. A subsequent fixture selected a Leader
+before its own contribution cycle closed; it now respects the frozen eligible
+contribution list. The negative CPU sample also exposed the audit's incorrect
+late-node budget time, fixed by reusing actual batch admission. These failures
+were not turned into accepted runtime behavior. Final successful samples used
+unchanged runtime sources throughout each run.
+
+No paid model/GPU run or existing research run was started or resumed
+for this repair. The older run had already reached CANCELLED r356 under its
+own frozen bundle after the user's explicit shutdown instruction; all 320
+Attempts were closed, recorded process groups absent and its Host unit/socket
+gone. Its current-reader read-only Oracle passed with 44 canonical outcomes
+and no issues (`retained-oracle.json`). The original bundle and scientific
+records remain unchanged.
+
+Limits: the original TUI disappearance was not reproduced. An observed
+revision-conflict rejection and overwritten error message are established;
+they are not a proven cause of the historical process exit. Diagnostics close
+that evidence gap for future failures without swallowing exceptions. New
+Leader/parent semantics apply only to fresh ACI-21 runs. Full G1, retained
+cohort G2, GPU G4, paid-model G5 and soak qualification were not performed for
+this unfrozen candidate.
+
+### Readiness qualification continuation, 2026-09-21
+
+The user subsequently authorized the existing bounded qualification plan:
+`glm-5.3-flash`, a fresh 13 USD cohort (7 USD common CPU, 6 USD resource CUDA),
+G4 on GPU 2 `GPU-91a3b0a9-d48b-1503-2893-33153c3fe405` and GPU 3
+`GPU-20ca7d4a-89d1-ec85-9bee-690afdd3283a`, and G5 resource on GPU 3 only.
+Use the existing `/home/gray/miniconda3/envs/erc-cu128` environment and wait
+for capacity. No additional paid retry, budget increase, old-run mutation or
+long scientific-topic launch is included. Limits and the reviewed invocation
+are retained in `.local/qualification/aci21-20260921/live-validation-plan.md`.
+
+The user subsequently reported GPU 0 and 1 free. Metadata confirms 24,121 and
+24,118 MiB available, while GPU 2 and 3 still have about 1,448 MiB each. The
+waiting service stopped before either GPU lane started; G4 now uses GPU 0
+`GPU-d469e765-ad52-350d-2cd4-9b12e5e5bc84` and GPU 1
+`GPU-e96b09e9-0bcc-d031-acce-bb705dabfa31`, with G5 resource on GPU 1.
+The original invocation/log remain retained; model, budget and test requirements
+are unchanged.
+
+G1 now covers all 5,893 collected identities.
+The initial sequential invocation (689 passed / six failed, 1,606.72 s) was
+interrupted and its remaining 310 files ran in three ordinary pytest batches.
+Combined initial results are 5,818 passed, 40 failed, nine fixture setup errors
+and 26 explicit opt-in skips, with no missing or extra test identity. Every
+failure is retained and passed focused follow-up. The second complete G1 ran
+in four ordinary pytest batches against the repaired candidate in an isolated
+Git worktree (1,444.02 / 1,569.53 / 1,554.10 / 1,319.01 s). Its raw result is
+5,866 passed, one failed and 26 opt-in skips, covering exactly the collection.
+The remaining failure was an output-cap fixture's throughput assumption:
+it expected a flood producer to reach one MiB within 0.2 s, but under load the
+correct timeout closed it after 485,376 bytes. The fixture now waits for the
+actual live producer to reach the cap before advancing the adapter's existing
+test clock; byte limits, typed timeout and bounded shutdown assertions remain.
+The entire adapter file passes 192 cases (11.00 s). The later browser click
+fixture also passes its whole 17-case file (120.64 s). Final current identity
+coverage is **5,867 passed / 26 explicit opt-in skips**, with no unresolved
+failure; the initial failures and final raw failure remain in the JUnit logs.
+All 135 runtime files match the tested worktree byte for byte and were unchanged
+through the final qualification. Existing compiler/Ruff/import checks pass.
+
+The real compatibility defect was in the pinned pre-batch ACI-13 path:
+`_drive_ready_expert_update` returned false when asynchronous view preparation
+or bounded admission had not yet created an Attempt. The ordinary policy could
+then record a premature verdict, omit a required update, and skip a dependent
+expert. It now treats a required unfinished update as pending, using existing
+task facts. The complete parallel/dependency and single-lineage files pass
+unchanged (eight and seven cases, 175.06 s and 24.31 s); current ACI >=14 uses
+the separate batch driver. No old run is migrated or resumed by this repair.
+
+Fixture refreshes align tests with the existing runtime semantics: current ACI
+assertions use 21; bounded waits replace tight tick counts; manually controlled
+submission tests hold the local execution adapter until all submitters exist;
+transition fixtures include their durable revision; and native reading tests
+hold provider replies until all three actual readers are admitted. The native
+common-goal test uses the existing PAUSE/RESUME command to enforce its intended
+local-failure-then-global-success order despite fair component rotation.
+Browser automation waits for animation-frame graph fitting before choosing
+mouse coordinates. No production browser change was made for that fixture.
+
+The unchanged public template stops at its first qualified success. Its test
+counts each Process record against its preregistration and canonical outcome,
+separately counts actual spawned CPU effects and cancellations before spawn,
+retains all six hypotheses, and forbids new execution after stop. The separate
+native interaction case still requires six actual CPU experiments. The physical
+core limit remains 27,550 lines with the same counted files: 150 lines transfer
+from StateStore's allocation (550 to 400; 361 actual) to WorkflowHost (4,550 to
+4,700), reflecting bounded view scheduling in the sole writer. No total limit
+or lifecycle validation was relaxed.
+
+Completed evidence in the same directory:
+
+- Installed wheel smoke: an independently installed CLI/Host completed five
+  Attempts, including two real CPU Processes, and exited with no recorded
+  process group or control socket remaining. The Oracle and installed MCP
+  initialize/list/inspect checks pass. Wheel and source package runtime files
+  are byte-identical; the interpreter path and source-only optional adjacent
+  `environment.yml` explain their different existing runtime identities. No private roots were
+  packaged. The final sdist audit also caught six omitted public guide assets:
+  the dotenv example and five README screenshots. MANIFEST now includes those
+  exact existing files; extraction is compared byte for byte against source.
+  The repaired wheel repeats this closure successfully. Its first
+  retry accidentally used a symlinked-venv interpreter outside its sandbox
+  prefix; that original timeout/quarantine remains recorded. Using interpreter
+  copies fixes the test environment. The failed disposable smoke was cancelled
+  with its exact original interpreter/bundle, both Attempts closed, Oracle clean.
+- Retained G2 cohort: all ten existing MERC runs are unchanged before/after
+  current installed-reader and original bundled-reader audits. Nine current
+  audits are clean; `MERC-causal-202609161513` retains exactly its known
+  `session_archive_missing` finding. The original 150044 bundle still reports
+  its two historical archive-validation issues; the current reader is clean,
+  consistent with its previously qualified behavior. Repeating all ten with the
+  repaired wheel gives the same result and unchanged retained bytes. This is a matched known
+  finding, not a claim that every historical run is fault-free.
+- Native ACI-21 three-expert interaction: 90 successful closed Attempts,
+  six actual CPU Processes, one Leader round, six Debate statements, two
+  participant restart plans and a final report. The complete test passes in
+  445.51 s; its Oracle and independent post-close process-group census pass.
+  Native Grounding dialogue/restart/CPU closure also passes (45.99 s).
+  Resource-learning native CPU closure passes in 91.18 s under a short
+  temporary path. Its first refresh's chosen evidence path exceeded the Unix
+  socket limit before Host creation; the failed invocation remains recorded.
+- Resident Host control sample: 82 actual socket STATUS requests while two CPU
+  cycles and background projection complete, maximum 0.205421 s; the final
+  concurrent qualification repeats 83 requests with maximum 0.995769 s. Host exits
+  zero, socket disappears, final projection and Oracle are correct. This is a
+  bounded single-client observation, not a concurrent-client p95 qualification.
+- Native paper-reading completion, End run and quarantine: five cases pass in
+  311.48 s; independent census confirms closed Attempts and absent recorded
+  process groups. Common acceptance/source-read native checks pass four cases
+  in 387.76 s, including both exact source-reading variants. The final independent
+  census covers 11 native/template databases: 295 CLOSED Attempts and 263
+  recorded groups, all groups absent and all control sockets gone
+  (`final-native-cleanup.json`).
+
+The approved G5 common CPU sample passes in 720.45 s with `glm-5.3-flash`
+and CC 2.1.278: COMPLETED r18 / GOAL_MET, 11 successful closed Agent Attempts
+and one actual successful CPU Process. Native tools show the seeded test fail,
+a code edit, then a passing test; the generated shared evaluator, exact source
+reads, accepted outcome and final-report artifact satisfy the existing canary
+checks. Independent post-close Oracle and process-group checks pass; all 12
+recorded groups are absent. Recorded charge is `4.28304699999999993` USD
+(4.283047 USD rounded), with no unknown reservations. This is a one-expert
+compatibility sample, not a scientific-topic or real-model Leader quality claim.
+Evidence: `g5-common/current-g5-evidence.json`, `g5-common-result.json` and
+`g5-common-postclose.json` under the continuation evidence directory.
+
+After CPU, the fresh cohort had approximately 8.716953 USD unspent; the resource
+sample retained its original 6 USD allocation. No additional paid retry is
+authorized. The GPU wait preserves
+existing test requirements: G5 needs at least 4 GiB free; G4 initially checks
+6 GiB, and its 16,384 MiB estimate case additionally needs the 512 MiB reserve.
+The one-shot service `hypoloom-qualification-aci21-gpu01-20260921.service`
+checked both UUIDs for at least 16,896 MiB free and invoked the existing ten-case
+G4 selection once. Its runtime-version check reused the existing source identity;
+no retry or budget expansion was configured. It is an ignored local invocation,
+not a product scheduler or a new qualification authority. Original invocation,
+log and result: `gpu01-queue-invocation.json`, `gpu-wait.log`, `g4.xml`,
+`g4-cleanup.json`.
+
+The first GPU 0/1 invocation finished with **nine passes / one failure in
+301.98 s**. The shared-learning case retained one unknown final attribution
+sample per card (`process_exited`, 1/44) for one Process; its existing strict
+complete-measurement assertion failed. The initial-memory waiting/calibration
+case passed. All eight CUDA Processes succeeded; independent post-close
+inspection confirms four clean run Oracles, 80 CLOSED successful Attempts,
+two clean pools with eight released requests and no recorded process residue.
+Subsequent resource queries correctly mark the incomplete sample `unknown`
+and expose no measured peak. The failed service did not launch G5. One fresh
+unpaid recheck of only the failed case used unchanged source and assertions;
+the original failure is retained (`g4-initial-finding.md`, `g4-postclose.json`,
+`g4-refresh-invocation.json`). This recheck **passed in 140.54 s** with complete
+owned measurements, two clean run Oracles, 40 CLOSED successful Attempts
+(36 Agent / four CUDA Process), four released pool requests and no recorded
+process residue (`g4-refresh.xml`, `g4-refresh-postclose.json`). The ten G4
+identities therefore have current passing coverage, while the original failed
+sample remains explicitly excluded from complete-measurement qualification.
+No runtime or test assertion was changed, and no retry loop was introduced.
+
+The first paid resource sample **passes in 743.60 s** with `glm-5.3-flash`
+on GPU 1. It reaches COMPLETED r18 with 11 successful closed Agent Attempts
+and one successful real CUDA Process. Native traces prove resource Skill and
+resource-query use, wrapper code authoring, the exact CPU local-check command
+and result read, ordinary submission/wait, and the subsequent query of the
+actual Process measurement. The accepted checksum is 6; 13 complete owned
+samples have zero unknowns and a 362 MiB peak, against the admitted 2,048 MiB
+workload estimate and unchanged 512 MiB pool reserve. The supplied probe/data
+remain unchanged, and final-report/source/transcript assertions pass.
+
+Independent post-close Oracle and pool audits pass: 12 CLOSED successful
+Attempts, all 12 recorded groups absent, one released pool request, no pending
+commitment, and both control/pool sockets absent. The transient service
+`hypoloom-qualification-aci21-g5-resource-20260921.service` exited zero;
+GPU 0/1 returned to about 24 GiB free. Its original invocation/progress/result
+are in `g5-resource-invocation.json`, `g5-resource.log`,
+`g5-resource-result.json`; detailed existing checks and independent closure
+are in `g5-resource/resource-g5-evidence.json` and `g5-resource-postclose.json`.
+The first ad-hoc independent audit incorrectly supplied relative paths to
+absolute session/context bindings; rerunning the same Oracle with resolved
+paths passes without modifying the run. That invocation and explanation are
+retained in `g5-resource-postclose-relative-path.json` and
+`g5-postclose-path-note.md`; no product validator was changed.
+
+GPU recorded charge is `3.63389499999999950` USD; together with CPU the fresh
+cohort totals `7.91694199999999943` USD (**7.916942 USD rounded**) against the
+approved 13 USD, with no unknown reservations. No paid sample was retried.
+These are CLI/Host usage records, not a provider invoice. Runtime source
+identity remained unchanged throughout G4, its unpaid recheck and GPU G5.
+
+The current offline, retained-run, installed/native closure and real-model
+CPU/GPU evidence supports a **fresh bounded scientific-topic run**. Real-model
+multi-expert Leader/Debate decision quality remains to be observed in that
+topic; deterministic native interaction already covers scheduling and directed
+restart closure. Historical TUI-crash attribution and concurrent-client control
+latency remain separate limits. No long scientific run, old-run mutation,
+commit or push is part of this continuation.
+
 ## Current development — prompt offload, termination honesty, tick cost, and attribution-aware GPU pressure, 2026-09-19
 
 Candidate: uncommitted working tree on dev @ f2de65a carrying eight reviewed

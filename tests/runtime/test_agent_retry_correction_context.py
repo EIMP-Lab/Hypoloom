@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -618,10 +619,12 @@ def test_literature_output_retry_preserves_packet_and_model_correction(
     try:
         host.initialize()
         _create_run(host, run_id, _expert_payload(tmp_path, run_id))
-        for _ in range(100):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
             host.tick()
             if len(started_main_requests) == 2 + int(infrastructure_retry):
                 break
+            time.sleep(.01)
         else:
             raise AssertionError("literature MAIN mixed retry did not recover")
 

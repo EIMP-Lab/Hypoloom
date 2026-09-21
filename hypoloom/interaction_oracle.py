@@ -84,7 +84,7 @@ class _InteractionAudit:
                 == (role, component, "SELF_EVOLVE", cycle))
         return bool(reports and (evolves or failed))
 
-    def qualifications(self, facts):
+    def qualifications(self, facts, version=14):
         by_kind = {}
         for fact in facts:
             by_kind.setdefault(fact["fact_type"], []).append(fact)
@@ -100,7 +100,7 @@ class _InteractionAudit:
             own = {identity for identity, out in outcomes.items() if out["experiment_id"] in specs
                 and specs[out["experiment_id"]]["hypothesis_id"] == hyp["hypothesis_id"]
                 and out["component_id"] == hyp["component_id"] and out["method_family_id"] == hyp["method_family_id"]}
-            refs.update(identity for identity in own if outcomes[identity]["outcome"] == "SUCCESS")
+            if version < 21: refs.update(identity for identity in own if outcomes[identity]["outcome"] == "SUCCESS")
             for assessment in by_kind.get("HypothesisAssessed", ()):
                 if assessment["hypothesis_id"] != hyp["hypothesis_id"] or assessment["assessment"] != "SUPPORTED":
                     continue
@@ -110,6 +110,17 @@ class _InteractionAudit:
                     and link["artifact_id"] == outcomes[link["outcome_id"]]["artifact_id"] for link in links),
                     "SUPPORTED Leader qualification lacks its accepted comparable evidence")
                 refs.add(assessment["assessment_id"])
+            if version >= 21:
+                for link in evidence.values():
+                    outcome = outcomes.get(link.get("outcome_id"), {})
+                    if (link.get("outcome_id") not in own or outcome.get("outcome") not in {"SUCCESS", "CLEAN_REFUTATION"}
+                            or not outcome.get("artifact_id") or link.get("artifact_id") != outcome["artifact_id"]
+                            or any(link.get(field) != hyp[field] for field in ("hypothesis_id", "component_id", "method_family_id"))):
+                        continue
+                    for assessment in by_kind.get("HypothesisAssessed", ()):
+                        if (assessment.get("assessment") == ("SUPPORTED" if outcome["outcome"] == "SUCCESS" else "REFUTED") and link["evidence_id"] in assessment.get("evidence_ids", ())
+                                and all(assessment.get(field) == hyp[field] for field in ("hypothesis_id", "component_id", "method_family_id"))):
+                            refs.update((link["outcome_id"], link["evidence_id"], assessment["assessment_id"]))
             if refs:
                 result.setdefault((component["owner"], component["id"]), set()).update(refs)
         return result
@@ -152,13 +163,36 @@ class _InteractionAudit:
         _need(len(grounds) == 1, "Observer lacks one actual Step-1 background")
         ground, background = grounds[0]
         _need(_input(request, ground["attempt_id"] + "--response") == background["response"], "Observer changed actual Step-1 background")
-        qualifications = self.qualifications(frozen)
+        qualifications = self.qualifications(frozen, request["schema_version"])
         minimum = self.settings.get("leader", {}).get("min_rounds_before_leader", 1)
         eligible = sorted({component for role, component in qualifications if any(
             req.get("command") == "CYCLE_REPORT" and req.get("role") == role and req.get("component_id") == component
             and req["task_context"]["key"]["cycle"] >= minimum
             and self.closed_round(role, component, req["task_context"]["key"]["cycle"], started)
             for req in (value.get("request", {}) for value in self.observations.values()))})
+        eligible_hypotheses = []
+        if request["schema_version"] >= 21:
+            from .agent_budget import profile_role_cap
+            cap = self.product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract["budget"]["max_experiments"])
+            creations = [value for effect, value in self.transitions if effect["workflow_kind"] == "EXPERIMENT"
+                and effect["revision"] == 1 and _time(effect["created_at"]) <= started]
+            for hyp in (item for item in frozen if item["fact_type"] == "HypothesisProposed"):
+                own_facts = [item for item in frozen if item["fact_type"] != "HypothesisProposed" or item == hyp]
+                if not self.qualifications(own_facts, request["schema_version"]): continue
+                role, component = hyp["proposer_role"], hyp["component_id"]
+                batches = [value["hypothesis_batch"] for effect, value in self.transitions
+                    if value.get("role") == role and value.get("component_id") == component
+                    and "hypothesis_batch" in value and _time(effect["created_at"]) <= started]
+                cycles = [batch["cycle"] for batch in batches if hyp["hypothesis_id"] in batch["chains"].values()]
+                role_cap = profile_role_cap(self.contract, role, "max_experiments")
+                if (len(cycles) == 1 and cycles[0] >= minimum and self.closed_round(role, component, cycles[0], started)
+                        and max(batch["cycle"] for batch in batches) < cap
+                        and len(creations) < self.contract["budget"]["max_experiments"]
+                        and (role_cap is None or sum(value.get("role") == role for value in creations) < role_cap)):
+                    eligible_hypotheses.append(hyp["hypothesis_id"])
+            eligible = sorted({item["component_id"] for item in frozen if item.get("hypothesis_id") in eligible_hypotheses})
+            _need(context["eligible_leader_hypotheses"] == sorted(eligible_hypotheses),
+                "Observer contribution eligibility differs from its own closed cycle and budget")
         _need(context["eligible_leader_components"] == eligible, "Observer minimum-round eligible components differ from actual closed records")
         closing = (self.product.get("goal", {}).get("completion_mode") == "shared_goal"
             and any(item["fact_type"] == "HypothesisAssessed" and item["assessment"] == "SUPPORTED" for item in frozen)
@@ -221,9 +255,20 @@ class _InteractionAudit:
               and effect["command_type"] == "ACCEPT_EXPERT_INTERACTION", "accepted interaction differs from its actual Observer output/refs")
         if proposal["action"] == "leader":
             components = {component for (role, component), refs in qualifications.items() if role == proposal["leader"] and refs.intersection(proposal["supporting_refs"])}
+            if request["schema_version"] >= 21:
+                components = {item["component_id"] for item in frozen if item["fact_type"] == "HypothesisProposed"
+                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in proposal["supporting_refs"]}
             _need(len(components) == 1 and components <= set(eligible) and event["action"] == "leader_selected"
                   and event["leader"]["role"] == proposal["leader"] and event["leader"]["component_id"] in components,
                   "Leader does not select its one exact qualified component")
+            if request["schema_version"] >= 21:
+                parents = [item for item in frozen if item["fact_type"] == "HypothesisProposed"
+                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in proposal["supporting_refs"]]
+                _need(len(parents) == 1 and parents[0]["hypothesis_id"] in eligible_hypotheses,
+                    "Leader must select exactly one eligible own contribution parent")
+                refs = self.qualifications([item for item in frozen if item["fact_type"] != "HypothesisProposed" or item == parents[0]], request["schema_version"])
+                _need(any(value.intersection(proposal["supporting_refs"]) for value in refs.values()),
+                    "Leader parent lacks its own cited qualification")
         elif proposal["action"] == "debate":
             participants = proposal["debate"]["participants"]
             _need(event["action"] == "debate_proposed" and len(participants) == 2
@@ -297,8 +342,15 @@ class _InteractionAudit:
             and value.get("component_id") == plan["component_id"] and value.get("role") == plan["role"] and "adjudication" in value]
         _need(prior, "Leader round has no actual accepted parent selection")
         _, parent = prior[-1]
+        version = self.observations[source]["request"]["schema_version"]
+        expected_parent = parent["adjudication"]["selected_tip"]["node_id"] if version < 21 else plan["parent_hypothesis_id"]
+        if version >= 21:
+            _need(expected_parent in selection["proposal"]["supporting_refs"]
+                  and plan["cycle"] == self.admitted_cycle(plan["role"], plan["component_id"], selection_row["revision"]) + 1
+                  and self.closed_round(plan["role"], plan["component_id"], plan["cycle"] - 1, _time(effect["created_at"])),
+                  "Leader bypassed its admitted source cycle or cited contribution")
         _need(plan["cycle"] == parent["adjudication"]["cycle"] + 1
-              and plan["parent_hypothesis_id"] == parent["adjudication"]["selected_tip"]["node_id"], "Leader next cycle changes its actual adjudicated parent")
+              and plan["parent_hypothesis_id"] == expected_parent, "Leader next cycle changes its actual authorized parent")
         cap = self.product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract["budget"]["max_experiments"])
         _need(plan["cycle"] <= cap, "Leader overrode the admitted round budget")
         peers = plan["peer_memory_commits"]
@@ -482,25 +534,51 @@ class _InteractionAudit:
         _need(verdict["pruned_by"] == pruned and {item[0]["attempt_id"] for item in rounds.values()} <= set(candidate["supporting_refs"]), "Debate pruning invented scientific/source relationships")
         self.debate_restarts(events, verdict, forks, rounds)
 
+    def admitted_cycle(self, role, component, revision):
+        keys = [value.get("task_context", {}).get("key", {}) for row, value in self.transitions
+            if row["workflow_kind"] == "RUN" and row["command_type"] == "REQUEST_RESEARCH_NODE" and row["revision"] < revision]
+        return max((key["cycle"] for key in keys if (key.get("expert_slot"), key.get("component_id")) == (role, component)), default=0)
+
     def debate_restarts(self, events, verdict, forks, rounds):
         selected = [(row, value) for row, value in events if value["action"] == "debate_restarts_designated"]
-        _need(len(selected) <= 1, "Debate designated its restarted scientific rounds twice")
-        if not selected:
-            return
-        effect, designated = selected[0]
-        plans = designated["plans"]
-        _need(designated["source_attempt_id"] == verdict["source_attempt_id"] and len({item["role"] for item in plans}) == len(plans)
-              and {item["role"] for item in plans} | {item["role"] for item in designated["not_started"]} == set(forks),
-              "Debate restart does not cover both actual participants")
+        version = self.observations[verdict["source_attempt_id"]]["request"]["schema_version"]
+        _need(version >= 21 or len(selected) <= 1, "Debate designated its restarted scientific rounds twice")
+        if not selected: return
+        plans = [plan for _, designated in selected for plan in designated["plans"]]
+        skipped = [item for _, designated in selected for item in designated["not_started"]]
+        coverage = [item["role"] for item in (*plans, *skipped)]
+        _need(all(designated["source_attempt_id"] == verdict["source_attempt_id"] for _, designated in selected)
+              and len(coverage) == len(set(coverage)) and set(coverage) <= set(forks)
+              and (version >= 21 or set(coverage) == set(forks)), "Debate restart changes or duplicates participants")
+        proposed = next((row, event) for row, event in events if event["action"] == "debate_proposed")
+        finishes = [(row, event) for row, event in events if event["action"] == "debate_restarts_finished"]
+        if version >= 21 and finishes:
+            _need(len(finishes) == 1 and set(coverage) == set(forks) and finishes[0][1]["plans"] == plans
+                  and all(row["revision"] < finishes[0][0]["revision"] for row, _ in selected),
+                  "Debate finished before participant coverage or changed its accepted plans")
+            for plan in plans:
+                failed = any(self.final_failure(req["command_id"], _time(finishes[0][0]["created_at"])) is not None
+                    for req in (value.get("request", {}) for value in self.observations.values())
+                    if (req.get("role"), req.get("component_id"), req.get("task_context", {}).get("key", {}).get("cycle")) ==
+                        (plan["role"], plan["component_id"], plan["cycle"]))
+                _need(self.closed_round(plan["role"], plan["component_id"], plan["cycle"], _time(finishes[0][0]["created_at"])) or failed,
+                    "Debate finished before actual directed research closure")
         for plan in plans:
+            effect = next(row for row, event in selected if plan in event["plans"])
             role, component, cycle = plan["role"], plan["component_id"], plan["cycle"]
             _need(component == forks[role]["participant"]["scope"]["component_id"] and plan["restart_from_hypothesis"] is True,
                   "Debate restart switched component or did not restart at hypothesis proposal")
             parent = [(row, value["adjudication"]) for row, value in self.transitions if row["workflow_kind"] == "RUN"
                 and row["revision"] < effect["revision"] and value.get("component_id") == component and value.get("role") == role and "adjudication" in value]
+            expected_parent = (forks[role]["participant"]["hypothesis_id"] if version >= 21
+                else parent[-1][1]["selected_tip"]["node_id"])
             _need(parent and plan["source_cycle"] == parent[-1][1]["cycle"] == cycle - 1
-                  and plan["parent_hypothesis_id"] == parent[-1][1]["selected_tip"]["node_id"]
-                  and self.closed_round(role, component, cycle - 1), "Debate restarted without its current selected/closed parent round")
+                  and plan["parent_hypothesis_id"] == expected_parent
+                  and self.closed_round(role, component, cycle - 1, _time(effect["created_at"])),
+                  "Debate restarted without its authorized parent and closed source cycle")
+            if version >= 21:
+                _need(cycle == self.admitted_cycle(role, component, proposed[0]["revision"]) + 1,
+                    "Debate target drifted past its admitted participant cycle")
             _debate_literature_source(plan, effect, self.transitions, self.attempts, self.observations, self.run_id)
             cap = self.product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract["budget"]["max_experiments"])
             _need(cycle <= cap, "Debate restart bypassed the admitted round budget")

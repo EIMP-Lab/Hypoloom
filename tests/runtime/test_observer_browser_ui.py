@@ -473,9 +473,22 @@ class _Browser:
 
     def click(self, selector: str) -> None:
         self.wait(f"document.querySelector({json.dumps(selector)}) !== null")
-        point = self.evaluate(
-            f"(() => {{const e=document.querySelector({json.dumps(selector)}); e.scrollIntoView({{block:'center'}}); const r=e.getBoundingClientRect(); return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()"
+        # Graph fitting runs in requestAnimationFrame after its nodes appear.
+        # Let that layout (and scrolling) finish before choosing mouse coordinates.
+        result = self.call(
+            "Runtime.evaluate", {
+                "expression": f"""new Promise(resolve => {{
+                  document.querySelector({json.dumps(selector)}).scrollIntoView({{block:'center'}});
+                  requestAnimationFrame(() => requestAnimationFrame(() => {{
+                    const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();
+                    resolve({{x:r.x+r.width/2,y:r.y+r.height/2}});
+                  }}));
+                }})""",
+                "awaitPromise": True, "returnByValue": True,
+            },
         )
+        assert "exceptionDetails" not in result, result
+        point = result["result"]["value"]
         self.call(
             "Input.dispatchMouseEvent",
             {"type": "mousePressed", "button": "left", "clickCount": 1, **point},

@@ -20,7 +20,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 if TYPE_CHECKING:
     from .runtime_diagnostics import RuntimeDiagnostics
@@ -159,7 +159,8 @@ class NativeOutputValidator:
                  deadline_at: float, diagnostics: RuntimeDiagnostics | None = None,
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
-                 execution_tool_socket: Path | None = None) -> None:
+                 execution_tool_socket: Path | None = None,
+                 final_report_check: Callable[[], Any] | None = None) -> None:
         if acceptance_smoke and measurement_smoke:
             raise ValueError("a node authors either the common or the local parser")
         if (acceptance_smoke or measurement_smoke) and parser_source_root is None:
@@ -187,6 +188,7 @@ class NativeOutputValidator:
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
         self.execution_tool_socket = execution_tool_socket
+        self.final_report_check = final_report_check
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
         self._lock = threading.RLock()
@@ -260,6 +262,12 @@ class NativeOutputValidator:
             smoke = None
             try:
                 output = _decode_output(document["last_assistant_message"], self._validator)
+                if self.final_report_check is not None:
+                    from .git_authoring_workspace import GitAuthoringIntegrityError
+                    try:
+                        self.final_report_check()
+                    except (OSError, GitAuthoringIntegrityError) as exc:
+                        raise ValueError(f"final report file is unavailable: {exc}") from exc
                 if self.execution_tool_socket is not None:
                     from .agent_aci import validate_execution_completion
                     from .host_tools_server import _call_host

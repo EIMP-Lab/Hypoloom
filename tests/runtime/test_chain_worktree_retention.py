@@ -523,6 +523,7 @@ def test_host_restart_replays_sqlite_adjudication_before_next_dispatch_without_n
             raise DispatchReached
 
     driver = RestartedDriver()
+    driver._batch_cursors = {}
     driver.state_root, driver.publisher = manager.state_root, manager.publisher
     driver.interaction = SimpleNamespace(priority_roles=lambda _: ())
     driver.store = StateStore(

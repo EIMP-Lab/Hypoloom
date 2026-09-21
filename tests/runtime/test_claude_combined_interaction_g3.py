@@ -250,7 +250,7 @@ def test_three_experts_native_leader_then_debate_six_cpu_and_final_report(tmp_pa
             "SELECT payload_json FROM workflow_transitions WHERE run_id=? AND json_type(payload_json,'$.expert_interaction')='object' ORDER BY rowid", (RUN,))]
         actions = [event["action"] for event in events]
         for action in ("leader_selected", "leader_round_started", "leader_round_finished", "debate_proposed", "debate_started", "debate_verdict", "debate_restarts_designated", "debate_restarts_finished"):
-            assert actions.count(action) == 1, actions
+            assert actions.count(action) == (2 if action == "debate_restarts_designated" else 1), actions
         assert actions.index("leader_round_finished") < actions.index("debate_started")
         observers = [value for value in observations if value["request"]["command"] == "OBSERVER"]
         assert len(observers) == 6 and len({value["session"]["session_id"] for value in observers}) == 6
@@ -283,7 +283,8 @@ def test_three_experts_native_leader_then_debate_six_cpu_and_final_report(tmp_pa
                     "typed_candidate": source["response"]["typed_candidate"],
                 }
         assert len([value for value in observations if value["request"]["command"] == "DEBATE_JUDGE"]) == 1
-        plans = next(event["plans"] for event in events if event["action"] == "debate_restarts_designated")
+        plans = [plan for event in events if event["action"] == "debate_restarts_designated" for plan in event["plans"]]
+        assert len(plans) == 2
         assert {(plan["role"], plan["cycle"]) for plan in plans} == {(ROLES[0], 3), (ROLES[1], 2)}
         for plan in plans:
             role, cycle = plan["role"], plan["cycle"]

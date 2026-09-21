@@ -622,6 +622,7 @@ class ClaudeAgentHost:
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
+                final_report_check=tool_workspace.capture_workspace if request.command.value == "FINAL_REPORT" else None,
                 parser_source_root=(tool_workspace.acceptance_root if request.command.value == "GROUNDING"
                     else tool_workspace.worktree_root), parser_smoke_max_bytes=request.budget.max_output_bytes)
             resources.callback(output_validator.close)
@@ -2333,7 +2334,7 @@ def _output_schema(
             if (not isinstance(actions, list) or not actions or len(actions) != len(set(actions))
                     or not set(actions) <= {"none", "leader", "debate"}):
                 raise ValueError("invalid Observer allowed actions")
-            facts = InteractionFacts.from_rows(request.run_id, context["facts"])
+            facts = InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version)
         except (KeyError, TypeError, ValueError) as exc:
             raise AgentHostError(str(exc)) from exc
         candidate = {"type": "object", "additionalProperties": False,
@@ -2876,7 +2877,10 @@ def _instruction(
             "Write /report/FINAL_REPORT.md using Write/Edit; "
             "the Host captures and publishes that file, so omit workspace artifacts from JSON. Cite the "
             "accepted GoalVerdictRecorded fact_id and verdict text, and every canonical outcome_id, including "
-            "failures. If no verdict was accepted, say NO_ACCEPTED_VERDICT instead of inventing one. Explain "
+            "failures. Extract their complete list programmatically from --final-report-context, include it "
+            "in a citation appendix, and check that each ID appears in FINAL_REPORT.md before finishing. "
+            "The Stop hook uses the same report validator as Host acceptance and returns missing IDs for repair. "
+            "If no verdict was accepted, say NO_ACCEPTED_VERDICT instead of inventing one. Explain "
             "the actual stop_reason, findings, limitations and reproducibility. Supporting_refs are the exact "
             + ("supplied input aliases" if request.schema_version >= 19 else "supplied input references")
             + "; report citations use the actual fact/experiment/outcome identities. "
@@ -2888,9 +2892,13 @@ def _instruction(
             "Reconstruct this decision from the supplied background, accepted facts and actual expert reports. "
             "Invoke the native leader-trigger/debate-trigger Skills in the selected read-only plugin. "
             "Return only one allowed action with a rationale and exact scientific references from the "
-            "frozen interaction-context facts. A Leader requires its own accepted SUCCESS/SUPPORTED "
-            "contribution to the shared goal; cite exactly one component for the chosen expert. "
-            "Different measurement contracts are not a numerical leaderboard. action none is valid. "
+            "frozen interaction-context facts. "
+            + ("A Leader coordinates further research before the final goal is met. Cite exactly one own hypothesis "
+               "and its verified contribution: SUCCESS/SUPPORTED or an evidence-linked CLEAN_REFUTATION/REFUTED result. "
+               "Execution failures and debate scores are not contributions. Explain the next testable direction; none is valid. "
+               if request.schema_version >= 21 else "A Leader requires its own accepted SUCCESS/SUPPORTED contribution "
+               "to the shared goal; cite exactly one component for the chosen expert. ")
+            + "Different measurement contracts are not a numerical leaderboard. action none is valid. "
             "Never modify plugin files, peer memory, a scientific assessment or workflow state. "
         )
     if request.command.value == "GRAPH_EVOLVE":

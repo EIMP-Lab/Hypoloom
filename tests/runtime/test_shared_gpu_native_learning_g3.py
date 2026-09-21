@@ -19,7 +19,7 @@ import time
 import pytest
 
 from hypoloom import compute_resources
-from hypoloom.agent_aci import AgentRequest
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, AgentRequest
 from hypoloom.compute_resources import GpuRuntimeObservation
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
@@ -94,7 +94,7 @@ class _ResourceLearningScenario(_FinalReportMemoryScenario):
         request = native._request_from_provider(document)
         identity = request.attempt_id
         try:
-            assert request.schema_version == 20
+            assert request.schema_version == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
             frozen = self.frozen_requests.setdefault(identity, request.to_json())
             assert request.to_json() == frozen, "live tools changed the captured Agent inputs"
             tools = {item["name"] for item in document["tools"]}

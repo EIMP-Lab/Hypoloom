@@ -27,6 +27,28 @@ def test_leader_component_follows_its_actual_cited_contribution():
     assert json.loads(json.dumps(_facts())) == _facts()
 
 
+def test_verified_negative_contribution_can_lead_without_a_selected_tip(tmp_path):
+    host = StoredHost(tmp_path / "state", agent_version=21, selected=False, negative=True)
+    try:
+        view = InteractionHost(host)
+        task = view._triggers("run-1")[0][0]
+        inputs = view.inputs("run-1", task)
+        context = json.loads(next(item.content_bytes() for item in inputs if item.ref.endswith("--interaction-context")))
+        assert context["eligible_leader_hypotheses"] == ["hyp-1", "hyp-2"]
+        proposal = {**_observer(), "supporting_refs": ["hyp-2", "out-2"]}
+        source = host.record(task, inputs=inputs, candidate=proposal)
+        view.drive("run-1")
+        view = InteractionHost(host)
+        view.drive("run-1")
+        plan = view.leader_round("run-1", "must.robustness")
+        assert plan["parent_hypothesis_id"] == "hyp-2" and plan["cycle"] == 2
+        assert host._batch_history("run-1", "must.robustness", "critic").selected_tip is None
+        assert view.directed_round("run-1", "critic", "must.robustness", 2) == plan
+        assert view._active("run-1")["source_attempt_id"] == source["attempt_id"]
+    finally:
+        host.store.close()
+
+
 def node(kind, role="critic", component="must.robustness", cycle=1, subkind=ResearchNodeSubkind.MAIN, chain=None):
     return ResearchNodeTask(key=ResearchNodeKey(run_id="run-1", component_id=component,
         expert_slot=role, cycle=cycle, node_kind=ResearchNodeKind(kind), subkind=subkind, chain=chain,
@@ -45,11 +67,11 @@ class StoredHost:
     _plugin_binding = WorkflowHost._plugin_binding
 
     def __init__(self, root, *, rounds=4, minimum=1, enabled=True, shared_goal=False, debate=False,
-                 pending_self=False, check_after="cycle_report", interaction_options=None):
+                 pending_self=False, check_after="cycle_report", interaction_options=None, agent_version=14, selected=True, negative=False):
         self.state_root = root
         self.store = StateStore(root, HostWriterCapability.issue()).initialize()
-        self.store.create_run("run-1", replace(run_version(), agent_aci_version="14"))
-        rows = copy.deepcopy(_facts(accepted_rows=True))
+        self.store.create_run("run-1", replace(run_version(), agent_aci_version=str(agent_version)))
+        rows = copy.deepcopy(_facts(accepted_rows=True, negative=negative))
         product = project_profile_v4(**documents()).settings
         product["methodology"]["interaction"]["leader"].update(
             enabled=enabled, min_rounds_before_leader=minimum, check_after=check_after)
@@ -71,6 +93,8 @@ class StoredHost:
             tx.append_transition(self._transition_record(tx, "run-1", "run-1", "RUN", Command.ACTIVATE, RunState.ACTIVE))
         self.contract = InteractionFacts.from_rows("run-1", self.store.list_facts("run-1")).contract
         self.shared_acceptance = SharedAcceptanceHost(self)
+        from hypoloom.grounding_dialogue import GroundingDialogue
+        self.grounding_dialogue = GroundingDialogue(self)
         self.launched = []
         self.record(AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING, run_id="run-1"))
         for role, component, hyp in (("researcher", "primary.score", "hyp-1"), ("critic", "must.robustness", "hyp-2")):
@@ -78,7 +102,7 @@ class StoredHost:
                 "node_command_id": role + "--syn", "agent_attempt_id": role + "--syn-a",
                 "hypothesis_batch": {"cycle": 1, "chains": {"chain-a": hyp}}})
             self.control(Command.ACCEPT_ADJUDICATION, {"component_id": component, "role": role,
-                "adjudication": {"cycle": 1, "batch_command_id": role + "--syn", "selected_tip": {"node_id": hyp, "chain_id": "chain-a"}}})
+                "adjudication": {"cycle": 1, "batch_command_id": role + "--syn", "selected_tip": {"node_id": hyp, "chain_id": "chain-a"} if selected else None}})
             self.finish_round(role, component, self_terminal=None if pending_self else "SUCCEEDED")
 
     @staticmethod
@@ -94,6 +118,9 @@ class StoredHost:
             "execution_id": fact["execution_id"], "attempt_id": identity, "artifact_kind": "result", "schema_version": 1,
             "digest_algorithm": "sha256", "digest": fact["artifact_set_digest"],
             "path": f"run-1/{fact['experiment_id']}/{fact['execution_id']}/{identity}/result"})
+
+    def _agent_budget_available(self, run_id, role):
+        return True  # This controller fixture has no provider accounting.
 
     def _research_contract(self, run_id):
         assert run_id == "run-1"
@@ -116,7 +143,7 @@ class StoredHost:
         ordinal = len(self._expert_attempts(task)) + 1
         identity = f"attempt-{len(self.store.list_attempts()) + 1}"
         request = {"run_id": "run-1", "attempt_id": identity, "command_id": task.command_id,
-            "schema_version": 14, "command": task.kind.value if aux else key.node_kind.value,
+            "schema_version": int(self.store.get_run("run-1")["agent_aci_version"]), "command": task.kind.value if aux else key.node_kind.value,
             "role": (task.expert_slot or "grounding") if aux else key.expert_slot,
             "component_id": (task.component_id or "grounding") if aux else key.component_id,
             "task_context": task.to_dict(), "required_adapter_version": "fake-agent/4",

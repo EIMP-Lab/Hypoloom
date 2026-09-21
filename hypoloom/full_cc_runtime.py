@@ -623,6 +623,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "With one refuted comparable chain, keep it and select it without labeling it verified; "
             "when no winner is selected, keep all chains and use prune=[]. "
             "Your best_chain/keep/prune proposal does not accept scientific facts; the Host validates it. "
+            "best_chain selects a useful next research baseline, not proof that the final goal was met. "
+            "A kept, comparable CLEAN_REFUTATION can be a valuable baseline; explain its value. "
+            "Use null when no actual result is a defensible baseline, without inventing a winner. "
         )
     if request.command.value == "HYPOTHESIS_UPDATE":
         return common + (

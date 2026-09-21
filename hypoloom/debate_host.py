@@ -64,12 +64,16 @@ class DebateHost:
         self.store.execute_command({"command_id": identity, "run_id": run_id, "workflow_id": run_id,
             "expected_revision": None, "command_type": command.value, "request": payload}, operation)
 
-    def _original(self, run_id, participant):
+    def _original_sources(self, run_id):
+        rows = self.store.inspect("SELECT a.* FROM execution_attempts a JOIN workflow_commands c ON c.command_id=a.command_id "
+            "WHERE a.run_id=? AND a.kind='AGENT' AND a.state='CLOSED' AND a.terminal_reason='SUCCEEDED' "
+            "AND json_extract(c.request_json,'$.task_context.key.node_kind') IN "
+            "('RESULT_ANALYSIS','EXPERIMENT_EXECUTION','EXPERIMENT_DESIGN_IMPLEMENT')", (run_id,))
+        return [(row, json.loads(row["observation_json"])) for row in rows]
+
+    def _original(self, run_id, participant, *, sources=None):
         candidates = []
-        for row in self.store.list_attempts():
-            if (row["run_id"], row["kind"], row["state"], row["terminal_reason"]) != (run_id, "AGENT", "CLOSED", "SUCCEEDED"):
-                continue
-            observation = json.loads(row["observation_json"])
+        for row, observation in (self._original_sources(run_id) if sources is None else sources):
             request = observation["request"]
             if request.get("command") not in {"RESULT_ANALYSIS", "EXPERIMENT_EXECUTION", "EXPERIMENT_DESIGN_IMPLEMENT"} or "session" not in observation:
                 continue
@@ -84,13 +88,14 @@ class DebateHost:
 
     def eligible_participants(self, run_id) -> list[dict[str, Any]]:
         result = []
+        sources = self._original_sources(run_id)
         for component in self.host._research_contract(run_id).components:
             history = self.host._batch_history(run_id, str(component.component_id), component.owner_role)
             if history.latest is None:
                 continue
             for chain, hypothesis in history.latest.members.items():
                 participant = DebateParticipant(ParticipantScope(component.owner_role, str(component.component_id), chain), hypothesis)
-                if self._original(run_id, participant) is not None:
+                if self._original(run_id, participant, sources=sources) is not None:
                     result.append(asdict(participant))
         return result
 
@@ -112,9 +117,7 @@ class DebateHost:
         self._append(run_id, source + "--interaction", event, pauses=tuple(item.scope for item in proposal.debate.participants))
 
     def _drained(self, run_id, participants):
-        for row in self.store.list_attempts():
-            if row["run_id"] != run_id or row["state"] != "OPEN":
-                continue
+        for row in self.store.list_attempts(run_id=run_id, state="OPEN"):
             if row["kind"] == "AGENT":
                 request = json.loads(row["observation_json"])["request"]
                 key = request.get("task_context", {}).get("key", {})
@@ -265,7 +268,59 @@ class DebateHost:
             raise ValueError("Debate literature ancestry changed its actual source")
         return source
 
+    def _designations(self, run_id, debate_id):
+        return [(row, event) for row, event in self._events(run_id)
+            if event.get("debate_id") == debate_id and event["action"] == "debate_restarts_designated"]
+
+    def _directed_restarts(self, run_id, active, verdict, binding):
+        debate_id = active["debate_id"]
+        designated = self._designations(run_id, debate_id)
+        covered = {(item["role"], item["component_id"]) for _, event in designated
+            for item in (*event["plans"], *event["not_started"])}
+        revision = self.interaction._selection_revision(run_id, active)
+        for fork in binding.participants:
+            scope = fork.participant.scope
+            if (scope.role, scope.component_id) in covered: continue
+            cycle = self.interaction._admitted_cycle(run_id, asdict(scope), before_revision=revision)
+            target = {"role": scope.role, "component_id": scope.component_id, "cycle": cycle}
+            reason = None
+            if self.interaction._round_failure(run_id, target) is not None:
+                reason = "source_cycle_failed"
+            elif not self.interaction._closed(run_id, scope.role, scope.component_id, cycle):
+                continue
+            elif cycle + 1 > batch_limits(self.host._research_contract(run_id).document, scope.role)["rounds"]:
+                reason = "round_budget_exhausted"
+            elif not self.host._batch_creation_available(run_id, scope.role):
+                reason = "experiment_budget_exhausted"
+            elif not self.host._agent_budget_available(run_id, scope.role):
+                reason = "agent_budget_unavailable"
+            plans, skipped = [], []
+            if reason is None:
+                literature = self.literature_source(run_id, scope.role, scope.component_id, cycle)
+                plans.append({**target, "cycle": cycle + 1, "source_cycle": cycle,
+                    "source_literature_attempt_id": literature["attempt_id"],
+                    "source_literature_command_id": literature["command_id"],
+                    "parent_hypothesis_id": fork.participant.hypothesis_id, "restart_from_hypothesis": True})
+            else:
+                skipped.append({"role": scope.role, "component_id": scope.component_id, "reason": reason})
+            # Existing component ownership makes this identity unique per participant.
+            self._append(run_id, debate_id + "--restarts--" + scope.component_id,
+                {"action": "debate_restarts_designated", "debate_id": debate_id,
+                 "source_attempt_id": verdict["source_attempt_id"], "plans": plans, "not_started": skipped})
+        designated = self._designations(run_id, debate_id)
+        plans = [item for _, event in designated for item in event["plans"]]
+        covered = {(item["role"], item["component_id"]) for _, event in designated
+            for item in (*event["plans"], *event["not_started"])}
+        if len(covered) == len(binding.participants) and all(
+                self.interaction._closed(run_id, plan["role"], plan["component_id"], plan["cycle"])
+                or self.interaction._round_failure(run_id, plan) is not None for plan in plans):
+            self._append(run_id, debate_id + "--restarts-finished", {"action": "debate_restarts_finished",
+                "debate_id": debate_id, "source_attempt_id": verdict["source_attempt_id"], "plans": plans})
+
     def _restarts(self, run_id, active, verdict, binding):
+        if self.interaction._version(run_id) >= 21:
+            self._directed_restarts(run_id, active, verdict, binding)
+            return
         if self._event(run_id, active["debate_id"], "debate_restarts_designated") is None:
             plans, not_started = [], []
             for fork in binding.participants:
@@ -333,8 +388,9 @@ class DebateHost:
 
     def designated_round(self, run_id, component_id):
         active = self._active(run_id)
-        designated = None if active is None else self._event(run_id, active["debate_id"], "debate_restarts_designated")
-        return None if designated is None else next((plan for plan in designated["plans"] if plan["component_id"] == component_id), None)
+        if active is None: return None
+        return next((plan for _, event in self._designations(run_id, active["debate_id"])
+            for plan in event["plans"] if plan["component_id"] == component_id), None)
 
     def blocks_next_cycle(self, run_id, component_id, cycle):
         active = self._active(run_id)
@@ -344,8 +400,27 @@ class DebateHost:
         if participant is None:
             return False
         plan = self.designated_round(run_id, component_id)
-        bound = self.interaction._admitted_cycle(run_id, participant["scope"]) if plan is None else plan["cycle"]
+        bound = self.interaction._admitted_cycle(run_id, participant["scope"], before_revision=
+            self.interaction._selection_revision(run_id, active) if self.interaction._version(run_id) >= 21 else None) if plan is None else plan["cycle"]
         return cycle > bound
+
+    def planning_inputs(self, run_id, task):
+        key = task.key
+        if self.interaction._version(run_id) < 21 or key.node_kind is not ResearchNodeKind.HYPOTHESIS_PROPOSAL:
+            return ()
+        for _, event in reversed(self._events(run_id)):
+            if event["action"] != "debate_restarts_designated": continue
+            if not any((p["role"], p["component_id"], p["cycle"]) ==
+                    (key.expert_slot, key.component_id, key.cycle) for p in event["plans"]): continue
+            verdict = self._event(run_id, event["debate_id"], "debate_verdict")
+            observed = json.loads(self.store.get_attempt(verdict["source_attempt_id"])["observation_json"])
+            judgment = observed["response"]["typed_candidate"]
+            context = json.loads(next(EmbeddedInput.from_dict(item).content_bytes() for item in observed["request"]["input_artifacts"]
+                if item["ref"].endswith("--debate-judge-context")))
+            return (EmbeddedInput.from_bytes(task.command_id + "--debate-guidance", "application/json",
+                canonical_json({"debate_id": event["debate_id"], "source_judge_attempt_id": verdict["source_attempt_id"],
+                    "judgment": judgment, "facts": context["facts"], "instruction": "Address this public judgment with a discriminating experiment, controls and abandonment criteria. It is guidance, not completed experimental evidence."})),)
+        return ()
 
     def promotion_inputs(self, run_id, task):
         key = task.key

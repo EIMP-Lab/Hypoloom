@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hypoloom.agent_aci import AgentRequest, AgentResponse, WorkspaceArtifact, request_digest, with_output_digest
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, AgentRequest, AgentResponse, WorkspaceArtifact, request_digest, with_output_digest
 from hypoloom.agent_budget import fold_agent_attempts
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
@@ -236,7 +236,7 @@ def test_permanent_cycle_report_failure_closes_without_rewriting_accepted_scienc
         host.initialize()
         assert host.handle(ControlRequest(1, "create-" + run_id, 0, "CREATE_RUN",
             _payload(tmp_path, mount_root, run_id))).status == "accepted"
-        assert host.store.get_run(run_id)["agent_aci_version"] == "20"
+        assert host.store.get_run(run_id)["agent_aci_version"] == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
         deadline = time.monotonic() + 30
         failure = None
         while time.monotonic() < deadline:

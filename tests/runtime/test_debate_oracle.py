@@ -10,6 +10,34 @@ from test_interaction_host import node
 from test_interaction_oracle import RawRecords
 
 
+@pytest.mark.parametrize("damage", [None, "wrong-parent", "duplicate-participant", "premature-finish"])
+def test_directed_restart_audit_uses_participant_parent_and_actual_closure(tmp_path, damage):
+    host, view, _, _ = setup(tmp_path, agent_version=21, selected=False)
+    try:
+        view, active, _, completed = debate_rounds(host, view)
+        judge(host, view, active, completed)
+        view.drive("run-1")
+        data = RawRecords(host)
+    finally:
+        host.store.close()
+    assert data.audit() == []
+    events = [row for row in data.transitions if row["payload"].get("expert_interaction", {}).get("action") == "debate_restarts_designated"]
+    assert len(events) == 2
+    if damage == "wrong-parent":
+        events[0]["payload"]["expert_interaction"]["plans"][0]["parent_hypothesis_id"] = "hyp-foreign"
+    elif damage == "duplicate-participant":
+        events[1]["payload"]["expert_interaction"]["plans"] = copy.deepcopy(events[0]["payload"]["expert_interaction"]["plans"])
+    elif damage == "premature-finish":
+        finished = copy.deepcopy(events[-1])
+        finished["revision"] += 1
+        event = finished["payload"]["expert_interaction"]
+        event.update(action="debate_restarts_finished", plans=[plan for row in events
+            for plan in row["payload"]["expert_interaction"]["plans"]])
+        data.transitions.append(finished)
+    if damage is not None:
+        assert data.audit()
+
+
 def fixture(tmp_path, *, judged=True, restart=True):
     host, view, _, _ = setup(tmp_path)
     view, active, binding, completed = debate_rounds(host, view)

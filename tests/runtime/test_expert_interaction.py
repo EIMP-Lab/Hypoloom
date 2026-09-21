@@ -49,7 +49,7 @@ def test_context_selection_preserves_exact_current_and_cited_historical_evidence
     assert all(row in rows for row in cited) and rows == before
 
 
-def _facts(*, accepted_rows=False):
+def _facts(*, accepted_rows=False, negative=False):
     originals = all_facts()
     contract = research_contract()
     contract["roles"].append({**copy.deepcopy(contract["roles"][0]), "id": "critic"})
@@ -99,6 +99,11 @@ def _facts(*, accepted_rows=False):
             fields["evidence_ids"] = ("evidence-2",)
         peers.append(replace(fact, **fields))
     candidates = (goal, *originals[1:6], *peers)
+    if negative:
+        from hypoloom.domain import CanonicalOutcomeAccepted, HypothesisAssessed, HypothesisAssessment
+        candidates = tuple(replace(item, outcome=ScientificOutcome.CLEAN_REFUTATION, metric_value="0.1")
+            if isinstance(item, CanonicalOutcomeAccepted) else replace(item, assessment=HypothesisAssessment.REFUTED)
+            if isinstance(item, HypothesisAssessed) else item for item in candidates)
     if accepted_rows:
         view = MemoryResearchView()
         kernel = ResearchKernel()
@@ -120,6 +125,24 @@ def test_existing_research_kernel_rows_are_the_only_qualification_source(databas
     selection = admit_observer_proposal(_observer(), facts=facts)
     assert selection.leader.role == "critic"
     assert rows == before
+
+
+def test_negative_contribution_is_versioned_and_execution_failure_never_qualifies():
+    rows = _facts(negative=True)
+    assert InteractionFacts.from_rows("run-1", rows).leader_qualifications() == ()
+    facts = InteractionFacts.from_rows("run-1", rows, agent_aci_version=21)
+    assert {item.hypothesis_id for item in facts.leader_qualifications()} == {"hyp-1", "hyp-2"}
+    with pytest.raises(ValueError, match="exactly one"):
+        admit_observer_proposal(_observer(), facts=facts)
+    proposal = {**_observer(), "supporting_refs": ["hyp-2", "out-2"]}
+    assert admit_observer_proposal(proposal, facts=facts).leader.contributions[0].hypothesis_id == "hyp-2"
+    for row in rows:
+        if row["fact_type"] == "CanonicalOutcomeAccepted":
+            row.update(outcome="EXECUTION_FAILURE", metric_value=None)
+    facts = InteractionFacts.from_rows("run-1", rows, agent_aci_version=21)
+    assert facts.leader_qualifications() == ()
+    with pytest.raises(ValueError, match="verified contribution"):
+        admit_observer_proposal(proposal, facts=facts)
 
 
 @pytest.mark.parametrize("action", [None, [], {}, 1, "graph_evolution"])

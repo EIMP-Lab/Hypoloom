@@ -154,6 +154,36 @@ def test_interaction_stage_retries_and_goal_abort_are_one_occurrence(tmp_path):
     assert len(item["stages"]) == 3
 
 
+@pytest.mark.parametrize("started", [False, True])
+def test_debate_restart_detail_distinguishes_empty_finish_from_actual_experiment(tmp_path, started):
+    participant = {"scope": {"role": "researcher", "component_id": "component", "chain": "a"}, "hypothesis_id": "hyp"}
+    plan = {"role": "researcher", "component_id": "component", "cycle": 2, "parent_hypothesis_id": "hyp"}
+    events = [
+        {"action": "debate_proposed", "proposal": {"debate": {"participants": [participant]}}},
+        {"action": "debate_verdict"},
+        {"action": "debate_restarts_designated", "plans": [plan] if started else [],
+         "not_started": [] if started else [{"role": "researcher", "component_id": "component", "reason": "round_budget_exhausted"}]},
+        {"action": "debate_restarts_finished", "plans": [plan] if started else []},
+    ]
+    transitions = [("run", "run", "RUN", 1, "prior", 1, json.dumps({"task_context": {"key": {
+        "expert_slot": "researcher", "component_id": "component", "cycle": 1}}}))]
+    transitions += [("run", "run", "RUN", n, f"c{n}", n, json.dumps({"expert_interaction": {
+        **event, "debate_id": "debate", "source_attempt_id": "source"}})) for n, event in enumerate(events, 2)]
+    facts = []
+    if started:
+        transitions.append(("run", "experiment", "EXPERIMENT", 1, "create", 4,
+            json.dumps({"role": "researcher", "component_id": "component", "expert_cycle": 2})))
+        facts.append(("run", "fact", "CanonicalOutcomeAccepted", json.dumps({"experiment_id": "experiment", "outcome_id": "outcome"})))
+    _database(tmp_path, transitions=transitions, facts=facts)
+    item = read_observer_detail(tmp_path, "run", "interactions")["interactions"][0]
+    assert item["state"] == "FINISHED"
+    restart = item["restarts"][0]
+    assert (restart["source_cycle"], restart["target_cycle"]) == (1, 2)
+    assert restart["state"] == ("OUTCOMES_RECORDED" if started else "NOT_STARTED")
+    assert restart["outcome_ids"] == (["outcome"] if started else [])
+    assert restart["reason"] == (None if started else "round_budget_exhausted")
+
+
 def test_embedded_bound_plugin_and_concurrent_old_version_remain_visible(tmp_path):
     _, base, commit = _plugin(tmp_path)
     old = _attempt("concurrent", state="OPEN", observation={"session": {"expert_resources": _binding(base)}})

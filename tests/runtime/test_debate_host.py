@@ -21,9 +21,9 @@ def session(identity, parent=None, *, first=False):
     return {"session_binding": binding, "session": {**binding, "launch_arguments": launch}}
 
 
-def setup(tmp_path, *, rounds=4, resources=False, history_bytes=0, interaction_options=None):
+def setup(tmp_path, *, rounds=4, resources=False, history_bytes=0, interaction_options=None, agent_version=14, selected=True, pending_self=False, peer_inflight=False):
     """SQLite controller unit seam; session metadata is a fixture, not real CC."""
-    host = StoredHost(tmp_path / "state", debate=True, rounds=rounds, interaction_options=interaction_options)
+    host = StoredHost(tmp_path / "state", debate=True, rounds=rounds, interaction_options=interaction_options, agent_version=agent_version, selected=selected, pending_self=pending_self)
     originals = {}
     for number, (role, component, hypothesis) in enumerate((("researcher", "primary.score", "hyp-1"), ("critic", "must.robustness", "hyp-2")), 1):
         host.record(node("LITERATURE_REVIEW", role, component))
@@ -47,6 +47,8 @@ def setup(tmp_path, *, rounds=4, resources=False, history_bytes=0, interaction_o
             inputs.append(EmbeddedInput.from_bytes(task.command_id + "--expert-resources", "application/json",
                 json.dumps({"plugin": plugin.to_dict(), "memory_commit": memory, "research_view_id": view_id}).encode()))
         originals[role] = host.record(task, inputs=inputs, extra_observation=session(str(UUID(int=number))))
+    if peer_inflight:
+        host.record(node("LITERATURE_REVIEW", "researcher", "primary.score", cycle=2), terminal="FAILED")
     view = InteractionHost(host)
     task = view._triggers("run-1")[0][0]
     proposal = _observer("debate")
@@ -186,6 +188,86 @@ def test_judge_releases_only_debate_and_restarts_both_at_hypothesis_stage(tmp_pa
     view.drive("run-1")
     assert not view.debate.pending("run-1")
     host.store.close()
+
+
+def test_directed_restart_uses_debate_parent_when_adjudication_selected_nothing(tmp_path):
+    host, view, _, _ = setup(tmp_path, agent_version=21, selected=False)
+    try:
+        view, active, binding, completed = debate_rounds(host, view)
+        judge(host, view, active, completed)
+        view.drive("run-1")
+        assert len(view.debate._designations("run-1", active["debate_id"])) == 2
+        for role, component, parent in (("researcher", "primary.score", "hyp-1"), ("critic", "must.robustness", "hyp-2")):
+            plan = view.debate.designated_round("run-1", component)
+            assert plan["parent_hypothesis_id"] == parent and plan["cycle"] == 2
+            assert host._batch_history("run-1", component, role).selected_tip is None
+            assert view.directed_round("run-1", role, component, 2) == plan
+            task = node("HYPOTHESIS_PROPOSAL", role, component, cycle=2, subkind=ResearchNodeSubkind.FORWARD)
+            guidance = json.loads(view.debate.planning_inputs("run-1", task)[0].content_bytes())
+            assert guidance["source_judge_attempt_id"] == view.debate._event("run-1", active["debate_id"], "debate_verdict")["source_attempt_id"]
+        recovered = InteractionHost(host)
+        recovered.drive("run-1")
+        assert len(recovered.debate._designations("run-1", active["debate_id"])) == 2
+        assert recovered.debate._event("run-1", active["debate_id"], "debate_restarts_finished") is None
+    finally:
+        host.store.close()
+
+
+def test_each_debater_waits_only_for_its_own_admitted_cycle(tmp_path):
+    host, view, _, _ = setup(tmp_path, agent_version=21, selected=False, peer_inflight=True)
+    try:
+        view, active, binding, completed = debate_rounds(host, view)
+        judge(host, view, active, completed)
+        view.drive("run-1")
+        assert view.debate.designated_round("run-1", "must.robustness")["cycle"] == 2
+        assert view.debate.designated_round("run-1", "primary.score") is None
+        assert view.debate.blocks_next_cycle("run-1", "primary.score", 3)
+        assert not view.debate.blocks_next_cycle("run-1", "primary.score", 2)
+        assert view.debate._event("run-1", active["debate_id"], "debate_restarts_finished") is None
+        # The failed source becomes terminal through the existing Host decision.
+        task = node("LITERATURE_REVIEW", "researcher", "primary.score", cycle=2)
+        attempt = host._expert_attempts(task)[0]
+        host.control(Command.AGENT_ATTEMPT_FINAL_FAILURE, {"agent_final_failure": True,
+            "attempt_id": attempt["attempt_id"], "failure_code": "literature_exhausted",
+            "failed_task_command_id": task.command_id, "role": "researcher", "component_id": "primary.score"})
+        view = InteractionHost(host)
+        view.drive("run-1")
+        decisions = view.debate._designations("run-1", active["debate_id"])
+        assert len(decisions) == 2
+        assert decisions[-1][1]["not_started"] == [{"role": "researcher", "component_id": "primary.score", "reason": "source_cycle_failed"}]
+    finally:
+        host.store.close()
+
+
+def test_restart_parent_can_precede_the_current_source_cycle(tmp_path):
+    from dataclasses import replace
+    from hypoloom.research_kernel import ResearchKernel
+    from test_domain import all_facts
+    host, view, _, _ = setup(tmp_path, agent_version=21, selected=False, peer_inflight=True)
+    try:
+        view, active, binding, completed = debate_rounds(host, view)
+        judge(host, view, active, completed)
+        view.drive("run-1")
+        assert view.debate.designated_round("run-1", "primary.score") is None
+        hypothesis = replace(all_facts()[1], fact_id="fact-hyp-c2", hypothesis_id="hyp-c2",
+            parent_hypothesis_id="hyp-1", relation="revision")
+        with host.store.transaction() as tx:
+            tx.append_fact(ResearchKernel().construct_fact(hypothesis, tx))
+        host.control(Command.ACCEPT_HYPOTHESIS, {"role": "researcher", "component_id": "primary.score",
+            "node_command_id": "c2-synthesis", "agent_attempt_id": "c2-synthesis-attempt",
+            "hypothesis_batch": {"cycle": 2, "chains": {"chain-a": "hyp-c2"}}})
+        host.control(Command.ACCEPT_ADJUDICATION, {"role": "researcher", "component_id": "primary.score",
+            "adjudication": {"cycle": 2, "batch_command_id": "c2-synthesis", "selected_tip": None}})
+        literature = host.record(node("LITERATURE_REVIEW", "researcher", "primary.score", cycle=2))
+        host.finish_round("researcher", "primary.score", cycle=2)
+        view = InteractionHost(host)
+        view.drive("run-1")
+        plan = view.debate.designated_round("run-1", "primary.score")
+        assert (plan["parent_hypothesis_id"], plan["source_cycle"], plan["cycle"]) == ("hyp-1", 2, 3)
+        assert plan["source_literature_attempt_id"] == literature["attempt_id"]
+        assert view.directed_round("run-1", "researcher", "primary.score", 3) == plan
+    finally:
+        host.store.close()
 
 
 def test_debate_cannot_skip_rounds_to_launch_judge_or_overwrite_source(tmp_path):

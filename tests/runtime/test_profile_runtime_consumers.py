@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hypoloom.agent_aci import EmbeddedInput
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, EmbeddedInput
 from hypoloom.domain import ResearchContract
 from hypoloom.expert_loop import (
     AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKey, ResearchNodeKind,
@@ -297,7 +297,7 @@ def test_real_cpu_v3_profile_on_fresh_aci16_keeps_language_through_final_report(
         created = instance.handle(ControlRequest(schema_version=1, request_id="create-v3-current",
             expected_revision=0, command="CREATE_RUN", payload=payload))
         assert created.status == "accepted", created
-        assert str(instance.store.get_run(run_id)["agent_aci_version"]) == "20"
+        assert str(instance.store.get_run(run_id)["agent_aci_version"]) == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
         _drive(instance, run_id)
         assert instance.store.latest_transition(run_id)["state"] == "COMPLETED"
         attempts = instance.store.list_attempts()

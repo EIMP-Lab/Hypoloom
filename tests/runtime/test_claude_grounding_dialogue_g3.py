@@ -90,7 +90,7 @@ class _DialogueScenario(_DeclaredScenario):
         self.agent_requests[request.attempt_id] = request
         self.steps[request.attempt_id] += 1
         try:
-            assert request.schema_version == 20
+            assert request.schema_version == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
             ordinal = request.task_context.ordinal
             assert ordinal in {1, 2, 3}
             inputs = [item for item in request.input_artifacts

@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
 from hypoloom.control_protocol import ControlRequest, request_over_socket
 from hypoloom.oracle import Oracle
 from hypoloom.profile_admission import PROFILE_FILES, PROFILE_V3_FILES
@@ -384,7 +385,7 @@ def _assert_clean_scientific_closure(state_root: Path, run_id: str) -> None:
     ):
         assert required in commands
     assert commands.count("HYPOTHESIS_PROPOSAL") == 3
-    assert all(json.loads(row["observation_json"])["request"]["schema_version"] == 20
+    assert all(json.loads(row["observation_json"])["request"]["schema_version"] == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
                for row in attempts if row["kind"] == "AGENT")
 
     report = Oracle(database, state_root / "artifacts").audit(run_id)

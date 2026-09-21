@@ -305,6 +305,8 @@ class PreparedSessionWorkspace:
             if self.final_report_root is None or {path.name for path in self.final_report_root.iterdir()} != {"FINAL_REPORT.md"}:
                 raise GitAuthoringIntegrityError("final report requires exactly its requested report file")
             content = _regular(self.final_report_root / "FINAL_REPORT.md", budget)
+            from .final_report import validate_final_report
+            validate_final_report({"FINAL_REPORT.md": content}, self.request)
             return [WorkspaceArtifact.from_bytes("FINAL_REPORT.md", content).to_dict()]
         if self.request.command is AgentCommand.CYCLE_REPORT:
             from .expert_memory import ExpertMemory, request_report_component

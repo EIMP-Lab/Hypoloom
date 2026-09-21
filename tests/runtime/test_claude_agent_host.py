@@ -81,7 +81,7 @@ _VALID_OUTPUT = json.dumps(
 )
 
 
-def _host(tmp_path: Path) -> ClaudeAgentHost:
+def _host(tmp_path: Path, *, clock=time.monotonic) -> ClaudeAgentHost:
     stub = tmp_path / "claude-stub"
     stub.write_text(
         """#!/bin/sh
@@ -154,6 +154,7 @@ esac
             "STUB_WORKSPACE_SOURCE",
         ),
         extra_runtime_paths=("/bin/sh", "/bin/sleep"),
+        clock=clock,
     )
 
 
@@ -3812,7 +3813,6 @@ def test_observe_mode_keeps_successful_provider_response_over_token_limit(
 
 
 def test_transport_output_is_capped_while_provider_is_running(tmp_path: Path) -> None:
-    host = _host(tmp_path)
     request = _claude_request()
     request = request.__class__.from_dict(
         {
@@ -3824,9 +3824,33 @@ def test_transport_output_is_capped_while_provider_is_running(tmp_path: Path) ->
             },
         }
     )
-    started = time.monotonic()
-    observation = host.wait(_start(host, mode="flood", request=request))
-    elapsed = time.monotonic() - started
+    # Exercise the OS output cap before advancing the invocation clock. A
+    # loaded machine need not produce one MiB within the 0.2-second deadline.
+    frozen = time.monotonic()
+    timeout_started = None
+
+    def clock():
+        return (frozen if timeout_started is None else
+                frozen + request.budget.wall_seconds + time.monotonic() - timeout_started)
+
+    host = _host(tmp_path, clock=clock)
+    handle = _start(host, mode="flood", request=request)
+    try:
+        ready_deadline = time.monotonic() + 5
+        while os.fstat(handle._stdout_file.fileno()).st_size <= 1024 * 1024:
+            assert handle.returncode is None
+            assert time.monotonic() < ready_deadline, "provider did not reach its output cap"
+            time.sleep(0.01)
+        assert handle.returncode is None, "the output cap must hold while the provider runs"
+        timeout_started = time.monotonic()
+        observation = host.wait(handle)
+        elapsed = time.monotonic() - timeout_started
+    finally:
+        # Also advance the clock if the readiness assertion failed, so cleanup
+        # retains its ordinary finite terminate/kill grace periods.
+        if timeout_started is None:
+            timeout_started = time.monotonic()
+        host.cleanup(handle)
     assert elapsed < 1.5
     assert observation.terminal_reason is AgentHostTerminalReason.TIMED_OUT
     assert observation.failure_code == "timed_out"

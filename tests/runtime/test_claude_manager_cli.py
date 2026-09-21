@@ -15,7 +15,7 @@ from test_full_cc_host_g3 import _start_provider
 from test_grounding_manager import _request, _with_plugin
 
 
-_LINE = "Recommend a Leader only when at least one candidate has an accepted SUCCESS or"
+_LINE = "Use the request's eligibility and ACI version. Before ACI 21, a candidate needs"
 
 
 class _ManagerScenario:

@@ -40,6 +40,25 @@ def _call(server, text=VALID, session_id="session-owned"):
         last_assistant_message=text, max_request_bytes=4096, timeout_seconds=2)
 
 
+def test_report_missing_citation_is_repaired_inside_the_same_native_call(tmp_path):
+    from hypoloom.final_report import validate_final_report
+    from test_final_report import report_request
+    request = report_request()
+    report = tmp_path / "FINAL_REPORT.md"
+    report.write_text("verdict-fact GOAL_MET")
+    server = _server(tmp_path, final_report_check=lambda: validate_final_report(
+        {"FINAL_REPORT.md": report.read_bytes()}, request))
+    try:
+        rejected = _call(server)
+        assert rejected["decision"] == "block" and "outcome-accepted" in rejected["reason"]
+        assert not server.snapshot()["accepted"]
+        report.write_text("verdict-fact GOAL_MET outcome-accepted")
+        assert _call(server) == {}
+        assert server.snapshot()["status"] == "recovered"
+    finally:
+        server.close()
+
+
 @pytest.mark.parametrize("cap", [1, 3, 11])
 def test_rejection_cap_then_normal_invalid_completion(tmp_path, cap):
     server = _server(tmp_path, cap=cap)

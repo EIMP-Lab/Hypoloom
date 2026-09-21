@@ -1,5 +1,50 @@
 # Current Hypoloom development state
 
+- September 21 readiness continuation: the user approved `glm-5.3-flash`,
+  a fresh 13 USD cohort (CPU 7 / GPU 6). Following the user's report that GPU
+  0+1 are free, G4 now uses GPU 0+1 and G5 GPU 1; the original GPU 2+3 wait
+  stopped before either lane started. G1 current coverage is 5,867 passed / 26
+  opt-in skips after retained
+  fixture-failure refreshes; installed delivery, ten unchanged retained-run
+  audits (one known historical issue), and native ACI-21 Leader/Debate/six-CPU
+  closure pass. Sdist now includes the six previously omitted public guide
+  assets (dotenv example/five screenshots). The pre-batch ACI-13
+  pending-update/early-verdict defect is fixed
+  and all 15 legacy integration cases pass. CPU G5 passes: GOAL_MET, 11 Agents
+  plus one actual CPU Process, 4.283047 USD recorded, no unknown charges or
+  process residue. Initial GPU G4: 9 passed / 1 failed, one final
+  `process_exited` attribution sample; all eight CUDA Processes succeeded,
+  four run Oracles and two pools are clean, no process residue. The service
+  stopped before G5. One unchanged unpaid recheck passes in 140.54 s with
+  complete samples, clean Oracles/pool and 40 closed Attempts. G4 now has
+  all ten identities covered, retaining the original failed sample. G5 GPU 1
+  passes in 743.60 s: COMPLETED r18, 11 Agent + one CUDA Process, checksum 6,
+  13 complete measurements / zero unknown, 362 MiB owned peak. Independent
+  post-close Oracle/pool checks pass, all 12 groups and sockets are absent;
+  the service exited zero. GPU cost 3.633895 USD, total cohort 7.916942 USD
+  against 13 USD, no unknown charges. Current evidence supports a fresh bounded
+  scientific-topic run; paid multi-expert decision quality, historical TUI-crash
+  attribution and concurrent-client latency remain unqualified. No long topic
+  was launched, and no old-run mutation is authorized. Evidence lives under
+  `.local/qualification/aci21-20260921/`. See [continuation evidence](../qualification.md#readiness-qualification-continuation-2026-09-21).
+
+- September 21: uncommitted ACI-21 repair implements the user's chosen Leader
+  responsibility: coordinate from verified intermediate contributions before
+  final goal completion, including evidence-linked clean refutations. Exact
+  accepted Leader/Debate parents authorize research despite null best_chain;
+  each debater progresses after its own source cycle closes. Control reads,
+  charge caching and bounded asynchronous view preparation reduce historical
+  decoding on the Host thread. End-run rejection text persists; TUI exceptions
+  enter existing diagnostics; final-report citation validation runs inside the
+  native Stop hook. See the [repair evidence and limits](../qualification.md#current-development--responsive-control-and-evidence-directed-research-2026-09-21).
+  Validation: 859 focused passes, two real CPU interaction cases, the negative
+  case with two same-version Host reconstructions, and native CLI final report;
+  independent audits and recorded process-group cleanup passed.
+  The prior MERC run was explicitly closed with its original bundle; it remains
+  read-only. No migration or new paid/GPU research was authorized or performed.
+  The historical TUI exit cause and concurrent-load latency targets remain
+  unconfirmed; this is development evidence, not a frozen release qualification.
+
 - September 20 (thirteenth round, uncommitted): homepage badge row gains two
   fact-based shields — `platform-linux` (hard requirement: bubblewrap, user
   namespaces, user-systemd) and `requires-Claude Code` (the agent runtime

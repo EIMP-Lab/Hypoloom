@@ -20,7 +20,7 @@ from test_expert_memory_g3 import _cycle, _resources
 from test_full_cc_host_g3 import _new_host, _request_from_provider, _start_provider
 
 
-_LEADER_LINE = "Recommend a Leader only when at least one candidate has an accepted SUCCESS or"
+_LEADER_LINE = "Use the request's eligibility and ACI version. Before ACI 21, a candidate needs"
 
 
 class _ManagedScenario(_FinalReportHostScenario):

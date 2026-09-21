@@ -158,10 +158,13 @@ class StateTransaction:
         except sqlite3.IntegrityError as exc: raise IdentityConflict(f"research reference conflict: {exc}") from exc
         return inserted
     def get_attempt(self, attempt_id: str) -> dict[str, Any] | None: return _dict(self.execute("SELECT * FROM execution_attempts WHERE attempt_id=?", (attempt_id,)).fetchone())
-    def list_attempts(self, *, workflow_id: str | None = None, command_id: str | None = None, execution_id: str | None = None, state: str | None = None) -> tuple[dict[str, Any], ...]:
-        filters = [(name, value) for name, value in (("workflow_id", workflow_id), ("command_id", command_id), ("execution_id", execution_id), ("state", state)) if value is not None]
+    def list_attempts(self, *, workflow_id: str | None = None, command_id: str | None = None, execution_id: str | None = None, state: str | None = None,
+                      run_id: str | None = None, kind: str | None = None, terminal_reason: str | None = None,
+                      include_observation: bool = True) -> tuple[dict[str, Any], ...]:
+        filters = [(name, value) for name, value in (("workflow_id", workflow_id), ("command_id", command_id), ("execution_id", execution_id), ("state", state), ("run_id", run_id), ("kind", kind), ("terminal_reason", terminal_reason)) if value is not None]
         where = " WHERE " + " AND ".join(f"{name}=?" for name, _ in filters) if filters else ""
-        return tuple(dict(row) for row in self.execute("SELECT * FROM execution_attempts" + where + " ORDER BY workflow_id,command_id,attempt_ordinal", [value for _, value in filters]).fetchall())
+        columns = "*" if include_observation else "attempt_id,run_id,workflow_id,command_id,kind,experiment_id,execution_id,attempt_ordinal,host_generation,state,started_at,ended_at,terminal_reason,process_group_id"
+        return tuple(dict(row) for row in self.execute("SELECT " + columns + " FROM execution_attempts" + where + " ORDER BY workflow_id,command_id,attempt_ordinal", [value for _, value in filters]).fetchall())
     def open_attempt(self, attempt: Mapping[str, Any] | object) -> bool:
         data = _record(attempt); attempt_id = _text(data["attempt_id"], "attempt_id"); kind = _plain(data["kind"])
         intent = data.get("observation", data.get("payload"))

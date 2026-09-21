@@ -16,6 +16,7 @@ import pytest
 import hypoloom.workflow_host as workflow_host_module
 from hypoloom.artifacts import ArtifactDurabilityError
 from hypoloom.agent_aci import (
+    CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
     AgentCommand,
     AgentACIError,
     AgentResponse,
@@ -1677,7 +1678,7 @@ def test_current_production_submit_rejects_broken_patch_then_repairs_in_same_exe
             payload=_production_design_payload(run_id, target, commit)))
         assert response.status == "accepted", response
         _drive_to_completion(host, run_id)
-        assert host.store.get_run(run_id)["agent_aci_version"] == "20"
+        assert host.store.get_run(run_id)["agent_aci_version"] == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
         assert agent.rejected and len(agent.design_requests) == 1
         preregistrations = host.store.list_facts(run_id, "ExperimentPreregistered")
         assert len(preregistrations) == 1

@@ -1054,6 +1054,15 @@ class EvidencePanel(CockpitPanel):
 class HypoloomVNextMonitor(App):
     """Read-only polling plus explicit operator forms and a loopback Web observer."""
 
+    def _handle_exception(self, error: Exception) -> None:
+        from .runtime_diagnostics import record_host_exception
+        try:
+            record_host_exception(self.state_root, error, phase="tui", run_id=self.run_id,
+                secrets=tuple(value for key, value in os.environ.items()
+                    if key in {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}))
+        finally:
+            super()._handle_exception(error)
+
     TITLE = "Hypoloom · Research Operations"
     NARROW_WIDTH = 88
     BINDINGS = (
@@ -1640,6 +1649,8 @@ def run_tui(
     )
     try:
         app.run()
+        if app.return_code:
+            raise SystemExit(app.return_code)
     finally:
         app.close_web_observer()
 

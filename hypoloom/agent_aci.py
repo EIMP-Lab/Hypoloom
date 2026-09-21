@@ -63,7 +63,8 @@ UNSELECTED_REVISION_ACI_SCHEMA_VERSION = 17
 RESOURCE_LEARNING_ACI_SCHEMA_VERSION = 18
 REFERENCE_ALIAS_ACI_SCHEMA_VERSION = 19
 PAPER_READING_ACI_SCHEMA_VERSION = 20
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = PAPER_READING_ACI_SCHEMA_VERSION
+DIRECTED_RESEARCH_ACI_SCHEMA_VERSION = 21
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = DIRECTED_RESEARCH_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -80,6 +81,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         RESOURCE_LEARNING_ACI_SCHEMA_VERSION,
         REFERENCE_ALIAS_ACI_SCHEMA_VERSION,
         PAPER_READING_ACI_SCHEMA_VERSION,
+        DIRECTED_RESEARCH_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -105,6 +107,7 @@ _COMMANDS_BY_SCHEMA = {
     RESOURCE_LEARNING_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     REFERENCE_ALIAS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     PAPER_READING_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    DIRECTED_RESEARCH_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1570,7 +1573,7 @@ def debate_judge_inputs(request: AgentRequest):
     inputs = [item for item in request.input_artifacts if item.ref.endswith("--debate-judge-context")]
     if len(inputs) != 1: raise ValueError("Debate judge requires one frozen six-output context")
     context = json.loads(inputs[0].content_bytes())
-    facts = InteractionFacts.from_rows(request.run_id, context["facts"])
+    facts = InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version)
     participants = []
     for item in context["participants"]:
         participant = DebateParticipant(ParticipantScope.from_dict(item["participant"]["scope"]), item["participant"]["hypothesis_id"])
@@ -1622,7 +1625,7 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
             if (not isinstance(actions, list) or not actions or len(actions) != len(set(actions))
                     or not set(actions) <= {"none", "leader", "debate"}): raise ValueError("invalid Observer allowed actions")
             if raw.get("action") not in actions: raise ValueError("Observer action is disabled for this trigger")
-            proposal = admit_observer_proposal(raw, facts=InteractionFacts.from_rows(request.run_id, context["facts"]))
+            proposal = admit_observer_proposal(raw, facts=InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version))
             if "eligible_leader_components" in context:
                 eligible = context["eligible_leader_components"]
                 if not isinstance(eligible, list) or any(not isinstance(item, str) for item in eligible):
@@ -1630,6 +1633,9 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
                 if proposal.leader is not None and any(item.component_id not in eligible
                         for item in proposal.leader.contributions if set(item.qualification_refs).intersection(proposal.supporting_refs)):
                     raise ValueError("selected Leader component is not eligible at this trigger")
+            if request.schema_version >= 21 and proposal.leader is not None:
+                if proposal.leader.contributions[0].hypothesis_id not in context["eligible_leader_hypotheses"]:
+                    raise ValueError("Leader contribution is not eligible at this trigger")
             if "debate_participants" in context:
                 participants = context["debate_participants"]
                 if not isinstance(participants, list): raise ValueError("invalid available Debate fork sources")

@@ -453,14 +453,13 @@ def test_prestart_failure_in_later_batch_does_not_fall_back_to_unbound_execution
 
 
 def _manually_ready_submissions(host, order):
-    # Finish proposal admission before holding every controller OPEN. This does
-    # not publish fictitious Attempts or change an already-frozen node input.
-    _until(host, lambda: host.store.latest_transition("batch-host")["state"] == "ACTIVE")
-    for component in host._research_contract("batch-host").components:
-        for _ in range(20):
-            if host._batch_history("batch-host", str(component.component_id)).latest is not None: break
-            host._drive_expert_proposal("batch-host", str(component.component_id), component.owner_role)
-    _until(host, lambda: len(host.local_execution_agents) == len(order))
+    # The scripted controllers wait until all scopes are admitted; asynchronous
+    # view preparation need not admit them in one tick. Preserve the real Host
+    # proposals and frozen inputs without submitting early in incidental order.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(host.agent, "poll_execution", lambda *_args: None, raising=False)
+        _until(host, lambda: len(host.local_execution_agents) == len(order))
+    assert not host.store.list_workflow_heads("batch-host", "EXPERIMENT")
     requests = {(request.component_id, request.task_context.key.chain): request for request in host.local_execution_agents.values()}
     host.local_execution_agents.clear()
     accepted = {}

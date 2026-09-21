@@ -660,7 +660,7 @@ def derive_research_node_views(
     agent_aci_version: str | int = 10,
 ) -> tuple[ResearchNodeView, ...]:
     """Derive retry-safe work state without persisting a node-status mirror."""
-    if str(agent_aci_version) not in {"7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"}:
+    if str(agent_aci_version) not in {"7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"}:
         return ()
     command_ids = {str(row["command_id"]) for row in commands}
     by_command: dict[str, list[Mapping[str, Any]]] = {}

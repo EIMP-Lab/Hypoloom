@@ -1,6 +1,18 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Readiness continuation 2026-09-21](../qualification.md#readiness-qualification-continuation-2026-09-21):
+  approved 13 USD glm-5.3-flash cohort, GPU reassignment from 2/3 to free 0/1, installed package,
+  unchanged ten-run retained cohort, native ACI-21 interaction, complete offline
+  coverage and passing CPU/GPU model samples (7.916942 USD total); G4 passes
+  after one unchanged recheck (original process-exit attribution failure
+  retained), independent closure is clean, and bounded new-topic readiness
+  retains explicit scientific-quality/TUI/latency limits.
+- [Repair round 2026-09-21](../qualification.md#current-development--responsive-control-and-evidence-directed-research-2026-09-21):
+  ACI-21 intermediate-contribution Leader, exact directed parents and separate
+  Debate restarts, bounded view preparation and charge caching, End-run error
+  retention/diagnostics, final-report Stop validation; focused/native CPU
+  evidence, retained-run audit and explicit latency/crash qualification limits.
 - [Repair round 2026-09-19](../qualification.md#current-development--prompt-offload-termination-honesty-tick-cost-and-attribution-aware-gpu-pressure-2026-09-19):
   prompt offload (/inputs advertisements), stateless input_too_long
   classification, TERMINATE_LINEAGE honest semantics, history-gated

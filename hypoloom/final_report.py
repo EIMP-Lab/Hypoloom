@@ -15,14 +15,14 @@ def run_outcome_context(facts, attempts, final_failures):
     for row in attempts:
         if row["kind"] != "AGENT":
             continue
-        request = json.loads(row["observation_json"]).get("request", {})
+        request = (row["observation"] if "observation" in row else json.loads(row["observation_json"])).get("request", {})
         context = request.get("task_context")
         if isinstance(context, dict) and "key" in context:
             nodes.add(request.get("command_id", row["command_id"]))
     failures = []
     for failure in final_failures:
         row = by_id[failure["attempt_id"]]
-        observation = json.loads(row["observation_json"])
+        observation = (row["observation"] if "observation" in row else json.loads(row["observation_json"]))
         request = observation["request"]
         failures.append({"attempt_id": row["attempt_id"], "command": request["command"],
             "failure_code": failure["failure_code"], "failure_stage": observation.get("failure_stage"),
@@ -90,7 +90,7 @@ def accepted_report_view(run_id, attempts):
     for row in attempts:
         if (row["run_id"] != run_id or row["kind"] != "AGENT" or row["state"] != "CLOSED"
                 or row["terminal_reason"] != "SUCCEEDED"): continue
-        observation = json.loads(row["observation_json"])
+        observation = (row["observation"] if "observation" in row else json.loads(row["observation_json"]))
         if observation.get("request", {}).get("command") != "FINAL_REPORT": continue
         request = AgentRequest.from_dict(observation["request"])
         if (request.run_id, request.attempt_id, request.owner_workflow_id, request.command_id, request.attempt_ordinal) != (

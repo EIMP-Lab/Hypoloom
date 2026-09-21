@@ -19,7 +19,7 @@ PRODUCT_EVENT_TYPES = frozenset({"run_started", "run_finished", "hypothesis_adde
     "experiment_failed", "stage_started", "stage_finished", "expert_round_done", "error", "budget_warning",
     "expert_evolved", "batch_adjudicated", "hypothesis_pruned", "final_report_ready",
     "leader_selected", "leader_started", "leader_finished", "leader_not_started", "graph_evolved",
-    "debate_selected", "debate_started", "debate_finished", "debate_restarts_finished", "debate_failed",
+    "debate_selected", "debate_started", "debate_finished", "debate_restarts_finished", "debate_restarts_designated", "debate_failed",
     "leader_aborted", "debate_aborted",
     "new_best_result", "goal_verdict_recorded",
     "provider_auth_cooldown", "provider_auth_resumed",
@@ -123,7 +123,7 @@ def _provider_auth_events(run_id, facts, transitions, attempts):
     for row in attempts:
         if row["kind"] != "AGENT" or row["state"] != "CLOSED":
             continue
-        observation = json.loads(row["observation_json"] or "{}")
+        observation = (row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}"))
         failure = observation.get("diagnostics", {}).get("provider_failure", {})
         if failure.get("code") != "auth_failed" or type(row["ended_at"]) not in (int, float):
             continue
@@ -198,6 +198,7 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
             "leader_round_finished": "leader_finished", "leader_not_started": "leader_not_started",
             "debate_proposed": "debate_selected", "debate_started": "debate_started",
             "debate_verdict": "debate_finished", "debate_restarts_finished": "debate_restarts_finished",
+            "debate_restarts_designated": "debate_restarts_designated",
             "debate_failed": "debate_failed", "debate_aborted": "debate_aborted",
             "leader_aborted": "leader_aborted"}.get(interaction.get("action"))
         if named:
@@ -218,7 +219,7 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
                 row["created_at"], run_id, experiment_id=row["workflow_id"], command_id=row["command_id"]))
     for row in attempts:
         if row["kind"] != "AGENT": continue
-        observation = json.loads(row["observation_json"] or "{}")
+        observation = (row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}"))
         request = observation.get("request", {})
         values = {"attempt_id": row["attempt_id"], "role": request.get("role"),
                   "node": request.get("command"), "task": request.get("task_context")}
@@ -290,7 +291,7 @@ def build_product_observation(state_root: str | Path, run_id: str, *,
         attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
         commands = {row["command_id"]: dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))}
     charges = fold_agent_attempts(attempts)
-    observations = {row["attempt_id"]: json.loads(row["observation_json"] or "{}") for row in attempts}
+    observations = {row["attempt_id"]: (row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}")) for row in attempts}
     by_role, by_experiment = {}, {}
     for row in attempts:
         by_role.setdefault(observations[row["attempt_id"]].get("request", {}).get("role"), []).append(row)

@@ -1,6 +1,7 @@
 import json
 import tempfile
 import sqlite3
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -177,7 +178,10 @@ def test_injected_note_is_frozen_across_lost_retry_and_new_note_waits_for_next_t
                 raise KeyboardInterrupt("fresh fixture Host loss")
     host._crash = crash
     try:
-        for _ in range(8): host.tick()
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            host.tick()
+            time.sleep(.01)
     except KeyboardInterrupt:
         pass
     else:

@@ -21,7 +21,7 @@ from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
 from .agent_capabilities import capabilities_for
-from .agent_budget import DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
+from .agent_budget import DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS, AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
@@ -196,6 +196,15 @@ class WorkflowHost:
         self.web_tool_results: dict[str, list[dict[str, Any]]] = {}
         self.projection_errors: dict[str, str] = {}; self.projection_refresh_at: dict[str, float] = {}
         self.projection_changes: dict[str, int] = {}
+        self._agent_charges = AgentChargeCache()
+        self._projection_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="research-projection")
+        self._projection_jobs = {}
+        self._batch_cursors = {}
+        self._tick_deadline = None
+        self._agent_dispatches = 0
+        self._role_view_jobs = {}
+        self._role_views_ready = set()
+        self._role_view_errors = {}
         self.archive_errors: dict[str, str] = {}
         self.dispatch_errors: dict[str, dict[str, str]] = {}
         self._diagnostic_context: dict[str, Any] = {}
@@ -221,6 +230,10 @@ class WorkflowHost:
         except Exception as exc:
             self._record_exception(exc, phase="close"); raise
     def _close(self) -> None:
+        self._projection_executor.shutdown(wait=True)
+        self._collect_role_views()
+        for run_id in tuple(self._projection_jobs):
+            self._collect_research_projection(run_id)
         if self.publisher is not None: self.paper_reading.close()
         for job in self._literature_jobs.values(): job.cancelled.set(); job.future.cancel()
         if self.claude_agent_host is not None:
@@ -605,7 +618,13 @@ class WorkflowHost:
     def _status_response(self, request: ControlRequest) -> ControlResponse:
         if set(request.payload) != {"run_id"}: raise ValueError("STATUS requires only run_id")
         run_id = str(request.payload["run_id"])
-        attempts = self.store.list_attempts(); attempts = tuple(row for row in attempts if row["run_id"] == run_id)
+        attempts = self.store.list_attempts(run_id=run_id, include_observation=False)
+        # Only Grounding contributes the declaration displayed by STATUS.
+        grounding = {row["attempt_id"]: row for row in self.store.inspect(
+            "SELECT a.* FROM execution_attempts a JOIN workflow_commands c ON c.command_id=a.command_id "
+            "WHERE a.run_id=? AND a.kind='AGENT' AND a.state='CLOSED' AND a.terminal_reason='SUCCEEDED' "
+            "AND json_extract(c.request_json,'$.task_context.request_kind')='GROUNDING'", (run_id,))}
+        attempts = tuple(grounding.get(row["attempt_id"], row) for row in attempts)
         result = build_status_projection(self.store, run_id,
             quiescent_for_backup=self._backup_busy_reason() is None, attempts=attempts)
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
@@ -618,6 +637,10 @@ class WorkflowHost:
         if mode != "retain": result["session_retention"] = {"mode": mode, "archive": f"{run_id}/archives/sessions.tar.gz" if (self.state_root / run_id / "archives/sessions.tar.gz").is_file() else None, "error": self.archive_errors.get(run_id)}
         return ControlResponse.accepted(request.request_id, result["run_revision"], result)
     def _backup_busy_reason(self) -> str | None:
+        if self._role_view_jobs:
+            return "private research view is still in flight"
+        if self._projection_jobs:
+            return "research projection is still in flight"
         if any(not job.future.done() for job in self._literature_jobs.values()):
             return "literature read is still in flight"
         if self.running or self.running_agents:
@@ -672,7 +695,8 @@ class WorkflowHost:
         except (AgentACIError, IndexError, KeyError, TypeError, ValueError): max_attempts = 0; future_budget = None; contract_document = None
         unlaunched = max(0, max_attempts - len(agent_attempts)); run = self.store.get_run(run_id); same_bundle = run is not None and all(run[field] == getattr(self.version, field) for field in _VERSION_FIELDS)
         result = usage_projection(agent_attempts, future_attempts=0 if terminal else unlaunched,
-            future_budget=future_budget if same_bundle else None, document=contract_document)
+            future_budget=future_budget if same_bundle else None, document=contract_document,
+            charges=self._agent_charges.read(self.store, run_id, committed=True))
         if estimate_scope is not None: result["estimate_scope"] = estimate_scope
         return result
     def _transition_record(self, tx: StateTransaction, run_id: str, workflow_id: str, kind: str, command: Command,
@@ -698,8 +722,10 @@ class WorkflowHost:
             with self.store.cache_reads(): return self._tick()
         except Exception as exc:
             self._record_exception(exc, **self._diagnostic_context); raise
-        finally: self._diagnostic_context = {}
+        finally: self._diagnostic_context = {}; self._tick_deadline = None
     def _tick(self) -> bool:
+        self._collect_role_views()
+        self._agent_dispatches = 0
         active_at_start = {row["run_id"] for row in self.store.inspect("SELECT t.run_id,t.state FROM workflow_transitions t WHERE t.workflow_kind='RUN' AND NOT EXISTS(SELECT 1 FROM workflow_transitions n WHERE n.workflow_id=t.workflow_id AND n.revision>t.revision)") if row["state"] not in _TERMINAL_RUNS}
         if self.claude_agent_host is not None and hasattr(self.claude_agent_host, "service_tools"):
             self.claude_agent_host.service_tools()
@@ -711,6 +737,7 @@ class WorkflowHost:
         self._diagnostic_context = {"phase": "poll_local_execution_agents"}
         if self._poll_local_execution_agents(): progressed = True
         self._diagnostic_context = {"phase": "dispatch"}
+        self._tick_deadline = time.monotonic() + 0.25
         rows = self.store.inspect("SELECT t.* FROM workflow_transitions t WHERE t.workflow_kind='RUN' "
             "AND NOT EXISTS(SELECT 1 FROM workflow_transitions n "
             "WHERE n.workflow_id=t.workflow_id AND n.revision>t.revision) ORDER BY t.run_id")
@@ -749,22 +776,76 @@ class WorkflowHost:
                 try: archive_run_sessions(self.state_root, run_id)
                 except (OSError, ValueError) as exc: self._record_exception(exc, phase="archive", run_id=run_id); self.archive_errors[run_id] = str(exc)[:2048]
                 else: self.archive_errors.pop(run_id, None)
+        for run in rows:
+            if run["run_id"] in self._projection_jobs or (run["state"] in _TERMINAL_RUNS
+                    and self._cycle_reports_enabled(run["run_id"])):
+                self._refresh_research_projection(run["run_id"])
         self._diagnostic_context = {"phase": "terminal_exit"}
         self.terminal_exit_ready = bool(rows) and all(row["state"] in _TERMINAL_RUNS for row in rows) and self._backup_busy_reason() is None
         return progressed
+    def _collect_role_views(self):
+        for run_id, (command, future) in tuple(self._role_view_jobs.items()):
+            if not future.done(): continue
+            self._role_view_jobs.pop(run_id)
+            try:
+                future.result()
+            except Exception as exc:
+                self._role_view_errors[command] = str(exc)
+                self._record_exception(exc, phase="private_projection", run_id=run_id)
+            else:
+                self._role_views_ready.add(command)
+
+    def _prepare_role_view(self, run_id, role, task):
+        from .research_projection import freeze_role_view, ResearchProjectionError
+        self._collect_role_views()
+        if task.command_id in self._role_view_errors:
+            raise ResearchProjectionError(self._role_view_errors[task.command_id])
+        if task.command_id in self._role_views_ready: return True
+        if run_id not in self._role_view_jobs:
+            # One preparation per run, bound to the exact logical node. Normal
+            # admission is checked again on the next dispatch before any intent.
+            view_id = str(uuid.uuid5(uuid.NAMESPACE_URL, task.command_id))
+            self._role_view_jobs[run_id] = (task.command_id, self._projection_executor.submit(
+                freeze_role_view, self.state_root, run_id, role, view_id))
+        return False
+
+    def _collect_research_projection(self, run_id: str) -> None:
+        from .research_projection import publish_research_projection
+        job = self._projection_jobs.get(run_id)
+        if job is None or not job[0].done(): return
+        future, changes, state = self._projection_jobs.pop(run_id)
+        prepared = None
+        try:
+            prepared = future.result()
+            current = self.store.latest_transition(run_id)["state"]
+            if current in _TERMINAL_RUNS and state != current:
+                return  # Never publish an old active view after terminal closure.
+            publish_research_projection(prepared)
+            self.projection_changes[run_id] = changes
+            self.projection_errors.pop(run_id, None)
+        except Exception as exc:
+            self._record_exception(exc, phase="projection", run_id=run_id)
+            self.projection_errors[run_id] = str(exc)[:2048]
+            if self.store.latest_transition(run_id)["state"] in _TERMINAL_RUNS:
+                self.projection_changes[run_id] = changes
+        finally:
+            if prepared is not None and prepared[0].exists():
+                # Only disposable derived files; no research state is removed.
+                try: shutil.rmtree(prepared[0])
+                except OSError as exc:
+                    self._record_exception(exc, phase="projection_cleanup", run_id=run_id)
+                    self.projection_errors[run_id] = str(exc)[:2048]
+
     def _refresh_research_projection(self, run_id: str) -> None:
-        from .research_projection import ResearchProjectionError, update_research_projection
+        from .research_projection import prepare_research_projection
+        self._collect_research_projection(run_id)
         changes = self.store.total_changes
         self.projection_refresh_at[run_id] = time.monotonic()
-        # The sole writer's local counter catches Attempt closure as well as
-        # workflow revisions. Open Attempts can append logs without DB writes.
-        if self.projection_changes.get(run_id) == changes and not self.store.inspect(
-            "SELECT 1 FROM execution_attempts WHERE run_id=? AND state='OPEN' LIMIT 1", (run_id,)):
+        if run_id in self._projection_jobs or self.projection_changes.get(run_id) == changes:
             return
-        try: update_research_projection(self.state_root, run_id)
-        except (ResearchProjectionError, OSError, ValueError) as exc: self._record_exception(exc, phase="projection", run_id=run_id); self.projection_errors[run_id] = str(exc)[:2048]
-        else: self.projection_errors.pop(run_id, None); self.projection_changes[run_id] = changes
-        self.projection_refresh_at[run_id] = time.monotonic()
+        state = self.store.latest_transition(run_id)["state"]
+        self._projection_jobs[run_id] = (self._projection_executor.submit(
+            prepare_research_projection, self.state_root, run_id), changes, state)
     def _cancel_wallclock_expired_effects(self) -> None:
         for handle in tuple(self.running_agents.values()):
             if self._run_wallclock_expired(handle.request.run_id): self.claude_agent_host.cancel(handle)  # type: ignore[union-attr]
@@ -827,6 +908,11 @@ class WorkflowHost:
             self.store.inspect("SELECT t.*,c.command_type FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? ORDER BY t.rowid", (run_id,)),
             self.store.list_facts(run_id, "HypothesisProposed"), agent_aci_version=int(self.store.get_run(run_id)["agent_aci_version"]))
         except (KeyError, TypeError, ValueError) as exc: raise OperationalHalt(str(exc)) from exc
+    def _agent_budget_available(self, run_id: str, role: str) -> bool:
+        return not self._run_wallclock_expired(run_id) and remaining_agent_budget(
+            self._research_contract(run_id).document, role,
+            self._agent_charges.read(self.store, run_id, committed=True), self.agent_budget) is not None
+
     def _batch_creation_available(self, run_id: str, role: str) -> bool:
         document = self._research_contract(run_id).document
         rows = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (run_id,))
@@ -1070,7 +1156,7 @@ class WorkflowHost:
         run_record = self.store.get_run(run_id)
         if run_record is None: raise OperationalHalt(f"run {run_id!r} is absent")
         charges = self.store.cached_read(("agent-charges", run_id),
-            lambda: fold_agent_attempts(row for row in self.store.list_attempts() if row["run_id"] == run_id))
+            lambda: self._agent_charges.read(self.store, run_id, committed=True))
         run_wallclock_expired = wallclock_expired(contract.document, run_record["created_at"])
         origins, _, replies = self._rendezvous_records(run_id); pending = {item.rendezvous_id for item in origins if item.rendezvous_id not in replies}
         reviews = {(self._review_experiment(origin), origin.phase): origin for origin in origins}
@@ -1188,7 +1274,11 @@ class WorkflowHost:
         from .policy import _dependencies_ready
         contract = self._research_contract(run_id); pending = False; executions = []
         priority = self.interaction.priority_roles(run_id)
-        for component in sorted(contract.components, key=lambda item: item.owner_role not in priority):
+        components = sorted(contract.components, key=lambda item: item.owner_role not in priority)
+        cursor = self._batch_cursors.get(run_id, 0) % len(components)
+        components = components[cursor:] + components[:cursor]
+        self._batch_cursors[run_id] = (cursor + 1) % len(components)
+        for component in components:
             if component.tier.value == "should": continue
             component_id, role = str(component.component_id), component.owner_role
             history = self._batch_history(run_id, component_id, role); batch = history.latest
@@ -1601,6 +1691,9 @@ class WorkflowHost:
             if len(history.batches) != cycle - 1: raise OperationalHalt("expert batch proposal is not the next cycle")
             if cycle == 1:
                 if parent_hypothesis_id is not None: raise OperationalHalt("first batch cannot have a parent")
+            elif (directed := self.interaction.directed_round(run_id, role, component_id, cycle)) is not None:
+                if directed["parent_hypothesis_id"] != parent_hypothesis_id:
+                    raise OperationalHalt("directed successor differs from its accepted parent")
             elif history.selected_tip is not None:
                 if history.selected_tip["node_id"] != parent_hypothesis_id: raise OperationalHalt("expert successor cycle has the wrong selected parent")
             elif parent_hypothesis_id is not None or not self._unselected_batch_revision_ready(run_id, component_id, role):
@@ -1697,6 +1790,7 @@ class WorkflowHost:
         return max(ordinals)
     def _drive_ready_expert_update(self, run_id: str) -> bool:
         contract = self._research_contract(run_id)
+        pending = False
         for component in contract.components:
             if component.tier.value == "should": continue
             component_id, role = str(component.component_id), component.owner_role
@@ -1714,6 +1808,9 @@ class WorkflowHost:
             task = ResearchNodeTask(key=ResearchNodeKey(run_id=run_id,
                 component_id=component_id, expert_slot=role, cycle=len(chain), node_kind=ResearchNodeKind.HYPOTHESIS_UPDATE))
             if self._expert_success(task) is not None or self._expert_task_final_failure(run_id, task) is not None: continue
+            # Preparing a view or waiting for dispatch is still required work.
+            # Do not let the ordinary policy conclude before this update closes.
+            pending = True
             attempts = self._expert_attempts(task)
             if any(row["state"] == "OPEN" for row in attempts): continue
             if self._expert_task_exhausted(run_id, task):
@@ -1723,7 +1820,7 @@ class WorkflowHost:
             self._expert_agent_step(run_id, run_id, task, role, component_id,
                 str(assessments[-1]["payload"]["method_family_id"]))
             if len(self._expert_attempts(task)) > before: return True
-        return False
+        return pending
     def _drive_expert_revisions(self, run_id: str) -> bool:
         contract = self._research_contract(run_id)
         creations = [json.loads(row["payload_json"]) for row in self.store.inspect(
@@ -1897,9 +1994,12 @@ class WorkflowHost:
                     if prior.selection is None: raise OperationalHalt("successor node lacks accepted prior adjudication")
                     selected = prior.selection.get("selected_tip")
                     parent_hypothesis_id = None if selected is None else selected["node_id"]
+                    directed = self.interaction.directed_round(run_id, role, component_id, lineage.cycle)
+                    if directed is not None:
+                        parent_hypothesis_id = directed["parent_hypothesis_id"]
                     if lineage.chain is not None:
                         parent_hypothesis_id = history.hypothesis(lineage.cycle, lineage.chain)["payload"]["parent_hypothesis_id"]
-                    elif len(history.batches) < lineage.cycle and selected is None:
+                    elif len(history.batches) < lineage.cycle and selected is None and directed is None:
                         if not self._unselected_batch_revision_ready(run_id, component_id, role): raise OperationalHalt("unselected revision controls are not closed")
                         context, _, _ = self._batch_context(run_id, component_id, role, lineage.cycle - 1)
                         inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--batch-context", "application/json", _canonical(context)))
@@ -2074,7 +2174,7 @@ class WorkflowHost:
                 update = ResearchNodeTask(key=replace(task.key, node_kind=ResearchNodeKind.HYPOTHESIS_UPDATE))
                 failure_input = self._expert_failure_input(run_id, update) if self._batch_enabled(run_id) else None
                 inputs.append(self._expert_response_input(update) if failure_input is None else failure_input)
-        return tuple(inputs) + (leader_inputs + self.interaction.debate.promotion_inputs(run_id, task)
+        return tuple(inputs) + (leader_inputs + self.interaction.debate.promotion_inputs(run_id, task) + self.interaction.debate.planning_inputs(run_id, task)
             if isinstance(task, ResearchNodeTask) and self._batch_enabled(run_id) else ())
     def _read_literature(self, run_id: str, kind: str, identity: str, query: LiteratureQuery) -> dict[str, Any] | None:
         key = (kind, identity)
@@ -2136,7 +2236,7 @@ class WorkflowHost:
             "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
             "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
             "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status "
-            "FROM execution_attempts WHERE run_id=? AND kind='AGENT' AND state='CLOSED' "
+            "FROM execution_attempts WHERE run_id=? AND kind='AGENT' AND state='CLOSED' AND terminal_reason<>'SUCCEEDED' "
             "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IN ('rate_limited','auth_failed')", (run_id,))
         try: cooldown = self._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
         except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
@@ -2149,6 +2249,8 @@ class WorkflowHost:
 
     def _expert_agent_step(self, run_id: str, owner_id: str, task: ResearchNodeTask | AuxiliaryTask,
                            role: str, component_id: str, method_family_id: str | None = None) -> None:
+        if self._tick_deadline is not None and self._agent_dispatches and time.monotonic() >= self._tick_deadline:
+            return  # No intent/effect has been created; continue after servicing control.
         self._diagnostic_context = {"phase": "agent_request", "run_id": run_id, "command_id": task.command_id}
         run_state = self.store.latest_transition(run_id)["state"]
         if run_state in _TERMINAL_RUNS: return
@@ -2171,6 +2273,9 @@ class WorkflowHost:
         if self._at_capacity(run_id) or command is not AgentCommand.PAPER_READ and self._participant_busy(run_id, role,
                 execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
                 component_id=component_id, chain=chain): return
+        if self._tick_deadline is not None and isinstance(task, ResearchNodeTask) and self._cycle_reports_enabled(run_id):
+            if not self._prepare_role_view(run_id, role, task): return
+        self._agent_dispatches += 1
         contract = self._research_contract(run_id); attempts = self._expert_attempts(task)
         if any(row["state"] == "OPEN" for row in attempts) or self._agent_attempts_exhausted(contract, list(attempts)): return
         if command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
@@ -2271,7 +2376,7 @@ class WorkflowHost:
             if any(row["state"] == "OPEN" for row in attempts) or self._agent_attempts_exhausted(contract, list(attempts)): return
             ordinal = len(attempts) + 1; attempt_id = f"agent-{uuid.uuid4().hex}-{ordinal}"
             base_budget = profile_agent_budget(contract.document, self.agent_budget)
-            charges = fold_agent_attempts(row for row in tx.list_attempts() if row["run_id"] == run_id)
+            charges = self._agent_charges.read(tx, run_id)
             run_scoped = self._batch_enabled(run_id) and isinstance(task, AuxiliaryTask) and task.kind in {
                 AuxiliaryRequestKind.GRAPH_EVOLVE, AuxiliaryRequestKind.OBSERVER,
                 AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.FINAL_REPORT, AuxiliaryRequestKind.DEBATE_JUDGE}
@@ -2460,7 +2565,7 @@ class WorkflowHost:
             ordinal = len(attempts) + 1; attempt_id = f"{rendezvous.rendezvous_id}--agent-{ordinal}" if rendezvous else (f"{run_id}--proposal-{component_index}-{proposer_index}--agent-{ordinal}" if owner_id == run_id else f"{owner_id}--agent-{ordinal}")
             real = self.claude_agent_host is not None
             base_budget = profile_agent_budget(contract.document, self.agent_budget)
-            charges = fold_agent_attempts(row for row in tx.list_attempts() if row["run_id"] == run_id)
+            charges = self._agent_charges.read(tx, run_id)
             request_budget = remaining_agent_budget(contract.document, role, charges, self.agent_budget)
             run_record = tx.get_run(run_id)
             remaining_wall = None if run_record is None else wallclock_remaining_seconds(contract.document, run_record["created_at"])
@@ -2694,6 +2799,8 @@ class WorkflowHost:
         cycle = task.key.cycle
         parent = None if history.selected_tip is None else history.selected_tip["node_id"]
         if len(history.batches) != cycle - 1: raise AgentACIError("invalid_candidate", "SYNTHESIS batch cycle is not the next accepted cycle")
+        directed = self.interaction.directed_round(request.run_id, request.role, request.component_id, cycle)
+        if directed is not None: parent = directed["parent_hypothesis_id"]
         parents = {parent}
         if cycle > 1 and parent is None:
             if request.schema_version < 17 or not self._unselected_batch_revision_ready(request.run_id, request.component_id, request.role):
@@ -3642,7 +3749,7 @@ class WorkflowHost:
             elif (ordinal == 1) != (revision_of is None): raise OperationalHalt("experiment revision identity is inconsistent")
             if revision_of is not None and submission is None:
                 run_record = tx.get_run(run_id)
-                charges = fold_agent_attempts(row for row in tx.list_attempts() if row["run_id"] == run_id)
+                charges = self._agent_charges.read(tx, run_id)
                 if run_record is None or role_agent_budget_state(contract.document, role, charges, self.agent_budget, wallclock_is_expired=wallclock_expired(contract.document, run_record["created_at"])) != "available": return
             experiment_id = ids["experiment"]
             submit_id = None if submission is None else submission[0]
@@ -4359,7 +4466,7 @@ class WorkflowHost:
                 self._evaluate_experiment(run_id, experiment["workflow_id"])
             return
         report_command = AuxiliaryTask(kind=AuxiliaryRequestKind.FINAL_REPORT, run_id=run_id).command_id if self._batch_enabled(run_id) else None
-        open_attempts = [row for row in self.store.list_attempts() if row["run_id"] == run_id and row["state"] == "OPEN" and row["command_id"] != report_command]
+        open_attempts = [row for row in self.store.list_attempts(run_id=run_id, state="OPEN") if row["command_id"] != report_command]
         if self.claude_agent_host is not None:
             for row in open_attempts:
                 if row["attempt_id"] in self.running_agents: self.claude_agent_host.cancel(self.running_agents[row["attempt_id"]])

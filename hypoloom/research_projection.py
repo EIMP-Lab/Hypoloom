@@ -108,7 +108,7 @@ def _render_projection(
     files["events.jsonl"] = _jsonl(product_events(snapshot.run_id, facts, transitions, attempts, commands=commands))
     indexes = {item.attempt_id: asdict(item) for item in snapshot.attempts}
     for row in attempts:
-        observation = json.loads(row["observation_json"] or "{}")
+        observation = row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}")
         for name in ("session_binding", "session"):
             if name in observation:
                 indexes[row["attempt_id"]][name] = observation[name]
@@ -141,7 +141,7 @@ def _render_projection(
     for row in attempts:
         if row["kind"] != "AGENT":
             continue
-        observation = json.loads(row["observation_json"] or "{}")
+        observation = row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}")
         request = observation.get("request", {})
         role = request.get("role")
         task = request.get("task_context") or {}
@@ -280,9 +280,9 @@ def build_research_projection(state_root: str | Path, run_id: str) -> ResearchPr
         with StateStore(root).readonly_connection() as connection:
             connection.execute("BEGIN")
             reader = StateTransaction(connection)
+            attempts = [{**row, "observation": json.loads(row["observation_json"] or "{}")} for row in reader.list_attempts(run_id=run_id)]
             snapshot = build_monitor_snapshot(root, run_id, _connection=connection,
-                _oracle={"ok": None, "issues": []}, _include_overview=False)
-            attempts = [a for a in reader.list_attempts() if a["run_id"] == run_id]
+                _oracle={"ok": None, "issues": []}, _include_overview=False, _attempts=attempts)
             transitions = [dict(t) for t in connection.execute(
                 "SELECT t.*, c.command_type FROM workflow_transitions t JOIN workflow_commands c USING(command_id) "
                 "WHERE t.run_id=? ORDER BY t.rowid", (run_id,))]
@@ -469,17 +469,11 @@ def _validate_old_tree(path: Path, projection: ResearchProjection) -> None:
             raise ResearchProjectionError(f"unrecognized existing projection entry: {relative}")
 
 
-def update_research_projection(
+def prepare_research_projection(
     state_root: str | Path, run_id: str, *, projection: ResearchProjection | None = None,
-) -> tuple[Path, int]:
-    """Atomically publish only the fixed derived directory after committed work.
-
-    A pre-publication error preserves the previous complete directory. A
-    cleanup error reports that the new view is visible and the old tree remains.
-    The Host must surface this error without rejecting an accepted effect.
-    """
+) -> tuple[Path, Path, int, bool]:
+    """Read/render/write in a worker; leave the atomic publication to Host."""
     staged: Path | None = None
-    published = False
     try:
         root = Path(state_root).expanduser().resolve()
         projection = projection or build_research_projection(root, run_id)
@@ -495,21 +489,37 @@ def update_research_projection(
             _validate_old_tree(output, projection)
         staged = Path(tempfile.mkdtemp(prefix=".projection-", dir=parent))
         _write_files(staged, projection.files)
-        if replacing:
-            _exchange_directories(staged, output)
-        else:
-            renameat2_noreplace(staged, output)
-        published = True
-        if replacing:
+        return staged, output, len(projection.files), replacing
+    except BaseException as exc:
+        if staged is not None:
             shutil.rmtree(staged)
-        staged = None
-        return output, len(projection.files)
-    except (OSError, KeyError, TypeError, ValueError) as exc:
-        suffix = f"; new view published, old derived tree remains at {staged}" if published else ""
-        raise ResearchProjectionError(f"cannot refresh research projection: {exc}{suffix}") from exc
+        if isinstance(exc, (OSError, KeyError, TypeError, ValueError)):
+            raise ResearchProjectionError(f"cannot prepare research projection: {exc}") from exc
+        raise
+
+
+def publish_research_projection(prepared: tuple[Path, Path, int, bool]) -> tuple[Path, int]:
+    staged, output, count, replacing = prepared
+    if replacing:
+        _exchange_directories(staged, output)
+    else:
+        renameat2_noreplace(staged, output)
+    return output, count
+
+
+def update_research_projection(
+    state_root: str | Path, run_id: str, *, projection: ResearchProjection | None = None,
+) -> tuple[Path, int]:
+    """Synchronous public entrypoint, using the same preparation/publication."""
+    prepared = prepare_research_projection(state_root, run_id, projection=projection)
+    try:
+        result = publish_research_projection(prepared)
+    except (OSError, ValueError) as exc:
+        raise ResearchProjectionError(f"cannot publish research projection: {exc}") from exc
     finally:
-        if staged is not None and not published:
-            shutil.rmtree(staged)
+        if prepared[0].exists():
+            shutil.rmtree(prepared[0])
+    return result
 
 
 __all__ = ["ResearchProjection", "ResearchProjectionError", "build_research_projection",

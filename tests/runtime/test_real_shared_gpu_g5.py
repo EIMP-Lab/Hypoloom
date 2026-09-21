@@ -33,7 +33,7 @@ from decimal import Decimal
 import pytest
 import yaml
 
-from hypoloom.agent_aci import AgentBudget, EmbeddedInput, WorkspaceArtifact
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, AgentBudget, EmbeddedInput, WorkspaceArtifact
 from hypoloom.agent_budget import (
     charged_cost,
     charged_totals,
@@ -607,7 +607,7 @@ def _assert_resource_closure(host, pool, uuid, model, allocation, *, node_budget
     traces, accepted, tools = {}, [], []
     for row in agent_rows:
         item = json.loads(row["observation_json"])
-        assert item["request"]["schema_version"] == 20
+        assert item["request"]["schema_version"] == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
         assert item["session"]["transcript_complete"] is True
         archive = host.publisher.root / item["session"]["transcript"]["path"]
         content = (archive / "transcript.jsonl").read_bytes()

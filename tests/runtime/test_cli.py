@@ -220,7 +220,7 @@ def test_current_new_write_identity_tracks_token_policy_wire_change() -> None:
     version = installed_run_version()
 
     assert version.research_contract_version == "hypoloom-research-v10"
-    assert version.agent_aci_version == "20"
+    assert version.agent_aci_version == "21"
     assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/62"
 
 

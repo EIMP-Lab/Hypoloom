@@ -424,8 +424,6 @@ class _Audit:
         identity = (key["component_id"], key["expert_slot"], key["cycle"])
         prior_identity = (*identity[:2], identity[2] - 1)
         selected_row, selected = self.selections[prior_identity]
-        if selected["selected_tip"] is not None:
-            return
         _, request, _, _ = self.source(attempt_id, key["node_kind"], closed=False)
         started = min(row["started_at"] for row in self.attempts.values() if row["command_id"] == request["command_id"])
         proposal = key["node_kind"] in {"LITERATURE_REVIEW", "HYPOTHESIS_PROPOSAL"} and key.get("chain") is None
@@ -435,6 +433,15 @@ class _Audit:
             _need(_time(batch_row["created_at"]) <= started, "successor node precedes its accepted current batch")
             admitted_at = self.attempts[batch["agent_attempt_id"]]["started_at"]
         before = 1 + max((self.rank(row) for row, _ in self.transitions if _time(row["created_at"]) <= admitted_at), default=-1)
+        directed = self.directed_parent(request, before)
+        if directed is not None:
+            _need(self.cycle_close(prior_identity, before=before) <= started
+                  and _input(request, "--lineage-context") == {"cycle": identity[2], "parent_hypothesis_id": directed}
+                  and identity[2] <= self.limits(identity[1])[2] and not self.exhausted(identity[1], before),
+                  "directed successor bypasses closure, budget or authorized lineage")
+            return
+        if selected["selected_tip"] is not None:
+            return
         _need(_time(selected_row["created_at"]) <= started
               and all(len(self.nodes(prior_identity, kind)) == 1 for kind in ("HYPOTHESIS_UPDATE", "CYCLE_REPORT", "SELF_EVOLVE"))
               and self.cycle_close(prior_identity, before=before) <= started,
@@ -528,6 +535,53 @@ class _Audit:
             _need(fact["method_family_id"] == request["method_family_id"] and sorted(fact["upstream_outcomes"], key=lambda item: item["resource"])
                   == sorted(expected, key=lambda item: item["resource"]), "ProducerOutcomeBinding differs from the exact frozen selected outcome/artifact")
 
+    def directed_parent(self, request, before):
+        if request["schema_version"] < 21: return None
+        key = request["task_context"]["key"]
+        matches = []
+        for row, value in self.transitions:
+            if self.rank(row) >= before: continue
+            event = value.get("expert_interaction", {})
+            plans = [event["leader"]] if event.get("action") == "leader_round_started" else (
+                event.get("plans", ()) if event.get("action") == "debate_restarts_designated" else ())
+            for plan in plans:
+                if (plan["role"], plan["component_id"], plan["cycle"]) == (request["role"], request["component_id"], key["cycle"]):
+                    matches.append((row, event, plan))
+        if not matches: return None
+        _need(len(matches) == 1, "directed research has duplicate accepted plans")
+        row, event, plan = matches[0]
+        parent = plan["parent_hypothesis_id"]
+        hypothesis = self.fact("HypothesisProposed", "hypothesis_id", parent)
+        _need(row["command_type"] == "ACCEPT_EXPERT_INTERACTION" and hypothesis["proposer_role"] == request["role"]
+              and hypothesis["component_id"] == request["component_id"]
+              and any(parent in batch[1]["hypothesis_batch"]["chains"].values() for identity, batch in self.batches.items()
+                  if identity[:2] == (request["component_id"], request["role"]) and identity[2] < key["cycle"])
+              and _time(row["created_at"]) <= self.attempts[request["attempt_id"]]["started_at"],
+              "directed research parent is not an authorized earlier own hypothesis")
+        if event["action"] == "debate_restarts_designated":
+            _need(self.debate_reopen(request, parent, before), "directed Debate source is missing")
+            proposals = [value["expert_interaction"] for prior, value in self.transitions if self.rank(prior) < self.rank(row)
+                and value.get("expert_interaction", {}).get("action") == "debate_proposed"
+                and value["expert_interaction"].get("debate_id") == event["debate_id"]]
+            _need(len(proposals) == 1 and any(item["hypothesis_id"] == parent
+                and item["scope"]["role"] == request["role"] and item["scope"]["component_id"] == request["component_id"]
+                for item in proposals[0]["proposal"]["debate"]["participants"]), "Debate parent differs from its accepted participant")
+            if key["node_kind"] == "HYPOTHESIS_PROPOSAL":
+                guidance = _input(request, "--debate-guidance")
+                source = self.observations[event["source_attempt_id"]]
+                _need(guidance["debate_id"] == event["debate_id"] and guidance["source_judge_attempt_id"] == event["source_attempt_id"]
+                      and guidance["judgment"] == source["response"]["typed_candidate"]
+                      and guidance["facts"] == _input(source["request"], "--debate-judge-context")["facts"],
+                      "directed planning changed its public judgment or accepted scientific sources")
+        else:
+            proposals = [value["expert_interaction"] for prior, value in self.transitions if self.rank(prior) < self.rank(row)
+                and value.get("expert_interaction", {}).get("action") == "leader_selected"
+                and value["expert_interaction"].get("source_attempt_id") == event["source_attempt_id"]]
+            _need(len(proposals) == 1 and parent in proposals[0]["proposal"]["supporting_refs"]
+                  and proposals[0]["proposal"] == self.observations[event["source_attempt_id"]]["response"]["typed_candidate"],
+                  "Leader parent differs from its actual Observer proposal")
+        return parent
+
     def leader_reopen(self, request, parent, before):
         bindings = [item for item in request.get("input_artifacts", ()) if item["ref"].endswith("--leader-resources")]
         if not bindings:
@@ -606,16 +660,17 @@ class _Audit:
               and self.rank(row) == max(self.rank(record) for record, _ in accepts), "batch is partial or marker does not close its accepted source")
         prior = self.selections.get((identity[0], identity[1], cycle - 1))
         parent = None if cycle == 1 else None if prior is None else prior[1]["selected_tip"]
-        unselected = cycle > 1 and request["schema_version"] >= 17 and prior is not None and parent is None
+        directed = self.directed_parent(request, self.rank(row))
+        unselected = directed is None and cycle > 1 and request["schema_version"] >= 17 and prior is not None and parent is None
         if cycle > 1:
-            _need((parent is not None or unselected) and self.rank(prior[0]) < min(self.rank(record) for record, _ in accepts), "new batch lacks its preceding accepted selection")
-            parent = None if unselected else parent["node_id"]
+            _need((parent is not None or unselected or directed is not None) and self.rank(prior[0]) < min(self.rank(record) for record, _ in accepts), "new batch lacks its preceding accepted selection")
+            parent = directed if directed is not None else None if unselected else parent["node_id"]
             if unselected:
                 self.unselected_successor(source_id)
             _need(self.cycle_close((identity[0], identity[1], cycle - 1), before=self.rank(row))
                   <= self.attempts[source_id]["started_at"], "new cycle began before report and Self Evolve completed")
             update = self.nodes((identity[0], identity[1], cycle - 1), "HYPOTHESIS_UPDATE")[0]
-            _need((update[2]["typed_candidate"].get("update_disposition") == "REVISE_NEXT_CYCLE"
+            _need((directed is not None or update[2]["typed_candidate"].get("update_disposition") == "REVISE_NEXT_CYCLE"
                    or not unselected and (self.leader_reopen(request, parent, self.rank(row))
                    or self.debate_reopen(request, parent, self.rank(row)))) and cycle <= self.limits(request["role"])[2]
                   and not self.exhausted(request["role"], self.rank(row)), "new batch follows a terminated or exhausted lineage")

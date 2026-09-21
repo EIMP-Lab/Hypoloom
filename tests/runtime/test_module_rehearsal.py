@@ -13,6 +13,7 @@ import pytest
 
 import hypoloom.module_rehearsal as module_rehearsal
 from hypoloom.agent_aci import (
+    CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
     AgentRequest, AgentResponse, EmbeddedInput, WorkspaceArtifact,
     validate_postflight,
 )
@@ -494,7 +495,7 @@ def test_design_chain_rehearsal_uses_fresh_authority_and_closes_downstream(
     try:
         run = store.get_run(fresh_run_id)
         assert run is not None
-        assert run["agent_aci_version"] == "20"
+        assert run["agent_aci_version"] == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
         assert store.latest_transition(fresh_run_id)["state"] == "COMPLETED"
         attempts = tuple(
             row for row in store.list_attempts() if row["run_id"] == fresh_run_id

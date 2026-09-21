@@ -20,6 +20,14 @@ questions, reproducibility pointers, and the honest reason work stopped. Do not
 manufacture sources, claim unrun GPU/provider work or relabel a cancelled run
 as success. Missing source bytes must be reported rather than guessed.
 
+Extract the complete citation list from --final-report-context with a JSON
+parser. Include every canonical outcome_id (including failures), the accepted
+verdict fact_id and verdict text, or NO_ACCEPTED_VERDICT when absent, plus each
+terminal Agent failure's attempt_id and failure_code. A compact appendix is
+appropriate. Check that every required identifier appears in FINAL_REPORT.md.
+The native Stop hook runs the same citation validator as Host acceptance;
+repair its reported omissions in this file before finishing the current call.
+
 The report is a narrative artifact derived from accepted records, not a new
 GoalVerdictRecorded or permission to reopen research. The Host captures and
 publishes the actual report bytes. Finish with the supplied structured response

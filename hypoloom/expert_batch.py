@@ -15,6 +15,26 @@ def supports_hypothesis_batches(version: object) -> bool:
     return isinstance(version, int) and not isinstance(version, bool) and version >= 14
 
 
+def directed_research_plan(transitions, run_id, role, component_id, cycle, *, before_revision=None):
+    """Read one already accepted control; ordinary lineage remains unchanged."""
+    matches = []
+    for row in transitions:
+        if row.get("workflow_kind") != "RUN" or row.get("workflow_id") != run_id or row.get("run_id") != run_id:
+            continue
+        if before_revision is not None and row["revision"] >= before_revision: continue
+        event = _payload(row).get("expert_interaction", {})
+        plans = ([event["leader"]] if event.get("action") == "leader_round_started"
+            else event.get("plans", ()) if event.get("action") == "debate_restarts_designated" else ())
+        for plan in plans:
+            if (plan["role"], plan["component_id"], plan["cycle"]) == (role, component_id, cycle):
+                if row.get("command_type", row.get("command")) != "ACCEPT_EXPERT_INTERACTION":
+                    raise ValueError("directed research lacks an accepted interaction control")
+                matches.append(plan)
+    if len(matches) > 1:
+        raise ValueError("multiple directed controls target the same research cycle")
+    return matches[0] if matches else None
+
+
 def batch_limits(document: Mapping[str, Any], role: str) -> dict[str, int]:
     product = document.get("methodology", {}).get("controls", {}).get("product", {})
     inner = product.get("methodology", {}).get("inner_loop", {})
@@ -92,6 +112,7 @@ class BatchHistory:
                       and _payload(row).get("component_id") == component_id
                       and _payload(row).get("proposer_role") == role}
         batches: dict[int, AcceptedBatch] = {}
+        batch_revisions = {}
         selections: dict[int, Mapping[str, Any]] = {}
         for row in transitions:
             if row.get("workflow_kind") != "RUN" or row.get("workflow_id") != run_id:
@@ -113,6 +134,7 @@ class BatchHistory:
                     chain_session_scope(chain)
                     if chain is None or hypothesis_id not in hypotheses:
                         raise ValueError("accepted batch member lacks its exact hypothesis")
+                batch_revisions[cycle] = row["revision"]
                 batches[cycle] = AcceptedBatch(cycle, payload["node_command_id"], payload["agent_attempt_id"],
                     MappingProxyType(dict(sorted(members.items()))))
             selection = payload.get("adjudication")
@@ -129,7 +151,13 @@ class BatchHistory:
         for cycle, batch in sorted(batches.items()):
             prior = None if cycle == 1 else selections.get(cycle - 1)
             parent = None if prior is None or prior.get("selected_tip") is None else prior["selected_tip"]["node_id"]
-            unselected_revision = (agent_aci_version >= 17 and cycle > 1
+            directed = directed_research_plan(transitions, run_id, role, component_id, cycle, before_revision=batch_revisions[cycle]) if agent_aci_version >= 21 else None
+            if directed is not None:
+                parent = directed["parent_hypothesis_id"]
+                if cycle <= 1 or parent not in hypotheses or not any(parent in previous.members.values()
+                        for previous in result):
+                    raise ValueError("directed parent is not an earlier own accepted hypothesis")
+            unselected_revision = (directed is None and agent_aci_version >= 17 and cycle > 1
                 and prior is not None and prior.get("selected_tip") is None)
             if cycle > 1 and parent is None and not unselected_revision:
                 raise ValueError("new batch lacks the prior adjudicated hypothesis")

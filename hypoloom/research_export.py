@@ -60,7 +60,7 @@ def _background_markdown(
             or row["state"] != "CLOSED" or row["terminal_reason"] != "SUCCEEDED"
         ):
             continue
-        observation = json.loads(row["observation_json"])
+        observation = (row["observation"] if "observation" in row else json.loads(row["observation_json"]))
         if not isinstance(observation, Mapping):
             raise ResearchExportError(f"Agent Attempt {row['attempt_id']!r} has no observation object")
         raw_request = observation.get("request")

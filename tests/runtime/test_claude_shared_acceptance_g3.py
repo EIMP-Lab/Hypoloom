@@ -425,6 +425,7 @@ def test_native_grounding_shared_source_local_failure_and_complete_goal_stop(tmp
     host = _new_host(tmp_path, executable, f"http://127.0.0.1:{provider.server_port}", key)
     host.grounding_web = _NoPublicWeb()
     first_failure = None
+    goal_resumed = False
     try:
         with tempfile.TemporaryDirectory(prefix="prom-common-g3-", dir="/var/tmp") as mount:
             payload = _payload(tmp_path, Path(mount))
@@ -432,6 +433,13 @@ def test_native_grounding_shared_source_local_failure_and_complete_goal_stop(tmp
             host.initialize()
             response = host.handle(ControlRequest(1, "create-native-common", 0, "CREATE_RUN", payload))
             assert response.status == "accepted", response
+            # This scenario requires the locally supported, globally failing
+            # candidate first. Express that ordering through ordinary controls;
+            # fair component rotation does not promise roster-order dispatch.
+            goal_scope = {"role": _GOAL, "component_id": None, "chain": None}
+            paused = host.handle(ControlRequest(1, "pause-goal-candidate", None, "PAUSE",
+                {"run_id": _RUN, "scope": goal_scope, "reason": "operator"}))
+            assert paused.status == "accepted", paused
             deadline = time.monotonic() + 240
             while time.monotonic() < deadline:
                 host.tick()
@@ -449,11 +457,16 @@ def test_native_grounding_shared_source_local_failure_and_complete_goal_stop(tmp
                     assert head["state"] == "ACTIVE"
                     assert not any(row["payload"]["verdict"] == "GOAL_MET" for row in host.store.list_facts(_RUN, "GoalVerdictRecorded"))
                     first_failure = {"head": dict(head), "outcome": outcomes[0]}
+                if first_failure is not None and len(assessments) == 1 and not goal_resumed:
+                    resumed = host.handle(ControlRequest(1, "resume-goal-candidate", None, "RESUME",
+                        {"run_id": _RUN, "scope": goal_scope, "reason": "operator"}))
+                    assert resumed.status == "accepted", resumed
+                    goal_resumed = True
                 if head["state"] in {"COMPLETED", "FAILED", "CANCELLED"}:
                     break
                 time.sleep(0.01)
             assert host.store.latest_transition(_RUN)["state"] == "COMPLETED", host.store.list_attempts()
-            assert payload == original and first_failure is not None
+            assert payload == original and first_failure is not None and goal_resumed
             assert scenario.source_reads == scenario.source_readonly == {_LOCAL, _GOAL}
             assert scenario.shared_inputs[_LOCAL] == scenario.shared_inputs[_GOAL]
             assert set(scenario.grounding_evidence) == {"ground_target", "ground_write", "ground_failure", "ground_repair", "ground_success", "ground_readonly"}

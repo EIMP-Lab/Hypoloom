@@ -2,6 +2,7 @@
 import json
 import secrets
 import shutil
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -31,12 +32,18 @@ class ReadingScenario(_FinalReportHostScenario):
         self.batch_documents = batch_documents
         self.nonce = "method-page-" + secrets.token_hex(12)
         self.sources = {}; self.results = {}; self.readers = set()
+        # The local provider can finish a reader before bounded Host dispatch
+        # starts the third one. Hold its first response until the test observes
+        # all three real reader processes; cancellation still uses the Host.
+        self.readers_ready = threading.Event()
 
     def record(self, document):
         number = super().record(document)
         request = self.current
         try:
             step = self.steps[request.attempt_id]
+            if request.command is AgentCommand.PAPER_READ and step == 1:
+                assert self.readers_ready.wait(30), "three native reader processes were not admitted"
             results = _tool_results(document)
             if _main(request):
                 if step == 2:
@@ -119,6 +126,8 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         while time.monotonic() < deadline:
             host.tick()
             max_readers = max(max_readers, sum(handle.request.command is AgentCommand.PAPER_READ for handle in host.running_agents.values()))
+            if max_readers == 3:
+                scenario.readers_ready.set()
             if end_run and not stopped and max_readers == 3:
                 reply = host.handle(ControlRequest(schema_version=1, request_id="end-paper-test", expected_revision=None,
                     command="CANCEL", payload={"run_id": run_id, "cause": "bounded paper-reader End run test"}))
@@ -148,6 +157,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         assert not list((host.state_root / "paper-staging").iterdir())
         assert all(not process_group_exists(row["process_group_id"]) for row in attempts if row["process_group_id"] is not None)
     finally:
+        scenario.readers_ready.set()
         (tmp_path / "provider-errors.json").write_text(json.dumps(scenario.errors))
         (tmp_path / "reader-evidence.json").write_text(json.dumps({"max_readers": max_readers, "observed_readers": sorted(scenario.readers), "results": scenario.results}, indent=2))
         host.close()
@@ -196,6 +206,8 @@ def test_native_quarantine_ends_calls_preserves_work_and_allows_explicit_cleanup
                 ready = bool(host.running) and any(h.request.command is AgentCommand.EXPERIMENT_EXECUTION
                     and scenario.steps[h.request.attempt_id] >= 2 for h in host.running_agents.values())
             if ready and not paused:
+                if stage == "readers":
+                    scenario.readers_ready.set()
                 def fail_dispatch(run):
                     raise ValueError("isolated native dispatch fault")
                 monkeypatch.setattr(host, "_drive_active", fail_dispatch)
@@ -243,6 +255,8 @@ def test_native_quarantine_ends_calls_preserves_work_and_allows_explicit_cleanup
         assert not host.running_agents and not host.running
         assert not list((host.state_root / "paper-staging").glob("*"))
     finally:
+        if stage == "readers":
+            scenario.readers_ready.set()
         (tmp_path / "quarantine-evidence.json").write_text(json.dumps({"stage": stage,
             "paused": paused, "affected": affected, "provider_errors": scenario.errors,
             "provider_steps": dict(scenario.steps)}, indent=2))

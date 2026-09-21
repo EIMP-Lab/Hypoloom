@@ -313,7 +313,7 @@ def _shared_acceptance_projection(
         if (row.get("run_id") != run_id or row.get("kind") != "AGENT"
                 or row.get("state") != "CLOSED" or row.get("terminal_reason") != "SUCCEEDED"):
             continue
-        observation = _json_object(row.get("observation_json"))
+        observation = _json_object(row.get("observation", row.get("observation_json")))
         request, response = observation.get("request"), observation.get("response")
         if not isinstance(request, Mapping) or not isinstance(response, Mapping):
             continue
@@ -1279,6 +1279,7 @@ def build_monitor_snapshot(
     _connection: sqlite3.Connection | None = None,
     _oracle: Mapping[str, Any] | None = None,
     _include_overview: bool = True,
+    _attempts: Sequence[Mapping[str, Any]] | None = None,
 ) -> MonitorSnapshot:
     """Build an offline polling observation without a socket, Host, or write.
 
@@ -1312,9 +1313,9 @@ def build_monitor_snapshot(
                 raise MonitorError(
                     f"run not found in {root / 'state.sqlite'}: {run_id!r}"
                 )
-            raw_attempts = tuple(
+            raw_attempts = tuple(_attempts) if _attempts is not None else tuple(
                 {**row, "observation": _json_object(row["observation_json"])}
-                for row in reader.list_attempts() if row["run_id"] == run_id
+                for row in reader.list_attempts(run_id=run_id)
             )
             research_facts = reader.list_facts(run_id)
             heads = reader.list_workflow_heads(run_id)

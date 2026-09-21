@@ -51,6 +51,35 @@ def _dollar_budget():
     return AgentBudget(max_turns=3, max_tokens=100, max_output_bytes=4096, wall_seconds=30, max_cost="1")
 
 
+def test_compact_charge_cache_tracks_closure_and_does_not_cache_rolled_back_closes():
+    from hypoloom.agent_budget import AgentChargeCache
+    rows = [_row("closed", role="ml"), _row("open", role="critic", state="OPEN")]
+    reads = []
+
+    class Reader:
+        def list_attempts(self, **filters):
+            assert filters == {"run_id": "run", "kind": "AGENT", "include_observation": False}
+            return [{key: value for key, value in row.items() if key != "observation_json"} for row in rows]
+
+        def get_attempt(self, identity):
+            reads.append(identity)
+            return next(row for row in rows if row["attempt_id"] == identity)
+
+    cache, reader = AgentChargeCache(), Reader()
+    assert cache.read(reader, "run", committed=True) == fold_agent_attempts(rows)
+    assert cache.read(reader, "run", committed=True) == fold_agent_attempts(rows)
+    assert reads.count("closed") == 1 and reads.count("open") == 2
+    rows[1]["state"] = "CLOSED"
+    assert cache.read(reader, "run") == fold_agent_attempts(rows)
+    rows[1]["state"] = "OPEN"  # Roll back the transaction that attempted closure.
+    assert cache.read(reader, "run", committed=True) == fold_agent_attempts(rows)
+    rows[1]["state"] = "CLOSED"
+    assert cache.read(reader, "run", committed=True) == fold_agent_attempts(rows)
+    reads.clear()
+    assert cache.read(reader, "run", committed=True) == fold_agent_attempts(rows)
+    assert reads == []
+
+
 @pytest.mark.parametrize("initial", [1024, 8192])
 def test_initial_vram_budget_is_separate_from_operator_minimum(initial):
     document = {"roles": [], "budget": {"agent_invocation": _dollar_budget().to_dict(),

@@ -64,8 +64,11 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Optional dispatch extraction is counted if introduced, never free space.
     # Provider auth cooldown (operator recovery command + durable dispatch gate)
     # added workflow core authority: workflow_host 4500→4550, lifecycle 550→500.
+    # ACI-21 moves bounded view scheduling into the sole-writer Host. Transfer
+    # 150 lines from StateStore (361 actual); the counted files and total
+    # 27,550-line authority budget remain unchanged.
     allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
-        "state_store": 550, "research_kernel": 750, "workflow_host": 4550,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4700,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,

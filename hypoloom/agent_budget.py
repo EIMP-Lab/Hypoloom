@@ -160,6 +160,33 @@ def fold_agent_attempts(rows: Iterable[Mapping[str, Any]]) -> tuple[AgentAttempt
     return tuple(charges)
 
 
+class AgentChargeCache:
+    """Disposable compact charges; only committed CLOSED rows are immutable.
+
+    A transaction may consume cached committed charges, but never cache its
+    own closes: rollback must not leave an uncommitted charge behind.
+    """
+
+    def __init__(self):
+        self._closed: dict[str, AgentAttemptCharge] = {}
+
+    def read(self, reader, run_id: str, *, committed: bool = False) -> tuple[AgentAttemptCharge, ...]:
+        if hasattr(reader, "readonly_connection"):
+            from .state_store import StateTransaction
+            with reader.readonly_connection() as connection:
+                connection.execute("BEGIN")
+                return self.read(StateTransaction(connection), run_id, committed=committed)
+        charges = []
+        for row in reader.list_attempts(run_id=run_id, kind="AGENT", include_observation=False):
+            charge = self._closed.get(row["attempt_id"]) if row["state"] == "CLOSED" else None
+            if charge is None:
+                charge, = fold_agent_attempts((reader.get_attempt(row["attempt_id"]),))
+                if committed and row["state"] == "CLOSED":
+                    self._closed[row["attempt_id"]] = charge
+            charges.append(charge)
+        return tuple(charges)
+
+
 def agent_attempt_limits(
     document: Mapping[str, Any], *, model_fallback: int, infrastructure_fallback: int,
 ) -> tuple[int, int]:
@@ -447,10 +474,12 @@ def usage_projection(
     future_attempts: int,
     future_budget: Mapping[str, Any] | None,
     document: Mapping[str, Any] | None = None,
+    charges: tuple[AgentAttemptCharge, ...] | None = None,
 ) -> dict[str, Any]:
     """Render status from the same charges used by dispatch admission."""
 
-    charges = fold_agent_attempts(rows); actual = tuple(
+    charges = fold_agent_attempts(rows) if charges is None else charges
+    actual = tuple(
         item for item in charges
         if item.source in {
             "response", "provider", "rejected_response", "discarded_response",

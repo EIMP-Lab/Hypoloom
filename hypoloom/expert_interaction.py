@@ -44,9 +44,10 @@ class InteractionFacts:
     goal_id: str
     contract: Any
     rows: tuple[Mapping[str, Any], ...]
+    agent_aci_version: int = 14
 
     @classmethod
-    def from_rows(cls, run_id: str, rows: Iterable[Mapping[str, Any]]) -> InteractionFacts:
+    def from_rows(cls, run_id: str, rows: Iterable[Mapping[str, Any]], *, agent_aci_version: int = 14) -> InteractionFacts:
         from .domain import ResearchContract, ResearchFactType
 
         _text(run_id, "run_id")
@@ -64,7 +65,7 @@ class InteractionFacts:
         goals = [item for item in payloads if item["fact_type"] == "GoalDefined"]
         if len(goals) != 1:
             raise ValueError("interaction requires one accepted shared goal")
-        return cls(run_id, goals[0]["goal_id"], ResearchContract.from_mapping(_thaw_json(goals[0]["research_contract"])), tuple(payloads))
+        return cls(run_id, goals[0]["goal_id"], ResearchContract.from_mapping(_thaw_json(goals[0]["research_contract"])), tuple(payloads), agent_aci_version)
 
     def index(self, kind: str, field: str) -> dict[str, Mapping[str, Any]]:
         rows = [item for item in self.rows if item["fact_type"] == kind]
@@ -102,7 +103,7 @@ class InteractionFacts:
                 spec = specs.get(outcome["experiment_id"])
                 if spec is not None and spec["hypothesis_id"] == hypothesis_id:
                     tips[outcome_id] = compared_tip("accepted", hypothesis=hypothesis, preregistration=spec, outcome=outcome)
-            refs = {identity for identity, tip in tips.items() if tip.outcome == "SUCCESS"}
+            refs = {identity for identity, tip in tips.items() if tip.outcome == "SUCCESS"} if self.agent_aci_version < 21 else set()
             for assessment_id, assessment in assessments.items():
                 if assessment["hypothesis_id"] != hypothesis_id or assessment.get("assessment") != "SUPPORTED":
                     continue
@@ -118,6 +119,20 @@ class InteractionFacts:
                     if tip is None or not tip.comparable or row.get("artifact_id") != tip.artifact_id:
                         raise ValueError("SUPPORTED evidence requires its actual comparable accepted outcome")
                 refs.add(assessment_id)
+            if self.agent_aci_version >= 21:
+                for evidence_id, link in evidence.items():
+                    tip = tips.get(link.get("outcome_id"))
+                    if (tip is None or not tip.comparable or tip.outcome not in {"SUCCESS", "CLEAN_REFUTATION"}
+                            or link.get("artifact_id") != tip.artifact_id
+                            or any(link.get(field) != hypothesis[field] for field in
+                                ("hypothesis_id", "component_id", "method_family_id"))):
+                        continue
+                    matched = [identity for identity, assessment in assessments.items()
+                        if assessment.get("assessment") == ("SUPPORTED" if tip.outcome == "SUCCESS" else "REFUTED") and evidence_id in assessment.get("evidence_ids", ())
+                        and all(assessment.get(field) == hypothesis[field] for field in
+                            ("hypothesis_id", "component_id", "method_family_id"))]
+                    if matched:
+                        refs.update((evidence_id, link["outcome_id"], *matched))
             if refs:
                 qualified.append(LeaderContribution(component.owner_role, component.component_id, component.tier.value, hypothesis_id, tuple(sorted(refs))))
         return tuple(qualified)
@@ -219,10 +234,17 @@ def admit_observer_proposal(value: Mapping[str, Any], *, facts: InteractionFacts
         role = _text(value["leader"], "Leader role")
         contributions = tuple(item for item in facts.leader_qualifications() if item.role == role)
         if not contributions or not set(refs).intersection(ref for item in contributions for ref in item.qualification_refs):
-            raise ValueError("Leader selection must cite its actual own SUCCESS/SUPPORTED contribution")
+            raise ValueError("Leader selection must cite its actual own verified contribution")
         cited_components = {item.component_id for item in contributions if set(refs).intersection(item.qualification_refs)}
-        if len(cited_components) != 1:
+        if facts.agent_aci_version < 21 and len(cited_components) != 1:
             raise ValueError("Leader references must select exactly one qualified component")
+        if facts.agent_aci_version >= 21:
+            cited_hypotheses = [identity for identity, hypothesis in facts.index("HypothesisProposed", "hypothesis_id").items()
+                if identity in refs and hypothesis["proposer_role"] == role]
+            parents = [item for item in contributions if item.hypothesis_id in cited_hypotheses]
+            if len(cited_hypotheses) != 1 or len(parents) != 1 or not set(refs).intersection(parents[0].qualification_refs):
+                raise ValueError("Leader must cite exactly one own hypothesis and its verified contribution")
+            contributions = tuple(parents)
         leader = LeaderSelection(role, contributions)
     elif value["leader"] is not None:
         raise ValueError("only Leader selection can name a Leader")
@@ -293,7 +315,7 @@ def observer_from_attempt(row: Mapping[str, Any], *, facts: InteractionFacts) ->
         if len(inputs) != 1 or inputs[0]["ref"] not in request["immutable_context_refs"]:
             raise ValueError("Observer requires its one admitted interaction context")
         context = json.loads(base64.b64decode(inputs[0]["content_base64"], validate=True))
-        frozen = InteractionFacts.from_rows(facts.run_id, context["facts"])
+        frozen = InteractionFacts.from_rows(facts.run_id, context["facts"], agent_aci_version=observation["request"]["schema_version"])
         admit_observer_proposal(observation["response"]["typed_candidate"], facts=frozen)
         allowed = frozen.reference_ids
     else:

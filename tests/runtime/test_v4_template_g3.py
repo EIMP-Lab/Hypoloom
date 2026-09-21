@@ -1,4 +1,4 @@
-"""Tracked six-YAML starter → three experts/two chains → real CPU closure.
+"""Tracked six-YAML starter → three experts/two chains → shared-goal CPU stop.
 
 This is an explicit FakeAgent, not native CC or physical-GPU qualification.
 Interaction and graph-evolution features remain enabled, but shared-goal success
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from hypoloom.agent_aci import with_output_digest
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, with_output_digest
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
 from hypoloom.expert_loop import ResearchNodeSubkind, ResearchNodeTask
@@ -144,15 +144,26 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
             assert host.store.latest_transition(_RUN)["state"] == "COMPLETED", attempts
             assert payload == admitted_payload, "Do not edit product controls after template admission"
             assert {path.name: path.read_bytes() for path in profile.iterdir()} == profile_bytes
-            assert host.store.get_run(_RUN)["agent_aci_version"] == "20"
+            assert host.store.get_run(_RUN)["agent_aci_version"] == str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
             assert all(row["state"] == "CLOSED" for row in attempts), attempts
             observations = [json.loads(row["observation_json"]) for row in attempts if row["kind"] == "AGENT"]
             processes = [row for row in attempts if row["kind"] == "PROCESS"]
-            assert len(processes) == 6
+            # View preparation and slot scheduling need not launch every chain
+            # before the first qualified success stops this unchanged template.
+            # Count actual effects below, including cancellation, against their
+            # own preregistrations and canonical outcomes rather than a timing-
+            # dependent expectation that all six hypotheses execute.
+            assert processes
+            spawned_processes = []
             for row in processes:
                 observation = json.loads(row["observation_json"])
-                assert observation["pid"] > 0 and observation["process_group_id"] > 0
-                assert observation.get("synthetic_before_spawn") is not True
+                if observation.get("synthetic_before_spawn") is True:
+                    assert row["terminal_reason"] == "CANCELLED"
+                    assert observation.get("pid") is None and observation.get("process_group_id") is None
+                else:
+                    assert observation["pid"] > 0 and observation["process_group_id"] > 0
+                    spawned_processes.append(row)
+            assert spawned_processes, "goal success must come from a real CPU execution"
             commands = Counter(item["request"]["command"] for item in observations)
             # The tracked template defaults to shared_goal: its first qualified
             # success ends research, not three complete ADJ/report/SELF cycles.
@@ -176,7 +187,14 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
                 (role, chain) for role in _ROLES for chain in _CHAINS}
             hypotheses = [row for row in facts if row["fact_type"] == "HypothesisProposed"]
             outcomes = [row for row in facts if row["fact_type"] == "CanonicalOutcomeAccepted"]
-            assert len(hypotheses) == len(outcomes) == 6
+            assert len(hypotheses) == 6
+            assert len(outcomes) == len(processes)
+            preregistrations = [row for row in facts if row["fact_type"] == "ExperimentPreregistered"]
+            assert len(preregistrations) == len(processes)
+            proposed_ids = {row["hypothesis_id"] for row in hypotheses}
+            executed_ids = {row["hypothesis_id"] for row in preregistrations}
+            assert len(executed_ids) == len(processes)
+            assert executed_ids <= proposed_ids
             assert all(row["payload"].get("measurement") for row in hypotheses)
             verdict, = [row for row in facts if row["fact_type"] == "GoalVerdictRecorded"]
             assessment, = [row for row in facts if row["fact_type"] == "HypothesisAssessed"]
@@ -219,10 +237,15 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
             for row in attempts:
                 if row is final:
                     continue
-                assert row["started_at"] <= stop_time and row["ended_at"] <= final["started_at"]
+                observation = json.loads(row["observation_json"])
+                if observation.get("synthetic_before_spawn") is True:
+                    assert row["kind"] == "PROCESS" and row["terminal_reason"] == "CANCELLED"
+                    assert row["started_at"] >= stop_time and row["process_group_id"] is None
+                else:
+                    assert row["started_at"] <= stop_time
+                assert row["ended_at"] <= final["started_at"]
                 if row["terminal_reason"] == "CANCELLED":
                     assert row["ended_at"] >= stop_time
-                    observation = json.loads(row["observation_json"])
                     if row["kind"] == "AGENT":
                         assert (observation.get("failure_code"), observation.get("failure_stage")) == (
                             "run_stopping", "host_admission") or observation.get("response_discarded_after_stop") is True
@@ -246,6 +269,8 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
                 "physical_gpu": False, "automatic_services_tested": False,
                 "run_id": _RUN, "state": "COMPLETED", "roles": sorted(_ROLES),
                 "chains_per_role": 2, "process_attempts": len(processes), "commands": dict(commands),
+                "spawned_processes": len(spawned_processes),
+                "cancelled_before_spawn": len(processes) - len(spawned_processes),
                 "attempt_terminal_counts": dict(Counter(row["kind"] + ":" + row["terminal_reason"] for row in attempts)),
                 "outcome_counts": dict(Counter(row["payload"]["outcome"] for row in outcomes)),
                 "goal_verdict_id": verdict["subject_id"], "winning_assessment_id": assessment["subject_id"],

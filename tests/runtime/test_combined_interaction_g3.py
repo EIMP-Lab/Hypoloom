@@ -8,6 +8,8 @@ Host admission, bwrap execution, Git/memory publication and Oracle are unmodifie
 import copy
 import json
 import time
+
+import pytest
 from dataclasses import replace
 from pathlib import Path
 
@@ -41,28 +43,34 @@ def _input(request, suffix):
 
 
 class CombinedAgent(FakeAgent):
-    def __init__(self):
+    def __init__(self, negative=False):
         super().__init__()
+        self.negative = negative
         self.leader_selected = self.debate_selected = False
 
     def invoke(self, request):
         response = super().invoke(request)
-        if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and request.role == ROLES[2]:
+        if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and (self.negative or request.role == ROLES[2]):
             # Explicit signals remain unsatisfied; never weaken shared-goal
             # closing to manufacture another interaction after success.
             response = with_output_digest(replace(response, proposed_workspace_artifacts=tuple(
                 WorkspaceArtifact.from_bytes(item.path, item.content_bytes().replace(b'"accuracy": 0.55', b'"accuracy": 0.50'))
                 for item in response.proposed_workspace_artifacts)))
+        if self.negative and request.command is AgentCommand.ADJUDICATE:
+            response = with_output_digest(replace(response, typed_candidate={**response.typed_candidate, "best_chain": None}))
         if request.command is AgentCommand.OBSERVER:
             context = _input(request, "--interaction-context")
             reports = [json.loads(item.content_bytes()) for item in request.input_artifacts if item.ref.endswith("--response")]
             reports = [item for item in reports if item.get("typed_candidate", {}).get("task_kind") == "CYCLE_REPORT"]
-            facts = InteractionFacts.from_rows(request.run_id, context["facts"])
-            if not self.leader_selected and len(reports) == 3 and "leader" in context["allowed_actions"]:
-                qualified = next(item for item in facts.leader_qualifications() if item.role == ROLES[0])
+            facts = InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version)
+            eligible = [item for item in facts.leader_qualifications() if item.role == ROLES[0]
+                and item.component_id in context["eligible_leader_components"]
+                and (request.schema_version < 21 or item.hypothesis_id in context["eligible_leader_hypotheses"])]
+            if not self.leader_selected and len(reports) == 3 and "leader" in context["allowed_actions"] and eligible:
+                qualified = eligible[0]
                 response = with_output_digest(replace(response, typed_candidate={
                     "action": "leader", "leader": ROLES[0], "debate": None,
-                    "supporting_refs": list(qualified.qualification_refs),
+                    "supporting_refs": [qualified.hypothesis_id, *qualified.qualification_refs],
                     "rationale": "Use both completed peer memories in one qualified bounded Leader round."}))
                 self.leader_selected = True
             elif self.leader_selected and not self.debate_selected and "debate" in context["allowed_actions"]:
@@ -143,7 +151,8 @@ def _payload(tmp_path, mount_root):
     return payload
 
 
-def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path, monkeypatch, mount_root):
+@pytest.mark.parametrize("negative", [False, True], ids=["supported", "refuted-null-selection"])
+def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path, monkeypatch, mount_root, negative):
     # The test transport establishes the same ordinary OPEN binding that the
     # real adapter writes. It never edits a closed row or bypasses admission.
     original_open = StateTransaction.open_attempt
@@ -161,7 +170,7 @@ def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path,
         return inserted
 
     monkeypatch.setattr(StateTransaction, "open_attempt", open_attempt)
-    agent = CombinedAgent()
+    agent = CombinedAgent(negative)
     host = FakeSessionHost(tmp_path / "state", local_agent=agent)
     try:
         payload = _payload(tmp_path, mount_root)
@@ -171,8 +180,22 @@ def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path,
         assert created.status == "accepted", created
         # Six CPU outcomes still require every pending Observer and final closure.
         deadline = time.monotonic() + 600
+        recovered = set()
         while time.monotonic() < deadline:
             host.tick()
+            if negative and not host.running and not host.local_execution_agents and not host.store.list_attempts(state="OPEN"):
+                accepted = {row["action"] for row in host.store.inspect(
+                    "SELECT json_extract(payload_json,'$.expert_interaction.action') AS action "
+                    "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (RUN,))}
+                boundary = next((stage for stage in ("leader_round_started", "debate_restarts_designated")
+                    if stage in accepted and stage not in recovered), None)
+                if boundary is not None:
+                    # Restart the actual Host at two committed control boundaries;
+                    # the model double retains only its scripted choice sequence.
+                    host.close()
+                    host = FakeSessionHost(tmp_path / "state", local_agent=agent)
+                    host.initialize()
+                    recovered.add(boundary)
             if host.store.latest_transition(RUN)["state"] in {"COMPLETED", "FAILED", "CANCELLED"}:
                 break
             time.sleep(0.005)
@@ -188,7 +211,7 @@ def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path,
         (tmp_path / "interactions.json").write_text(json.dumps(events, indent=2))
         actions = [event["action"] for _, event in events]
         for action in ("leader_selected", "leader_round_started", "leader_round_finished", "debate_proposed", "debate_started", "debate_verdict", "debate_restarts_designated", "debate_restarts_finished"):
-            assert actions.count(action) == 1, actions
+            assert actions.count(action) == (2 if action == "debate_restarts_designated" else 1), actions
         assert actions.index("leader_round_finished") < actions.index("debate_started")
         debate = [value for value in observations.values() if value["request"]["command"] == "DEBATE"]
         assert len(debate) == 6
@@ -196,7 +219,7 @@ def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path,
             rounds = [value for value in debate if value["request"]["role"] == role]
             assert {_input(AgentRequest.from_dict(value["request"]), "--debate-context")["round"] for value in rounds} == {1, 2, 3}
             assert len({value["session"]["session_id"] for value in rounds}) == 1
-        designated = next(event for _, event in events if event["action"] == "debate_restarts_designated")
+        designated = {"plans": [plan for _, event in events if event["action"] == "debate_restarts_designated" for plan in event["plans"]]}
         assert {(plan["role"], plan["cycle"]) for plan in designated["plans"]} == {(ROLES[0], 3), (ROLES[1], 2)}
         for plan in designated["plans"]:
             requests = [value["request"] for value in observations.values() if value["request"]["role"] == plan["role"]
@@ -230,5 +253,10 @@ def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path,
         (tmp_path / "oracle.json").write_text(json.dumps(audit.to_dict(), indent=2))
         assert audit.ok, audit.to_dict()
         assert audit.canonical_outcome_count == 6
+        if negative:
+            assert recovered == {"leader_round_started", "debate_restarts_designated"}
+            assert {row["payload"]["outcome"] for row in host.store.list_facts(RUN, "CanonicalOutcomeAccepted")} == {"CLEAN_REFUTATION"}
+            assert all(host._batch_history(RUN, str(component.component_id), component.owner_role).selected_tip is None
+                for component in host._research_contract(RUN).components)
     finally:
         host.close()

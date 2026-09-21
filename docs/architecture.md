@@ -70,6 +70,30 @@ interaction cadence observes elapsed time and new-outcome thresholds. Skill and
 memory changes enter later cycles through accepted revisions, not uncontrolled
 editing of another expert's state. The UI observer has no research authority.
 
+New ACI-21 runs can appoint a Leader before the final goal is met. Eligibility
+requires a closed contribution cycle and accepted scientific evidence: a
+supported result or a clean refutation with matching outcome, artifact,
+evidence link and assessment. Execution failure is not a contribution. The
+Observer must cite exactly one own hypothesis and its evidence; it can still
+choose no Leader. Goal completion retains priority over further coordination.
+
+Leader and Debate research uses the parent explicitly authorized by the
+accepted interaction, even when ordinary adjudication has no selected chain.
+Each Debate participant starts after its own admitted cycle closes, with
+available budget; the other participant can finish independently. Public Judge
+guidance enters the new proposal inputs, while private session promotion keeps
+its existing owner and source restrictions. Ordinary lineage termination and
+scientific outcome labels retain their meaning. Older pinned runs keep their
+original semantics; cross-version migration is unsupported.
+
+Human research projections and exact-node private views are prepared by one
+bounded background worker. The Host publishes human views atomically, discards
+an obsolete active view after terminal closure, and rechecks task admission
+before dispatching a prepared private view. Derived views may lag the durable
+revision; control and research admission still read the original records.
+Closed Attempt budget charges are cached in memory through the existing budget
+fold, with OPEN attempts reread and uncommitted closes excluded from the cache.
+
 ## CPU and GPU resources
 
 Agent, Process and review concurrency are independently bounded. Experiments
