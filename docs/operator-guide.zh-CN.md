@@ -48,14 +48,11 @@ OpenAlex 需要一个显式选择的已有 mode-0600 密钥文件。HTTP(S) 访�
 和响应/PDF 上限一并审阅。通知需要单独显式批准接收方/传输方式,公开模板默认
 关闭。见 [notifications](guides/notifications.md)(英文)。
 
-provider 拒绝鉴权时(HTTP 401/403——滚动额度窗口与密钥失效表现相同),新的
-Agent 派发会暂停,而不是烧掉重试预算:运行保持 ACTIVE,在途工作正常结束,
-并在 `budget.provider_auth_cooldown_seconds`(默认 18000,0 表示关闭)之后自动
-恢复。该门控由持久化失败记录推导,重启 Host 既不清除也不重置。操作员会收到
-`provider_auth_cooldown` / `provider_auth_resumed` 通知和 TUI 横幅,并可在恢复
-访问后提前恢复:TUI 按 `p` 确认,或执行
-`hypoloom provider-retry-clear --run-id <id>`。仍然不可用的凭据只会在下一次
-失败时重新进入冷却。
+Web/TUI 显示由既有调用和控制记录推导的 API 状态。有界恢复暂停共用 API
+的 Agent 工作，保留节点和已提交实验。TUI **p** 或 CLI `provider-retry-clear`
+请求重试；增加 `--settings` 选择受保护连接文件，模型和原始运行配置保持固定。
+请求被接受不代表连接已恢复。文件格式、独立 Web 操作授权和重启/备份恢复说明见
+[API 状态与恢复](guides/provider-recovery.zh-CN.md)。
 
 ## 资源、观察与停止
 

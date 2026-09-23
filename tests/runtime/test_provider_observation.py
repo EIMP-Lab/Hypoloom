@@ -114,7 +114,7 @@ def test_provider_retry_gate_episodes_clear_and_disabled():
     # An operator clear supersedes only failures recorded before it.
     assert not provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=250.0, now=300.0)["pending"]
     assert provider_retry_gate(rows, cooldown_seconds=18000.0, cleared_at=150.0, now=300.0)["pending"]
-    # Zero disables the auth gate entirely; rate limiting still honors retry_at.
+    # Zero removes the timed auth delay; repeated recovery is still bounded.
     assert not provider_retry_gate(rows, cooldown_seconds=0.0, cleared_at=None, now=300.0)["pending"]
     rate = [{"attempt_id": "r1", "ended_at": 100.0, "code": "rate_limited", "retry_at": 400.0, "http_status": 429}]
     assert provider_retry_gate(rate, cooldown_seconds=0.0, cleared_at=None, now=300.0)["pending"]

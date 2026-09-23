@@ -153,6 +153,7 @@ class WorkflowHost:
         if provider_environment is not None and not isinstance(provider_environment, Mapping): raise TypeError("provider_environment must be a mapping")
         if isinstance(gpu_pressure_grace_seconds, bool) or not isinstance(gpu_pressure_grace_seconds, (int, float)) or not math.isfinite(float(gpu_pressure_grace_seconds)) or gpu_pressure_grace_seconds < 0: raise ValueError("gpu_pressure_grace_seconds must be finite and non-negative")
         self._provider_environment = MappingProxyType(dict(provider_environment or {})); self.gpu_pressure_grace_seconds = float(gpu_pressure_grace_seconds)
+        self._provider_connections: dict[str, tuple[str, dict[str, str] | None, str | None]] = {}
         if claude_agent_host is None and self._provider_environment: raise ValueError("provider environment requires the Claude Agent Host")
         self.agent_budget = agent_budget or (DEFAULT_REAL_AGENT_BUDGET if claude_agent_host else AgentBudget(max_turns=2, max_tokens=512, max_output_bytes=16_384, wall_seconds=5, max_cost="0"))
         mode = FakeAgentMode(fake_agent_mode)
@@ -214,8 +215,9 @@ class WorkflowHost:
         except Exception as exc:
             self._record_exception(exc, phase="initialize"); raise
     def _record_exception(self, exc: Exception, **context: Any) -> None:
+        environments = [self._provider_environment, *(entry[1] or {} for entry in self._provider_connections.values())]
         record_host_exception(self.state_root, exc, host_generation=self.generation,
-            secrets=tuple(value for key, value in self._provider_environment.items() if key in {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}), **context)
+            secrets=tuple(value for env in environments for key, value in env.items() if key in {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"} and value), **context)
     def _initialize(self) -> None:
         if self.literature_io is not None: self.literature_io.preflight()
         if self.claude_agent_host is not None: self.claude_agent_host.preflight(model=str(self.claude_model), provider_environment=self._provider_environment)
@@ -496,7 +498,7 @@ class WorkflowHost:
         return ControlResponse.accepted(request.request_id, stored.revision, stored.result or {})
     def _provider_retry_clear(self, request: ControlRequest) -> ControlResponse:
         payload = request.payload
-        if set(payload) != {"run_id", "reason"}: raise ValueError("PROVIDER_RETRY_CLEAR requires run_id and reason")
+        if set(payload) not in ({"run_id", "reason"}, {"run_id", "reason", "settings_path"}): raise ValueError("PROVIDER_RETRY_CLEAR requires run_id, reason and optional settings_path")
         run_id = payload["run_id"]
         if not isinstance(run_id, str) or payload["reason"] != "operator":
             raise ValueError("provider retry clear requires the operator reason")
@@ -505,8 +507,21 @@ class WorkflowHost:
             if head is None or head["workflow_kind"] != "RUN": raise ValueError(f"unknown run {run_id!r}")
             if head["state"] not in {RunState.CREATED.value, RunState.ACTIVE.value}:
                 raise ValueError("provider retry clear requires a CREATED or ACTIVE run")
+            if "settings_path" in payload:
+                from .host_settings import read_provider_connection
+                if not isinstance(payload["settings_path"], str): raise ValueError("settings_path must be an absolute file path")
+                if self.claude_agent_host is None: raise ValueError("API switching requires the provider Agent adapter")
+                self._check_agent_runtime()
+                try: read_provider_connection(Path(payload["settings_path"]))
+                except HostConfigurationError as exc: raise ValueError(str(exc)) from None
+            else:
+                # A fresh control also reloads the selected mutable source.
+                self._provider_connections.pop(run_id, None)
+                _, error = self._provider_connection(run_id)
+                if error: raise ValueError(error)
             row = self._transition_record(tx, run_id, run_id, "RUN", Command.PROVIDER_RETRY_CLEAR, RunState(head["state"]),
-                request.request_id, payload={"provider_retry_clear": {"reason": "operator", "cleared_at": time.time()}})
+                request.request_id, payload={"provider_retry_clear": {"reason": "operator", "cleared_at": time.time(),
+                    **({"settings_path": payload["settings_path"]} if "settings_path" in payload else {})}})
             tx.append_transition(row)
             return {"status": "accepted", "revision": row["revision"], "result": {"run_id": run_id,
                 "run_state": head["state"]}}
@@ -1336,6 +1351,7 @@ class WorkflowHost:
             _, _, terminal = self._batch_context(run_id, component_id, role, batch.cycle)
             for chain in batch.chains:
                 if chain in terminal: continue
+                chain_failed = self._batch_chain_failed(run_id, component_id, role, batch.cycle, chain)
                 rows = self.store.inspect("SELECT rowid AS submit_order,workflow_id,payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1 AND json_extract(payload_json,'$.hypothesis_id')=? ORDER BY rowid", (run_id, batch.members[chain]))
                 identity = {} if not rows else json.loads(rows[-1]["payload_json"])
                 iteration = int(identity.get("chain_iteration", 1))
@@ -1347,7 +1363,7 @@ class WorkflowHost:
                     measured = next(item for item in self._policy_snapshot(self.store.latest_transition(run_id), chain_context=analysis.key).components if item.component_id == component_id)
                     goal_met = (self.shared_acceptance.qualifies(run_id, measured.goal_evaluation) if self.shared_acceptance.enabled(run_id)
                         else self._shared_goal(run_id) and measured.outcome is ScientificOutcome.SUCCESS and measured.criterion_met is True)
-                    if disposition == "ITERATE" and not goal_met and iteration < batch_limits(contract.document, role)["iterations"] and self._batch_creation_available(run_id, role): iteration += 1
+                    if disposition == "ITERATE" and not chain_failed and not goal_met and iteration < batch_limits(contract.document, role)["iterations"] and self._batch_creation_available(run_id, role): iteration += 1
                 key = ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=batch.cycle,
                     chain=chain, node_kind=ResearchNodeKind.EXPERIMENT_EXECUTION, experiment_ordinal=iteration)
                 view = self._policy_snapshot(self.store.latest_transition(run_id), chain_context=key)
@@ -1376,7 +1392,7 @@ class WorkflowHost:
                     raw = {} if analysis is None else json.loads(analysis["observation_json"])["response"]["typed_candidate"]
                     goal_done = (self.shared_acceptance.qualifies(run_id, current.goal_evaluation) if self.shared_acceptance.enabled(run_id)
                         else self._shared_goal(run_id) and decision.payload["assessment"] == "SUPPORTED")
-                    if raw.get("iteration_disposition") == "ITERATE" and not goal_done and iteration < batch_limits(contract.document, role)["iterations"] and self._batch_creation_available(run_id, role): continue
+                    if raw.get("iteration_disposition") == "ITERATE" and not chain_failed and not goal_done and iteration < batch_limits(contract.document, role)["iterations"] and self._batch_creation_available(run_id, role): continue
                     self._record_assessment(run_id, replace(decision, payload={**decision.payload, "experiment_id": current.experiment_id}))
                     if self._begin_shared_goal_stop(run_id): return True
             _, _, terminal = self._batch_context(run_id, component_id, role, batch.cycle)
@@ -2243,18 +2259,43 @@ class WorkflowHost:
         from .provider_observation import provider_retry_gate
         cleared = self.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
             "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
-        rows = self.store.inspect("SELECT attempt_id, ended_at, "
+        rows = self.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
             "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
             "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
-            "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status "
-            "FROM execution_attempts WHERE run_id=? AND kind='AGENT' AND state='CLOSED' AND terminal_reason<>'SUCCEEDED' "
-            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IN ('rate_limited','auth_failed')", (run_id,))
+            "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status, "
+            "(terminal_reason='SUCCEEDED' OR (json_extract(observation_json,'$.diagnostics.provider_observed_usage.completed_requests')>0 "
+            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IS NULL)) AS provider_success "
+            "FROM execution_attempts WHERE run_id=? AND kind='AGENT'", (run_id,))
         try: cooldown = self._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
         except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
         if type(cooldown) not in (int, float) or not math.isfinite(float(cooldown)) or float(cooldown) < 0:
             cooldown = DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
-        return provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
+        status = provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
+            attempt_limit=self._agent_attempt_limits(self._research_contract(run_id))[1],
             cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
+        _, error = self._provider_connection(run_id)
+        if error:
+            status.update(pending=True, state="waiting_operator", requires_operator=True,
+                reason="connection_configuration", connection_error=error, next_retry_at=None)
+        return status
+    def _provider_connection(self, run_id: str) -> tuple[dict[str, str], str | None]:
+        controls = self.store.inspect("SELECT command_id, payload_json FROM workflow_transitions WHERE run_id=? "
+            "AND workflow_kind='RUN' AND json_extract(payload_json,'$.provider_retry_clear') IS NOT NULL ORDER BY revision DESC", (run_id,))
+        source = next((json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path") for row in controls
+            if json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path")), None)
+        if source is None: return dict(self._provider_environment), None
+        identity = controls[0]["command_id"]
+        cached = self._provider_connections.get(run_id)
+        if cached is None or cached[0] != identity:
+            from .host_settings import read_provider_connection
+            try: cached = (identity, read_provider_connection(Path(source)), None)
+            except HostConfigurationError as exc: cached = (identity, None, str(exc))
+            self._provider_connections[run_id] = cached
+        return {**self._provider_environment, **(cached[1] or {})}, cached[2]
+    def _provider_environment_for(self, run_id: str) -> Mapping[str, str]:
+        environment, error = self._provider_connection(run_id)
+        if error: raise HostConfigurationError(error)
+        return environment
     def _provider_retry_pending(self, run_id: str) -> bool:
         return bool(self._provider_retry_status(run_id)["pending"])
 
@@ -2467,7 +2508,7 @@ class WorkflowHost:
                 tx.bind_attempt_process(attempt_id, binding.process_group_id)  # type: ignore[attr-defined]
         try:
             handle = self.claude_agent_host.start(request, model=request.required_model_identity,
-                provider_environment=self._provider_environment, diagnostics_root=self.state_root,
+                provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root,
                 bind_process_group=bind_process, tool_workspace=tool_workspace,
                 **(self._agent_runtime_arguments(run_id) if request.schema_version >= 11 and command is not AgentCommand.PAPER_READ else {}),
                 **({"host_tool_handler": self.handle_agent_tool} if command is AgentCommand.EXPERIMENT_EXECUTION or command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and request.schema_version >= 18 or command is AgentCommand.GROUNDING and supports_grounding_web(request.schema_version) or request_literature_tools(request) else {}))
@@ -2483,6 +2524,10 @@ class WorkflowHost:
             _cleanup_tool_workspace(tool_workspace)
             self._agent_failure(request, AttemptTerminalReason.FAILED, type(exc).__name__, retryable=True,
                 details={"agent_host_diagnostic": bounded_diagnostic_text(str(exc)) or type(exc).__name__}); return
+        except HostConfigurationError as exc:
+            _cleanup_tool_workspace(tool_workspace)
+            self._agent_failure(request, AttemptTerminalReason.FAILED, "provider_configuration", retryable=False,
+                details={"agent_host_diagnostic": str(exc)}); return
         self.running_agents[attempt_id] = handle
     def _agent_runtime_arguments(self, run_id: str) -> dict[str, Any]:
         execution = self._run_config(run_id)["execution"]
@@ -2636,7 +2681,7 @@ class WorkflowHost:
                 details={"workspace_cleanup_error": cleanup_error} if cleanup_error is not None else None)
             if cleanup_error is not None: raise OperationalHalt("expired Agent workspace cleanup failed")
             return
-        try: handle = self.claude_agent_host.start(request, model=request.required_model_identity, provider_environment=self._provider_environment, diagnostics_root=self.state_root, bind_process_group=bind_process, tool_workspace=tool_workspace,
+        try: handle = self.claude_agent_host.start(request, model=request.required_model_identity, provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root, bind_process_group=bind_process, tool_workspace=tool_workspace,
             **(self._agent_runtime_arguments(run_id) if request.schema_version >= 11 else {}))
         except SandboxUnavailable as exc: self._agent_failure(request, AttemptTerminalReason.FAILED, "sandbox_unavailable", retryable=False); raise OperationalHalt(str(exc)) from exc
         except AgentDeadlineExpired:
@@ -2837,13 +2882,20 @@ class WorkflowHost:
                     "agent_output_digest": response.output_digest, "role": request.role, "component_id": request.component_id,
                     "method_family_id": str(fact.method_family_id), "hypothesis_id": str(fact.hypothesis_id), "chain": member.chain_id,
                     **({"hypothesis_batch": {"cycle": cycle, "chains": members}} if index == len(candidate.hypotheses) - 1 else {})}))
+    def _batch_chain_failed(self, run_id: str, component_id: str, role: str, cycle: int, chain: str) -> bool:
+        for failure in self._expert_final_failures(run_id):
+            attempt = self.store.get_attempt(failure["attempt_id"])
+            key = json.loads(attempt["observation_json"])["request"].get("task_context", {}).get("key", {})
+            if (key.get("component_id"), key.get("expert_slot"), key.get("cycle"), key.get("chain")) == (component_id, role, cycle, chain):
+                return True
+        return False
     def _batch_context(self, run_id: str, component_id: str, role: str, cycle: int) -> tuple[dict[str, Any], dict[str, Any], tuple[str, ...]]:
         from .expert_loop import compared_tip
         history = self._batch_history(run_id, component_id, role); batch = history.batches[cycle - 1]
         tips = {}; terminal = []
         for chain, hypothesis_id in batch.members.items():
             rows = self.store.inspect("SELECT workflow_id,payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1 AND json_extract(payload_json,'$.hypothesis_id')=? ORDER BY rowid", (run_id, hypothesis_id))
-            tip = None
+            tip = None; assessed = False
             if rows:
                 identity = json.loads(rows[-1]["payload_json"]); experiment_id = str(rows[-1]["workflow_id"])
                 spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
@@ -2859,10 +2911,11 @@ class WorkflowHost:
                     if assessed and (self._expert_task_final_failure(run_id, analysis) is not None or decision.get("iteration_disposition") == "COMPLETE" or identity["chain_iteration"] >= batch_limits(self._research_contract(run_id).document, role)["iterations"] or not self._batch_creation_available(run_id, role)): terminal.append(chain)
             # A terminal Agent does not close an experiment it already submitted.
             # Keep that chain schedulable through collection and assessment.
-            if tip is None and (not rows or self.store.latest_transition(experiment_id)["state"] == ExperimentState.TERMINAL.value):
-                for failure in self._expert_final_failures(run_id):
-                    attempt = self.store.get_attempt(failure["attempt_id"]); key = json.loads(attempt["observation_json"])["request"].get("task_context", {}).get("key", {})
-                    if key.get("component_id") == component_id and key.get("cycle") == cycle and key.get("chain") == chain: terminal.append(chain); break
+            if not rows or self.store.latest_transition(experiment_id)["state"] == ExperimentState.TERMINAL.value:
+                # Settle the measured tip before adjudication, including when
+                # its requested successor failed before submission.
+                if (tip is None or assessed) and self._batch_chain_failed(run_id, component_id, role, cycle, chain):
+                    terminal.append(chain)
             tips[chain] = tip
         context = {"batch_command_id": batch.command_id, "cycle": cycle, "chains": dict(batch.members),
             "terminal_tips": {chain: None if tip is None else tip.to_dict() for chain, tip in tips.items()},
@@ -2927,6 +2980,12 @@ class WorkflowHost:
             **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})}
         with self.store.transaction() as tx:
             tx.close_attempt(request.attempt_id, terminal_reason=reason, ended_at=time.time(), payload=observation)
+            from .provider_observation import PROVIDER_UNAVAILABLE
+            if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
+                    and retry_class == "INFRASTRUCTURE"
+                    and not self._is_final_report_request(request)
+                    and tx.latest_transition(request.run_id)["state"] in {RunState.CREATED.value, RunState.ACTIVE.value}):
+                return  # The shared provider wait owns recovery, not node exhaustion.
             head = tx.latest_transition(request.owner_workflow_id)
             if not owner_transition or head is None: return
             state = (RunState(head["state"]) if request.owner_workflow_id == request.run_id else ExperimentState(head["state"])) if rendezvous is not None else (RunState.ACTIVE if request.owner_workflow_id == request.run_id else ExperimentState.DRAFTED)

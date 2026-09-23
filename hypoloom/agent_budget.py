@@ -20,6 +20,7 @@ from .agent_context import (
     agent_retry_class,
     candidate_failure_retryable,
 )
+from .provider_observation import PROVIDER_UNAVAILABLE
 
 
 PROFILE_BUDGET_FIELDS = frozenset({
@@ -38,8 +39,8 @@ AGENT_INVOCATION_BUDGET_FIELDS = frozenset({
     "max_turns", "max_tokens", "max_output_bytes", "wall_seconds", "max_cost",
     "token_enforcement_mode",
 })
-# Dispatch pause after a provider authentication rejection (rolling quota
-# windows included). Zero disables the gate; seven days caps operator input.
+# Authentication retry delay. Zero removes the timed delay; consecutive
+# provider recovery remains bounded by the infrastructure attempt allowance.
 DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS = 5 * 3600.0
 MAX_PROVIDER_AUTH_COOLDOWN_SECONDS = 7 * 86400.0
 
@@ -234,8 +235,14 @@ def agent_attempts_exhausted(
     limits = agent_attempt_limits(document, model_fallback=model_fallback,
                                   infrastructure_fallback=infrastructure_fallback)
     counts = {"MODEL": 0, "INFRASTRUCTURE": 0}; latest: str | None = None
+    considered = False
     for row in closed:
         observation = json.loads(row["observation_json"])
+        if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
+                and observation.get("retry_class") == "INFRASTRUCTURE"
+                and observation.get("request", {}).get("command") != "FINAL_REPORT"):
+            continue  # Shared availability is bounded by the Host recovery gate.
+        considered = True
         if row["terminal_reason"] == "SUCCEEDED": retry_class = "MODEL"
         elif "retry_class" in observation:
             recorded = observation["retry_class"]
@@ -248,6 +255,7 @@ def agent_attempts_exhausted(
             retry_class = agent_retry_class(code, observation, retryable=retryable)
         latest = retry_class
         if retry_class in counts: counts[retry_class] += 1
+    if not considered: return False
     if latest is None: return True
     return counts[latest] >= limits[0 if latest == "MODEL" else 1]
 

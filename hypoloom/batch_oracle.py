@@ -773,8 +773,14 @@ class _Audit:
                 source, analysis_request, analysis_response, _ = analyses[0]
             observed = _input(analysis_request, "--current-outcome")["payload"]
             _need(observed["outcome_id"] == tip["outcome_id"] and source["ended_at"] <= self.attempts[payload["agent_attempt_id"]]["started_at"], "terminal analysis refers to another outcome or occurred after the judge")
+            successor_failures = [item for item in self.final_failures(identity, chain=chain, before=self.rank(row))
+                if item[2]["command"] in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}
+                and item[2]["task_context"]["key"].get("experiment_ordinal") == iteration + 1
+                and item[1]["started_at"] >= source["ended_at"]
+                and _input(item[2], "--iteration-context") == {
+                    "iteration_of_experiment_id": tip["experiment_id"], "analysis_attempt_id": source["attempt_id"]}]
             _need(analysis_response is None or analysis_response["typed_candidate"].get("iteration_disposition") == "COMPLETE" or iteration >= self.limits(request["role"])[1]
-                  or self.exhausted(request["role"], self.rank(row)), "chain is not complete and still has scientific iterations")
+                  or self.exhausted(request["role"], self.rank(row)) or bool(successor_failures), "chain is not complete and still has scientific iterations")
             _need(any(fact["fact_type"] == "HypothesisAssessed" and fact["hypothesis_id"] == chains[chain]
                       and self.fact_order.get(fact["fact_id"], float("inf")) < self.rank(row) for fact in self.facts.values()), "terminal chain lacks an accepted hypothesis assessment")
         for chain, verdict in verdicts.items():

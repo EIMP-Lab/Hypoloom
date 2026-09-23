@@ -12,6 +12,7 @@ Current user entry points:
 - [Profile templates](../profiles/README.md): complete English/Chinese v4 examples.
 - [Operator guide](operator-guide.md): English operational reference.
 - [Architecture](architecture.md): components, ownership and durable boundaries.
+- [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
 - [Contributing](../CONTRIBUTING.md): local development and validation.

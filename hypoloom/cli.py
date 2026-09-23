@@ -263,10 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
             participant.add_argument("text")
 
     provider_clear = subparsers.add_parser("provider-retry-clear",
-        help="confirm operator credential recovery; clear the provider dispatch cooldown now")
+        help="allow one recovery attempt with the current or an explicitly selected API connection")
     _add_client_arguments(provider_clear)
     provider_clear.add_argument("--run-id", required=True)
     provider_clear.add_argument("--expected-revision", type=int)
+    provider_clear.add_argument("--settings", help="absolute Host-side 0600 JSON connection file; env may contain only API key/auth token/base URL")
 
     for action in ("pin", "revert", "unpin"):
         plugin = subparsers.add_parser("plugin-" + action,
@@ -336,6 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     web.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
+    web.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API recovery and connection selection")
     web.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     web.add_argument("--gpu-pool-server-uid", type=int)
 
@@ -666,6 +668,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.run_id,
                 port=args.port,
                 **({"allow_human_answers": True} if args.allow_human_answers else {}),
+                **({"allow_provider_control": True} if args.allow_provider_control else {}),
                 **({"gpu_pool_socket": args.gpu_pool_socket, "gpu_pool_server_uid": args.gpu_pool_server_uid}
                    if args.gpu_pool_socket is not None or args.gpu_pool_server_uid is not None else {}),
             )
@@ -698,7 +701,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload["text"] = args.text
             return _submit(args, args.subcommand.upper(), payload)
         if args.subcommand == "provider-retry-clear":
-            return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator"})
+            return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator",
+                **({"settings_path": args.settings} if args.settings is not None else {})})
         if args.subcommand in {"plugin-pin", "plugin-revert", "plugin-unpin"}:
             from .expert_plugin import _component, _full_commit
             _component(args.role)

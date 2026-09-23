@@ -636,7 +636,8 @@ def browser(tmp_path: Path, request):
             {
                 "url": "data:text/html;base64,"
                 + base64.b64encode(markup.encode()).decode()
-                + f"#token={_TOKEN}" + ("&answer_token=fixture-answer-token" if operator else "")
+                + f"#token={_TOKEN}" + ("&provider_token=fixture-provider-token" if operator == "provider"
+                    else "&answer_token=fixture-answer-token" if operator else "")
             },
         )
         driver.wait(

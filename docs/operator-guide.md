@@ -56,16 +56,13 @@ HTTP(S) access, Poppler paths and response/PDF limits together. Notifications
 require separate explicit recipient/transport approval and are disabled in
 public templates. See [notifications](guides/notifications.md).
 
-A provider that rejects authentication (HTTP 401/403 — rolling quota windows
-and broken keys look alike) pauses new Agent dispatch instead of burning retry
-budgets: the run stays ACTIVE, in-flight work finishes, and dispatch resumes
-on its own after `budget.provider_auth_cooldown_seconds` (default 18000, zero
-disables). The gate is derived from durable failure rows, so a Host restart
-neither clears nor resets it. Operators get `provider_auth_cooldown` /
-`provider_auth_resumed` notifications, a TUI banner, and can resume early
-after restoring access: TUI `p` → confirm, or
-`hypoloom provider-retry-clear --run-id <id>`. A still-broken credential
-simply re-enters cooldown on the next failure.
+Provider availability is visible in Web/TUI and derived from existing Attempt
+and control records. Bounded recovery pauses shared API work without exhausting
+each node; submitted experiments continue. TUI **p** and CLI
+`provider-retry-clear` request another attempt; optional `--settings` selects a
+protected connection file while retaining the pinned model/runtime. An operator
+request is not proof of recovery. See [API recovery](guides/provider-recovery.md)
+for connection format, separate Web authorization and restart/restore behavior.
 
 ## Resources, observation and stopping
 

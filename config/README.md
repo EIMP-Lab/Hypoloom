@@ -23,6 +23,17 @@ this file into your shell or forwards all entries to a model.
 该文件集中存放文献、通知凭据和联系信息，不包含全部个人数据；模型认证与研究数据
 各有独立来源。多人共用检出目录时，各自引用自己的私有绝对路径，不共享填写后的文件。
 
+For API switching during a run, a separate optional mode-0600 connection JSON
+can live at `<checkout>/.local/credentials/provider-connection.json`. This is
+not the dotenv file above; it contains only model API credentials and endpoint,
+with no model/runtime changes. Use its absolute Host-side path as described in
+[API recovery](../docs/guides/provider-recovery.md).
+
+运行中切换 API 可单独创建权限为 0600 的连接 JSON，例如
+`<checkout>/.local/credentials/provider-connection.json`。它不使用上方 dotenv 格式，
+仅包含模型 API 凭据与地址，不更换模型或运行配置。提交 Host 上的绝对路径，
+具体格式与操作见[API 状态与恢复](../docs/guides/provider-recovery.zh-CN.md)。
+
 Show actual paths and permissions without displaying values / 查看位置和权限：
 
 ```bash

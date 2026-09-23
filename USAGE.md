@@ -52,6 +52,8 @@ source.
   metrics.
 - **b / Report Issue**: preview and export a support bundle.
 - **h**: view and answer pending Grounding human questions.
+- **p / API recovery**: view provider waiting, retry the current connection or
+  select another compatible API using a private connection file.
 
 Web / local access sits in its own connection-information area. Start the
 Web observer:
@@ -75,6 +77,10 @@ links are read-only. `--allow-human-answers` explicitly creates an operator
 link that can submit human answers; never publish that link. `WAITING_HUMAN`
 needs a real user answer; suggested options cannot be submitted
 automatically.
+
+API recovery uses a separate operator grant: TUI **p → Browser**, or standalone
+Web with `--allow-provider-control`. Human-answer permission alone does not
+permit API switching. See [API recovery](docs/guides/provider-recovery.md).
 
 ## Research loop and completion
 
@@ -154,20 +160,17 @@ actual diagnosis. Source repairs only apply to new runs; existing bundles are
 not updated automatically, and switching an old run to a new version for
 recovery is not supported.
 
-When a provider rejects authentication (HTTP 401/403; five-hour rolling
-quota and a broken key are indistinguishable), new Agent dispatch enters a
-cooldown instead of immediately burning the nodes' retry budgets: the run
-stays ACTIVE, in-flight calls finish normally, and dispatch resumes
-automatically when the cooldown (`budget.provider_auth_cooldown_seconds`,
-default 18000 seconds, 0 disables) expires. The cooldown is derived from
-durable failure records; restarting the Host neither clears nor resets it.
-The `provider_auth_cooldown` notification (one per cooldown window, not one
-per failure) and `provider_auth_resumed` are delivered through the existing
-Telegram/log channels, and the TUI summary shows a PROVIDER COOLDOWN banner.
-To resume early after manually replacing the key: press `p` in the TUI and
-confirm, or run `hypoloom provider-retry-clear --state-root
-/absolute/state/run --run-id RUN_ID`; if the credential is still unusable,
-the next failure re-enters cooldown.
+## API waiting and recovery
+
+API failures now produce a visible cooldown or operator wait in Web/TUI.
+Submitted experiments continue; consecutive connection failures do not exhaust
+individual research nodes. A recovery request admits one pending invocation;
+only an actual API response confirms recovery. Use TUI **p**, or
+`hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID`.
+Add `--settings /absolute/private/connection.json` to select another compatible
+API connection without changing the pinned model or original runtime settings.
+See [API availability and recovery](docs/guides/provider-recovery.md) for the
+private file format, Web operator access, bounded retries and restart behavior.
 
 ## Issue reporting and module diagnosis
 

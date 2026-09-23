@@ -621,8 +621,8 @@ class SummaryPanel(CockpitPanel):
             if status.get("dispatch_error"):
                 state_label += " · DISPATCH PAUSED (Host error)"
             provider_retry = status.get("provider_retry") or {}
-            if provider_retry.get("pending"):
-                state_label += " · PROVIDER COOLDOWN (auth)"
+            if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
+                state_label += " · API " + str(provider_retry.get("state", "cooldown")).replace("_", " ").upper()
         lines = ["[b #78dcff]RUN AT A GLANCE[/]  [dim]? legend · d details[/dim]",
             f"[b]{_value(state_label)}[/]",
             f"Goal: {_goal_objective(snapshot)}",
@@ -662,12 +662,9 @@ class SummaryPanel(CockpitPanel):
         if pending:
             health.append(f"[yellow]Grounding: {pending} questions pending · w Web[/]")
         provider_retry = status.get("provider_retry") or {}
-        if provider_retry.get("pending"):
-            gates = [item for item in provider_retry.get("gates", []) if item.get("pending")]
-            latest = max((float(item["until"]) for item in gates), default=None)
-            until = time.strftime("%H:%M", time.localtime(latest)) if latest is not None else "unknown"
-            health.append(f"[yellow]Provider auth rejected (401/403): dispatch paused until {until} · "
-                "p resume after credential restore[/]")
+        if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
+            from .provider_observation import provider_status_text
+            health.append("[yellow]" + escape(provider_status_text(provider_retry)) + " · p API recovery[/]")
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1608,6 +1605,16 @@ class HypoloomVNextMonitor(App):
             return
         if not isinstance(self.screen, ProviderResumeScreen):
             self.push_screen(ProviderResumeScreen(status, self._provider_resume_draft))
+
+    def action_provider_browser(self) -> None:
+        server = self._web_server
+        if server is None:
+            self.notify("Web is unavailable. Use API recovery in this TUI.")
+            return
+        url = server.provider_control_url()
+        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry and connection switching. Keep it private.\n\n"
+            + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
+        self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 
     def action_human_browser(self) -> None:
         server = self._web_server

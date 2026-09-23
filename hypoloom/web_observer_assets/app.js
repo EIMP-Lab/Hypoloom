@@ -55,6 +55,17 @@
   } catch (_error) {
     if (answerToken) fragmentStored = false;
   }
+  const providerStorageKey = `${SESSION_TOKEN_KEY}.provider`;
+  let providerToken = fragment.get("provider_token") || "";
+  try {
+    if (fragmentToken) {
+      if (providerToken) window.sessionStorage.setItem(providerStorageKey, JSON.stringify({accessToken, providerToken}));
+      else window.sessionStorage.removeItem(providerStorageKey);
+    } else {
+      const saved = JSON.parse(window.sessionStorage.getItem(providerStorageKey) || "{}");
+      providerToken = saved.accessToken === accessToken ? saved.providerToken || "" : "";
+    }
+  } catch (_error) { if (providerToken) fragmentStored = false; }
   // Clear a credential-bearing fragment only after the reload-safe session copy succeeds.
   if (fragmentToken && fragmentStored) {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -215,6 +226,10 @@
   function setConnection(kind, message) {
     connection.dataset.state = kind;
     connectionText.textContent = message;
+    providerButtons();
+    if (kind !== "live" && state.snapshot) {
+      setText("provider-title", "API status unconfirmed · observation stale");
+    }
   }
 
   function statusClass(value) {
@@ -370,7 +385,72 @@
     parent.append(element("dt", "", name), element("dd", "", value));
   }
 
+  let providerPending = null;
+  let providerBusy = false;
+  function providerWritable() {
+    return Boolean(providerToken && state.snapshot?.status?.provider_retry
+      && connection.dataset.state === "live"
+      && ["CREATED", "ACTIVE"].includes(state.snapshot.status.run_state)
+      && Date.now() - state.lastSuccessAt < STALE_AFTER_MS);
+  }
+  function providerButtons() {
+    byId("provider-controls").hidden = !providerToken;
+    byId("provider-retry").disabled = providerBusy || !providerWritable();
+    byId("provider-switch").disabled = providerBusy || !providerWritable() || Boolean(providerPending);
+    byId("provider-settings").disabled = providerBusy || Boolean(providerPending);
+    byId("provider-retry").textContent = providerPending ? "Retry same request" : "Try current API";
+  }
+  function renderProvider(snapshot) {
+    const retry = snapshot.status?.provider_retry;
+    const terminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(snapshot.status?.run_state);
+    const labels = {ready: "API dispatch available", cooldown: "API cooling down", waiting_operator: "API waiting for operator", recovering: "Trying API recovery"};
+    setText("provider-title", terminal ? "Run ended" : retry ? labels[retry.state] || "API status" : "API status unknown");
+    const reasons = {auth_failed: "Authentication rejected", rate_limited: "Rate limit; quota cause unconfirmed", quota_exhausted: "Quota exhausted", connection_configuration: "Connection configuration unavailable"};
+    setText("provider-description", terminal ? "No API recovery is available for an ended run."
+      : !retry ? "Live Host status is unavailable. API availability cannot be confirmed."
+      : retry.state === "ready" ? "Normal dispatch is allowed, subject to task and budget limits."
+      : retry.state === "recovering" ? "One pending task may try the API. Access is not yet confirmed."
+      : `${reasons[retry.reason] || "API unavailable"}. New Agent dispatch paused; submitted experiments continue. ${retry.requires_operator ? "Operator action required." : `Next attempt: ${formatTimestamp(retry.next_retry_at)}.`} Quota reset time: unknown.`);
+    setText("provider-access", providerToken
+      ? "Operator API access. Switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
+      : "Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control.");
+    providerButtons();
+  }
+  async function requestProvider(switchConnection) {
+    if (providerBusy || !providerWritable()) return;
+    if (!providerPending) {
+      const settings = byId("provider-settings").value.trim();
+      if (switchConnection && !settings.startsWith("/")) {
+        setText("provider-operation", "Select an absolute Host-side connection file path."); return;
+      }
+      providerPending = {request_id: `web-provider-${crypto.randomUUID()}`,
+        ...(switchConnection ? {settings_path: settings} : {})};
+    }
+    providerBusy = true; providerButtons();
+    setText("provider-operation", "Requesting API recovery…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("/api/provider-retry", {method: "POST", cache: "no-store", signal: controller.signal,
+        headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"},
+        body: JSON.stringify(providerPending)});
+      const result = await response.json();
+      if (result.status === "accepted") {
+        providerPending = null;
+        setText("provider-operation", "Recovery requested. Awaiting a successful API response; existing results and budgets are preserved.");
+      } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
+        providerPending = null;
+        setText("provider-operation", `Not accepted: ${result.error?.message || result.message || "check operator access and connection file"}`);
+      } else throw new Error("unconfirmed");
+    } catch (_error) {
+      setText("provider-operation", "Host reply not confirmed. Retry sends the same request; inspect current state before another operation.");
+    } finally { clearTimeout(timer); providerBusy = false; providerButtons(); }
+  }
+  byId("provider-retry").addEventListener("click", () => requestProvider(false));
+  byId("provider-switch").addEventListener("click", () => requestProvider(true));
+
   function renderHud(snapshot) {
+    renderProvider(snapshot);
     renderHumanDecisions(snapshot);
     const status = object(snapshot.status);
     const oracle = object(snapshot.oracle);
@@ -685,7 +765,9 @@
     const status = object(snapshot.status);
     const source = String(snapshot.status_source || "");
     const hasHostStatus = source.endsWith("+resident-host-status");
-    setText("observer-boundary", answerToken
+    setText("observer-boundary", providerToken
+      ? `◉ OPERATOR API CONTROL${answerToken ? " / ANSWERS" : ""} · ${hasHostStatus ? "HOST STATUS ENRICHED" : "OFFLINE PROJECTION"}`
+      : answerToken
       ? `◉ OPERATOR ANSWERS · ${hasHostStatus ? "HOST STATUS ENRICHED" : "OFFLINE PROJECTION"}`
       : hasHostStatus ? "◉ READ-ONLY · HOST STATUS ENRICHED" : "◉ READ-ONLY · OFFLINE PROJECTION");
     setText("runtime-source", hasHostStatus ? "HOST STATUS" : "OFFLINE");

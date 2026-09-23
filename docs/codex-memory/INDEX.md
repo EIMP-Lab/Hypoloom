@@ -1,6 +1,31 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Provider recovery repair 2026-09-24](../qualification.md#current-development--provider-availability-and-operator-recovery-2026-09-24):
+  shared bounded waiting, observable status/notifications, scoped operator
+  connection selection and restart behavior, preserved private-settings pinning,
+  recovery concurrency, actual-tip failure closure and independent counterexample;
+  focused/browser/reader and native local-API/CPU evidence. Initial setup failures
+  and final results remain in `.local/qualification/provider-recovery-20260924/`.
+  [Operator tutorial](../guides/provider-recovery.md) covers state meanings,
+  TUI/Web/CLI switching, exact-request retry and recovery troubleshooting.
+- Provider availability framework review 2026-09-23: local-only
+  `.local/analysis/framework-provider-availability-20260923/analysis.md` and
+  `observer-handoff-reproduction.json`: existing CD versus missing observation/
+  notification delivery, bounded waiting, operator API rotation versus pinned
+  settings, exhausted-node closure, scope and validation plan. Analysis only.
+- Evening run diagnosis 2026-09-23: local-only
+  `.local/analysis/research-progress-20260923-2305/analysis.md` and
+  `diagnosis-replay.json` contain raw screening comparisons, retained-bundle
+  read-only replay of the post-result design-failure closure gap, double-delta
+  measurement evidence and provider failures. User-confirmed weekly API quota
+  exhaustion and revised cause/impact boundaries are in `quota-reassessment.md`
+  in the same directory. No implementation change.
+- Local goal revision 2026-09-23: ignored `profiles/local/MERC-causal/goal.yaml`
+  is the authoring source. Local-only analysis and source/result verification:
+  `.local/analysis/research-progress-20260923-1647/goal-revision.md` and
+  `erc-baselines.json` in that directory. User-confirmed thresholds and
+  hyperparameter scope, read-only admission, no retained-run mutation.
 - [Lineage relationships and legend 2026-09-23](../qualification.md#current-development--lineage-relationships-and-contextual-legend-2026-09-23):
   parent-only layout, optional pruning overlay, visible grouped legends,
   independent scientific/control marks, separate pruning/ancestry connection

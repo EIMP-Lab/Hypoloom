@@ -53,6 +53,11 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
 - 交互式 `/login` OAuth 不等于受隔离 Host 的认证。实验会话的设置和工具边界由 Host
   明确构造；不要把交互项目的设置直接交给 Agent，也不要自行追加 `--bare` 改变入口。
 
+运行中遇到 API 限流、额度耗尽或凭据失效，请按[API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)
+操作，其中包含私有连接 JSON 格式、TUI/Web/CLI 切换步骤和恢复确认方式。连接可切换，
+运行的模型仍固定；不要修改原始私有 settings 副本，也不要把模型 key 填进文献/通知
+使用的 dotenv 文件。
+
 文献检索使用 OpenAlex。完整原生专家路径需要一个已批准的 dotenv 凭据文件（建议
 `.local/credentials/hypoloom.env`，模板见 `config/hypoloom.env.example`），
 其中存放 `OPENALEX_API_KEY`，选用 Unpaywall PDF 后备时还需 `UNPAYWALL_EMAIL`；要求为

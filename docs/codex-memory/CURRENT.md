@@ -1,5 +1,59 @@
 # Current Hypoloom development state
 
+- September 24: user retires the old run and authorizes general provider recovery
+  repair. Shared bounded waits preserve node retry/accounting history; monitor,
+  Web/TUI and notifications expose actual availability. Existing control records
+  select an optional 0600 connection-only file, with separate Web operator access;
+  original private settings/model/runtime pinning remain. Restart reloads the
+  selected input; missing input blocks rather than falling back. Preexisting
+  parent work/late replies do not occupy or falsely clear recovery. Old-tip
+  successor failure now settles the real assessment before batch closure, with
+  independent causal audit and a missing-failure counterexample. Focused and
+  native local-provider/CPU validation is routed through INDEX. No old-run
+  mutation, candidate science changes or paid/GPU call. The user subsequently
+  authorizes the tutorial update and committing/pushing the repair to dev.
+  Bilingual recovery guides now include state/action tables, exact-request CLI
+  retry, Host-side connection-file steps and troubleshooting, linked from Setup,
+  Usage and personal configuration. Four documentation checks pass.
+
+- September 23 provider-framework review (analysis only): existing CD is real,
+  but monitor STATUS enrichment drops `provider_retry`, 429 produces no auth-CD
+  notification, and TUI wording assumes 401/403. A generic temporary fixture
+  reproduces the dropped field. Clear only removes cooldown; it neither rotates
+  API settings nor reopens exhausted nodes. Private settings are intentionally
+  runtime-bound, so documented manual key replacement needs a proper operator
+  connection-change design, not removal of drift protection. Six existing tests
+  pass. Proposed scope is shared provider waiting/visibility/recovery and the
+  generic post-result design-failure closure gap; defer candidate/science fixes.
+  No implementation or live-run control. See INDEX's provider review route.
+
+- September 23 follow-up: the user confirms the base-model API weekly quota is
+  exhausted. This explains the 21 recorded 429 failures (seven nodes, three
+  attempts each); it is not evidence of weak model reasoning or transient
+  service instability. The independently replayed lifecycle closure defect and
+  local measurement/trial-reporting errors remain. No run control was issued;
+  quota recovery alone does not guarantee exhausted nodes resume. Revised
+  attribution is routed through INDEX below.
+
+- September 23 evening: read-only diagnosis of new local run `202609231734`
+  confirms the revised goal but finds ACTIVE r58 with no live Attempts. Retained
+  bundle replay shows an exhausted second design, before submission, is not
+  closed when its chain already has an earlier measured tip; other experts'
+  adjudications exhausted on 429. Also observed delta parsers paired with
+  DELTA_FROM_BASELINE (double subtraction) and missing/OOM trials encoded as
+  negative scientific scores. Six LOCAL experiments, no GOAL result; no repair
+  or run mutation. See INDEX's evening run diagnosis route.
+
+- September 23: the user authorizes an in-place edit of ignored local
+  `MERC-causal/goal.yaml`: exceed the best measured local ERC results across
+  modes (MELD 0.6548771489314753; IEMOCAP 0.6779262543174241), with shared
+  architecture/mechanisms and validation-selected dataset hyperparameters.
+  Reuse existing implementations; retain five seeds and final causal audits.
+  Production Profile admission passes with no blockers/warnings. This is a
+  local research target, not a public SOTA claim or framework default. No run
+  is started, resumed or rewritten; the retained run is observed STOPPING with
+  FINAL_REPORT open. See INDEX's local goal revision evidence route.
+
 - September 23: lineage uses recorded parent links for layout and draws accepted
   pruning as a separate, toggleable overlay. Visible relations, scientific
   status, pruning borders and expert colors have grouped contextual legends.
