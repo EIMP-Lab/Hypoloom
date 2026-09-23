@@ -66,6 +66,7 @@
     selectedKey: null,
     topology: [],
     topologyMode: "component",
+    showPruning: true,
     activeView: "operations",
     graphBounds: null,
     view: { x: 36, y: 36, scale: 1 },
@@ -1125,58 +1126,47 @@
       .map((item) => ({source: item.parent_hypothesis_id, target: item.hypothesis_id, relation: item.relation}))};
   }
 
-  const HYPOTHESIS_CHANGES = {
-    initial: "Initial hypothesis",
-    repair: "Execution repair",
-    experiment: "Experiment revision",
-    scientific: "Scientific revision",
-    unknown: "Unclear revision",
-  };
-
-  function hypothesisChange(hypothesis, parent) {
-    // Legacy relations are prose, not a typed change declaration. Interpret only
-    // explicit revision descriptions; cycle, failure and family IDs are not proof.
-    const clauses = String(hypothesis.relation || "").split(/[。；;\n]+|[.!?]\s+/).filter(Boolean);
-    function evidence(pattern, accept = () => true) {
-      return clauses.find((clause) => {
-        const match = clause.match(pattern);
-        if (!match) return false;
-        const prefix = clause.slice(0, match.index);
-        return !/(?:\b(?:not|never|without|no|rather than|previously)\b[^,，]{0,32}|(?:不|未|没有|无需|无须)[^,，]{0,12})$/i.test(prefix) && accept(match[0], prefix);
-      })?.trim() || "";
+  function appendHypothesisComparison(grid, hypothesis, parent) {
+    appendDefinition(grid, "lineage", hypothesis.parent_hypothesis_id ? "Derived hypothesis" : "Root hypothesis");
+    if (hypothesis.parent_hypothesis_id) {
+      appendDefinition(grid, "parent claim", parent?.claim || "Parent record unavailable");
+      appendDefinition(grid, "parent method family", parent?.method_family_id || "Unavailable");
+      appendDefinition(grid, "parent scientific assessment", parent ? parent.assessment || "Not assessed" : "Unavailable");
     }
-    const repair = evidence(/\b(?:fix(?:es|ed|ing)?|repair(?:s|ed|ing)?|correct(?:s|ed|ing)?)\b.{0,90}\b(?:execution|pipeline|script|path|environment|output|format|parser|bug)\b|(?:修复|修正|纠正).{0,60}(?:执行|脚本|路径|环境|输出|格式|流水线|依赖|解析)/i);
-    function result(kind, reason, sources = []) {
-      const includesRepair = Boolean(repair) && ["experiment", "scientific"].includes(kind);
-      return {kind, label: HYPOTHESIS_CHANGES[kind] + (includesRepair ? " + repair" : ""),
-        reason, evidence: Array.from(new Set(sources.filter(Boolean))).join("\n"), includesRepair};
-    }
-    if (!hypothesis.parent_hypothesis_id) return result("initial", "No parent hypothesis is recorded.");
-    if (!parent) return result("unknown", "The recorded parent is unavailable for comparison.");
-    const scientific = evidence(/\b(?:add(?:s|ed|ing)?|introduc(?:e|es|ed|ing)|replac(?:e|es|ed|ing)|chang(?:e|es|ed|ing)|revis(?:e|es|ed|ing))\b.{0,100}?\b(?:mechanism|architecture|model|scientific (?:claim|hypothesis)|loss function)\b|(?:新增|引入|增加|替换|改变|修改).{0,80}?(?:机制|架构|模型结构|科学主张|科学假设)/i,
-      (match, prefix) => !/\b(?:output|format|script|pipeline|parser|path|environment)\b|输出|格式|脚本|流水线|解析器|路径|环境/i.test(match)
-        && !/\b(?:previous|prior|earlier|might|could|consider)\b|之前|此前|上一轮|考虑/i.test(prefix));
-    if (scientific) return result("scientific", "The revision describes a changed scientific claim or mechanism. This does not establish improvement.", [scientific, repair]);
-    const familyChanged = hypothesis.method_family_id && parent.method_family_id && hypothesis.method_family_id !== parent.method_family_id;
-    if (familyChanged) return result("unknown", "The method family ID changed, but the scientific change is not explicitly described.");
-    const experiment = evidence(/\b(?:increas(?:e|es|ed|ing)|decreas(?:e|es|ed|ing)|adjust(?:s|ed|ing)?|chang(?:e|es|ed|ing)|revis(?:e|es|ed|ing)|extend(?:s|ed|ing)?|replac(?:e|es|ed|ing))\b.{0,65}\b(?:epochs?|learning rate|loss weights?|hyperparameters?|training budget|seeds?|measurement|evaluation protocol|parser)\b|\b(?:epochs?|learning rate|loss weights?|hyperparameters?|measurement protocol)\b.{0,25}\b(?:adjusted|changed|increased|decreased|replaced)\b|(?:增加|提高|降低|调整|改变|修改|替换).{0,45}(?:训练轮数|训练时长|学习率|损失权重|超参|种子|测量协议|评估协议|解析器)|(?:训练轮数|学习率|损失权重|超参).{0,25}(?:调整|改为|增加|降低)/i);
-    if (experiment) return result("experiment", "The revision describes changed training settings or measurement. Measurements are not automatically comparable.", [experiment, repair]);
-    const retained = evidence(/\b(?:retain(?:s|ed|ing)?|keep(?:s|ing)?|preserv(?:e|es|ed|ing))\b.{0,65}\b(?:scientific (?:claim|hypothesis)|core (?:claim|hypothesis))\b|(?:保留|保持).{0,45}(?:科学主张|科学假设|核心假设)|(?:科学主张|科学假设|核心假设).{0,20}(?:不变|未改变)/i);
-    const sameClaim = Boolean(hypothesis.claim) && hypothesis.claim.trim() === String(parent.claim || "").trim();
-    const sameFamily = Boolean(hypothesis.method_family_id) && hypothesis.method_family_id === parent.method_family_id;
-    if (repair && sameFamily && (retained || sameClaim)) return result("repair", "The revision describes an execution fix with the scientific claim retained; the method family is unchanged.", [repair, retained]);
-    return result("unknown", "The recorded relation does not clearly separate execution repair, experiment revision and scientific change.");
   }
 
-  function appendHypothesisChange(grid, change, parent) {
-    appendDefinition(grid, "change type", change.label);
-    appendDefinition(grid, "basis", change.kind === "initial" ? change.reason : `Interpretation of proposal text. ${change.reason}`);
-    if (change.evidence) appendDefinition(grid, "change evidence", change.evidence);
-    if (parent) {
-      appendDefinition(grid, "parent claim", parent.claim || "—");
-      appendDefinition(grid, "parent method family", parent.method_family_id || "—");
-      appendDefinition(grid, "parent scientific assessment", parent.assessment || "Unavailable");
-    }
+  function graphStatus(item) {
+    if (item.kind !== "hypothesis") return {label: item.state, className: statusClass(item.state)};
+    const failure = hypothesisFailure(item);
+    if (failure) return {label: failure === "Refuted" ? "Refuted" : "Execution failed", className: "state-blocked", failure};
+    const assessment = item.raw.assessment || item.raw.state;
+    if (assessment === "SUPPORTED") return {label: "Supported", className: "state-accepted"};
+    if (assessment === "INCONCLUSIVE") return {label: "Inconclusive", className: "state-other"};
+    return {label: "Not assessed", className: "state-pending"};
+  }
+
+  function isPruned(item) {
+    return item.kind === "hypothesis" && (item.raw.state === "PRUNED" || list(item.raw.pruned_by).length > 0);
+  }
+
+  function topologyEdges(includePruning = state.showPruning) {
+    const visible = new Set(state.topology.map((item) => item.id));
+    return state.topology.flatMap((item) => [
+      ...item.dependencies.map((source) => ({source, target: item.id,
+        kind: item.kind === "hypothesis" ? "lineage" : "dependency",
+        relation: item.kind === "hypothesis" ? item.raw.relation || "parent to child" : "dependency"})),
+      ...(includePruning ? list(item.pruningRelations).map((edge) => ({...edge, kind: "pruning"})) : []),
+    ]).filter((edge) => visible.has(edge.source) && visible.has(edge.target));
+  }
+
+  function relationLabel(edge) {
+    return edge.kind === "pruning" ? "Winner → pruned hypothesis"
+      : edge.kind === "lineage" ? "Parent → derived hypothesis" : "Dependency → dependent";
+  }
+
+  function inspectRelation(edge, source, target) {
+    openLocalDetail("relationship", {from: source.id, to: target.id, kind: edge.kind,
+      relation: edge.relation, recorded: edge, source: source.raw, target: target.raw});
   }
 
   function buildTopology(snapshot, mode) {
@@ -1199,14 +1189,14 @@
           kind: "hypothesis",
           id: hypothesis.hypothesis_id,
           componentId,
-          dependencies: Array.from(new Set(incoming.map((edge) => edge.source))),
-          dependencyRelations: Object.fromEntries(incoming.map((edge) => [edge.source, edge.relation])),
+          dependencies: parent ? [hypothesis.parent_hypothesis_id] : [],
+          pruningRelations: incoming.filter((edge) => edge.relation === "pruned_by"),
           title: hypothesis.claim || hypothesis.hypothesis_id,
           subtitle: `${hypothesis.proposer_role || "unknown proposer"} · ${hypothesis.chain || hypothesis.method_family_id || "method ?"}`,
-          detail: `${hypothesis.cycle ? `cycle ${hypothesis.cycle}` : hypothesis.relation || "root"}${hypothesis.selected_tip ? " · selected" : ""} · ${componentId || "component ?"}`,
+          detail: [hypothesis.cycle ? `cycle ${hypothesis.cycle}` : "", hypothesis.selected_tip ? "selected" : "", componentId || "component ?"].filter(Boolean).join(" · "),
           state: hypothesis.state || hypothesis.assessment || component.state || "proposed",
           accentClass: expertClass(snapshot, hypothesis.proposer_role),
-          change: hypothesisChange(hypothesis, parent),
+          role: hypothesis.proposer_role,
           parent,
           raw: hypothesis,
         };
@@ -1231,6 +1221,7 @@
         detail: `${view.phase || "not started"} · owner ${view.owner_role || component.owner || "—"}`,
         state: view.state || "pending",
         accentClass: expertClass(snapshot, view.owner_role || component.owner),
+        role: view.owner_role || component.owner,
         raw: { contract: component, view },
       };
     });
@@ -1315,17 +1306,25 @@
     announce(`Selected ${item.kind} ${item.id}`);
   }
 
-  function renderFallback(positioned) {
+  function renderFallback(positioned, edges) {
     topologyList.replaceChildren();
     positioned.forEach((item) => {
+      const parent = item.kind === "hypothesis"
+        ? `parent: ${item.raw.parent_hypothesis_id || "none (root hypothesis)"}`
+        : `depends on ${item.dependencies.join(", ") || "nothing"}`;
       const listItem = element("li");
-      const button = element(
-        "button",
-        "",
-        `${hypothesisFailure(item) ? `× ${hypothesisFailure(item)} · ` : ""}${item.id} — ${item.title}; ${item.change ? `${item.change.label}; ` : ""}depends on ${item.dependencies.join(", ") || "nothing"}; state ${item.state}`,
-      );
+      const button = element("button", "", `${item.id} — ${item.title}; ${parent}; ${graphStatus(item).label}${isPruned(item) ? "; pruned (control decision)" : ""}`);
       button.type = "button";
       button.addEventListener("click", () => selectTopology(item));
+      listItem.append(button);
+      topologyList.append(listItem);
+    });
+    const byNodeId = new Map(positioned.map((item) => [item.id, item]));
+    edges.forEach((edge) => {
+      const listItem = element("li");
+      const button = element("button", "", `${relationLabel(edge)}: ${edge.source} → ${edge.target}`);
+      button.type = "button";
+      button.addEventListener("click", () => inspectRelation(edge, byNodeId.get(edge.source), byNodeId.get(edge.target)));
       listItem.append(button);
       topologyList.append(listItem);
     });
@@ -1337,7 +1336,7 @@
       node.classList.toggle("connected", active);
       node.classList.toggle("dimmed", !active);
     });
-    graphEdges.querySelectorAll(".graph-edge").forEach((edge) => {
+    graphEdges.querySelectorAll(".graph-edge, .graph-edge-arrow").forEach((edge) => {
       const active = keys.has(edge.dataset.source) && keys.has(edge.dataset.target);
       edge.classList.toggle("connected", active);
       edge.classList.toggle("dimmed", !active);
@@ -1346,62 +1345,95 @@
 
   function clearConnected() {
     graphNodes.querySelectorAll(".graph-node").forEach((node) => node.classList.remove("connected", "dimmed"));
-    graphEdges.querySelectorAll(".graph-edge").forEach((edge) => edge.classList.remove("connected", "dimmed"));
+    graphEdges.querySelectorAll(".graph-edge, .graph-edge-arrow").forEach((edge) => edge.classList.remove("connected", "dimmed"));
     relationTooltip.hidden = true;
   }
 
-  function showRelation(source, target) {
+  function showRelation(edge, source, target) {
     highlightConnected(new Set([source.key, target.key]));
-    const relation = state.topologyMode === "hypothesis" ? object(target.dependencyRelations)[source.id] || "parent → child" : "dependency → dependent";
-    relationTooltip.textContent = `${source.id} → ${target.id} · ${relation === "pruned_by" ? "Pruning (control decision)" : target.change?.label || "Dependency"} · ${relation}`;
+    relationTooltip.textContent = `${source.id} → ${target.id} · ${relationLabel(edge)}`;
     relationTooltip.hidden = false;
   }
 
   function showNodeConnections(item) {
     const connected = new Set([item.key]);
-    state.topology.forEach((candidate) => {
-      if (item.dependencies.includes(candidate.id) || candidate.dependencies.includes(item.id)) connected.add(candidate.key);
+    const byNodeId = new Map(state.topology.map((node) => [node.id, node]));
+    topologyEdges().forEach((edge) => {
+      if (edge.source === item.id || edge.target === item.id) {
+        connected.add(byNodeId.get(edge.source).key);
+        connected.add(byNodeId.get(edge.target).key);
+      }
     });
     highlightConnected(connected);
     const count = connected.size - 1;
-    relationTooltip.textContent = `${item.id} · ${item.change ? `${item.change.label} · ` : ""}${count} directly connected node${count === 1 ? "" : "s"}`;
+    relationTooltip.textContent = `${item.id} · ${count} directly connected node${count === 1 ? "" : "s"}`;
     relationTooltip.hidden = false;
   }
 
-  function renderLegend(snapshot) {
+  function renderLegend(snapshot, edges) {
     const legend = byId("graph-legend");
     legend.replaceChildren();
-    const direction = element("span", "legend-item edge-key", state.topologyMode === "hypothesis" ? "→ parent / pruned_by" : "→ dependency to dependent");
-    legend.append(direction);
-    if (state.topologyMode === "hypothesis") {
-      const failureKey = element("span", "legend-item");
-      const cross = svgElement("svg", {class: "status-key", viewBox: "12 12 14 14", "aria-hidden": "true"});
-      cross.append(graphStatusGlyph(true));
-      failureKey.append(cross, document.createTextNode("Refuted / failed"));
-      legend.append(failureKey);
-      Object.entries(HYPOTHESIS_CHANGES).forEach(([kind, label]) => {
-        const item = element("span", `legend-item change-${kind}`);
-        const sample = svgElement("svg", {class: "change-key", viewBox: "0 0 30 10", "aria-hidden": "true"});
-        sample.append(svgElement("path", {class: `graph-edge change-${kind}`, d: "M 1 5 H 29"}));
-        item.append(sample, document.createTextNode(label));
-        legend.append(item);
-      });
+    function group(label, items) {
+      if (!items.length) return;
+      const section = element("div", "legend-group");
+      section.setAttribute("role", "group");
+      section.setAttribute("aria-label", label);
+      section.append(element("span", "legend-heading", label), ...items);
+      legend.append(section);
     }
-    [
-      ["pending", "Pending / proposed"],
-      ["running", "Running / OPEN"],
-      ["blocked", state.topologyMode === "hypothesis" ? "Blocked / cancelled" : "Blocked / failed"],
-      ["accepted", "Accepted / terminal"],
-      ["pruned", "Pruned (control, not refutation)"],
-    ].forEach(([kind, label]) => {
+    group("Relations", ["lineage", "dependency", "pruning"].filter((kind) => edges.some((edge) => edge.kind === kind)).map((kind) => {
       const item = element("span", "legend-item");
-      item.append(element("span", `legend-status state-${kind}`), document.createTextNode(label));
-      legend.append(item);
-    });
-    list(snapshot.experts).filter((expert) => expertMatches(expert)).forEach((expert) => {
-      const item = element("span", `legend-item expert-key ${expertClass(snapshot, expert.role)}`, expert.role);
-      legend.append(item);
-    });
+      const sample = svgElement("svg", {class: "edge-key", viewBox: "0 0 36 12", "aria-hidden": "true"});
+      sample.append(svgElement("path", {class: `graph-edge ${kind === "pruning" ? "pruning-edge" : ""}`, d: "M 1 6 H 28"}),
+        svgElement("polygon", {class: "graph-edge-arrow", points: "28,2 35,6 28,10"}));
+      item.append(sample, document.createTextNode(relationLabel({kind})));
+      return item;
+    }));
+    const statuses = new Map(state.topology.map((item) => { const status = graphStatus(item); return [status.label, status]; }));
+    group("Status", Array.from(statuses.values()).map((status) => {
+      const item = element("span", "legend-item");
+      const sample = svgElement("svg", {class: `status-key ${status.className}`, viewBox: "12 12 14 14", "aria-hidden": "true"});
+      sample.append(graphStatusGlyph(status.failure));
+      item.append(sample, document.createTextNode(status.label));
+      return item;
+    }));
+    const controls = [];
+    if (state.topology.some(isPruned)) {
+      const item = element("span", "legend-item");
+      const sample = svgElement("svg", {class: "pruned-key", viewBox: "0 0 32 18", "aria-hidden": "true"});
+      sample.append(svgElement("rect", {x: 1, y: 1, width: 30, height: 16, rx: 3}));
+      item.append(sample, document.createTextNode("Pruned (control, not refutation)"));
+      controls.push(item);
+    }
+    group("Control", controls);
+    group("Experts", Array.from(new Set(state.topology.map((item) => item.role))).map((role) =>
+      element("span", `legend-item expert-key ${expertClass(snapshot, role)}`, role || "Unknown expert")));
+  }
+
+  function edgeGeometry(source, target, pruning, index) {
+    // Keep pruning's lower exit and upper entry separate from the midpoint
+    // ports used by lineage arrows, including links within the same column.
+    if (pruning && source.x === target.x) {
+      const x = source.x + source.width, y1 = source.y + source.height * 0.75, y2 = target.y + target.height * 0.25;
+      const bend = x + 56 + (index % 3) * 12;
+      return {path: `M ${x} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x + 8} ${y2}`,
+        arrow: `${x + 8},${y2 - 5} ${x},${y2} ${x + 8},${y2 + 5}`, top: 0, left: 0, right: bend};
+    }
+    if (pruning) {
+      // Use the column gaps and the space above the graph so a later winner
+      // can point back to a root without crossing intervening node boxes.
+      const y1 = source.y + source.height * 0.75, y2 = target.y + target.height * 0.25;
+      const offset = 24 + (index % 3) * 12;
+      const x1 = source.x - offset, x2 = target.x - offset, top = -36 - index * 16;
+      return {path: `M ${source.x} ${y1} H ${x1} V ${top} H ${x2} V ${y2} H ${target.x - 8}`,
+        arrow: `${target.x - 8},${y2 - 5} ${target.x},${y2} ${target.x - 8},${y2 + 5}`,
+        top, left: Math.min(0, x1, x2), right: 0};
+    }
+    const x1 = source.x + source.width, y1 = source.y + source.height / 2;
+    const x2 = target.x, y2 = target.y + target.height / 2;
+    const bend = Math.max(36, (x2 - x1) / 2);
+    return {path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2 - 8} ${y2}`,
+      arrow: `${x2 - 8},${y2 - 5} ${x2},${y2} ${x2 - 8},${y2 + 5}`, top: 0, left: 0, right: 0};
   }
 
   function renderGraph() {
@@ -1411,69 +1443,55 @@
     graphEdges.replaceChildren();
     graphNodes.replaceChildren();
     const positioned = layoutTopology(state.topology);
-    renderFallback(positioned);
+    const edges = topologyEdges();
+    renderFallback(positioned, edges);
+    renderLegend(state.snapshot, edges);
+    clearConnected();
     graphEmpty.hidden = positioned.length > 0;
     if (!positioned.length) {
       state.graphBounds = null;
       return;
     }
     const byNodeId = new Map(positioned.map((item) => [item.id, item]));
-    positioned.forEach((item) => {
-      item.dependencies.forEach((dependencyId) => {
-        const dependency = byNodeId.get(dependencyId);
-        if (!dependency) return;
-        const startX = dependency.x + dependency.width;
-        const startY = dependency.y + dependency.height / 2;
-        const endX = item.x;
-        const endY = item.y + item.height / 2;
-        const bend = Math.max(36, (endX - startX) / 2);
-        const pruning = object(item.dependencyRelations)[dependencyId] === "pruned_by";
-        const changeKind = pruning ? "pruning" : item.change?.kind || "dependency";
-        const changeLabel = pruning ? "Pruning (control decision)" : item.change?.label || "Dependency";
-        const edge = svgElement("path", {
-          class: `graph-edge change-${changeKind}${pruning ? " pruning-edge" : ""}`,
-          d: `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX - 8} ${endY}`,
-          tabindex: "0",
-          role: "img",
-          "aria-label": `${dependency.id} to ${item.id}, ${changeLabel}, ${state.topologyMode === "hypothesis" ? object(item.dependencyRelations)[dependencyId] || "parent to child" : "dependency to dependent"}`,
-          "data-change-kind": changeKind,
-          "data-source": dependency.key,
-          "data-target": item.key,
-        });
-        const edgeTitle = svgElement("title");
-        edgeTitle.textContent = `${dependency.id} → ${item.id} · ${changeLabel}`;
-        edge.append(edgeTitle);
-        edge.addEventListener("mouseenter", () => showRelation(dependency, item));
-        edge.addEventListener("mouseleave", clearConnected);
-        edge.addEventListener("focus", () => showRelation(dependency, item));
-        edge.addEventListener("blur", clearConnected);
-        const inspectRelation = () => openLocalDetail("relationship", {
-          from: dependency.id, to: item.id,
-          relation: object(item.dependencyRelations)[dependencyId] || "dependency",
-          change: pruning ? null : item.change,
-          source: dependency.raw, target: item.raw,
-        });
-        edge.addEventListener("click", inspectRelation);
-        edge.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inspectRelation(); }
-        });
-        graphEdges.append(edge);
-        graphEdges.append(svgElement("polygon", {
-          class: `graph-edge-arrow change-${changeKind}`,
-          points: `${endX - 8},${endY - 5} ${endX},${endY} ${endX - 8},${endY + 5}`,
-        }));
+    let extraTop = 0, extraLeft = 0, extraRight = 0, pruningIndex = 0;
+    edges.forEach((record) => {
+      const source = byNodeId.get(record.source), target = byNodeId.get(record.target);
+      const pruning = record.kind === "pruning";
+      const geometry = edgeGeometry(source, target, pruning, pruning ? pruningIndex++ : 0);
+      extraTop = Math.min(extraTop, geometry.top);
+      extraLeft = Math.min(extraLeft, geometry.left);
+      extraRight = Math.max(extraRight, geometry.right);
+      const attributes = {"data-relation-kind": record.kind, "data-source": source.key, "data-target": target.key};
+      const edge = svgElement("path", {
+        class: `graph-edge ${pruning ? "pruning-edge" : ""}`, d: geometry.path,
+        tabindex: "0", role: "img", ...attributes,
+        "aria-label": `${source.id} to ${target.id}, ${relationLabel(record)}`,
       });
+      const edgeTitle = svgElement("title");
+      edgeTitle.textContent = `${source.id} → ${target.id} · ${relationLabel(record)}`;
+      edge.append(edgeTitle);
+      edge.addEventListener("mouseenter", () => showRelation(record, source, target));
+      edge.addEventListener("mouseleave", clearConnected);
+      edge.addEventListener("focus", () => showRelation(record, source, target));
+      edge.addEventListener("blur", clearConnected);
+      edge.addEventListener("click", () => inspectRelation(record, source, target));
+      edge.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inspectRelation(record, source, target); }
+      });
+      graphEdges.append(edge, svgElement("polygon", {class: "graph-edge-arrow", points: geometry.arrow, ...attributes}));
     });
 
     positioned.forEach((item) => {
-      const failure = hypothesisFailure(item);
+      const status = graphStatus(item);
+      const failure = status.failure;
+      const lineage = item.kind === "hypothesis" ? (item.raw.parent_hypothesis_id ? "Derived hypothesis" : "Root hypothesis") : "";
+      const control = isPruned(item) ? " · pruned" : "";
       const group = svgElement("g", {
-        class: `graph-node ${item.accentClass} ${statusClass(item.state)}${item.change ? ` change-${item.change.kind}` : ""}${state.selectedKey === item.key ? " selected" : ""}`,
+        class: `graph-node ${item.accentClass} ${status.className}${isPruned(item) ? " is-pruned" : ""}${state.selectedKey === item.key ? " selected" : ""}`,
         transform: `translate(${item.x} ${item.y})`,
         tabindex: "0",
         role: "button",
-        "aria-label": `${failure ? `× ${failure}, ` : ""}${item.kind} ${item.id}, ${item.change ? `${item.change.label}, ` : ""}${item.title}, state ${item.state}`,
-        "data-change-kind": item.change?.kind || "",
+        "aria-label": `${failure ? `× ${failure}, ` : ""}${item.kind} ${item.id}, ${lineage}, ${item.title}, ${status.label}${control}`,
         "data-key": item.key,
       });
       group.append(svgElement("rect", { class: "node-body", width: item.width, height: item.height, rx: 4 }));
@@ -1483,15 +1501,14 @@
       const subtitle = svgElement("text", { class: "node-subtitle", x: 14, y: 77 });
       const detail = svgElement("text", { class: "node-subtitle", x: 14, y: 92 });
       const labels = [[identifier, item.id, 1], [title, item.title, 2],
-        [subtitle, item.subtitle, 1], [detail, `${item.state} · ${item.detail}`, 1]];
-      if (item.change) {
-        group.append(svgElement("rect", {class: "node-change-band", x: 1, y: 98, width: item.width - 2, height: 29, rx: 3}));
-        const change = svgElement("text", {class: "node-change", x: 14, y: 117});
-        labels.push([change, item.change.label, 1]);
-        group.append(change);
+        [subtitle, item.subtitle, 1], [detail, `${status.label} · ${item.detail}`, 1]];
+      if (lineage) {
+        const label = svgElement("text", {class: "node-lineage", x: 14, y: 117});
+        labels.push([label, `${lineage}${control}`, 1]);
+        group.append(label);
       }
       const tooltip = svgElement("title");
-      tooltip.textContent = `${failure ? `× ${failure} · ` : ""}${item.id}: ${item.title} · ${item.subtitle} · ${item.state} · ${item.detail}${item.change ? ` · ${item.change.label}. ${item.change.reason}` : ""}`;
+      tooltip.textContent = `${item.id}: ${item.title} · ${item.subtitle} · ${status.label} · ${item.detail} · ${lineage}${control}`;
       group.append(identifier, title, subtitle, detail, tooltip);
       group.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1513,7 +1530,7 @@
 
     const right = Math.max(...positioned.map((item) => item.x + item.width));
     const bottom = Math.max(...positioned.map((item) => item.y + item.height));
-    state.graphBounds = { x: 0, y: 0, width: right, height: bottom };
+    state.graphBounds = { x: extraLeft, y: extraTop, width: Math.max(right, extraRight) - extraLeft, height: bottom - extraTop };
     applyView();
     if (state.fittedMode !== state.topologyMode) {
       state.fittedMode = state.topologyMode;
@@ -1531,6 +1548,11 @@
     const allItems = buildTopology(snapshot, state.topologyMode);
     state.topology = allItems.filter((item) => topologyMatches(item));
     const hypothesisMode = state.topologyMode === "hypothesis";
+    const pruningCount = topologyEdges(true).filter((edge) => edge.kind === "pruning").length;
+    const pruningControl = byId("toggle-pruning");
+    pruningControl.hidden = !hypothesisMode;
+    pruningControl.disabled = !pruningCount;
+    pruningControl.textContent = `${state.showPruning ? "Hide" : "Show"} pruning links (${pruningCount})`;
     byId("show-components").classList.toggle("active", !hypothesisMode);
     byId("show-components").setAttribute("aria-pressed", String(!hypothesisMode));
     byId("show-hypotheses").classList.toggle("active", hypothesisMode);
@@ -1540,14 +1562,13 @@
       ? " Filtered endpoints and their edges are omitted."
       : "";
     byId("graph-summary").textContent = hypothesisMode
-      ? `${state.topology.length} of ${allItems.length} durable hypotheses shown. Change labels interpret proposal descriptions, not validated progress. Dotted: execution repair; short dashes: experiment revision; solid: scientific revision; dash-dot: unclear. Pruned_by edges show control decisions; pruning does not change scientific assessment.${filterNote}`
+      ? `${state.topology.length} of ${allItems.length} durable hypotheses shown. Solid arrows: parent → derived hypothesis. Dashed arrows: winner → pruned hypothesis (${state.showPruning ? "shown" : "hidden"}). Pruning does not change ancestry or scientific assessment. Select a node or link for recorded revision details.${filterNote}`
       : `${state.topology.length} of ${allItems.length} contract components shown. Edges point from dependency to dependent.${filterNote}`;
     byId("graph-title").textContent = hypothesisMode ? "Hypothesis lineage graph" : "Component dependency graph";
     const selectedExists = state.topology.some((item) => item.key === state.selectedKey);
     if (state.selectedKey && state.selectedKey.startsWith(`${state.topologyMode}:`) && !selectedExists) {
       state.selectedKey = null;
     }
-    renderLegend(snapshot);
     renderGraph();
   }
 
@@ -1588,8 +1609,8 @@
     appendDefinition(grid, "state", selection.state || "—");
     if (selection.kind === "hypothesis") {
       const hypothesis = object(selection.raw);
-      appendHypothesisChange(grid, selection.change, selection.parent);
-      appendDefinition(grid, "scientific assessment", hypothesis.assessment || "Unavailable");
+      appendHypothesisComparison(grid, hypothesis, selection.parent);
+      appendDefinition(grid, "scientific assessment", hypothesis.assessment || "Not assessed");
       appendDefinition(grid, "claim", hypothesis.claim || "—");
       appendDefinition(grid, "proposer", hypothesis.proposer_role || "—");
       appendDefinition(grid, "method family", hypothesis.method_family_id || "—");
@@ -1821,7 +1842,7 @@
       renderChanged("rendezvous", [snapshot.rendezvous, filters], () => renderRendezvous(snapshot));
     } else if (state.activeView === "map") {
       if (sharedGoal(snapshot)) state.topologyMode = "hypothesis";
-      renderChanged("map", [snapshot.components, snapshot.goal, researchGraph(snapshot), filters, state.topologyMode, state.selectedKey], () => renderTopology(snapshot));
+      renderChanged("map", [snapshot.components, snapshot.experts, snapshot.goal, researchGraph(snapshot), filters, state.topologyMode, state.showPruning, state.selectedKey], () => renderTopology(snapshot));
     } else if (state.activeView === "evidence") {
       renderChanged("evidence", [snapshot.fact_counts, snapshot.oracle], renderEvidenceOverview);
     } else if (state.activeView === "activity" && state.product) {
@@ -2472,18 +2493,23 @@
       const grid = element("dl", "selection-grid");
       appendDefinition(grid, "from", data.from);
       appendDefinition(grid, "to", data.to);
+      appendDefinition(grid, "relationship", relationLabel(data));
       appendDefinition(grid, "recorded relation", data.relation);
-      if (data.relation === "pruned_by") {
+      if (data.kind === "pruning") {
         appendDefinition(grid, "meaning", "Pruning is a control decision; it does not refute the scientific claim.");
-      } else if (data.change) {
-        appendHypothesisChange(grid, data.change, data.source);
+        appendDefinition(grid, "winner claim", object(data.source).claim || "—");
+        appendDefinition(grid, "pruned claim", object(data.target).claim || "—");
+        appendDefinition(grid, "pruned scientific assessment", object(data.target).assessment || "Not assessed");
+      } else if (data.kind === "lineage") {
+        appendHypothesisComparison(grid, data.target, data.source);
+        appendDefinition(grid, "child claim", object(data.target).claim || "—");
+        appendDefinition(grid, "child method family", object(data.target).method_family_id || "—");
+        appendDefinition(grid, "child scientific assessment", object(data.target).assessment || "Not assessed");
       }
-      appendDefinition(grid, "child claim", object(data.target).claim || "—");
-      appendDefinition(grid, "child scientific assessment", object(data.target).assessment || "Unavailable");
       content.append(grid);
       const raw = element("details", "raw-evidence");
       raw.append(element("summary", "", "Raw relationship evidence"));
-      structuredDetail(raw, {source: data.source, target: data.target});
+      structuredDetail(raw, {relationship: data.recorded, source: data.source, target: data.target});
       content.append(raw);
     } else if (state.detailTab === "execution") {
       structuredDetail(content, data.trace_evidence || {coverage: "unavailable", notice: "No retained execution trace evidence."});
@@ -2765,6 +2791,11 @@
   window.addEventListener("pagehide", () => { if (state.logSocket) state.logSocket.close(); });
   byId("show-components").addEventListener("click", () => setTopologyMode("component"));
   byId("show-hypotheses").addEventListener("click", () => setTopologyMode("hypothesis"));
+  byId("toggle-pruning").addEventListener("click", () => {
+    state.showPruning = !state.showPruning;
+    renderVisibleViews();
+    announce(`Pruning links ${state.showPruning ? "shown" : "hidden"}; hypothesis nodes and their statuses remain visible`);
+  });
   byId("open-drawer").addEventListener("click", () => {
     setDrawerMode("evidence");
     renderDrawer();

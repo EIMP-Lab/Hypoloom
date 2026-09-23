@@ -930,8 +930,8 @@ def test_browser_graph_nodes_edges_and_selected_chain_survive_poll(browser) -> N
     )
 
 
-def test_browser_hypothesis_repairs_and_scientific_revisions(browser, tmp_path):
-    """Failed-cycle repairs must not look like new scientific mechanisms."""
+def test_browser_hypothesis_relations_keep_revision_evidence_in_details(browser, tmp_path):
+    """Recorded ancestry and controls must not be inferred from revision prose."""
     page = browser
     page.evaluate("""(() => {
       const root = {hypothesis_id:'root', component_id:'component-a', proposer_role:'expert-a',
@@ -953,49 +953,44 @@ def test_browser_hypothesis_repairs_and_scientific_revisions(browser, tmp_path):
     })()""")
     page.click("#total-hypotheses")
     page.wait("document.querySelectorAll('.graph-node').length === 5")
-    assert page.evaluate("Object.fromEntries([...document.querySelectorAll('.graph-node')].map(n => [n.dataset.key, n.dataset.changeKind]))") == {
-        "hypothesis:root": "initial",
-        "hypothesis:repair": "repair",
-        "hypothesis:experiment": "experiment",
-        "hypothesis:science": "scientific",
-        "hypothesis:unknown": "unknown",
-    }
-    assert "Execution repair" in page.text(".graph-node[data-key='hypothesis:repair']")
-    assert "Experiment revision + repair" in page.text(".graph-node[data-key='hypothesis:experiment']")
-    assert "Scientific revision + repair" in page.text(".graph-node[data-key='hypothesis:science']")
-    assert "Unclear revision" in page.text(".graph-node[data-key='hypothesis:unknown']")
-    assert "INCONCLUSIVE" in page.text(".graph-node[data-key='hypothesis:repair']")
-    assert "not validated progress" in page.text("#graph-summary")
-    assert "Execution repair" in page.text("#topology-list")
-    assert "Scientific revision" in page.text("#graph-legend")
-    assert page.evaluate("document.querySelector('.graph-node[data-key=\"hypothesis:repair\"]').getAttribute('aria-label').includes('Execution repair')")
-    assert page.evaluate("getComputedStyle(document.querySelector('.graph-edge.change-repair')).strokeDasharray") != "none"
-    assert page.evaluate("getComputedStyle(document.querySelector('.graph-edge.change-scientific')).strokeDasharray") == "none"
-    assert page.evaluate("document.querySelector('.pruning-edge').dataset.changeKind") == "pruning"
-    assert page.evaluate("!document.querySelector('.pruning-edge').classList.contains('change-scientific')")
+    assert page.evaluate("document.querySelectorAll('#graph-edges .graph-edge[data-relation-kind=\"lineage\"]').length") == 4
+    assert page.evaluate("[...document.querySelectorAll('#graph-edges .graph-edge[data-relation-kind=\"lineage\"]')].every(n => getComputedStyle(n).strokeDasharray === 'none')")
+    assert page.evaluate("getComputedStyle(document.querySelector('#graph-edges .pruning-edge')).strokeDasharray") == "7px, 4px"
+    assert "Root hypothesis" in page.text(".graph-node[data-key='hypothesis:root']")
+    assert "Derived hypothesis" in page.text(".graph-node[data-key='hypothesis:repair']")
+    assert "Execution repair" not in page.text("#graph-nodes")
+    assert "Scientific revision" not in page.text("#graph-legend")
+    assert "Parent → derived hypothesis" in page.text("#graph-legend")
+    assert "Winner → pruned hypothesis" in page.text("#graph-legend")
+    assert "Pruning does not change ancestry or scientific assessment" in page.text("#graph-summary")
+    assert "parent: root" in page.text("#topology-list")
     page.click(".graph-node[data-key='hypothesis:repair']")
-    assert "Execution repair" in page.text("#selection-detail")
     assert "修正实验执行脚本" in page.text("#selection-detail")
-    assert "Interpretation of proposal text" in page.text("#selection-detail")
     assert "parent claim" in page.text("#selection-detail")
+    assert "INCONCLUSIVE" in page.text("#selection-detail")
+    assert "change type" not in page.text("#selection-detail")
     page.click("#close-drawer")
     before = page.evaluate("fixtureRequests.filter(row => row[1] === '/api/refresh').length")
     page.wait(f"fixtureRequests.filter(row => row[1] === '/api/refresh').length > {before}")
     assert page.evaluate("document.querySelector('.graph-node.selected').dataset.key") == "hypothesis:repair"
-    page.evaluate("document.querySelector('.graph-edge.change-scientific').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))")
-    assert "Scientific revision + repair" in page.text("#research-detail-content")
+    page.evaluate("document.querySelector('#graph-edges [data-relation-kind=\"lineage\"][data-target=\"hypothesis:science\"]').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))")
     assert "Graph Attention Filtering" in page.text("#research-detail-content")
+    assert "parent claim" in page.text("#research-detail-content")
+    assert "child claim" in page.text("#research-detail-content")
+    assert "Scientific revision" not in page.text("#research-detail-content")
     page.click("#close-drawer")
-    page.click(".pruning-edge")
+    page.evaluate("document.querySelector('#graph-edges .pruning-edge').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))")
     assert "pruned_by" in page.text("#research-detail-content")
     assert "control decision" in page.text("#research-detail-content")
+    assert "winner claim" in page.text("#research-detail-content")
+    assert "child claim" not in page.text("#research-detail-content")
     page.click("#close-drawer")
     page.click("#fit-graph")
     page.evaluate("window.scrollTo(0, document.querySelector('.graph-panel').getBoundingClientRect().top + window.scrollY - 150)")
-    page.screenshot(tmp_path / "hypothesis-revision-types.png")
+    page.screenshot(tmp_path / "hypothesis-relations.png")
 
 
-def test_browser_hypothesis_revision_uncertainty_and_snapshot_fallback(browser):
+def test_browser_hypothesis_revision_text_and_missing_parent_snapshot_fallback(browser):
     page = browser
     page.evaluate("""(() => {
       const root = {hypothesis_id:'root', component_id:'component-a', proposer_role:'expert-a',
@@ -1010,27 +1005,143 @@ def test_browser_hypothesis_revision_uncertainty_and_snapshot_fallback(browser):
         {...root, hypothesis_id:'same-family-science', parent_hypothesis_id:'root', relation:'Introduces a new graph alignment mechanism.'},
         {...root, hypothesis_id:'protocol', parent_hypothesis_id:'root', relation:'Changes the measurement protocol and replaces the parser.'},
         {...root, hypothesis_id:'unspecified-fix', parent_hypothesis_id:'root', claim:'A different, unspecified explanation.', relation:'fixes the execution pipeline'},
-        {...root, hypothesis_id:'literal', parent_hypothesis_id:'root', relation:'<img src=x onerror=window.graphInjected=true>'}];
+        {...root, hypothesis_id:'literal', parent_hypothesis_id:'root', relation:'<img src=x onerror=window.graphInjected=true>'},
+        {...root, hypothesis_id:'screening', parent_hypothesis_id:'root', relation:'新增筛选门→晋升门两段预注册，筛选到晋升冻结核心机制。'},
+        {...root, hypothesis_id:'attention', parent_hypothesis_id:'root', relation:'以模态对称因果跨模态注意力替换文本锚定不对称融合。'}];
     })()""")
     page.click("#total-hypotheses")
-    page.wait("document.querySelectorAll('.graph-node').length === 11")
-    assert page.evaluate("Object.fromEntries([...document.querySelectorAll('.graph-node')].map(n => [n.dataset.key, n.dataset.changeKind]))") == {
-        "hypothesis:root": "initial",
-        "hypothesis:failure": "unknown",
-        "hypothesis:family-only": "unknown",
-        "hypothesis:missing-parent": "unknown",
-        "hypothesis:negated": "repair",
-        "hypothesis:format": "repair",
-        "hypothesis:historical": "repair",
-        "hypothesis:same-family-science": "scientific",
-        "hypothesis:protocol": "experiment",
-        "hypothesis:unspecified-fix": "unknown",
-        "hypothesis:literal": "unknown",
-    }
-    page.click("#fit-graph")
-    page.click(".graph-node[data-key='hypothesis:literal']")
-    assert "<img src=x" in page.text("#selection-detail")
-    assert page.evaluate("!window.graphInjected && !document.querySelector('#selection-detail img')")
+    page.wait("document.querySelectorAll('.graph-node').length === 13")
+    assert page.evaluate("document.querySelectorAll('#graph-edges .graph-edge').length") == 11
+    assert page.evaluate("[...document.querySelectorAll('#graph-edges .graph-edge')].every(n => n.dataset.relationKind === 'lineage' && getComputedStyle(n).strokeDasharray === 'none')")
+    assert "Scientific revision" not in page.text("#graph-nodes")
+    assert "Unclear revision" not in page.text("#graph-nodes")
+    for identity in ("screening", "attention", "missing-parent", "literal"):
+        page.evaluate(f"document.querySelector('.graph-node[data-key=\"hypothesis:{identity}\"]').dispatchEvent(new KeyboardEvent('keydown', {{key:'Enter', bubbles:true}}))")
+        relation = page.evaluate(f"fixture.snapshot.hypotheses.find(n => n.hypothesis_id === '{identity}').relation")
+        assert relation in page.text("#selection-detail")
+        assert "Derived hypothesis" in page.text("#selection-detail")
+        if identity == "missing-parent":
+            assert "Parent record unavailable" in page.text("#selection-detail")
+        assert page.evaluate("!window.graphInjected && !document.querySelector('#selection-detail img')")
+        page.click("#close-drawer")
+
+
+def test_browser_pruning_overlay_preserves_ancestry_and_visible_legend(browser, tmp_path):
+    page = browser
+    page.evaluate("""(() => {
+      fixture.snapshot.experts.push({role:'expert-b', slot_ordinal:2});
+      const root = {component_id:'component-a', proposer_role:'expert-a', claim:'Recorded claim',
+        parent_hypothesis_id:null, assessment:'REFUTED', state:'REFUTED'};
+      const nodes = [{...root, hypothesis_id:'root-a'},
+        {...root, hypothesis_id:'child-a', parent_hypothesis_id:'root-a', assessment:'INCONCLUSIVE', state:'INCONCLUSIVE'},
+        {...root, hypothesis_id:'root-b', proposer_role:'expert-b', assessment:'SUPPORTED', state:'SUPPORTED'},
+        {...root, hypothesis_id:'child-b', proposer_role:'expert-b', parent_hypothesis_id:'root-b', assessment:null, state:'PROPOSED'}];
+      fixture.activity.graph = {nodes, edges:nodes.filter(n=>n.parent_hypothesis_id)
+        .map(n=>({source:n.parent_hypothesis_id,target:n.hypothesis_id,relation:'derived_from'}))};
+    })()""")
+    page.click("#total-hypotheses")
+    page.wait("document.querySelectorAll('.graph-node').length === 4")
+    positions = "Object.fromEntries([...document.querySelectorAll('.graph-node')].map(n=>[n.dataset.key,n.getAttribute('transform')]))"
+    before = page.evaluate(positions)
+    assert "Winner → pruned hypothesis" not in page.text("#graph-legend")
+    assert page.evaluate("document.querySelector('#toggle-pruning').disabled")
+    page.evaluate("""['root-a','child-a'].forEach(target=>{
+      fixture.activity.graph.nodes.find(n=>n.hypothesis_id===target).state='PRUNED';
+      fixture.activity.graph.edges.push({source:'child-b',target,relation:'pruned_by',source_attempt_id:'accepted-pruning',score_refs:['recorded-score']});
+    })""")
+    page.wait("document.querySelectorAll('#graph-edges .pruning-edge').length === 2")
+    assert page.text("#toggle-pruning") == "Hide pruning links (2)"
+    assert page.evaluate(positions) == before
+    # An incoming lineage arrow must not make a pruning origin look like a
+    # second arrowhead. Check actual rendered endpoints, not routing formulas.
+    assert page.evaluate("""(() => {
+      const arrows=[...document.querySelectorAll('#graph-edges .graph-edge-arrow')];
+      return [...document.querySelectorAll('#graph-edges .pruning-edge')].every(edge=>{
+        const start=edge.getPointAtLength(0), end=edge.getPointAtLength(edge.getTotalLength());
+        const own=arrows.filter(a=>a.dataset.relationKind==='pruning'
+          && a.dataset.source===edge.dataset.source && a.dataset.target===edge.dataset.target);
+        if(own.length!==1) return false;
+        const tip=own[0].points.getItem(1);
+        if(Math.hypot(end.x-tip.x,end.y-tip.y)>10) return false;
+        return arrows.every(a=>{
+          const b=a.getBBox();
+          return start.x<b.x-4 || start.x>b.x+b.width+4 || start.y<b.y-4 || start.y>b.y+b.height+4;
+        });
+      });
+    })()""")
+    assert page.evaluate("""(() => {
+      const boxes=[...document.querySelectorAll('.graph-node')].map(n=>{
+        const b=n.querySelector('.node-body').getBBox(), m=n.transform.baseVal.consolidate().matrix;
+        return {x:b.x+m.e,y:b.y+m.f,w:b.width,h:b.height};
+      });
+      return [...document.querySelectorAll('#graph-edges .pruning-edge')].every(edge=>{
+        for(let d=0;d<edge.getTotalLength();d+=2) {
+          const p=edge.getPointAtLength(d);
+          if(boxes.some(b=>p.x>b.x+1 && p.x<b.x+b.w-1 && p.y>b.y+1 && p.y<b.y+b.h-1)) return false;
+        }
+        return true;
+      });
+    })()""")
+    assert "Root hypothesis" in page.text(".graph-node[data-key='hypothesis:root-a']")
+    assert "Inconclusive" in page.text(".graph-node[data-key='hypothesis:child-a']")
+    assert page.evaluate("document.querySelector('.graph-node[data-key=\"hypothesis:root-a\"] .status-cross') !== null")
+    assert page.evaluate("document.querySelector('.graph-node[data-key=\"hypothesis:child-a\"] .status-cross') === null")
+    assert page.evaluate("getComputedStyle(document.querySelector('.graph-node[data-key=\"hypothesis:child-a\"] .node-body')).strokeDasharray") == "7px, 4px"
+    assert "Winner → pruned hypothesis" in page.text("#graph-legend")
+    assert "Running" not in page.text("#graph-legend")
+    assert "Not assessed" in page.text("#graph-legend")
+    page.evaluate("document.querySelector('#graph-edges .pruning-edge').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))")
+    assert "accepted-pruning" in page.text("#research-detail-content")
+    assert "recorded-score" in page.text("#research-detail-content")
+    page.click("#close-drawer")
+    page.click('.graph-node[data-key="hypothesis:child-a"]')
+    page.click("#close-drawer")
+    view = page.evaluate("document.querySelector('#graph-viewport').getAttribute('transform')")
+    page.click("#toggle-pruning")
+    assert page.text("#toggle-pruning") == "Show pruning links (2)"
+    assert page.evaluate("document.querySelectorAll('#graph-edges .graph-edge').length") == 2
+    assert page.evaluate(positions) == before
+    assert page.evaluate("document.querySelector('#graph-viewport').getAttribute('transform')") == view
+    assert "Winner → pruned hypothesis" not in page.text("#graph-legend")
+    assert "Pruned (control, not refutation)" in page.text("#graph-legend")
+    refresh = page.evaluate("fixtureRequests.filter(row=>row[1]==='/api/refresh').length")
+    page.wait(f"fixtureRequests.filter(row=>row[1]==='/api/refresh').length > {refresh}")
+    assert page.text("#toggle-pruning") == "Show pruning links (2)"
+    assert page.evaluate("document.querySelector('.graph-node.selected').dataset.key") == "hypothesis:child-a"
+    page.click("#toggle-pruning")
+    assert page.text("#toggle-pruning") == "Hide pruning links (2)"
+    assert page.evaluate(positions) == before
+    page.evaluate("document.querySelector('#filter-expert').value='expert-a'; document.querySelector('#filter-expert').dispatchEvent(new Event('change'))")
+    assert page.evaluate("document.querySelectorAll('.graph-node').length") == 2
+    assert page.evaluate("document.querySelectorAll('#graph-edges .graph-edge').length") == 1
+    legend = page.text("#graph-legend")
+    assert "expert-a" in legend and "expert-b" not in legend
+    assert "Supported" not in legend and "Not assessed" not in legend
+    assert "Refuted" in legend and "Inconclusive" in legend
+    assert "Winner → pruned hypothesis" not in legend
+    assert page.evaluate("document.querySelector('#toggle-pruning').disabled")
+    # Mobile layout must retain readable grouped legend entries and controls.
+    page.call("Emulation.setDeviceMetricsOverride", {"width":390,"height":844,"deviceScaleFactor":1,"mobile":False})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    page.evaluate("document.querySelector('#graph-legend').scrollIntoView({block:'end'})")
+    page.screenshot(tmp_path / "lineage-legend-mobile.png")
+    page.evaluate("document.querySelector('#filter-search').value='no-such-hypothesis'; document.querySelector('#filter-search').dispatchEvent(new Event('input'))")
+    assert page.evaluate("document.querySelectorAll('.graph-node').length") == 0
+    assert page.text("#graph-legend") == ""
+    page.evaluate("""fixture.snapshot.goal.research_contract={components:[
+      {id:'component-a',owner:'expert-a',dependencies:[]},
+      {id:'component-b',owner:'expert-b',dependencies:['component-a']}]};
+      fixture.snapshot.components.push({component_id:'component-b',owner_role:'expert-b',state:'BLOCKED'});
+      document.querySelector('#filter-expert').value='';
+      document.querySelector('#filter-search').value='';
+      document.querySelector('#filter-search').dispatchEvent(new Event('input'))""")
+    page.click("#show-components")
+    page.wait("document.querySelectorAll('.graph-node').length === 2")
+    assert page.evaluate("document.querySelector('#toggle-pruning').hidden")
+    assert page.evaluate("document.querySelector('#graph-edges .graph-edge').dataset.relationKind") == "dependency"
+    assert "Dependency → dependent" in page.text("#graph-legend")
+    assert "READY" in page.text("#graph-legend") and "BLOCKED" in page.text("#graph-legend")
+    assert "Pruned" not in page.text("#graph-legend")
 
 
 def test_browser_shared_goal_presentation_and_exact_acceptance_observations(browser, tmp_path):
@@ -1486,8 +1597,9 @@ def test_browser_graph_failure_cross_is_independent_of_pruning_and_parent_failur
     crosses = "[...document.querySelectorAll('.graph-node .status-cross')].map(n => n.closest('.graph-node').dataset.key).sort()"
     assert page.evaluate(crosses) == ["hypothesis:failed", "hypothesis:pruned-refuted", "hypothesis:refuted"]
     assert page.evaluate("[...document.querySelectorAll('.status-cross')].every(n => n.tagName === 'path' && getComputedStyle(n).stroke !== 'none')")
-    assert "Refuted / failed" in page.text("#graph-legend")
-    assert page.evaluate("document.querySelector('[data-key=\"hypothesis:pruned-refuted\"]').classList.contains('state-pruned')")
+    assert "Refuted" in page.text("#graph-legend")
+    assert "Execution failed" in page.text("#graph-legend")
+    assert page.evaluate("document.querySelector('[data-key=\"hypothesis:pruned-refuted\"]').classList.contains('is-pruned')")
     assert "Refuted" in page.evaluate("document.querySelector('[data-key=\"hypothesis:pruned-refuted\"]').getAttribute('aria-label')")
     page.click("#fit-graph")
     page.click('[data-key="hypothesis:refuted"]')

@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- September 23: lineage uses recorded parent links for layout and draws accepted
+  pruning as a separate, toggleable overlay. Visible relations, scientific
+  status, pruning borders and expert colors have grouped contextual legends.
+  Keyword-based change classification is removed; exact proposal text and
+  parent/child comparison remain in details. No new state or protocol; existing
+  runs stay read-only. 80 Web checks, six final graph browser regressions and four
+  doc checks pass; the retained-data replay preserves all 11 nodes/nine links,
+  with four roots in the first column and no pruning-path/node intersections.
+  A follow-up separates pruning's lower exits/upper entries from ancestry's
+  midpoint arrows; three browser checks and the retained-data replay confirm
+  no false second arrow at pruning origins.
+  The pruning button now names its next Show/Hide action; its tooltip explains
+  link counts and retained node statuses. The existing overlay browser case
+  passes with the new labels through toggles, polling, filters and mobile width.
+  See [lineage UI evidence](../qualification.md#current-development--lineage-relationships-and-contextual-legend-2026-09-23).
+
 - September 23: the Web expert crown now reads existing per-expert
   `leader.active`, rather than looking for an OPEN legacy LEADER command.
   Ordinary research nodes and between-node waits retain the active-round crown;

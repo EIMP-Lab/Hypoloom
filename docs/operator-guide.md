@@ -93,6 +93,16 @@ The TUI's `h` action and the explicitly granted Web operator link submit real
 human answers to pending Grounding decisions. Read-only share links cannot do so.
 Help, Report Issue and Web access are separate UI purposes.
 
+In the Web **Hypothesis lineage** view, solid arrows connect parents to derived
+hypotheses; dashed arrows connect winners to pruned hypotheses. **Hide pruning
+links (N)** / **Show pruning links (N)** names the next display action; N counts
+links. Hypothesis nodes and their statuses remain visible when links are hidden,
+without moving nodes or changing their assessments. Dashed node borders mark
+pruning, while status symbols retain the scientific assessment. The grouped
+legend reflects only visible content.
+Select a node or link for the recorded revision text and parent/child comparison;
+the graph does not infer scientific change from keywords in that text.
+
 ## Research and recovery boundaries
 
 The core expert loop uses private worktrees and persistent sessions for

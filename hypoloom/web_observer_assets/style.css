@@ -269,11 +269,12 @@ main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4
 .empty-state { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); color: var(--muted); font-size: 0.72rem; }
 .empty-state[hidden] { display: none; }
 
-.graph-edge { fill: none; stroke: #31517F; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.graph-edge-arrow { fill: #4A6EA8; pointer-events: none; }
+.graph-edge { fill: none; stroke: #8195AF; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.graph-edge-arrow { fill: #8195AF; pointer-events: none; }
 .graph-edge { cursor: help; pointer-events: stroke; transition: opacity 120ms ease, stroke 120ms ease; }
 .graph-edge.connected { stroke: var(--cyan); stroke-width: 3; }
-.graph-edge.dimmed, .graph-node.dimmed { opacity: 0.22; }
+.graph-edge-arrow.connected { fill: var(--cyan); }
+.graph-edge.dimmed, .graph-edge-arrow.dimmed, .graph-node.dimmed { opacity: 0.22; }
 .graph-node { cursor: pointer; }
 .expert-0 { --expert-accent: #7FB8F0; }
 .expert-1 { --expert-accent: #B49EF7; }
@@ -293,47 +294,29 @@ main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4
 .graph-node .node-subtitle { fill: var(--muted); font-size: 9px; }
 .graph-node .node-detail { fill: #A9BCDA; font-size: 9px; }
 .graph-node .status-glyph { vector-effect: non-scaling-stroke; }
-.graph-node.state-pending .status-glyph { fill: var(--muted); }
-.graph-node.state-running .status-glyph,
-.graph-node.state-open .status-glyph { fill: var(--cyan); }
-.graph-node.state-blocked .status-glyph,
-.graph-node.state-failed .status-glyph { fill: var(--red); }
-.graph-node.state-accepted .status-glyph,
-.graph-node.state-complete .status-glyph,
-.graph-node.state-completed .status-glyph { fill: var(--green); }
-.graph-node.state-other .status-glyph { fill: var(--violet); }
-.graph-node.state-pruned .status-glyph { fill: var(--muted); }
-.graph-node.state-pruned .node-body { stroke-dasharray: 7 4; }
-.graph-edge.pruning-edge { stroke-dasharray: 7 4; }
-.legend-status.state-pruned { background: var(--muted); }
-.status-key { width: 12px; height: 12px; }
+:is(.graph-node, .status-key).state-pending .status-glyph { fill: var(--muted); }
+:is(.graph-node, .status-key).state-running .status-glyph { fill: var(--cyan); }
+:is(.graph-node, .status-key).state-blocked .status-glyph { fill: var(--red); }
+:is(.graph-node, .status-key).state-accepted .status-glyph { fill: var(--green); }
+:is(.graph-node, .status-key).state-other .status-glyph { fill: var(--violet); }
+.graph-node.is-pruned .node-body, .graph-edge.pruning-edge { stroke-dasharray: 7 4; }
+.graph-edge.pruning-edge { stroke-linejoin: round; }
+.status-key { width: 14px; height: 14px; }
 .status-glyph.status-cross, .graph-node .status-glyph.status-cross { fill: none; stroke: var(--red); stroke-width: 2; stroke-linecap: round; }
-
-.change-initial { --change-color: var(--muted); }
-.change-repair { --change-color: var(--amber); }
-.change-experiment { --change-color: var(--cyan); }
-.change-scientific { --change-color: var(--violet); }
-.change-unknown, .change-pruning { --change-color: var(--muted); }
-.graph-edge[class*="change-"] { stroke: var(--change-color, var(--green)); }
-.graph-edge.change-repair { stroke-dasharray: 2 5; stroke-linecap: round; }
-.graph-edge.change-experiment { stroke-dasharray: 4 3; }
-.graph-edge.change-unknown { stroke-dasharray: 8 3 2 3; }
-.graph-edge-arrow[class*="change-"] { fill: var(--change-color, var(--green)); }
-.graph-node .node-change-band { fill: var(--change-color); fill-opacity: 0.1; }
-.graph-node .node-change { fill: var(--change-color); font-size: 10px; font-weight: 600; }
-.change-key { width: 30px; height: 10px; overflow: visible; }
+.graph-node .node-lineage { fill: var(--muted); font-size: 10px; }
+.pruned-key { width: 32px; height: 18px; }
+.pruned-key rect { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; }
+#toggle-pruning[hidden] { display: none; }
 
 .relation-tooltip { position: absolute; z-index: 3; right: 0.8rem; bottom: 0.8rem; max-width: calc(100% - 1.6rem); margin: 0; border: 1px solid var(--cyan); border-radius: 7px; padding: 0.45rem 0.6rem; color: var(--cyan); background: rgba(6, 16, 32, 0.96); font-size: 0.64rem; }
+.relation-tooltip { overflow-wrap: anywhere; }
 .relation-tooltip[hidden] { display: none; }
-.graph-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; padding: 0.65rem 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.62rem; }
-.legend-item { display: inline-flex; gap: 0.35rem; align-items: center; }
-.legend-status { width: 0.55rem; height: 0.55rem; border-radius: 3px; background: var(--violet); }
-.legend-status.state-pending { background: var(--muted); }
-.legend-status.state-running { background: var(--cyan); }
-.legend-status.state-blocked { background: var(--red); }
-.legend-status.state-accepted { background: var(--green); }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 0.65rem 1.25rem; padding: 0.75rem 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.68rem; }
+.legend-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.85rem; min-width: 0; }
+.legend-heading { color: var(--text); font-weight: 600; }
+.legend-item { display: inline-flex; gap: 0.35rem; align-items: center; overflow-wrap: anywhere; }
 .expert-key { border-left: 3px solid var(--expert-accent); padding-left: 0.35rem; }
-.edge-key { color: var(--cyan); }
+.edge-key { width: 36px; height: 12px; flex-shrink: 0; }
 
 .accessible-fallback { padding: 0.7rem 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.68rem; }
 .accessible-fallback summary { cursor: pointer; }

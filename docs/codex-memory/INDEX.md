@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Lineage relationships and legend 2026-09-23](../qualification.md#current-development--lineage-relationships-and-contextual-legend-2026-09-23):
+  parent-only layout, optional pruning overlay, visible grouped legends,
+  independent scientific/control marks, separate pruning/ancestry connection
+  points and exact revision details.
 - [Leader icon repair 2026-09-23](../qualification.md#current-development--leader-status-icon-2026-09-23):
   existing accepted-round projection drives the Web crown across ordinary
   tasks/waits, lifecycle browser coverage, lineage interaction colors and

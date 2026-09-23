@@ -246,6 +246,7 @@
               <button id="show-components" class="active" type="button" aria-pressed="true">Components</button>
               <button id="show-hypotheses" type="button" aria-pressed="false">Hypotheses <span id="hypothesis-count">0</span></button>
             </div>
+            <button id="toggle-pruning" type="button" title="Show or hide pruning links; hypothesis nodes and their statuses remain visible. The number counts links." hidden>Hide pruning links (0)</button>
             <button id="fit-graph" type="button">Fit graph</button>
             <button id="open-drawer" type="button">Attempts / evidence</button>
           </div>
@@ -254,7 +255,7 @@
         <div class="graph-shell">
           <svg id="dependency-graph" role="img" tabindex="0" aria-labelledby="graph-title graph-description">
             <title id="graph-title">Research topology</title>
-            <desc id="graph-description">Use mouse wheel or keyboard plus and minus to zoom. Drag to pan. Hover a node or edge to inspect connected direction. Hypothesis labels and line patterns distinguish execution repairs, experiment revisions and scientific revisions. Unclear changes remain marked. Select a node or edge to compare the recorded claims and revision evidence.</desc>
+            <desc id="graph-description">Use mouse wheel or keyboard plus and minus to zoom. Drag to pan. Solid arrows connect a parent hypothesis to its derived hypothesis, or a dependency to its dependent component. Dashed arrows connect a winner to a pruned hypothesis without changing ancestry or assessment. Toggle pruning links to show or hide these control relationships. Select a node or edge to compare recorded claims and revision details.</desc>
             <g id="graph-viewport">
               <g id="graph-edges"></g>
               <g id="graph-nodes"></g>

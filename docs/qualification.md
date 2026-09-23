@@ -8,6 +8,61 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — lineage relationships and contextual legend, 2026-09-23
+
+The lineage legend mixed root-node labels, inferred revision types, workflow
+states and expert colors. Real pruning edges lacked a line sample, and pruning
+also moved root hypotheses behind their winners in the ancestry layout. The
+text classifier missed explicit architecture changes and interpreted a screening
+step that retained the mechanism as a scientific change.
+
+The Web now lays out only recorded parent relationships. Solid arrows mean
+parent to derived hypothesis; dashed arrows mean winner to pruned hypothesis.
+The pruning overlay can be hidden without moving nodes, changing assessments,
+clearing selection or resetting pan/zoom. Dashed node borders mark pruning
+independently of scientific status. The legend groups visible relations, status,
+controls and experts, including after filtering or an empty result. Component
+dependencies keep their own view. The keyword classifier and its redundant node
+bands are removed; details retain exact proposal text, parent/child claims,
+method families, assessments and available pruning source evidence. No new
+persistent field, validator, protocol or model invocation is added.
+
+Validation: all **80 Web/browser/summary/support checks pass** (193.43 s).
+After visual review, backward pruning links were routed through column gaps
+and above the graph to avoid intervening nodes. **Six final graph browser
+regressions pass** (41.06 s), including sampled SVG path/node collision checks,
+ancestry/control separation, overlay toggle and polling, filtered/empty legends,
+component-mode compatibility, scientific status, missing-parent fallback,
+literal text safety, keyboard access and fitted labels. Four documentation
+checks, JavaScript syntax and diff whitespace checks also pass. A read-only
+replay of the retained run at r213 renders all 11 nodes, seven parent links and
+two pruning links; all four roots return to the first column. Legend items fall
+from 15 to nine. Desktop and 390-pixel mobile captures and observed DOM values
+are retained in `.local/ui-reviews/lineage-legend-20260923/repaired/final/`;
+the final replay observes no pruning-path intersections with node interiors.
+The original diagnosis and text misclassification examples remain alongside it.
+Existing research state, Profiles, fixed bundles and running Hosts are unchanged.
+This display repair does not claim CPU/GPU, paid-model or full release qualification.
+
+Follow-up pruning direction repair: a backward pruning origin shared the winner's
+left midpoint with an incoming parent arrow, making the dashed link appear to
+have two arrowheads. Pruning now uses a lower exit and upper entry on node sides,
+including same-column links, leaving the midpoint ports for ancestry. An actual
+SVG endpoint regression fails on the previous routing and passes after repair;
+three focused browser cases pass (24.99 s). The r213 replay keeps all nine links,
+with one arrow per pruning link, no arrow overlapping a pruning origin and no
+pruning path crossing a node interior. The screenshot and measured endpoints
+are retained in `.local/ui-reviews/lineage-legend-20260923/pruning-ports/`.
+
+The pruning display button now reads `Hide pruning links (N)` or `Show pruning
+links (N)` for the next action. Its tooltip identifies N as a link count and
+explains that hypothesis nodes and their statuses remain visible. The action
+button no longer carries a pressed-state label or highlight. The existing
+overlay browser case passes (13.29 s), checking both labels across toggles and
+polling, preserved node positions/control legend, filters and mobile width.
+Read-only HTTP checks confirm the checkout observer on port 45991 serves all
+three updated assets; already open pages need a reload.
+
 ## Current development — Leader status icon, 2026-09-23
 
 The Web expert card looked for an OPEN Agent command named LEADER to display
