@@ -1,6 +1,7 @@
 """Independent raw-row observations of Observer and source-bound Leader controls.
 
-No interaction producer, Host, session manager or memory writer is imported.
+Qualification and control audits do not call the interaction producer. Only
+reference ID interpretation is shared; Host and state writers are not imported.
 Existing raw facts, ordinary transitions/Attempts and readable Git commits are
 the evidence; this module cannot accept a scientific or control effect.
 """
@@ -14,6 +15,7 @@ from typing import Any, Mapping, Sequence
 
 from .batch_oracle import _debate_literature_source, _input, _need, _payload, _time, shared_goal_stop
 from .expert_context_oracle import _commit_files, _component, _git
+from .expert_interaction import expand_fact_references
 
 InteractionIssue = tuple[str, str, tuple[str, ...]]
 
@@ -254,20 +256,21 @@ class _InteractionAudit:
               and event["agent_output_digest"] == response["output_digest"] and event["source_report_ref"] == ref
               and effect["command_type"] == "ACCEPT_EXPERT_INTERACTION", "accepted interaction differs from its actual Observer output/refs")
         if proposal["action"] == "leader":
-            components = {component for (role, component), refs in qualifications.items() if role == proposal["leader"] and refs.intersection(proposal["supporting_refs"])}
+            cited = expand_fact_references(frozen, proposal["supporting_refs"])
+            components = {component for (role, component), refs in qualifications.items() if role == proposal["leader"] and refs.intersection(cited)}
             if request["schema_version"] >= 21:
                 components = {item["component_id"] for item in frozen if item["fact_type"] == "HypothesisProposed"
-                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in proposal["supporting_refs"]}
+                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in cited}
             _need(len(components) == 1 and components <= set(eligible) and event["action"] == "leader_selected"
                   and event["leader"]["role"] == proposal["leader"] and event["leader"]["component_id"] in components,
                   "Leader does not select its one exact qualified component")
             if request["schema_version"] >= 21:
                 parents = [item for item in frozen if item["fact_type"] == "HypothesisProposed"
-                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in proposal["supporting_refs"]]
+                    and item["proposer_role"] == proposal["leader"] and item["hypothesis_id"] in cited]
                 _need(len(parents) == 1 and parents[0]["hypothesis_id"] in eligible_hypotheses,
                     "Leader must select exactly one eligible own contribution parent")
                 refs = self.qualifications([item for item in frozen if item["fact_type"] != "HypothesisProposed" or item == parents[0]], request["schema_version"])
-                _need(any(value.intersection(proposal["supporting_refs"]) for value in refs.values()),
+                _need(any(value.intersection(cited) for value in refs.values()),
                     "Leader parent lacks its own cited qualification")
         elif proposal["action"] == "debate":
             participants = proposal["debate"]["participants"]
@@ -345,7 +348,11 @@ class _InteractionAudit:
         version = self.observations[source]["request"]["schema_version"]
         expected_parent = parent["adjudication"]["selected_tip"]["node_id"] if version < 21 else plan["parent_hypothesis_id"]
         if version >= 21:
-            _need(expected_parent in selection["proposal"]["supporting_refs"]
+            context = _input(self.observations[source]["request"], "--interaction-context")
+            frozen = [json.loads(item["payload_json"]) if "payload_json" in item else item.get("payload", item)
+                for item in context["facts"]]
+            cited = expand_fact_references(frozen, selection["proposal"]["supporting_refs"])
+            _need(expected_parent in cited
                   and plan["cycle"] == self.admitted_cycle(plan["role"], plan["component_id"], selection_row["revision"]) + 1
                   and self.closed_round(plan["role"], plan["component_id"], plan["cycle"] - 1, _time(effect["created_at"])),
                   "Leader bypassed its admitted source cycle or cited contribution")

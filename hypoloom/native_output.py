@@ -160,6 +160,7 @@ class NativeOutputValidator:
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
+                 candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
                  final_report_check: Callable[[], Any] | None = None) -> None:
         if acceptance_smoke and measurement_smoke:
             raise ValueError("a node authors either the common or the local parser")
@@ -188,6 +189,7 @@ class NativeOutputValidator:
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
         self.execution_tool_socket = execution_tool_socket
+        self.candidate_check = candidate_check
         self.final_report_check = final_report_check
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
@@ -262,6 +264,8 @@ class NativeOutputValidator:
             smoke = None
             try:
                 output = _decode_output(document["last_assistant_message"], self._validator)
+                if self.candidate_check is not None:
+                    self.candidate_check(output)
                 if self.final_report_check is not None:
                     from .git_authoring_workspace import GitAuthoringIntegrityError
                     try:

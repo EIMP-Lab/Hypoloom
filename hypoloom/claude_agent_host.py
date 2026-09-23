@@ -39,6 +39,7 @@ from .agent_aci import (
     required_output_schema,
     _synthesis_parent_hypothesis_id,
     _synthesis_parent_hypothesis_ids,
+    validate_observer_candidate,
     validate_postflight,
     with_output_digest,
 )
@@ -622,6 +623,7 @@ class ClaudeAgentHost:
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
+                candidate_check=_observer_output_check(request),
                 final_report_check=tool_workspace.capture_workspace if request.command.value == "FINAL_REPORT" else None,
                 parser_source_root=(tool_workspace.acceptance_root if request.command.value == "GROUNDING"
                     else tool_workspace.worktree_root), parser_smoke_max_bytes=request.budget.max_output_bytes)
@@ -2090,6 +2092,20 @@ def _shared_acceptance_schema() -> dict[str, Any]:
         "raw_artifacts": {**paths,
             "description": "Canonical relative evidence paths under /raw, e.g. predictions.json, without the /raw prefix; no absolute paths, empty/dot/dot-dot segments, backslashes or NUL."}}
     return {"type": "object", "additionalProperties": False, "properties": properties, "required": list(properties)}
+
+
+def _observer_output_check(request: AgentRequest) -> Callable[[Mapping[str, Any]], Any] | None:
+    if request.command.value != "OBSERVER" or request.schema_version < 14:
+        return None
+    from .reference_aliases import canonical_output, reference_aliases
+    aliases = reference_aliases(request, _output_schema(request, tool_workspace=True, reference_aliases=False))
+
+    def check(output: Mapping[str, Any]) -> None:
+        # Frozen request only: the native socket worker must never read the store.
+        canonical = canonical_output(output, aliases) if request.schema_version >= 19 else output
+        validate_observer_candidate(request, canonical["typed_candidate"])
+
+    return check
 
 
 def _output_schema(

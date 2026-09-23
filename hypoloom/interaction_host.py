@@ -12,7 +12,7 @@ from typing import Any, Mapping
 
 from .agent_aci import EmbeddedInput, canonical_json
 from .expert_batch import batch_limits
-from .expert_interaction import InteractionFacts, admit_observer_proposal, observer_from_attempt, select_interaction_facts
+from .expert_interaction import InteractionFacts, admit_observer_proposal, expand_fact_references, observer_from_attempt, select_interaction_facts
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask
 from .expert_memory import ExpertMemory
 from .lifecycle import Command, RunState
@@ -24,8 +24,9 @@ def cited_leader_component(candidate: Mapping[str, Any], *, facts: InteractionFa
     proposal = admit_observer_proposal(candidate, facts=facts)
     if proposal.leader is None:
         raise ValueError("proposal does not select a Leader")
+    cited = expand_fact_references(facts.rows, proposal.supporting_refs)
     components = {str(item.component_id) for item in proposal.leader.contributions
-        if set(item.qualification_refs).intersection(proposal.supporting_refs)}
+        if cited.intersection(item.qualification_refs)}
     if len(components) != 1:
         raise ValueError("Leader must cite one exact qualified component")
     return components.pop()

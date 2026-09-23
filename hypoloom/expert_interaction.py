@@ -20,6 +20,26 @@ from .expert_loop import (
 from .participant_controls import ParticipantScope
 
 
+_FACT_ENTITY_FIELDS = {
+    "GoalDefined": ("goal_id",), "HypothesisProposed": ("hypothesis_id",),
+    "ExperimentPreregistered": ("experiment_id",),
+    "CanonicalOutcomeAccepted": ("outcome_id", "artifact_id"),
+    "EvidenceLinked": ("evidence_id",), "HypothesisAssessed": ("assessment_id",),
+    "GoalVerdictRecorded": ("verdict_id",),
+}
+
+
+def expand_fact_references(payloads: Iterable[Mapping[str, Any]], references: Iterable[str]) -> frozenset[str]:
+    """Interpret a fact citation as its own entities, never its foreign keys.
+
+    This is a read-only interpretation of accepted payloads. Keep the original
+    references in the proposal and durable event so the Agent's citation is exact.
+    """
+    refs = frozenset(references)
+    return refs | frozenset(payload[field] for payload in payloads if payload["fact_id"] in refs
+        for field in _FACT_ENTITY_FIELDS.get(payload["fact_type"], ()) if payload.get(field) is not None)
+
+
 def _references(value: Any, allowed: Iterable[str], field: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError(f"{field} must be an array")
@@ -156,13 +176,9 @@ def select_interaction_facts(rows: Iterable[Mapping[str, Any]], *, hypothesis_id
     rows = list(rows)
     payloads = {row["fact_id"]: json.loads(row["payload_json"]) if "payload_json" in row
         else row.get("payload", row) for row in rows}
-    fields = {"GoalDefined": ("goal_id",), "HypothesisProposed": ("hypothesis_id",),
-        "ExperimentPreregistered": ("experiment_id",), "CanonicalOutcomeAccepted": ("outcome_id", "artifact_id"),
-        "EvidenceLinked": ("evidence_id",), "HypothesisAssessed": ("assessment_id",),
-        "GoalVerdictRecorded": ("verdict_id",)}
     index = {identity: {identity} for identity in payloads}
     for identity, payload in payloads.items():
-        for field in fields.get(payload["fact_type"], ()):
+        for field in _FACT_ENTITY_FIELDS.get(payload["fact_type"], ()):
             if isinstance(payload.get(field), str):
                 index.setdefault(payload[field], set()).add(identity)
     current = set(hypothesis_ids)
@@ -231,18 +247,19 @@ def admit_observer_proposal(value: Mapping[str, Any], *, facts: InteractionFacts
     refs = _references(value["supporting_refs"], facts.reference_ids, "Observer references")
     leader, debate = None, None
     if action == "leader":
+        cited = expand_fact_references(facts.rows, refs)
         role = _text(value["leader"], "Leader role")
         contributions = tuple(item for item in facts.leader_qualifications() if item.role == role)
-        if not contributions or not set(refs).intersection(ref for item in contributions for ref in item.qualification_refs):
+        if not contributions or not cited.intersection(ref for item in contributions for ref in item.qualification_refs):
             raise ValueError("Leader selection must cite its actual own verified contribution")
-        cited_components = {item.component_id for item in contributions if set(refs).intersection(item.qualification_refs)}
+        cited_components = {item.component_id for item in contributions if cited.intersection(item.qualification_refs)}
         if facts.agent_aci_version < 21 and len(cited_components) != 1:
             raise ValueError("Leader references must select exactly one qualified component")
         if facts.agent_aci_version >= 21:
             cited_hypotheses = [identity for identity, hypothesis in facts.index("HypothesisProposed", "hypothesis_id").items()
-                if identity in refs and hypothesis["proposer_role"] == role]
+                if identity in cited and hypothesis["proposer_role"] == role]
             parents = [item for item in contributions if item.hypothesis_id in cited_hypotheses]
-            if len(cited_hypotheses) != 1 or len(parents) != 1 or not set(refs).intersection(parents[0].qualification_refs):
+            if len(cited_hypotheses) != 1 or len(parents) != 1 or not cited.intersection(parents[0].qualification_refs):
                 raise ValueError("Leader must cite exactly one own hypothesis and its verified contribution")
             contributions = tuple(parents)
         leader = LeaderSelection(role, contributions)

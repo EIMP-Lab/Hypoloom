@@ -22,6 +22,12 @@ research sandbox. Experiments run in the selected research environment and
 publish validated outcomes through the Host. Native final text is schema checked
 at Stop and again at Host postflight; a process exit code alone is not acceptance.
 
+Observer Stop also reuses the postflight semantic validator against its frozen
+request: reference ownership, one contribution parent, trigger eligibility and
+available Debate sources. Invalid choices can be corrected in the same invocation
+within the existing correction and time budgets. This read-only check does not
+accept a control; Host still owns durable admission.
+
 Execution Stop validates parser inputs using the production execution path and
 remains interruptible by cancel or deadline. In ACI 22, an EXECUTION response
 may name `waiting_for_experiment_id` to hand the latest submitted experiment to
@@ -82,6 +88,18 @@ supported result or a clean refutation with matching outcome, artifact,
 evidence link and assessment. Execution failure is not a contribution. The
 Observer must cite exactly one own hypothesis and its evidence; it can still
 choose no Leader. Goal completion retains priority over further coordination.
+
+An accepted fact ID and that fact's own entity ID have the same citation meaning.
+The original citations remain unchanged in the response and accepted event;
+fact references do not implicitly cite foreign-key dependencies. Qualification
+and the independent interaction audit use this same ID interpretation.
+
+Screening that may stop before producing complete shared-goal evidence uses the
+existing LOCAL scope and a local C5 measurement declared in SYNTHESIS. Later
+GOAL experiments can retain that measurement while supplying all common evidence.
+An accepted null measurement remains GOAL-only; changing it requires a revised
+hypothesis/new cycle. Missing GOAL evidence is an execution failure, not a clean
+refutation, and cannot be repaired with fabricated placeholder results.
 
 Leader and Debate research uses the parent explicitly authorized by the
 accepted interaction, even when ordinary adjudication has no selected chain.

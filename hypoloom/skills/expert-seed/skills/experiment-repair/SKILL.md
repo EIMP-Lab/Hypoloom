@@ -12,6 +12,14 @@ repair and rerun it in this session. Preserve the frozen hypothesis, metric,
 dataset, evaluator contract and source references. Operational failure does not
 scientifically refute a hypothesis, and a local Bash pass is not an experiment.
 
+Check the preregistered evaluation scope before repairing a screening failure.
+LOCAL requires a local C5 measurement declared in SYNTHESIS. GOAL requires all
+common raw evidence even on an early-stop branch; missing evidence is an
+execution failure, not a clean refutation. Preserve the accepted measurement,
+including null. A GOAL-only hypothesis cannot become LOCAL during operational
+repair: propose a revised hypothesis/new cycle with a local measurement when
+screening is needed. Never fill missing scientific evidence with placeholders.
+
 The target repo supplies versioned code; ignored/untracked caches and splits
 need explicit admitted read roots. Agent-local tools use the admitted original
 paths. Formal C5/GOAL Processes import candidate code only through

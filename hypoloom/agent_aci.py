@@ -1602,6 +1602,39 @@ def debate_judge_inputs(request: AgentRequest):
     return facts, binding, read_judge_rounds(context, binding=binding, facts=facts)
 
 
+def validate_observer_candidate(request: AgentRequest, raw: Mapping[str, Any]) -> ObserverProposal:
+    """Use the frozen Observer context for both native correction and postflight."""
+    from .expert_interaction import InteractionFacts, admit_observer_proposal, expand_fact_references
+    inputs = [item for item in request.input_artifacts if item.ref.endswith("--interaction-context")]
+    try:
+        if len(inputs) != 1: raise ValueError("Observer requires one frozen interaction context")
+        context = json.loads(inputs[0].content_bytes())
+        actions = context["allowed_actions"]
+        if (not isinstance(actions, list) or not actions or len(actions) != len(set(actions))
+                or not set(actions) <= {"none", "leader", "debate"}): raise ValueError("invalid Observer allowed actions")
+        if raw.get("action") not in actions: raise ValueError("Observer action is disabled for this trigger")
+        facts = InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version)
+        proposal = admit_observer_proposal(raw, facts=facts)
+        cited = expand_fact_references(facts.rows, proposal.supporting_refs)
+        if "eligible_leader_components" in context:
+            eligible = context["eligible_leader_components"]
+            if not isinstance(eligible, list) or any(not isinstance(item, str) for item in eligible):
+                raise ValueError("invalid eligible Leader components")
+            if proposal.leader is not None and any(item.component_id not in eligible
+                    for item in proposal.leader.contributions if cited.intersection(item.qualification_refs)):
+                raise ValueError("selected Leader component is not eligible at this trigger")
+        if request.schema_version >= 21 and proposal.leader is not None:
+            if proposal.leader.contributions[0].hypothesis_id not in context["eligible_leader_hypotheses"]:
+                raise ValueError("Leader contribution is not eligible at this trigger")
+        if "debate_participants" in context:
+            participants = context["debate_participants"]
+            if not isinstance(participants, list): raise ValueError("invalid available Debate fork sources")
+            if proposal.debate is not None and any(asdict(item) not in participants for item in proposal.debate.participants):
+                raise ValueError("Debate participant has no exact available fork source")
+        return proposal
+    except (KeyError, TypeError, ValueError) as exc: raise AgentACIError("invalid_candidate", str(exc)) from exc
+
+
 def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
     command = request.command
     synthesis = _is_hypothesis_synthesis(request)
@@ -1635,33 +1668,7 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
             return admit_debate_judgment(raw, binding=binding, rounds=rounds, facts=facts, source_attempt_id=request.attempt_id)
         except (KeyError, TypeError, ValueError) as exc: raise AgentACIError("invalid_candidate", str(exc)) from exc
     if command is AgentCommand.OBSERVER and request.schema_version >= 14:
-        from .expert_interaction import InteractionFacts, admit_observer_proposal
-        inputs = [item for item in request.input_artifacts if item.ref.endswith("--interaction-context")]
-        try:
-            if len(inputs) != 1: raise ValueError("Observer requires one frozen interaction context")
-            context = json.loads(inputs[0].content_bytes())
-            actions = context["allowed_actions"]
-            if (not isinstance(actions, list) or not actions or len(actions) != len(set(actions))
-                    or not set(actions) <= {"none", "leader", "debate"}): raise ValueError("invalid Observer allowed actions")
-            if raw.get("action") not in actions: raise ValueError("Observer action is disabled for this trigger")
-            proposal = admit_observer_proposal(raw, facts=InteractionFacts.from_rows(request.run_id, context["facts"], agent_aci_version=request.schema_version))
-            if "eligible_leader_components" in context:
-                eligible = context["eligible_leader_components"]
-                if not isinstance(eligible, list) or any(not isinstance(item, str) for item in eligible):
-                    raise ValueError("invalid eligible Leader components")
-                if proposal.leader is not None and any(item.component_id not in eligible
-                        for item in proposal.leader.contributions if set(item.qualification_refs).intersection(proposal.supporting_refs)):
-                    raise ValueError("selected Leader component is not eligible at this trigger")
-            if request.schema_version >= 21 and proposal.leader is not None:
-                if proposal.leader.contributions[0].hypothesis_id not in context["eligible_leader_hypotheses"]:
-                    raise ValueError("Leader contribution is not eligible at this trigger")
-            if "debate_participants" in context:
-                participants = context["debate_participants"]
-                if not isinstance(participants, list): raise ValueError("invalid available Debate fork sources")
-                if proposal.debate is not None and any(asdict(item) not in participants for item in proposal.debate.participants):
-                    raise ValueError("Debate participant has no exact available fork source")
-            return proposal
-        except (KeyError, TypeError, ValueError) as exc: raise AgentACIError("invalid_candidate", str(exc)) from exc
+        return validate_observer_candidate(request, raw)
     if synthesis and not {"parent_hypothesis_id", "relation"} <= set(raw):
         raise AgentACIError(
             "invalid_schema",

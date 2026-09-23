@@ -68,9 +68,14 @@ class CombinedAgent(FakeAgent):
                 and (request.schema_version < 21 or item.hypothesis_id in context["eligible_leader_hypotheses"])]
             if not self.leader_selected and len(reports) == 3 and "leader" in context["allowed_actions"] and eligible:
                 qualified = eligible[0]
+                # Exercise accepted fact IDs through Host, recovery and the
+                # independent Oracle; other tests retain entity-ID coverage.
+                refs = [row["fact_id"] for row in facts.rows
+                    if (row["fact_type"] == "HypothesisProposed" and row["hypothesis_id"] == qualified.hypothesis_id)
+                    or (row["fact_type"] == "HypothesisAssessed" and row["assessment_id"] in qualified.qualification_refs)]
                 response = with_output_digest(replace(response, typed_candidate={
                     "action": "leader", "leader": ROLES[0], "debate": None,
-                    "supporting_refs": [qualified.hypothesis_id, *qualified.qualification_refs],
+                    "supporting_refs": refs,
                     "rationale": "Use both completed peer memories in one qualified bounded Leader round."}))
                 self.leader_selected = True
             elif self.leader_selected and not self.debate_selected and "debate" in context["allowed_actions"]:

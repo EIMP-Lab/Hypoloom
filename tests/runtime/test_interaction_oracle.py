@@ -15,15 +15,17 @@ from test_interaction_host import StoredHost, node, select
 
 
 @pytest.mark.parametrize("damage", [None, "foreign-parent", "uncited-parent", "premature-cycle"])
-def test_negative_leader_requires_its_exact_closed_contribution(tmp_path, damage):
+@pytest.mark.parametrize("fact_refs", [False, True])
+def test_negative_leader_requires_its_exact_closed_contribution(tmp_path, damage, fact_refs):
     from hypoloom.interaction_host import InteractionHost
     from test_expert_interaction import _observer
     host = StoredHost(tmp_path / "state", agent_version=21, selected=False, negative=True)
     try:
         view = InteractionHost(host)
         task = view._triggers("run-1")[0][0]
+        refs = ["fact-hyp-2", "fact-assessment-2"] if fact_refs else ["hyp-2", "out-2"]
         host.record(task, inputs=view.inputs("run-1", task),
-            candidate={**_observer(), "supporting_refs": ["hyp-2", "out-2"]})
+            candidate={**_observer(), "supporting_refs": refs})
         view.drive("run-1")
         view.drive("run-1")
         data = RawRecords(host)
@@ -34,7 +36,7 @@ def test_negative_leader_requires_its_exact_closed_contribution(tmp_path, damage
     if damage == "foreign-parent":
         plan["parent_hypothesis_id"] = "hyp-1"
     elif damage == "uncited-parent":
-        data.event("leader_selected")["payload"]["expert_interaction"]["proposal"]["supporting_refs"].remove("hyp-2")
+        data.event("leader_selected")["payload"]["expert_interaction"]["proposal"]["supporting_refs"].remove(refs[0])
     elif damage == "premature-cycle":
         plan["cycle"] += 1
     if damage is not None:

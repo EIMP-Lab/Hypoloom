@@ -285,9 +285,10 @@ main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4
 .expert-7 { --expert-accent: #EAF2FF; }
 .graph-node .node-body { fill: #0C1830; stroke: var(--expert-accent); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
 .graph-node:hover .node-body,
-.graph-node:focus .node-body { stroke: var(--cyan); }
-.graph-node.selected .node-body { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 7px rgba(118, 174, 250, 0.4)); }
-.graph-node.connected .node-body { stroke: var(--cyan); stroke-width: 2; }
+.graph-node:focus .node-body,
+.graph-node.connected .node-body { stroke-width: 2; }
+.graph-node.selected .node-body { stroke-width: 2.5; }
+.graph-node:focus-visible { outline-color: var(--expert-accent); }
 .graph-node .node-id { fill: var(--text); font-size: 11px; font-weight: 600; }
 .graph-node .node-subtitle { fill: var(--muted); font-size: 9px; }
 .graph-node .node-detail { fill: #A9BCDA; font-size: 9px; }

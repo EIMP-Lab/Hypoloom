@@ -8,6 +8,113 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — Leader status icon, 2026-09-23
+
+The Web expert card looked for an OPEN Agent command named LEADER to display
+its crown. Current accepted Leader rounds run ordinary research nodes, so a
+valid active round could have no crown. The UI now reads the existing per-expert
+`leader.active` projection. The crown remains across task changes and idle gaps;
+finished, aborted or failed rounds remove it, while history remains available.
+Pending selection alone does not claim a started round. The tooltip describes
+working/waiting, and the accessible label names the active Leader. Ordinary
+task labels remain unchanged. No new field, counter, state reducer or runtime
+authority is introduced.
+
+Validation: four real Chrome regressions pass (70.33 s), covering ordinary
+hypothesis/report nodes, no OPEN task, absent Host observation, role isolation,
+all three terminal projections, and a legacy LEADER command without accepted
+tenure. Test summaries come from the production accepted-event projection.
+Another 46 Web, observer-summary and support tests pass (5.48 s). The initial
+Web selection exposed a pre-existing stale assertion expecting one POST call;
+committed HEAD already had two, for human answers and read-only issue-description
+export. The assertion now names both known routes and retains answer-token
+checks; endpoint authorization tests still pass. Documentation links also pass.
+
+Read-only live static requests confirm a checkout-backed observer serves the
+new asset immediately; already open clients need a page reload. An observer
+inside a retained run bundle still serves its original asset. Existing research
+state, fixed bundles, Profiles and running Hosts were not changed or restarted.
+No additional CPU/GPU or paid qualification is needed for this display-only fix.
+
+Follow-up lineage styling: hover, focus, selection and connected highlighting
+previously replaced expert border colors with blue/cyan; selection also added a
+blue glow. Nodes now retain the existing expert palette, distinguish interaction
+states by border width, and use the expert color for the keyboard focus outline.
+Three existing graph browser regressions pass (16.24 s), covering selection
+through polling, fitted text and failure symbols. Ad hoc Chrome checks also pass
+for three expert colors under mouse hover/click, connected highlighting,
+keyboard focus and Enter selection; computed styles and screenshots are retained
+in `.local/ui-reviews/lineage-colors-20260923/final-check/`. Read-only static
+requests confirm port 45991 serves the updated checkout CSS, while the retained
+bundle on 32991 still serves its original CSS.
+
+## Current development — Observer references and native feedback, 2026-09-23
+
+The accepted reference domain already includes both fact IDs and entity IDs,
+but Leader qualification matched only entity IDs. This rejected valid evidence
+citations and left the semantic error until postflight, after the native call
+had ended. This repair reuses the existing accepted fact/entity field mapping
+and extracts the existing Observer postflight validator for native Stop reuse.
+No new schema, digest, state record, qualification rule or approval boundary is
+introduced. Private source reports remain ignored; regression fixtures use
+invented roles, components and scientific facts.
+
+Reference interpretation expands a cited fact to its own entities only, never
+foreign-key dependencies. Responses and accepted events retain the original
+citations. Observer admission, Host component selection, interaction and batch audits
+interpret IDs consistently; the Oracle still independently verifies qualification,
+closed cycles, ownership, budgets and terminal effects. Stop canonicalizes the
+existing display aliases and validates the frozen request without accessing the
+state store. Correction limits, deadlines, session identity, postflight checks
+and sole Host admission remain in force.
+
+Screening guidance uses existing LOCAL/GOAL behavior: declare local C5 in
+SYNTHESIS for partial screening, retain it when later evaluating GOAL, preserve
+an accepted null measurement during operational repair, and supply genuine
+common evidence on GOAL branches. It does not relax the common evaluator or
+turn missing evidence into scientific refutation. These are generic instructions,
+with no special cases for a user, Profile, dataset or model.
+
+Validation and limits:
+
+- **656 focused checks passed** across interaction admission/Host/Oracle, batch
+  audit, Observer postflight and native semantic correction, native output
+  lifecycle, adapter, stage prompts, packaged skills and documentation.
+  Both retained ACI-14 and current ACI-22
+  references are covered. Foreign evidence, missing/ambiguous parents, execution
+  failures, ineligible triggers and exhausted correction budgets still reject.
+- **One real Claude Code/local-provider test passed**: ACI-22 aliases carry a
+  schema-valid foreign contribution, Stop rejects it, and the same Attempt/session
+  corrects it using fact IDs. Two validations, one rejection, complete transcript,
+  postflight success, no remaining process group or socket. This is an adapter
+  test; the provider is scripted, not a paid model-quality sample.
+- **Two final real CPU integration cases passed** on fixed source: supported
+  contributions (147.90 s) and clean refutations with null ordinary selection
+  (109.80 s). Both complete three-expert Leader/three-round Debate/research
+  closure; the negative case reconstructs Host at two accepted control boundaries.
+  They use scripted Agents through real sessions, Host, broker, Processes and
+  publication. Each reaches COMPLETED r130 with 90 Agent and six CPU Process
+  Attempts, all CLOSED/SUCCEEDED, six canonical outcomes and a clean full Oracle.
+  Independent post-test reads recount 192 closed Attempts, 12 exited Process
+  groups, zero sockets, exactly one Leader selection/start/finish and one completed
+  Debate per run. Evidence: `final-supported/`, `final-refuted/` and
+  `final-closure.json` under `.local/analysis/observer-repair-20260923/`.
+- Six original diagnostic outputs replayed unchanged through the repaired
+  native and postflight semantic checks: five pass; the one citing two own
+  hypotheses still rejects. This is read-only replay, not retroactive acceptance
+  of failed Attempts or a modification to their recorded outcomes.
+- Initial CPU rehearsals are retained under ignored
+  `.local/analysis/observer-repair-20260923/`: one crossed a source edit and
+  correctly rejected two Processes before spawn on runtime drift. Subsequent
+  complete positive/negative flows exposed the same entity-only parent assumption
+  in the batch audit. That audit now uses the shared reference interpretation;
+  read-only Oracle rechecks of both completed records pass without changing their
+  facts, Attempts or accepted controls. No protection or assertion was weakened.
+- No existing research run or local Profile was changed, restarted or migrated.
+  Pinned live bundles retain their original code. No paid/GPU or full release
+  qualification was performed; remaining scientific/model-quality limitations
+  are not claimed fixed by this repair.
+
 ## Current development — support evidence, Oracle and target admission, 2026-09-23
 
 This development repair addresses generic reproduced failures: numerically equal

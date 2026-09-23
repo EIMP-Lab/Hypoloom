@@ -1,6 +1,14 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Leader icon repair 2026-09-23](../qualification.md#current-development--leader-status-icon-2026-09-23):
+  existing accepted-round projection drives the Web crown across ordinary
+  tasks/waits, lifecycle browser coverage, lineage interaction colors and
+  checkout-versus-bundle delivery.
+- [Observer repair 2026-09-23](../qualification.md#current-development--observer-references-and-native-feedback-2026-09-23):
+  fact/entity citation equivalence, shared native/postflight semantics, exact
+  retained citations, independent qualification audits, existing LOCAL/GOAL
+  screening guidance and read-only original-output replay.
 - [Support/Oracle/admission repair 2026-09-23](../qualification.md#current-development--support-evidence-oracle-and-target-admission-2026-09-23):
   exact decimal equivalence, evidenced prestart rejection, chronological support
   selection/direct sources, export fidelity/privacy, early shared target-tree

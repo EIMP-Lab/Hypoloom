@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from .measurement_contract import ScientificMeasurement
+from .expert_interaction import expand_fact_references
 
 BatchIssue = tuple[str, str, tuple[str, ...]]
 _COMPARABLE = {"SUCCESS", "CLEAN_REFUTATION"}
@@ -577,8 +578,12 @@ class _Audit:
             proposals = [value["expert_interaction"] for prior, value in self.transitions if self.rank(prior) < self.rank(row)
                 and value.get("expert_interaction", {}).get("action") == "leader_selected"
                 and value["expert_interaction"].get("source_attempt_id") == event["source_attempt_id"]]
-            _need(len(proposals) == 1 and parent in proposals[0]["proposal"]["supporting_refs"]
-                  and proposals[0]["proposal"] == self.observations[event["source_attempt_id"]]["response"]["typed_candidate"],
+            source = self.observations[event["source_attempt_id"]]
+            context = _input(source["request"], "--interaction-context")
+            frozen = [json.loads(item["payload_json"]) if "payload_json" in item else item.get("payload", item)
+                for item in context["facts"]]
+            _need(len(proposals) == 1 and parent in expand_fact_references(frozen, proposals[0]["proposal"]["supporting_refs"])
+                  and proposals[0]["proposal"] == source["response"]["typed_candidate"],
                   "Leader parent differs from its actual Observer proposal")
         return parent
 

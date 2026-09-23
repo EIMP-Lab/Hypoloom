@@ -934,9 +934,10 @@
       identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
-      if (working.some((attempt) => attempt.command === "LEADER")) {
+      if (object(summary.leader).active > 0) {
         const crown = element("span", "leader-crown", "♛");
-        crown.title = "Leader round in progress · durable OPEN state, not a verdict";
+        crown.title = "Active Leader round · may be working or waiting between tasks";
+        crown.setAttribute("aria-label", "Active Leader");
         heading.append(crown);
       }
       if (working.length) {

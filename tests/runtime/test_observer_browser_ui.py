@@ -1231,7 +1231,8 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert page.evaluate(f"document.querySelectorAll('{tiles}').length") == 5
     assert page.evaluate(f"document.querySelectorAll('{tiles}.debate').length") == 1
     assert page.evaluate(f"document.querySelectorAll('{tiles}.leader').length") == 1
-    assert page.evaluate("document.querySelector('.expert-preview h3 .leader-crown')?.textContent") == "♛"
+    # A standalone legacy LEADER command does not establish accepted tenure.
+    assert page.evaluate("document.querySelector('.expert-preview h3 .leader-crown')") is None
     debate_title = page.evaluate(f'document.querySelector("{tiles}.debate").title')
     assert "Debate round" in debate_title
     leader_title = page.evaluate(f'document.querySelector("{tiles}.leader").title')
@@ -1239,6 +1240,56 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
     page.evaluate("window.scrollBy(0, -110)")
     page.screenshot(tmp_path / 'expert-working-subagents.png')
+
+
+@pytest.mark.parametrize("terminal", ["leader_round_finished", "leader_aborted", "leader_failed"])
+def test_browser_leader_crown_follows_accepted_round_across_tasks_and_idle(browser, tmp_path, terminal):
+    from test_observer_summary import _summary, _transition
+
+    page = browser
+    selector = '.expert-preview[data-expert-role="expert-a"] h3 .leader-crown'
+    peer = '.expert-preview[data-expert-role="expert-b"] h3 .leader-crown'
+    leader = {"role": "expert-a", "component_id": "component-a", "cycle": 4}
+    transitions = []
+
+    def publish(action):
+        transitions.append(_transition(len(transitions) + 1, payload={"expert_interaction": {
+            "action": action, "source_attempt_id": "observer-source", "leader": leader}}))
+        summary = _summary(tmp_path, transitions=transitions,
+            experts=[{"role": role} for role in ("expert-a", "expert-b")])
+        page.evaluate("fixture.snapshot.overview.experts=" + json.dumps(summary["experts"]))
+
+    page.evaluate("fixture.snapshot.experts.push({role:'expert-b', slot_ordinal:2}); fixture.snapshot.attempts=[]")
+    publish("leader_selected")
+    page.wait("document.querySelectorAll('.expert-preview').length === 2")
+    assert page.evaluate(f"document.querySelector('{selector}')") is None
+    publish("leader_round_started")
+    page.wait(f"document.querySelector('{selector}') !== null")
+    assert page.evaluate(f"document.querySelector('{selector}').getAttribute('aria-label')") == "Active Leader"
+    assert "waiting between tasks" in page.evaluate(f"document.querySelector('{selector}').title")
+    assert page.evaluate(f"document.querySelector('{peer}')") is None
+
+    # Current Leader work uses ordinary node commands; no LEADER Attempt exists.
+    for command, label in (("HYPOTHESIS_PROPOSAL", "Hypothesis proposal"), ("CYCLE_REPORT", "Cycle report")):
+        attempt = {"attempt_id": "leader-work", "kind": "AGENT", "state": "OPEN", "role": "expert-a",
+            "command": command, "started_at": 100, "context_tokens": None}
+        page.evaluate("fixture.snapshot.attempts=" + json.dumps([attempt]))
+        tile = '.expert-preview[data-expert-role="expert-a"] .agent-tile[data-attempt="leader-work"]'
+        page.wait(f"document.querySelector('{tile}')?.title.startsWith('{label}')")
+        assert page.evaluate(f"document.querySelector('{selector}').textContent") == "♛"
+    page.evaluate("fixture.snapshot.attempts=[]; fixture.snapshot.overview.host_observation={availability:'absent'}")
+    page.wait("document.querySelectorAll('.expert-preview .working-agents').length === 0")
+    assert page.evaluate(f"document.querySelector('{selector}').textContent") == "♛"
+
+    # History remains, but completion/failure/abort removes active status even
+    # with an ordinary task still OPEN. The next expert must not inherit it.
+    page.evaluate("fixture.snapshot.attempts=" + json.dumps([attempt]))
+    publish(terminal)
+    page.wait(f"document.querySelector('{selector}') === null")
+    assert page.evaluate("fixture.snapshot.overview.experts[0].leader.started") == 1
+    assert page.evaluate(f"document.querySelector('{peer}')") is None
+    page.evaluate("fixture.snapshot.overview.experts=[]")
+    page.wait("document.querySelectorAll('.leader-crown').length === 0")
 
 
 def test_browser_refresh_is_sequential_pauses_hidden_and_preserves_unchanged_dom(browser):

@@ -11,15 +11,16 @@ from test_agent_aci14 import _response
 from test_expert_interaction import _facts, _observer
 
 
-def observer_request(actions=("none", "leader", "debate")):
+def observer_request(actions=("none", "leader", "debate"), *, version=14):
     task = AuxiliaryTask(kind=AuxiliaryRequestKind.OBSERVER, run_id="run-1", cycle=1, ordinal=12)
     inputs = EmbeddedInput.from_bytes("judge--interaction-context", "application/json", json.dumps({
-        "facts": _facts(accepted_rows=True), "source_report_ref": "actual-report--response",
-        "allowed_actions": list(actions)}).encode())
-    return replace(default_request(AgentCommand.OBSERVER), schema_version=14,
+        "facts": _facts(accepted_rows=True, negative=version >= 21), "source_report_ref": "actual-report--response",
+        "allowed_actions": list(actions), "eligible_leader_components": ["primary.score", "must.robustness"],
+        "eligible_leader_hypotheses": ["hyp-1", "hyp-2"]}).encode())
+    return replace(default_request(AgentCommand.OBSERVER), schema_version=version,
         run_id=task.run_id, role="grounding", component_id="grounding", task_context=task,
         command_id=task.command_id, input_artifacts=(inputs,), immutable_context_refs=(inputs.ref,),
-        required_output_schema=required_output_schema(AgentCommand.OBSERVER, task, schema_version=14))
+        required_output_schema=required_output_schema(AgentCommand.OBSERVER, task, schema_version=version))
 
 
 @pytest.mark.parametrize("action", ["none", "leader", "debate"])
@@ -68,3 +69,19 @@ def test_observer_cannot_debate_an_invented_chain_without_an_actual_fork_source(
     candidate["debate"]["participants"][0]["scope"]["chain"] = "invented-chain"
     with pytest.raises(ValueError, match="fork"):
         validate_postflight(request, _response(request, candidate))
+
+
+@pytest.mark.parametrize("version,ineligible", [(14, None), (14, "eligible_leader_components"),
+    (22, None), (22, "eligible_leader_components"), (22, "eligible_leader_hypotheses")])
+def test_fact_citations_preserve_trigger_eligibility_and_exact_response(version, ineligible):
+    request = observer_request(version=version)
+    context = json.loads(request.input_artifacts[0].content_bytes())
+    raw = {**_observer(), "supporting_refs": ["fact-hyp-2", "fact-outcome-2"]}
+    if ineligible:
+        context[ineligible] = []
+        request = replace(request, input_artifacts=(EmbeddedInput.from_bytes(request.input_artifacts[0].ref,
+            "application/json", json.dumps(context).encode()),))
+        with pytest.raises(ValueError, match="eligible"):
+            validate_postflight(request, _response(request, raw))
+    else:
+        assert validate_postflight(request, _response(request, raw)).candidate.to_dict() == raw

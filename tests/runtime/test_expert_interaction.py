@@ -145,6 +145,50 @@ def test_negative_contribution_is_versioned_and_execution_failure_never_qualifie
         admit_observer_proposal(proposal, facts=facts)
 
 
+@pytest.mark.parametrize("negative", [False, True])
+@pytest.mark.parametrize("parent", ["hyp-2", "fact-hyp-2"])
+@pytest.mark.parametrize("contribution", ["out-2", "fact-outcome-2", "fact-evidence-2", "fact-assessment-2"])
+def test_leader_fact_and_entity_citations_have_the_same_meaning(negative, parent, contribution):
+    facts = InteractionFacts.from_rows("run-1", _facts(negative=negative), agent_aci_version=22)
+    raw = {**_observer(), "supporting_refs": [parent, contribution]}
+    proposal = admit_observer_proposal(raw, facts=facts)
+    assert proposal.leader.contributions[0].hypothesis_id == "hyp-2"
+    assert proposal.to_dict() == raw  # Preserve the original Agent citations.
+
+
+@pytest.mark.parametrize("refs", [
+    ["fact-hyp-2"], ["fact-outcome-2"], ["fact-evidence-2"], ["fact-assessment-2"],
+    ["fact-hyp-2", "fact-spec-2"], ["fact-hyp-2", "fact-outcome"],
+    ["fact-hyp", "fact-outcome-2"], ["fact-hyp-2", "unaccepted-fact"],
+])
+def test_fact_citations_do_not_imply_parents_or_borrow_foreign_contributions(refs):
+    facts = InteractionFacts.from_rows("run-1", _facts(negative=True), agent_aci_version=22)
+    with pytest.raises(ValueError):
+        admit_observer_proposal({**_observer(), "supporting_refs": refs}, facts=facts)
+
+
+def test_two_citation_forms_do_not_duplicate_a_parent_but_two_own_parents_are_rejected():
+    rows = _facts(negative=True)
+    second = {**next(row for row in rows if row["fact_id"] == "fact-hyp-2"),
+        "fact_id": "other-own-fact", "hypothesis_id": "other-own-hypothesis"}
+    facts = InteractionFacts.from_rows("run-1", [*rows, second], agent_aci_version=22)
+    refs = ["hyp-2", "fact-hyp-2", "fact-assessment-2"]
+    assert admit_observer_proposal({**_observer(), "supporting_refs": refs}, facts=facts).leader is not None
+    with pytest.raises(ValueError, match="exactly one"):
+        admit_observer_proposal({**_observer(), "supporting_refs": [*refs, second["fact_id"]]}, facts=facts)
+
+
+@pytest.mark.parametrize("version", [14, 22])
+def test_execution_failure_fact_never_grants_leader_qualification(version):
+    rows = _facts(negative=True)
+    for row in rows:
+        if row["fact_type"] == "CanonicalOutcomeAccepted":
+            row.update(outcome="EXECUTION_FAILURE", metric_value=None)
+    facts = InteractionFacts.from_rows("run-1", rows, agent_aci_version=version)
+    with pytest.raises(ValueError, match="verified contribution"):
+        admit_observer_proposal({**_observer(), "supporting_refs": ["fact-hyp-2", "fact-outcome-2", "fact-assessment-2"]}, facts=facts)
+
+
 @pytest.mark.parametrize("action", [None, [], {}, 1, "graph_evolution"])
 def test_observer_action_is_typed_without_implementing_manager_controls(action):
     raw = _observer()

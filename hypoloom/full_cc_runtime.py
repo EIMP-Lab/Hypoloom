@@ -482,6 +482,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
         )
         measurement_choice = (
             "SYNTHESIS may declare a local C5 measurement or measurement=null for a GOAL-only hypothesis. "
+            "Plan screening and early-stop ablations in SYNTHESIS: declare a local C5 measurement so DESIGN can "
+            "select LOCAL when the experiment will not produce complete shared-goal evidence. A later GOAL "
+            "experiment can retain that local measurement and also produce all required common evidence. "
             "Once SYNTHESIS is accepted, DESIGN and submit must preserve its exact measurement, including null, "
             "from required_experiment_spec. GOAL scope does not remove an already selected local C5 measurement. "
             "Changing that scientific declaration requires a revised hypothesis/new cycle, not clearing it in DESIGN. "
@@ -517,6 +520,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "/input/<relative-path>; import the submitted target via HYPOLOOM_TARGET_ROOT. Host captures argv-referenced "
                 "source, local parser files and implementation.patch, not an expert replacement of /acceptance. Raw execution "
                 "writes all declared common evidence for GOAL; common parser output is measurements/checks, not a verdict. "
+                "Every GOAL termination branch, including an early screen failure, must produce the required raw evidence; "
+                "missing evidence is an execution failure, not a clean refutation. Do not fabricate placeholder results "
+                "to satisfy the common parser or change a frozen null measurement to repair a GOAL-only hypothesis. "
                 "Before first preregistration, test each selected parser separately on raw fixtures. "
                 "For a non-null local measurement, check its JSON against required_experiment_spec.result_contract; "
                 "check the common parser against the accepted shared evaluator's output contract. "

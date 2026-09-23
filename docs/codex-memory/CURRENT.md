@@ -1,5 +1,31 @@
 # Current Hypoloom development state
 
+- September 23: the Web expert crown now reads existing per-expert
+  `leader.active`, rather than looking for an OPEN legacy LEADER command.
+  Ordinary research nodes and between-node waits retain the active-round crown;
+  finished/aborted/failed rounds remove it without erasing history. No backend
+  state or new authority. Four browser regressions and 46 Web/summary/support
+  checks pass. Checkout-backed observers serve the new asset on reload; retained
+  bundle observers remain unchanged. A follow-up lineage style fix preserves
+  expert border colors on hover, selection and connected highlighting, removes
+  the blue glow and uses the expert color for keyboard focus. See
+  [UI repair evidence](../qualification.md#current-development--leader-status-icon-2026-09-23).
+  The user authorizes committing and pushing these UI fixes together with the
+  Observer repair below to dev; existing research runs remain read-only.
+
+- September 23: Observer repair interprets accepted fact IDs and their own entity
+  IDs consistently in admission, Host selection and independent interaction/batch
+  audits, preserving exact original citations and all qualification constraints.
+  Native Stop reuses the existing frozen-context Observer validator after alias
+  decoding, allowing semantic correction in the same invocation. Screening
+  guidance uses existing LOCAL/C5 and GOAL contracts; no user-specific policy,
+  new state authority or protocol version. 656 focused checks and a real native
+  same-Attempt correction pass; two real CPU Leader/Debate/recovery cases close
+  192 Attempts with clean full Oracles and no process/socket residue. Unchanged
+  original outputs replay as expected. Initial drift/audit failures are retained.
+  Existing runs and local Profiles remain read-only; no paid/GPU qualification.
+  See [evidence and limits](../qualification.md#current-development--observer-references-and-native-feedback-2026-09-23).
+
 - September 23: generic support/Oracle/admission repair compares common numeric
   targets by exact Decimal value and recognizes evidenced prestart rejection
   without invented parser failures. Support exports select by failure time,
