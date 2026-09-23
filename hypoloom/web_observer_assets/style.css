@@ -402,6 +402,7 @@ dialog::backdrop { background: rgba(2, 6, 16, 0.76); backdrop-filter: blur(3px);
 .support-options { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: .8rem; margin: 1rem 0; }
 .support-options label { display: grid; gap: .4rem; min-width: 0; }
 .support-options select { min-width: 0; width: 100%; }
+.support-options textarea { min-width: 0; width: 100%; min-height: 5rem; }
 .support-private { display: flex; align-items: center; gap: .6rem; }
 .support-private input { width: auto; }
 .support-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 1rem; }

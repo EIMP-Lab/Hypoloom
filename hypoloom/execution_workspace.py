@@ -256,6 +256,91 @@ def bind_clean_git_target(
     return GitTargetBinding(checkout=repository_root, commit=commit)
 
 
+def _checkout_patched_tree(
+    git: Any,
+    checkout: Path,
+    binding: GitTargetBinding,
+    patch_bytes: bytes | None,
+    temporary_root: Path,
+    timeout: float,
+) -> Path:
+    resolved_commit = _git_text(
+        _run_git(
+            git,
+            checkout,
+            ("rev-parse", "--verify", f"{binding.commit}^{{commit}}"),
+            timeout_seconds=timeout,
+        ),
+        "bound target commit",
+    )
+    if resolved_commit != binding.commit:
+        raise TargetPreparationError("bound target commit does not resolve exactly")
+    index_path = temporary_root / "index"
+    target_copy = temporary_root / "tree"
+    target_copy.mkdir(mode=0o700)
+    git_index_environment = {"GIT_INDEX_FILE": str(index_path)}
+    _run_git(
+        git,
+        checkout,
+        ("read-tree", binding.commit),
+        timeout_seconds=timeout,
+        extra_environment=git_index_environment,
+    )
+    _run_git(
+        git,
+        checkout,
+        (
+            "checkout-index",
+            "--all",
+            f"--prefix={target_copy}{os.sep}",
+        ),
+        timeout_seconds=timeout,
+        extra_environment=git_index_environment,
+    )
+    _validate_target_tree(target_copy)
+    _verify_bound_git_tree(git, checkout, binding.commit, target_copy, timeout)
+    if patch_bytes is not None:
+        _run_git(
+            git,
+            target_copy,
+            (
+                "apply",
+                "--no-index",
+                "--check",
+                "--whitespace=nowarn",
+                "-",
+            ),
+            timeout_seconds=timeout,
+            input_bytes=patch_bytes,
+            extra_environment=_standalone_apply_environment(target_copy),
+        )
+        _run_git(
+            git,
+            target_copy,
+            ("apply", "--no-index", "--whitespace=nowarn", "-"),
+            timeout_seconds=timeout,
+            input_bytes=patch_bytes,
+            extra_environment=_standalone_apply_environment(target_copy),
+        )
+        _validate_target_tree(target_copy)
+    return target_copy
+
+
+def validate_bound_git_target(
+    binding: GitTargetBinding, *, git_executable: str | os.PathLike[str] = "git",
+    timeout_seconds: float = 15.0,
+) -> None:
+    """Exercise the execution tree validator before creating a research run.
+
+    The temporary index and tree never touch the checkout or its index. Execution
+    repeats this same validation when it later materializes the bound commit.
+    """
+    checkout = _validated_binding(binding)
+    git, timeout = _git_executable(git_executable), _git_timeout(timeout_seconds)
+    with tempfile.TemporaryDirectory(prefix="hypoloom-target-admission-") as temporary:
+        _checkout_patched_tree(git, checkout, binding, None, Path(temporary), timeout)
+
+
 class ExecutionWorkspace:
     """Materialize one committed Agent response into an isolated local launch."""
 
@@ -389,76 +474,6 @@ class ExecutionWorkspace:
         _real_directory(paths.attempt_root, "attempt root")
         return git, checkout, patch_bytes, timeout, paths
 
-    def _checkout_patched_tree(
-        self,
-        git: Any,
-        checkout: Path,
-        binding: GitTargetBinding,
-        patch_bytes: bytes | None,
-        temporary_root: Path,
-        timeout: float,
-    ) -> Path:
-        resolved_commit = _git_text(
-            _run_git(
-                git,
-                checkout,
-                ("rev-parse", "--verify", f"{binding.commit}^{{commit}}"),
-                timeout_seconds=timeout,
-            ),
-            "bound target commit",
-        )
-        if resolved_commit != binding.commit:
-            raise TargetPreparationError("bound target commit does not resolve exactly")
-        index_path = temporary_root / "index"
-        target_copy = temporary_root / "tree"
-        target_copy.mkdir(mode=0o700)
-        git_index_environment = {"GIT_INDEX_FILE": str(index_path)}
-        _run_git(
-            git,
-            checkout,
-            ("read-tree", binding.commit),
-            timeout_seconds=timeout,
-            extra_environment=git_index_environment,
-        )
-        _run_git(
-            git,
-            checkout,
-            (
-                "checkout-index",
-                "--all",
-                f"--prefix={target_copy}{os.sep}",
-            ),
-            timeout_seconds=timeout,
-            extra_environment=git_index_environment,
-        )
-        _validate_target_tree(target_copy)
-        _verify_bound_git_tree(git, checkout, binding.commit, target_copy, timeout)
-        if patch_bytes is not None:
-            _run_git(
-                git,
-                target_copy,
-                (
-                    "apply",
-                    "--no-index",
-                    "--check",
-                    "--whitespace=nowarn",
-                    "-",
-                ),
-                timeout_seconds=timeout,
-                input_bytes=patch_bytes,
-                extra_environment=_standalone_apply_environment(target_copy),
-            )
-            _run_git(
-                git,
-                target_copy,
-                ("apply", "--no-index", "--whitespace=nowarn", "-"),
-                timeout_seconds=timeout,
-                input_bytes=patch_bytes,
-                extra_environment=_standalone_apply_environment(target_copy),
-            )
-            _validate_target_tree(target_copy)
-        return target_copy
-
     def materialize_target_overlay(
         self,
         binding: GitTargetBinding,
@@ -481,7 +496,7 @@ class ExecutionWorkspace:
         with tempfile.TemporaryDirectory(
             prefix=".target-overlay-", dir=paths.attempt_root
         ) as temporary:
-            target_copy = self._checkout_patched_tree(
+            target_copy = _checkout_patched_tree(
                 git, checkout, binding, patch_bytes, Path(temporary), timeout
             )
             if target_root.exists() or target_root.is_symlink():
@@ -515,7 +530,7 @@ class ExecutionWorkspace:
         with tempfile.TemporaryDirectory(
             prefix=".target-verify-", dir=paths.attempt_root
         ) as temporary:
-            yield self._checkout_patched_tree(
+            yield _checkout_patched_tree(
                 git, checkout, binding, patch_bytes, Path(temporary), timeout
             )
 
@@ -547,7 +562,7 @@ class ExecutionWorkspace:
         with tempfile.TemporaryDirectory(
             prefix=".target-verify-", dir=self.root / "work"
         ) as temporary:
-            yield self._checkout_patched_tree(
+            yield _checkout_patched_tree(
                 git, checkout, binding, patch_bytes, Path(temporary), timeout
             )
 
@@ -1804,4 +1819,5 @@ __all__ = [
     "TargetPreparationError",
     "WorkspaceIntegrityError",
     "bind_clean_git_target",
+    "validate_bound_git_target",
 ]

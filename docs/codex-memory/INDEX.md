@@ -1,6 +1,11 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Support/Oracle/admission repair 2026-09-23](../qualification.md#current-development--support-evidence-oracle-and-target-admission-2026-09-23):
+  exact decimal equivalence, evidenced prestart rejection, chronological support
+  selection/direct sources, export fidelity/privacy, early shared target-tree
+  validation, report descriptions, measured export cost and focused/native CPU
+  recovery evidence. No migration or existing-run mutation.
 - [Init/configuration repair 2026-09-22](../qualification.md#current-development--deterministic-init-and-configuration-entry-2026-09-22):
   in-memory template admission, exclusive preparation, derived managed launch,
   private dotenv permission enforcement and visible configuration entry;

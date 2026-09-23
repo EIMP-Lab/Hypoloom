@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- September 23: generic support/Oracle/admission repair compares common numeric
+  targets by exact Decimal value and recognizes evidenced prestart rejection
+  without invented parser failures. Support exports select by failure time,
+  retain direct sources and bounded run summaries, preserve/redact typed text,
+  and distinguish source availability from exported fidelity. Existing target
+  materialization/validation now runs at Profile admission; execution checks
+  remain. Report UI/CLI add reviewed descriptions and explicit environment/scope
+  labels. Validation: 380 focused passes plus two native CLI/CPU/recovery passes;
+  35 closed Attempts, clean Oracles, no group/socket residue. No existing-run
+  mutation or paid/GPU qualification. The user explicitly authorized committing
+  and pushing this repair to dev after validation. See the
+  [repair evidence and limits](../qualification.md#current-development--support-evidence-oracle-and-target-admission-2026-09-23).
+
 - September 22: local init/configuration repair adds `hypoloom.bootstrap`
   paths/prepare/launch. Filled template previews reuse ordinary admission;
   only explicit --write creates a new Profile, and --start uses the existing

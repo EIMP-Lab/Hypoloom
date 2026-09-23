@@ -177,10 +177,32 @@ hypoloom debug export --state-root /absolute/state/run --run-id RUN_ID \
   --support-bundle --preview
 ```
 
-After confirming the scope, add `--archive --output /absolute/new-support.zip`
+After confirming the scope, replace `--preview` with `--archive --output /absolute/new-support.zip`
 to export a support bundle. Research text, free-form errors and local paths
 are filtered by default; private content requires an explicit
 `--include-private-data`. Exports are never uploaded automatically.
+
+`--recent-failures` selects the last three failing commands by failure time,
+their retries and directly related evidence. The package distinguishes the
+run-wide summary, selected details and supporting sources; missing or trimmed
+records are listed explicitly. `--attempt-id` restricts details to that Attempt
+and its direct sources. Source availability is separate from exported fidelity:
+sanitized or omitted text is not an exact replay fixture. README and report.json
+show the observed run state/revision, failure groups and exporter environment;
+recorded Attempt versions are separate and may be unknown. Downloads read fresh
+evidence and can differ from the preview of an active run.
+
+The browser also accepts an optional description. CLI equivalents are
+`--issue-actual`, `--issue-expected`, `--issue-steps` and `--issue-occurred-at`
+(include a timezone). These fields are included even in public packages; review
+them before sharing. Each field accepts at most 2,000 characters.
+
+Before a new run, Profile admission materializes the exact target Git commit in
+a disposable directory using the execution validator. Escaping symlinks and
+other incompatible trees fail before research starts. `resource_visibility` in
+the admission report shows the generic execution mount projection for declared
+roots; it does not establish that every required dataset/model is present.
+
 `debug rehearse-chain` runs subsequent modules in a fresh state root; it is
 an experimental operation that needs explicit authorization, and the source
 run stays read-only. See `hypoloom debug rehearse-chain --help` for

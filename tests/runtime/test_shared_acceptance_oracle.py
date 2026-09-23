@@ -196,7 +196,8 @@ Path('/parsed/result.json').write_text(json.dumps({'measurements':rows,'checks':
 
 @pytest.mark.parametrize(
     "damage",
-    [None, "question", "source", "binding", "archive", "duplicate", "expert-bytes"],
+    [None, "question", "source", "binding", "archive", "duplicate", "expert-bytes",
+     "decimal", "exponent", "target", "rule", "nan"],
 )
 def test_common_source_is_one_actual_final_grounding(tmp_path, damage):
     import base64
@@ -268,6 +269,14 @@ def test_common_source_is_one_actual_final_grounding(tmp_path, damage):
         "spec": {"goal_evaluation": binding},
     }
     attempts = [row]
+    if damage in {"decimal", "exponent", "target", "rule", "nan"}:
+        response["typed_candidate"]["acceptance"]["criteria"][0]["target"] = "72.0"
+        binding["acceptance"]["criteria"][0]["target"] = {
+            "decimal": "72", "exponent": "7.2e1", "target": "72.01",
+            "rule": "72", "nan": "NaN",
+        }[damage]
+        if damage == "rule":
+            binding["acceptance"]["rule"] = "ANY"
     if damage == "question":
         response["typed_candidate"]["clarification"] = {"question": "not final"}
     if damage == "source":
@@ -279,14 +288,14 @@ def test_common_source_is_one_actual_final_grounding(tmp_path, damage):
     if damage == "duplicate":
         attempts.append({**row, "attempt_id": "grounding-2"})
         observations["grounding-2"] = deepcopy(observations["grounding-1"])
-    if damage == "expert-bytes":
+    if damage in {"expert-bytes", "decimal", "exponent", "target", "rule", "nan"}:
         changed = {
             "source_attempt_id": "grounding-1",
-            "acceptance": acceptance(),
+            "acceptance": binding["acceptance"],
             "files": [
                 {
                     **encoded,
-                    "content_base64": base64.b64encode(b"expert replacement").decode(),
+                    "content_base64": base64.b64encode(b"expert replacement" if damage == "expert-bytes" else source).decode(),
                 }
             ],
         }
@@ -308,7 +317,7 @@ def test_common_source_is_one_actual_final_grounding(tmp_path, damage):
     issues = audit_shared_bindings(
         tmp_path, "run-1", facts, payloads, attempts, observations
     )
-    assert bool(issues) is (damage is not None), issues
+    assert bool(issues) is (damage not in {None, "decimal", "exponent"}), issues
 
 
 @pytest.mark.parametrize(
@@ -383,6 +392,8 @@ def test_common_bindings_accept_review_request_without_task_context(tmp_path):
         "goal-only-invalid",
         "goal-only-invalid-refutation",
         "goal-only-valid-refutation",
+        "equivalent-source",
+        "prestart", "prestart-metric", "prestart-goal", "prestart-missing-integrity",
     ],
 )
 def test_shared_component_keeps_local_results_separate_from_public_diagnostics(
@@ -429,7 +440,8 @@ def test_shared_component_keeps_local_results_separate_from_public_diagnostics(
         if case in {"goal-failed", "missing-diagnostic"}
         else 0
     )
-    rejected = case == "review-rejected"
+    prestart = case.startswith("prestart")
+    rejected = case == "review-rejected" or prestart
     actual = (
         "INTEGRITY_REJECTED"
         if rejected
@@ -486,6 +498,9 @@ def test_shared_component_keeps_local_results_separate_from_public_diagnostics(
         },
         "evaluator_version": "component-result/9",
     }
+    if case == "equivalent-source":
+        spec["goal_evaluation"]["acceptance"] = deepcopy(declaration)
+        declaration["criteria"][0]["target"] += "00"
     process = {
         "terminal_reason": "SUCCEEDED" if code == 0 else "FAILED",
         "returncode": code,
@@ -504,6 +519,16 @@ def test_shared_component_keeps_local_results_separate_from_public_diagnostics(
             ]
         },
     }
+    if prestart:
+        process = {"terminal_reason": "FAILED", "returncode": None,
+            "synthetic_before_spawn": True, "integrity_error": "target tree is incompatible"}
+        candidate.update(validation_error=None, execution_integrity_error=process["integrity_error"])
+        if case == "prestart-metric":
+            candidate.update(metric_value="1", criterion_met=True)
+        if case == "prestart-goal":
+            candidate["goal_evaluation"] = public
+        if case == "prestart-missing-integrity":
+            candidate["execution_integrity_error"] = None
     issues = []
     result = oracle._audit_shared_component_result(
         None,
@@ -520,7 +545,9 @@ def test_shared_component_keeps_local_results_separate_from_public_diagnostics(
         issues,
         tmp_path,
     )
-    if case == "goal-only-invalid-refutation":
+    if prestart and case != "prestart":
+        assert issues
+    elif case == "goal-only-invalid-refutation":
         assert any(issue.code == "shared_local_measurement_mismatch" for issue in issues)
         assert result.outcome == "EXECUTION_FAILURE"
         assert result.criterion_met is None

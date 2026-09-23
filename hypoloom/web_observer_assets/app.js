@@ -2997,7 +2997,10 @@
     setText("support-status", format === "zip" ? "Preparing download…" : "Reading available diagnostic evidence…");
     try {
       const response = await window.fetch(`/api/support?${supportOptions(format)}`, {
-        method: "GET", headers: {Authorization: `Bearer ${accessToken}`}, cache: "no-store", signal: controller.signal});
+        method: "POST", headers: {Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json"},
+        body: JSON.stringify(Object.fromEntries(["actual", "expected", "steps", "occurred_at"]
+          .map(key => [key, byId(`support-${key}`).value]).filter(([, value]) => value))),
+        cache: "no-store", signal: controller.signal});
       if (!response.ok) throw new Error(response.status === 401 ? "Open the authenticated observer URL first."
         : response.status === 429 ? "Another package is being prepared. Try again shortly." : "Could not prepare this selection. Try a different scope or use the CLI.");
       if (format === "zip") {
@@ -3033,6 +3036,7 @@
   byId("close-support").addEventListener("click", () => supportDialog.close());
   supportDialog.addEventListener("close", resetSupportPreview);
   ["support-scope", "support-limit", "support-private"].forEach(id => byId(id).addEventListener("change", resetSupportPreview));
+  ["actual", "expected", "steps", "occurred_at"].forEach(key => byId(`support-${key}`).addEventListener("input", resetSupportPreview));
   byId("preview-support").addEventListener("click", () => requestSupport("preview"));
   byId("download-support").addEventListener("click", () => requestSupport("zip"));
   if (fragment.get("support") === "1") openSupport();

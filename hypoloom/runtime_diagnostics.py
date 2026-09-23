@@ -33,13 +33,30 @@ def _secret_bytes(secrets: Iterable[str | bytes]) -> tuple[bytes, ...]:
                          for value in secrets if value}, key=len, reverse=True))
 
 
+def text_credential_values(value: str) -> tuple[str, ...]:
+    """Use the existing assignment recognizer for repeated values in text."""
+    if ":" not in value and "=" not in value:
+        return ()
+    secrets = []
+    for match in _ASSIGNMENT.finditer(value):
+        secret = match[0][len(match[1]):]
+        if secret.lower() in {"bearer", "basic"}:
+            authorization = _AUTH.match(value, match.start() + len(match[1]))
+            if authorization is None:
+                continue
+            secret = authorization[0].split(None, 1)[1]
+        secrets.append(secret)
+    return tuple(secrets)
+
+
 def sanitize_text(value: str, secrets: Iterable[str | bytes] = ()) -> str:
-    for secret in _secret_bytes(secrets):
+    for secret in _secret_bytes((*secrets, *text_credential_values(value))):
         text = secret.decode("utf-8", errors="ignore")
         if text:
             value = value.replace(text, REDACTED)
     value = _AUTH.sub(REDACTED, value)
-    value = _ASSIGNMENT.sub(lambda match: match[1] + REDACTED, value)
+    if ":" in value or "=" in value:
+        value = _ASSIGNMENT.sub(lambda match: match[1] + REDACTED, value)
     return _URL_AUTH.sub(r"\1[REDACTED]@", value)
 
 
@@ -82,14 +99,25 @@ def sanitize_payload(value: Any, secrets: Iterable[str | bytes] = ()) -> Any:
 
 
 def decode_embedded_content(value: Mapping[str, Any]) -> str | None:
-    """Decode the existing typed text envelope; opaque content stays explicit."""
+    """Decode bounded typed text or an exact, validated WorkspaceArtifact.
+
+    A bare content_base64 field is insufficient. Unknown envelopes, unsafe
+    workspace paths and binary content remain omitted in diagnostic copies.
+    """
     media, encoded = value.get("media_type", ""), value.get("content_base64")
-    if not isinstance(encoded, str) or not isinstance(media, str) or not (
-        media.startswith("text/") or media.endswith("+json") or media in {
-            "application/json", "application/x-python", "application/javascript"}):
+    if not isinstance(encoded, str) or len(encoded) > 4 * 1024 * 1024 * 4 // 3 + 4:
         return None
     try:
-        return base64.b64decode(encoded, validate=True).decode("utf-8")
+        if set(value) == {"path", "content_base64"}:
+            from .agent_aci import WorkspaceArtifact
+            raw = WorkspaceArtifact.from_dict(value).content_bytes()
+        elif isinstance(media, str) and (media.startswith("text/") or media.endswith("+json")
+                or media in {"application/json", "application/x-python", "application/javascript"}):
+            raw = base64.b64decode(encoded, validate=True)
+        else:
+            return None
+        text = raw.decode("utf-8")
+        return text if all(ord(char) >= 32 or char in "\n\r\t" for char in text) else None
     except (binascii.Error, ValueError, UnicodeDecodeError):
         return None
 

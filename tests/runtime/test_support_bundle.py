@@ -189,6 +189,7 @@ def test_private_copy_redacts_nested_json_base64_credentials_and_omits_environme
     assert json.loads(stdout_lines[1])["api_key"] == "[REDACTED]"
     assert json.loads(stdout_lines[2])["note"] == "[REDACTED]"
     assert {"credential_redacted", "environment_omitted", "opaque_embedded_content_omitted"} <= set(report["attachments"][0]["redactions"])
+    assert debug["attempts"][0]["reconstructability"]["terminal_evidence"] == "SANITIZED_RECORDED_OUTPUT"
 
 
 @pytest.mark.parametrize("kind", ["inside", "same", "existing", "parent_symlink", "source_symlink", "input_root"])

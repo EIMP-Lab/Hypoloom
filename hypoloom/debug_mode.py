@@ -273,6 +273,14 @@ def _duration_seconds(row: Mapping[str, Any]) -> float | None:
     return duration if duration >= 0 else None
 
 
+def attempt_time_key(row: Mapping[str, Any]) -> tuple[float, str]:
+    """Failure order uses completion, or start when completion is unavailable."""
+    value = row.get("ended_at")
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        value = row.get("started_at", 0)
+    return float(value or 0), str(row["attempt_id"])
+
+
 def _accounting_projection(
     row: Mapping[str, Any],
     charge: AgentAttemptCharge | None,
@@ -849,9 +857,7 @@ def _read_debug_rows(
                     (run_id,),
                 ).fetchall()
             )
-            attempts = tuple(
-                row for row in reader.list_attempts() if row["run_id"] == run_id
-            )
+            attempts = reader.list_attempts(run_id=run_id)
             transitions = tuple(
                 dict(row)
                 for row in reader.execute(
@@ -941,7 +947,7 @@ def build_debug_report(
             lineage_scope=lineage_by_id[current_id],
             include_payloads=include_payloads,
         ))
-    projected = tuple(projected_rows)
+    projected = tuple(sorted(projected_rows, key=attempt_time_key))
     unrecovered = tuple(
         item["attempt_id"]
         for item in projected
@@ -952,6 +958,8 @@ def build_debug_report(
     recovered = tuple(
         item["attempt_id"] for item in projected if item["recovered_by_later_attempt"]
     )
+    run_head = max((row for row in transitions if row["workflow_id"] == run_id),
+                   key=lambda row: row["revision"], default={})
     report: dict[str, Any] = {
         "non_authoritative": True,
         "mode": "READ_ONLY_DIAGNOSIS",
@@ -960,7 +968,10 @@ def build_debug_report(
         "run_id": run_id,
         "selected_attempt_id": attempt_id,
         "run_versions": run,
+        "run_state": {"state": run_head.get("state"), "revision": run_head.get("revision")},
         "summary": {
+            "scope": "attempt" if attempt_id else "run",
+            "order": "ended_at_or_started_at_then_attempt_id",
             "attempt_count": len(projected),
             "recovered_failure_attempt_ids": list(recovered),
             "unrecovered_failure_attempt_ids": list(unrecovered),

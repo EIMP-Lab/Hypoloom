@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,10 @@ from .contract_normalization import (
     EXPERT_LOOP_PROFILE_VERSION,
     EXPERT_LOOP_RESEARCH_LOOP,
 )
-from .execution_workspace import TargetPreparationError, bind_clean_git_target
+from .execution_workspace import (
+    TargetPreparationError, bind_clean_git_target, validate_bound_git_target,
+    execution_read_root_projection,
+)
 from .profile_v3 import (
     PROFILE_V3_FILES,
     PROFILE_V3_VERSION,
@@ -111,6 +115,15 @@ class ProfileAdmissionReport:
         return not self.blockers and self.create_run_payload is not None
 
     def to_dict(self) -> dict[str, object]:
+        execution = (self.create_run_payload or {}).get("execution")
+        visibility = None
+        if isinstance(execution, Mapping):
+            bindings, environment = execution_read_root_projection(execution, {}, generic=True)
+            visibility = {"scope": "generic_execution_projection", "target": execution.get("target"),
+                "runtime": {"host": execution.get("runtime_prefix"), "sandbox": "/runtime"},
+                "read_roots": [{"host": str(host), "sandbox": sandbox} for host, sandbox in bindings],
+                "environment": environment,
+                "note": "Declared mounts only; data/model completeness is not inferred. Production plans may bind explicit data paths."}
         return {
             "profile_name": self.profile_name,
             "profile_path": self.profile_path,
@@ -119,6 +132,7 @@ class ProfileAdmissionReport:
             "blockers": [blocker.to_dict() for blocker in self.blockers],
             "warnings": [warning.to_dict() for warning in self.warnings],
             "create_run_payload": copy.deepcopy(self.create_run_payload),
+            "resource_visibility": visibility,
         }
 
 
@@ -420,6 +434,7 @@ def admit_profile(
         if target_repo is not None:
             try:
                 binding = bind_clean_git_target(str(target_repo))
+                validate_bound_git_target(binding)
                 operational["target"] = {
                     "checkout": str(binding.checkout),
                     "commit": binding.commit,
@@ -453,11 +468,12 @@ def admit_profile(
                 root_path.is_symlink()
                 or not root_path.is_absolute()
                 or not root_path.is_dir()
+                or not os.access(root_path, os.R_OK | os.X_OK)
             ):
                 block(
                     "read_root_binding_failed",
                     f"safety.yaml.allow_read_paths[{index}]",
-                    "read root must be an existing absolute real directory",
+                    "read root must be an existing readable/searchable absolute real directory",
                 )
             else:
                 resolved_roots.append(str(root_path.resolve()))

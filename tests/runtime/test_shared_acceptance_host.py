@@ -410,3 +410,46 @@ raise AssertionError('the real publication crash hook did not fire')
             assert_oracle(recovered)
         finally:
             recovered.close()
+
+
+def test_prestart_integrity_rejection_closes_without_parser_claim_and_exports_causes(shared_host, monkeypatch):
+    from hypoloom.execution_workspace import ExecutionWorkspace, TargetPreparationError
+    from hypoloom.support_bundle import build_support_bundle
+    host, _ = shared_host
+
+    def incompatible_target(*args, **kwargs):
+        raise TargetPreparationError("fixture link escapes the Attempt-local tree")
+
+    monkeypatch.setattr(ExecutionWorkspace, "materialize_target_overlay", incompatible_target)
+    _until(host, lambda: host.store.latest_transition(RUN_ID)["state"] == "COMPLETED")
+    process = [row for row in host.store.list_attempts() if row["kind"] == "PROCESS"]
+    assert len(process) == 1 and process[0]["state"] == "CLOSED"
+    assert process[0]["terminal_reason"] == "FAILED" and process[0]["process_group_id"] is None
+    observation = json.loads(process[0]["observation_json"])
+    assert observation["synthetic_before_spawn"] is True
+    outcome = host.store.list_facts(RUN_ID, "CanonicalOutcomeAccepted")[0]
+    assert outcome["payload"]["outcome"] == "INTEGRITY_REJECTED"
+    assert outcome["payload"]["metric_value"] is None and outcome["payload"].get("goal_evaluation") is None
+    head = host.store.latest_transition(outcome["experiment_id"])
+    candidate = json.loads(head["payload_json"])["outcome"]
+    assert candidate["parser_validation_error"] is None
+    assert candidate["execution_integrity_error"] == observation["integrity_error"]
+    assert_oracle(host)
+    report, files = build_support_bundle(host.store.database_path.parent, RUN_ID,
+        attempt_id=process[0]["attempt_id"], include_private_data=True)
+    debug = json.loads(files["debug.json"])
+    assert len(debug["attempts"]) == 1
+    assert debug["attempts"][0]["observation"]["integrity_error"] == observation["integrity_error"]
+    spec = host.store.list_facts(RUN_ID, "ExperimentPreregistered")[0]
+    source_ids = {spec["payload"]["goal_evaluation"]["source_attempt_id"],
+                  spec["payload"]["execution_contract"]["source_agent_attempt_id"]}
+    assert source_ids <= {item["attempt_id"] for item in debug["supporting_attempts"]}
+    assert {spec["fact_id"], outcome["fact_id"]} <= {
+        item["fact_id"] for item in debug["related_records"]["facts"]}
+    assert any(json.loads(row["payload_json"]).get("outcome") == candidate
+               for row in debug["related_records"]["transitions"])
+    assert any(item["reason"] == "process_not_spawned" for item in report["attachments"])
+    for item in debug["supporting_attempts"]:
+        if item["attempt_id"] == spec["payload"]["goal_evaluation"]["source_attempt_id"]:
+            files = item["observation"]["response"]["proposed_workspace_artifacts"]
+            assert all(WorkspaceArtifact.from_dict(file).content_bytes() for file in files)

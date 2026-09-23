@@ -128,9 +128,26 @@ hypoloom debug export --state-root /absolute/state/run --run-id RUN_ID \
   --support-bundle --preview
 ```
 
-确认范围后，增加 `--archive --output /absolute/new-support.zip` 导出支持包。
+确认范围后，将 `--preview` 替换为 `--archive --output /absolute/new-support.zip` 导出支持包。
 默认过滤研究正文、自由文本错误及本地路径；私有内容需要显式 `--include-private-data`。
-导出不会自动上传。`debug rehearse-chain` 会在全新状态根运行后继模块，属于需要明确授权的
+导出不会自动上传。
+
+`--recent-failures` 按实际失败时间选取最近三个失败命令、重试及直接相关证据。
+包内分别列出全运行概览、选中详情、直接来源和省略记录；`--attempt-id` 将详情限制在
+指定 Attempt 及其直接来源。源记录存在不等于导出内容完整：脱敏或省略后的正文不能当作
+精确回放夹具。README 和 report.json 展示观察时的运行状态、revision、失败分组与导出环境；
+实际 Attempt 的记录版本单独列出，无法取得时保持未知。下载会重新读取证据，活动运行可能
+在预览后产生新记录。
+
+浏览器支持填写可选的问题描述；CLI 对应 `--issue-actual`、`--issue-expected`、
+`--issue-steps` 和 `--issue-occurred-at`（请注明时区）。这些字段也会进入公开包，分享前
+请检查是否包含私密信息；每个字段最多 2,000 字符。
+
+新运行的 Profile 准入会在一次性临时目录中，使用执行阶段的同一验证器检查绑定的确切
+Git 提交。树外链接等不兼容问题会在研究启动前报出。准入报告的 `resource_visibility`
+展示显式授权目录在通用执行中的挂载投影，但不保证具体课题所需的数据和模型已经齐全。
+
+`debug rehearse-chain` 会在全新状态根运行后继模块，属于需要明确授权的
 实验操作；源运行始终只读。参数见 `hypoloom debug rehearse-chain --help`。
 
 ## 备份与同版本恢复

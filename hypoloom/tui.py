@@ -1563,6 +1563,9 @@ class HypoloomVNextMonitor(App):
         content = ("[b #78dcff]REPORT AN ISSUE[/]\n\n"
             "Open the browser link to preview evidence and download a ZIP. Nothing is uploaded.\n"
             "Default copies omit research bodies and local paths. Private attachments require explicit selection.\n\n"
+            "Preview shows run state/revision, failure groups, evidence scope and omissions.\n"
+            "The browser also accepts an optional issue description; CLI: --issue-actual, --issue-expected, --issue-steps, --issue-occurred-at.\n"
+            "Descriptions are included in public copies too; review them before sharing.\n\n"
             f"Offline preview command:\n{escape(command)}\n\n"
             "To save it, replace --preview with --archive --output /absolute/private/path/new-support.zip.\n\n"
             + self._web_access_content())

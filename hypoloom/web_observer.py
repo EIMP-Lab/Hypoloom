@@ -494,6 +494,18 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             return
         from .support_bundle import SupportBundleError, build_support_bundle, support_zip
         try:
+            description = None
+            if self.command == "POST":
+                if self.headers.get_content_type() != "application/json" or self.headers.get("Transfer-Encoding"):
+                    raise ValueError
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 32768:
+                    raise ValueError
+                self.connection.settimeout(5)
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise ValueError
+                description = json.loads(raw)
             query = parse_qs(urlsplit(self.path).query, strict_parsing=True, keep_blank_values=True)
             if set(query) - {"format", "private", "scope", "attempt_id", "max_mib"} or any(len(values) != 1 for values in query.values()):
                 raise ValueError
@@ -516,7 +528,7 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         try:
             report, files = build_support_bundle(self.observer.state_root, self.observer.run_id,
                 attempt_id=attempt_id, include_private_data=private == "1", recent_failures=scope == "failures",
-                max_bytes=max_mib * 1024 * 1024)
+                max_bytes=max_mib * 1024 * 1024, issue_description=description)
             if kind == "preview":
                 body = json.dumps({"report": report, "readme": files["README.md"].decode(),
                     "diagnostics": json.loads(files["debug.json"])}, ensure_ascii=False).encode()
@@ -557,6 +569,9 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         self.close_connection = True
+        if urlsplit(self.path).path == "/api/support":
+            self._support()
+            return
         if self.path != "/api/human-answer":
             self._method_not_allowed()
             return

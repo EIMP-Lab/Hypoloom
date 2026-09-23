@@ -9964,7 +9964,7 @@ def _repairable_component_result_code(
 def _audit_shared_component_result(component, spec, spec_payload, outcome, payload, attempt, root, candidate,
         commands, attempts, observations, issues, artifact_root):
     from .measurement_oracle import audit_measurement_result
-    from .shared_acceptance_oracle import audit_shared_result, grounding_source, phase_success, interpret_shared_acceptance
+    from .shared_acceptance_oracle import audit_shared_result, grounding_source, phase_success, interpret_shared_acceptance, normalized_declaration
     identity = str(outcome["fact_id"])
     binding = spec_payload["goal_evaluation"]
     actual = payload.get("outcome")
@@ -9972,6 +9972,14 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
     local = shared = None
     local_error = shared_error = None
     observation = {} if attempt is None else observations.get(str(attempt["attempt_id"]), {})
+    prestart_rejected = (actual == "INTEGRITY_REJECTED"
+        and observation.get("synthetic_before_spawn") is True
+        and observation.get("terminal_reason") == "FAILED"
+        and observation.get("returncode") is None
+        and observation.get("process_group_id") is None
+        and isinstance(observation.get("integrity_error"), str) and bool(observation["integrity_error"])
+        and isinstance(candidate, Mapping)
+        and candidate.get("execution_integrity_error") == observation["integrity_error"])
     _, local_ok, goal_ok = phase_success(observation, local=spec_payload.get("measurement") is not None,
                                         goal=binding["scope"] == "GOAL")
     try:
@@ -9994,7 +10002,7 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
         if goal_ok:
             try:
                 declaration, files, _ = grounding_source(binding["source_attempt_id"], spec["run_id"], attempts, observations, artifact_root)
-                if binding["acceptance"] != declaration: raise ValueError("shared outcome changed the accepted protocol")
+                if normalized_declaration(binding["acceptance"]) != normalized_declaration(declaration): raise ValueError("shared outcome changed the accepted protocol")
                 for name, data in files.items():
                     source = root / "goal" / "parser" / name
                     if not source.is_file() or source.is_symlink() or source.read_bytes() != data:
@@ -10030,7 +10038,7 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
                 goal_matches = {"source_attempt_id": candidate_goal["source_attempt_id"], **interpreted.observations} == expected_goal
             except (KeyError, TypeError, ValueError):
                 pass
-        failed_phases = [name for name, ok, error in (("local", local_ok, local_error), ("goal", goal_ok, shared_error))
+        failed_phases = [] if prestart_rejected else [name for name, ok, error in (("local", local_ok, local_error), ("goal", goal_ok, shared_error))
             if ok is False or error is not None or name == "goal" and goal_only_invalid]
         if (not {"goal_evaluation", "parser_validation_error"} <= set(candidate)
                 or not goal_matches
@@ -10050,6 +10058,11 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
             issues.append(OracleIssue("accept_outcome_candidate_mismatch", "common experiment transition changed independently interpreted local result", (identity,)))
     else:
         expected = "EXECUTION_FAILURE" if goal_only_invalid and not disqualified else actual
+        if disqualified and (not isinstance(candidate_local, Mapping)
+                or candidate_local.get("outcome") != actual
+                or candidate_local.get("metric_value") is not None
+                or candidate_local.get("criterion_met") is not None):
+            issues.append(OracleIssue("accept_outcome_candidate_mismatch", "disqualified candidate carries unsupported scientific result data", (identity,)))
         if goal_only_invalid and not disqualified and (actual != expected or not isinstance(candidate_local, Mapping)
                 or candidate_local.get("outcome") != expected or candidate_local.get("criterion_met") is not None
                 or not isinstance(candidate_local.get("validation_error"), str) or "validity" not in candidate_local["validation_error"]):

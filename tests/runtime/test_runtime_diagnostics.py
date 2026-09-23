@@ -70,6 +70,22 @@ def test_json_and_text_redaction_preserves_nonsecret_context(tmp_path):
     assert "failed" in text and "&n=2" in text
 
 
+def test_workspace_text_is_retained_and_redacted_without_admitting_opaque_bytes():
+    from hypoloom.agent_aci import WorkspaceArtifact
+    from hypoloom.runtime_diagnostics import sanitize_payload, OMITTED_EMBEDDED_CONTENT
+    code = b"api_key = 'fixture-secret'\nprint('evaluation', 'fixture-secret')\n"
+    artifact = WorkspaceArtifact.from_bytes("parser/evaluate.py", code).to_dict()
+    clean = sanitize_payload({"proposed_workspace_artifacts": [artifact]})
+    decoded = base64.b64decode(clean["proposed_workspace_artifacts"][0]["content_base64"])
+    assert b"evaluation" in decoded and b"fixture-secret" not in decoded
+    assert b"[REDACTED]" in decoded
+    for invalid in ({"content_base64": artifact["content_base64"]},
+            {**artifact, "path": "../escape.py"}, {**artifact, "path": "/absolute.py"},
+            {**artifact, "content_base64": base64.b64encode(b"\x00binary").decode()},
+            {**artifact, "content_base64": "invalid base64"}):
+        assert sanitize_payload(invalid)["content_base64"] == OMITTED_EMBEDDED_CONTENT
+
+
 def test_storage_failure_is_visible_without_replacing_the_operation(tmp_path, capsys):
     (tmp_path / "diagnostics").write_text("not a directory")
     recorder = _recorder(tmp_path)

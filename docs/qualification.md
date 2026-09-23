@@ -8,6 +8,87 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — support evidence, Oracle and target admission, 2026-09-23
+
+This development repair addresses generic reproduced failures: numerically equal
+common targets were compared as raw strings, prestart integrity rejection was
+mistaken for failed parser execution, recent support selection followed command
+ordering rather than time, and valid WorkspaceArtifact text was omitted because
+its envelope has no media_type. Execution-only target validation also deferred a
+deterministic incompatibility until after Agent work. These are interpretation,
+diagnostic-copy and admission lifecycle problems. The fix reuses existing Decimal
+validation, recorded Attempt/command/fact identities, Git tree materialization and
+the execution validator. No new digest, persistent validation cache, checkpoint,
+schema authority or run migration is introduced. Private source reports stay in
+ignored local storage; tracked tests use generic invented fixtures.
+
+The independent Oracle normalizes only validated numeric targets at expert-input,
+preregistration and outcome-source comparisons. Other fields and parser bytes
+remain exact. Evidenced synthetic prestart integrity failure requires the matching
+integrity explanation and cannot carry scientific metrics or a goal result;
+actual parser failures still require diagnostics. A real Host regression closes
+and publishes a prestart rejection, passes Oracle, and exports its accepted
+Grounding, preregistration, source Agent and ACCEPT_OUTCOME records.
+
+Support copies retain a lightweight run summary alongside selected details and
+direct supporting records. Recent failures use end time (start time fallback)
+with stable IDs for ties; the first unrecovered failure remains available.
+Large duplicate bodies are omitted individually with field/record identities,
+while typed bounded UTF-8 WorkspaceArtifact content uses the existing path/type
+validator and credential redaction. Source availability and exported fidelity
+are distinct, including already sanitized historical evidence. Public/private
+selection boundaries and source immutability remain covered by regression tests.
+README, Web and TUI explain scope, observation time/state/revision, failure groups,
+omissions and exporter versus recorded Attempt environment. Contract schema
+version is not presented as the Profile authoring version. Optional issue text
+travels in a bounded authenticated POST body in Web or explicit CLI flags, is
+redacted, previewed and included even in public copies; nothing is uploaded.
+
+Profile admission validates the exact clean bound commit in a disposable tree
+through the same helper used by execution, before Host submission. Execution
+validation remains in place. Explicit read roots must be readable/searchable;
+the admission view uses the existing generic read-root projection and does not
+claim arbitrary data/model completeness. A 100-file, 100 MiB local target sample
+took **1.02 s** to bind and validate, used a 100 MiB temporary tree, left the Git
+index unchanged and removed the temporary tree. This is a local sample, not a
+large-repository latency guarantee.
+
+Final focused selection: **380 passed in 92.65 s** (`combined.txt`), covering
+shared acceptance Oracle/Host/execution, runtime diagnostics, debug/support
+public/private export, HTTP/TUI/browser flows, execution workspace, Profile
+admission, bootstrap and CLI. Native CLI + local scripted provider tests:
+**2 passed in 110.59 s** (`native-final.txt`), covering admitted runtime/data
+mounts, actual CPU failure/repair/publication and committed-submit crash recovery
+with same-session resume. Independent read-only census finds **35 closed Attempts**
+(30 successful Agents, one lost/recovered Agent, two failed and two successful
+Processes), four preregistrations and four canonical outcomes across two roots.
+Both recorded Oracles pass; no recorded process group or socket remains. A
+subsequent private support copy from each test root also resolves the recorded
+Claude CLI version from its actual transcript. No retained research run was used.
+
+Profiling a synthetic ~3.5 MB provider-context export identified repeated
+credential-pattern scanning, rather than Oracle or ZIP compression, as its main
+cost. The existing assignment pattern is now skipped only when its mandatory
+`:`/`=` delimiter is absent. The measured build time moved from **2.50–3.42 s**
+to **0.27–0.28 s** in the final local sample (ZIP ~0.02 s); provider wire remains
+available within existing limits. Preview/download still read fresh evidence;
+no export cache or frozen preview is introduced. These timings include profiling
+and do not establish a production latency bound.
+
+Evidence is retained under `.local/qualification/support-repair-20260923/`,
+including the original three failing Oracle regressions, interim privacy and
+test-fixture failures, profiling, admission measurement and independent census.
+An initial native sample overlapped source edits and correctly stopped on pinned
+runtime drift; its failures are retained, its groups are gone, and the final
+native sample ran with unchanged code. A later credential regression exposed an
+authorization-scheme extraction mistake; the existing negative checks caught it
+and all final privacy tests pass. No checks were weakened to accept these failures.
+
+This is focused development/G0 and bounded native CPU evidence. Full G1 offline
+and installed delivery, retained-run G2, paid/GPU G4–G5 and long soaks were not
+rerun; there is no new release promotion, paid/GPU work or existing-run mutation.
+The user subsequently authorized committing and pushing this repair to `dev`.
+
 ## Current development — deterministic init and configuration entry, 2026-09-22
 
 The reproduced failures were (1) init requiring admission of an unbound public

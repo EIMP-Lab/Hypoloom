@@ -48,7 +48,7 @@ class PublicSupportView:
             return self.identity(value, kind)
         if field.endswith("attempt_ids"):
             return [self.identity(item) for item in value] if isinstance(value, (list, tuple)) else []
-        if field == "identifiers" and isinstance(value, (list, tuple)):
+        if field in {"identifiers", "identifiers_without_selected_records"} and isinstance(value, (list, tuple)):
             result = []
             for item in value:
                 known = next((aliases[item] for aliases in self.aliases.values()
@@ -134,7 +134,9 @@ def support_profile_summary(projection):
     safe_budget["agent_invocation"] = {key: value for key, value in invocation.items()
         if key in {"max_tokens", "max_turns", "max_output_bytes", "wall_seconds", "max_cost", "token_enforcement_mode"}
         and (value is None or type(value) in {int, float} or value in ("enforce", "observe"))}
-    return {"available": True, "schema_version": contract.get("schema_version"),
+    return {"available": True, "research_contract_schema_version": contract.get("schema_version"),
+        "profile_authoring_version": None,
+        "version_note": "Internal admitted contract version; the original Profile authoring version is not recorded here.",
         "expert_count": len(experts) if isinstance(experts, (list, tuple, Mapping)) else
             len({item.get("owner_role") for item in components if isinstance(item, Mapping) and item.get("owner_role")}),
         "component_count": len(components) if isinstance(components, (list, tuple)) else None,
@@ -142,21 +144,51 @@ def support_profile_summary(projection):
 
 
 def support_readme(report, projection):
-    summary = projection.get("summary", {})
     lines = ["# Hypoloom support report", "",
         "This is a diagnostic copy, not a backup or a scientific verdict.",
         "Review the files before sharing. Nothing has been uploaded.", "",
         f"Private research data requested: {report['include_private_data']}",
         f"Run diagnosis available: {report['diagnosis']['available']}",
-        f"Recorded attempts in scope: {summary.get('attempt_count', 'unavailable')}",
+        f"Observed at (Unix seconds): {report.get('observation', {}).get('observed_at', 'unavailable')}",
+        f"Run state / revision: {report.get('observation', {}).get('run_state')} / {report.get('observation', {}).get('revision')}",
+        f"Recorded attempts in run: {report['selection'].get('run_attempt_count', 'unavailable')}",
+        f"Selected details / direct supporting details: {report['selection'].get('selected_detail_count', 0)} / {report['selection'].get('supporting_detail_count', 0)}",
         f"Selected attachment scope: {report['selection']['scope']}", "",
         "## Evidence", "", "See report.json for included, omitted and unavailable files.",
         "See debug.json for error codes, task stages and retry relationships.",
         "Public copies use local aliases; they cannot be passed to run commands.",
         "Free-text errors, local paths and research bodies require the private option.",
         "Private copies may contain proprietary prompts, code and data. Share privately.", "",
+        "Run-wide summaries and Oracle findings may refer to records outside the selected details.",
+        "Source availability does not imply exact exported bytes: inspect reconstructability and detail_omissions.",
+        "Exporter environment describes this machine now; attempt_environments describes recorded evidence only.",
+        "Download reads current evidence and may observe facts added after preview.", "",
         "## Tell the maintainer", "", "- What were you trying to do?",
         "- What did you expect, and what happened instead?", "- Which steps reproduce the problem?",
         "- Is it repeatable, and which version last worked?", "",
         "Paste a reviewed description into the issue; attach only approved evidence.", ""]
+    if report.get("issue_description"):
+        lines += ["## Submitted description", ""]
+        for field, value in report["issue_description"].items():
+            lines += [f"{field}: {value}", ""]
+    groups = report.get("failure_groups", [])
+    if groups:
+        lines += ["## Failure groups", ""]
+        for group in groups:
+            lines.append(f"- {group['code']} / {group['stage']}: {group['count']} occurrence(s)")
+        lines.append("")
     return "\n".join(lines).encode()
+
+
+def support_failure_groups(attempts):
+    groups = {}
+    for item in attempts:
+        if item.get("terminal_reason") in {None, "SUCCEEDED", "CANCELLED"}:
+            continue
+        key = (item.get("failure_code") or item["terminal_reason"],
+               item.get("failure_stage") or "unknown", item.get("diagnostic_summary"))
+        group = groups.setdefault(key, {"code": key[0], "stage": key[1], "message": key[2],
+            "count": 0, "attempt_ids": []})
+        group["count"] += 1
+        group["attempt_ids"].append(item["attempt_id"])
+    return list(groups.values())

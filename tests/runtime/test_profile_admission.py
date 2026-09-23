@@ -148,6 +148,37 @@ def test_profile_v3_compiles_six_yaml_sources_to_the_existing_contract(
     assert report.create_run_payload["execution"]["read_roots"] == [str(read_root)]
 
 
+@pytest.mark.parametrize("destination,admitted", [("train.py", True), ("../data", False)])
+def test_admission_checks_exact_committed_tree_without_changing_source(tmp_path, monkeypatch, capsys, destination, admitted):
+    import tempfile
+    profile, target, read_root = _materialize_expert_loop_pilot_v3(tmp_path)
+    (target / "resource-link").symlink_to(destination)
+    _git(target, "add", "resource-link")
+    _git(target, "-c", "user.name=Tests", "-c", "user.email=tests@invalid.example",
+         "commit", "--quiet", "-m", "committed link")
+    before = (target / ".git/index").read_bytes()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    report = admit_profile(profile, run_id="tree-admission")
+    assert report.admitted is admitted, report.to_dict()
+    assert (target / ".git/index").read_bytes() == before
+    assert (target / "resource-link").readlink().as_posix() == destination
+    assert list(scratch.iterdir()) == []
+    if admitted:
+        assert report.to_dict()["resource_visibility"]["read_roots"] == [
+            {"host": str(read_root), "sandbox": str(read_root)}]
+    else:
+        assert report.create_run_payload is None
+        assert any(item.code == "target_binding_failed" and "resource-link" in item.message
+                   and "escapes" in item.message for item in report.blockers)
+        monkeypatch.setattr("hypoloom.cli._submit", lambda *args, **kwargs: pytest.fail("incompatible target reached Host"))
+        assert cli_main(["profile-check", profile.name, "--profiles-root", str(tmp_path),
+                         "--run-id", "tree-admission", "--cpu-only"]) == 2
+        assert any(item["code"] == "target_binding_failed" for item in json.loads(capsys.readouterr().err)["blockers"])
+        assert list(scratch.iterdir()) == []
+
+
 def test_profile_v3_folds_background_and_principles_into_role_focus(
     tmp_path: Path,
 ) -> None:

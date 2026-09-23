@@ -382,6 +382,10 @@ def build_parser() -> argparse.ArgumentParser:
     debug_export.add_argument("--preview", action="store_true", help="preview a support report without creating an output")
     debug_export.add_argument("--archive", action="store_true", help="write the support copy as a ZIP file")
     debug_export.add_argument("--recent-failures", action="store_true", help="include attachments for the last three failing commands and their retries")
+    debug_export.add_argument("--issue-actual", help="optional observed behavior included in the reviewed support copy")
+    debug_export.add_argument("--issue-expected", help="optional expected behavior")
+    debug_export.add_argument("--issue-steps", help="optional reproduction steps")
+    debug_export.add_argument("--issue-occurred-at", help="optional occurrence time and timezone")
     debug_export.add_argument("--max-total-mib", type=int, default=20, help="support uncompressed byte limit (default: 20 MiB)")
     debug_export.add_argument("--max-file-mib", type=int, default=4, help="support per-attachment limit (default: 4 MiB)")
     debug_export.add_argument("--max-files", type=int, default=500, help="support output file limit (default: 500)")
@@ -738,7 +742,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     from .support_bundle import build_support_bundle, export_support_bundle
                     options = dict(attempt_id=args.attempt_id, include_private_data=args.include_private_data,
                         recent_failures=args.recent_failures, max_bytes=args.max_total_mib * 1024 * 1024,
-                        max_file_bytes=args.max_file_mib * 1024 * 1024, max_files=args.max_files)
+                        max_file_bytes=args.max_file_mib * 1024 * 1024, max_files=args.max_files,
+                        issue_description={key: value for key in ("actual", "expected", "steps", "occurred_at")
+                            if (value := getattr(args, "issue_" + key)) is not None})
                     if args.preview:
                         if args.output or args.archive:
                             parser.error("--preview cannot be combined with --output or --archive")
@@ -758,7 +764,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "run_id": args.run_id, "attempt_id": args.attempt_id,
                     }, ensure_ascii=False, sort_keys=True))
                     return 0
-                if args.include_private_data or args.preview or args.archive or args.recent_failures:
+                if args.include_private_data or args.preview or args.archive or args.recent_failures or any(
+                        getattr(args, "issue_" + key) is not None for key in ("actual", "expected", "steps", "occurred_at")):
                     parser.error("support options require --support-bundle")
                 if args.run_id is None or args.output is None:
                     parser.error("exact fixture export requires --run-id and --output")

@@ -18,7 +18,7 @@ def test_support_http_preview_download_scope_and_source_immutability(tmp_path):
     thread = _start(server)
     try:
         assert _request(server, "GET", "/api/support")[0] == 401
-        assert _request(server, "POST", "/api/support", token=_TOKEN)[0] == 405
+        assert _request(server, "POST", "/api/support", token=_TOKEN)[0] == 400
         for query in ("run_id=other", "path=/etc/passwd", "private=2", "format=sql", "max_mib=9999",
                       "scope=run&scope=failures", "attempt_id=not-in-run", "attempt_id=", "attempt_id=../outside"):
             assert _request(server, "GET", "/api/support?" + query, token=_TOKEN)[0] == 400
@@ -42,6 +42,30 @@ def test_support_http_preview_download_scope_and_source_immutability(tmp_path):
     finally:
         _stop(server, thread)
     assert _row_census(root / "state.sqlite") == before
+
+
+def test_support_post_description_uses_authorized_bounded_body(tmp_path):
+    import http.client
+    server = create_server(tmp_path / "absent", "report", port=0, token=_TOKEN)
+    thread = _start(server)
+    try:
+        for token, expected in ((None, 401), (_TOKEN, 200)):
+            connection = http.client.HTTPConnection(*server.server_address[:2], timeout=5)
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["Authorization"] = "Bearer " + token
+            connection.request("POST", "/api/support?format=preview", headers=headers,
+                body=json.dumps({"actual": "Error API_KEY=fixture-secret", "steps": "Start once"}))
+            response = connection.getresponse()
+            body = response.read()
+            assert response.status == expected
+            if expected == 200:
+                assert json.loads(body)["report"]["issue_description"]["steps"] == "Start once"
+                assert b"fixture-secret" not in body
+            connection.close()
+    finally:
+        _stop(server, thread)
+    assert not (tmp_path / "absent").exists()
 
 
 def test_support_endpoint_remains_available_when_run_diagnosis_cannot_load(tmp_path):

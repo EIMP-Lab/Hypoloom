@@ -383,11 +383,13 @@ def test_browser_support_preview_private_choice_and_zip_download(browser, tmp_pa
     page.evaluate("""(() => {
       const prior = window.fetch;
       window.supportCalls = [];
+      window.supportBodies = [];
       window.supportStatus = 200;
       window.fetch = async (path, options = {}) => {
         if (!path.startsWith('/api/support?')) return prior(path, options);
         window.fixtureRequests.push([options.method, path, options.headers.Authorization]);
         window.supportCalls.push(path);
+        window.supportBodies.push(JSON.parse(options.body));
         const query = new URL(path, 'http://observer.invalid').searchParams;
         if (window.supportStatus !== 200) return new Response('{}', {status: window.supportStatus});
         if (query.get('format') === 'zip') return new Response(Uint8Array.from(atob(""" + json.dumps(base64.b64encode(zipped.getvalue()).decode()) + """), c => c.charCodeAt(0)));
@@ -398,6 +400,7 @@ def test_browser_support_preview_private_choice_and_zip_download(browser, tmp_pa
     })()""")
     assert page.evaluate("supportCalls.length") == 0
     page.click("#open-support")
+    page.evaluate("document.querySelector('#support-actual').value = 'Observed a failure'; document.querySelector('#support-actual').dispatchEvent(new Event('input'))")
     assert page.evaluate("document.querySelector('#support-dialog').open")
     assert not page.evaluate("document.querySelector('#support-private').checked")
     assert page.evaluate("document.querySelector('#download-support').disabled")
@@ -428,7 +431,8 @@ def test_browser_support_preview_private_choice_and_zip_download(browser, tmp_pa
     page.click("#preview-support")
     page.wait("document.querySelector('#support-status').textContent.includes('authenticated')")
     assert page.evaluate("document.querySelector('#download-support').disabled")
-    assert page.evaluate("fixtureRequests.filter(row => row[1].startsWith('/api/support?')).every(row => row[0] === 'GET' && row[2] === 'Bearer browser-fixture-token')")
+    assert page.evaluate("fixtureRequests.filter(row => row[1].startsWith('/api/support?')).every(row => row[0] === 'POST' && row[2] === 'Bearer browser-fixture-token')")
+    assert page.evaluate("supportBodies.every(body => body.actual === 'Observed a failure')")
     page.click("#close-support")
     assert not page.evaluate("document.querySelector('#support-dialog').open")
     assert not page.errors
@@ -641,7 +645,8 @@ def browser(tmp_path: Path, request):
         yield driver
         assert not driver.errors
         requests = driver.evaluate("window.fixtureRequests")
-        assert all(method == "GET" or (operator and method == "POST" and path == "/api/human-answer") for method, path, _ in requests)
+        assert all(method == "GET" or (method == "POST" and path.startswith("/api/support?"))
+            or (operator and method == "POST" and path == "/api/human-answer") for method, path, _ in requests)
         assert all(
             token == f"Bearer {_TOKEN}"
             for _, path, token in requests

@@ -144,6 +144,20 @@ def _declaration(raw):
     )
 
 
+def normalized_declaration(raw):
+    """Compare validated numeric targets exactly, independent of spelling.
+
+    All nonnumeric fields and the separately verified parser bytes stay exact.
+    Do not mutate the accepted source or use the production evaluator here.
+    """
+    _declaration(raw)
+    return {**raw, "criteria": [
+        dict(item) if item["operator"] == "IS_TRUE"
+        else {**item, "target": _normal(item["target"])}
+        for item in raw["criteria"]
+    ]}
+
+
 @dataclass(frozen=True)
 class SharedOracleResult:
     observations: Mapping[str, Any]
@@ -346,7 +360,7 @@ def audit_shared_bindings(
                 artifact_root,
             )
             _need(
-                value["acceptance"] == declaration
+                normalized_declaration(value["acceptance"]) == normalized_declaration(declaration)
                 and _workspace({"proposed_workspace_artifacts": value["files"]})
                 == files,
                 "expert common evaluator source differs from final Grounding bytes",
@@ -397,7 +411,7 @@ def audit_shared_bindings(
                 artifact_root,
             )
             _need(
-                binding["acceptance"] == declaration,
+                normalized_declaration(binding["acceptance"]) == normalized_declaration(declaration),
                 "preregistration changed the accepted common protocol",
             )
             experiment_attempts = [

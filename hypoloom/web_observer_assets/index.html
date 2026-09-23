@@ -364,6 +364,15 @@
         <label>Package limit<select id="support-limit"><option value="5">5 MiB</option><option value="20" selected>20 MiB</option><option value="50">50 MiB</option></select></label>
       </div>
       <label class="support-private"><input id="support-private" type="checkbox"> Include private research attachments</label>
+      <details><summary>Optional issue description (included in this package)</summary>
+        <div class="support-options">
+          <label>What happened?<textarea id="support-actual" maxlength="2000"></textarea></label>
+          <label>What did you expect?<textarea id="support-expected" maxlength="2000"></textarea></label>
+          <label>Steps to reproduce<textarea id="support-steps" maxlength="2000"></textarea></label>
+          <label>When, including timezone?<input id="support-occurred_at" maxlength="2000"></label>
+        </div>
+        <p class="panel-copy">These fields are included even in public copies. Review them for private information.</p>
+      </details>
       <p id="support-privacy" class="panel-copy">Default: error codes, retry relationships and environment details; local identifiers are replaced, free-text errors and research bodies are omitted.</p>
       <p class="panel-copy">Private attachments may contain prompts, code, logs and provider responses. Review them locally and share through a private channel.</p>
       <div class="support-actions"><button id="preview-support" type="button">Preview package</button><button id="download-support" type="button" disabled>Download ZIP</button></div>

@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import os
+import re
 import stat
 import time
 import zipfile
@@ -18,11 +19,12 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import _SAFE_ID
-from .debug_mode import DebugModeError, _is_credential_key, build_debug_report
+from .debug_mode import DebugModeError, _is_credential_key, build_debug_report, attempt_time_key
+from .support_evidence import select_evidence, mark_export_fidelity, trim_payloads
 from .runtime_diagnostics import (
-    OMITTED_EMBEDDED_CONTENT, REDACTED, decode_embedded_content, sanitize_text,
+    OMITTED_EMBEDDED_CONTENT, REDACTED, decode_embedded_content, sanitize_text, text_credential_values,
 )
-from .support_presentation import PublicSupportView, support_environment, support_profile_summary, support_readme
+from .support_presentation import PublicSupportView, support_environment, support_profile_summary, support_readme, support_failure_groups
 
 DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 DEFAULT_MAX_FILE_BYTES = 4 * 1024 * 1024
@@ -205,9 +207,14 @@ def _clean_bytes(raw: bytes, reasons: set[str], secrets: tuple[str, ...]) -> byt
 
 
 def _known_secrets(value: object) -> tuple[str, ...]:
-    return tuple({item for node in _walk(value) if isinstance(node, Mapping)
-        for key, item in node.items() if _is_credential_key(str(key))
-        and isinstance(item, str) and item and item != REDACTED})
+    secrets = set()
+    for node in _walk(value):
+        if isinstance(node, Mapping):
+            secrets.update(item for key, item in node.items() if _is_credential_key(str(key))
+                and isinstance(item, str) and item and item != REDACTED)
+        elif isinstance(node, str):
+            secrets.update(text_credential_values(node))
+    return tuple(secrets)
 
 
 def _protected_inputs(report: Mapping[str, Any]) -> tuple[Path, ...]:
@@ -225,18 +232,12 @@ def _protected_inputs(report: Mapping[str, Any]) -> tuple[Path, ...]:
 
 
 def _selected_projection(report: dict[str, Any], private: bool) -> dict[str, Any]:
-    selected = {item["attempt_id"] for item in report["attempts"]}
+    report = dict(report)
     if not private:
-        for item in report["attempts"]:
-            item.pop("observation", None)
-            item.pop("command", None)
+        for group in ("attempts", "supporting_attempts"):
+            report[group] = [{key: value for key, value in item.items()
+                if key not in {"observation", "command"}} for item in report.get(group, [])]
         report.pop("related_records", None)
-    elif report["selected_attempt_id"] is not None:
-        # build_debug_report intentionally carries run-wide records for legacy
-        # fixtures. A selected support copy carries only the selected payload.
-        records = report.pop("related_records")
-        report["related_records"] = {"artifacts": [item for item in records["artifacts"]
-            if item["attempt_id"] in selected]}
     return report
 
 
@@ -246,6 +247,7 @@ def build_support_bundle(
     recent_failures: bool = False, max_bytes: int = DEFAULT_MAX_BYTES,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES, max_files: int = DEFAULT_MAX_FILES,
     output_path: str | Path | None = None,
+    issue_description: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
     """Build the same bounded copy for directory, preview and browser ZIP output.
 
@@ -253,6 +255,11 @@ Live files may be observed at different instants. Missing completion records,
 unavailable older data and sanitized copies remain explicit in the report.
 """
     root = _lexical(state_root)
+    issue_description = {} if issue_description is None else issue_description
+    if (not isinstance(issue_description, Mapping)
+            or set(issue_description) - {"actual", "expected", "steps", "occurred_at"}
+            or any(not isinstance(value, str) or len(value) > 2000 for value in issue_description.values())):
+        raise SupportBundleError("issue description accepts actual/expected/steps/occurred_at text, up to 2000 characters each")
     if type(max_bytes) is not int or not 65536 <= max_bytes <= 256 * 1024 * 1024:
         raise SupportBundleError("total byte limit must be between 64 KiB and 256 MiB")
     if type(max_file_bytes) is not int or not 256 <= max_file_bytes <= 32 * 1024 * 1024:
@@ -274,7 +281,7 @@ unavailable older data and sanitized copies remain explicit in the report.
         "oracle": {"available": False, "error": "diagnosis_unavailable"}}
     if run_id is not None:
         try:
-            projection = build_debug_report(root, run_id, attempt_id=attempt_id, include_payloads=True)
+            projection = build_debug_report(root, run_id, include_payloads=True)
             diagnosis = {"available": True, "reason": "recorded_run"}
         except DebugModeError as exc:
             # An exact selector typo must not quietly become a successful export.
@@ -288,7 +295,8 @@ unavailable older data and sanitized copies remain explicit in the report.
         for source in _protected_inputs(projection):
             if output.is_relative_to(source) or source.is_relative_to(output):
                 raise SupportBundleError("support output and recorded input roots must be disjoint")
-    secrets = _known_secrets(projection)
+    secrets = (*_known_secrets(projection), *_known_secrets(issue_description))
+    profile_summary = support_profile_summary(projection)
     public = PublicSupportView()
     if run_id is not None:
         public.identity(run_id, "run")
@@ -304,25 +312,11 @@ unavailable older data and sanitized copies remain explicit in the report.
                 if not path.is_symlink() and path.is_dir() and _SAFE_ID.fullmatch(path.name)][:max_files]
         except OSError:
             pass
-    if recent_failures and attempt_id is None:
-        failed = [item for item in projection["attempts"] if
-            (item["terminal_reason"] not in {None, "SUCCEEDED", "CANCELLED"})
-            or (item.get("structured_output_correction") or {}).get("rejected_count", 0)]
-        commands = set(list(dict.fromkeys(item["command_id"] for item in reversed(failed)))[:3])
-        selected_ids = {item["attempt_id"] for item in projection["attempts"] if item["command_id"] in commands}
-        if not selected_ids:
-            selected_ids = {item["attempt_id"] for item in projection["attempts"][-3:]}
-        by_id = {item["attempt_id"]: item for item in projection["attempts"]}
-        while True:
-            previous = len(selected_ids)
-            for item in projection["attempts"]:
-                if item.get("retry_of_attempt_id") in selected_ids:
-                    selected_ids.add(item["attempt_id"])
-                if item["attempt_id"] in selected_ids:
-                    selected_ids.update(value for key in ("retry_of_attempt_id", "source_attempt_id")
-                        if (value := item.get(key)) in by_id)
-            if len(selected_ids) == previous:
-                break
+    try:
+        primary_ids, supporting_ids, run_attempt_count = select_evidence(projection, attempt_id, recent_failures)
+    except ValueError as exc:
+        raise SupportBundleError("attempt not found in run") from exc
+    selected_ids = primary_ids | supporting_ids
     selected_ids.update(diagnostic_only)
     attachments: list[dict[str, Any]] = []
     report: dict[str, Any] = {
@@ -330,10 +324,12 @@ unavailable older data and sanitized copies remain explicit in the report.
         "run_id": run_id if include_private_data else public.identity(run_id, "run"),
         "selected_attempt_id": attempt_id if include_private_data else public.identity(attempt_id),
         "include_private_data": include_private_data, "diagnosis": diagnosis,
-        "environment": support_environment(), "profile_summary": support_profile_summary(projection),
+        "environment": support_environment(), "profile_summary": profile_summary,
         "selection": {"scope": "attempt" if attempt_id else "recent_failures" if recent_failures else "run" if run_id else "startup",
             "attachment_attempt_count": len(selected_ids) - len(diagnostic_only),
-            "diagnostic_only_capture_count": len(diagnostic_only), "run_attempt_count": len(projection["attempts"])},
+            "diagnostic_only_capture_count": len(diagnostic_only), "run_attempt_count": run_attempt_count,
+            "selected_detail_count": len(primary_ids), "supporting_detail_count": len(supporting_ids),
+            "order": "ended_at_or_started_at_then_attempt_id"},
         "limits": {"max_bytes": max_bytes, "max_file_bytes": max_file_bytes, "max_files": max_files},
         "limited": False,
         "source_read_only": True, "restorable_backup": False,
@@ -348,11 +344,28 @@ unavailable older data and sanitized copies remain explicit in the report.
         "agent_captures": [],
     }
     report["limitations"].append("SQLite read-only connections may create standard WAL/SHM reader sidecars; no authority records are written.")
+    report["observation"] = {"observed_at": projection.get("observed_at"),
+        "run_state": projection.get("run_state", {}).get("state"),
+        "revision": projection.get("run_state", {}).get("revision")}
+    report["issue_description"] = _sanitize(dict(issue_description), set(), secrets)
+    groups = _sanitize(support_failure_groups(projection.get("run_attempts", projection["attempts"])), set(), secrets)
+    report["failure_groups"] = groups if include_private_data else public.clean(groups)
+    report["attempt_environments"] = [{"attempt_id": item["attempt_id"] if include_private_data else public.identity(item["attempt_id"]),
+        "scope": "recorded_attempt", "adapter_version": item.get("adapter_version"),
+        "requested_model_identity": item.get("requested_model_identity"), "claude_cli_versions": [],
+        "cli_version_source": "unavailable"}
+        for item in projection["attempts"] + projection.get("supporting_attempts", []) if item["kind"] == "AGENT"]
+    report["attempt_environments"] = _sanitize(report["attempt_environments"], set(), secrets)
+    if not include_private_data:
+        for environment in report["attempt_environments"]:
+            for key in ("adapter_version", "requested_model_identity"):
+                environment[key] = public.clean(environment[key])
     files: dict[str, bytes] = {}
     written_bytes, inspected = 0, 0
     # Leave space for the existing attachment report and readable summary.
     metadata_reserve = min(1024 * 1024, max_bytes // 2)
     deadline = time.monotonic() + 15
+    copied: set[Path] = set()
 
     def write(relative: str, raw: bytes, *, metadata: bool = False) -> None:
         nonlocal written_bytes
@@ -373,6 +386,9 @@ unavailable older data and sanitized copies remain explicit in the report.
 
     def copy(source: Path, allowed: Path, *, private: bool = True) -> None:
         nonlocal inspected
+        if source in copied:
+            return
+        copied.add(source)
         inspected += 1
         sensitivity = "private_research_data" if private or include_private_data else "operational_metadata"
         try:
@@ -392,6 +408,20 @@ unavailable older data and sanitized copies remain explicit in the report.
                 entry(source, sensitivity, "omitted", "database_or_credentials_file")
                 return
             raw = _read_file(source, allowed, max_bytes=max_file_bytes)
+            if source.name == "transcript.jsonl":
+                versions = set()
+                for line in raw.splitlines():
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue
+                    version = record.get("version") if isinstance(record, Mapping) else None
+                    if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+(?:[-+.][\w.]+)?", version):
+                        versions.add(version)
+                owner = next((part for part in source.parts if part in selected_ids), None)
+                for environment in report["attempt_environments"]:
+                    if environment["attempt_id"] == (owner if include_private_data else public.identity(owner)) and versions:
+                        environment.update(claude_cli_versions=sorted(versions), cli_version_source="recorded_transcript")
             reasons: set[str] = set()
             file_secrets = secrets
             if not private and not include_private_data:
@@ -433,12 +463,13 @@ unavailable older data and sanitized copies remain explicit in the report.
                 if inspected > max_files * 2 or time.monotonic() > deadline:
                     report["limited"] = True
                     return
+                directories.sort(key=lambda name: (name == "provider", name))
                 for name in list(directories):
                     child = Path(base) / name
                     if child.is_symlink() or name == ".git":
                         entry(child, "private_research_data", "omitted", "symlink_or_repository_internals")
                         directories.remove(name)
-                for name in sorted(files):
+                for name in sorted(files, key=lambda name: (name not in {"result.json", "events.jsonl", "exchange.json", "stderr.log"}, name)):
                     if inspected > max_files * 2 or time.monotonic() > deadline:
                         report["limited"] = True
                         return
@@ -505,7 +536,17 @@ unavailable older data and sanitized copies remain explicit in the report.
             agent_capture(diagnostic_root, selected_id)
             report["agent_captures"][-1]["identity_source"] = "diagnostic_directory_only"
             tree(diagnostic_root, diagnostics=True)
-        for attempt in projection["attempts"]:
+        evidence_attempts = projection["attempts"] + projection.get("supporting_attempts", [])
+        evidence_attempts.sort(key=lambda item: (not item.get("final_failure_transition", False),
+            item["attempt_id"] != projection["summary"].get("first_unrecovered_failure_attempt_id"),
+            -attempt_time_key(item)[0]))
+        # Preserve small causal archives before provider wire and full transcripts.
+        for attempt in evidence_attempts:
+            if attempt["kind"] == "AGENT":
+                evaluator = root / "artifacts" / run_id / "agent" / attempt["attempt_id"] / "transcript/evaluator"
+                if evaluator.exists():
+                    tree(evaluator)
+        for attempt in evidence_attempts:
             selected_id = attempt["attempt_id"]
             if selected_id not in selected_ids:
                 continue
@@ -520,8 +561,12 @@ unavailable older data and sanitized copies remain explicit in the report.
                 tree(diagnostic_root, diagnostics=True)
                 tree(root / "artifacts" / run_id / "agent" / selected_id / "transcript")
             else:
-                for category in ("work", "result-staging"):
-                    tree(root / "artifacts" / category / selected_id / "logs")
+                observation = attempt.get("observation", {})
+                if observation.get("synthetic_before_spawn") is True and observation.get("process_group_id") is None:
+                    entry(root / "artifacts/work" / selected_id / "logs", "operational_metadata", "not_applicable", "process_not_spawned")
+                else:
+                    for category in ("work", "result-staging"):
+                        tree(root / "artifacts" / category / selected_id / "logs")
                 for artifact in artifacts:
                     if artifact["attempt_id"] != selected_id:
                         continue
@@ -560,24 +605,21 @@ unavailable older data and sanitized copies remain explicit in the report.
                 report["limited"] = True
             entry(host, "operational_metadata", "unavailable", str(exc) if isinstance(exc, SupportBundleError) else type(exc).__name__)
         reasons = set()
-        if recent_failures:
-            projection["attempts"] = [item for item in projection["attempts"] if item["attempt_id"] in selected_ids]
-            projection["summary"]["attempt_count"] = len(projection["attempts"])
-            projection["related_records"] = {"artifacts": [item for item in artifacts if item["attempt_id"] in selected_ids]}
         clean_projection = _sanitize(_selected_projection(projection, include_private_data), reasons, secrets)
+        mark_export_fidelity(projection, clean_projection, "export_sanitized_or_private_fields_omitted")
         if not include_private_data:
             clean_projection = public.clean(clean_projection)
             reasons.add("private_text_paths_and_identifiers_omitted")
         omitted_fields = [] if include_private_data else ["observation", "command", "related_records"]
+        if include_private_data:
+            omissions = trim_payloads(clean_projection, metadata_reserve // 2, _json_bytes)
+            if omissions:
+                report["limited"] = True
+                reasons.add("private_debug_payloads_exceed_size_limit")
+                omitted_fields = sorted({item["field"] for item in omissions})
+                report["detail_omissions"] = omissions
+                mark_export_fidelity(projection, clean_projection, "export_size_limit")
         debug_bytes = _json_bytes(clean_projection)
-        if len(debug_bytes) > metadata_reserve // 2 and include_private_data:
-            report["limited"] = True
-            reasons.add("private_debug_payloads_exceed_size_limit")
-            omitted_fields = ["observation", "command", "related_records"]
-            # Keep versions, outcomes and retry relations when the duplicate
-            # embedded research bodies do not fit the summary budget.
-            clean_projection = _selected_projection(clean_projection, False)
-            debug_bytes = _json_bytes(clean_projection)
         if len(debug_bytes) > metadata_reserve // 2:
             report["limited"] = True
             reasons.add("debug_projection_exceeds_size_limit")
@@ -629,12 +671,14 @@ def support_zip(files: Mapping[str, bytes]) -> bytes:
 def export_support_bundle(state_root: str | Path, run_id: str | None, output_dir: str | Path, *,
         attempt_id: str | None = None, include_private_data: bool = False, archive: bool = False,
         recent_failures: bool = False, max_bytes: int = DEFAULT_MAX_BYTES,
-        max_file_bytes: int = DEFAULT_MAX_FILE_BYTES, max_files: int = DEFAULT_MAX_FILES) -> dict[str, Any]:
+        max_file_bytes: int = DEFAULT_MAX_FILE_BYTES, max_files: int = DEFAULT_MAX_FILES,
+        issue_description: Mapping[str, str] | None = None) -> dict[str, Any]:
     output = _lexical(output_dir)
     _validate_destination(_lexical(state_root), output)
     report, files = build_support_bundle(state_root, run_id, attempt_id=attempt_id,
         include_private_data=include_private_data, recent_failures=recent_failures,
-        max_bytes=max_bytes, max_file_bytes=max_file_bytes, max_files=max_files, output_path=output)
+        max_bytes=max_bytes, max_file_bytes=max_file_bytes, max_files=max_files, output_path=output,
+        issue_description=issue_description)
     try:
         if archive:
             with os.fdopen(os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as stream:

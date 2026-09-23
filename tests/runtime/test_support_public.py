@@ -123,7 +123,8 @@ def test_recent_failure_selection_retains_recovery_and_private_mode_is_explicit(
     assert report["selection"]["attachment_attempt_count"] == 2
     assert {row["attempt_id"] for row in projection["attempts"]} == {first, second}
     assert projection["attempts"][1]["retry_of_attempt_id"] == first
-    assert "commands" not in projection["related_records"]
+    assert {row["command_id"] for row in projection["related_records"]["commands"]} == {
+        row["command_id"] for row in projection["attempts"]}
 
 
 def test_admitted_profile_summary_includes_counts_but_not_profile_text(tmp_path):
@@ -135,6 +136,8 @@ def test_admitted_profile_summary_includes_counts_but_not_profile_text(tmp_path)
     assert report["profile_summary"]["available"]
     assert report["profile_summary"]["expert_count"] == 3
     assert report["profile_summary"]["profile_text_included"] is False
+    assert report["profile_summary"]["research_contract_schema_version"] is not None
+    assert report["profile_summary"]["profile_authoring_version"] is None
     assert report["environment"]["scope"] == "exporter_environment_now"
     assert "state_root" not in report["environment"]
 
@@ -184,7 +187,64 @@ def test_large_private_projection_keeps_diagnosis_when_payloads_do_not_fit(tmp_p
     assert {row["attempt_id"] for row in debug.get("attempts", [])} == {first, second}
     assert debug["attempts"][1]["retry_of_attempt_id"] == first
     assert debug["run_versions"] and debug["oracle"]["available"]
-    assert all("observation" not in row for row in debug["attempts"])
+    failed, recovered = debug["attempts"]
+    assert failed["observation"]["failure_code"] == "literature_openalex_response_invalid"
+    assert "diagnostics" not in failed["observation"]
+    assert recovered["observation"]["response"]
+    assert failed["reconstructability"]["terminal_evidence"] == "SANITIZED_RECORDED_OUTPUT"
     assert report["limited"]
     assert "private_debug_payloads_exceed_size_limit" in report["attachments"][0]["redactions"]
-    assert "observation" in report["attachments"][0]["omitted_fields"]
+    assert "observation.diagnostics" in report["attachments"][0]["omitted_fields"]
+    assert report["detail_omissions"] == [{"attempt_id": first,
+        "field": "observation.diagnostics", "reason": "export_size_limit"}]
+
+
+def test_recent_failures_follow_time_and_keep_unselected_failure_summaries(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from hypoloom.fake_agent import default_request
+    from hypoloom.state_store import HostWriterCapability, StateStore
+    from hypoloom.debug_mode import build_debug_report
+    from hypoloom.support_bundle import build_support_bundle
+    import hypoloom.support_bundle as support
+    monkeypatch.setattr(support, "support_environment", lambda: {})
+    root = tmp_path / "state"
+    run_id, _, _ = _seed_agent_retry(root)
+    store = StateStore(root, HostWriterCapability.issue()).initialize()
+    try:
+        for identity, end in (("a-newest", 1000), ("z-oldest", 100), ("y-middle", 200), ("x-recent", 300)):
+            request = replace(default_request(), command_id=identity, attempt_id=identity,
+                              owner_workflow_id=run_id)
+            with store.transaction() as tx:
+                tx.record_command({"command_id": identity, "run_id": run_id, "workflow_id": identity,
+                    "expected_revision": 0, "command_type": "REQUEST_AUXILIARY", "request": {},
+                    "status": "accepted", "result": {}, "revision": 1})
+                tx.open_attempt({"attempt_id": identity, "run_id": run_id, "workflow_id": identity,
+                    "command_id": identity, "kind": "AGENT", "attempt_ordinal": 1,
+                    "host_generation": "test", "started_at": end - 1, "payload": {"request": request.to_dict()}})
+                tx.close_attempt(identity, terminal_reason="FAILED", ended_at=end,
+                    payload={"failure_code": "generic_failure", "integrity_error": "generic recorded problem"})
+    finally:
+        store.close()
+    assert build_debug_report(root, run_id)["summary"]["first_unrecovered_failure_attempt_id"] == "z-oldest"
+    report, files = build_support_bundle(root, run_id, recent_failures=True, include_private_data=True)
+    debug = json.loads(files["debug.json"])
+    assert [item["attempt_id"] for item in debug["attempts"]] == ["y-middle", "x-recent", "a-newest"]
+    assert [item["attempt_id"] for item in debug["supporting_attempts"]] == ["z-oldest"]
+    assert debug["summary"]["attempt_count"] == report["selection"]["run_attempt_count"] == 6
+    assert report["selection"]["selected_detail_count"] == 3
+    assert len(debug["run_attempts"]) == 6
+    assert report["failure_groups"][0]["count"] >= 1
+    assert report["observation"]["run_state"] == "ACTIVE"
+    assert report["observation"]["revision"] == 1
+
+
+def test_issue_description_is_bounded_redacted_and_explicit_in_public_copy(tmp_path):
+    from hypoloom.support_bundle import build_support_bundle, SupportBundleError
+    report, files = build_support_bundle(tmp_path / "absent", None,
+        issue_description={"actual": "API_KEY=fixture-secret failed", "expected": "Finish", "steps": "Start"})
+    assert report["issue_description"]["expected"] == "Finish"
+    assert b"fixture-secret" not in b"\n".join(files.values())
+    assert b"Submitted description" in files["README.md"]
+    for invalid in ({"actual": "x" * 2001}, {"extra": "value"}, {"steps": []}):
+        with pytest.raises(SupportBundleError, match="issue description"):
+            build_support_bundle(tmp_path / "absent", None, issue_description=invalid)
