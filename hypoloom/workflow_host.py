@@ -3585,6 +3585,8 @@ class WorkflowHost:
         plan = _component_plan(research.document, str(request.component_id), str(candidate.method_family_id), patch, grant.kind is ResourceKind.GPU)
         supplied = arguments.get("command", candidate.execution_argv or plan["argv"])
         argv = tuple(shlex.split(supplied) if isinstance(supplied, str) else supplied)
+        if any(value == "/workspace" or value.startswith("/workspace/") for value in argv):
+            raise AgentACIError("invalid_command", "formal execution cannot reference authoring-only /workspace; captured source is available under /input")
         if not argv or (candidate.measurement is None and candidate.evaluation_scope != "GOAL" and argv[0] != "python"):
             raise AgentACIError("invalid_command", "the execution contract requires a Python argv")
         if component_is_production(research.document, str(request.component_id)) and argv != tuple(plan["argv"]):
@@ -4257,6 +4259,7 @@ class WorkflowHost:
         mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt["attempt_id"])
         # Submitted target code is source, not a newly declared result artifact.
         implementation_bytes = self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]))
+        submitted_target_patch = patch is not None and implementation_bytes is None
         plan = _component_plan(self._research_contract(run_id).document, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]), implementation_bytes, _contract_gpu(spec["payload"]["execution_contract"]))
         planning = dict(agent_request=agent_request, agent_response=agent_response,
             target_env=dict(contract["environment"]), timeout_seconds=contract["timeout_seconds"],
@@ -4338,8 +4341,16 @@ class WorkflowHost:
                 repairable_result_envelope = True
         elif integrity_error is None and reason is AttemptTerminalReason.SUCCEEDED:
             try:
-                apply_check = None if target_binding is None else lambda value: workspace.check_target_patch(
-                    attempt_id=attempt["attempt_id"], patch=value)
+                if target_binding is None:
+                    apply_check = None
+                elif submitted_target_patch:
+                    apply_check = lambda value: (
+                        "differs from the submitted patch used for execution"
+                        if value != patch else workspace.check_bound_target_patch(
+                            target_binding, patch=value))
+                else:
+                    apply_check = lambda value: workspace.check_target_patch(
+                        attempt_id=attempt["attempt_id"], patch=value)
                 validated_result = (validate_measurement_result(raw_component, ScientificMeasurement.from_dict(payload["measurement"]), publication.path)
                     if payload.get("measurement") is not None else validate_component_result(raw_component, protocol, publication.path,
                     git_apply_check=apply_check, implementation_bytes=implementation_bytes))

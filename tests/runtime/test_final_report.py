@@ -119,3 +119,91 @@ def test_report_counts_research_nodes_once_and_accepts_contextless_reviews():
     result = run_outcome_context([], attempts, [])
     assert result["expert_nodes_started"] == 1
     assert result["process_attempts"] == 0
+    assert result["process_attempt_details"] == []
+
+
+def test_report_context_distinguishes_rejected_gpu_execution_from_accepted_science():
+    from hypoloom.final_report import run_outcome_context
+
+    outcome = {"fact_id": "outcome-fact", "fact_type": "CanonicalOutcomeAccepted",
+        "payload": {"execution_id": "execution-one", "outcome_id": "outcome-one",
+            "outcome": "INTEGRITY_REJECTED", "validation_code": "artifact_inventory_mismatch",
+            "metric_value": None}}
+    process = {"attempt_id": "process-one", "kind": "PROCESS", "state": "CLOSED",
+        "execution_id": "execution-one", "terminal_reason": "SUCCEEDED",
+        "observation_json": json.dumps({"execution_id": "execution-one", "returncode": 0,
+            "resource_usage": {"gpu_uuid": "GPU-test", "sample_count": 27,
+                "minimum_free_memory_mib": 50_901, "pressure_exceeded": False}})}
+
+    result = run_outcome_context([outcome], [process], [])
+
+    assert result["process_attempts"] == 1
+    assert result["process_attempt_details"] == [{
+        "attempt_id": "process-one",
+        "execution_id": "execution-one",
+        "terminal_reason": "SUCCEEDED",
+        "returncode": 0,
+        "completed_process": True,
+        "gpu_observed": True,
+        "evidence_scope": "raw_diagnostic_only",
+        "resource_usage": {"gpu_uuid": "GPU-test", "sample_count": 27,
+            "minimum_free_memory_mib": 50_901, "pressure_exceeded": False},
+        "canonical_outcome": {"outcome_id": "outcome-one",
+            "outcome": "INTEGRITY_REJECTED", "validation_code": "artifact_inventory_mismatch",
+            "metric_value": None},
+    }]
+
+
+def test_report_context_recognizes_multi_gpu_process_telemetry():
+    from hypoloom.final_report import run_outcome_context
+
+    process = {"attempt_id": "process-two", "kind": "PROCESS", "state": "CLOSED",
+        "execution_id": "execution-two", "terminal_reason": "SUCCEEDED",
+        "observation_json": json.dumps({"execution_id": "execution-two", "returncode": 0,
+            "resource_usage": [
+                {"gpu_uuid": "GPU-one", "sample_count": 5,
+                    "minimum_free_memory_mib": 40_000, "pressure_exceeded": False},
+                {"gpu_uuid": "GPU-two", "sample_count": 6,
+                    "minimum_free_memory_mib": 39_000, "pressure_exceeded": False},
+            ]})}
+
+    detail = run_outcome_context([], [process], [])["process_attempt_details"][0]
+
+    assert detail["completed_process"] is True
+    assert detail["gpu_observed"] is True
+    assert detail["evidence_scope"] == "raw_diagnostic_only"
+    assert detail["resource_usage"] == [
+        {"gpu_uuid": "GPU-one", "sample_count": 5,
+            "minimum_free_memory_mib": 40_000, "pressure_exceeded": False},
+        {"gpu_uuid": "GPU-two", "sample_count": 6,
+            "minimum_free_memory_mib": 39_000, "pressure_exceeded": False},
+    ]
+
+
+def test_report_context_uses_canonical_agent_accounting_without_pricing_unknowns():
+    from hypoloom.final_report import run_outcome_context
+
+    def agent(attempt_id, state, *, response=None, max_cost="5"):
+        observation = {"request": {"role": "researcher", "budget": {
+            "max_tokens": 10_000, "max_turns": 20, "max_cost": max_cost}}}
+        if response is not None:
+            observation["response"] = response
+        return {"attempt_id": attempt_id, "kind": "AGENT", "state": state,
+            "command_id": attempt_id, "observation_json": json.dumps(observation)}
+
+    attempts = [
+        agent("reported", "CLOSED", response={"token_usage": {"total_tokens": 123},
+            "turn_count": 2, "cost": "1.25"}),
+        agent("closed-unknown", "CLOSED"),
+        agent("open-reservation", "OPEN", max_cost="2"),
+    ]
+
+    accounting = run_outcome_context([], attempts, [])["agent_accounting"]
+
+    assert accounting == {
+        "scope": "durable_attempts_before_final_report",
+        "reported_cost_usd": "1.25",
+        "reserved_cost_usd": "7",
+        "unknown_closed_attempts": 1,
+        "open_attempts": 1,
+    }

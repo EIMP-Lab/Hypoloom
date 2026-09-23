@@ -39,6 +39,26 @@ def test_submission_plan_honors_exact_count_and_profile_cap(tmp_path, monkeypatc
         assert len(grant.device_uuids) == count
 
 
+def test_submission_plan_rejects_authoring_workspace_path(tmp_path, monkeypatch):
+    import hypoloom.workflow_host as module
+    resources = _resources(tmp_path)
+    request, args = arguments(count=2)
+    args["command"] = ["python", "/workspace/experiment.py"]
+    request = replace(request, input_artifacts=(EmbeddedInput.from_bytes(
+        "node--compute-capabilities", "application/json", resources.snapshot().canonical_bytes()),))
+    validated, _, _ = validate_experiment_submission(request, args)
+    research = SimpleNamespace(document={"budget": {}, "methodology": {"controls": {
+        "product": {"safety": {"max_gpus_per_experiment": 2}}}}},
+        component=lambda component: SimpleNamespace(result_kind=ComponentResultKind.METRIC))
+    host = SimpleNamespace(compute_resources=resources, shared_gpu=None,
+        _research_contract=lambda run: research, _implementation_patch=lambda *args: None)
+    monkeypatch.setattr(module, "_component_plan", lambda *args: {"argv": ("python", "experiment.py")})
+    monkeypatch.setattr(module, "component_is_production", lambda *args: False)
+
+    with pytest.raises(AgentACIError, match="authoring-only /workspace"):
+        WorkflowHost._submission_execution_plan(host, request, validated, args)
+
+
 def test_busy_resources_query_accounts_for_every_uuid_and_excludes_own_workflow():
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row

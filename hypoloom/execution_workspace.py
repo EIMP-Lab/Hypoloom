@@ -588,6 +588,24 @@ class ExecutionWorkspace:
         )
         return True
 
+    def check_bound_target_patch(
+        self,
+        binding: GitTargetBinding,
+        *,
+        patch: bytes,
+        git_executable: str | os.PathLike[str] = "git",
+        timeout_seconds: float = 30.0,
+    ) -> bool:
+        """Check a patch against the clean commit named by ``binding``."""
+
+        with self.verified_detached_target_tree(
+            binding,
+            patch=patch,
+            git_executable=git_executable,
+            timeout_seconds=timeout_seconds,
+        ):
+            return True
+
     def plan(
         self,
         *,

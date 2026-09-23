@@ -17,6 +17,10 @@ def test_final_report_names_native_skill_and_exact_input_files_without_losing_so
     assert prompt["instruction"].startswith("Invoke Skill hypoloom-grounding:final-report")
     assert "Inspect the environment and run local compilation/tests" not in prompt["instruction"]
     assert "/report/FINAL_REPORT.md" in prompt["instruction"]
+    assert "raw_diagnostic_only" in prompt["instruction"]
+    assert "never describe it as no GPU run or no GPU smoke" in prompt["instruction"]
+    assert "reported_cost_usd" in prompt["instruction"]
+    assert "Reservations are not measured spend" in prompt["instruction"]
     assert "Read/Write/Edit/Glob/Grep/Bash/Skill" in prompt["instruction"]
     assert "NO_ACCEPTED_VERDICT" in prompt["instruction"]
     assert "advertise their exact read-only /inputs paths" in prompt["instruction"]

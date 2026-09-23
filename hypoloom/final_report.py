@@ -3,14 +3,29 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from decimal import Decimal
 
 
 def run_outcome_context(facts, attempts, final_failures):
     """Summarize existing rows for the report; this accepts no new outcome."""
+    from .agent_budget import fold_agent_attempts
     from .domain import ResearchFactType
 
     counts = Counter(row["fact_type"] for row in facts)
     by_id = {row["attempt_id"]: row for row in attempts}
+    outcomes_by_execution = {}
+    for row in facts:
+        if row.get("fact_type") != ResearchFactType.CANONICAL_OUTCOME_ACCEPTED.value:
+            continue
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            try:
+                payload = json.loads(row["payload_json"])
+            except (KeyError, TypeError, json.JSONDecodeError):
+                continue
+        execution_id = payload.get("execution_id")
+        if isinstance(execution_id, str) and execution_id:
+            outcomes_by_execution[execution_id] = payload
     nodes = set()
     for row in attempts:
         if row["kind"] != "AGENT":
@@ -27,9 +42,68 @@ def run_outcome_context(facts, attempts, final_failures):
         failures.append({"attempt_id": row["attempt_id"], "command": request["command"],
             "failure_code": failure["failure_code"], "failure_stage": observation.get("failure_stage"),
             "provider_subtype": observation.get("diagnostics", {}).get("provider_subtype")})
+    charges = fold_agent_attempts({**row,
+        "observation_json": row.get("observation_json") or json.dumps(row.get("observation", {}))}
+        for row in attempts)
+    reported = [item for item in charges if item.source != "declared" and item.cost is not None]
+    reserved = [item for item in charges if item.source == "declared"]
+    agent_accounting = {
+        "scope": "durable_attempts_before_final_report",
+        "reported_cost_usd": str(sum((item.cost for item in reported), Decimal("0"))),
+        "reserved_cost_usd": str(sum(
+            (item.cost for item in reserved if item.cost is not None), Decimal("0"))),
+        "unknown_closed_attempts": sum(item.state == "CLOSED" for item in reserved),
+        "open_attempts": sum(item.state == "OPEN" for item in charges),
+    }
+    process_details = []
+    for row in attempts:
+        if row.get("kind") != "PROCESS":
+            continue
+        try:
+            observation = json.loads(row.get("observation_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            observation = {}
+        if not isinstance(observation, dict):
+            observation = {}
+        execution_id = row.get("execution_id") or observation.get("execution_id")
+        outcome = outcomes_by_execution.get(execution_id)
+        raw_resource = observation.get("resource_usage")
+        resources = ([raw_resource] if isinstance(raw_resource, dict)
+            else raw_resource if isinstance(raw_resource, list)
+            and all(isinstance(item, dict) for item in raw_resource) else [])
+        gpu_observed = any(isinstance(item.get("gpu_uuid"), str) and bool(item["gpu_uuid"])
+            and type(item.get("sample_count")) is int and item["sample_count"] > 0
+            for item in resources)
+        completed = (row.get("state") == "CLOSED"
+            and row.get("terminal_reason") == "SUCCEEDED"
+            and observation.get("returncode") == 0)
+        scientific = (isinstance(outcome, dict)
+            and outcome.get("outcome") in {"SUCCESS", "CLEAN_REFUTATION"})
+        detail = {
+            "attempt_id": row.get("attempt_id"),
+            "execution_id": execution_id,
+            "terminal_reason": row.get("terminal_reason"),
+            "returncode": observation.get("returncode"),
+            "completed_process": completed,
+            "gpu_observed": gpu_observed,
+            "evidence_scope": ("accepted_scientific_evidence" if scientific
+                else "raw_diagnostic_only" if completed else "no_completed_process"),
+        }
+        if resources:
+            bounded_resources = [{name: item.get(name) for name in (
+                "gpu_uuid", "sample_count", "minimum_free_memory_mib", "pressure_exceeded")}
+                for item in resources]
+            detail["resource_usage"] = (bounded_resources[0]
+                if isinstance(raw_resource, dict) else bounded_resources)
+        if isinstance(outcome, dict):
+            detail["canonical_outcome"] = {name: outcome.get(name) for name in (
+                "outcome_id", "outcome", "validation_code", "metric_value")}
+        process_details.append(detail)
     return {"fact_counts": {kind.value: counts[kind.value] for kind in ResearchFactType},
         "expert_nodes_started": len(nodes),
         "process_attempts": sum(row["kind"] == "PROCESS" for row in attempts),
+        "process_attempt_details": process_details,
+        "agent_accounting": agent_accounting,
         "final_failures": failures}
 
 
