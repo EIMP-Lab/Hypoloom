@@ -1,6 +1,11 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [PR #1 integration 2026-09-24](../qualification.md#current-development--pr-1-patch-binding-and-report-evidence-2026-09-24):
+  clean-base submitted-patch checks, actual publishing Attempt ownership,
+  device/task-memory evidence, canonical cost accounting and bounded CPU/native
+  validation. Original review and counterexamples remain in ignored
+  `.local/reviews/pr-1-analysis.md` and adjacent evidence files.
 - [Provider recovery repair 2026-09-24](../qualification.md#current-development--provider-availability-and-operator-recovery-2026-09-24):
   shared bounded waiting, observable status/notifications, scoped operator
   connection selection and restart behavior, preserved private-settings pinning,

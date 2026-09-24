@@ -65,6 +65,70 @@ class ImportedTargetAgent(FakeAgent):
             WorkspaceArtifact.from_bytes("implementation.patch", patch))))
 
 
+class SelfPublishingTargetEditAgent(FakeAgent):
+    """Execute and publish the same cumulative patch captured at submission."""
+
+    def __init__(self, target: Path, *, publish_different_patch: bool = False):
+        super().__init__()
+        before = (target / "src/frozen_target/runner.py").read_text()
+        after = """import argparse, hashlib, json
+from pathlib import Path
+
+MARKER = "TARGET_EXECUTED"
+parser = argparse.ArgumentParser()
+parser.add_argument("--dataset", required=True)
+parser.add_argument("--model", required=True)
+parser.add_argument("--seed", required=True, type=int)
+parser.add_argument("--out", required=True)
+parser.add_argument("--fixture", required=True)
+args = parser.parse_args()
+assert (args.dataset, args.model, args.seed) == ("FIXTURE", "candidate-v1", 7)
+assert Path(args.fixture).read_text(encoding="utf-8") == "frozen fixture\\n"
+result_path = Path(args.out)
+implementation = Path("/input/implementation.patch").read_bytes()
+published = implementation
+if __PUBLISH_DIFFERENT_PATCH__:
+    published = implementation.replace(
+        b"+published = implementation\\n",
+        b"+published = bytes(implementation)\\n")
+    assert published != implementation
+(result_path.parent / "implementation.patch").write_bytes(published)
+result_path.write_text(json.dumps({
+    "artifacts": {"implementation_patch": "implementation.patch"},
+    "identity": {
+        "method_family_id": "fake-family-v1",
+        "implementation_sha256": hashlib.sha256(published).hexdigest(),
+        "core_config_sha256": hashlib.sha256(b"frozen-config").hexdigest(),
+    },
+    "trials": [{"seed": 7, "metrics": {"max_score": 4}, "clean": True}],
+}, sort_keys=True), encoding="utf-8")
+print(MARKER, flush=True)
+""".replace("__PUBLISH_DIFFERENT_PATCH__", repr(publish_different_patch))
+        self.patch = "".join(difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile="a/src/frozen_target/runner.py",
+            tofile="b/src/frozen_target/runner.py",
+        )).encode()
+
+    def invoke(self, request):
+        response = super().invoke(request)
+        if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+            return response
+        files = {
+            item.path: item.content_bytes()
+            for item in response.proposed_workspace_artifacts
+        }
+        files["implementation.patch"] += self.patch
+        return with_output_digest(replace(
+            response,
+            proposed_workspace_artifacts=tuple(
+                WorkspaceArtifact.from_bytes(path, value)
+                for path, value in files.items()
+            ),
+        ))
+
+
 def _preset_v4_payload(root, target, run_id, *, read_roots=()):
     source = documents()
     source["goal"]["metric"] = {"name": "max_score", "direction": "maximize", "target": 4}
@@ -83,6 +147,61 @@ def _preset_v4_payload(root, target, run_id, *, read_roots=()):
     admitted = admit_profile(profile, run_id=run_id, allow_gpu=False)
     assert admitted.admitted, admitted.to_dict()
     return admitted.create_run_payload
+
+
+@pytest.mark.parametrize(
+    ("publish_different_patch", "expected"),
+    [
+        (False, ("SUCCESS", "4")),
+        (True, ("INTEGRITY_REJECTED", None)),
+    ],
+)
+def test_submitted_patch_artifact_is_bound_to_executed_patch(
+    tmp_path, mount_fixture_root, publish_different_patch, expected,
+):
+    target, commit = _production_target(mount_fixture_root)
+    run_id = "submitted-patch-artifact-clean-base"
+    payload = _production_design_payload(run_id, target, commit)
+    contract = payload["research_contract"]
+    component = contract["components"][0]
+    component["result"]["target"] = "4"
+    component["required_artifacts"] = ["implementation_patch"]
+    contract["goal"]["summary_metric"]["target"] = "4"
+    requirements = contract["protocols"]["frozen-single"]["requirements"]
+    requirements["required_artifacts"] = ["implementation_patch"]
+    requirements["artifact_validators"] = [{
+        "artifact": "implementation_patch",
+        "type": "unified_diff",
+        "apply_check": True,
+    }]
+
+    state = tmp_path / "state"
+    host = WorkflowHost(state)
+    host.agent = SelfPublishingTargetEditAgent(
+        target, publish_different_patch=publish_different_patch)
+    try:
+        host.initialize()
+        accepted = host.handle(ControlRequest(
+            schema_version=1,
+            request_id="create-" + run_id,
+            expected_revision=0,
+            command="CREATE_RUN",
+            payload=payload,
+        ))
+        assert accepted.status == "accepted", accepted
+        _drive_to_completion(host, run_id)
+        outcomes = host.store.list_facts(run_id, "CanonicalOutcomeAccepted")
+        assert [
+            (item["payload"]["outcome"], item["payload"]["metric_value"])
+            for item in outcomes
+        ] == [expected]
+    finally:
+        host.close()
+
+    assert _git(target, "rev-parse", "HEAD") == commit
+    assert _git(target, "status", "--porcelain=v1") == ""
+    report = Oracle(state / "state.sqlite", state / "artifacts").audit(run_id)
+    assert report.ok, report.issues
 
 
 @pytest.mark.parametrize("restart_after_submit", [False, True])

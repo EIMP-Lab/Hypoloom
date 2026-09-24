@@ -106,6 +106,15 @@ experts cannot be assembled into a success. On success the run enters
 STOPPING, cleans up tasks and produces the final report, without continuing
 Leader/Debate or further optimization.
 
+The final report distinguishes a completed raw execution from an accepted
+scientific result. A retry's accepted result belongs to the Attempt that
+published it; earlier lost attempts are not extra successful replications.
+GPU device monitoring and permission to use a GPU do not prove this task ran
+GPU computations. Task memory observations retain unknown sampling coverage.
+Model costs distinguish reported spend from budget reservations and unknown
+charges; their frozen summary precedes the first final-report attempt and
+therefore excludes the report calls themselves.
+
 ## GPU scheduling
 
 Same-card sharing requires explicitly connecting a GPU pool. The pool's

@@ -1495,6 +1495,13 @@ def test_target_overlay_applies_patch_inside_enclosing_repository(
         "MARKER = 'base'\nAUDIT = 'causal_audit'\n"
     )
 
+    assert workspace.check_bound_target_patch(binding, patch=patch)
+    with pytest.raises(TargetPreparationError, match="patch does not apply"):
+        workspace.check_target_patch(
+            attempt_id="attempt-nested",
+            patch=patch,
+        )
+
     assert workspace.check_target_patch(
         attempt_id="attempt-nested",
         patch=(

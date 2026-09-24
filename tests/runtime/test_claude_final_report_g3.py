@@ -115,6 +115,12 @@ def test_real_cli_host_final_report_cites_accepted_cpu_science_and_archives_befo
         verdicts = host.store.list_facts(run_id, "GoalVerdictRecorded")
         assert len(outcomes) == len(verdicts) == 1
         assert outcomes[0]["payload"]["outcome"] == "SUCCESS"
+        process, = [row for row in attempts if row["kind"] == "PROCESS"]
+        detail, = report.context["run_outcome"]["process_attempt_details"]
+        assert detail["attempt_id"] == process["attempt_id"]
+        assert detail["evidence_scope"] == "accepted_scientific_evidence"
+        assert detail["canonical_outcome"]["outcome_id"] == outcomes[0]["payload"]["outcome_id"]
+        assert detail["completed_process"] is True and detail["gpu_device_monitored"] is False
         assert verdicts[0]["payload"]["verdict"] == "GOAL_MET"
         assert outcomes[0]["payload"]["outcome_id"] in report.report
         assert verdicts[0]["fact_id"] in report.report and "GOAL_MET" in report.report

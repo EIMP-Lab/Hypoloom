@@ -136,6 +136,13 @@ TUI 和 bearer 保护的 loopback Web 视图投影持久证据。显式的人工
 分享是独立的用户动作。模型用量报告保留已知费用和未知预留额,而不是虚构
 provider 账单。
 
+最终报告通过已有 `execution_artifacts` 关系，将 canonical outcome 归属到实际发布
+它的 Attempt；相同 execution ID 不会让 LOST 重试继承科研证据。设备压力摘要保留
+真实字段 `gpu_minimum_free_memory_mib` 及已有 `owned_memory` 观察，设备采样标为
+`gpu_device_monitored`，不据此推断本任务执行过 GPU 计算。Agent 费用汇总复用
+`fold_agent_attempts`，仍属于首次最终报告尝试前固定的不可变上下文。
+不新增事实、schema 或独立记账来源。
+
 ## 选择性精读 — 2026-09-16
 
 **已在本地 ACI-20 工作候选中实现;资格状态记录于

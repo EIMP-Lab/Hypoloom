@@ -8,6 +8,50 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — PR 1 patch binding and report evidence, 2026-09-24
+
+The user authorizes organizing and merging PR #1. Its original head is `785f95b`;
+the integration includes current dev `27ebc4e`. Submitted target patches are
+checked against the clean bound commit, with exact executed/published bytes in
+the existing unified-diff apply-check path. Formal submission rejects direct
+`/workspace` argv paths. Report cost summaries reuse `fold_agent_attempts`,
+separating reported charges, reservations and unknown closed Attempts.
+
+Review reproduced three report projection defects. An execution-level success
+was attached to a LOST predecessor as well as its successful retry; device
+sampling was labelled task GPU execution; and the real
+`gpu_minimum_free_memory_mib` field was read under a nonexistent name. The
+repair joins outcomes through `execution_artifacts` to the publishing Attempt,
+labels device sampling explicitly, preserves existing owned-memory observations
+and reads the actual summary field. Report instructions retain raw execution
+without turning it into accepted science or proof of CUDA computation. The cost
+summary is explicitly frozen before the first report attempt. No new persistent
+fact, validator authority, schema, hash or GPU attribution mechanism is added.
+
+The initial review passed 106 PR-head checks and 42 merge-preview checks, yet
+independent counterexamples exposed the projection errors. Evidence is under
+ignored `.local/reviews/pr-1-*`. Repair development retains its initial 13 passes
+and seven failures (including one test import mistake); after correcting that
+import, the real Host restart test independently fails on LOST evidence ownership
+in `pr-1-fix-host-red.xml`. After repair, all 20 targeted checks pass (5.56 s),
+including the same actual Host/CPU restart and report-input assertions.
+
+The broader selection passes **290 checks** (124.94 s) with no skips, covering
+execution workspaces, submitted patches, actual CPU Host tools/restart, report
+acceptance/retries/Oracle, canonical accounting, GPU attribution, provider
+recovery and documentation (`pr-1-fix-regression.xml`). The installed native
+Claude Code/local-provider/CPU final-report path also passes **one check**
+(51.66 s, `pr-1-fix-native.xml`), including the exact publishing Attempt and
+canonical outcome in the model's report context, actual report archival and
+full Oracle. An independent post-test census counts **16 CLOSED/SUCCEEDED
+Attempts: 15 Agents and one CPU Process**, one published result, no live
+recorded process groups and no control socket (`pr-1-fix-native-census.json`).
+These selections overlap; their counts are not summed as unique cases.
+
+Existing research runs are unchanged. Tests use disposable CPU state and a
+scripted local API, with no paid-model calls or actual GPU qualification.
+This is bounded development validation, not a full release promotion.
+
 ## Current development — provider availability and operator recovery, 2026-09-24
 
 The user authorized general framework repair and retired the earlier research
