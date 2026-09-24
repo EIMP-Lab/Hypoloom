@@ -122,20 +122,41 @@ def test_report_counts_research_nodes_once_and_accepts_contextless_reviews():
     assert result["process_attempt_details"] == []
 
 
+def _report_gpu_usage(uuid="GPU-11111111-1111-1111-1111-111111111111", *, free=50_901,
+                      owned_bytes=4096, incomplete=False):
+    from hypoloom.compute_resources import GpuPressureTracker, GpuRuntimeObservation
+    from hypoloom.gpu_attribution import OwnedMemoryAccumulator
+
+    tracker = GpuPressureTracker(initial_observation=GpuRuntimeObservation(
+        uuid=uuid, total_memory_mib=64_000, free_memory_mib=free,
+        used_memory_mib=64_000 - free, utilization_percent=0),
+        reserve_memory_mib=1000, grace_seconds=30)
+    usage = tracker.summary.to_dict()
+    owned = OwnedMemoryAccumulator()
+    owned.sample({"gpu_uuid": uuid, "root_process_group_id": 100, "complete": True,
+        "resident_bytes": owned_bytes, "reason": None})
+    if incomplete:
+        owned.sample({"gpu_uuid": uuid, "root_process_group_id": 100, "complete": False,
+            "resident_bytes": None, "reason": "process_unavailable"})
+    usage["owned_memory"] = owned.summary
+    return usage
+
+
 def test_report_context_distinguishes_rejected_gpu_execution_from_accepted_science():
     from hypoloom.final_report import run_outcome_context
 
     outcome = {"fact_id": "outcome-fact", "fact_type": "CanonicalOutcomeAccepted",
-        "payload": {"execution_id": "execution-one", "outcome_id": "outcome-one",
+        "payload": {"execution_id": "execution-one", "outcome_id": "outcome-one", "artifact_id": "artifact-one",
             "outcome": "INTEGRITY_REJECTED", "validation_code": "artifact_inventory_mismatch",
             "metric_value": None}}
+    usage = _report_gpu_usage()
     process = {"attempt_id": "process-one", "kind": "PROCESS", "state": "CLOSED",
         "execution_id": "execution-one", "terminal_reason": "SUCCEEDED",
         "observation_json": json.dumps({"execution_id": "execution-one", "returncode": 0,
-            "resource_usage": {"gpu_uuid": "GPU-test", "sample_count": 27,
-                "minimum_free_memory_mib": 50_901, "pressure_exceeded": False}})}
+            "resource_usage": usage})}
 
-    result = run_outcome_context([outcome], [process], [])
+    result = run_outcome_context([outcome], [process], [], artifacts=[{
+        "artifact_id": "artifact-one", "execution_id": "execution-one", "attempt_id": "process-one"}])
 
     assert result["process_attempts"] == 1
     assert result["process_attempt_details"] == [{
@@ -144,10 +165,11 @@ def test_report_context_distinguishes_rejected_gpu_execution_from_accepted_scien
         "terminal_reason": "SUCCEEDED",
         "returncode": 0,
         "completed_process": True,
-        "gpu_observed": True,
+        "gpu_device_monitored": True,
         "evidence_scope": "raw_diagnostic_only",
-        "resource_usage": {"gpu_uuid": "GPU-test", "sample_count": 27,
-            "minimum_free_memory_mib": 50_901, "pressure_exceeded": False},
+        "resource_usage": {"gpu_uuid": usage["gpu_uuid"], "sample_count": 1,
+            "gpu_minimum_free_memory_mib": 50_901, "pressure_exceeded": False,
+            "owned_memory": usage["owned_memory"]},
         "canonical_outcome": {"outcome_id": "outcome-one",
             "outcome": "INTEGRITY_REJECTED", "validation_code": "artifact_inventory_mismatch",
             "metric_value": None},
@@ -157,27 +179,64 @@ def test_report_context_distinguishes_rejected_gpu_execution_from_accepted_scien
 def test_report_context_recognizes_multi_gpu_process_telemetry():
     from hypoloom.final_report import run_outcome_context
 
+    usage = [_report_gpu_usage(free=40_000, owned_bytes=0),
+        _report_gpu_usage("GPU-22222222-2222-2222-2222-222222222222", free=39_000, incomplete=True)]
     process = {"attempt_id": "process-two", "kind": "PROCESS", "state": "CLOSED",
         "execution_id": "execution-two", "terminal_reason": "SUCCEEDED",
         "observation_json": json.dumps({"execution_id": "execution-two", "returncode": 0,
-            "resource_usage": [
-                {"gpu_uuid": "GPU-one", "sample_count": 5,
-                    "minimum_free_memory_mib": 40_000, "pressure_exceeded": False},
-                {"gpu_uuid": "GPU-two", "sample_count": 6,
-                    "minimum_free_memory_mib": 39_000, "pressure_exceeded": False},
-            ]})}
+            "resource_usage": usage})}
 
     detail = run_outcome_context([], [process], [])["process_attempt_details"][0]
 
     assert detail["completed_process"] is True
-    assert detail["gpu_observed"] is True
+    assert detail["gpu_device_monitored"] is True
+    assert "gpu_observed" not in detail
     assert detail["evidence_scope"] == "raw_diagnostic_only"
-    assert detail["resource_usage"] == [
-        {"gpu_uuid": "GPU-one", "sample_count": 5,
-            "minimum_free_memory_mib": 40_000, "pressure_exceeded": False},
-        {"gpu_uuid": "GPU-two", "sample_count": 6,
-            "minimum_free_memory_mib": 39_000, "pressure_exceeded": False},
-    ]
+    assert [item["gpu_minimum_free_memory_mib"] for item in detail["resource_usage"]] == [40_000, 39_000]
+    assert detail["resource_usage"][0]["owned_memory"] == usage[0]["owned_memory"]
+    assert detail["resource_usage"][1]["owned_memory"] == usage[1]["owned_memory"]
+    assert detail["resource_usage"][0]["owned_memory"]["peak"]["resident_bytes"] == 0
+    assert detail["resource_usage"][1]["owned_memory"]["peak"]["resident_bytes"] == 4096
+    assert detail["resource_usage"][1]["owned_memory"]["latest"]["resident_bytes"] is None
+
+
+def test_report_device_monitoring_does_not_invent_task_gpu_usage():
+    from hypoloom.final_report import run_outcome_context
+
+    usage = _report_gpu_usage(owned_bytes=0)
+    del usage["owned_memory"]
+    process = {"attempt_id": "process-one", "kind": "PROCESS", "state": "CLOSED",
+        "execution_id": "execution-one", "terminal_reason": "SUCCEEDED",
+        "observation_json": json.dumps({"returncode": 0, "resource_usage": usage})}
+    detail = run_outcome_context([], [process], [])["process_attempt_details"][0]
+    assert detail["gpu_device_monitored"] is True
+    assert "gpu_observed" not in detail
+    assert detail["resource_usage"]["owned_memory"] is None
+    assert detail["resource_usage"]["gpu_minimum_free_memory_mib"] == 50_901
+
+
+@pytest.mark.parametrize("outcome_kind", ["SUCCESS", "CLEAN_REFUTATION"])
+def test_report_evidence_belongs_to_published_attempt_not_every_execution_retry(outcome_kind):
+    from hypoloom.final_report import run_outcome_context
+
+    attempts = [{"attempt_id": identity, "kind": "PROCESS", "state": "CLOSED",
+        "execution_id": "execution-one", "terminal_reason": reason,
+        "observation_json": json.dumps({"returncode": code})}
+        for identity, reason, code in [("lost", "LOST", None), ("published", "SUCCEEDED", 0)]]
+    facts = [{"fact_type": "CanonicalOutcomeAccepted", "payload": {
+        "execution_id": "execution-one", "artifact_id": "artifact-one",
+        "outcome_id": "outcome-one", "outcome": outcome_kind, "metric_value": "0.55"}}]
+    artifacts = [{"artifact_id": "artifact-one", "execution_id": "execution-one", "attempt_id": "published"}]
+
+    details = run_outcome_context(facts, attempts, [], artifacts=artifacts)["process_attempt_details"]
+    assert details[0]["evidence_scope"] == "no_completed_process"
+    assert "canonical_outcome" not in details[0]
+    assert details[1]["evidence_scope"] == "accepted_scientific_evidence"
+    assert details[1]["canonical_outcome"]["outcome"] == outcome_kind
+    # Without the publication relation, an execution-level fact cannot prove ownership.
+    unbound = run_outcome_context(facts, attempts, [])["process_attempt_details"]
+    assert unbound[1]["evidence_scope"] == "raw_diagnostic_only"
+    assert "canonical_outcome" not in unbound[1]
 
 
 def test_report_context_uses_canonical_agent_accounting_without_pricing_unknowns():

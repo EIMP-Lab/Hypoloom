@@ -171,6 +171,15 @@ exports redact private research fields and local identities by default; sharing
 is a separate user action. Model usage reports preserve known charges and
 unknown reservations rather than inventing a provider invoice.
 
+Final-report Process details join canonical outcomes to their publishing Attempt
+through the existing `execution_artifacts` relation. A shared execution ID alone
+does not give lost retries scientific evidence. Device pressure summaries retain
+their actual `gpu_minimum_free_memory_mib` field and the existing `owned_memory`
+observations; device sampling is labelled `gpu_device_monitored`, without inferring
+task GPU computation. Agent cost summaries reuse `fold_agent_attempts` and remain
+part of the immutable context captured before the first final-report attempt.
+No additional fact, schema or accounting authority is introduced.
+
 ## Selective paper reading — 2026-09-16
 
 **Implemented in the local ACI-20 working candidate; qualification status is

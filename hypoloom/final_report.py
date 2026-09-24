@@ -6,14 +6,15 @@ from collections import Counter
 from decimal import Decimal
 
 
-def run_outcome_context(facts, attempts, final_failures):
+def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
     """Summarize existing rows for the report; this accepts no new outcome."""
     from .agent_budget import fold_agent_attempts
     from .domain import ResearchFactType
 
     counts = Counter(row["fact_type"] for row in facts)
     by_id = {row["attempt_id"]: row for row in attempts}
-    outcomes_by_execution = {}
+    artifact_owners = {(row["artifact_id"], row["execution_id"]): row["attempt_id"] for row in artifacts}
+    outcomes_by_attempt = {}
     for row in facts:
         if row.get("fact_type") != ResearchFactType.CANONICAL_OUTCOME_ACCEPTED.value:
             continue
@@ -23,9 +24,9 @@ def run_outcome_context(facts, attempts, final_failures):
                 payload = json.loads(row["payload_json"])
             except (KeyError, TypeError, json.JSONDecodeError):
                 continue
-        execution_id = payload.get("execution_id")
-        if isinstance(execution_id, str) and execution_id:
-            outcomes_by_execution[execution_id] = payload
+        owner = artifact_owners.get((payload.get("artifact_id"), payload.get("execution_id")))
+        if owner is not None:
+            outcomes_by_attempt[owner] = payload
     nodes = set()
     for row in attempts:
         if row["kind"] != "AGENT":
@@ -66,12 +67,12 @@ def run_outcome_context(facts, attempts, final_failures):
         if not isinstance(observation, dict):
             observation = {}
         execution_id = row.get("execution_id") or observation.get("execution_id")
-        outcome = outcomes_by_execution.get(execution_id)
+        outcome = outcomes_by_attempt.get(row["attempt_id"])
         raw_resource = observation.get("resource_usage")
         resources = ([raw_resource] if isinstance(raw_resource, dict)
             else raw_resource if isinstance(raw_resource, list)
             and all(isinstance(item, dict) for item in raw_resource) else [])
-        gpu_observed = any(isinstance(item.get("gpu_uuid"), str) and bool(item["gpu_uuid"])
+        gpu_device_monitored = any(isinstance(item.get("gpu_uuid"), str) and bool(item["gpu_uuid"])
             and type(item.get("sample_count")) is int and item["sample_count"] > 0
             for item in resources)
         completed = (row.get("state") == "CLOSED"
@@ -85,13 +86,13 @@ def run_outcome_context(facts, attempts, final_failures):
             "terminal_reason": row.get("terminal_reason"),
             "returncode": observation.get("returncode"),
             "completed_process": completed,
-            "gpu_observed": gpu_observed,
+            "gpu_device_monitored": gpu_device_monitored,
             "evidence_scope": ("accepted_scientific_evidence" if scientific
                 else "raw_diagnostic_only" if completed else "no_completed_process"),
         }
         if resources:
             bounded_resources = [{name: item.get(name) for name in (
-                "gpu_uuid", "sample_count", "minimum_free_memory_mib", "pressure_exceeded")}
+                "gpu_uuid", "sample_count", "gpu_minimum_free_memory_mib", "pressure_exceeded", "owned_memory")}
                 for item in resources]
             detail["resource_usage"] = (bounded_resources[0]
                 if isinstance(raw_resource, dict) else bounded_resources)

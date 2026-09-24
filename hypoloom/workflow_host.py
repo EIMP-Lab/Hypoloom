@@ -1022,7 +1022,8 @@ class WorkflowHost:
             **({"stop_controls": list(controls)} if stopping else {})}
         from .final_report import run_outcome_context
         context["run_outcome"] = outcome = run_outcome_context(facts,
-            [row for row in self.store.list_attempts() if row["run_id"] == run_id], self._expert_final_failures(run_id))
+            [row for row in self.store.list_attempts() if row["run_id"] == run_id], self._expert_final_failures(run_id),
+            artifacts=self.store.inspect("SELECT artifact_id,execution_id,attempt_id FROM execution_artifacts WHERE run_id=?", (run_id,)))
         context["stop_reason"] += (f" Actual progress: {outcome['expert_nodes_started']} expert nodes started, "
             f"{outcome['fact_counts']['HypothesisProposed']} hypotheses, "
             f"{outcome['fact_counts']['ExperimentPreregistered']} experiments, "

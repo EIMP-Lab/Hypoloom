@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- September 24: user authorizes organizing and merging PR #1. The original
+  patch-binding/path-admission and shared accounting changes are retained.
+  Review counterexamples now bind report evidence through existing artifact
+  ownership, preserve device versus task-memory observations and read the real
+  GPU summary field. LOST attempts cannot inherit a retry's accepted result.
+  Bilingual Usage/architecture explain report scope. 290 regressions and the
+  native local-provider/CPU report path pass; the latter closes 16 Attempts
+  with clean full Oracle and no process/socket residue. Existing runs remain
+  untouched; integration evidence is routed through INDEX.
+
 - September 24: user retires the old run and authorizes general provider recovery
   repair. Shared bounded waits preserve node retry/accounting history; monitor,
   Web/TUI and notifications expose actual availability. Existing control records

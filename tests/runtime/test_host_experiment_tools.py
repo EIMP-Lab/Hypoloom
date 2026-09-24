@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hypoloom.agent_aci import AgentACIError, WorkspaceArtifact, with_output_digest
+from hypoloom.agent_aci import AgentACIError, AgentRequest, WorkspaceArtifact, with_output_digest
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand, AttemptTerminalReason
 from hypoloom.expert_loop import ResearchNodeKind, ResearchNodeTask, ResearchNodeKey
@@ -497,6 +497,18 @@ def test_failed_controller_experiment_drains_after_host_restart(execution) -> No
         assert outcome[0]["payload"]["outcome"] == "SUCCESS"
         processes = [row for row in recovered.store.list_attempts() if row["kind"] == "PROCESS"]
         assert [row["terminal_reason"] for row in processes] == ["LOST", "SUCCEEDED"]
+        report_attempt = next(row for row in recovered.store.list_attempts() if row["kind"] == "AGENT"
+            and json.loads(row["observation_json"])["request"]["command"] == "FINAL_REPORT")
+        report_request = AgentRequest.from_dict(json.loads(report_attempt["observation_json"])["request"])
+        report_context = json.loads(next(item.content_bytes() for item in report_request.input_artifacts
+            if item.ref.endswith("--final-report-context")))
+        details = {row["attempt_id"]: row for row in report_context["run_outcome"]["process_attempt_details"]}
+        assert details[processes[0]["attempt_id"]]["evidence_scope"] == "no_completed_process"
+        assert "canonical_outcome" not in details[processes[0]["attempt_id"]]
+        assert details[processes[1]["attempt_id"]]["evidence_scope"] == "accepted_scientific_evidence"
+        artifact = recovered.store.inspect("SELECT attempt_id FROM execution_artifacts WHERE artifact_id=?",
+            (outcome[0]["payload"]["artifact_id"],))
+        assert artifact == ({"attempt_id": processes[1]["attempt_id"]},)
         controllers = [row for row in recovered.store.list_attempts() if row["kind"] == "AGENT"
             and json.loads(row["observation_json"])["request"]["command"] == "EXPERIMENT_EXECUTION"]
         assert len(controllers) == 1 and controllers[0]["terminal_reason"] == "FAILED"
