@@ -83,7 +83,7 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
     failure = diagnostics.get("provider_failure")
     failure = failure if isinstance(failure, Mapping) else {}
     if failure.get("code") in {"input_too_long", "token_budget_exceeded"}: return None
-    if failure.get("code") in {"rate_limited", "auth_failed"}: return "INFRASTRUCTURE"
+    if failure.get("code") in {"rate_limited", "auth_failed", "quota_exhausted"}: return "INFRASTRUCTURE"
     if subtype == "error_max_structured_output_retries": return "MODEL"
     if subtype == "error_during_execution": return "INFRASTRUCTURE"
     return (
@@ -101,7 +101,7 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
     if code == "invalid_tool_workspace": return "agent_workspace"
     if code == "host_restart": return "host_recovery"
     failure = _failure_diagnostics(details).get("provider_failure")
-    if isinstance(failure, Mapping) and failure.get("code") in {"input_too_long", "token_budget_exceeded", "rate_limited"}:
+    if isinstance(failure, Mapping) and failure.get("code") in {"input_too_long", "token_budget_exceeded", "rate_limited", "auth_failed", "quota_exhausted"}:
         return "provider_admission"
     if _failure_diagnostics(details).get("provider_subtype") == "error_max_structured_output_retries": return "provider_structured_output"
     if code in RETRYABLE_MODEL_FAILURES: return "provider_output"

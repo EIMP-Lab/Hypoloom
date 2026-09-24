@@ -22,6 +22,21 @@ research sandbox. Experiments run in the selected research environment and
 publish validated outcomes through the Host. Native final text is schema checked
 at Stop and again at Host postflight; a process exit code alone is not acceptance.
 
+API availability uses existing provider observations, Attempt start/end times
+and `PROVIDER_RETRY_CLEAR` controls. It is a derived dispatch state, not a new
+run state or separate health service. Consecutive recovery waves use the existing
+infrastructure attempt allowance; node retries and accounting retain their own
+meanings. Submitted Processes remain independently collectible. The same reducer
+feeds Host status and provider notifications; monitor passes it to Web/TUI.
+
+An operator control can select a 0600 connection-only settings file. The existing
+control journal owns selection, and that file owns credentials; a Host cache is
+discardable. Original private settings and immutable runtime verification remain
+in force. Subsequent invocations use the selected connection while preserving
+their pinned model. Web reuses the scoped-token and same-origin control boundary
+with a separate API-operation grant, so observer/answer links cannot rotate keys.
+See [API recovery](guides/provider-recovery.md) for lifecycle and restore semantics.
+
 Observer Stop also reuses the postflight semantic validator against its frozen
 request: reference ownership, one contribution parent, trigger eligibility and
 available Debate sources. Invalid choices can be corrected in the same invocation

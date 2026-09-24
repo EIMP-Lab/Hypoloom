@@ -84,6 +84,18 @@
   </header>
 
   <main id="main-content">
+    <section id="provider-panel" class="panel" aria-label="API availability">
+      <strong id="provider-title">API status unknown</strong>
+      <p id="provider-description" aria-live="polite">Waiting for a live Host observation.</p>
+      <p id="provider-access">Read-only. Use TUI p for API recovery or an operator API link.</p>
+      <div id="provider-controls" hidden>
+        <label for="provider-settings">Host-side connection file (absolute path; no credentials)</label>
+        <input id="provider-settings" type="text" autocomplete="off" spellcheck="false" placeholder="/absolute/path/connection.json">
+        <button id="provider-retry" type="button">Try current API</button>
+        <button id="provider-switch" type="button">Switch API and try</button>
+      </div>
+      <p id="provider-operation" role="status"></p>
+    </section>
     <nav class="view-tabs" aria-label="Observer views">
       <div class="view-tab-group" role="tablist">
         <button id="tab-operations" role="tab" type="button" aria-controls="view-operations" aria-selected="true" data-view="operations">Operations</button>

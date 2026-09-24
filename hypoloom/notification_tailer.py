@@ -280,16 +280,18 @@ class NotificationTailer:
                              "\nTelegram replies do not submit an answer.")
                 else:
                     text += "\nView the recorded answer and current run state in TUI/Web."
-            if event["type"] == "provider_auth_cooldown":
-                until = payload.get("cooldown_until")
+            if event["type"] in {"provider_auth_cooldown", "provider_waiting"}:
+                until = payload.get("next_retry_at", payload.get("cooldown_until"))
                 when = (datetime.fromtimestamp(float(until), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-                    if type(until) in (int, float) else "the configured cooldown end")
-                text += (f"\n⚠️ Provider authentication rejected (HTTP {payload.get('http_status')})."
-                    f"\nNew Agent dispatch is paused until {when}."
-                    "\nAfter rotating the credential: TUI press p → Confirm resume, or CLI: hypoloom provider-retry-clear."
-                    "\nWithout action, dispatch resumes automatically when the cooldown ends.")
-            if event["type"] == "provider_auth_resumed":
-                text += "\n✅ Provider dispatch cooldown cleared by operator; scheduling resumes."
+                    if type(until) in (int, float) else "unknown; operator action required")
+                text += (f"\n⚠️ API unavailable: {payload.get('reason', 'auth_failed')} (HTTP {payload.get('http_status')})."
+                    f"\nNext recovery attempt: {when}. This is not a quota reset estimate."
+                    "\nSubmitted experiments continue. TUI: p; CLI: hypoloom provider-retry-clear."
+                    "\nTo switch API, select a protected connection file with --settings.")
+            if event["type"] in {"provider_auth_resumed", "provider_retry_requested"}:
+                text += "\nProvider retry requested by operator. Access is not yet confirmed; awaiting a successful response."
+            if event["type"] == "provider_recovered":
+                text += "\n✅ API response received; provider availability recovered. Research progress remains subject to task and budget limits."
             dashboard = self.sinks.get("dashboard", {})
             if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"}:
                 # The owning service supplies its actual bound port, including
@@ -325,6 +327,9 @@ class NotificationTailer:
             if not isinstance(selected, list) or any(not isinstance(name, str) for name in selected):
                 report.errors.append(f"{sink}: event selection must be a list of names")
                 continue
+            selected = list(selected)
+            if "provider_auth_cooldown" in selected: selected.append("provider_waiting")
+            if "provider_auth_resumed" in selected: selected.extend(("provider_retry_requested", "provider_recovered"))
             unknown = set(selected) - _EVENT_TYPES
             if unknown:
                 report.warnings.append(f"{sink}: no implemented event source for {', '.join(sorted(unknown))}")

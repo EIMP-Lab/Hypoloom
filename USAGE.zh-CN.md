@@ -39,6 +39,7 @@ Host 的六项调用预算来自 `create_run_payload.research_contract.budget.ag
 - **? / Help**：窗口与可靠性指标简介。
 - **b / Report Issue**：预览、导出故障支持包。
 - **h**：查看并答复待处理的 Grounding 人工问题。
+- **p / API recovery**：查看 API 等待状态、重试当前连接，或通过私有连接文件选择兼容 API。
 
 Web / local access 位于独立的连接信息区域。启动 Web observer：
 
@@ -57,6 +58,10 @@ TUI 仍可使用。`monitor --no-web` 仅关闭该 TUI 自己的 Web 监听。
 默认仅监听 loopback，并使用 bearer 链接。普通分享链接只读。
 `--allow-human-answers` 明确创建可提交人工答复的操作者链接；不要公开该链接。
 `WAITING_HUMAN` 需要用户真实答复；建议选项不能被自动提交。
+
+API 恢复使用独立操作权限：TUI **p → Browser**，或启动独立 Web 时添加
+`--allow-provider-control`。仅有人工回答权限不能切换 API，具体步骤见
+[API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)。
 
 ## 研究闭环与完成标准
 
@@ -110,15 +115,15 @@ DISPATCH PAUSED 时使用只读诊断确认原因，不能通过重写 SQLite �
 这不等于 End run，需按实际诊断决定后续操作。源码修复仅用于新的运行；既有 bundle
 不会自动更新，也不支持把旧运行切换到新版本恢复。
 
-Provider 鉴权被拒绝（HTTP 401/403；五小时滚动额度与密钥失效无法区分）时，
-新的 Agent 调度会进入冷却而不是立刻烧掉节点重试额度：运行保持 ACTIVE，
-在途调用正常结束，冷却到期（`budget.provider_auth_cooldown_seconds`，默认
-18000 秒，0 表示关闭）后自动恢复。冷却状态由持久化失败记录推导，重启 Host
-不会清除或重置。通知事件 `provider_auth_cooldown`（每个冷却窗口一条，不逐次
-刷屏）与 `provider_auth_resumed` 经既有 Telegram/log 渠道投递，TUI 摘要区显示
-PROVIDER COOLDOWN 横幅。手动更换密钥后提前恢复：TUI 按 `p` 确认，或执行
-`hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID`；
-若凭证仍不可用，下一次失败会重新进入冷却。
+## API 等待与恢复
+
+API 不可用时，Web/TUI 明确显示冷却或等待人工处理。已提交实验继续执行，
+持续连接故障不会逐个耗尽科研节点。恢复操作先放行一个待办调用，实际收到
+API 响应后才确认恢复。TUI 按 **p**，或执行
+`hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID`。
+增加 `--settings /absolute/private/connection.json` 可选择兼容的 API 连接，
+模型和原始运行配置仍固定。文件格式、Web 操作权限、有界重试和重启行为见
+[API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)。
 
 ## 故障反馈与模块排障
 

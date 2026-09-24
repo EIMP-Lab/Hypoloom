@@ -73,6 +73,12 @@ key.
   explicitly by the Host; do not hand interactive project settings to Agents
   and do not append `--bare` to change the entry point.
 
+For API limits or expired credentials during a run, follow
+[API recovery](docs/guides/provider-recovery.md). It explains the optional private
+connection JSON, TUI/Web/CLI switching and how to confirm recovery. The connection
+can change while the run's model remains fixed; do not edit its original private
+settings copy or put model keys into the literature/notification dotenv file.
+
 Literature retrieval uses OpenAlex. The complete native expert path needs an
 approved dotenv credentials file (recommended
 `.local/credentials/hypoloom.env`; template at

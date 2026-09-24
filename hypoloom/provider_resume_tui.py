@@ -3,24 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static
+from textual.widgets import Button, Input, Static
 
 from .control_protocol import SCHEMA_VERSION, ControlRequest, ProtocolError, request_over_socket
 from .lifecycle import Machine, RunState, is_terminal
-
-
-def _until_text(status: dict) -> str:
-    retry = status.get("provider_retry") or {}
-    pending = [item for item in retry.get("gates", []) if item.get("pending")]
-    if not pending:
-        return "unknown"
-    latest = max(float(item["until"]) for item in pending)
-    return datetime.fromtimestamp(latest, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+from .provider_observation import provider_status_text
 
 
 class ProviderResumeScreen(ModalScreen):
@@ -46,18 +37,18 @@ class ProviderResumeScreen(ModalScreen):
             with VerticalScroll(id="provider-resume-scroll"):
                 yield Static(f"Provider dispatch cooldown\n{self.app.run_id}\nReviewed state: {self.status['run_state']}",
                     markup=False, id="provider-resume-target")
-                yield Static("The provider rejected authentication (HTTP 401/403), so new Agent dispatch "
-                    f"is paused until {_until_text(self.status)}. A rolling quota window or a rotated key "
-                    "both look like this; the pause protects retry budgets from a failing provider.", markup=False)
-                yield Static("Confirm only after you restored access (for example a fresh key or a reset "
-                    "quota window). Confirming clears the pause immediately; without it, dispatch resumes "
-                    "automatically when the cooldown ends. A still-broken credential simply re-enters cooldown.",
-                    markup=False)
+                yield Static(provider_status_text(self.status.get("provider_retry")), markup=False, id="provider-current-status")
+                yield Static("Try the current API after access is restored, or select a Host-side 0600 JSON connection file "
+                    "to switch API. The file may contain only env: API key/auth token and base URL. The model stays fixed. "
+                    "Do not enter credentials here. A request allows one recovery attempt; it does not prove access.", markup=False)
+                yield Input(placeholder="Absolute Host-side connection file path", id="provider-settings-path")
                 yield Static("", markup=False, id="provider-resume-status")
             with Horizontal(id="provider-resume-actions"):
                 yield Button("Keep waiting", id="provider-resume-close")
-                yield Button("Retry same request" if self.draft.get("pending") else "Credential restored — resume now",
+                yield Button("Retry same request" if self.draft.get("pending") else "Try current API",
                     id="provider-resume-confirm", variant="warning")
+                yield Button("Switch API", id="provider-switch", variant="warning")
+                yield Button("Browser", id="provider-browser")
 
     def on_mount(self) -> None:
         self.update_status(self.status)
@@ -70,9 +61,12 @@ class ProviderResumeScreen(ModalScreen):
 
     def _buttons(self) -> None:
         self.query_one("#provider-resume-confirm", Button).disabled = self.busy or not self.writable
+        self.query_one("#provider-switch", Button).disabled = self.busy or not self.writable or bool(self.draft.get("pending"))
+        self.query_one("#provider-settings-path", Input).disabled = self.busy or bool(self.draft.get("pending"))
 
     def update_status(self, status: dict) -> None:
         self.status = dict(status)
+        self.query_one("#provider-current-status", Static).update(provider_status_text(status.get("provider_retry")))
         state = status["run_state"]
         if is_terminal(Machine.RUN_WORKFLOW, state) or state == RunState.STOPPING:
             self.writable = False
@@ -81,7 +75,7 @@ class ProviderResumeScreen(ModalScreen):
         elif not (status.get("provider_retry") or {}).get("pending") and self.draft.get("accepted_revision") is not None:
             self.writable = False
             self.draft.pop("pending", None)
-            self._message("Cooldown cleared. Dispatch resumes on the next Host tick.")
+            self._message("Recovery requested. Awaiting a successful API response; exhausted nodes are not reset.")
         elif not (status.get("provider_retry") or {}).get("pending"):
             self._message("No provider cooldown is currently pending; confirming is harmless but unnecessary.")
         self._buttons()
@@ -91,11 +85,21 @@ class ProviderResumeScreen(ModalScreen):
         if event.button.id == "provider-resume-close":
             self.action_close()
             return
-        if event.button.id != "provider-resume-confirm" or self.busy or not self.writable:
+        if event.button.id == "provider-browser":
+            self.app.action_provider_browser()
             return
+        if event.button.id not in {"provider-resume-confirm", "provider-switch"} or self.busy or not self.writable:
+            return
+        payload = {"run_id": self.app.run_id, "reason": "operator"}
+        if event.button.id == "provider-switch":
+            path = self.query_one("#provider-settings-path", Input).value.strip()
+            if not path.startswith("/"):
+                self._message("Select an absolute Host-side connection file path.")
+                return
+            payload["settings_path"] = path
         request = self.draft.setdefault("pending", ControlRequest(
             SCHEMA_VERSION, "provider-resume-ui-" + str(uuid.uuid4()), None, "PROVIDER_RETRY_CLEAR",
-            {"run_id": self.app.run_id, "reason": "operator"}))
+            payload))
         self.busy = True
         self._buttons()
         self._message("Requesting cooldown clear from Host…")
@@ -111,7 +115,7 @@ class ProviderResumeScreen(ModalScreen):
                 self.draft.pop("pending", None)
                 self.draft["accepted_revision"] = response.revision
                 self.writable = False
-                self._message("Cooldown cleared. Dispatch resumes on the next Host tick.")
+                self._message("Recovery requested. Awaiting a successful API response; exhausted nodes are not reset.")
             elif response.status in {"conflict", "rejected"}:
                 self.draft.pop("pending", None)
                 self.writable = False

@@ -127,6 +127,7 @@ class WebObserverServer(ThreadingHTTPServer):
         self._active_requests: set[socket.socket] = set()
         self._support_lock = threading.Lock()
         self._answer_token: str | None = None
+        self._provider_token: str | None = None
         super().__init__((host, port), WebObserverRequestHandler)
 
     @property
@@ -235,6 +236,13 @@ class WebObserverServer(ThreadingHTTPServer):
             if self._answer_token is None:
                 self._answer_token = secrets.token_urlsafe(24)
             return self.startup_url() + "&answer_token=" + quote(self._answer_token, safe="") + "&human=1"
+
+    def provider_control_url(self) -> str:
+        """Separate operator grant; read and answer links cannot rotate APIs."""
+        with self._active_request_lock:
+            if self._provider_token is None:
+                self._provider_token = secrets.token_urlsafe(24)
+            return self.startup_url() + "&provider_token=" + quote(self._provider_token, safe="")
 
 
 class WebObserverRequestHandler(BaseHTTPRequestHandler):
@@ -572,13 +580,14 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path == "/api/support":
             self._support()
             return
-        if self.path != "/api/human-answer":
+        if self.path not in {"/api/human-answer", "/api/provider-retry"}:
             self._method_not_allowed()
             return
         if not self._require_authorization():
             return
-        token = self.observer._answer_token
-        supplied = self.headers.get("X-Hypoloom-Answer-Token", "")
+        provider = self.path == "/api/provider-retry"
+        token = self.observer._provider_token if provider else self.observer._answer_token
+        supplied = self.headers.get("X-Hypoloom-Provider-Token" if provider else "X-Hypoloom-Answer-Token", "")
         try:
             origin = urlsplit(self.headers.get("Origin", ""))
         except ValueError:
@@ -589,7 +598,7 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                 or origin.hostname not in {"localhost", "127.0.0.1", "::1"}
                 or origin.path not in {"", "/"} or origin.query or origin.fragment
                 or self.headers.get("Sec-Fetch-Site") not in {None, "same-origin"}):
-            self._send(HTTPStatus.FORBIDDEN, b'{"error":"operator answer link and same-origin request required"}', "application/json")
+            self._send(HTTPStatus.FORBIDDEN, b'{"error":"scoped operator link and same-origin request required"}', "application/json")
             return
         if self.headers.get_content_type() != "application/json" or self.headers.get("Transfer-Encoding"):
             self._send(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, b'{"error":"JSON body with Content-Length required"}', "application/json")
@@ -605,16 +614,30 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             if len(raw) != length:
                 raise ValueError("incomplete answer body")
             values = json.loads(raw)
-            from .human_answers import answer_request
-            answer_request(self.observer.run_id, values)
+            if provider:
+                from .control_protocol import ControlRequest, SCHEMA_VERSION
+                if not isinstance(values, dict) or set(values) not in ({"request_id"}, {"request_id", "settings_path"}):
+                    raise ValueError("provider recovery requires request_id and optional settings_path")
+                if "settings_path" in values and (not isinstance(values["settings_path"], str) or not values["settings_path"].startswith("/")):
+                    raise ValueError("settings_path must be an absolute Host-side connection file path")
+                request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION, "request_id": values["request_id"],
+                    "expected_revision": None, "command": "PROVIDER_RETRY_CLEAR", "payload": {"run_id": self.observer.run_id,
+                        "reason": "operator", **({"settings_path": values["settings_path"]} if "settings_path" in values else {})}})
+            else:
+                from .human_answers import answer_request
+                answer_request(self.observer.run_id, values)
         except (ValueError, OSError) as exc:
             self._send(HTTPStatus.BAD_REQUEST, json.dumps({"error": "invalid_answer", "message": str(exc)}).encode(), "application/json")
             return
         try:
-            response = submit_answer(self.observer.state_root, self.observer.run_id, values)
+            if provider:
+                from .control_protocol import request_over_socket
+                response = request_over_socket(self.observer.state_root / "control.sock", request, timeout=5)
+            else:
+                response = submit_answer(self.observer.state_root, self.observer.run_id, values)
         except (OSError, ProtocolError):
             self._send(HTTPStatus.SERVICE_UNAVAILABLE,
-                b'{"error":"delivery_unknown","message":"Host reply not confirmed. Check current state or retry the same answer."}', "application/json")
+                b'{"error":"delivery_unknown","message":"Host reply not confirmed. Check current state or retry the same request."}', "application/json")
             return
         code = {"accepted": HTTPStatus.OK, "conflict": HTTPStatus.CONFLICT,
             "rejected": HTTPStatus.BAD_REQUEST, "error": HTTPStatus.SERVICE_UNAVAILABLE}[response.status]
@@ -668,6 +691,7 @@ def run_web_observer(
     gpu_pool_socket: str | Path | None = None,
     gpu_pool_server_uid: int | None = None,
     allow_human_answers: bool = False,
+    allow_provider_control: bool = False,
 ) -> int:
     """Run the observer in the foreground until interrupted."""
 
@@ -692,6 +716,8 @@ def run_web_observer(
         return 2
     with server:
         url = server.human_answer_url() if allow_human_answers else server.startup_url()
+        if allow_provider_control:
+            url += "&provider_token=" + quote(parse_qs(urlsplit(server.provider_control_url()).fragment)["provider_token"][0], safe="")
         print(f"web observer: {url}", file=output, flush=True)
         try:
             server.serve_forever()
@@ -710,6 +736,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     parser.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
+    parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API recovery and connection selection")
     parser.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     parser.add_argument("--gpu-pool-server-uid", type=int)
     return parser
@@ -725,6 +752,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         gpu_pool_socket=args.gpu_pool_socket,
         gpu_pool_server_uid=args.gpu_pool_server_uid,
         allow_human_answers=args.allow_human_answers,
+        allow_provider_control=args.allow_provider_control,
     )
 
 

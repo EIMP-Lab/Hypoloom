@@ -92,22 +92,16 @@ def test_auth_cooldown_events_dedup_episode_and_name_operator_clear():
     attempts = [_auth_attempt("a1", 100.0), _auth_attempt("a2", 200.0),
         _auth_attempt("a3", 300.0), _auth_attempt("a4", 100.0 + 18000.0 + 50.0)]
     events = product_events("run", facts, [], attempts)
-    cooldowns = [event for event in events if event["type"] == "provider_auth_cooldown"]
-    # A rejection storm inside one window is a single notification episode.
-    assert [event["source_id"] for event in cooldowns] == ["a1", "a4"]
-    assert cooldowns[0]["payload"]["cooldown_until"] == 100.0 + 18000.0
-    assert cooldowns[0]["payload"]["http_status"] == 403
-    # An operator clear ends the window early and is itself an event; a
-    # failure after the clear starts a genuinely new episode.
+    waiting = [event for event in events if event["type"] == "provider_waiting"]
+    assert [event["source_id"] for event in waiting] == ["a1", "a3"]
+    assert waiting[0]["payload"]["next_retry_at"] == 18100.0
+    assert waiting[-1]["payload"]["requires_operator"] is True
     transitions = [_clear_transition("clear-1", 9, 150.0)]
-    events = product_events("run", facts, transitions, attempts[:2] + [_auth_attempt("a5", 400.0)])
-    assert [event["type"] for event in events if event["type"].startswith("provider_auth")] == [
-        "provider_auth_cooldown", "provider_auth_resumed", "provider_auth_cooldown"]
-    assert [event["source_id"] for event in events if event["type"] == "provider_auth_cooldown"] == ["a1", "a2"]
-    # A zero configured cooldown disables the gate and its events together.
-    facts[0]["payload"]["research_contract"]["budget"]["provider_auth_cooldown_seconds"] = 0
-    assert not [event for event in product_events("run", facts, [], attempts)
-        if event["type"] == "provider_auth_cooldown"]
+    events = product_events("run", facts, transitions, attempts[:2])
+    assert [event["type"] for event in events if event["type"].startswith("provider_")] == [
+        "provider_waiting", "provider_retry_requested", "provider_waiting"]
+    # A clear is a retry request, never proof that access recovered.
+    assert not any(event["type"] == "provider_recovered" for event in events)
 
 
 def test_telegram_auth_cooldown_message_guides_operator_recovery(tmp_path, monkeypatch):
@@ -133,8 +127,8 @@ def test_telegram_auth_cooldown_message_guides_operator_recovery(tmp_path, monke
         environ={"TEST_BOT": "123456:ABCdef", "TEST_CHAT": "42"}, transport=transport)
     result = tailer.poll_once()
     assert not result.errors and result.delivered == {"telegram": 2}
-    assert "HTTP 403" in sent[0] and "provider-retry-clear" in sent[0] and "resumes automatically" in sent[0]
-    assert "cleared by operator" in sent[1]
+    assert "HTTP 403" in sent[0] and "provider-retry-clear" in sent[0] and "Next recovery attempt" in sent[0]
+    assert "not yet confirmed" in sent[1]
 
 
 def _resume_snapshot(tmp_path):
@@ -148,10 +142,11 @@ def _resume_snapshot(tmp_path):
     return root, replace(snapshot, status={**snapshot.status, "provider_retry": gate})
 
 
-def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch):
+@pytest.mark.parametrize("switch", [False, True])
+def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch, switch):
     from hypoloom import provider_resume_tui as form
     from hypoloom.tui import HypoloomVNextMonitor, SummaryPanel
-    from textual.widgets import Button, Static
+    from textual.widgets import Button, Input, Static
     root, snapshot = _resume_snapshot(tmp_path)
     calls = []
 
@@ -160,7 +155,8 @@ def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch):
         assert path == root / "control.sock" and timeout == 5
         assert request.command == "PROVIDER_RETRY_CLEAR"
         assert request.expected_revision is None
-        assert request.payload == {"run_id": "resume-ui", "reason": "operator"}
+        assert request.payload == {"run_id": "resume-ui", "reason": "operator",
+            **({"settings_path": "/operator/connection.json"} if switch else {})}
         return ControlResponse.accepted(request.request_id, 2,
             {"run_id": "resume-ui", "run_state": "CREATED", "provider_retry": {"pending": False}})
 
@@ -173,7 +169,7 @@ def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch):
         async with app.run_test(size=(80, 40)) as pilot:
             await pilot.pause()
             summary = app.query_one("#summary", SummaryPanel)._rendered_content or ""
-            assert "PROVIDER COOLDOWN" in summary and "dispatch paused" in summary
+            assert "API COOLDOWN" in summary and "dispatch paused" in summary
             await pilot.press("p")
             screen = app.screen
             assert isinstance(screen, form.ProviderResumeScreen)
@@ -181,11 +177,12 @@ def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch):
             await pilot.press("enter")  # Default action leaves the cooldown alone.
             assert not isinstance(app.screen, form.ProviderResumeScreen) and not calls
             await pilot.press("p")
-            await pilot.click("#provider-resume-confirm")
+            if switch: app.screen.query_one("#provider-settings-path", Input).value = "/operator/connection.json"
+            await pilot.click("#provider-switch" if switch else "#provider-resume-confirm")
             await pilot.pause()
             assert len(calls) == 1
             assert app.screen.query_one("#provider-resume-confirm", Button).disabled
-            assert "Cooldown cleared" in str(app.screen.query_one("#provider-resume-status", Static).render())
+            assert "Recovery requested" in str(app.screen.query_one("#provider-resume-status", Static).render())
 
     asyncio.run(exercise())
 

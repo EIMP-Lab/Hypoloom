@@ -41,6 +41,37 @@ def validate_private_settings(path: Path) -> None:
     _settings_bytes(path)
 
 
+def read_provider_connection(path: Path) -> dict[str, str]:
+    """Read the operator-selected, mutable connection input (never model config).
+
+    The control journal owns selection; this 0600 file owns credentials. No
+    secret is copied to a fact, backup or additional private snapshot.
+    """
+    from urllib.parse import urlsplit
+    value = json.loads(_settings_bytes(path))
+    allowed = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"}
+    env = value.get("env", {})
+    if set(value) != {"env"} or set(env) - allowed:
+        raise HostConfigurationError("connection settings allow only env with API key, auth token and base URL; model/runtime changes are not allowed")
+    if any(not isinstance(v, str) or "\x00" in v for v in env.values()):
+        raise HostConfigurationError("connection values must be strings without NUL")
+    if sum(bool(env.get(key)) for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")) != 1:
+        raise HostConfigurationError("connection requires exactly one nonempty API key or auth token")
+    endpoint = env.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    try:
+        parsed = urlsplit(endpoint)
+        valid = (parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username
+            and not parsed.password and not parsed.query and not parsed.fragment
+            and (parsed.port is None or 0 < parsed.port < 65536))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise HostConfigurationError("connection base URL is invalid; credentials must be separate")
+    # Explicit empty counterpart replaces, rather than inherits, the old key.
+    return {"ANTHROPIC_API_KEY": env.get("ANTHROPIC_API_KEY", ""),
+        "ANTHROPIC_AUTH_TOKEN": env.get("ANTHROPIC_AUTH_TOKEN", ""), "ANTHROPIC_BASE_URL": endpoint}
+
+
 def _has_created_run(state_root: Path) -> bool:
     database = state_root / "state.sqlite"
     if not os.path.lexists(database):

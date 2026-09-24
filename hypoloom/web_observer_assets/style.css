@@ -591,3 +591,8 @@ button:disabled { opacity: .4; cursor: default; }
   .workbench-list { grid-template-columns: 1fr; }
   .selection-grid { grid-template-columns: minmax(5rem, 1fr) minmax(0, 2fr); }
 }
+#provider-panel { padding: 1rem; margin-bottom: 1rem; }
+#provider-panel p { margin: .5rem 0; }
+#provider-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+#provider-controls[hidden] { display: none; }
+#provider-settings { flex: 1 1 16rem; min-width: 0; max-width: 100%; }

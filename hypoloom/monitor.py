@@ -1453,6 +1453,7 @@ _HOST_STATUS_FIELDS = (
     "quiescent_for_backup",
     "agent_usage",
     "resource_waits",
+    "provider_retry",
 )
 
 # The Host serializes control requests between workflow ticks. A tick that
@@ -1586,7 +1587,7 @@ def build_observer_snapshot(
         return snapshot
     enriched_status = dict(snapshot.status)
     enriched_status.update(
-        {field: response.result[field] for field in _HOST_STATUS_FIELDS}
+        {field: response.result[field] for field in _HOST_STATUS_FIELDS if field in response.result}
     )
     enriched_status["dispatch_error"] = response.result.get("dispatch_error")
     return replace(

@@ -8,6 +8,78 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — provider availability and operator recovery, 2026-09-24
+
+The user authorized general framework repair and retired the earlier research
+run. No retained run was started, resumed, migrated, modified or deleted.
+Candidate/scientific-method changes remain out of scope.
+
+The existing provider reducer now distinguishes cooldown, operator wait and a
+single pending recovery invocation. It uses durable Attempt/control records,
+the existing infrastructure attempt allowance and observed provider responses;
+no new run state, credential digest, registry or parallel health authority is
+introduced. Concurrent failures form one recovery wave. API-unavailable calls
+remain closed/accounted without consuming each node's retry allowance; stopping
+reports remain bounded. Preexisting parent work cannot occupy the recovery slot,
+and its late response cannot falsely establish restored access. Submitted CPU
+Processes were collected during API wait and were not rerun after recovery.
+
+Monitor now preserves Host `provider_retry`. Web/TUI expose reason, wait/retry
+state and explicit recovery controls. Notifications include 429 and quota waits,
+deduplicate state/reason changes and distinguish an operator retry request from
+an observed recovery. Legacy auth-event subscriptions map to the new events.
+Read-only and human-answer Web grants cannot rotate API connections; the existing
+same-origin/scoped-token mechanism supplies a separate operator API grant.
+
+Connection selection extends `PROVIDER_RETRY_CLEAR` with an optional Host-side
+0600 settings path. The existing control journal selects that private credential
+input; it is loaded on a fresh control or Host restart, never copied into facts
+or a new private snapshot. Original settings/version checks remain intact.
+Only key/token/base URL can vary; model/runtime settings are refused. Missing
+selected input waits explicitly, without fallback to the old credential. Lost
+replies retry one command identity; late old-connection failures cannot reblock
+the selected connection. See [operation and restore semantics](guides/provider-recovery.md).
+
+The post-result design-failure repair completes the actual old tip's assessment
+before closing/adjudicating the chain. It never creates an outcome for the
+unsubmitted successor. Independent batch audit requires a closed failed next
+design/execution, correct ordinal/owner/chain, prior analysis timing and exact
+iteration-context references. Removing one chain's failure invalidates the
+adjudication even while another chain's failure remains.
+
+Validation evidence is under ignored
+`.local/qualification/provider-recovery-20260924/`. The initial broad selection
+had **329 passes / 56 failures** caused by a too-long AF_UNIX test directory;
+the retained setup failures are documented in `initial-checks.txt`. Reusing a
+short temporary directory resolves the affected transport selection: **60 pass**
+(33.44 s), without changing relay behavior or weakening assertions. Together
+these cover all 385 cases in the initial selection. The complete expert-batch
+selection plus native recovery also passes: **35 checks** (348.53 s), recorded
+in `host.xml`. After the final reducer changes, **87 recovery/concurrency/UI/reader
+checks pass** (62.99 s), recorded in `final-recovery.xml`. The separately repeated
+native scenario passes (**one check**, 55.42 s); its evidence is in `native-final/`
+and `native-final.xml`. That native repetition preceded the final reducer boundary
+adjustment; the 87 final checks cover that adjustment.
+
+The native local-provider scenario exercises installed Claude Code, the real
+relay, Host/MCP, collection/publication and one CPU experiment after real HTTP
+429 responses and endpoint/key selection. The repeated sample closed **14
+Attempts**, including two failed API Agents and one successful CPU Process;
+one old invocation failed after the switch without reblocking recovery. Its
+full Oracle passed with no open Attempts or pending effects. An independent
+census found no live recorded process groups or remaining control socket;
+see `native-final/closure-census.json`.
+These are scripted local providers, not paid-model, GPU, long-soak or release
+qualification. Public notification delivery was mocked; no external messages
+were sent. The user subsequently authorized updating the tutorials and committing
+and pushing this repair to dev. The bilingual recovery guides add state/action
+tables, exact-request retry examples, Host-side file preparation and
+troubleshooting; Setup, Usage, personal configuration and notification guides
+link or explain the relevant operations. All four documentation checks pass,
+CLI help confirms the documented recovery/Web flags, and diff whitespace checks
+pass. No additional runtime changes or existing-run operations were needed for
+this documentation follow-up.
+
 ## Current development — lineage relationships and contextual legend, 2026-09-23
 
 The lineage legend mixed root-node labels, inferred revision types, workflow
