@@ -70,7 +70,7 @@ class ParticipantControls:
 
     def blocks(self, participant: ParticipantScope, next_command: str) -> bool:
         return bool(self.reasons_for(participant)) and next_command in {
-            "EXPERIMENT_DESIGN_IMPLEMENT", "CREATE_EXPERIMENT", "LITERATURE_REVIEW"}
+            "EXPERIMENT_DESIGN_IMPLEMENT", "CREATE_EXPERIMENT", "LITERATURE_REVIEW", "LEADER"}
 
     def pending_notes(self, participant: ParticipantScope, bound_ids: Iterable[str]) -> tuple[OperatorNote, ...]:
         consumed = set(bound_ids)

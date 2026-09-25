@@ -51,7 +51,7 @@ _WRITABLE = frozenset(
 )
 # Judges reconstruct their context on every Attempt, including retries, so a
 # retry of these commands is a brand-new session with byte-identical input.
-STATELESS_SESSION_COMMANDS = frozenset({AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE})
+STATELESS_SESSION_COMMANDS = frozenset({AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE, AgentCommand.LEADER})
 _MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 
 

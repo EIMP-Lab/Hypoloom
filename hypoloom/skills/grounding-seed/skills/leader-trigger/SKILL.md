@@ -1,6 +1,6 @@
 ---
 name: leader-trigger
-description: Assess whether accepted shared-goal progress warrants a Leader round.
+description: Assess whether accepted progress warrants sharing Leader experience.
 ---
 
 Grounding owner: {{ROLE}}
@@ -15,21 +15,25 @@ an accepted SUCCESS or SUPPORTED contribution. From ACI 21, a Leader coordinates
 further research before the final goal is reached: a canonical CLEAN_REFUTATION
 with matching evidence, artifact and REFUTED assessment can also qualify after
 its own cycle closes. An execution failure, debate score or narrative alone
-does not qualify. Cite exactly one own hypothesis as the research parent and
+does not qualify. Cite exactly one own hypothesis as the contribution source and
 its qualifying evidence; cite baseline outcomes separately. Experts owning
 different components can still qualify. Compare declared signals and tiers with an
 evidence-bound qualitative rationale; do not invent numeric tier weights or
 rank incomparable measurements on a common scale. Cite the actual qualifying
 expert, hypothesis and accepted result identifiers from the request. Explain
-what other experts' read-only memories could contribute to the next proposal.
+what experience from the supplied accepted reports could help peers' next proposals.
 Explain a testable next direction. A negative result rules out only what its
 actual experiment tested; it does not prove that the global goal is impossible.
 
 Return only the supplied typed decision, including an honest no-trigger decision
 when evidence or eligibility is absent. A recommendation neither grants Leader
-authority nor pauses participants. The Host checks qualification, lets admitted
-iterations finish, manages pause reasons and queues the accepted Leader work
-without preempting running experiments. Never edit another expert's memory,
+authority nor pauses participants. From ACI 23 the Host queues a short LEADER
+auxiliary task authored by the selected expert. Other experts continue independently
+and may adopt, adapt or reject its advice in later proposals. It grants no extra
+research cycle, scheduling priority, parent link or reopening of terminated work.
+Use new accepted reports/results to motivate sharing; do not repeatedly nominate
+an unchanged contribution. Before ACI 23 the retained Host instead manages peer
+pause reasons and an exclusive designated round without preempting experiments. Never edit another expert's memory,
 control state, queue or scientific facts.
 
 Use the supplied acceptance declaration and actual evaluation scope to decide

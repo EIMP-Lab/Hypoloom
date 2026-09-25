@@ -2450,6 +2450,9 @@ def _output_schema(
                     "description": _HYPOTHESIS_UPDATE_DISPOSITION_DESCRIPTION,
                 }
             )
+            if request.schema_version >= 23:
+                candidate_properties["update_disposition"]["description"] = (
+                    _HYPOTHESIS_UPDATE_DISPOSITION_DESCRIPTION.replace("Debate/Leader-designated", "Debate-designated"))
             candidate_required.append("update_disposition")
         if request.command.value == "RESULT_ANALYSIS" and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION:
             candidate_properties["iteration_disposition"] = {"enum": ["ITERATE", "COMPLETE"],
@@ -2930,8 +2933,23 @@ def _instruction(
                "Execution failures and debate scores are not contributions. Explain the next testable direction; none is valid. "
                if request.schema_version >= 21 else "A Leader requires its own accepted SUCCESS/SUPPORTED contribution "
                "to the shared goal; cite exactly one component for the chosen expert. ")
+            + ("From ACI 23, select an experience author for a short advisory task. Peers keep working; "
+               "selection grants no pause, scheduling priority, parent change or extra research cycle. "
+               if request.schema_version >= 23 else "")
             + "Different measurement contracts are not a numerical leaderboard. action none is valid. "
             "Never modify plugin files, peer memory, a scientific assessment or workflow state. "
+        )
+    if request.command.value == "LEADER" and request.schema_version >= 23:
+        return common + (
+            "You are the selected expert sharing experience with independently working peers. "
+            "Read the supplied accepted facts and actual cycle reports. Write concise advice in summary: "
+            "separate measured results, failed attempts and their evaluation conditions from interpretations "
+            "and untested ideas. Suggest transferable implementation lessons, controls and discriminating "
+            "next experiments; state limitations and where your advice does not apply. "
+            "Cite exact supplied immutable input refs in supporting_refs. This task neither starts an "
+            "experiment nor controls another expert. Do not modify files, peer memory, hypotheses or "
+            "scientific verdicts. Peers may adopt, adapt or reject your advice. Return only the existing "
+            "ExpertLoopCandidate with task_kind LEADER, summary and supporting_refs."
         )
     if request.command.value == "GRAPH_EVOLVE":
         return common + (
@@ -2992,6 +3010,10 @@ def _instruction(
                "Do not use tools, modify files, start a process, or emit control instructions.")
         )
     if request.command.value == "HYPOTHESIS_PROPOSAL":
+        if any(item.ref.endswith("--leader-guidance") for item in request.input_artifacts):
+            common += (" Consider the supplied Leader guidance independently. Explain adoption, adaptation "
+                "or disagreement in your existing proposal rationale. Input presence is not agreement; "
+                "advice grants no parent change, pruning, scientific verdict or reopening of terminated work. ")
         if not isinstance(request.task_context, ResearchNodeTask):
             raise AgentHostError("hypothesis proposal lacks its typed research node")
         subkind = request.task_context.key.subkind
@@ -3219,6 +3241,8 @@ def _instruction(
                 "input establishes that fact; do not invent budget, retry, or lifecycle state. "
                 + assessment_instruction
             )
+            if request.schema_version >= 23:
+                update_instruction = update_instruction.replace("Debate/Leader-designated", "Debate-designated")
         return common + (
             f"Complete only the typed {task_kind_value} obligation described by the frozen "
             "request and rendered inputs. Produce a concise auditable summary and cite only exact "

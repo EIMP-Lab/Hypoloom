@@ -339,7 +339,7 @@ def _interactions(transitions):
         if action in {"leader_round_started", "debate_started"}:
             current.update(started=True, state="active")
         elif action in {"leader_round_finished", "debate_restarts_finished"}:
-            current["state"] = "completed"
+            current["state"] = "failed" if event.get("terminal_reason") == "AGENT_FINAL_FAILURE" else "completed"
         elif action in {"leader_aborted", "debate_aborted"}:
             current["state"] = "aborted"
         elif action in {"leader_failed", "debate_failed"}:

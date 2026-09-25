@@ -5,8 +5,8 @@ from hypoloom.fake_agent import default_request
 from hypoloom.workflow_host import installed_run_version
 
 
-def test_fresh_host_defaults_to_the_evidence_directed_interaction_wire():
-    assert installed_run_version().agent_aci_version == "21"
+def test_fresh_host_defaults_to_the_nonblocking_leader_guidance_wire():
+    assert installed_run_version().agent_aci_version == "23"
 
 
 def test_retained_aci13_requests_remain_byte_compatible():

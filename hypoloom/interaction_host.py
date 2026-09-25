@@ -10,7 +10,7 @@ from datetime import datetime
 from dataclasses import asdict
 from typing import Any, Mapping
 
-from .agent_aci import EmbeddedInput, canonical_json
+from .agent_aci import EmbeddedInput, LEADER_GUIDANCE_ACI_SCHEMA_VERSION, canonical_json
 from .expert_batch import batch_limits
 from .expert_interaction import InteractionFacts, admit_observer_proposal, expand_fact_references, observer_from_attempt, select_interaction_facts
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask
@@ -58,6 +58,9 @@ class InteractionHost:
     def _version(self, run_id):
         return int(self.store.get_run(run_id)["agent_aci_version"])
 
+    def shares_experience(self, run_id):
+        return self._version(run_id) >= LEADER_GUIDANCE_ACI_SCHEMA_VERSION
+
     def _facts(self, run_id, rows):
         return InteractionFacts.from_rows(run_id, rows, agent_aci_version=self._version(run_id))
 
@@ -79,8 +82,9 @@ class InteractionHost:
             cycles = [batch.cycle for batch in history.batches if item.hypothesis_id in batch.members.values()]
             if (len(cycles) == 1 and cycles[0] >= minimum
                     and self._closed(run_id, item.role, item.component_id, cycles[0], reports=reports)
-                    and history.latest.cycle < batch_limits(self.host._research_contract(run_id).document, item.role)["rounds"]
-                    and self.host._batch_creation_available(run_id, item.role)):
+                    and (self.shares_experience(run_id) or (
+                        history.latest.cycle < batch_limits(self.host._research_contract(run_id).document, item.role)["rounds"]
+                        and self.host._batch_creation_available(run_id, item.role)))):
                 result.append(item)
         return result
 
@@ -158,7 +162,11 @@ class InteractionHost:
             request = report[1]
             if self._closed(run_id, request["role"], request["component_id"], request["task_context"]["key"]["cycle"], reports=reports):
                 task = self._task(run_id, report)
-                if not self._handled(run_id, task) and not self._covered_report(run_id, report):
+                # Coalescing can skip unstarted work, never an admitted obligation.
+                # Self-evolution may finish out of report-request order while an
+                # Observer is already running or awaiting acceptance.
+                if not self._handled(run_id, task) and (self.host._expert_attempts(task)
+                        or not self._covered_report(run_id, report)):
                     ready.append((task, report))
         return sorted(ready, key=lambda item: item[0].ordinal)
 
@@ -249,7 +257,8 @@ class InteractionHost:
         if self._version(run_id) >= 21:
             eligible = sorted({str(item.component_id) for item in eligible_contributions})
         allowed = ["none"]
-        if eligible and self._settings(run_id).get("leader", {}).get("enabled", False) and not self._closing(run_id):
+        if (eligible and self._settings(run_id).get("leader", {}).get("enabled", False) and not self._closing(run_id)
+                and self._new_guidance_evidence(run_id, facts, included)):
             allowed.append("leader")
         debating = self.debate.eligible_participants(run_id) if self._settings(run_id).get("debate", {}).get("enabled", False) else []
         if len({item["scope"]["role"] for item in debating}) >= 2 and not self._closing(run_id) and deferred is None:
@@ -274,13 +283,15 @@ class InteractionHost:
 
     def _append(self, run_id, command_id, event, *, pauses=(), resume=False):
         payload = {"expert_interaction": dict(event)}
-        command = Command.RESUME_PARTICIPANT if resume else Command.ACCEPT_EXPERT_INTERACTION
+        command = (Command.RESUME_PARTICIPANT if resume else Command.CLEANUP_OBSERVED
+            if event.get("action") == "leader_aborted" and self.shares_experience(run_id)
+            else Command.ACCEPT_EXPERT_INTERACTION)
         reason = "leader:" + event["source_attempt_id"]
         if resume:
             payload["participant_control"] = {"action": "resume", "scope": asdict(ParticipantScope()), "reason": reason}
         def operation(tx):
             head = tx.latest_transition(run_id)
-            aborting = resume and event.get("action") == "leader_aborted" and head is not None and head["state"] == "STOPPING"
+            aborting = event.get("action") == "leader_aborted" and head is not None and head["state"] == "STOPPING"
             if head is None or head["state"] != "ACTIVE" and not aborting:
                 raise ValueError("interaction controls require an ACTIVE run")
             record = self.host._transition_record(tx, run_id, run_id, "RUN", command, RunState(head["state"]), command_id=command_id, payload=payload)
@@ -324,8 +335,9 @@ class InteractionHost:
             if history.latest is None:
                 raise ValueError("qualified Leader has no accepted component batch")
             event["leader"] = {"role": proposal.leader.role, "component_id": component_id, "after_cycle": history.latest.cycle}
-            pauses = [ParticipantScope(item.owner_role, str(item.component_id)) for item in facts.contract.components
-                if (item.owner_role, str(item.component_id)) != (proposal.leader.role, component_id)]
+            if not self.shares_experience(run_id):
+                pauses = [ParticipantScope(item.owner_role, str(item.component_id)) for item in facts.contract.components
+                    if (item.owner_role, str(item.component_id)) != (proposal.leader.role, component_id)]
         self._append(run_id, source + "--interaction", event, pauses=pauses)
 
     def _drained(self, run_id, leader):
@@ -349,6 +361,8 @@ class InteractionHost:
         return True
 
     def leader_round(self, run_id: str, component_id: str) -> Mapping[str, Any] | None:
+        if self.shares_experience(run_id):
+            return None  # Advice never authorizes an additional scientific round.
         active = self._active(run_id)
         if active is None or active["leader"]["component_id"] != component_id:
             return None
@@ -384,6 +398,9 @@ class InteractionHost:
         return None
 
     def _advance(self, run_id, active):
+        if self.shares_experience(run_id):
+            self._advance_guidance(run_id, active)
+            return
         leader, source = active["leader"], active["source_attempt_id"]
         started = self.leader_round(run_id, leader["component_id"])
         if started is not None:
@@ -442,12 +459,24 @@ class InteractionHost:
                 self.host._expert_agent_step(run_id, run_id, task, "grounding", "grounding")
             return
 
+    def stop_guidance(self, run_id: str) -> None:
+        if not self.shares_experience(run_id):
+            return
+        active = self._active(run_id)
+        if active is None:
+            return
+        if self.store.latest_transition(run_id)["state"] != "STOPPING":
+            raise ValueError("Leader cancellation requires the actual Run stop")
+        self._append(run_id, active["source_attempt_id"] + "--leader-aborted", {
+            "action": "leader_aborted", "source_attempt_id": active["source_attempt_id"],
+            "leader": active["leader"], "reason": "RUN_STOPPING"})
+
     def stop_for_goal(self, run_id: str, verdict_id: str) -> None:
         leader = self._active(run_id)
         if leader is not None:
             self._append(run_id, leader["source_attempt_id"] + "--leader-aborted",
                 {"action": "leader_aborted", "source_attempt_id": leader["source_attempt_id"],
-                 "leader": leader["leader"], "goal_verdict_id": verdict_id}, resume=True)
+                 "leader": leader["leader"], "goal_verdict_id": verdict_id}, resume=not self.shares_experience(run_id))
         debate = self.debate._active(run_id)
         if debate is not None:
             self.debate._append(run_id, debate["debate_id"] + "--debate-aborted",
@@ -465,6 +494,8 @@ class InteractionHost:
         restart = self.debate.designated_round(run_id, component_id)
         if restart is not None and restart["component_id"] == component_id and restart["cycle"] == cycle:
             return False  # This accepted round must drain before deferred Observers can run.
+        if self.shares_experience(run_id):
+            return False  # Pending Observer/advice is not a research barrier.
         active = self._active(run_id)
         if active is not None and active["leader"]["component_id"] == component_id:
             started = self.leader_round(run_id, component_id)
@@ -472,6 +503,8 @@ class InteractionHost:
         return any(report[1]["component_id"] == component_id and task.cycle < cycle for task, report in self._triggers(run_id))
 
     def priority_roles(self, run_id: str) -> tuple[str, ...]:
+        if self.shares_experience(run_id):
+            return ()
         active = self._active(run_id)
         return () if active is None else (active["leader"]["role"],)
 
@@ -486,6 +519,110 @@ class InteractionHost:
         resources = {"source_attempt_id": active["source_attempt_id"], **{name: designated[name]
             for name in ("role", "component_id", "cycle", "peer_memory_commits")}}
         return (EmbeddedInput.from_bytes(task.command_id + "--leader-resources", "application/json", canonical_json(resources)),)
+
+    def _new_guidance_evidence(self, run_id, facts, reports):
+        if not self.shares_experience(run_id):
+            return True
+        fact_ids = {row["fact_id"] for row in facts}
+        report_refs = {identity + "--response" for identity in reports}
+        for _, event in reversed(self._events(run_id)):
+            if event["action"] != "leader_selected":
+                continue
+            previous = json.loads(self.store.get_attempt(event["source_attempt_id"])["observation_json"])["request"]
+            inputs = previous["input_artifacts"]
+            context = json.loads(next(EmbeddedInput.from_dict(item).content_bytes()
+                for item in inputs if item["ref"].endswith("--interaction-context")))
+            return not (fact_ids <= {row["fact_id"] for row in context["facts"]}
+                and report_refs <= {item["ref"] for item in inputs})
+        return True
+
+    def _guidance_task(self, run_id, active):
+        revision = self._selection_revision(run_id, active)
+        leader = active["leader"]
+        return AuxiliaryTask(kind=AuxiliaryRequestKind.LEADER, run_id=run_id,
+            component_id=leader["component_id"], expert_slot=leader["role"],
+            cycle=leader["after_cycle"], ordinal=revision)
+
+    def guidance_task_inputs(self, run_id, task):
+        active = self._active(run_id)
+        if not self.shares_experience(run_id) or active is None or task != self._guidance_task(run_id, active):
+            raise ValueError("Leader guidance requires its accepted selection and actual author")
+        attempts = self.host._expert_attempts(task)
+        if attempts:
+            # Both model and infrastructure retries retain the original evidence.
+            request = json.loads(attempts[0]["observation_json"])["request"]
+            return tuple(EmbeddedInput.from_dict(item) for item in request["input_artifacts"]
+                if item["ref"] in request["immutable_context_refs"]
+                and not item["ref"].endswith("--shared-acceptance"))
+        observed = json.loads(self.store.get_attempt(active["source_attempt_id"])["observation_json"])
+        source_inputs = tuple(EmbeddedInput.from_dict(item) for item in observed["request"]["input_artifacts"])
+        context = json.loads(next(item.content_bytes() for item in source_inputs if item.ref.endswith("--interaction-context")))
+        config = {"execution": dict(self.host._run_config(run_id)).get("execution", {}),
+            "role": task.expert_slot, "component_id": task.component_id}
+        apply_profile_language(config, self.host._research_contract(run_id).to_dict(), task)
+        return (EmbeddedInput.from_bytes(task.command_id + "--expert-config", "application/json", canonical_json(config)),
+            EmbeddedInput.from_bytes(task.command_id + "--leader-context", "application/json", canonical_json({
+                "source_observer_attempt_id": active["source_attempt_id"], "leader": active["leader"],
+                "proposal": active["proposal"], "facts": context["facts"]})),
+            *(item for item in source_inputs if item.ref.endswith("--response")))
+
+    def _advance_guidance(self, run_id, active):
+        task = self._guidance_task(run_id, active)
+        source, leader = active["source_attempt_id"], active["leader"]
+        events = [event for _, event in self._events(run_id) if event.get("source_attempt_id") == source]
+        if not self.host._expert_attempts(task) and not self.host._agent_budget_available(run_id, task.expert_slot):
+            self._append(run_id, source + "--leader-not-started", {"action": "leader_not_started",
+                "source_attempt_id": source, "leader": leader, "reason": "agent_budget_unavailable"})
+            return
+        if not any(event["action"] == "leader_round_started" for event in events):
+            self._append(run_id, source + "--leader-started", {"action": "leader_round_started",
+                "source_attempt_id": source, "leader": leader, "task_command_id": task.command_id})
+        success = self.host._expert_success(task)
+        if success is not None:
+            self._append(run_id, source + "--leader-finished", {"action": "leader_round_finished",
+                "source_attempt_id": source, "leader": leader, "task_command_id": task.command_id,
+                "terminal_reason": "GUIDANCE_ACCEPTED", "guidance_attempt_id": success["attempt_id"]})
+        elif self.host._expert_task_exhausted(run_id, task):
+            if self.host._expert_task_final_failure(run_id, task) is None:
+                self.host._record_expert_final_failure(run_id, task.component_id, task.expert_slot, task, "leader_guidance_exhausted")
+            failure = self.host._expert_task_final_failure(run_id, task)
+            self._append(run_id, source + "--leader-finished", {"action": "leader_round_finished",
+                "source_attempt_id": source, "leader": leader, "task_command_id": task.command_id,
+                "terminal_reason": "AGENT_FINAL_FAILURE", "failed_task_command_id": task.command_id,
+                "attempt_id": failure["attempt_id"]})
+        else:
+            self.host._expert_agent_step(run_id, run_id, task, task.expert_slot, task.component_id)
+
+    def guidance_inputs(self, run_id, task):
+        if (not self.shares_experience(run_id) or not isinstance(task, ResearchNodeTask)
+                or task.key.node_kind is not ResearchNodeKind.HYPOTHESIS_PROPOSAL):
+            return ()
+        from dataclasses import replace
+        first = ResearchNodeTask(key=replace(task.key, subkind=ResearchNodeSubkind.FORWARD))
+        attempts = self.host._expert_attempts(first)
+        if attempts:
+            # The actual first-wing request is already the durable input boundary.
+            request = json.loads(attempts[0]["observation_json"])["request"]
+            return tuple(EmbeddedInput.from_dict(item) for item in request["input_artifacts"]
+                if item["ref"].endswith("--leader-guidance"))
+        if task != first:
+            return ()
+        for row, event in reversed(self._events(run_id)):
+            if event.get("terminal_reason") != "GUIDANCE_ACCEPTED":
+                continue
+            source = self.store.get_attempt(event["guidance_attempt_id"])
+            if source is None or source["state"] != "CLOSED" or source["terminal_reason"] != "SUCCEEDED":
+                raise ValueError("accepted Leader guidance lacks its successful publishing Attempt")
+            observation = json.loads(source["observation_json"])
+            context = json.loads(next(EmbeddedInput.from_dict(item).content_bytes()
+                for item in observation["request"]["input_artifacts"] if item["ref"].endswith("--leader-context")))
+            return (EmbeddedInput.from_bytes(source["attempt_id"] + "--leader-guidance", "application/json", canonical_json({
+                "source_attempt_id": source["attempt_id"], "source_observer_attempt_id": event["source_attempt_id"],
+                "author": event["leader"]["role"], "published_at": row["created_at"],
+                "guidance": observation["response"]["typed_candidate"], "facts": context["facts"],
+                "instruction": "Consider this advice independently. Explain adoption, adaptation or disagreement in your proposal. "
+                    "It does not authorize a parent change, pruning, a scientific verdict or reopening terminated research."})),)
+        return ()
 
 
 __all__ = ["InteractionHost"]

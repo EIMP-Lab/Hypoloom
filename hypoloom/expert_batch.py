@@ -23,7 +23,7 @@ def directed_research_plan(transitions, run_id, role, component_id, cycle, *, be
             continue
         if before_revision is not None and row["revision"] >= before_revision: continue
         event = _payload(row).get("expert_interaction", {})
-        plans = ([event["leader"]] if event.get("action") == "leader_round_started"
+        plans = ([event["leader"]] if event.get("action") == "leader_round_started" and "task_command_id" not in event
             else event.get("plans", ()) if event.get("action") == "debate_restarts_designated" else ())
         for plan in plans:
             if (plan["role"], plan["component_id"], plan["cycle"]) == (role, component_id, cycle):

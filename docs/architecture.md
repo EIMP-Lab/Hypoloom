@@ -97,7 +97,7 @@ interaction cadence observes elapsed time and new-outcome thresholds. Skill and
 memory changes enter later cycles through accepted revisions, not uncontrolled
 editing of another expert's state. The UI observer has no research authority.
 
-New ACI-21 runs can appoint a Leader before the final goal is met. Eligibility
+From ACI 21, runs can appoint a Leader before the final goal is met. Eligibility
 requires a closed contribution cycle and accepted scientific evidence: a
 supported result or a clean refutation with matching outcome, artifact,
 evidence link and assessment. Execution failure is not a contribution. The
@@ -116,8 +116,21 @@ An accepted null measurement remains GOAL-only; changing it requires a revised
 hypothesis/new cycle. Missing GOAL evidence is an execution failure, not a clean
 refutation, and cannot be repaired with fabricated placeholder results.
 
-Leader and Debate research uses the parent explicitly authorized by the
-accepted interaction, even when ordinary adjudication has no selected chain.
+From ACI 23, Leader selection starts a short, isolated LEADER auxiliary task.
+The selected expert receives actual published reports and accepted facts, then
+shares bounded advice. Peers keep researching: no automatic pause, drain barrier,
+extra cycle, execution priority or parent authorization comes from this role.
+The latest accepted advice enters a cycle's first FORWARD request; retries,
+BACKWARD and SYNTHESIS reuse that request's advice, including its absence. Late
+advice waits for a later cycle. Experts may adopt, adapt or reject it. Advice
+cannot reopen terminated research, prune a hypothesis or change scientific facts.
+Stable auxiliary command IDs, ordinary retries/accounting and existing accepted
+outputs provide recovery; no message ledger or adoption receipt is added.
+A failed or unaffordable advice task closes locally. Operator/stop/provider
+controls still apply, and unchanged evidence does not trigger repeated advice.
+
+Debate research uses the parent explicitly authorized by its accepted interaction,
+even when ordinary adjudication has no selected chain.
 Each Debate participant starts after its own admitted cycle closes, with
 available budget; the other participant can finish independently. Public Judge
 guidance enters the new proposal inputs, while private session promotion keeps
@@ -549,7 +562,8 @@ network/model-spawning tools to execution or add an automatic literature node.
 For an interaction, a URL alone is insufficient evidence. The existing input
 builder should attach the bounded cited passage, original source/page identity
 and the expert's interpretation, preserving the distinction between them.
-Preserve existing admitted Leader peer-memory behavior; do not grant general
+Retained pre-23 Leader rounds preserve their admitted peer-memory behavior;
+ACI 23 advice uses published report inputs. Do not grant general
 cross-role access. Missing or oversized excerpts are explicit under existing
 input limits, rather than silently omitted or expanded to full peer transcripts.
 

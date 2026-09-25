@@ -40,7 +40,7 @@ def _event(source: str, identity: str, revision: int, kind: str, at, run_id: str
 
 def _interaction(row):
     if (row["workflow_kind"] == "RUN" and row.get("command_type", row.get("command"))
-            in {"ACCEPT_EXPERT_INTERACTION", "RESUME_PARTICIPANT"}):
+            in {"ACCEPT_EXPERT_INTERACTION", "RESUME_PARTICIPANT", "CLEANUP_OBSERVED"}):
         return _payload(row).get("expert_interaction", {})
     return {}
 

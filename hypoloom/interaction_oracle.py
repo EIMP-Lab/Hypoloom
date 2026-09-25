@@ -188,9 +188,10 @@ class _InteractionAudit:
                 cycles = [batch["cycle"] for batch in batches if hyp["hypothesis_id"] in batch["chains"].values()]
                 role_cap = profile_role_cap(self.contract, role, "max_experiments")
                 if (len(cycles) == 1 and cycles[0] >= minimum and self.closed_round(role, component, cycles[0], started)
-                        and max(batch["cycle"] for batch in batches) < cap
-                        and len(creations) < self.contract["budget"]["max_experiments"]
-                        and (role_cap is None or sum(value.get("role") == role for value in creations) < role_cap)):
+                        and (request["schema_version"] >= 23 or (
+                            max(batch["cycle"] for batch in batches) < cap
+                            and len(creations) < self.contract["budget"]["max_experiments"]
+                            and (role_cap is None or sum(value.get("role") == role for value in creations) < role_cap)))):
                     eligible_hypotheses.append(hyp["hypothesis_id"])
             eligible = sorted({item["component_id"] for item in frozen if item.get("hypothesis_id") in eligible_hypotheses})
             _need(context["eligible_leader_hypotheses"] == sorted(eligible_hypotheses),
@@ -200,6 +201,16 @@ class _InteractionAudit:
             and any(item["fact_type"] == "HypothesisAssessed" and item["assessment"] == "SUPPORTED" for item in frozen)
             and any(event["action"] in {"leader_round_finished", "debate_restarts_finished"} and _time(effect["created_at"]) <= started for effect, event in self.events))
         expected = ["none", "leader"] if eligible and self.settings.get("leader", {}).get("enabled", False) and not closing else ["none"]
+        if request["schema_version"] >= 23 and "leader" in expected:
+            prior = [(effect, event) for effect, event in self.events if event["action"] == "leader_selected"
+                and _time(effect["created_at"]) <= started]
+            if prior:
+                previous = self.observations[prior[-1][1]["source_attempt_id"]]["request"]
+                previous_context = _input(previous, "--interaction-context")
+                report_refs = {item["ref"] for item in request["input_artifacts"] if item["ref"].endswith("--response")}
+                if ({fact["fact_id"] for fact in frozen} <= {fact["fact_id"] for fact in previous_context["facts"]}
+                        and report_refs <= {item["ref"] for item in previous["input_artifacts"]}):
+                    expected.remove("leader")
         permitted = context.get("debate_participants", [])
         _need(isinstance(permitted, list), "Observer Debate participants are not an array")
         for participant in permitted:
@@ -303,6 +314,8 @@ class _InteractionAudit:
         return False
 
     def leader(self, source):
+        if self.observations[source]["request"]["schema_version"] >= 23:
+            return self.leader_guidance(source)
         events = [(row, event) for row, event in self.events if event.get("source_attempt_id") == source]
         selected = [(row, event) for row, event in events if event["action"] == "leader_selected"]
         _need(len(selected) == 1, "Leader has no unique accepted Observer parent")
@@ -384,6 +397,120 @@ class _InteractionAudit:
             session = observation.get("session")
             if session is not None:
                 _need(session.get("leader_resources") == resources, "observed session mounted another Leader resource binding")
+
+    def leader_guidance(self, source):
+        from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask
+        events = [(row, event) for row, event in self.events if event.get("source_attempt_id") == source]
+        selected = [(row, event) for row, event in events if event["action"] == "leader_selected"]
+        _need(len(selected) == 1, "Leader guidance lacks one accepted selection")
+        selection_row, selection = selected[0]
+        leader = selection["leader"]
+        task = AuxiliaryTask(kind=AuxiliaryRequestKind.LEADER, run_id=self.run_id,
+            component_id=leader["component_id"], expert_slot=leader["role"],
+            cycle=leader["after_cycle"], ordinal=selection_row["revision"])
+        _need(not any(value.get("interaction_source_attempt_id") == source or
+            value.get("participant_control", {}).get("reason") == "leader:" + source
+            for _, value in self.transitions), "Leader advice paused or resumed participants")
+        starts = [(row, event) for row, event in events if event["action"] == "leader_round_started"]
+        finishes = [(row, event) for row, event in events if event["action"] in
+            {"leader_round_finished", "leader_not_started", "leader_aborted"}]
+        _need(len(starts) <= 1 and len(finishes) <= 1, "Leader advice has duplicate start/terminal effects")
+        for effect, event in starts + finishes:
+            expected_command = "CLEANUP_OBSERVED" if event["action"] == "leader_aborted" else "ACCEPT_EXPERT_INTERACTION"
+            _need(effect["command_type"] == expected_command
+                and effect["revision"] > selection_row["revision"] and event["leader"] == leader,
+                "Leader advice changed its author, selection or scheduling authority")
+        if starts:
+            _need(starts[0][1]["task_command_id"] == task.command_id
+                and set(leader) == {"role", "component_id", "after_cycle"}, "Leader advice designated an extra research round")
+        original = self.observations[source]["request"]
+        context = _input(original, "--interaction-context")
+        bound = [(identity, row, self.observations[identity]) for identity, row in self.attempts.items()
+            if row["kind"] == "AGENT" and row["command_id"] == task.command_id]
+        first_inputs = None
+        for identity, row, observed in sorted(bound, key=lambda item: item[1]["attempt_ordinal"]):
+            _, request, _ = self.source(identity, "LEADER", closed=False)
+            _need(starts and row["started_at"] >= _time(starts[0][0]["created_at"])
+                and request["task_context"] == task.to_dict()
+                and (request["role"], request["component_id"]) == (leader["role"], leader["component_id"]),
+                "Leader advice task differs from selected author or precedes its start")
+            _need(_input(request, "--leader-context") == {"source_observer_attempt_id": source,
+                "leader": leader, "proposal": selection["proposal"], "facts": context["facts"]},
+                "Leader advice changed the accepted selection/evidence")
+            expected = {item["ref"]: item for item in original["input_artifacts"] if item["ref"].endswith("--response")}
+            actual = {item["ref"]: item for item in request["input_artifacts"] if item["ref"].endswith("--response")}
+            _need(actual == expected, "Leader advice changed actual source reports")
+            immutable = [item for item in request["input_artifacts"] if item["ref"] in request["immutable_context_refs"]]
+            if first_inputs is None: first_inputs = immutable
+            _need(immutable == first_inputs, "Leader retry changed its original evidence")
+            session = observed.get("session", {})
+            _need(not session.get("leader_resources") and not session.get("parent_session_id"),
+                "Leader advice acquired peer memories or resumed another task's session")
+        if finishes:
+            effect, event = finishes[0]
+            if event["action"] == "leader_aborted":
+                if event.get("reason") == "RUN_STOPPING":
+                    _need(effect["state"] == effect["previous_state"] == "STOPPING"
+                        and any(row["workflow_kind"] == "RUN" and row["state"] == "STOPPING"
+                            and row["previous_state"] != "STOPPING" and row["revision"] < effect["revision"]
+                            for row, _ in self.transitions), "Leader cancellation lacks the actual Run stop")
+                    _need("goal_verdict_id" not in event, "operator cancellation invented a scientific verdict")
+                else:
+                    self.aborted(effect, event)
+            elif event["action"] == "leader_round_finished":
+                _need(starts and effect["revision"] > starts[0][0]["revision"]
+                    and event["task_command_id"] == task.command_id, "Leader guidance finished without its task start")
+                if event["terminal_reason"] == "GUIDANCE_ACCEPTED":
+                    row, request, _ = self.source(event["guidance_attempt_id"], "LEADER")
+                    _need(row["command_id"] == task.command_id and row["ended_at"] <= _time(effect["created_at"]),
+                        "Leader guidance publication names another or unfinished task")
+                else:
+                    _need(event["terminal_reason"] == "AGENT_FINAL_FAILURE"
+                        and event["failed_task_command_id"] == task.command_id, "Leader guidance has an unknown failure")
+                    failure = self.final_failure(task.command_id, _time(effect["created_at"]))
+                    _need(failure is not None and failure["attempt_id"] == event["attempt_id"],
+                        "Leader guidance failure lacks its actual exhausted Attempt")
+            else:
+                _need(not bound and event["reason"] == "agent_budget_unavailable", "Leader not-started contradicts actual Attempts")
+
+    def guidance_consumers(self):
+        for identity, observed in self.observations.items():
+            request = observed.get("request", {})
+            if request.get("schema_version", 0) < 23: continue
+            inputs = [item for item in request.get("input_artifacts", ()) if item["ref"].endswith("--leader-guidance")]
+            _need(not any(item["ref"].endswith("--leader-resources") for item in request.get("input_artifacts", ())),
+                "new advice semantics mounted legacy peer memory")
+            if request.get("command") == "LEADER":
+                context = _input(request, "--leader-context")
+                _need(any(event["action"] == "leader_round_started" and event.get("task_command_id") == request["command_id"]
+                    and event["source_attempt_id"] == context["source_observer_attempt_id"] for _, event in self.events),
+                    "orphan Leader guidance task")
+            if request.get("command") != "HYPOTHESIS_PROPOSAL":
+                _need(not inputs, "Leader advice escaped proposal scope")
+                continue
+            key = request["task_context"]["key"]
+            forwards = [(row, value["request"]) for other, row in self.attempts.items()
+                for value in [self.observations.get(other, {})]
+                if value.get("request", {}).get("command") == "HYPOTHESIS_PROPOSAL"
+                and value["request"]["task_context"]["key"] == {**key, "subkind": "FORWARD"}]
+            _need(forwards, "Leader advice consumer has no actual first-wing request")
+            first, first_request = min(forwards, key=lambda pair: pair[0]["started_at"])
+            canonical = [item for item in first_request["input_artifacts"] if item["ref"].endswith("--leader-guidance")]
+            _need(inputs == canonical and len(inputs) <= 1, "proposal wings/retries changed the original advice set")
+            publications = [(effect, event) for effect, event in self.events
+                if event.get("terminal_reason") == "GUIDANCE_ACCEPTED" and _time(effect["created_at"]) <= first["started_at"]]
+            _need(bool(inputs) == bool(publications), "proposal omitted available advice or consumed unpublished advice")
+            if not inputs: continue
+            effect, event = publications[-1]
+            row, _, source = self.source(event["guidance_attempt_id"], "LEADER")
+            body = _input(request, "--leader-guidance")
+            _need(inputs[0]["ref"] == row["attempt_id"] + "--leader-guidance"
+                and body["source_attempt_id"] == row["attempt_id"]
+                and body["source_observer_attempt_id"] == event["source_attempt_id"]
+                and body["author"] == event["leader"]["role"] and body["published_at"] == effect["created_at"]
+                and body["guidance"] == source["response"]["typed_candidate"]
+                and body["facts"] == _input(source["request"], "--leader-context")["facts"],
+                "proposal advice changed its latest accepted source, author or evidence")
 
     @staticmethod
     def debate_source_matches(supplied, source):
@@ -636,6 +763,10 @@ def audit_interactions(state_root: Path, attempts: Sequence[Mapping[str, Any]], 
                 audit.leader(identity)
         except (KeyError, TypeError, ValueError, AttributeError, StopIteration, OSError, subprocess.SubprocessError) as exc:
             issues.append(("interaction_source_invalid", str(exc), (str(identity),)))
+    try:
+        audit.guidance_consumers()
+    except (KeyError, TypeError, ValueError, AttributeError, StopIteration) as exc:
+        issues.append(("leader_guidance_invalid", str(exc), ()))
     for debate_id in {event["debate_id"] for event in events if "debate_id" in event}:
         try:
             audit.debate(debate_id)

@@ -543,7 +543,7 @@ class _Audit:
         for row, value in self.transitions:
             if self.rank(row) >= before: continue
             event = value.get("expert_interaction", {})
-            plans = [event["leader"]] if event.get("action") == "leader_round_started" else (
+            plans = [event["leader"]] if event.get("action") == "leader_round_started" and "task_command_id" not in event else (
                 event.get("plans", ()) if event.get("action") == "debate_restarts_designated" else ())
             for plan in plans:
                 if (plan["role"], plan["component_id"], plan["cycle"]) == (request["role"], request["component_id"], key["cycle"]):

@@ -1956,6 +1956,7 @@ class WorkflowHost:
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GRAPH_EVOLVE: return self._manager_inputs(run_id, task)
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT: return self._final_report_inputs(run_id, task)
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.OBSERVER: return self.interaction.inputs(run_id, task)
+        if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.LEADER: return self.interaction.guidance_task_inputs(run_id, task)
         if isinstance(task, AuxiliaryTask) and task.kind in {AuxiliaryRequestKind.DEBATE, AuxiliaryRequestKind.DEBATE_JUDGE}: return self.interaction.debate.inputs(run_id, task)
         contract = self._research_contract(run_id); component = contract.component(component_id)
         if component is None: raise OperationalHalt(f"Agent action names unknown component {component_id!r}")
@@ -2202,7 +2203,7 @@ class WorkflowHost:
                 update = ResearchNodeTask(key=replace(task.key, node_kind=ResearchNodeKind.HYPOTHESIS_UPDATE))
                 failure_input = self._expert_failure_input(run_id, update) if self._batch_enabled(run_id) else None
                 inputs.append(self._expert_response_input(update) if failure_input is None else failure_input)
-        return tuple(inputs) + (leader_inputs + self.interaction.debate.promotion_inputs(run_id, task) + self.interaction.debate.planning_inputs(run_id, task)
+        return tuple(inputs) + (leader_inputs + self.interaction.guidance_inputs(run_id, task) + self.interaction.debate.promotion_inputs(run_id, task) + self.interaction.debate.planning_inputs(run_id, task)
             if isinstance(task, ResearchNodeTask) and self._batch_enabled(run_id) else ())
     def _read_literature(self, run_id: str, kind: str, identity: str, query: LiteratureQuery) -> dict[str, Any] | None:
         key = (kind, identity)
@@ -2315,6 +2316,7 @@ class WorkflowHost:
             else AgentCommand.DEBATE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.DEBATE
             else AgentCommand.DEBATE_JUDGE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.DEBATE_JUDGE
             else AgentCommand.OBSERVER if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.OBSERVER
+            else AgentCommand.LEADER if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.LEADER
             else AgentCommand.LITERATURE_REVIEW if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN else AgentCommand.GROUNDING if isinstance(task, AuxiliaryTask) else _EXPERT_COMMAND_BY_NODE.get(task.key.node_kind))
         if command is None or command is AgentCommand.EXPERIMENT_EXECUTION and not self._tool_execution_enabled(run_id):
             raise OperationalHalt("selected expert task is Host/Runner-owned")
@@ -2323,6 +2325,7 @@ class WorkflowHost:
             if command is AgentCommand.LITERATURE_REVIEW and self._literature_cycle_paused(run_id, role, component_id, task.key.cycle): return
             if command is not AgentCommand.LITERATURE_REVIEW and self._participant_paused(run_id, role, component_id, command.value,
                     chain or ("1" if command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT else None)): return
+        if command is AgentCommand.LEADER and self._participant_paused(run_id, role, component_id, command.value): return
         if self._at_capacity(run_id) or command is not AgentCommand.PAPER_READ and self._participant_busy(run_id, role,
                 execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
                 component_id=component_id, chain=chain): return
@@ -4530,6 +4533,8 @@ class WorkflowHost:
         if self._stop_disposition(run_id) is RunState.COMPLETED:
             verdict = self.store.list_facts(run_id, "GoalVerdictRecorded")[0]
             self.interaction.stop_for_goal(run_id, str(verdict["subject_id"]))
+        else:
+            self.interaction.stop_guidance(run_id)
         origins, _, replies = self._rendezvous_records(run_id); pending = next((origin for origin in origins if origin.rendezvous_id not in replies), None)
         if pending is not None: self._resolve_rendezvous(run_id, pending, RendezvousDisposition.CANCELLED, "Run cancellation ended the peer request."); return
         experiments = self.store.list_workflow_heads(run_id, "EXPERIMENT")

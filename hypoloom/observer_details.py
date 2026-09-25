@@ -482,7 +482,7 @@ def _interactions(transitions, selectors, attempts=(), facts=()):
         elif action.endswith("failed"):
             item["state"] = "FAILED"
         elif action in {"leader_round_finished", "debate_restarts_finished"}:
-            item["state"] = "FINISHED"
+            item["state"] = "FAILED" if event.get("terminal_reason") == "AGENT_FINAL_FAILURE" else "FINISHED"
         elif action == "leader_not_started":
             item["state"] = "NOT_STARTED"
         elif action == "debate_verdict":
@@ -490,6 +490,29 @@ def _interactions(transitions, selectors, attempts=(), facts=()):
             item["state"] = "RESTARTING"
     research = [(row, _object(_object(row.get("observation", _object(row.get("observation_json")))).get("request"))) for row in attempts if row.get("kind") == "AGENT"]
     for item in groups.values():
+        if item["kind"] == "leader":
+            observer = next((request for row, request in research if row["attempt_id"] == item["interaction_id"]), {})
+            item["mode"] = "experience_sharing" if observer.get("schema_version", 0) >= 23 else "exclusive_round"
+            publication = next((stage for stage in item["stages"] if stage.get("terminal_reason") == "GUIDANCE_ACCEPTED"), None)
+            item["guidance"] = None
+            item["provided_to"] = []
+            if publication is not None:
+                identity = publication["guidance_attempt_id"]
+                item["source_attempt_ids"].append(identity)
+                source = next((row for row, _ in research if row["attempt_id"] == identity
+                    and row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED"), None)
+                if source is not None:
+                    observed = _object(source.get("observation", _object(source.get("observation_json"))))
+                    item["guidance"] = {"attempt_id": identity, "author": publication["leader"]["role"],
+                        "published_at": publication["created_at"],
+                        **_object(_object(observed.get("response")).get("typed_candidate"))}
+                    item["provided_to"] = [{"attempt_id": row["attempt_id"], "role": request.get("role"),
+                        "component_id": request.get("component_id"),
+                        **{name: _object(_object(request.get("task_context")).get("key")).get(name)
+                            for name in ("cycle", "subkind")}}
+                        for row, request in research if request.get("command") == "HYPOTHESIS_PROPOSAL"
+                        and any(value.get("ref") == identity + "--leader-guidance" for value in request.get("input_artifacts", ()))]
+            continue
         if item["kind"] != "debate": continue
         proposal = next((stage for stage in item["stages"] if stage["action"] == "debate_proposed"), None)
         if proposal is None: continue

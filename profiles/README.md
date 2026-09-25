@@ -156,7 +156,11 @@ closed research cycles, not its experiment count. The templates use `1`; a
 local topic may deliberately choose a larger value or disable Leader/Debate.
 Leader can coordinate from verified intermediate contributions before the final
 goal. The Host still validates evidence and eligibility; skills explain the
-scientific rationale using the admitted evaluation protocol.
+scientific rationale using the admitted evaluation protocol. From ACI 23, Leader
+is an advice author: peers continue independently, with no extra cycle or parent
+authorization. Advice uses ordinary Agent budgets and the existing `leader`
+model/language route; no new Profile setting is required. Experts decide how to
+use it in a later proposal. Debate controls retain their existing meaning.
 
 Agent, Process and review capacities are separate upper bounds. Raising them
 does not automatically parallelize seeds or variants inside an experiment;
@@ -164,7 +168,7 @@ that partitioning belongs in the target implementation and must preserve its
 evaluation protocol. GPU availability is live Host information, not permanent
 skill memory. Public templates and local topics keep their own budget choices.
 
-In fresh ACI-22 runs, EXECUTION can hand a submitted experiment to Host waiting,
+In ACI 22 and later, EXECUTION can hand a submitted experiment to Host waiting,
 then resume the same node/session after collection. Both invocations consume
 normal budgets; waiting does not extend an invocation deadline. An expected
 short experiment may finish after one bounded wait in the same invocation.
@@ -174,9 +178,12 @@ archival validation and resource safeguards cannot be disabled by a skill.
 中文：Profile 表达研究策略和资源政策。Leader 的 `min_rounds_before_leader` 按贡献
 专家已收尾的研究周期计数，不按实验数量；模板采用 `1`，本地课题可选择更大值或
 关闭交互。Leader 可依据最终目标达成前的已验证贡献协调研究，Host 仍验证资格与
-证据，skill 按实际评测协议解释科学判断。Agent／Process／review 并发是各自上限，
+证据，skill 按实际评测协议解释科学判断。从 ACI 23 起，Leader 是建议作者，同行
+独立推进，不获得额外周期或父假设授权。建议使用普通 Agent 预算和既有 `leader`
+模型／语言路由，无需新增 Profile 设置；接收者自行决定后续提案如何使用。Debate
+控制保持原义。Agent／Process／review 并发是各自上限，
 不会自动拆分单个实验的 seed 或变体；拆分应在目标实现中保持评测协议。GPU 空闲
-情况由 Host 实时观察，不能固化为 skill 记忆。新 ACI-22 运行可提交后交还 Host
+情况由 Host 实时观察，不能固化为 skill 记忆。ACI 22 及后续版本的运行可提交后交还 Host
 等待，结果收集后继续同一节点／会话；前后调用均计入预算，独立时限不延长。
 框架的所有权、发布、归档验证与资源保护不由 skill 覆盖。
 

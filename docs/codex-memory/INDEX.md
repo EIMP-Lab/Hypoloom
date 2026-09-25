@@ -1,6 +1,12 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Leader experience-sharing design 2026-09-25](../design/leader-experience-sharing.md):
+  implemented in ACI 23 using existing auxiliary tasks, accepted evidence and
+  proposal inputs. No peer pauses, extra research rounds or parallel message
+  ledger; existing runs remain unchanged. [Validation and limits](../qualification.md#current-development--nonblocking-leader-experience-sharing-2026-09-25)
+  include source/consumer counterexamples, restart/stop closure, browser and
+  native local-provider/CPU evidence.
 - [PR #1 integration 2026-09-24](../qualification.md#current-development--pr-1-patch-binding-and-report-evidence-2026-09-24):
   clean-base submitted-patch checks, actual publishing Attempt ownership,
   device/task-memory evidence, canonical cost accounting and bounded CPU/native

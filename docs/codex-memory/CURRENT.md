@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- September 25: implemented general Leader experience sharing for new ACI-23
+  runs. The selected expert authors one bounded LEADER auxiliary output from
+  accepted facts/reports; peers continue without automatic pauses, priority,
+  extra cycles or parent authorization. First FORWARD inputs fix the advice
+  used by both wings, synthesis and retries. Existing IDs/transactions/requests
+  support recovery; no message ledger or receipt. Failures close locally, and
+  Run stop uses existing cleanup records without clearing operator controls.
+  Native audit exposed report coalescing dropping an admitted Observer;
+  coalescing now skips only unstarted tasks, with a reproduced regression.
+  Web distinguishes advice inclusion from adoption; bilingual guides are
+  updated. Final 122 closure checks and six browser cases pass; two native
+  local-provider paths close 173 Attempts / 12 CPU Processes with clean Oracles
+  and no residue. Focused/legacy compatibility evidence is routed through INDEX. Existing research runs/pinned bundles remain unchanged; no
+  paid or GPU qualification. User explicitly authorizes commit/push to dev.
+
 - September 24: user authorizes organizing and merging PR #1. The original
   patch-binding/path-admission and shared accounting changes are retained.
   Review counterexamples now bind report evidence through existing artifact

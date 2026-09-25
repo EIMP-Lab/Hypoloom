@@ -848,7 +848,7 @@
     ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", "RUN", "Experiment execution"],
     ["RESULT_ANALYSIS", "ANA", "Result analysis"], ["HYPOTHESIS_UPDATE", "UPD", "Hypothesis update"],
     ["CYCLE_REPORT", "REP", "Cycle report"], ["ADJUDICATE", "JDG", "Adjudication"], ["SELF_EVOLVE", "EVO", "Self-evolution"],
-    ["DEBATE", "DEB", "Debate round"], ["DEBATE_JUDGE", "JUD", "Debate judge"], ["LEADER", "LEAD", "Leader round"],
+    ["DEBATE", "DEB", "Debate round"], ["DEBATE_JUDGE", "JUD", "Debate judge"], ["LEADER", "LEAD", "Leader advice"],
   ];
 
   function compactNumber(value) {
@@ -1019,7 +1019,7 @@
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (object(summary.leader).active > 0) {
         const crown = element("span", "leader-crown", "♛");
-        crown.title = "Active Leader round · may be working or waiting between tasks";
+        crown.title = "Active Leader coordination · open details for advice or retained round semantics";
         crown.setAttribute("aria-label", "Active Leader");
         heading.append(crown);
       }
@@ -2430,8 +2430,17 @@
     } else if (kind === "interactions") {
       card.append(actionButton(`${item.kind} · ${item.interaction_id || item.command_id || "interaction"}`, () => openLocalDetail("interaction", item), "record-title"));
       field("state", item.state); field("participants", item.participants);
+      if (item.kind === "leader") {
+        field("mode", item.mode === "experience_sharing" ? "Experience sharing · peers continue independently" : "Retained exclusive round");
+        if (item.guidance) {
+          field("advice author", item.guidance.author); field("advice", item.guidance.summary);
+          field("supporting inputs", item.guidance.supporting_refs);
+          field("provided to proposals", item.provided_to);
+          card.append(element("p", "panel-copy", "Provided means included in the recorded task input. It does not establish adoption, understanding or scientific validation."));
+        }
+      }
       field("verdict", item.verdict); field("source Attempts", item.source_attempt_ids);
-      card.append(element("p", "panel-copy", "Aborted goal-stop activity is closed control work; it does not create a scientific refutation."));
+      card.append(element("p", "panel-copy", "Aborted coordination is closed control work; it does not create a scientific refutation."));
     } else if (kind === "resources") {
       card.append(actionButton(item.experiment_id, () => openLocalDetail("resource", item), "record-title"));
       renderResourceTrace(card, item);

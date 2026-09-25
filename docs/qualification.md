@@ -8,6 +8,81 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — nonblocking Leader experience sharing, 2026-09-25
+
+The user authorizes implementing the [experience-sharing design](design/leader-experience-sharing.md)
+and committing/pushing to dev. New ACI-23 runs reuse the existing LEADER
+auxiliary task, ExpertLoopCandidate, command IDs and accepted outputs. Observer
+selection no longer pauses peers, waits for their work to drain, reserves an
+extra research round, changes parents or grants execution priority. The author
+receives actual published reports and accepted facts. Advice enters the first
+FORWARD request; the other wings and retries reuse that request's exact advice
+set, including absence. Adoption, adaptation and disagreement remain independent
+scientific choices. Existing budgets, provider recovery and operator controls
+remain in effect. No new database, message ledger, receipt, candidate schema or
+assurance mechanism is introduced.
+
+Failed advice closes locally; unavailable Agent budget does not fabricate an
+Attempt. Reopening SQLite before dispatch and after successful output acceptance
+recovers the same task and one publication. Operator stop and shared-goal stop
+end advice through the existing CLEANUP_OBSERVED transition, without clearing
+participant pause reasons. A cancellation regression exposed that accepting a
+new interaction is not a declared STOPPING edge; the repair reuses the existing
+cleanup edge instead of adding a lifecycle transition. Late advice cannot be
+published after its coordination ends.
+
+The complete native rehearsal also exposed a report-coalescing race: an older
+report's SELF_EVOLVE can close after a newer report's Observer has already run.
+The later accepted coalesced report then hid that admitted Observer from pending
+work. All nine CPU outcomes were published, but independent Oracle correctly
+rejected the missing accepted Observer effect. The deterministic regression
+fails before repair; coalescing now skips only unstarted tasks and every admitted
+Observer still settles. The failed native-complete directory and unchanged
+Oracle rejection remain available, alongside the final rerun.
+
+Web details show author, accepted text, source Attempts and actual proposal
+input recipients. They explicitly distinguish input inclusion from adoption.
+The activity crown ends on completion/failure/abort; retained exclusive rounds
+remain labelled as such. English/Chinese Usage, architecture and Profile notes
+explain the new-run boundary.
+
+Validation uses disposable state and the native Claude CLI against a local
+scripted provider, with real CPU experiments and no paid or GPU calls. Focused
+selections passed **386**, **171**, and **103** checks; these overlap and must
+not be summed as unique cases. The final closure/interaction/observation
+selection passed **122 checks**, provider cooldown **7**, final browser
+leader/advice/crown/detail coverage **6**, and documentation **4**. The separately
+selected retained exclusive-Leader CPU Host case also passed. Independent counterexamples
+reject changed advice authors/content, missing or premature inputs, duplicated
+publication, changed source facts and extra scheduling authority. The final native completion case passes in **360.02 s**: three experts each
+complete three ordinary cycles and **nine CPU experiments**, both peers start
+ordinary work while LEADER is open, and all three consume the accepted advice
+in FORWARD/BACKWARD/SYNTHESIS. All **128 Attempts** close successfully; one
+selection, one start and one advice publication occur, with no participant
+controls. The final operator-stop case passes in **103.22 s**: **45 Attempts**
+close (44 successful, one cancelled LEADER), including three CPU outcomes,
+with one coordination abort and no advice publication. Both full Oracles pass.
+
+Post-test independent census (`census.json`) confirms **173 closed native
+Attempts**, clean Oracles, zero pending effects, no live recorded process groups
+and no sockets. The retained exclusive-round CPU case separately has **59
+closed successful Attempts / four CPU outcomes** and a clean Oracle, preserving
+its actual pause/resume semantics. The census initially passed relative paths
+to readers requiring canonical paths; that rejection is retained separately.
+Rerunning against absolute paths passes without changing any reader checks or
+persisted research state.
+
+Evidence is retained under ignored
+`.local/qualification/leader-guidance-20260925/`. Initial runs encountered a missing pytest parent directory, an invalid
+SUPPORTED continuation and an incorrect negative-contribution fixture version.
+The failed native/browser fixture directories, successful preliminary nine-CPU
+run, cancellation red/green results and interrupted pre-final native directory
+remain separate from the final passing results. Focused undefined/unused-name checks
+pass in the new code; an existing unused `fold_agent_attempts` import in
+WorkflowHost is unchanged. Existing research runs and their pinned bundles
+remain untouched. This is bounded development validation, not full G0–G5
+release promotion or proof that a paid model will use advice well.
+
 ## Current development — PR 1 patch binding and report evidence, 2026-09-24
 
 The user authorizes organizing and merging PR #1. Its original head is `785f95b`;

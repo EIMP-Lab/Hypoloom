@@ -1348,7 +1348,7 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     debate_title = page.evaluate(f'document.querySelector("{tiles}.debate").title')
     assert "Debate round" in debate_title
     leader_title = page.evaluate(f'document.querySelector("{tiles}.leader").title')
-    assert "Leader round" in leader_title
+    assert "Leader advice" in leader_title
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
     page.evaluate("window.scrollBy(0, -110)")
     page.screenshot(tmp_path / 'expert-working-subagents.png')
@@ -1378,7 +1378,7 @@ def test_browser_leader_crown_follows_accepted_round_across_tasks_and_idle(brows
     publish("leader_round_started")
     page.wait(f"document.querySelector('{selector}') !== null")
     assert page.evaluate(f"document.querySelector('{selector}').getAttribute('aria-label')") == "Active Leader"
-    assert "waiting between tasks" in page.evaluate(f"document.querySelector('{selector}').title")
+    assert "advice or retained round semantics" in page.evaluate(f"document.querySelector('{selector}').title")
     assert page.evaluate(f"document.querySelector('{peer}')") is None
 
     # Current Leader work uses ordinary node commands; no LEADER Attempt exists.
@@ -1612,3 +1612,24 @@ def test_browser_graph_failure_cross_is_independent_of_pruning_and_parent_failur
     page.click("#fit-graph")
     page.evaluate("window.scrollTo(0, document.querySelector('.graph-panel').getBoundingClientRect().top + window.scrollY - 150)")
     page.screenshot(tmp_path / "hypothesis-failure-crosses.png")
+
+
+def test_browser_leader_advice_shows_sources_and_provided_inputs_without_adoption(browser, tmp_path):
+    page = browser
+    item = {"kind": "leader", "interaction_id": "observer-advice", "state": "FINISHED",
+        "mode": "experience_sharing", "participants": ["expert-a"], "stages": [], "verdict": None,
+        "source_attempt_ids": ["observer-advice", "leader-advice"],
+        "guidance": {"author": "expert-a", "attempt_id": "leader-advice", "summary": "Test the declared control before generalizing.",
+            "supporting_refs": ["accepted-report--response"]},
+        "provided_to": [{"attempt_id": "peer-proposal", "role": "expert-b", "cycle": 2, "subkind": "FORWARD"}]}
+    page.evaluate('fixture.details["interactions:0"].interactions = ' + json.dumps([item]))
+    page.click("#total-leader")
+    page.wait("document.querySelector('#workbench-list').textContent.includes('Experience sharing')")
+    text = page.text("#workbench-list")
+    assert "peers continue independently" in text
+    assert item["guidance"]["summary"] in text and "accepted-report--response" in text
+    assert "peer-proposal" in text and "does not establish adoption" in text
+    page.click("#workbench-list .record-title")
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('leader-advice')")
+    assert "Source Attempt leader-advice" in page.text("#research-detail-content")
+    page.screenshot(tmp_path / "leader-advice.png")

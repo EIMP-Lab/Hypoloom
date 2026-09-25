@@ -98,6 +98,14 @@ only finish after the experiments it accepted have genuinely ended and
 submitted their results; a dispatch pause or still-queued experiments do not
 count as completion.
 
+In new ACI-23 runs, Leader shares evidence-backed advice while peers continue
+independent research. It grants no extra experiment, scheduling priority or
+hypothesis parent link. The next proposal cycle may adopt, adapt or reject the
+advice. Web **Leader & Debate** shows its author, accepted text, source Attempts
+and the proposal requests that received it; inclusion does not prove adoption.
+The crown indicates active coordination. Older pinned runs retain their original
+exclusive-round behavior; this update does not migrate an existing run.
+
 Templates default to a shared goal: an accepted SUPPORTED result can stop the
 whole run. For unified cross-expert acceptance, set `evaluation: grounding`
 in `goal.yaml`. Then only one GOAL candidate satisfying all common acceptance
