@@ -116,7 +116,7 @@ class _SharedScenario(_HostScenario):
             if request.command in _INNER:
                 text = json.dumps(document["messages"])
                 assert self.nonces[PEER if request.role == WINNER else WINNER] not in text
-                if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT or step > 1:
+                if step > 1 and request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
                     assert self.nonces[request.role] in text
             prefix = self._prefix(request)
             results = _tool_results(document)
@@ -148,8 +148,10 @@ class _SharedScenario(_HostScenario):
                         assert waited["outcome"]["outcome"] == ("SUCCESS" if request.role == WINNER else "CANCELLED")
                         self.waited[request.role] = waited
             elif request.command is AgentCommand.RESULT_ANALYSIS:
-                assert _FAIL in json.dumps(document) and _PASS in json.dumps(document)
-                assert "mcp__host-tools__submit_experiment" in json.dumps(document)
+                if step == 1:
+                    assert not any(message["role"] == "assistant" for message in document["messages"])
+                assert any("spec" in item.ref for item in request.input_artifacts)
+                assert any("outcome" in item.ref for item in request.input_artifacts)
             elif request.command is AgentCommand.FINAL_REPORT:
                 if request.attempt_id not in self.reports:
                     report = _SharedFinalReport(request)
@@ -435,15 +437,15 @@ def _assert_closed(root, scenario, *, restart, key, gpu_uuids):
                  and o["request"]["command"] in {command.value for command in _INNER}]
         assert all(o["request"]["task_context"]["key"]["experiment_ordinal"] == 1 for _, o in inner)
         sessions[role] = inner[0][1]["session"]["session_id"]
-        assert len({o["session"]["session_id"] for _, o in inner}) == 1
-        assert "--fork-session" in inner[0][1]["session"]["launch_arguments"]
-        assert all(o["session"]["launch_arguments"] == ["--resume", sessions[role]] for _, o in inner[1:])
+        assert len({o["session"]["session_id"] for _, o in inner}) == len(inner)
+        assert len({o["session"]["branch"] for _, o in inner}) == 1
+        assert all(o["session"]["launch_arguments"] == ["--session-id", o["session"]["session_id"]] for _, o in inner)
     assert len(set(sessions.values())) == 2
     reports = [(row, o) for row, o in agents if o["request"]["command"] == "FINAL_REPORT"]
     assert Counter(row["terminal_reason"] for row, _ in reports) == ({"LOST": 1, "SUCCEEDED": 1} if restart else {"SUCCEEDED": 1})
     if restart:
         assert len({row["command_id"] for row, _ in reports}) == 1
-        assert len({observation["session"]["session_id"] for _, observation in reports}) == 1
+        assert len({observation["session"]["session_id"] for _, observation in reports}) == len(reports)
         assert reports[0][1]["request"]["input_artifacts"] == reports[1][1]["request"]["input_artifacts"]
         assert (root / "final-open-before-crash.json").is_file()
     assert all(row["ended_at"] <= reports[0][0]["started_at"] for row in processes)
@@ -454,7 +456,7 @@ def _assert_closed(root, scenario, *, restart, key, gpu_uuids):
         if publication is None:
             assert restart and observation["request"]["command"] == "FINAL_REPORT"
             # The Host can die before CC writes its first session byte. Its
-            # retry keeps the UUID but legitimately starts with --session-id.
+            # retry reconstructs its own session with --session-id.
             continue
         publications += 1
         archive = artifacts / publication["path"]

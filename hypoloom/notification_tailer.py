@@ -159,6 +159,128 @@ def post_json(url: str, document: Mapping[str, Any], *, headers: Mapping[str, st
         connection.close()
 
 
+def notification_secret(environ: Mapping[str, str], config: Mapping[str, Any], field: str) -> str:
+    name = config.get(field)
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None:
+        raise NotificationError(f"missing or invalid environment variable name for {field}")
+    value = environ.get(name)
+    if not value:
+        raise NotificationError(f"missing environment variable {name}")
+    return value
+
+def notification_remote(sink: str, config: Mapping[str, Any], environ: Mapping[str, str]) -> tuple[str, dict[str, str], str | None]:
+    if sink == "telegram":
+        if config.get("credentials_file") is not None:
+            if config.get("bot_token_env") is not None or config.get("chat_id_env") is not None:
+                raise NotificationError("ambiguous secret source; use exactly one of credentials_file or bot_token_env/chat_id_env")
+            try:
+                entries = read_credentials_file(config["credentials_file"])
+                token = credential(entries, TELEGRAM_BOT_TOKEN_KEY)
+                chat_id = credential(entries, TELEGRAM_CHAT_ID_KEY)
+            except CredentialError as exc:
+                raise NotificationError(str(exc)) from None
+        else:
+            token = notification_secret(environ, config, "bot_token_env")
+            chat_id = notification_secret(environ, config, "chat_id_env")
+        if re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token) is None:
+            raise NotificationError("invalid Telegram bot token format")
+        return f"https://api.telegram.org/bot{token}/sendMessage", {}, chat_id
+    entries = None
+    if config.get("credentials_file") is not None:
+        if config.get("url_env") is not None or config.get("token_env") is not None:
+            raise NotificationError("ambiguous secret source; use a Profile/file or environment names")
+        from .credentials import WEBHOOK_URL_KEY
+        try:
+            entries = read_credentials_file(config["credentials_file"])
+            url = credential(entries, WEBHOOK_URL_KEY)
+        except CredentialError as exc:
+            raise NotificationError(str(exc)) from None
+    else:
+        url = notification_secret(environ, config, "url_env")
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password or parts.fragment or any(ord(char) < 33 for char in url):
+        raise NotificationError("invalid webhook URL; use a credential-free HTTP(S) URL")
+    if parts.scheme == "http":
+        try:
+            loopback = ipaddress.ip_address(parts.hostname).is_loopback
+        except ValueError:
+            loopback = parts.hostname == "localhost"
+        if not loopback:
+            raise NotificationError("webhook requires HTTPS except for a loopback receiver")
+    headers = {}
+    from .credentials import WEBHOOK_TOKEN_KEY
+    token = entries.get(WEBHOOK_TOKEN_KEY) if entries is not None else (
+        notification_secret(environ, config, "token_env") if config.get("token_env") else None)
+    if token:
+        if "\r" in token or "\n" in token:
+            raise NotificationError("invalid webhook token format")
+        headers["Authorization"] = "Bearer " + token
+    return url, headers, None
+
+
+def notification_log_path(config: Mapping[str, Any]) -> PurePosixPath:
+    path = config.get("path", "events.jsonl")
+    if not isinstance(path, str) or not path or "\\" in path or "\x00" in path:
+        raise NotificationError("log path must be relative to the notification run output")
+    relative = PurePosixPath(path)
+    if relative.is_absolute() or ".." in relative.parts or not relative.parts or relative.parts[0] == "cursors":
+        raise NotificationError("log path must stay outside cursors and inside the notification run output")
+    if config.get("level", "info").lower() not in _LEVELS:
+        raise NotificationError("unsupported notification log level")
+    return relative
+
+
+def notification_environment(credentials_file: str | None = None, *, environ=None) -> Mapping[str, str]:
+    """A selected existing file replaces ambient notification values, never model auth."""
+    if credentials_file is not None:
+        return read_credentials_file(credentials_file)
+    return os.environ if environ is None else environ
+
+
+def notification_proxy(config, environ, proxy_env):
+    if config.get("credentials_file") is not None:
+        if proxy_env is not None:
+            raise NotificationError("use the Profile proxy_url or --notification-proxy-env, not both")
+        from .credentials import NOTIFICATION_PROXY_KEY
+        try:
+            value = credential(read_credentials_file(config["credentials_file"]), NOTIFICATION_PROXY_KEY)
+        except CredentialError as exc:
+            raise NotificationError(str(exc)) from None
+    else:
+        value = None if proxy_env is None else notification_secret(environ, {"proxy_env": proxy_env}, "proxy_env")
+    if value is not None:
+        _proxy_address(value)
+    return value
+
+
+def notification_output_root(state_root: Path, output_root: str | Path) -> Path:
+    candidate = Path(output_root).absolute()
+    _safe_path(candidate)
+    resolved = candidate.resolve()
+    state = Path(state_root).resolve()
+    if resolved == state or resolved in state.parents or state in resolved.parents:
+        raise NotificationError("notification output root must be disjoint from state root")
+    return resolved
+
+
+def notification_preflight(config: Mapping[str, Any], *, state_root: Path,
+                           output_root: Path | None = None, environ=None, proxy_env: str | None = None) -> dict:
+    """Use runtime validators without sending, listening or creating delivery progress."""
+    environment = notification_environment(environ=environ)
+    output = notification_output_root(state_root,
+        output_root if output_root is not None else state_root.with_name(state_root.name + "-notifications"))
+    sinks = config.get("sinks", {})
+    if "log" in sinks: notification_log_path(sinks["log"])
+    enabled = [name for name, value in sinks.items() if name == "log" or value.get("enabled", False)]
+    for name in ("telegram", "webhook"):
+        if name in enabled: notification_remote(name, sinks[name], environment)
+    notification_proxy(config, environment, proxy_env)
+    if "dashboard" in enabled:
+        from .web_observer import _require_loopback_host
+        _require_loopback_host(sinks["dashboard"].get("host", "127.0.0.1"))
+    return {"enabled_sinks": enabled, "output_root": str(output), "network_probe_performed": False}
+
+
 class NotificationTailer:
     def __init__(self, state_root: str | Path, run_id: str, output_root: str | Path, *,
                  environ: Mapping[str, str] | None = None, transport: Callable[..., HTTPResponse] | None = None,
@@ -167,83 +289,29 @@ class NotificationTailer:
         if not isinstance(run_id, str) or _SAFE_ID.fullmatch(run_id) is None:
             raise NotificationError("invalid notification run identity")
         self.state_root = Path(state_root).resolve()
-        candidate = Path(output_root).absolute()
-        _safe_path(candidate)
-        self.output_root = candidate.resolve()
-        if (self.output_root == self.state_root or self.output_root in self.state_root.parents
-                or self.state_root in self.output_root.parents):
-            raise NotificationError("notification output root must be disjoint from state root")
+        self.output_root = notification_output_root(self.state_root, output_root)
         self.run_id = run_id
         self.observation_reader = observation_reader
         self.dashboard_port = dashboard_port
         self.directory = self.output_root / run_id
         self.environ = os.environ if environ is None else environ
         self.transport = post_json if transport is None else transport
-        self.proxy_url = None if proxy_env is None else self._secret({"proxy_env": proxy_env}, "proxy_env")
-        if self.proxy_url is not None:
-            _proxy_address(self.proxy_url)
         config = load_notification_config(self.state_root, run_id)
+        self.proxy_url = notification_proxy(config, self.environ, proxy_env)
         self.sinks = config.get("sinks", {})
         self.events = config.get("events", {})
         if not isinstance(self.sinks, dict) or not isinstance(self.events, dict):
             raise NotificationError("notification sinks and event selections must be mappings")
         self.log_path = None
         if "log" in self.sinks:
-            path = self.sinks["log"].get("path", "events.jsonl")
-            if not isinstance(path, str) or not path or "\\" in path or "\x00" in path:
-                raise NotificationError("log path must be relative to the notification run output")
-            relative = PurePosixPath(path)
-            if relative.is_absolute() or ".." in relative.parts or not relative.parts or relative.parts[0] == "cursors":
-                raise NotificationError("log path must stay outside cursors and inside the notification run output")
-            if self.sinks["log"].get("level", "info").lower() not in _LEVELS:
-                raise NotificationError("unsupported notification log level")
+            relative = notification_log_path(self.sinks["log"])
             self.log_path = self.directory.joinpath(*relative.parts)
 
     def _secret(self, config: Mapping[str, Any], field: str) -> str:
-        name = config.get(field)
-        if not isinstance(name, str) or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None:
-            raise NotificationError(f"missing or invalid environment variable name for {field}")
-        value = self.environ.get(name)
-        if not value:
-            raise NotificationError(f"missing environment variable {name}")
-        return value
+        return notification_secret(self.environ, config, field)
 
     def _remote(self, sink: str) -> tuple[str, dict[str, str], str | None]:
-        config = self.sinks[sink]
-        if sink == "telegram":
-            if config.get("credentials_file") is not None:
-                if config.get("bot_token_env") is not None or config.get("chat_id_env") is not None:
-                    raise NotificationError("ambiguous secret source; use exactly one of credentials_file or bot_token_env/chat_id_env")
-                try:
-                    entries = read_credentials_file(config["credentials_file"])
-                    token = credential(entries, TELEGRAM_BOT_TOKEN_KEY)
-                    chat_id = credential(entries, TELEGRAM_CHAT_ID_KEY)
-                except CredentialError as exc:
-                    raise NotificationError(str(exc)) from None
-            else:
-                token = self._secret(config, "bot_token_env")
-                chat_id = self._secret(config, "chat_id_env")
-            if re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token) is None:
-                raise NotificationError("invalid Telegram bot token format")
-            return f"https://api.telegram.org/bot{token}/sendMessage", {}, chat_id
-        url = self._secret(config, "url_env")
-        parts = urlsplit(url)
-        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password or parts.fragment or any(ord(char) < 33 for char in url):
-            raise NotificationError("invalid webhook URL; use a credential-free HTTP(S) URL")
-        if parts.scheme == "http":
-            try:
-                loopback = ipaddress.ip_address(parts.hostname).is_loopback
-            except ValueError:
-                loopback = parts.hostname == "localhost"
-            if not loopback:
-                raise NotificationError("webhook requires HTTPS except for a loopback receiver")
-        headers = {}
-        if config.get("token_env"):
-            token = self._secret(config, "token_env")
-            if "\r" in token or "\n" in token:
-                raise NotificationError("invalid webhook token format")
-            headers["Authorization"] = "Bearer " + token
-        return url, headers, None
+        return notification_remote(sink, self.sinks[sink], self.environ)
 
     def _deliver(self, sink: str, event: Mapping[str, Any], remote) -> None:
         if sink == "log":

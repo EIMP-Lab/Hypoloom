@@ -99,9 +99,17 @@ def _template_profile(tmp_path: Path, mount: Path):
     payload = admitted.create_run_payload
     settings = payload["research_contract"]["methodology"]["controls"]["product"]
     assert settings["experts"] == source["experts"]
-    assert settings["methodology"] == {key: value for key, value in source["methodology"].items()
-        if key not in {"schema_version", "runtime", "budget"}}
-    assert settings["notify"] == source["notify"]
+    expected_methodology = copy.deepcopy({key: value for key, value in source["methodology"].items()
+        if key not in {"schema_version", "runtime", "budget"}})
+    expected_notify = copy.deepcopy(source["notify"])
+    # Authoring-only credential fields never enter the admitted product, even
+    # when blank. Keep the exact comparison for every other template control.
+    for key in ("openalex_api_key", "unpaywall_email"):
+        assert expected_methodology["literature"].pop(key) == ""
+    for key in ("bot_token", "chat_id"):
+        assert expected_notify["sinks"]["telegram"].pop(key) == ""
+    assert settings["methodology"] == expected_methodology
+    assert settings["notify"] == expected_notify
     assert {item["name"] for item in settings["experts"]["experts"]} == _ROLES
     assert settings["experts"]["defaults"]["max_forks"] == 2
     assert settings["experts"]["defaults"]["max_hypotheses_per_round"] == 2

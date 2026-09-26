@@ -3,7 +3,7 @@
 import pytest
 
 from hypoloom.profile_v4 import project_profile_v4, resolve_node_runtime
-from test_profile_v4 import documents
+from test_profile_v4 import canonical_documents as documents
 
 
 @pytest.mark.parametrize("rounds", [1, 2, 4, 0, 3.0, True])

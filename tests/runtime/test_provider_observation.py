@@ -73,6 +73,22 @@ def test_usage_lower_bound_counts_complete_generations_only():
         "total_tokens": 53, "completed_requests": 1, "unmeasured_requests": 3}
 
 
+def test_cache_inclusive_wire_observations_do_not_double_count_or_invent_unknown_usage():
+    from hypoloom.provider_observation import summarize_exchanges, observed_input_floor
+    from hypoloom.context_management import latest_context
+    exchange = {"request_path": "/v1/messages", "upstream_status": 200,
+        "response_body_complete": True, "message_complete": True, "served_models": ["model"],
+        "usage": {"input_tokens": 100, "output_tokens": 5, "cache_read_input_tokens": 70},
+        "context_capacity": {"input_usage_semantics": "includes_cache"}}
+    assert summarize_exchanges([exchange])["total_tokens"] == 105
+    assert observed_input_floor([exchange]) == 100
+    assert latest_context([exchange])["input_tokens"] == 100
+    unknown = {**exchange, "context_capacity": {"input_usage_semantics": "unknown"}}
+    assert summarize_exchanges([unknown])["unmeasured_requests"] == 1
+    assert observed_input_floor([unknown]) is None
+    assert latest_context([unknown])["input_tokens"] is None
+
+
 def test_provider_failures_project_only_safe_classification_and_retry_time():
     from hypoloom.provider_observation import provider_failure
     parser = ProviderObservation()

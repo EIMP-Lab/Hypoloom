@@ -67,5 +67,6 @@ def test_native_handoff_releases_sessions_collects_and_repairs(tmp_path, monkeyp
     observations = [json.loads(raw) for _, raw in rows]
     assert [bool(row['response']['typed_candidate'].get('waiting_for_experiment_id'))
             for row in observations] == [True, True, False]
-    assert len({row['session']['session_id'] for row in observations}) == 1
+    assert len({row['session']['session_id'] for row in observations}) == len(observations)
+    assert len({row['session']['branch'] for row in observations}) == 1
     assert all(row['diagnostics']['structured_output_correction']['accepted'] for row in observations)

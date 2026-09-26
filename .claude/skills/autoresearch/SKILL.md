@@ -73,20 +73,31 @@ The suggested repository-local layout is:
 
 ```text
 <repo>/.conda/envs/hypoloom/bin/python
-<repo>/config/hypoloom.env.example               # public credential template
-<repo>/.local/credentials/hypoloom.env           # private credentials, mode 0600
 <repo>/profiles/templates/<template-safe-name>   # tracked copy source
 <repo>/profiles/local/<profile-safe-name>        # ignored real profile
+<repo>/profiles/local/<profile-safe-name>/methodology.yaml # private literature keys, 0600
+<repo>/profiles/local/<profile-safe-name>/notify.yaml      # private notification tokens, 0600
 <repo>/state/<profile-safe-name>-<YYYYMMDDHHMM> # ignored future state root
 ```
 
 Start by running `python -B -m hypoloom.bootstrap paths --repository <repo>`;
-add `--profile <name>` when selected. Show the actual private credential path,
-its existence/permissions, the public `config/hypoloom.env.example`, and the local
-Profile/template directories. Declared external credential paths appear separately
-from the default. Never display values. The dotenv file covers literature and
-notifications; model auth remains the separately selected environment/settings.
-Explain that `.local` is hidden and ignored, not missing by design.
+add `--profile <name>` when selected. Show `profile_credentials` paths and
+permissions and the local Profile/template directories, never values. Literature
+and notification credentials are filled directly in these private YAML files;
+no separate env is required. Public templates contain blank fields. The helper's
+`credentials`/`credentials_template` entries describe legacy dotenv locations
+only. Model authentication remains the selected existing environment/settings.
+
+Show the helper's `version_check` result once in the user's language, including
+the comparison remote/branch, local/remote revisions and working-tree status.
+`remote_differs` means a different remote tip with unverified ordering; do not
+call it proven behind. `unavailable`/`offline` mean unknown freshness, not latest.
+Forward `--offline` when the user requests offline init. This is a bounded,
+advisory check: it never blocks the launch decision, prompts for Git login or
+updates code. Do not repeat it after selecting the Profile, poll it in the Host,
+run fetch/pull automatically or migrate existing runs. To inspect paths again,
+use `--offline` and retain the first check's result in the review. See the
+[version reminder guide](../../../docs/guides/version-check.md).
 
 Use the deterministic helper for prospective Profile validation and launch
 assembly. It reuses admission, credentials, model-source inspection and the
@@ -188,20 +199,22 @@ scratch.
    `profile-check` must admit the actual new destination before Host launch. Do not offer automatic format migration.
 
    A schema-v2, schema-v3 or schema-v4 real `expert-six-node/1` run requires the explicit `openalex`
-   literature adapter and one operator-selected, already-existing absolute
-   regular, non-symlink mode-`0600` dotenv credentials file. The v4 Profile
-   declares that file in `methodology.yaml` (`literature.credentials_file`);
-   it holds `OPENALEX_API_KEY` and, when the Unpaywall PDF fallback is
-   selected, `UNPAYWALL_EMAIL`. Prefer this reviewed Profile path, and only
-   otherwise fall back to asking the operator for an existing absolute path.
-   Validate the file path and
-   mode without printing or otherwise exposing its content. Never create,
-   copy, chmod, or edit that credential file. Resolve and review one in-memory
+   literature adapter. New v4 Profiles store `literature.openalex_api_key` and
+   optional `literature.unpaywall_email` directly in private `methodology.yaml`.
+   Prepare the blank six-file Profile first; the user fills secrets with a local
+   editor, then init rereads it. Never request secrets in chat or pass them through
+   `--set`, argv or public templates. Keep the file regular, non-symlink and mode
+   0600. Admission strips literals and derives the original YAML path for the
+   existing reader; no copied credential file is created. Older Profile-declared
+   dotenv and single-key sources remain compatible alternatives, never conflicting
+   overrides. Do not read/print whole populated Profiles for review: use admission
+   and the safe helper output. Do not copy, chmod or edit existing credential values.
+   Resolve and review one in-memory
    literature argument vector containing all of these exact flags and values:
 
    ```text
    --literature-adapter openalex
-   --credentials-file <profile-declared-or-operator-reviewed-0600-path>
+   --credentials-file <derived-private-methodology.yaml-or-legacy-0600-path>
    --literature-pdfinfo <absolute-qualified-path>
    --literature-pdftotext <absolute-qualified-path>
    --literature-timeout <reviewed-positive-seconds>
@@ -539,7 +552,17 @@ scratch.
    unresolved aliases such as `sonnet`, `opus`, `haiku`, and `fable`,
    whitespace, and malformed `[1m]` suffixes. Pass only the
    accepted Claude selector to `--claude-model`; the Host freezes that one value
-   in its existing configuration and requires the same exact `modelUsage`
+   as its fallback model. Profile model/effort overrides take precedence per
+   Agent route. Inspect `effective_configuration.models` from `bootstrap launch`:
+   show the effective model/effort and source for shared Grounding, each expert's
+   stages, Leader, Observer and other auxiliary roles. These are possible routes,
+   not a promise that every role will execute. Explicitly highlight
+   `profile_models_overriding_host_default`; do not present the Host fallback as
+   a global override. For a new Profile, apply the user's reviewed model policy
+   through its existing defaults/role/stage fields. An adopted Profile remains
+   unchanged. The settings configured default is not the live interactive
+   session's `/model` choice; do not claim to inherit that session implicitly.
+   Each Agent pins its resolved model and requires its exact `modelUsage`
    identity. Init does not prove that a mapped model is available.
    Changing providers, settings, mappings, or the chosen selector requires a
    new init, new Host, and new run; never alter a frozen existing run.
@@ -588,8 +611,14 @@ scratch.
    value). When absent, explicitly
    display "No total-run USD ceiling" or "No USD ceiling for this expert";
    never infer a total from `max_cost`, token references, or experiment counts.
-   Profile v4 exposes these optional financial limits in `safety.yaml`; changing
-   them requires editing the prospective profile and repeating admission.
+   New v4 Profiles put these limits in `methodology.yaml.budget`, together with
+   `wallclock_hours` and `experiment_timeout` (seconds). The six-file layout is
+   unchanged: goal owns the scientific target; safety owns permissions; budget
+   owns resource/time/financial limits. Older safety USD/timeout and goal wall
+   fields remain accepted only when their canonical budget field is absent and
+   produce a migration warning. Duplicate declarations are rejected, even when
+   equal. Never silently keep the larger value. Changing a limit requires editing
+   the prospective profile and repeating admission, not migrating a retained run.
    For ACI 22 or later, explain that EXECUTION may hand a submitted experiment
    to Host waiting and resume the same node/session after terminal collection.
    Both invocations use these admitted budgets; the handoff does not grant an
@@ -719,15 +748,37 @@ choices, the reviewed `--state-root`, `--control-python`, `--request-id`,
 exact `profile_check`, `host_start`, `start`, `status` and `host_stop` arrays.
 It propagates one literature vector and the admitted invocation budget, including
 literal `--agent-max-cost-usd null` when applicable. A declared
-`literature.credentials_file` is used when no explicit credential source is given.
+inline literature credentials derive the original private `methodology.yaml` as
+the Host source. Legacy `literature.credentials_file` remains supported; conflicting
+CLI sources are rejected.
 Host-only `--gpu-pool-socket`, `--gpu-pool-namespace`, `--gpu-pool-server-uid`
 and `--web-search-fallback` never enter client commands; CPU/GPU authorization
 never enters `serve`. Host GPU inputs are `--gpu-device-uuid` and
 `--gpu-runtime-prefix`. The helper derives `--agent-max-turns`,
 `--agent-max-tokens`, `--agent-max-output-bytes`, `--agent-wall-seconds` and
 `--agent-max-cost-usd` from admission. There is no token-mode CLI flag:
-`token_enforcement_mode` stays in the admitted Profile. Do not assemble those arrays in chat. Pool inventory,
+`token_enforcement_mode` stays in the admitted Profile. Do not assemble those arrays in chat. The helper also checks the observed Host GPU inventory against Profile selectors,
+requires its runtime to equal the Profile runtime, and validates pool-specific
+budget controls. A busy GPU is a capacity wait, not permission to substitute
+another GPU. Pool inventory,
 sharing approval, systemd readiness and the final user choice below still apply.
+
+Review `effective_configuration` alongside admission and command arrays. For
+managed notifications, use private `notify.yaml`: `sinks.telegram.bot_token` /
+`chat_id`, optional `sinks.webhook.url` / `token`, and optional `proxy_url`.
+The user fills these locally; keep the file mode 0600. Admission removes values
+and derives the source file reference. No separate env or notification credential
+flag is needed. Preserve `--notification-output-root` when selected. Old explicit
+file/environment inputs remain compatible, including `--notification-proxy-env`
+and `--notification-credentials-file`; do not mix sources for one service.
+Managed init does not rely on interactive or systemd-manager notification values.
+Never copy secrets or put them in argv, unit properties, review JSON or chat.
+The helper runs the runtime's local credential,
+notification-output isolation, log-path, proxy and loopback-address validators
+without sending notifications or binding listeners. Missing credentials or
+incompatible settings block launch; occupied fixed ports remain dynamic runtime
+availability failures. Provider URL and unsupported transport modes are likewise
+checked locally without contacting a provider. Keep the runtime checks active.
 
 Present one final review containing the profile version/mode and its exact six files;
 profile, profiles, state, and interpreter paths; run/request IDs and delay; the

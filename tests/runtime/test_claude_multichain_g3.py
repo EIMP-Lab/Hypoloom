@@ -107,7 +107,10 @@ class _BatchScenario(_MemoryScenario):
                 for peer, nonce in self.chain_nonces.items():
                     if peer != chain:
                         assert nonce not in text, "another chain's actual tool context leaked"
-                if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT or step > 1 or iteration > 1:
+                if request.schema_version >= 24 and step == 1:
+                    assert not any(block.get("type") == "tool_use"
+                        for message in document["messages"] for block in message.get("content", ()) if isinstance(block, dict))
+                elif request.schema_version < 24 and (request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT or step > 1 or iteration > 1):
                     assert self.chain_nonces[chain] in text, "own previous native tool context was lost"
                 if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
                     self.designs[identity] = self.responses[request.attempt_id].typed_candidate

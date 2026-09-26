@@ -86,6 +86,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
     issues: list[SessionIssue] = []
     archives = 0
     sessions: dict[str, tuple[str, str, str, int, str]] = {}
+    session_attempts: dict[str, str] = {}
     groups: dict[tuple[str, str, str, int, str], str] = {}
     seeds: dict[tuple[str, str, str, int], tuple[str, float]] = {}
     selected: list[tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]] = []
@@ -133,6 +134,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             continue
         debate = transfer is not None and transfer[0]
         promotion = transfer is not None and not transfer[0]
+        bounded = request.get("schema_version", 0) >= 24 and not debate
         try:
             session_id = str(uuid.UUID(binding["session_id"]))
             parent_id = binding["parent_session_id"]
@@ -144,7 +146,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             chain = key.get("chain")
             assert chain is None or isinstance(chain, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", chain)
             assert binding["chain"] == (transfer[1]["participant"]["scope"]["chain"] if debate else (chain if chain is not None else "1") if inner else None)
-            assert (parent_id is not None) == (inner or debate or promotion and synthesis)
+            assert (parent_id is not None) == (not bounded and (inner or debate or promotion and synthesis))
             scope = binding["scope"]
             assert isinstance(scope, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", scope)
             if debate:
@@ -161,7 +163,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
                 assert scope == expected_scope and parent_id != session_id
             elif synthesis:
                 assert scope == "synthesis"
-                if promotion: assert (session_id, parent_id) == (transfer[1]["session_id"], transfer[1]["original_session_id"])
+                if promotion and not bounded: assert (session_id, parent_id) == (transfer[1]["session_id"], transfer[1]["original_session_id"])
             elif request.get("command") == "GROUNDING" and request["schema_version"] >= 15:
                 assert scope == "grounding-preparation" and cycle == 1
                 assert task.get("kind") == "AUXILIARY" and task.get("request_kind") == "GROUNDING"
@@ -176,8 +178,11 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             str(request["run_id"]), str(request["role"]), str(request["component_id"]), transfer[4]["cycle"], transfer[4]["scope"])
         if session_id in sessions and sessions[session_id] != group and not promoted_group:
             issue("session_cross_owner", "one CC session is bound to different chain owners", identity)
-        if group in groups and groups[group] != session_id:
+        if bounded and session_id in session_attempts and session_attempts[session_id] != identity:
+            issue("session_restart_identity", "bounded invocation reused another Attempt's model session", identity)
+        if not bounded and group in groups and groups[group] != session_id:
             issue("session_restart_identity", "the same chain changed CC session identity", identity)
+        session_attempts[session_id] = identity
         sessions[session_id], groups[group] = group, session_id
         if synthesis and row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED":
             seeds[common] = (session_id, float(row["ended_at"]))
@@ -206,8 +211,10 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
         valid_arguments = [["--resume", binding["session_id"]]]
         valid_arguments.append(["--resume", parent, "--fork-session", "--session-id", binding["session_id"]]
             if parent is not None else ["--session-id", binding["session_id"]])
-        if transfer is not None and not transfer[0] and request["command"] not in _INNER:
+        if request.get("schema_version", 0) < 24 and transfer is not None and not transfer[0] and request["command"] not in _INNER:
             valid_arguments = [["--resume", binding["session_id"]]]
+        if request.get("schema_version", 0) >= 24 and request["command"] != "DEBATE":
+            valid_arguments = [["--session-id", binding["session_id"]]]
         recovered_unknown = row["terminal_reason"] == "LOST" and closed.get("archive_after_loss") is True and arguments is None
         if arguments not in valid_arguments and not recovered_unknown:
             issue("session_launch_mismatch", "node did not use its bound seed/fork/resume arguments", identity)

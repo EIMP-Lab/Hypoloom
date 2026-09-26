@@ -8,6 +8,360 @@ The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
 
+## Current development — integrated dev submission, 2026-09-26
+
+The user requests commit/push of the accumulated context/recovery/observability,
+init consistency, Profile-local credentials and advisory version-check work.
+Evidence stays in `.local/qualification/dev-submit-20260926/`.
+
+The complete G1 selection using eight pytest workers records **6,153 passed /
+2 failed / 26 opt-in skips / 30 warnings**, in **928.04 seconds**. The native
+Bash-policy fixture exceeds the AF_UNIX socket-path limit under pytest's long
+default base; the tracked-template test still expects blank authoring credential
+fields in its admitted product. The latter assertion now explicitly removes and
+checks the four blank fields while retaining exact comparison for all other
+template controls. It does not reuse the production projection as its oracle.
+With a short disposable base, the affected selection passes **79 checks in
+17.56 seconds**, including both original failures, the actual template CPU run,
+native Bash denial/allow and credential/admission cases. Production code did not
+change after the full G1. Thus all **6,155 non-opt-in identities** have passing
+evidence; this is full coverage plus focused resolution, not an originally
+all-green full invocation. Initial failures remain in `g1.log`/`g1.xml`.
+
+An initial serial invocation was interrupted after 688 passes to use the existing
+parallel testing approach; no live fixture processes remained before restarting.
+That partial run is retained separately and is not counted as extra coverage.
+Independent read-only audits of 14 completed full-suite roots plus the corrected
+template root close **380 Agent Attempts / 32 CPU Processes**. All 15 full Oracles
+pass; there are no OPEN attempts, pending effects, duplicate canonical outcomes,
+live owned groups or sockets. Actual CPU effects, native local-provider cases,
+early capacity refusal, recovery, Leader sharing, managed bootstrap and local
+notification lifetime are represented. Raw counters remain in the two census
+files; no production reducer is duplicated.
+
+Static compilation, Ruff undefined-name checks and Git whitespace pass. The wheel
+and sdist build without dependency downloads; **140 runtime files** match the
+checkout and the sdist excludes private Profiles, settings, state and local data.
+An isolated no-dependency installation runs its CLI outside the checkout and
+correctly reports unknown source freshness for a wheel without Git metadata.
+The development commit adds no new paid/GPU or public-notification qualification,
+does not edit existing research runs and does not claim formal G0–G5 promotion.
+
+## Current development — version reminders, 2026-09-26
+
+The init path helper now includes an advisory version result; the same checker is
+available as `hypoloom version-check`. It compares Git HEAD with an actual
+ls-remote response for the configured upstream, with explicit target/offline
+options. Package metadata and local source identity are shared with the existing
+support export. The authority remains Git; no new manifest, digest, cache, launch
+gate or update service is introduced. There is no fetch/pull or research-state
+write. Partial clones avoid object inspection, including on older Git that lacks
+the no-lazy-fetch environment option. Missing history never proves behind or
+divergence. Dirty working trees are independent of matching HEADs.
+
+Evidence: `.local/qualification/version-check-20260926/`. Final focused selection:
+**190 passed in 22.13 seconds**, including real temporary local/bare Git repos,
+stale tracking refs, known ancestry, fork/renamed branches, detached HEAD, shallow
+and partial history, missing Git/remote/branch, private-error suppression, offline
+mode, init, CLI and support export. Ordinary before/after observations verify
+that refs, objects, index and working files do not change. Real child processes
+verify timeout and SIGINT cleanup. The initial SIGINT test reproduced a surviving
+Git/helper group; its failing log is retained and the final cleanup regression
+passes. Documentation/public-template checks: **7 passed**.
+
+The first actual SSH checks exceeded three seconds and returned unavailable
+without blocking either entry. A bounded ten-second diagnostic completed in
+4.18 seconds, so the default total deadline was adjusted to five seconds. Final
+default CLI/init checks completed in **4.252 / 4.209 seconds** and observed both
+tips at `17375953e1577f7a241fbdccba4ec1dfde8456e8`, while correctly reporting
+uncommitted changes. Offline inspection completed in 0.340 seconds. All exited
+zero; Git metadata and tracked source files were unchanged. These observations
+refer to the checked remote branch at that time, not a claim of current global
+freshness, release readiness or cross-version run compatibility.
+
+The [bilingual guide](guides/version-check.md) describes status meanings and
+manual checks. No full G1, paid/GPU qualification, existing-run migration,
+public notification, automatic update or commit/push was performed for this
+advisory feature. Normal Host/status/issue-export paths do not query a remote.
+
+## Current development — Profile-local credentials, 2026-09-26
+
+The user asks to keep literature keys and Telegram tokens directly in the local
+Profile, without separate env maintenance. Public bilingual templates now have
+empty fields in methodology/notify; filled local YAML remains mode 0600 and
+Git-ignored. Optional webhook/proxy values follow the same authoring path. Model
+authentication remains the existing selected CC configuration. Existing Profiles,
+credentials and research runs are not edited or migrated.
+
+The relevant boundary is the existing whole-dictionary product projection into
+GoalDefined and Agent inputs. Disk permissions and Git cannot prevent copying
+literal values into that projection. Admission removes the fields and derives
+the original YAML path through existing `credentials_file` references. The same
+private reader handles YAML and legacy dotenv; no copied secret store, new file,
+schema version, manifest or authority is added. Existing runtime validators and
+private-file protections remain. Mixed service sources, exposed credential data
+mounts and populated template/`--set` secrets are rejected; YAML parse errors do
+not echo source lines. Actual secrets never enter review command arrays.
+
+Evidence: `.local/qualification/profile-credentials-20260926/`. Final focused
+regression: **455 passed** in **47.80 seconds**, including admission, CLI,
+bootstrap, private readers, notifications/proxy, runtime consumers and support
+export; documentation/public-template checks: **7 passed**. Initial test failures
+and corrections remain in the first two logs. These were old wording/field
+expectations and new test command-selection/path mistakes; production protections
+were not weakened. This follow-up has not rerun full G1 or paid/GPU qualification.
+
+Independent census of the actual bootstrap/CPU and inline-notification CLI roots
+closes **11 Agent Attempts / 2 CPU Processes**, with one experiment creation,
+one canonical outcome and one publication. Both full Oracles pass; no OPEN
+attempts, pending effects, duplicate outcomes, live owned groups or sockets.
+Agents are scripted fixtures. The loopback notification test authenticates using
+private Profile values despite conflicting ambient values, observes 503 retry,
+final delivery and listener release, and scans actual DB/artifacts plus public
+and private issue exports for absence of its synthetic token. No real credentials
+were copied, no public notification or paid call was made, and no commit/push
+was requested. Bilingual README/Setup, Profile/config/notification/init guides
+and runtime init instructions describe the same authoring flow.
+
+## Current development — init configuration consistency, 2026-09-26
+
+A provider-free audit reproduced 12 cases of misleading or incomplete init
+configuration: Profile models overriding the displayed Host fallback, duplicate
+budget declarations replacing 1 USD / 1 hour with template 45 USD / 6 hours,
+GPU runtime/selector/pool incompatibilities, lost notification environment,
+missing notification credentials, unsupported dashboard/provider settings and
+Host notification options absent from bootstrap. Original evidence stays in
+`.local/analysis/init-audit-20260926/`.
+
+The failed boundary is prospective configuration compilation and managed launch.
+Existing Profile validation, consumer validators, explicit private-file inputs
+and ordinary regression tests are sufficient. No hash, launch manifest, receipt,
+new Profile version or persistent authority is added. Runtime guards remain.
+New templates consolidate time/financial budgets in `methodology.budget`; old
+single declarations still compile with a migration warning, while duplicates
+are rejected even if equal. Runtime model/effort resolution also supplies the
+init explanation. GPU checks reuse Profile selection and Host pool constraints;
+API and notification preflight reuse their actual local consumer validators.
+
+Managed notification variables are read from an explicitly selected existing
+0600 dotenv file (`--notification-credentials-file`), or Telegram's existing
+per-sink file. This is the existing credential-file input mechanism, not a
+copied secret store or environment authority. The file replaces only notification
+values; direct serve/notify compatibility remains. Output and proxy options are
+preserved in the Host argv. Preflight performs no delivery or provider probe.
+Bilingual templates, guides and the runtime init instructions are updated.
+
+Focused regression: **346 passed**; initial failures concerned an intentionally
+new legacy-field warning and a previously incomplete pooled-GPU fixture, and
+are retained. Full G1 records **6,102 passed / 7 failed / 26 opt-in skips /
+30 warnings** in **1,162.00 seconds** (`g1.xml`). All seven failures were old
+fixtures asserting no warnings while declaring legacy budgets. Only those
+unrelated configuration tests switched to canonical-budget fixtures; their
+assertions remain unchanged and dedicated legacy compatibility coverage remains.
+The two affected modules plus Profile-v4 checks then pass **128**
+(`profile-final.xml`), including every initially failing case. Production code
+did not change during this qualification. This is full-suite coverage plus
+targeted follow-up, not a single clean full-suite execution; counts overlap.
+Documentation/public-template checks pass **7**, and static/diff checks pass.
+
+Independent bootstrap census closes **2 Agent Attempts / 2 CPU Processes**, with
+one experiment creation, one canonical outcome and one publication; no duplicate
+outcomes, pending effects, OPEN attempts, live owned groups or sockets, and the
+full Oracle passes. This exercises the actual CLI Host with a scripted Agent,
+not a paid model. Both actual-CLI notification cases complete: explicit private
+file and direct-serve environment compatibility, receiver authentication,
+503 retry, final delivery, cursor progress and shutdown/port release. No test
+credential appears in observed logs. Evidence, including original failures,
+stays in `.local/qualification/init-consistency-20260926/`.
+
+Read-only MERC-causal admission passes with only legacy wall-clock/timeout
+migration warnings. Existing runs, local Profile contents and user settings
+are unchanged. No paid/GPU qualification, public notification, commit or push
+is requested for this repair.
+
+## Current development — context observations and measured recovery costs, 2026-09-26
+
+The follow-up fills gaps in the core context/recovery delivery: native CLI
+compaction events, successful exact-range frozen-input rereads, prompt material
+statistics and disjoint initial-failure/recovery costs. These are read-only
+projections of existing transcripts, diagnostic captures and `fold_agent_attempts`;
+they are not another ledger or scientific authority. Missing/partial coverage and
+unknown billing remain visible. Byte estimates and provider readings are shown
+together, with admission reservations. Internal CLI cost/latch records are not
+misclassified as incomplete reading events; timestamped events are scoped to the
+current invocation, including resumed legacy sessions.
+
+A reproduced complete first generation request, locally rejected at the existing
+minimum inline allowance with no forwarded generation, cannot be improved by
+unchanged relaunches. Its existing provider diagnostic now ends that retry class
+with an actionable explanation. Missing capture, provider-side overflow and
+capacity after tool progress retain bounded recovery. Archive, stop and budget
+precedence is preserved. No new recovery state machine, receipt or run migration.
+
+Evidence lives in `.local/qualification/context-observability-20260926/`.
+Focused/browser checks pass **176**; native CLI/CPU and new observation regressions
+pass **12** after retaining an initial partial-coverage counterexample. An
+additional native first-request refusal case passes with nine infrastructure
+retries configured: each node ends at its third Attempt/minimum inline allowance,
+no generation reaches upstream, and the failed run closes with a clean Oracle.
+Static,
+physical-budget and documentation checks pass **35**. Three retained GLM archives
+replay actual pre/post compaction inputs and durations without changing the files.
+The first frozen-runtime G1 passes **6,089 / 26 opt-in skips / 30 warnings** in
+2,045.68 seconds (`g1.xml`). The real-model observations then justified exposing
+the existing CLI unknown-pricing flag in Web/TUI/support metadata without
+rewriting charges. A separate counterexample showed wall-clock ordering losing
+a later recovery charge after a clock step; logical stages and cost aggregation
+now use existing Attempt ordinals. Both initial red cases remain in `cost-red.log`;
+**104** focused/browser checks pass after repair. Final frozen-runtime G1 passes
+**6,092 / 26 opt-in skips / 30 warnings** in **1,160.60 seconds**, using eight
+workers with work stealing (`g1-final.xml`). Warnings are the retained Python
+multiprocessing/fork deprecations. Final documentation/Profile/physical-budget
+checks pass **24**; undefined-name, JS syntax and diff checks pass. These focused
+counts overlap G1 and are not additive. No additional paid call was made for the
+read-only pricing/order projections.
+
+Independent final census of ten native/local-provider roots
+(`census-g1-final.json`) closes **318 Agent Attempts / 26 CPU Processes**, with
+**26 creations / 26 canonical outcomes / 26 publications**, no duplicate outcomes,
+pending effects, OPEN attempts, live owned process groups or sockets. All ten full
+Oracles pass, including the expected FAILED first-refusal run and CANCELLED Leader
+stop case. Earlier partial/failing checks and the first full G1 are retained.
+
+The user authorizes existing CC settings without a global spend cap. The first
+sample allocates **24 USD across four independent fresh roots**, with 6 USD per
+root and 2 USD / 32 turns / 300 seconds per invocation. One replacement trial adds
+6 USD (30 USD total allocation): the original inherited fixture had explicitly
+disabled infrastructure retries, so its interrupted analysis correctly exhausted
+before run completion. That original root and its clean closure remain as a
+disabled-retry control; replacement Profiles enable one infrastructure retry,
+without bypassing a runtime rule. Token mode is explicitly
+`observe`; the 150,000-token declaration is not a hard token cutoff. Only
+RESULT_ANALYSIS calls the configured `mimo-v2.6-pro`; native scripted prerequisites
+produce real CPU results. The arms compare 49,152 versus 1,536 inline bytes, each
+with and without one controlled capacity refusal after actual model tool work.
+The prewritten protocol, original responses, billing, fault evidence and Oracles
+are retained per arm. This is a small scientific interpretation/recovery sample,
+not whole-topic G5 or proof of long-term savings. Existing research runs remain
+read-only; no GPU qualification, commit or push is requested.
+
+The five real-model trials have now closed. Normal inline and small inline both
+preserve the local refutation (0), common-goal measurements (0.75/0.75), complete
+single-candidate constraints and the correct next-action scope. Default inline
+with one enabled reconstruction also preserves these, with unchanged frozen
+inputs and one experiment. Small inline plus reconstruction times out at the
+300-second invocation boundary without accepted analysis; its last request fits
+the local allowance and has no new capacity or 429 failure. This is not evidence
+of lost scientific memory, nor a passing quality result. The disabled-retry
+control above retains its original failure.
+
+| Main condition | Accepted analysis | Tokens / completed generation calls | CLI-reported USD |
+|---|---|---|---|
+| 49,152-byte inline allowance | Yes | 215,058 / 5 | 0.379813 |
+| 1,536-byte inline allowance | Yes | 243,046 / 7 | 0.395605 |
+| Default inline + one reconstruction | Yes | 141,078 / 4 | 0.465506 |
+| Small inline + one reconstruction | No: timeout | 19,741 reported + at least 113,179 unsettled / 5 | 0.066247 + one unknown invocation |
+
+The disabled-retry control reports another 0.160455 USD. Across all five trials,
+the CLI reports **1.467626 USD**, with one unclosed billing observation represented
+by a **2 USD reservation, not actual spend**. Every inspected native cost-state
+marks `hasUnknownModelCost=true`: these are CLI fallback estimates, not verified
+vendor invoices. Invocation dollar caps also use existing CLI accounting; they
+are not a promise about a third-party bill. Prompt bytes fall 74,002→30,901 in the
+small-inline control, but Bash calls rise 4→8 and tokens about 13%. Keep the
+49,152-byte default; this sample does not establish a benefit from more aggressive
+offloading. Raw Bash rereads are excluded from exact native Read counts, which
+are zero here. Cache distribution and source scope remain separately visible.
+
+`census-model-final.json` independently closes **57 Agent Attempts / 5 CPU
+Processes**: five creations, five canonical outcomes, five publications, no
+duplicates, pending effects, OPEN attempts, live owned groups or sockets; all
+five full Oracles pass. Closure is distinct from analysis quality. The complete
+Chinese interpretation and numeric aggregation are `report.md` and
+`model-summary.json`; original responses and failures remain per trial.
+
+## Current development — bounded context and recovery, 2026-09-26
+
+The user authorizes implementing the [context/recovery plan](design/context-management-and-recovery.md).
+New ACI-24 ordinary Attempts start fresh model sessions while retaining research
+identity, Git workspaces, frozen input bytes, ownership and accumulated charges.
+Three-round Debate keeps its existing bounded fork protocol and closes an
+oversized auxiliary task without repeating that session. The prompt renderer
+and existing provider relay share an explicitly estimated working allowance;
+neither model names nor cumulative invocation budgets establish provider capacity.
+No vector database, parallel memory authority or mandatory summary Agent is added.
+
+Capacity failures close and archive through existing Attempt machinery and use
+bounded infrastructure retries. API authentication/quota recovery remains a
+separate shared condition. Operational analysis failure cannot itself override
+otherwise valid revision, while adjudication, update, reports, budget and stop
+requirements still apply. Early native source feedback reuses final admission's
+validator. Measurement guidance exposes parser/baseline/comparison values without
+guessing or rewriting scientific meaning. Bilingual guides document these limits.
+
+Verification also reproduced a preexisting controller-exhaustion defect on the
+unchanged baseline: a completed valid experiment followed by accepted ITERATE
+was stopped by the controller's timeout marker. New ACI-24 ignores that marker
+only for operational controller failures with completed owned work and a valid
+canonical result; ordinary analysis, ownership and budget controls remain.
+A native semantic rejection now spends the existing corrective retry allowance.
+Promoted Git source reaches new inner chains independently of transcript parents.
+Archive/stop failures take precedence over any attached capacity diagnostic;
+three failing counterexamples were preserved before repair. Existing provider
+settings and session-evidence helpers were consolidated without increasing the
+accepted physical code budget or adding another state authority.
+
+Local evidence is retained under `.local/qualification/context-management-20260925/`.
+Four original captured prompts were replayed read-only: 202,805/231,432/279,595/
+238,111 bytes become 79,328/77,131/82,857/78,250 bytes, with 48,816/48,834/48,712/
+48,864 inline input bytes and unchanged frozen inputs. These are byte measurements,
+not tokenizer accuracy or scientific-quality claims. The GLM first-prompt overflow
+sample independently drops from 793,660 to 68,786 bytes (40,437 inline); all
+original sources remain addressable and original file size/mtime are unchanged
+(`glm-prompt-replay.json`).
+
+Current and original bundled Oracles both accept retained GLM/MiMo roots
+`MERC-causal-202609200023` and `MERC-causal-202609240242`: no open Attempts,
+duplicate effects or owned process residue; database size/mtime unchanged.
+The read-only reports are in `retained-readers.json`.
+The separate retained context sample reports 3,722,840 cumulative tokens and
+472,337 tokens for the last input, including 469,632 cache-read tokens; these
+remain distinct in the monitor (`retained-context-metric.json`).
+
+Native CLI/local-provider tests cover real CPU closure, capacity refusal after
+committed submission, and Host restart after a lost submit reply. The latter
+two pass with fresh sessions, identical frozen inputs, one experiment per
+submission and clean Oracles. A separate two-cycle CPU case preserves valid
+revision after exhausted analysis, with four actual outcomes and clean Oracle.
+Initial failed evidence remains: an extra recovery input violated frozen retry
+inputs and was removed; an edit during a native test correctly triggered pinned
+runtime drift; several old fixtures still assumed inherited native history.
+
+Final independent census of nine representative native CLI/local-provider roots
+(`census-final.json`) passes: **311 Agent Attempts and 26 CPU Processes**, all
+closed; **26 experiments created, 26 canonical outcomes and 26 outcome
+publications**, with no duplicated outcome subjects, pending effects, live owned
+process groups or sockets. All nine full Oracles pass. The cohort includes
+legacy/current manager reconstruction, capacity-after-submit, lost-submit reply,
+same-Attempt source correction, rejected-source archive, report repair and both
+Leader completion/stop paths. An earlier census performed while the suite was
+still active remains explicitly non-final in `census-during-g1.json`.
+
+Final G1 on the frozen runtime passes: **6,078 passed / 26 opt-in skips / 30
+warnings in 2,038.74 s**, using eight workers and short disposable paths
+(`g1-final.log`, `g1-final.xml`). Compile, undefined-name checks and `git diff
+--check` pass. The warnings are Python multiprocessing/fork deprecations retained
+in the log. Final focused closure/precedence/legacy-and-current manager checks
+pass **44**, and documentation/public Profile checks **7**; these overlap G1 and
+must not be summed as unique tests. Earlier full G1 (6,004 pass / 59 fail / 26
+skip), baseline reproductions and intermediate failed refreshes remain intact;
+no check was removed or physical code budget increased to obtain the final pass.
+The 26 skipped paid/GPU/notification/disposable-filesystem cases are not qualified.
+
+No retained run was resumed, rewritten or migrated. No paid-model/GPU
+qualification, commit or push is authorized by this implementation request. Native scripted success establishes
+framework mechanics, not GLM/MiMo scientific recovery quality or G4–G5 promotion.
+
 ## Current development — nonblocking Leader experience sharing, 2026-09-25
 
 The user authorizes implementing the [experience-sharing design](design/leader-experience-sharing.md)

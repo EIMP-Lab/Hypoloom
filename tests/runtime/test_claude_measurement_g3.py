@@ -38,7 +38,7 @@ from test_full_cc_host_g3 import (
 )
 
 
-def _six_yaml_profile_v4_payload(tmp_path: Path, mount: Path, run_id: str) -> dict[str, Any]:
+def _six_yaml_profile_v4_payload(tmp_path: Path, mount: Path, run_id: str, *, correction_cap: int = 1) -> dict[str, Any]:
     """Admit the actual six source documents; never edit the admitted science."""
     _, target, data = _materialize_expert_loop_pilot_v3(mount)
     source = documents()
@@ -54,6 +54,7 @@ def _six_yaml_profile_v4_payload(tmp_path: Path, mount: Path, run_id: str) -> di
             "agent_invocation": {"max_turns": 24, "max_tokens": 20000,
                 "max_output_bytes": 131072, "wall_seconds": 180, "max_cost": "0.5",
                 "token_enforcement_mode": "observe"}}}
+    source["methodology"]["output_correction"] = {"max_failed_validations": correction_cap}
     source["language"] = {"prompt_language": "en", "report_language": "en", "code_comment_language": "en"}
     source["notify"] = {"sinks": {}, "events": {}}
     source["safety"] = {"allow_read_paths": [str(data)], "sandbox_os": "linux_bwrap",
@@ -331,7 +332,8 @@ def test_real_claude_shell_parser_repair_mcp_execution_and_independent_oracle(
 
 
 def _run_real_claude_measurement_g3(tmp_path: Path, profile_kind: str, *,
-    scenario_factory: Any = _DeclaredScenario, grounding_web: Any = None) -> _DeclaredScenario:
+    scenario_factory: Any = _DeclaredScenario, grounding_web: Any = None,
+    correction_cap: int = 1) -> _DeclaredScenario:
     executable = _installed_claude()
     nonce = "declared-parser-report-" + secrets.token_hex(12)
     scenario = scenario_factory(tmp_path, nonce)
@@ -349,7 +351,7 @@ def _run_real_claude_measurement_g3(tmp_path: Path, profile_kind: str, *,
             prefix="hypoloom-c5-cli-g3-", dir="/var/tmp"
         ) as mount:
             if profile_kind == "six-yaml-v4":
-                payload = _six_yaml_profile_v4_payload(tmp_path, Path(mount), run_id)
+                payload = _six_yaml_profile_v4_payload(tmp_path, Path(mount), run_id, correction_cap=correction_cap)
             else:
                 payload = _pilot_payload(tmp_path, Path(mount), run_id)
                 contract = payload["research_contract"]

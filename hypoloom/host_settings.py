@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import json
+import math
+import time
 import os
 import sqlite3
 import stat
 import tempfile
 from pathlib import Path
+from typing import Any
+
+from .agent_aci import AgentACIError
+from .agent_budget import DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
 
 from .artifacts import renameat2_noreplace
 
@@ -158,3 +164,45 @@ def restore_host_settings(fresh_restore_root: Path, source: str | os.PathLike[st
     if os.path.lexists(fresh_restore_root / PRIVATE_SETTINGS_NAME):
         raise HostConfigurationError("fresh restore already contains private settings")
     return _copy_settings(fresh_restore_root, Path(source))
+
+
+def provider_retry_status(host, run_id: str) -> dict[str, Any]:
+    # Durable gate view: closed Attempts carry the failure, an operator
+    # clear transition ends it early. No in-memory authority, so a
+    # reopened Host computes the identical gate.
+    from .provider_observation import provider_retry_gate
+    cleared = host.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
+        "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
+    rows = host.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
+        "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
+        "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
+        "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status, "
+        "(terminal_reason='SUCCEEDED' OR (json_extract(observation_json,'$.diagnostics.provider_observed_usage.completed_requests')>0 "
+        "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IS NULL)) AS provider_success "
+        "FROM execution_attempts WHERE run_id=? AND kind='AGENT'", (run_id,))
+    try: cooldown = host._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
+    except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
+    if type(cooldown) not in (int, float) or not math.isfinite(float(cooldown)) or float(cooldown) < 0:
+        cooldown = DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
+    status = provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
+        attempt_limit=host._agent_attempt_limits(host._research_contract(run_id))[1],
+        cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
+    _, error = host._provider_connection(run_id)
+    if error:
+        status.update(pending=True, state="waiting_operator", requires_operator=True,
+            reason="connection_configuration", connection_error=error, next_retry_at=None)
+    return status
+
+def provider_connection(host, run_id: str) -> tuple[dict[str, str], str | None]:
+    controls = host.store.inspect("SELECT command_id, payload_json FROM workflow_transitions WHERE run_id=? "
+        "AND workflow_kind='RUN' AND json_extract(payload_json,'$.provider_retry_clear') IS NOT NULL ORDER BY revision DESC", (run_id,))
+    source = next((json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path") for row in controls
+        if json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path")), None)
+    if source is None: return dict(host._provider_environment), None
+    identity = controls[0]["command_id"]
+    cached = host._provider_connections.get(run_id)
+    if cached is None or cached[0] != identity:
+        try: cached = (identity, read_provider_connection(Path(source)), None)
+        except HostConfigurationError as exc: cached = (identity, None, str(exc))
+        host._provider_connections[run_id] = cached
+    return {**host._provider_environment, **(cached[1] or {})}, cached[2]

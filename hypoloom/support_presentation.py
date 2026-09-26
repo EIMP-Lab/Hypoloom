@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import importlib.metadata
 import platform
-from pathlib import Path
 import re
 import shutil
 import sqlite3
@@ -87,15 +85,8 @@ def _command_output(argv, *, cwd=None):
 
 def support_environment():
     """Allowlisted current exporter environment; no env dump, host name or device IDs."""
-    source = Path(__file__).resolve().parent.parent
-    git_root = _command_output(["git", "rev-parse", "--show-toplevel"], cwd=source).strip()
-    checkout = bool(git_root) and Path(git_root).resolve() == source
-    revision = _command_output(["git", "rev-parse", "HEAD"], cwd=source).strip() if checkout else ""
-    revision = revision if re.fullmatch(r"[a-f0-9]{40,64}", revision) else None
-    try:
-        version = importlib.metadata.version("hypoloom")
-    except importlib.metadata.PackageNotFoundError:
-        version = None
+    from .version_check import source_version
+    source = source_version()  # Local only: exporting an issue never checks a remote.
     cli = shutil.which("claude")
     cli_version = re.search(r"\b\d+\.\d+\.\d+(?:[-+.][\w.]+)?", _command_output([cli, "--version"]) if cli else "")
     gpu_tool = shutil.which("nvidia-smi")
@@ -106,9 +97,8 @@ def support_environment():
         parts = [part.strip() for part in line.split(",")]
         if len(parts) == 3 and parts[2].isdigit() and re.fullmatch(r"[\w. ()+-]{1,100}", parts[0]):
             gpus.append({"name": parts[0], "driver_version": parts[1], "memory_mib": int(parts[2])})
-    modified = bool(_command_output(["git", "status", "--porcelain", "--", "hypoloom"], cwd=source)) if checkout else None
-    return {"scope": "exporter_environment_now", "framework_version": version,
-        "source_revision": revision, "source_modified": modified, "python": platform.python_version(),
+    return {"scope": "exporter_environment_now", "framework_version": source["package_version"],
+        "source_revision": source["local_revision"], "source_modified": source["dirty"], "python": platform.python_version(),
         "python_implementation": platform.python_implementation(), "sqlite": sqlite3.sqlite_version,
         "os": platform.system(), "os_release": platform.release(), "architecture": platform.machine(),
         "claude_cli": cli_version.group() if cli_version else None,

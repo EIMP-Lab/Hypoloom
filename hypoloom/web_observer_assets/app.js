@@ -903,6 +903,8 @@
       const status = stage.terminal_reason || stage.state || "UNKNOWN";
       const row = element("p", `expert-stage-detail stage-${stageState(stage, host)}`);
       row.append(element("strong", "", phase), document.createTextNode(` · ${scope ? `${scope} · ` : ""}${status} · ${stage.elapsed_seconds == null ? "elapsed ?" : formatDuration(0, stage.elapsed_seconds)}`));
+      if (stage.operational_status || stage.failure_code) row.append(document.createTextNode(` · ${stage.operational_status || "invocation failure"}: ${stage.failure_code || "fresh session"}`));
+      if (stage.recovery_note) row.title = stage.recovery_note;
       activity.append(row);
     });
     if (!stages.length) activity.append(element("p", "panel-copy", "Current stage unavailable; open the expert history for retained evidence."));
@@ -951,16 +953,32 @@
     tile.classList.toggle("leader", attempt.command === "LEADER");
     const isProcess = attempt.kind === "PROCESS";
     const known = !isProcess && Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
-    const limit = Number.isInteger(attempt.budget_max_tokens) && attempt.budget_max_tokens > 0 ? attempt.budget_max_tokens : null;
+    const limit = Number.isInteger(attempt.context_window_tokens) && attempt.context_window_tokens > 0 ? attempt.context_window_tokens : null;
     const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens) : "—";
-    value.textContent = valueText;
+    value.textContent = attempt.operational_status === "compacting" ? `↻ ${valueText}` : valueText;
     fill.style.width = known && limit ? `${Math.min(100, Math.round((attempt.context_tokens / limit) * 1000) / 10)}%` : "0%";
     const lines = [`${label} · attempt ${attempt.attempt_id}`];
     if (isProcess) {
       lines.push(`elapsed ${compactDuration(elapsed)} · OPEN is durable state, not process liveness`);
     } else {
       lines.push(!known ? "no context reading yet"
-        : `context ≥${compactNumber(attempt.context_tokens)}${limit ? ` of ${compactNumber(limit)} attempt token budget` : " · attempt token budget not recorded"} · ${attempt.context_source === "transcript" ? "live context · last model turn read from the session transcript" : "context carried into the current call · observed lower bound"}`);
+        : `last input ${compactNumber(attempt.context_tokens)}${limit ? ` / ${compactNumber(limit)} working context limit` : " · context window unknown"} · ${attempt.context_source || "unknown source"}`);
+      if (attempt.context_window_source === "working_limit_only") lines.push("Provider window unconfirmed; limit is the framework working estimate.");
+      if (Number.isInteger(attempt.cumulative_tokens)) lines.push(`Cumulative invocation usage: ${compactNumber(attempt.cumulative_tokens)} tokens`);
+      const context = attempt.context || {};
+      if (Number.isInteger(context.estimated_input_tokens)) lines.push(`Estimated input: ${compactNumber(context.estimated_input_tokens)} (conservative UTF-8 byte estimate, separate from provider usage)`);
+      if (Number.isInteger(context.available_input_tokens)) lines.push(`Admission input allowance: ${compactNumber(context.available_input_tokens)} · output reserve ${context.output_reserve_tokens ?? "?"} · tools ${context.tool_reserve_tokens ?? "?"} · margin ${context.estimate_margin_tokens ?? "?"}`);
+      if (Number.isInteger(context.declared_context_tokens)) lines.push(`Configured provider window: ${compactNumber(context.declared_context_tokens)} tokens`);
+      if (Number.isInteger(context.cache_read_input_tokens)) lines.push(`Cache read: ${compactNumber(context.cache_read_input_tokens)} input tokens`);
+      if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(`Cache creation: ${compactNumber(context.cache_creation_input_tokens)} input tokens`);
+      if (attempt.session_scope) lines.push(`Session scope: ${attempt.session_scope}`);
+      const observation = attempt.context_observation || {};
+      if (observation.cli_unknown_model_pricing === true) lines.push("CLI session has unknown model pricing; reported dollars are fallback estimates, not a vendor bill.");
+      if (Number.isInteger(observation.native_compaction_count)) lines.push(`Native compactions: ${observation.native_compaction_count} · observed duration ${observation.native_compaction_duration_ms} ms · unknown durations ${observation.native_compaction_duration_unknown} · coverage ${observation.coverage}`);
+      const compact = observation.last_native_compaction;
+      if (compact) lines.push(`Last native compaction: ${compact.pre_tokens ?? "?"} → ${compact.post_tokens ?? "?"} input tokens · ${compact.duration_ms ?? "?"} ms`);
+      if (Number.isInteger(observation.read_calls)) lines.push(`Successful Read calls: ${observation.read_calls} · exact frozen-input rereads ${observation.exact_reread_calls} (shell reads excluded)`);
+      if (attempt.operational_status === "compacting") lines.push("Native CLI last reported: compacting");
       lines.push(`elapsed ${compactDuration(elapsed)}${hasWall ? ` of ${compactDuration(attempt.wall_seconds)} wall budget${overdue ? " · exceeded" : ""}` : ""} · OPEN is durable state, not process liveness`);
     }
     tile.title = lines.join("\n");
@@ -1075,6 +1093,17 @@
         work.append(element("p", "expert-token-usage", `+≥${compactNumber(accounting.observed_unsettled_tokens)} observed tokens · unsettled calls; included separately from reported usage and reserves`));
       }
       work.append(element("p", "expert-token-usage", `🪙 ≥${compactNumber(accounting.reported_tokens)} tok · reserve ${compactNumber(accounting.reserved_tokens)} · unknown closed ${accounting.unknown_closed_attempts ?? "?"} · unavailable token records ${accounting.unavailable_token_attempts ?? "?"}`));
+      const recovery = object(summary.context_recovery);
+      if (recovery.cli_unknown_pricing_attempts > 0) work.append(element("p", "expert-token-usage", `CLI pricing unknown: ${recovery.cli_unknown_pricing_attempts} attempts · reported dollars are fallback estimates`));
+      if (recovery.cli_pricing_unavailable_attempts > 0) work.append(element("p", "expert-token-usage", `CLI pricing evidence unavailable: ${recovery.cli_pricing_unavailable_attempts} attempts`));
+      if (recovery.context_failure_attempts > 0) {
+        const cost = Number(recovery.recovery_reported_cost_usd || 0);
+        const unknown = recovery.recovery_unknown_cost_attempts || 0;
+        const retries = recovery.recovery_attempts || 0;
+        const detail = element("p", "expert-token-usage", `Context recovery: ${retries} attempts · reported $${cost.toFixed(4)} · cost unknown ${unknown}`);
+        detail.title = "Subsequent attempts after the first context failure, including successful recovery. Initial failures are separate in command accounting. Observed costs are not measured savings.";
+        work.append(detail);
+      }
       work.append(element("p", "panel-copy", `${displayValue(object(summary.experiments).total)} experiments · ${displayValue(object(summary.literature).retrieved)} papers · ${displayValue(object(summary.skills).count)} skills · ${displayValue(object(summary.evolutions).changed)} effective evolutions`));
       card.append(identity, work);
       container.append(card);

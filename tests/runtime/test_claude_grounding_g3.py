@@ -137,6 +137,46 @@ def test_real_grounding_mcp_sources_reach_next_expert_and_cpu_oracle(tmp_path: P
     (tmp_path / "scripted-web-calls.json").write_text(json.dumps(transport.calls, indent=2))
 
 
+def test_native_source_error_is_corrected_in_same_attempt_before_cpu_closure(tmp_path: Path):
+    class CorrectingScenario(_GroundedMeasurementScenario):
+        def record(self, document):
+            number = super().record(document)
+            request = self.current
+            if request.command is AgentCommand.GROUNDING:
+                step = self.steps[request.attempt_id]
+                if step == 4:
+                    response = self.responses[request.attempt_id]
+                    self.responses[request.attempt_id] = replace(response,
+                        typed_candidate={**response.typed_candidate,
+                            "web_sources": ["https://example.org/never-retrieved"]})
+                elif step == 5:
+                    messages = json.dumps(document["messages"])
+                    assert "Stop hook feedback:" in messages and "retrieved" in messages
+                assert step <= 5
+            return number
+
+    transport = Transport({SEARCH: _response(SEARCH,
+        b'<a class="result__a" href="https://example.org/docs">Evaluation guide</a>')})
+
+    def scenario_factory(root, nonce):
+        scenario = CorrectingScenario(root, nonce)
+        scenario.transport = transport
+        return scenario
+
+    scenario = _run_real_claude_measurement_g3(tmp_path, "six-yaml-v4",
+        scenario_factory=scenario_factory, grounding_web=GroundingWeb(transport), correction_cap=3)
+    with sqlite3.connect(f"file:{tmp_path}/state/state.sqlite?mode=ro", uri=True) as connection:
+        observations = [json.loads(raw) for raw, in connection.execute(
+            "SELECT observation_json FROM execution_attempts WHERE kind='AGENT'")]
+    grounding, = [item for item in observations if item["request"]["command"] == "GROUNDING"]
+    assert grounding["request"]["schema_version"] == 24
+    assert grounding["response"]["typed_candidate"]["web_sources"] == [DOC]
+    trace = grounding["diagnostics"]["structured_output_correction"]
+    assert trace["status"] == "recovered" and trace["accepted"]
+    assert (trace["call_count"], trace["rejected_count"]) == (2, 1)
+    assert scenario.steps[grounding["request"]["attempt_id"]] == 5
+
+
 def test_native_tool_timeout_drops_late_source_before_cpu_oracle_closure(tmp_path: Path):
     slow_url = "https://example.org/late-undelivered"
     finished = threading.Event()

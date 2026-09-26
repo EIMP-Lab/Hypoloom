@@ -190,7 +190,8 @@ def test_native_local_success_common_raw_failure_iterates_in_same_chain_session(
             inner = [row for row in agents if row["request"]["command"] in {
                 "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
             assert len(inner) == 6 and len({row["request"]["attempt_id"] for row in inner}) == 6
-            assert len({row["session"]["session_id"] for row in inner}) == 1
+            assert len({row["session"]["session_id"] for row in inner}) == len(inner)
+            assert len({row["session"]["branch"] for row in inner}) == 1
             assert len({row["request"]["task_context"]["key"]["chain"] for row in inner}) == 1
             analysis = next(row for row in inner if row["request"]["command"] == "RESULT_ANALYSIS"
                 and row["request"]["task_context"]["key"]["experiment_ordinal"] == 1)

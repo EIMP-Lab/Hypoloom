@@ -476,6 +476,7 @@ def _create_profile_run(tmp_path, notify):
     source["notify"] = notify
     for name, value in source.items():
         (profile / f"{name}.yaml").write_text(yaml.safe_dump(value), encoding="utf-8")
+        (profile / f"{name}.yaml").chmod(0o600)
     admitted = admit_profile(profile, run_id="notifications")
     assert admitted.admitted, admitted.to_dict()
     root = tmp_path / "state"

@@ -2,6 +2,11 @@
 
 English · [简体中文](USAGE.zh-CN.md)
 
+For new ACI-24 runs, see [context and memory](docs/guides/context-management.md):
+last request input and cumulative token usage are separate measurements. Capacity
+recovery reconstructs a short session; API waits use the existing connection
+controls. Exhausted nodes show their failure and cannot be reopened by API retry.
+
 First-time configuration is in [SETUP](SETUP.md). After starting Claude Code
 in the project directory, use `/autoresearch init`, choose a Profile and a
 language, review the real paths, models, budgets, notification recipients and

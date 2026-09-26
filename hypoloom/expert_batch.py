@@ -178,3 +178,43 @@ class BatchHistory:
                     raise ValueError("adjudication selection does not belong to its exact batch")
             result.append(AcceptedBatch(cycle, batch.command_id, batch.source_attempt_id, batch.members, selection))
         return cls(run_id, component_id, role, tuple(result), MappingProxyType(hypotheses))
+
+
+def read_batch_science_failed(host, run_id: str, component_id: str, role: str, cycle: int) -> bool:
+    from .agent_aci import AgentRequest
+    from .expert_loop import ResearchNodeTask, ResearchNodeKind
+    for failure in host._expert_final_failures(run_id):
+        attempt = host.store.get_attempt(failure["attempt_id"])
+        observation = json.loads(attempt["observation_json"])
+        request = AgentRequest.from_dict(observation["request"])
+        task = request.task_context
+        if not isinstance(task, ResearchNodeTask) or (task.key.component_id, task.key.expert_slot) != (component_id, role): continue
+        if request.schema_version >= 24 and task.key.node_kind is ResearchNodeKind.RESULT_ANALYSIS:
+            from .agent_context import operational_agent_failure
+            # Selection, update, report and budget requirements still apply.
+            if operational_agent_failure(observation): continue
+        if (task.key.cycle == cycle and task.key.node_kind in {ResearchNodeKind.RESULT_ANALYSIS, ResearchNodeKind.ADJUDICATE, ResearchNodeKind.HYPOTHESIS_UPDATE, ResearchNodeKind.CYCLE_REPORT}
+                or task.key.cycle == cycle + 1 and task.key.node_kind in {ResearchNodeKind.LITERATURE_REVIEW, ResearchNodeKind.HYPOTHESIS_PROPOSAL}): return True
+    return False
+
+
+def batch_chain_failed(host, run_id: str, component_id: str, role: str, cycle: int, chain: str) -> bool:
+    from .agent_aci import AgentRequest
+    from .lifecycle import ExperimentState
+    from .agent_context import operational_agent_failure
+    for failure in host._expert_final_failures(run_id):
+        attempt = host.store.get_attempt(failure["attempt_id"])
+        observed = json.loads(attempt["observation_json"])
+        request = observed["request"]
+        key = request.get("task_context", {}).get("key", {})
+        if (key.get("component_id"), key.get("expert_slot"), key.get("cycle"), key.get("chain")) == (component_id, role, cycle, chain):
+            # A lost controller cannot invalidate completed scientific work.
+            # Accepted analysis and the usual budgets still govern its successor.
+            if request.get("schema_version", 1) >= 24 and request["command"] == "EXPERIMENT_EXECUTION" and operational_agent_failure(observed):
+                owned = host._owned_tool_experiments(AgentRequest.from_dict(request))
+                if owned and all(host.store.latest_transition(item["exp_id"])["state"] == ExperimentState.TERMINAL.value for item in owned):
+                    identities = {item["exp_id"] for item in owned}
+                    if any(row["experiment_id"] in identities and row["payload"]["outcome"] in {"SUCCESS", "CLEAN_REFUTATION"}
+                            for row in host.store.list_facts(run_id, "CanonicalOutcomeAccepted")): continue
+            return True
+    return False

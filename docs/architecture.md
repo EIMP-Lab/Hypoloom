@@ -2,6 +2,13 @@
 
 English · [简体中文](architecture.zh-CN.md)
 
+ACI 24 separates persistent research workspaces from short model sessions.
+Ordinary invocations reconstruct from frozen facts, existing summaries and
+indexed sources; the relay checks a shared working-context allowance. Capacity
+recovery preserves submitted experiments and costs, while technical analysis
+failure alone cannot override a legal revision. See [context and recovery](guides/context-management.md)
+for limits, Debate scope, source feedback and monitoring semantics.
+
 Hypoloom is a durable multi-agent research workflow with one resident Workflow
 Host per state root. Python code lives in `hypoloom/`; packaged SQL migrations,
 native skill/plugin resources and Web assets are required runtime inputs.
@@ -47,7 +54,7 @@ Execution Stop validates parser inputs using the production execution path and
 remains interruptible by cancel or deadline. In ACI 22, an EXECUTION response
 may name `waiting_for_experiment_id` to hand the latest submitted experiment to
 Host waiting. That invocation closes and is charged normally; the research node
-remains unfinished. Host invokes the same node/session again only after terminal
+remains unfinished. Host invokes the same node again only after terminal
 collection, under the remaining Profile budget. Each experiment allows one
 accepted handoff, including an exact repaired replacement; no new scheduler or
 waiting journal is introduced. Omitting the field still requires the latest
@@ -78,7 +85,7 @@ ordering and invariants.
 Grounding can request human clarification without keeping a model invocation
 open. Common acceptance, when selected, is authored and tested in private
 `/acceptance`, then shared read-only with expert chains. Each expert maintains
-a persistent session, private Git worktree, hypotheses and evidence. Literature,
+a persistent research identity, private Git worktree, hypotheses and evidence. Literature,
 proposal, design, execution, analysis and update form the core loop.
 
 Literature prefetch and query coverage checks share one background worker per
@@ -133,8 +140,9 @@ Debate research uses the parent explicitly authorized by its accepted interactio
 even when ordinary adjudication has no selected chain.
 Each Debate participant starts after its own admitted cycle closes, with
 available budget; the other participant can finish independently. Public Judge
-guidance enters the new proposal inputs, while private session promotion keeps
-its existing owner and source restrictions. Ordinary lineage termination and
+guidance enters the new proposal inputs. ACI 24 carries the winner's authorized
+code and accepted sources into a fresh synthesis session; older versions retain
+private session promotion. Both keep the existing owner and source restrictions. Ordinary lineage termination and
 scientific outcome labels retain their meaning. Older pinned runs keep their
 original semantics; cross-version migration is unsupported.
 

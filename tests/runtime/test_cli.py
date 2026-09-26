@@ -216,11 +216,11 @@ def test_serve_builds_the_same_explicit_openalex_adapter(
     assert secret not in repr(literature_io.configuration)
 
 
-def test_current_new_write_identity_tracks_execution_handoff() -> None:
+def test_current_new_write_identity_tracks_bounded_context() -> None:
     version = installed_run_version()
 
     assert version.research_contract_version == "hypoloom-research-v10"
-    assert version.agent_aci_version == "22"
+    assert version.agent_aci_version == "24"
     assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/62"
 
 
@@ -416,3 +416,31 @@ def test_participant_cli_rejects_ambiguous_scope_before_contacting_host(tmp_path
         cli.main([*arguments, "--state-root", str(tmp_path / "state"), "--run-id", "run-1"])
     assert stopped.value.code == 2
     assert not (tmp_path / "state").exists()
+
+
+def test_managed_notification_file_reaches_services_without_ambient_secret_fallback(tmp_path, monkeypatch, capsys):
+    from hypoloom.notification_tailer import notification_remote, notification_preflight
+    private = tmp_path / 'notifications.env'
+    private.write_text('APP_BOT=123:selected-file-token\nAPP_CHAT=chosen-recipient\nAPP_PROXY=http://127.0.0.1:9911\n')
+    private.chmod(0o600)
+    monkeypatch.setenv('APP_BOT', '999:ambient-token')
+    monkeypatch.setenv('APP_CHAT', 'ambient-recipient')
+    observed = {}
+    def check(root, **options):
+        services = options['services_factory']()
+        observed['environment'] = services.environ
+        observed['proxy'] = services.proxy_env
+        config = {'enabled': True, 'bot_token_env': 'APP_BOT', 'chat_id_env': 'APP_CHAT'}
+        url, headers, recipient = notification_remote('telegram', config, services.environ)
+        assert url.endswith('123:selected-file-token/sendMessage') and recipient == 'chosen-recipient'
+        notification_preflight({'sinks': {'telegram': config}}, state_root=root,
+            output_root=services.output_root, environ=services.environ, proxy_env=services.proxy_env)
+        return 0
+    monkeypatch.setattr('hypoloom.workflow_host.serve', check)
+    state = tmp_path / 'state'
+    assert cli.main(['serve', '--state-root', str(state), '--notification-credentials-file', str(private),
+        '--notification-proxy-env', 'APP_PROXY']) == 0
+    assert observed['proxy'] == 'APP_PROXY'
+    assert observed['environment']['APP_BOT'] == '123:selected-file-token'
+    assert not state.exists()
+    assert 'selected-file-token' not in capsys.readouterr().out

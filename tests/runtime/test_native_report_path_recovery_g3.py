@@ -119,8 +119,12 @@ def test_native_report_wrong_path_retries_same_session_and_publishes_canonical_m
             assert rejected["failure_code"] == "invalid_tool_workspace"
             assert rejected["retry_class"] == "MODEL"
             assert accepted["response"]["status"] == "SUCCEEDED"
-            assert rejected["session_binding"] == accepted["session_binding"]
-            assert accepted["session"]["launch_arguments"] == ["--resume", accepted["session"]["session_id"]]
+            assert {k: v for k, v in rejected["session_binding"].items() if k != "session_id"} == {
+                k: v for k, v in accepted["session_binding"].items() if k != "session_id"}
+            assert all(item["session_binding"]["session_id"] == item["session"]["session_id"] for item in reports)
+            assert accepted["session"]["session_id"] != rejected["session"]["session_id"]
+            assert accepted["session"]["branch"] == rejected["session"]["branch"]
+            assert accepted["session"]["launch_arguments"] == ["--session-id", accepted["session"]["session_id"]]
             assert rejected["session"]["launch_arguments"] == ["--session-id", rejected["session"]["session_id"]]
             assert scenario.retry_diagnostic["source_attempt_id"] == rejected["request"]["attempt_id"]
             role = accepted["request"]["role"]
@@ -134,13 +138,8 @@ def test_native_report_wrong_path_retries_same_session_and_publishes_canonical_m
             assert "/memory/rounds/wrong-component/1.md" in transcript
             assert "/memory/rounds/1.md" in transcript and key not in transcript
             forks = [item for item in observations if "--fork-session" in item.get("session", {}).get("launch_arguments", [])]
-            assert forks, "the native rehearsal must also retain real fork parent material"
-            for item in forks:
-                session = item["session"]
-                projects = (host.state_root / run_id / "sessions" / item["request"]["role"]
-                    / f"c{session['cycle']}" / item["request"]["component_id"] / session["scope"] / "projects")
-                assert (projects / (session["parent_session_id"] + ".jsonl")).is_file()
-                assert (projects / (session["session_id"] + ".jsonl")).is_file()
+            assert not forks
+            assert all(item["session"]["parent_session_id"] is None for item in observations)
             assert not host.running and not host.running_agents
             assert all(not process_group_exists(row["process_group_id"])
                 for row in attempts if row["process_group_id"] is not None)

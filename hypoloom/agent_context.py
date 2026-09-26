@@ -73,7 +73,7 @@ def _failure_diagnostics(details: Mapping[str, Any] | None) -> Mapping[str, Any]
 
 
 def agent_retry_class(code: str, details: Mapping[str, Any] | None,
-                      *, retryable: bool) -> str | None:
+                      *, retryable: bool, bounded_context: bool = False) -> str | None:
     """Classify one declared retry without creating another authority."""
 
     if not retryable: return None
@@ -82,8 +82,18 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
     if subtype in _TERMINAL_PROVIDER_SUBTYPES: return None
     failure = diagnostics.get("provider_failure")
     failure = failure if isinstance(failure, Mapping) else {}
+    from .context_management import CONTEXT_FAILURES
+    if failure.get("code") in CONTEXT_FAILURES:
+        if (failure.get("code") == "context_capacity" and failure.get("source") == "local_context_limit"
+                and failure.get("recovery_action") == "input_reconfiguration_required"):
+            return None
+        return "INFRASTRUCTURE" if bounded_context else None
     if failure.get("code") in {"input_too_long", "token_budget_exceeded"}: return None
     if failure.get("code") in {"rate_limited", "auth_failed", "quota_exhausted"}: return "INFRASTRUCTURE"
+    correction = diagnostics.get("structured_output_correction") or {}
+    if (bounded_context and not failure and not correction.get("error") and correction.get("status") == "unresolved"
+            and type(correction.get("rejected_count")) is int and correction["rejected_count"] > 0):
+        return "MODEL"  # Native semantic rejection still spends corrective retries.
     if subtype == "error_max_structured_output_retries": return "MODEL"
     if subtype == "error_during_execution": return "INFRASTRUCTURE"
     return (
@@ -101,6 +111,8 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
     if code == "invalid_tool_workspace": return "agent_workspace"
     if code == "host_restart": return "host_recovery"
     failure = _failure_diagnostics(details).get("provider_failure")
+    if isinstance(failure, Mapping) and failure.get("code") in {"context_capacity", "compaction_failed"}:
+        return "context_reconstruction"
     if isinstance(failure, Mapping) and failure.get("code") in {"input_too_long", "token_budget_exceeded", "rate_limited", "auth_failed", "quota_exhausted"}:
         return "provider_admission"
     if _failure_diagnostics(details).get("provider_subtype") == "error_max_structured_output_retries": return "provider_structured_output"
@@ -111,6 +123,18 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
 
 def candidate_failure_retryable(code: str) -> bool:
     return code in _RETRYABLE_CANDIDATE_FAILURES
+
+
+def operational_agent_failure(observation: Mapping[str, Any]) -> bool:
+    """A failed invocation is not itself scientific evidence against a method."""
+    # Host archive/stop failures supersede any earlier provider diagnostic.
+    # Reuse the existing retry classification boundary rather than relaxing it.
+    if observation.get("failure_code") not in RETRYABLE_AGENT_FAILURES | {"host_restart"}:
+        return False
+    failure = _failure_diagnostics(observation).get("provider_failure") or {}
+    return (failure.get("code") in {"input_too_long", "context_capacity", "compaction_failed",
+            "empty_output_limit", "rate_limited", "quota_exhausted", "auth_failed", "token_budget_exceeded"}
+        or observation.get("failure_code") in RETRYABLE_INFRASTRUCTURE_FAILURES | {"host_restart"})
 
 
 def retryable_agent_validation_details(

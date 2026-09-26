@@ -303,8 +303,9 @@ def test_native_grounding_two_questions_restart_answers_and_cpu_closure(tmp_path
             assert len(grounding) == 3
             assert [item["request"]["task_context"]["ordinal"] for item in grounding] == [1, 2, 3]
             sessions = [item["session"] for item in grounding]
-            assert len({item["session_id"] for item in sessions}) == 1
-            assert all("--resume" in item["launch_arguments"] for item in sessions[1:])
+            assert len({item["session_id"] for item in sessions}) == len(sessions)
+            assert len({item["branch"] for item in sessions}) == 1
+            assert all(item["launch_arguments"] == ["--session-id", item["session_id"]] for item in sessions)
             for ordinal, item in enumerate(grounding, 1):
                 archive = host.publisher.root / item["session"]["transcript"]["path"] / "transcript.jsonl"
                 content = archive.read_text(encoding="utf-8")

@@ -119,7 +119,7 @@ def _assert_closed_billing(tmp_path: Path):
     baselines: dict[str, Mapping[str, object] | None] = {}
     previous = None
     for row, observation in finals:
-        baselines[row["attempt_id"]] = None if previous is None else _session_cost_state(
+        baselines[row["attempt_id"]] = None if previous is None or previous["session"]["session_id"] != observation["session"]["session_id"] else _session_cost_state(
             (tmp_path / "state/artifacts" / previous["session"]["transcript"]["path"]
              / "transcript.jsonl").read_bytes())
         previous = observation

@@ -95,8 +95,9 @@ def test_native_shared_final_report_retries_with_one_common_input_and_same_sessi
             assert accepted["status"] == "first_pass" and accepted["accepted"] is True
             assert accepted["call_count"] == 1 and accepted["rejected_count"] == 0
             session_id = failed[1]["session"]["session_id"]
-            assert retry[1]["session"]["session_id"] == session_id
-            assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
+            assert retry[1]["session"]["session_id"] != session_id
+            assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+            assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
             common = []
             for _, observed in finals:
                 request = observed["request"]

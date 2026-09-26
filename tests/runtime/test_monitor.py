@@ -504,6 +504,23 @@ def test_live_attempt_context_overrides_only_open_agent_attempts(tmp_path: Path)
     missing = _with_live_attempt_context(tmp_path, "run", (opened,), {})[0]
     assert missing.context_tokens == 111 and missing.context_source is None
 
+    # An old CLOSED invocation uses its own wire capture, never a later turn
+    # appended to the mutable shared session. Cumulative accounting stays separate.
+    historical = replace(closed, attempt_id="old-wire", context_tokens=None, cumulative_tokens=3722840)
+    diagnostic = tmp_path / "diagnostics/agents/run/old-wire/provider/000001"
+    diagnostic.mkdir(parents=True)
+    (diagnostic / "exchange.json").write_text(json.dumps({
+        "request_path": "/v1/messages", "served_models": ["model"],
+        "usage": {"input_tokens": 472337, "output_tokens": 10},
+        "response_body_complete": True, "message_complete": True}))
+    old_observation = {"old-wire": observations["open-1"]}
+    observed = _with_live_attempt_context(tmp_path, "run", (historical,), old_observation)[0]
+    assert observed.context_tokens == 472337 and observed.cumulative_tokens == 3722840
+    assert observed.context_source == "provider_usage_final"
+    no_wire = replace(historical, attempt_id="no-wire")
+    assert _with_live_attempt_context(tmp_path, "run", (no_wire,),
+        {"no-wire": observations["open-1"]})[0].context_tokens is None
+
 
 def _v4_payload(
     run_id: str, *, component_count: int = 1, delay_seconds: float = 0.0,

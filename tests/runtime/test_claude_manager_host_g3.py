@@ -5,6 +5,8 @@ import secrets
 import time
 from pathlib import Path
 
+import pytest
+
 from hypoloom.agent_aci import WorkspaceArtifact
 from hypoloom.claude_agent_host import process_group_exists
 from hypoloom.control_protocol import ControlRequest
@@ -50,7 +52,10 @@ class _ManagedScenario(_FinalReportHostScenario):
                 if step == 1:
                     self.fresh_messages[request.attempt_id] = len(document["messages"])
                     if cycle == 2:
-                        assert self.manager_nonce in json.dumps(document["messages"]), "manager history was not resumed"
+                        if request.schema_version < 24:
+                            assert self.manager_nonce in json.dumps(document["messages"]), "manager history was not resumed"
+                        else:
+                            assert not any(message["role"] == "assistant" for message in document["messages"]), "manager inherited obsolete native history"
                 if previous:
                     identity = "probe_" + request.attempt_id[-16:] + "__" + previous
                     result = _tool_results(document)[identity]
@@ -114,8 +119,9 @@ class _ManagedScenario(_FinalReportHostScenario):
         return super()._unscoped_tool_calls(number)
 
 
-def test_real_host_manager_updates_next_cycle_and_resumes_after_restart(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 14)
+@pytest.mark.parametrize("version", [14, 24])
+def test_real_host_manager_updates_next_cycle_and_resumes_after_restart(tmp_path: Path, monkeypatch, version):
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", version)
     executable = _installed_claude()
     scenario = _ManagedScenario(tmp_path)
     key = "host-only-manager-g3-" + secrets.token_hex(16)
@@ -169,7 +175,15 @@ def test_real_host_manager_updates_next_cycle_and_resumes_after_restart(tmp_path
         lost = [row for row in attempts if row["terminal_reason"] == "LOST"]
         assert len(lost) == 1
         replay = next(row for row in attempts if row["command_id"] == lost[0]["command_id"] and row["terminal_reason"] == "SUCCEEDED")
-        assert "--resume" in json.loads(replay["observation_json"])["session"]["launch_arguments"]
+        replay_session = json.loads(replay["observation_json"])["session"]
+        lost_binding = json.loads(lost[0]["observation_json"])["session_binding"]
+        if version < 24:
+            assert "--resume" in replay_session["launch_arguments"]
+            assert replay_session["session_id"] == lost_binding["session_id"]
+        else:
+            assert replay_session["launch_arguments"] == ["--session-id", replay_session["session_id"]]
+            assert replay_session["session_id"] != lost_binding["session_id"]
+        assert replay_session["branch"] == lost_binding["branch"]
         observations = [json.loads(row["observation_json"]) for row in attempts if row["kind"] == "AGENT"]
         reports = [row for row in observations if row["request"]["command"] == "FINAL_REPORT"]
         assert len(reports) == len(scenario.reports) == 1
@@ -188,8 +202,13 @@ def test_real_host_manager_updates_next_cycle_and_resumes_after_restart(tmp_path
         managers = sorted((row for row in observations if row["request"]["command"] == "GRAPH_EVOLVE"),
                           key=lambda row: row["request"]["task_context"]["cycle"])
         assert len(managers) == 2 and len(scenario.manager_evidence) == 7
-        assert managers[0]["session"]["session_id"] == managers[1]["session"]["session_id"]
-        assert managers[1]["session"]["launch_arguments"] == ["--resume", managers[0]["session"]["session_id"]]
+        assert managers[0]["session"]["branch"] == managers[1]["session"]["branch"]
+        if version < 24:
+            assert managers[0]["session"]["session_id"] == managers[1]["session"]["session_id"]
+            assert managers[1]["session"]["launch_arguments"] == ["--resume", managers[0]["session"]["session_id"]]
+        else:
+            assert managers[0]["session"]["session_id"] != managers[1]["session"]["session_id"]
+            assert managers[1]["session"]["launch_arguments"] == ["--session-id", managers[1]["session"]["session_id"]]
         update = managers[0]["plugin_update"]
         assert update["base_commit"] != update["commit"]
         assert managers[1]["plugin_update"] == {"base_commit": update["commit"], "commit": update["commit"]}

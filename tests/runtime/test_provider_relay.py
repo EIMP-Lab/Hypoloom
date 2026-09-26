@@ -138,6 +138,23 @@ def test_token_budget_blocks_next_generation_including_cached_input(tmp_path, up
         relay.close()
 
 
+@pytest.mark.parametrize("semantics,second_status", [("includes_cache", 200), ("unknown", 400)])
+def test_cache_semantics_control_observed_budget_without_weakening_unknown_limits(tmp_path, upstream, semantics, second_status):
+    upstream.body = json.dumps({"type": "message", "stop_reason": "end_turn",
+        "usage": {"input_tokens": 50, "output_tokens": 3, "cache_read_input_tokens": 40}}).encode()
+    relay = _relay(tmp_path, upstream, token_budget=60, context_policy={
+        "effective_context_tokens": 100000, "tool_reserve_tokens": 1000,
+        "estimate_margin_tokens": 1000, "input_usage_semantics": semantics})
+    try:
+        assert _request(relay)[0] == 200
+        assert _request(relay)[0] == second_status
+        assert _request(relay)[0] == 400
+        assert len(upstream.calls) == (2 if second_status == 200 else 1)
+        assert relay.token_limit_reached
+    finally:
+        relay.close()
+
+
 def test_observe_mode_does_not_enable_token_enforcement(tmp_path, upstream):
     upstream.body = json.dumps({"type": "message", "stop_reason": "end_turn",
         "usage": {"input_tokens": 1000000, "output_tokens": 10}}).encode()

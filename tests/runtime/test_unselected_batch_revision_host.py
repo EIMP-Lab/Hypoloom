@@ -76,6 +76,7 @@ class RevisionAgent(BatchAgent):
 @pytest.mark.parametrize(("failed_cycle", "version", "terminate", "creation_limit", "expected_cycles"), [
     (1, 17, False, 6, 2), (2, 17, False, 6, 3),
     (1, 16, False, 6, 1), (1, 17, True, 6, 1), (1, 17, False, 2, 1),
+    (1, 24, False, 6, 2),
 ])
 def test_failed_batch_revision_keeps_real_ancestry_without_inventing_a_winner(
         tmp_path, monkeypatch, failed_cycle, version, terminate, creation_limit, expected_cycles):

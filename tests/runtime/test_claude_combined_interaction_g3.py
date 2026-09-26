@@ -121,7 +121,14 @@ class _CombinedScenario(_DebateHostScenario):
                 promoted = any(item.ref.endswith("--session-promotion") for item in request.input_artifacts)
                 assert promoted is (request.role == ROLES[0])
                 native_history = json.dumps(document["messages"])
-                assert (self.debate_nonces[request.role, 3] in native_history) is promoted
+                if request.schema_version >= 24:
+                    # Promotion supplies accepted sources and code, while the
+                    # synthesis starts with its own bounded model session.
+                    assert self.debate_nonces[request.role, 3] not in native_history
+                    if promoted:
+                        assert _input(request, "--session-promotion")
+                else:
+                    assert (self.debate_nonces[request.role, 3] in native_history) is promoted
                 (self.promoted_consumers if promoted else self.loser_consumers).add(request.attempt_id)
             if previous:
                 result = _tool_results(document)["probe_" + request.attempt_id[-16:] + "__" + previous]
@@ -207,6 +214,9 @@ def _payload(tmp_path):
 
 
 def test_three_experts_native_leader_then_debate_six_cpu_and_final_report(tmp_path: Path, monkeypatch):
+    # The exclusive extra Leader round is retained ACI-22 behavior. New advice
+    # and context boundaries have their own current-version native scenarios.
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 22)
     executable = _installed_claude()
     scenario = _CombinedScenario(tmp_path)
     key = "host-only-combined-g3-" + secrets.token_hex(16)

@@ -99,6 +99,15 @@ class AttemptView:
     wall_seconds: float | None = None
     context_source: str | None = None
     budget_max_tokens: int | None = None
+    context_window_tokens: int | None = None
+    context_window_source: str | None = None
+    cumulative_tokens: int | None = None
+    operational_reason: str | None = None
+    operational_status: str | None = None
+    context: Mapping[str, Any] | None = None
+    session_scope: str | None = None
+    context_observation: Mapping[str, Any] | None = None
+    input_material: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -652,6 +661,8 @@ def _session_transcript_path(
         root / run_id / "sessions" / role / f"c{cycle}"
         / component_id / scope / "projects" / f"{session_id}.jsonl"
     )
+    if request.get("command") == "GRAPH_EVOLVE":
+        candidate = root / run_id / "grounding" / "sessions" / scope / "projects" / f"{session_id}.jsonl"
     try:
         resolved = candidate.resolve()
         confined = resolved.is_relative_to(root.resolve())
@@ -705,12 +716,50 @@ def _with_live_attempt_context(
 ) -> tuple[AttemptView, ...]:
     rendered = []
     for attempt in attempts:
-        if attempt.kind != "AGENT" or attempt.state != "OPEN":
+        if attempt.kind != "AGENT" or (attempt.state != "OPEN" and attempt.context_tokens is not None):
             rendered.append(attempt)
             continue
         observation = observations.get(attempt.attempt_id)
+        if attempt.state == "OPEN" and observation is not None:
+            from .context_observation import read_transcript_metrics, read_native_status
+            transcript = _session_transcript_path(root, run_id, observation)
+            metrics = read_transcript_metrics(transcript, attempt.session_id, attempt.started_at,
+                [item["ref"] for item in observation.get("request", {}).get("input_artifacts", [])],
+                limit=_TRANSCRIPT_TAIL_BYTES) if transcript is not None else {"coverage": "unavailable"}
+            native = read_native_status(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log")
+            attempt = replace(attempt, context_observation=metrics,
+                operational_status=native or attempt.operational_status)
+        policy = None
+        if observation is not None:
+            from .context_management import context_policy, latest_context
+            from .provider_observation import read_exchanges
+            try:
+                if observation.get("request", {}).get("schema_version", 0) >= 24:
+                    policy = context_policy(AgentRequest.from_dict(observation["request"]))
+            except (AgentACIError, KeyError, TypeError, ValueError):
+                policy = None  # Missing old observation is not a capacity claim.
+            context = latest_context(read_exchanges(root / "diagnostics" / "agents" / run_id
+                / attempt.attempt_id / "provider", latest_generation_only=True), policy)
+            tokens = context.get("input_tokens")
+            if tokens is not None:
+                rendered.append(replace(attempt, context_tokens=tokens, context_source=context["source"],
+                    context_window_tokens=context.get("effective_context_tokens"),
+                    context_window_source=context.get("window_source"), context=context))
+                continue
+            if context:
+                attempt = replace(attempt, context=context,
+                    context_window_tokens=context.get("effective_context_tokens"),
+                    context_window_source=context.get("window_source"))
+        # A CLOSED Attempt must not read a subsequently appended shared session.
+        if attempt.state != "OPEN":
+            rendered.append(attempt)
+            continue
         transcript = None if observation is None else _session_transcript_path(root, run_id, observation)
         tokens = None if transcript is None else _transcript_context_tokens(transcript)
+        if policy is not None:
+            attempt = replace(attempt, context_window_tokens=policy["effective_context_tokens"],
+                context_window_source=policy["window_source"])
+            if policy["input_usage_semantics"] != "separate_cache": tokens = None
         rendered.append(
             attempt if tokens is None
             else replace(attempt, context_tokens=tokens, context_source="transcript")
@@ -738,6 +787,9 @@ def _attempt_views(
     ).fetchall())
     rendered: list[AttemptView] = []
     scientific_process_attempt_ids: set[str] = set()
+    final_failure_ids = {row[0] for row in reader.execute(
+        "SELECT json_extract(payload_json,'$.attempt_id') FROM workflow_transitions WHERE run_id=? "
+        "AND json_extract(payload_json,'$.agent_final_failure')=1", (run_id,)).fetchall()}
     session_context: dict[str, int] = {}
     for row in rows:
         transition = _json_object(row["transition_payload_json"])
@@ -768,18 +820,21 @@ def _attempt_views(
             else str(request.get("command", workflow_command))
         )
         attempt_id = str(row["attempt_id"])
-        session = observation.get("session")
+        session = observation.get("session") or observation.get("session_binding")
         session_value = session.get("session_id") if isinstance(session, Mapping) else None
         session_id = (session_value if isinstance(session_value, str) and session_value
                       and row["kind"] == "AGENT" else None)
         # Latest completed call in the same session bounds the context the next
         # call carries; an OPEN attempt's own usage is unknown until close.
-        reported_tokens = _attempt_reported_tokens(observation) if session_id is not None else None
+        context = (observation.get("diagnostics") or {}).get("context") or {}
+        reported_tokens = _optional_int(context.get("input_tokens"))
         if row["state"] == "CLOSED" and reported_tokens is not None and session_id is not None:
             context_tokens = reported_tokens
             session_context[session_id] = reported_tokens
-        else:
+        elif row["state"] == "OPEN":
             context_tokens = session_context.get(session_id) if session_id is not None else None
+        else:
+            context_tokens = reported_tokens
         budget = request.get("budget")
         wall_value = budget.get("wall_seconds") if isinstance(budget, Mapping) else None
         wall_seconds = (float(wall_value) if row["kind"] == "AGENT"
@@ -861,6 +916,16 @@ def _attempt_views(
             ),
             session_id=session_id,
             context_tokens=context_tokens,
+            context_source=context.get("source"),
+            context_window_tokens=_optional_int(context.get("effective_context_tokens")),
+            context_window_source=context.get("window_source"),
+            cumulative_tokens=_attempt_reported_tokens(observation),
+            operational_reason=((observation.get("diagnostics") or {}).get("provider_failure") or {}).get("code"),
+            operational_status="recovery_exhausted" if attempt_id in final_failure_ids else None,
+            context=context or None,
+            context_observation=(observation.get("diagnostics") or {}).get("context_observation"),
+            input_material=(observation.get("diagnostics") or {}).get("input_material"),
+            session_scope=session.get("scope") if isinstance(session, Mapping) else None,
             wall_seconds=wall_seconds,
             budget_max_tokens=budget_max_tokens,
         ))

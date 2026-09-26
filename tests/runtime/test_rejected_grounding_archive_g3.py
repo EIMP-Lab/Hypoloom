@@ -1,7 +1,7 @@
 """Real CC preserves a rejected evaluator archive through retry and CPU closure.
 
 Only the existing local provider's first Grounding web citation is changed.
-Host validation, archive capture, same-session retry, CPU and Oracle stay real.
+Native and Host validation, archive capture, fresh-session retry, CPU and Oracle stay real.
 """
 
 from __future__ import annotations
@@ -53,6 +53,10 @@ class _RejectedGroundingScenario(shared_retry._FinalRetryScenario):
         request = self.current
         if request is None:
             return calls
+        if (request.command is AgentCommand.GROUNDING and self.steps[request.attempt_id] == 1
+                and self.rejected_grounding is not None and request.attempt_id != self.rejected_grounding):
+            # A new native session must read retained source before editing it.
+            calls = (*calls, ("ground_existing", "Read", {"file_path": "/acceptance/evaluate.py"}))
         for identity, tool, arguments in calls:
             if request.command is AgentCommand.GROUNDING and tool == "StructuredOutput":
                 if self.rejected_grounding is None:
@@ -98,20 +102,25 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
     assert [row["attempt_ordinal"] for row, _ in groundings] == [1, 2]
     assert failed[0]["command_id"] == retry[0]["command_id"]
     assert failed[0]["ended_at"] <= retry[0]["started_at"]
-    assert failed[1]["failure_code"] == "invalid_candidate"
-    assert failed[1]["failure_stage"] == "host_candidate_validation"
+    assert failed[1]["failure_code"] == "invalid_provider_envelope"
     assert failed[1]["retry_class"] == "MODEL" and failed[1].get("response") is None
+    trace = failed[1]["diagnostics"]["structured_output_correction"]
+    assert trace["status"] == "unresolved" and trace["rejected_count"] > 0
     assert failed[1]["diagnostics"]["validation_error"] == {"code": "invalid_candidate",
-        "message": "Grounding web sources: web_sources must be unique actually retrieved URLs"}
-    rejected = failed[1]["rejected_response"]
+        "message": "web_sources must be unique actually retrieved URLs"}
+    failed_stdout = (tmp_path / "state/diagnostics/agents" / _RUN / failed[0]["attempt_id"] / "stdout.log")
+    failed_result = next(row for row in reversed([json.loads(line) for line in failed_stdout.read_text().splitlines()])
+                         if row.get("type") == "result")
+    rejected = json.loads(failed_result["result"])
     accepted = retry[1]["response"]
     assert rejected["typed_candidate"]["web_sources"] == [_UNRETRIEVED_URL]
     assert accepted["typed_candidate"]["web_sources"] == []
     assert rejected["typed_candidate"]["acceptance"] == accepted["typed_candidate"]["acceptance"] == _DECLARATION
     session_id = failed[1]["session"]["session_id"]
-    assert retry[1]["session"]["session_id"] == session_id
-    assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
-    correction_ref = failed[0]["attempt_id"] + "--candidate-validation-error"
+    assert retry[1]["session"]["session_id"] != session_id
+    assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
+    assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+    correction_ref = failed[0]["attempt_id"] + "--agent-retry-diagnostic"
     corrections = [item for item in retry[1]["request"]["input_artifacts"] if item["ref"] == correction_ref]
     assert len(corrections) == 1
     assert correction_ref not in retry[1]["request"]["immutable_context_refs"]
@@ -127,13 +136,14 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
         content = _archive_bytes(directory)
         assert set(content) == set(publication["relative_paths"]) == {"transcript.jsonl", "evaluator/evaluate.py"}
         assert publication["digest"] == _raw_artifact_digest(directory)
-        captured = {item["path"]: WorkspaceArtifact.from_dict(item).content_bytes()
-                    for item in response["proposed_workspace_artifacts"]}
-        assert captured == {"evaluate.py": _common_source(scenario.nonce).encode()}
-        assert content["evaluator/evaluate.py"] == captured["evaluate.py"]
+        assert content["evaluator/evaluate.py"] == _common_source(scenario.nonce).encode()
+        if row["terminal_reason"] == "SUCCEEDED":
+            captured = {item["path"]: WorkspaceArtifact.from_dict(item).content_bytes()
+                        for item in response["proposed_workspace_artifacts"]}
+            assert captured == {"evaluate.py": content["evaluator/evaluate.py"]}
         assert content["transcript.jsonl"].endswith(b"\n")
         records = [json.loads(line) for line in content["transcript.jsonl"].splitlines()]
-        assert all(record.get("sessionId") in {None, session_id} for record in records)
+        assert all(record.get("sessionId") in {None, observed["session"]["session_id"]} for record in records)
         transcripts.append(content["transcript.jsonl"])
         archives.append({"attempt_id": row["attempt_id"], "path": str(directory),
             "relative_paths": sorted(content), "digest_matches": True, "evaluator_bytes_match": True,
@@ -143,8 +153,8 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
         stdout = tmp_path / "state/diagnostics/agents" / _RUN / row["attempt_id"] / "stdout.log"
         result = next(item for item in reversed([json.loads(line) for line in stdout.read_text().splitlines()])
                       if item.get("type") == "result")
-        assert result["subtype"] == "success"  # Grounding's rejection belongs to Host, not CLI schema validation.
-    assert transcripts[1].startswith(transcripts[0])
+        assert result["subtype"] == "success"  # A CLI success label alone cannot bypass native semantic rejection.
+    assert not transcripts[1].startswith(transcripts[0])
     assert len(agents) == 13 and len(attempts) == 14
     assert sum(row["kind"] == "PROCESS" for row in attempts) == 1
     assert all(row["state"] == "CLOSED" for row in attempts)
@@ -159,8 +169,8 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
     (tmp_path / "rejected-grounding-archive-evidence.json").write_text(json.dumps({
         "paid_model": False, "gpu": False, "agent_count": len(agents), "process_count": 1,
         "grounding_attempts": [row["attempt_id"] for row, _ in groundings], "session_id": session_id,
-        "host_rejection": failed[1]["diagnostics"]["validation_error"], "correction_ref": correction_ref,
-        "first_archive_unchanged_across_retry": True, "retry_transcript_extends_first": True,
+        "native_rejection": failed[1]["diagnostics"]["validation_error"], "correction_ref": correction_ref,
+        "first_archive_unchanged_across_retry": True, "retry_transcript_extends_first": False,
         "archives": archives, "tool_identities": scenario.tool_identities,
         "oracle": audit.to_dict(), "head": closure["head"]}, indent=2))
     assert audit.ok, audit.to_dict()

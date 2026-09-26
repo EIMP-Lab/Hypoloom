@@ -1298,7 +1298,7 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "scientific process attempts" not in page.text(".expert-identity")
     page.evaluate("fixture.snapshot.overview.host_observation = {availability:'responded'}")
     page.evaluate("fixture.snapshot.attempts.push("
-        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
+        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, context_window_tokens:200000, context_window_source:'working_limit_only', cumulative_tokens:3722840, context:{cache_read_input_tokens:40000,cache_creation_input_tokens:1200}, session_scope:'chain-a', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
         "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, budget_max_tokens:1000000, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
         "{attempt_id:'open-exe', kind:'PROCESS', state:'OPEN', role:'expert-a', command:'EXECUTE', gpu_uuid:'GPU-0', latest_utilization_percent:87, started_at:fixture.snapshot.observed_at-540},"
         "{attempt_id:'open-other', kind:'AGENT', state:'OPEN', role:'expert-b', command:'RESULT_ANALYSIS', context_tokens:1200, session_id:'session-c'})")
@@ -1306,16 +1306,29 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "Working · 3" in page.text(".expert-preview .working-agents")
     tiles = ".expert-preview .agent-tile"
     assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-value')).map(e => e.textContent)") == ["—", "45.2K", "9m"]
-    assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-fill')).map(e => e.style.width)") == ["0%", "4.5%", "0%"]
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-fill')).map(e => e.style.width)") == ["0%", "22.6%", "0%"]
     assert page.evaluate(f"document.querySelectorAll('{tiles}.overdue').length") == 1
     assert page.evaluate(f"document.querySelectorAll('{tiles} .agent-tile-light').length") == 3
     assert page.evaluate(f"new Set(Array.from(document.querySelectorAll('{tiles} .agent-tile-light')).map(e => e.style.animationDelay)).size") == 3
     assert page.evaluate(f"document.querySelectorAll('{tiles}.host-unconfirmed').length") == 0
     title = page.evaluate(f'document.querySelectorAll("{tiles}")[1].title')
     assert "Experiment execution" in title and "not process liveness" in title
-    assert "context ≥45.2K of 1M attempt token budget" in title
-    assert "live context · last model turn read from the session transcript" in title
+    assert "last input 45.2K / 200K working context limit" in title
+    assert "transcript" in title
+    assert "Provider window unconfirmed" in title
+    assert "Cumulative invocation usage" in title
+    assert "Cache read: 40K" in title and "Cache creation: 1.2K" in title
+    assert "Session scope: chain-a" in title
     assert "elapsed 12m of 45m wall budget" in title
+    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run'), {operational_status:'compacting', context:{estimated_input_tokens:180000,available_input_tokens:170000,output_reserve_tokens:8000,tool_reserve_tokens:8192,estimate_margin_tokens:12500},context_observation:{coverage:'complete',native_compaction_count:1,native_compaction_duration_ms:1200,native_compaction_duration_unknown:0,last_native_compaction:{pre_tokens:180000,post_tokens:45000,duration_ms:1200},read_calls:4,exact_reread_calls:1}})")
+    page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('Estimated input: 180K')")
+    updated = page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")
+    assert "last input 45.2K" in updated and "Admission input allowance: 170K" in updated
+    assert "180000 → 45000" in updated and "Native CLI last reported: compacting" in updated
+    assert "exact frozen-input rereads 1" in updated
+    page.evaluate("fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run').context_observation.cli_unknown_model_pricing = true")
+    page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('unknown model pricing')")
+    assert "not a vendor bill" in page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")
     overdue_title = page.evaluate(f'document.querySelectorAll("{tiles}")[0].title')
     assert "no context reading yet" in overdue_title
     assert "elapsed 50m of 45m wall budget · exceeded" in overdue_title

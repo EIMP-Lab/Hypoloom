@@ -8,9 +8,9 @@
 不能覆盖。正常 `Start now` 不需要先 export 四组变量、退出 Claude Code 或重开会话，
 也不要求用户另开 Host/monitor 终端。
 
-个人配置入口见 [config/README.md](config/README.md)。公开空白模板位于
-`config/hypoloom.env.example`，真实文件仍位于隐藏且被 Git 忽略的
-`.local/credentials/hypoloom.env`。使用控制 Python 执行
+个人配置入口见 [config/README.md](config/README.md)。文献密钥、Telegram token
+直接填写在被 Git 忽略的本地 Profile 的 `methodology.yaml`／`notify.yaml`，
+文件权限为 0600；公开 Profile 模板只提供空白字段，无需单独维护 env。使用控制 Python 执行
 `python -B -m hypoloom.bootstrap paths --profile <name>`，可查看默认路径和
 Profile 实际引用路径、存在性、权限，不显示秘密内容。模型认证仍单独配置。
 
@@ -19,6 +19,12 @@ init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默
 参数，授权后添加 `--start` 才执行既有托管流程，在 Host 就绪前后重读并核对 Profile。
 准备期间配置变化会中止启动。配置检查不调用模型服务，不等于模型实际可用或科学
 质量已验证。辅助命令用法见 [Profile 指南](profiles/README.md#deterministic-preparation--确定性准备)。
+
+实际模型优先级、Profile 集中预算和托管通知凭据见[初始化指南](docs/guides/initialization.zh-CN.md)。
+
+init 同时显示针对已配置远端分支的[版本提醒](docs/guides/version-check.zh-CN.md)，
+可用 `hypoloom version-check` 手动检查，或 `bootstrap paths --offline` 跳过远端查询。
+发现更新、超时或检查失败均只提醒，不自动更新代码或迁移运行。
 
 ## 1. 控制环境
 
@@ -56,15 +62,15 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
 运行中遇到 API 限流、额度耗尽或凭据失效，请按[API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)
 操作，其中包含私有连接 JSON 格式、TUI/Web/CLI 切换步骤和恢复确认方式。连接可切换，
 运行的模型仍固定；不要修改原始私有 settings 副本，也不要把模型 key 填进文献/通知
-使用的 dotenv 文件。
+字段。
 
-文献检索使用 OpenAlex。完整原生专家路径需要一个已批准的 dotenv 凭据文件（建议
-`.local/credentials/hypoloom.env`，模板见 `config/hypoloom.env.example`），
-其中存放 `OPENALEX_API_KEY`，选用 Unpaywall PDF 后备时还需 `UNPAYWALL_EMAIL`；要求为
-已有、绝对路径、非符号链接、mode-0600 文件。本地 v4 Profile 在
-`literature.credentials_file` 声明该路径，init/操作员流程将其作为 `--credentials-file`
-传给 `serve`、`profile-check` 和 `start`；旧的单密钥 `--openalex-api-key-file` 仍被
-接受，二者不可混用。PDF 路径需要 Poppler 的 `pdfinfo` 和 `pdftotext`。
+文献检索使用 OpenAlex。在私有 `methodology.yaml` 中填写
+`literature.openalex_api_key`，选用 Unpaywall PDF 后备时填写
+`literature.unpaywall_email`。文件必须为普通非符号链接文件、权限 0600。
+准入剥离明文，并由原 YAML 路径派生既有 `--credentials-file` 参数传给
+`serve`、`profile-check` 和 `start`，不会生成第二份密钥文件。
+旧 dotenv／单密钥参数仍兼容，但不能覆盖 Profile 中冲突的凭据来源。
+填写步骤见[凭据教程](config/README.md)。PDF 路径需要 Poppler 的 `pdfinfo` 和 `pdftotext`。
 网络超时、响应/PDF 大小和页数上限由 init 一并审阅。检索会保留来源 URI 与提取证据；
 未取得 PDF 或元数据不足不应被描述成已阅读全文。
 
@@ -78,8 +84,8 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
 和 `search_fallback`，不可将后备关闭误判为 OpenAlex 未配置。
 PDF 默认后备为 Semantic Scholar，也可显式选择 Unpaywall：在同一组文献参数中加入
 `--literature-pdf-fallback unpaywall`，一起传给 `serve`、`profile-check` 和 `start`；
-此时上述凭据文件还必须提供 `UNPAYWALL_EMAIL`（旧的 `--unpaywall-email-file` 单密钥
-方式仍被接受，不可与凭据文件混用）。邮箱内容不会写入 Profile 或 Agent 输入。此选项
+此时 Profile 还必须提供 `literature.unpaywall_email`（旧的 `--unpaywall-email-file`
+仍兼容，不可与已配置的凭据来源混用）。邮箱留在私有 Profile，不进入 Agent 输入。此选项
 只按精确 DOI 查找开放全文，
 不调用 Unpaywall 标题搜索，也不把 OpenAlex key 发给 Unpaywall。
 返回地址仍经过现有 HTTPS/DNS、大小、PDF 格式和 Poppler 校验。后备遇到 429 后，会在

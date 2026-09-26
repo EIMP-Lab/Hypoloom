@@ -303,7 +303,10 @@ class NativeOutputValidator:
                             normalize_shared_observation(smoke.get("observation"), SharedAcceptance.from_dict(declaration))
                         else:
                             from .measurement_contract import ScientificMeasurement, evaluate_parsed_measurement
-                            evaluate_parsed_measurement(ScientificMeasurement.from_dict(declaration), smoke.get("observation"))
+                            measurement = evaluate_parsed_measurement(ScientificMeasurement.from_dict(declaration), smoke.get("observation"))
+                            smoke["measurement"] = {"parser_value": measurement.value,
+                                "baseline": measurement.baseline, "comparison": declaration["comparison"],
+                                "metric_value": measurement.metric_value, "criterion_met": measurement.criterion_met}
             except _ValidationUnavailable:
                 raise
             except ValueError as exc:

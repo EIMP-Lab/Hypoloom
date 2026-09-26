@@ -158,6 +158,8 @@ def _payload(tmp_path, mount_root):
 
 @pytest.mark.parametrize("negative", [False, True], ids=["supported", "refuted-null-selection"])
 def test_three_experts_one_run_leader_then_three_round_debate_real_cpu(tmp_path, monkeypatch, mount_root, negative):
+    # This fixture exercises the retained exclusive-Leader round protocol.
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 22)
     # The test transport establishes the same ordinary OPEN binding that the
     # real adapter writes. It never edits a closed row or bypasses admission.
     original_open = StateTransaction.open_attempt

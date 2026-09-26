@@ -123,6 +123,41 @@ def test_node_runtime_selects_defaults_role_and_specific_stage_in_order():
     assert grounding["model"] == "configured-model"
 
 
+@pytest.mark.parametrize("field,legacy,section,value", [
+    ("total_budget_usd", "total_budget_usd", "safety", 20),
+    ("per_expert_budget_usd", "per_expert_budget_usd", "safety", 10),
+    ("experiment_timeout", "experiment_timeout_minutes", "safety", 300),
+    ("wallclock_hours", "max_wall_clock_hours", "stop_conditions", 2),
+])
+def test_budget_has_one_source_and_preserves_legacy_only_profiles(field, legacy, section, value):
+    source = documents()
+    old = project_profile_v4(**source)
+    assert not old.issues
+    owner = source["goal"][section] if section == "stop_conditions" else source[section]
+    source["methodology"].setdefault("budget", {})[field] = value
+    duplicate = project_profile_v4(**source)
+    assert any("duplicate budget declaration" in issue.message for issue in duplicate.issues)
+    del owner[legacy]
+    canonical = project_profile_v4(**source)
+    assert not canonical.issues
+    assert canonical.projection.methodology["budget"][field] == old.projection.methodology["budget"][field]
+    assert any(w.code == "legacy_budget_field" and w.location.endswith(legacy) for w in old.warnings)
+
+
+def test_runtime_sources_follow_the_actual_override_resolution():
+    from hypoloom.profile_v4 import resolve_node_runtime
+    settings = project_profile_v4(**documents()).settings
+    contract = {"methodology": {"controls": {"product": settings}}}
+    sources = {}
+    runtime = resolve_node_runtime(contract, "scientist", "experiment_design_implement", sources=sources)
+    assert runtime["model"] == "coding-model"
+    assert sources["model"] == "experts.yaml.experts[scientist].stage_overrides.inner_loop.code.model"
+    settings["experts"]["grounding"] = {"model": "shared-grounding"}
+    sources = {}
+    assert resolve_node_runtime(contract, None, "grounding", sources=sources)["model"] == "shared-grounding"
+    assert sources["model"] == "experts.yaml.grounding.model"
+
+
 def test_resolved_node_settings_are_actual_frozen_config_not_live_profile():
     import json
     from hypoloom.agent_aci import EmbeddedInput
@@ -144,11 +179,11 @@ def test_design_vocabulary_is_preserved_and_null_metric_is_explicitly_deferred()
     assert projected.settings["experts"] == source["experts"]
     assert projected.settings["methodology"]["interaction"]["debate"]["rounds"] == 3
     assert projected.settings["notify"]["sinks"]["telegram"]["bot_token_env"] == "TEST_BOT_TOKEN"
-    assert not projected.warnings
+    assert {warning.code for warning in projected.warnings} == {"legacy_budget_field"}
     assert projected.projection.methodology["budget"]["experiment_timeout"] == 300
     assert projected.projection.methodology["budget"]["total_budget_usd"] == 20
     assert projected.projection.methodology["budget"]["max_active_agents"] == 4
-    assert not any("budget_usd" in item.location for item in projected.warnings)
+    assert not any("budget_usd" in item.location and item.code != "legacy_budget_field" for item in projected.warnings)
     assert projected.safety["allow_read_paths"] == ["/dataset"]
 
 
@@ -189,11 +224,12 @@ def test_profile_v4_rejects_unknown_or_invalid_values(document, key, value):
     assert project_profile_v4(**source).issues
 
 
-def test_notification_secrets_are_environment_names_not_literal_tokens():
+def test_notification_inline_and_environment_sources_cannot_be_mixed():
     source = documents()
     source["notify"]["sinks"]["telegram"]["bot_token"] = "literal-secret"
     result = project_profile_v4(**source)
-    assert any("bot_token" in issue.location for issue in result.issues)
+    assert any("not both" in issue.message for issue in result.issues)
+    assert "literal-secret" not in repr(result.settings)
 
 
 @pytest.mark.parametrize("grounding,telegram,events,warn", [
@@ -364,3 +400,14 @@ def test_grounding_query_plan_does_not_acquire_the_experts_literature_mcp():
     request = SimpleNamespace(command=AgentCommand.LITERATURE_REVIEW, schema_version=14,
         input_artifacts=(), task_context=AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id="run-fake"))
     assert request_literature_tools(request) == ()
+
+
+def canonical_documents():
+    """Current authoring fixture; legacy warnings are tested with documents()."""
+    source = documents()
+    source['methodology'].setdefault('budget', {}).update(
+        total_budget_usd=20, per_expert_budget_usd=10, wallclock_hours=2, experiment_timeout=300)
+    for field in ('total_budget_usd', 'per_expert_budget_usd', 'experiment_timeout_minutes'):
+        del source['safety'][field]
+    del source['goal']['stop_conditions']['max_wall_clock_hours']
+    return source

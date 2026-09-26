@@ -708,6 +708,13 @@ class ExpertsPanel(CockpitPanel):
                     f"· {_duration(stage.get('elapsed_seconds'))}")
             card.extend(("", *_reliability_lines(expert.get("reliability"))))
             accounting = expert.get("accounting", {})
+            recovery = expert.get("context_recovery", {})
+            if recovery.get("cli_unknown_pricing_attempts"):
+                card.append(f"CLI pricing unknown: {recovery['cli_unknown_pricing_attempts']} attempts · reported dollars are fallback estimates")
+            if recovery.get("cli_pricing_unavailable_attempts"):
+                card.append(f"CLI pricing evidence unavailable: {recovery['cli_pricing_unavailable_attempts']} attempts")
+            if recovery.get("context_failure_attempts"):
+                card.append(f"Context recovery: {recovery['recovery_attempts']} attempts · reported ${recovery['recovery_reported_cost_usd']} · cost unknown {recovery['recovery_unknown_cost_attempts']}")
             extra = accounting.get("observed_unsettled_tokens", 0)
             if extra:
                 card.append(f"+≥{_compact(extra)} observed tokens, unsettled")
@@ -974,6 +981,26 @@ class AttemptsPanel(CockpitPanel):
                 lines.append(
                     f"   [yellow]{_short_text(attempt.diagnostic_summary, limit=220)}[/yellow]"
                 )
+            if attempt.kind == "AGENT":
+                lines.append(f"   last input={_value(attempt.context_tokens)} · working limit={_value(attempt.context_window_tokens)} "
+                    f"({_value(attempt.context_window_source)}) · cumulative tokens={_value(attempt.cumulative_tokens)}")
+                context = attempt.context or {}
+                metrics = attempt.context_observation or {}
+                if metrics.get("cli_unknown_model_pricing") is True:
+                    lines.append("   CLI session pricing unknown · reported dollars are fallback estimates, not a vendor bill")
+                if "native_compaction_count" in metrics:
+                    lines.append(f"   native compactions={metrics['native_compaction_count']} · duration={metrics['native_compaction_duration_ms']} ms · unknown durations={metrics['native_compaction_duration_unknown']} · coverage={metrics['coverage']}")
+                    compact = metrics.get("last_native_compaction")
+                    if compact:
+                        lines.append(f"   last native compaction input={_value(compact['pre_tokens'])} → {_value(compact['post_tokens'])} · {_value(compact['duration_ms'])} ms")
+                    lines.append(f"   successful Read={metrics['read_calls']} · exact frozen-input rereads={metrics['exact_reread_calls']} (shell reads excluded)")
+                lines.append(f"   estimated input={_value(context.get('estimated_input_tokens'))} · source={_value(attempt.context_source)} · declared window={_value(context.get('declared_context_tokens'))} "
+                    f"· cache read/create={_value(context.get('cache_read_input_tokens'))}/{_value(context.get('cache_creation_input_tokens'))} "
+                    f"· session scope={_value(attempt.session_scope)}")
+                if attempt.operational_reason:
+                    lines.append(f"   operational reason={_value(attempt.operational_reason)}")
+                if attempt.operational_status:
+                    lines.append(f"   {_value(attempt.operational_status)}" + (" · API retry does not reopen a terminal node" if attempt.operational_status == "recovery_exhausted" else " · last recorded CLI status"))
             if attempt.stdout_path is not None or attempt.stderr_path is not None:
                 lines.append(
                     f"   logs: stdout={_value(attempt.stdout_path)} · "

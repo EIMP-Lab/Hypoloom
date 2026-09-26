@@ -4,6 +4,8 @@ English · [简体中文](README.zh-CN.md)
 
 Current user entry points:
 
+- [Initialization](guides/initialization.md): effective models, unified budgets and local launch checks.
+- [Version reminders](guides/version-check.md): remote branch comparison, offline mode and advisory results.
 - [README](../README.md): capabilities and the shortest start path
   ([中文版本](../README.zh-CN.md)).
 - [SETUP](../SETUP.md): installation, authentication and resource configuration.
@@ -13,6 +15,7 @@ Current user entry points:
 - [Operator guide](operator-guide.md): English operational reference.
 - [Architecture](architecture.md): components, ownership and durable boundaries.
 - [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
+- [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
 - [Contributing](../CONTRIBUTING.md): local development and validation.

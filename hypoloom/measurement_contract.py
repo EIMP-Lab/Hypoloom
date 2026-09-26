@@ -120,6 +120,12 @@ class MeasurementEvaluation:
 
 
 def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping[str, Any]) -> MeasurementEvaluation:
+    """VALUE uses value directly; delta modes subtract baseline exactly once.
+
+    Example: value=.72, baseline=.68 yields .04 in DELTA_FROM_BASELINE.
+    A parser that already returns .04 must declare VALUE to avoid subtraction
+    a second time. Scientific intent cannot be inferred from the sign/name.
+    """
     try:
         if (not isinstance(raw, Mapping) or not {"metric", "value"} <= set(raw)
                 or set(raw) - {"metric", "value", "baseline"} or raw["metric"] != declaration.metric.name):

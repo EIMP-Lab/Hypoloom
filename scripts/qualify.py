@@ -17,7 +17,7 @@ SELECTIONS = {
         "test_state_migration_v3.py", "test_backup_restore.py", "test_runtime_bundle.py")],
     "g3": [TESTS + name for name in (
         "test_research_projection.py::test_resident_host_answers_status_through_two_cpu_cycles_and_projection",
-        "test_full_cc_host_g3.py::test_full_cc_host_recovers_committed_submit_and_resumes_same_session",
+        "test_full_cc_host_g3.py::test_full_cc_host_recovers_committed_submit_and_reconstructs_context",
         "test_claude_debate_host_g3.py::test_real_cli_debate_three_rounds_restart_both_hypotheses_and_promote_only_winner",
         "test_claude_shared_acceptance_g3.py::test_native_grounding_shared_source_local_failure_and_complete_goal_stop",
         "test_execution_completion_g3.py::test_native_execution_corrects_early_completion_before_publication",

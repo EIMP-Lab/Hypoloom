@@ -152,7 +152,8 @@ def test_native_shared_scope_preserves_the_accepted_measurement_choice(tmp_path:
             assert len({row["command_id"] for row, _ in design}) == 1
             inner = [observed for _, observed in agents if observed["request"]["command"] in {
                 "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
-            assert len({observed["session"]["session_id"] for observed in inner}) == 1
+            assert len({observed["session"]["session_id"] for observed in inner}) == len(inner)
+            assert len({observed["session"]["branch"] for observed in inner}) == 1
             if not goal_only:
                 rejected, retry = design
                 assert rejected[0]["terminal_reason"] == "FAILED" and retry[0]["terminal_reason"] == "SUCCEEDED"
@@ -184,7 +185,8 @@ def test_native_shared_scope_preserves_the_accepted_measurement_choice(tmp_path:
                 assert any(block.get("type") == "text" and block.get("text") == outer["result"]
                            for record in records if record.get("type") == "assistant"
                            for block in record["message"]["content"])
-                assert retry[1]["session"]["launch_arguments"] == ["--resume", rejected[1]["session"]["session_id"]]
+                assert retry[1]["session"]["session_id"] != rejected[1]["session"]["session_id"]
+                assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
                 assert any(item["ref"] == rejected[0]["attempt_id"] + "--agent-retry-diagnostic"
                            for item in retry[1]["request"]["input_artifacts"])
             accepted = design[-1][1]["response"]["typed_candidate"]

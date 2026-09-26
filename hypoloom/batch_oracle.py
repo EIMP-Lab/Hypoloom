@@ -396,8 +396,10 @@ class _Audit:
                 update = source[2]["typed_candidate"]
             previous, ended = source, source[0]["ended_at"]
         if terminal:
-            analysis_failed = any(self.final_failures(identity, kind="RESULT_ANALYSIS", chain=chain, before=before)
-                for chain in self.batches[identity][1]["hypothesis_batch"]["chains"])
+            from .agent_context import operational_agent_failure
+            analysis_failed = any(request["schema_version"] < 24 or not operational_agent_failure(self.observations[attempt["attempt_id"]])
+                for chain in self.batches[identity][1]["hypothesis_batch"]["chains"]
+                for _, attempt, request in self.final_failures(identity, kind="RESULT_ANALYSIS", chain=chain, before=before))
             successor_failures = [item for item in self.final_failures((*identity[:2], identity[2] + 1), before=before)
                                   if item[2]["command"] in {"LITERATURE_REVIEW", "HYPOTHESIS_PROPOSAL"}]
             for failed_row, failed, request in successor_failures:

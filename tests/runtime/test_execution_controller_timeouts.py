@@ -79,11 +79,11 @@ def long_execution(tmp_path, request):
             host.close()
 
 
-def _timeout(host, request, *, code="timed_out", retryable=True):
+def _timeout(host, request, *, code="timed_out", retryable=True, details=None):
     reason = (AttemptTerminalReason.FAILED if code == "session_archive_failed"
               else AttemptTerminalReason.TIMED_OUT)
     host._agent_failure(request, reason, code,
-                        retryable=retryable)
+                        retryable=retryable, details=details)
 
 
 def test_timed_out_controller_waits_for_its_owned_experiment_before_retry(long_execution):
@@ -177,11 +177,16 @@ def test_full_controller_timeout_allowance_preserves_analysis_and_next_iteration
 
 
 @pytest.mark.parametrize("code", ["profile_wallclock_exhausted", "session_archive_failed"])
-def test_nonretryable_controller_failure_does_not_reopen_execution(long_execution, code):
-    host, request, _, _ = long_execution
-    _timeout(host, request, code=code, retryable=False)
+@pytest.mark.parametrize("provider_code", [None, "context_capacity"])
+def test_nonretryable_controller_failure_does_not_reopen_execution(long_execution, code, provider_code):
+    host, request, experiment_id, _ = long_execution
+    details = {} if provider_code is None else {"diagnostics": {"provider_failure": {"code": provider_code}}}
+    _timeout(host, request, code=code, retryable=False, details=details)
     host._resume_tool_execution_agents(request.run_id)
     assert not host.local_execution_agents
     assert len(host._expert_attempts(request.task_context)) == 1
     assert host._expert_task_exhausted(request.run_id, request.task_context)
     assert json.loads(host._expert_attempts(request.task_context)[0]["observation_json"])["retry_class"] is None
+    _until(host, lambda: host.store.latest_transition(experiment_id)["state"] == "TERMINAL")
+    key = request.task_context.key
+    assert host._batch_chain_failed(request.run_id, request.component_id, request.role, key.cycle, key.chain)

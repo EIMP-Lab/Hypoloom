@@ -174,11 +174,11 @@ def test_native_analysis_candidate_retries_same_session_and_preserves_operationa
         inner = [observed for _, observed in agents if observed["request"]["command"] in {
             "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
         sessions = {observed["session"]["session_id"] for observed in inner}
-        assert len(sessions) == 1
-        session_id = sessions.pop()
+        assert len(sessions) == len(inner)
+        assert len({observed["session"]["branch"] for observed in inner}) == 1
         for observed in inner:
             if observed["request"]["command"] != "EXPERIMENT_DESIGN_IMPLEMENT":
-                assert observed["session"]["launch_arguments"] == ["--resume", session_id]
+                assert observed["session"]["launch_arguments"] == ["--session-id", observed["session"]["session_id"]]
         first_request, retry_request = failed[1]["request"], retry[1]["request"]
         assert first_request["task_context"] == retry_request["task_context"]
         assert first_request["immutable_context_refs"] == retry_request["immutable_context_refs"]

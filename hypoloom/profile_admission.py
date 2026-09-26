@@ -167,6 +167,7 @@ def admit_profile(
     blockers: list[ProfileBlocker] = []
     mapped: list[str] = []
     texts: dict[str, str] = {}
+    private_profile_files: list[Path] = []
 
     def block(code: str, location: str, message: str) -> None:
         blockers.append(ProfileBlocker(code=code, location=location, message=message))
@@ -218,8 +219,8 @@ def admit_profile(
             continue
         try:
             value = yaml.load(texts[name], Loader=_UniqueKeyLoader)
-        except yaml.YAMLError as exc:
-            block("invalid_yaml", name, str(exc))
+        except yaml.YAMLError:
+            block("invalid_yaml", name, "invalid YAML; source values omitted")
             continue
         if value is None:
             value = {}
@@ -241,7 +242,17 @@ def admit_profile(
     if profile_v3:
         if all(name in documents for name in PROFILE_V3_FILES):
             if documents["methodology.yaml"].get("schema_version") == PROFILE_V4_VERSION:
-                v4_projection = project_profile_v4(**{name.removesuffix(".yaml"): documents[name] for name in PROFILE_V3_FILES})
+                from .credentials import profile_has_credentials, read_credentials_file, CredentialError
+                for name in ("methodology.yaml", "notify.yaml"):
+                    if profile_has_credentials(documents[name], name):
+                        private_profile_files.append(root.absolute() / name)
+                    if source_texts is None and profile_has_credentials(documents[name], name):
+                        try:
+                            read_credentials_file(str(root.absolute() / name))
+                        except CredentialError as exc:
+                            block("private_profile_credentials_invalid", name, str(exc))
+                v4_projection = project_profile_v4(profile_dir=root,
+                    **{name.removesuffix(".yaml"): documents[name] for name in PROFILE_V3_FILES})
                 v3_projection = v4_projection.projection
                 documents["notify.yaml"] = v4_projection.notify; documents["safety.yaml"] = v4_projection.safety
                 profile_contract_version = PROFILE_V4_VERSION
@@ -478,6 +489,14 @@ def admit_profile(
             else:
                 resolved_roots.append(str(root_path.resolve()))
         operational["read_roots"] = resolved_roots
+        # Apply the existing no-credential-mount boundary to the new authoring
+        # location as well; a read-only data mount would still expose values.
+        mounted = [Path(value) for value in resolved_roots]
+        if operational["runtime_prefix"] is not None:
+            mounted.append(Path(operational["runtime_prefix"]))
+        if any(private.resolve().is_relative_to(path) for private in private_profile_files for path in mounted):
+            block("private_profile_mount_exposure", "safety.yaml.allow_read_paths",
+                "private Profile credentials must stay outside Agent/experiment runtime and data mounts")
 
     if not isinstance(run_id, str) or _SAFE_RUN_ID.fullmatch(run_id) is None:
         block(

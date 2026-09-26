@@ -12,11 +12,12 @@ leaving Claude Code or reopening the session, and does not ask you to open
 separate Host/monitor terminals.
 
 Personal configuration is indexed in [config/README.md](config/README.md).
-The public template is `config/hypoloom.env.example`; your real file remains
-`.local/credentials/hypoloom.env` in a hidden, ignored directory. Use
+Fill literature keys and notification tokens directly in the ignored local
+Profile's `methodology.yaml` and `notify.yaml` (mode 0600). No separate env is
+required; public Profile templates contain empty credential fields. Use
 `python -B -m hypoloom.bootstrap paths --profile <name>` with the control Python
 to see defaults and Profile-declared paths, existence and permissions, without
-showing values. Model authentication remains separate from this dotenv file.
+showing values. Model authentication continues to use the selected CC settings.
 
 Init uses `hypoloom.bootstrap prepare` to validate filled template values in
 memory, with zero writes. Only the explicit `--write` preparation creates a
@@ -26,6 +27,13 @@ before and after Host readiness. Profile changes during preparation stop the
 launch. A configuration check makes no provider request and does not certify
 model availability or scientific quality. Exact helper usage is in
 [the Profile guide](profiles/README.md#deterministic-preparation--确定性准备).
+
+See [Initialization](docs/guides/initialization.md) for effective model precedence, unified Profile budgets and managed notification credentials.
+
+Init also shows a bounded [version reminder](docs/guides/version-check.md)
+against the configured remote branch. Run `hypoloom version-check` manually or
+use `bootstrap paths --offline` to skip remote lookup. Updates and failed checks
+are advisory; no automatic code update or run migration occurs.
 
 ## 1. Control environment
 
@@ -77,18 +85,19 @@ For API limits or expired credentials during a run, follow
 [API recovery](docs/guides/provider-recovery.md). It explains the optional private
 connection JSON, TUI/Web/CLI switching and how to confirm recovery. The connection
 can change while the run's model remains fixed; do not edit its original private
-settings copy or put model keys into the literature/notification dotenv file.
+settings copy or put model keys into literature/notification fields.
 
 Literature retrieval uses OpenAlex. The complete native expert path needs an
-approved dotenv credentials file (recommended
-`.local/credentials/hypoloom.env`; template at
-`config/hypoloom.env.example`) holding `OPENALEX_API_KEY` and,
-when the Unpaywall PDF fallback is selected, `UNPAYWALL_EMAIL`; it must be an
-existing, absolute-path, non-symlink, mode-0600 file. A local v4 Profile
-declares this path in `literature.credentials_file`; the init/operator flow
-passes it as `--credentials-file` to `serve`, `profile-check` and `start`.
-The legacy single-key `--openalex-api-key-file` is still accepted; the two
-are never mixed. The PDF path needs Poppler's `pdfinfo` and `pdftotext`.
+OpenAlex key in `methodology.yaml.literature.openalex_api_key`; set
+`literature.unpaywall_email` when selecting the Unpaywall PDF fallback.
+Fill only the private local Profile and keep this file mode 0600, non-symlink.
+Admission removes values from the contract and derives the original YAML path;
+init passes that path through the existing `--credentials-file` argument to
+`serve`, `profile-check` and `start`, never the key itself. No second file is
+created. Legacy dotenv and single-key flags remain compatible but cannot
+override a conflicting Profile credential source. See
+[the credential tutorial](config/README.md) for the editing sequence.
+The PDF path needs Poppler's `pdfinfo` and `pdftotext`.
 Network timeouts, response/PDF sizes and page limits are reviewed together by
 init. Retrieval preserves source URIs and extraction evidence; not obtaining
 a PDF or having insufficient metadata must not be described as having read
@@ -110,10 +119,9 @@ choices appear in the run configuration as `academic_provider` and
 OpenAlex being unconfigured. The default PDF fallback is Semantic Scholar;
 Unpaywall can also be selected explicitly: add
 `--literature-pdf-fallback unpaywall` to the same literature arguments passed
-to `serve`, `profile-check` and `start`; the credentials file above must then
-also provide `UNPAYWALL_EMAIL` (the legacy single-key
-`--unpaywall-email-file` is still accepted and must not be mixed with the
-credentials file). The email content is never written into the Profile or
+to `serve`, `profile-check` and `start`; set `literature.unpaywall_email` in the
+private Profile (the legacy single-key `--unpaywall-email-file` remains accepted
+as an alternative). The email stays in the private Profile and is omitted from
 Agent inputs. This option only looks up open full text by exact DOI; it does
 not call Unpaywall title search and does not send the OpenAlex key to
 Unpaywall. Returned addresses still pass the existing HTTPS/DNS, size, PDF

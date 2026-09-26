@@ -264,6 +264,7 @@ class RunningClaudeAgent:
     _output_validator: NativeOutputValidator | None = field(default=None, repr=False)
     _prompt_manifest: Mapping[str, object] | None = field(default=None, repr=False)
     _session_usage_baseline: Mapping[str, object] | None = field(default=None, repr=False)
+    _started_wall_at: float = field(default_factory=time.time, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _cancel_requested: bool = field(default=False, repr=False)
     _closed: bool = field(default=False, repr=False)
@@ -533,6 +534,7 @@ class ClaudeAgentHost:
             tool_workspace=requires_workspace and tool_workspace is not None,
             git_authoring=isinstance(tool_workspace, (PreparedGitAuthoringWorkspace, PreparedSessionWorkspace)),
             manifest=prompt_manifest,
+            continuation=getattr(tool_workspace, "continuation_observation", None),
         )
         prompt_manifest["prompt_bytes"] = len(prompt)
         remaining_wall_seconds = _request_deadline_remaining(request)
@@ -581,6 +583,7 @@ class ClaudeAgentHost:
                     command_id=request.command_id, attempt_id=request.attempt_id,
                     session_id=tool_workspace.binding.get("session_id"), adapter_version=CLAUDE_AGENT_HOST_VERSION)
             from .profile_v4 import request_node_runtime
+            from .context_management import context_policy
             relay = ProviderRelay(endpoint_root / "provider.sock",
                 base_url=relay_environment.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
                 provider_environment=relay_environment, model=model,
@@ -590,7 +593,7 @@ class ClaudeAgentHost:
                 max_requests=request.budget.max_turns * 4 + 4,
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 token_budget=request.budget.max_tokens if request.budget.token_enforcement_mode == "enforce" else None,
-                diagnostics=runtime_diagnostics)
+                diagnostics=runtime_diagnostics, context_policy=context_policy(request))
             resources.callback(relay.close)
             network_socket = None
             if request_network_allowed(request):
@@ -623,7 +626,7 @@ class ClaudeAgentHost:
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
-                candidate_check=_observer_output_check(request),
+                candidate_check=_native_candidate_check(request, tool_workspace),
                 final_report_check=tool_workspace.capture_workspace if request.command.value == "FINAL_REPORT" else None,
                 parser_source_root=(tool_workspace.acceptance_root if request.command.value == "GROUNDING"
                     else tool_workspace.worktree_root), parser_smoke_max_bytes=request.budget.max_output_bytes)
@@ -1066,6 +1069,12 @@ class ClaudeAgentHost:
                     response = None
                     failure_code = "invalid_provider_envelope"
                     diagnostics["provider_diagnostic"] = "native output validation was unavailable or prevented completion"
+                    if handle.request.schema_version >= 24 and not snapshot.get("error"):
+                        from .diagnostics import bounded_diagnostic_text
+                        rejected = [row.get("validation_error") for row in snapshot.get("rounds", ())
+                            if row.get("status") == "rejected"]
+                        if rejected and (message := bounded_diagnostic_text(rejected[-1])):
+                            diagnostics["validation_error"] = {"code": "invalid_candidate", "message": message}
         if reason in {
             AgentHostTerminalReason.TIMED_OUT,
             AgentHostTerminalReason.CANCELLED,
@@ -1086,6 +1095,13 @@ class ClaudeAgentHost:
                 response = None
                 failure_code = "resource_cleanup_failed"
         _classify_cli_oversized_input(handle.request, diagnostics)
+        if isinstance(handle.tool_workspace, PreparedSessionWorkspace):
+            from .context_observation import read_transcript_metrics
+            workspace = handle.tool_workspace
+            diagnostics["context_observation"] = read_transcript_metrics(
+                workspace.session_root / (workspace.binding["session_id"] + ".jsonl"),
+                workspace.binding["session_id"], handle._started_wall_at,
+                [item.ref for item in handle.request.input_artifacts])
         if handle._runtime_diagnostics is not None:
             recorder = handle._runtime_diagnostics
             from .provider_observation import provider_failure, read_exchanges, summarize_exchanges
@@ -1095,6 +1111,8 @@ class ClaudeAgentHost:
                 diagnostics["served_models"] = sorted({model for exchange in exchanges
                     for model in exchange.get("served_models", []) if isinstance(model, str)})
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
+                from .context_management import context_policy, latest_context
+                diagnostics["context"] = latest_context(exchanges, context_policy(handle.request))
                 if (failure := provider_failure(exchanges)) is not None:
                     diagnostics["provider_failure"] = failure
             except (OSError, ValueError, TypeError):
@@ -1784,9 +1802,13 @@ def _classify_cli_oversized_input(request: AgentRequest, diagnostics: dict[str, 
         return
     from .provider_observation import INPUT_TOO_LONG_PHRASES
     message = diagnostic.lower()
+    if request.schema_version >= 24 and "compact" in message and any(
+            phrase in message for phrase in ("empty", "failed", "failure", "error")):
+        diagnostics.setdefault("provider_failure", {
+            "code": "compaction_failed", "http_status": None, "source": "cli_compaction"})
     if not any(phrase in message for phrase in INPUT_TOO_LONG_PHRASES):
         return
-    if request.command in STATELESS_SESSION_COMMANDS:
+    if request.command in STATELESS_SESSION_COMMANDS or request.schema_version >= 24:
         diagnostics.setdefault("provider_failure", {
             "code": "input_too_long", "http_status": None, "source": "cli_compaction"})
     else:
@@ -2063,7 +2085,8 @@ def _measurement_schema() -> dict[str, Any]:
                 "properties": {"name": {"type": "string", "minLength": 1},
                     "direction": {"enum": ["MAXIMIZE", "MINIMIZE"]}, "target": {"type": "string"}},
                 "required": ["name", "direction", "target"]},
-            "comparison": {"enum": ["VALUE", "DELTA_FROM_BASELINE", "RELATIVE_DELTA_FROM_BASELINE"]},
+            "comparison": {"enum": ["VALUE", "DELTA_FROM_BASELINE", "RELATIVE_DELTA_FROM_BASELINE"],
+                "description": "VALUE uses parser value directly. Delta modes require raw candidate value and baseline; Host subtracts once. Example .72 and .68 produce .04; an already-computed .04 requires VALUE."},
             "parse_rule": {"type": "string", "minLength": 1},
             "parser_argv": strings, "parser_files": {**strings, "uniqueItems": True},
             "raw_artifacts": {**strings, "uniqueItems": True}},
@@ -2092,6 +2115,29 @@ def _shared_acceptance_schema() -> dict[str, Any]:
         "raw_artifacts": {**paths,
             "description": "Canonical relative evidence paths under /raw, e.g. predictions.json, without the /raw prefix; no absolute paths, empty/dot/dot-dot segments, backslashes or NUL."}}
     return {"type": "object", "additionalProperties": False, "properties": properties, "required": list(properties)}
+
+
+def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
+    from .domain import AgentCommand
+    observer = _observer_output_check(request)
+    if request.schema_version < 24 or request.command not in {
+            AgentCommand.GROUNDING, AgentCommand.LITERATURE_REVIEW, AgentCommand.DEBATE}:
+        return observer
+
+    def check(output):
+        if observer is not None: observer(output)
+        sources = output.get("typed_candidate", {}).get("web_sources", ())
+        if not sources: return
+        from .grounding_background import transcript_web_results, retrieved_web_urls, validate_web_sources
+        from .agent_sessions import _regular, node_memory_limit
+        path = workspace.session_root / (workspace.binding["session_id"] + ".jsonl")
+        try:
+            records = transcript_web_results(_regular(path, node_memory_limit(request,
+                "max_transcript_bytes", 64 * 1024 * 1024)), session_id=workspace.binding["session_id"])
+        except OSError as exc:
+            raise ValueError("web source evidence is not yet readable; retry after recording the retrieval") from exc
+        validate_web_sources(sources, set(workspace.prior_web_urls) | retrieved_web_urls(records))
+    return check
 
 
 def _observer_output_check(request: AgentRequest) -> Callable[[Mapping[str, Any]], Any] | None:
@@ -2721,6 +2767,7 @@ def _expert_required_method_family(request: AgentRequest) -> str | None:
 def _prompt(
     request: AgentRequest, *, tool_workspace: bool = False, git_authoring: bool = False,
     manifest: dict[str, object] | None = None,
+    continuation: Mapping[str, Any] | None = None,
 ) -> bytes:
     request_metadata = request.to_dict()
     # The same immutable input bytes are rendered below in their usable form.
@@ -2749,10 +2796,34 @@ def _prompt(
     rendered_inputs = []
     rendered_input_bytes: dict[str, int] = {}
     offloaded_refs: list[str] = []
+    from .context_management import context_policy
+    policy = context_policy(request)
+    inline_indices = set(range(len(request.input_artifacts)))
+    if policy is not None and tool_workspace:
+        inline_indices = set()
+        remaining = policy["max_inline_input_bytes"]
+        seen_content = set()
+        def priority(pair):
+            ref = pair[1].ref
+            return (0 if ref.endswith(("--fact-goal", "--expert-config", "--context-recovery"))
+                else 1 if any(word in ref for word in ("spec", "outcome", "analysis", "hypothesis")) else 2, pair[0])
+        for index, item in sorted(enumerate(request.input_artifacts), key=priority):
+            content = item.content_bytes()
+            size = len(canonical_json(_render_input(item)))
+            if (size <= remaining and content not in seen_content
+                    and not item.ref.endswith(_OFFLOAD_INPUT_REF_SUFFIXES)
+                    and len(content) < _OFFLOAD_INPUT_MIN_BYTES):
+                inline_indices.add(index)
+                seen_content.add(content)
+                remaining -= size
+        if manifest is not None:
+            manifest["context_policy"] = policy
+            manifest["inline_input_bytes"] = policy["max_inline_input_bytes"] - remaining
     for index, item in enumerate(request.input_artifacts):
         if tool_workspace and request.schema_version >= 14 and (
             item.ref.endswith(_OFFLOAD_INPUT_REF_SUFFIXES)
             or len(item.content_bytes()) >= _OFFLOAD_INPUT_MIN_BYTES
+            or index not in inline_indices
         ):
             rendered = {"ref": item.ref, "media_type": item.media_type,
                         "path": f"/inputs/{index:04d}.txt", "size_bytes": len(item.content_bytes())}
@@ -2767,12 +2838,18 @@ def _prompt(
     if manifest is not None:
         manifest["rendered_input_bytes"] = rendered_input_bytes
         manifest["offloaded_refs"] = offloaded_refs
+        contents = [item.content_bytes() for item in request.input_artifacts]
+        manifest["input_material"] = {"source_bytes": sum(map(len, contents)),
+            "unique_source_bytes": sum(map(len, set(contents))),
+            "duplicate_source_bytes": sum(map(len, contents)) - sum(map(len, set(contents))),
+            "source_count": len(contents), "offloaded_count": len(offloaded_refs)}
     return (
         canonical_json(
             {
                 "instruction": instruction,
                 "agent_request_metadata": request_metadata,
                 "rendered_inputs": rendered_inputs,
+                **({"continuation_observation": continuation} if continuation is not None else {}),
                 **({"ref_aliases": aliases} if request.schema_version >= 19 else {}),
             }
         )
@@ -2821,6 +2898,25 @@ def _instruction(
             "accept a truncated Read as complete. "
         )
     if full_cc:
+        if request.schema_version >= 24:
+            common += (
+                "This is a bounded working session reconstructed from the current request. "
+                "R aliases and /inputs filenames belong ONLY to this request; reread its mapping after "
+                "any session change or compaction. Before acting, read the complete goal constraints, "
+                "current specification and relevant accepted results from their supplied sources, even "
+                "when offloaded. Do not infer that historical material has already been read. "
+                "Retrieve other material by supplied IDs, paths and keywords within this request's scope. "
+                "Use bounded line ranges or JSON field extraction; do not print entire transcripts or logs. "
+                "Your retained worktree may contain earlier unaccepted edits: inspect git status/diff and "
+                "test them. Query existing submitted experiment state before any submission; session "
+                "renewal does not authorize duplicate experiments. Summaries are working notes, not "
+                "scientific evidence. In existing summary fields preserve decisions, recent failures, "
+                "unverified changes and next steps with source IDs. Design/debug summaries describe "
+                "code and unresolved errors; result analysis preserves exact versions, measured values "
+                "and comparison conditions; next-round reports retain qualified positive and negative "
+                "results without generalizing one failed setting to an entire method. Only CYCLE_REPORT "
+                "writes expert MEMORY.md. Missing process notes do not erase accepted facts. "
+            )
         common = full_cc_instruction(request) + common
         from .agent_aci import grounding_acceptance_request
         if grounding_acceptance_request(request) and request.command.value in {"GROUNDING", "HYPOTHESIS_UPDATE", "EXPERIMENT_DESIGN_IMPLEMENT"}:

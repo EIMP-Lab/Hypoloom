@@ -117,8 +117,8 @@ user-systemd 启动 Host、验证 `control.sock`、创建已审查的运行,并�
 | 配置入口 | 位置 |
 |---|---|
 | 个人凭据配置说明 | [config/README.md](config/README.md) |
-| 凭据空白模板 | [config/hypoloom.env.example](config/hypoloom.env.example) |
-| 真实凭据文件 | `.local/credentials/hypoloom.env`（隐藏、Git 忽略） |
+| 凭据空白字段 | 已包含在六文件 Profile 模板中 |
+| 私有密钥及 token | `profiles/local/<name>/methodology.yaml` 和 `notify.yaml`（0600、Git 忽略） |
 | 课题模板 / 本地 Profile | `profiles/templates/` / `profiles/local/<name>/` |
 
 init 会先在内存中填写模板并复用既有校验器检查，再写入新 Profile。
@@ -127,10 +127,10 @@ init 会先在内存中填写模板并复用既有校验器检查，再写入新
 
 Profile 由六个 YAML 文件组成(goal、experts、methodology、language、notify、
 safety);init 先预览模型选择器与目标/数据/运行时路径的绑定，确认后写入新的
-`profiles/local/<name>`，且拒绝覆盖已有 Profile。秘密不写入 Profile:
-一个位于已忽略目录的 mode-0600 dotenv 文件(模板
-[config/hypoloom.env.example](config/hypoloom.env.example))
-存放 `OPENALEX_API_KEY` 等密钥,Profile 以绝对路径引用它。完整构建规则见
+`profiles/local/<name>`，且拒绝覆盖已有 Profile。文献密钥和通知 token 直接填写在
+私有 Profile 中，保持文件权限 0600，无需维护单独 env。准入会剥离明文，不进入
+运行契约或 Agent 输入，只有 Host 读取原 YAML。公开模板保持空白，真实值不通过
+`--set` 或对话传递。完整构建规则见
 [profiles/README](profiles/README.md) 与 [SETUP](SETUP.zh-CN.md)。
 
 默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,

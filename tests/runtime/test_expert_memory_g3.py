@@ -97,8 +97,14 @@ class _MemoryScenario(_HostScenario):
                     ), waited
             elif request.command is AgentCommand.RESULT_ANALYSIS:
                 messages = json.dumps(document["messages"])
-                assert _LOCAL_FAILURE in messages and _LOCAL_SUCCESS in messages
-                assert "mcp__host-tools__submit_experiment" in messages
+                if request.schema_version < 24:
+                    assert _LOCAL_FAILURE in messages and _LOCAL_SUCCESS in messages
+                    assert "mcp__host-tools__submit_experiment" in messages
+                else:
+                    if step == 1:
+                        assert not any(message["role"] == "assistant" for message in document["messages"])
+                    assert any("spec" in item.ref for item in request.input_artifacts)
+                    assert any("outcome" in item.ref for item in request.input_artifacts)
             elif request.command is AgentCommand.CYCLE_REPORT:
                 if request.attempt_id not in self.report_attempts:
                     self.report_attempts.append(request.attempt_id)
@@ -498,9 +504,11 @@ def test_native_plugin_report_survives_host_restart_and_next_cycle_consumes_memo
             )
             original = json.loads(lost[0]["observation_json"])
             replay = json.loads(replayed["observation_json"])
-            assert original["session_binding"] == replay["session_binding"]
+            assert original["session_binding"]["session_id"] != replay["session_binding"]["session_id"]
+            assert original["session_binding"]["branch"] == replay["session_binding"]["branch"]
+            assert original["session_binding"]["scope"] == replay["session_binding"]["scope"]
             assert replay["request"]["attempt_ordinal"] == 2
-            assert "--resume" in replay["session"]["launch_arguments"]
+            assert replay["session"]["launch_arguments"] == ["--session-id", replay["session"]["session_id"]]
             assert _resources(
                 AgentRequest.from_dict(original["request"])
             ) == _resources(AgentRequest.from_dict(replay["request"]))

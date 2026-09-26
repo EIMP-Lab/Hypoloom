@@ -6,10 +6,10 @@ literature:
   enabled: true
   tools: [web_search, web_fetch]
   max_sources: 8
-  # 可选的 Host 启动 dotenv 凭据文件，存放 OPENALEX_API_KEY 与
-  # UNPAYWALL_EMAIL（见 config/hypoloom.env.example），操作员
-  # 流程以 --credentials-file 传给 Host。绝对路径，永不写入秘密明文：
-  # credentials_file: /absolute/path/to/hypoloom.env
+  # 仅在 Git 忽略的本地 Profile（0600）中填写，勿修改公开模板。
+  # 仅 Host 读取：不进入准入契约或 Agent 输入。
+  openalex_api_key: ""
+  unpaywall_email: ""  # 仅 Unpaywall PDF 后备需要。
 inner_loop:
   max_iterations_per_hypothesis: 4
   repair_attempts: 2
@@ -36,6 +36,10 @@ memory:
   max_memory_bytes: 8388608
   max_plugin_bytes: 1048576
 budget:
+  total_budget_usd: 45
+  per_expert_budget_usd: 15
+  wallclock_hours: 6
+  experiment_timeout: 1800  # seconds / 秒
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3

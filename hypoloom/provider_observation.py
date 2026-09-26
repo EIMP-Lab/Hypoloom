@@ -133,6 +133,7 @@ class ProviderObservation:
 
 def summarize_exchanges(exchanges):
     """Complete observed generation usage, separate from terminal billing."""
+    from .context_management import input_usage
     result = dict.fromkeys((*_TOKEN_FIELDS, "total_tokens", "completed_requests", "unmeasured_requests"), 0)
     for exchange in exchanges:
         if exchange.get("request_path") != "/v1/messages":
@@ -147,10 +148,15 @@ def summarize_exchanges(exchanges):
                 or any(type(usage.get(key, 0)) is not int or usage.get(key, 0) < 0 for key in _TOKEN_FIELDS)):
             result["unmeasured_requests"] += 1
             continue
+        tokens = input_usage(usage, (exchange.get("context_capacity") or {}).get(
+            "input_usage_semantics", "separate_cache"))
+        if tokens is None:
+            result["unmeasured_requests"] += 1
+            continue
         for key in _TOKEN_FIELDS:
             result[key] += usage.get(key, 0)
+        result["total_tokens"] += tokens + usage["output_tokens"]
         result["completed_requests"] += 1
-    result["total_tokens"] = sum(result[key] for key in _TOKEN_FIELDS)
     return result
 
 
@@ -169,8 +175,7 @@ def observed_input_floor(exchanges):
         for model in exchange.get("served_models", ())}
     if len(models) != 1:
         return None
-    return sum(summary[key] for key in (
-        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    return summary["total_tokens"] - summary["output_tokens"]
 
 
 def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_limit=3):
@@ -256,11 +261,35 @@ def provider_failure(exchanges):
     """Last transport outcome; a subsequent success clears a transient error."""
     if not exchanges:
         return None
-    last = exchanges[-1]
+    last = next((item for item in reversed(exchanges) if item.get("request_path") != "/v1/messages/count_tokens"), exchanges[-1])
     code = last.get("provider_error_code") or last.get("failure_reason")
     status = last.get("upstream_status")
-    if code in {"input_too_long", "token_budget_exceeded"}:
-        return {"code": code, "http_status": status}
+    if code in {"input_too_long", "token_budget_exceeded", "context_capacity"}:
+        action = None
+        generations = [item for item in exchanges if item.get("request_path") == "/v1/messages"]
+        if code == "context_capacity" and generations:
+            first = generations[0]
+            capacity = first.get("context_capacity") or {}
+            minimum = capacity.get("minimum_inline_input_bytes")
+            if (first.get("failure_reason") == "context_capacity" and capacity.get("fits") is False
+                    and type(minimum) is int and capacity.get("max_inline_input_bytes") == minimum
+                    and all(item.get("request_bytes_forwarded") == 0 and item.get("request_body_complete") is True for item in generations)):
+                action = "input_reconfiguration_required"
+        return {"code": code, "http_status": status,
+            **({"recovery_action": action} if action is not None else {}),
+            **({"source": "local_context_limit"} if code == "context_capacity" else {})}
+    usage = last.get("usage") or {}
+    if status == 200 and last.get("stop_reason") == "max_tokens" and usage.get("output_tokens") == 0:
+        # An anomaly, not proof of context overflow. A confirmed deployment
+        # limit plus near-window input is needed for that inference.
+        from .context_management import input_usage
+        capacity = last.get("context_capacity") or {}
+        tokens = input_usage(usage, capacity.get("input_usage_semantics", "separate_cache"))
+        window = capacity.get("declared_context_tokens")
+        near_window = type(window) is int and tokens is not None and tokens >= window * .95
+        return {"code": "input_too_long" if near_window else "empty_output_limit",
+            "http_status": status, "source": "provider_usage_inference" if near_window else "provider_response",
+            "stop_reason": "max_tokens", "output_tokens": 0}
     if code == "quota_exhausted":
         ended_at = last.get("ended_at")
         seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at) if type(ended_at) in (int, float) else None
@@ -283,10 +312,11 @@ def provider_failure(exchanges):
     return None
 
 
-def read_exchanges(directory):
+def read_exchanges(directory, *, latest_generation_only=False):
     """Derive old and new exchanges from existing diagnostic files, read-only."""
     result = []
-    for child in sorted(directory.glob("[0-9][0-9][0-9][0-9][0-9][0-9]")):
+    for child in sorted(directory.glob("[0-9][0-9][0-9][0-9][0-9][0-9]"), reverse=latest_generation_only):
+        if latest_generation_only and result: break
         try:
             if child.is_symlink():
                 continue
@@ -296,6 +326,7 @@ def read_exchanges(directory):
             data = json.loads(path.read_bytes())
             if not isinstance(data, dict):
                 continue
+            if latest_generation_only and data.get("request_path") != "/v1/messages": continue
             if "served_models" not in data:
                 source = child / "response.body"
                 if source.is_symlink() or not source.is_file():

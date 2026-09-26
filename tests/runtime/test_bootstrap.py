@@ -291,10 +291,14 @@ def test_launch_rejects_existing_state_and_runtime_conflict(checkout, capsys, mo
     assert "conflicting runtime" in capsys.readouterr().err
 
 
-def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys):
+def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, monkeypatch):
     repo, overrides = checkout
     devices = ["GPU-00000000-0000-0000-0000-000000000001", "GPU-00000000-0000-0000-0000-000000000002"]
-    argv = arguments(repo, [*overrides, "safety.gpus=[0,1]"], "launch")
+    from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
+    monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=tuple(
+        GpuCapability(index=i, uuid=device, name="synthetic", total_memory_mib=24000,
+            free_memory_mib=12000, driver_version="synthetic") for i, device in enumerate(devices))))
+    argv = arguments(repo, [*overrides, "safety.gpus=[0,1]", "methodology.budget.min_vram_per_experiment=1024"], "launch")
     argv[argv.index("--cpu-only")] = "--allow-gpu"
     argv += ["--gpu-runtime-prefix", sys.prefix, "--gpu-pool-socket", str(repo / "pool.sock"),
              "--gpu-pool-namespace", "topic", "--gpu-pool-server-uid", str(os.getuid())]
@@ -360,3 +364,107 @@ def test_bootstrap_runs_actual_cli_host_and_cpu_to_clean_closure(checkout, tmp_p
             os.killpg(host.pid, signal.SIGTERM)
             host.wait(timeout=10)
         log.close()
+
+
+def real_preview_arguments(checkout, tmp_path, environment):
+    repo, overrides = checkout
+    settings = tmp_path / 'agent-settings.json'
+    settings.write_text(json.dumps({'env': environment}))
+    settings.chmod(0o600)
+    credentials = tmp_path / 'literature.env'
+    credentials.write_text('OPENALEX_API_KEY=synthetic-key\n')
+    credentials.chmod(0o600)
+    argv = arguments(repo, [*overrides, f'methodology.literature.credentials_file={credentials}'], 'launch')
+    argv[argv.index('--auth-transport') + 1] = 'settings'
+    return [*argv, '--claude-settings', str(settings), '--claude-model', 'selected-host-model',
+            '--claude-executable', '/usr/bin/true', '--literature-adapter', 'openalex']
+
+
+def test_real_preview_exposes_profile_model_override_without_inheriting_session(checkout, tmp_path, capsys):
+    argv = real_preview_arguments(checkout, tmp_path, {'ANTHROPIC_API_KEY': 'synthetic-private-key'})
+    assert bootstrap.main(argv) == 0
+    output = capsys.readouterr().out
+    review = json.loads(output)['effective_configuration']['models']
+    assert review['host_default_model'] == 'selected-host-model'
+    assert review['profile_models_overriding_host_default'] == ['exact-fixture-model']
+    assert all(row['model'] == 'exact-fixture-model' for row in review['routes'])
+    assert all(row['sources']['model'] == 'experts.yaml.defaults.model' for row in review['routes'])
+    assert 'synthetic-private-key' not in output
+    assert not (checkout[0] / 'state').exists()
+
+
+@pytest.mark.parametrize('extra', [{'ANTHROPIC_BASE_URL': 'not-a-url'}, {'CLAUDE_CODE_USE_VERTEX': '1'}])
+def test_invalid_provider_configuration_stops_before_host(checkout, tmp_path, capsys, extra):
+    argv = real_preview_arguments(checkout, tmp_path, {'ANTHROPIC_API_KEY': 'synthetic-private-key', **extra})
+    assert bootstrap.main(argv) == 2
+    error = capsys.readouterr().err
+    assert 'not qualified' in error and 'synthetic-private-key' not in error
+    assert not (checkout[0] / 'state').exists()
+
+
+@pytest.mark.parametrize('kind', ['runtime', 'selector', 'no_pool', 'empty'])
+def test_gpu_combination_is_rejected_in_preview(checkout, tmp_path, capsys, monkeypatch, kind):
+    from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
+    repo, overrides = checkout
+    device = 'GPU-00000000-0000-0000-0000-000000000001'
+    other = 'GPU-00000000-0000-0000-0000-000000000002'
+    monkeypatch.setattr(LocalComputeResources, 'snapshot', lambda self: ComputeCapabilities(gpus=(
+        GpuCapability(index=0, uuid=device, name='synthetic', total_memory_mib=24000,
+                      free_memory_mib=12000, driver_version='synthetic'),)))
+    additions = ['safety.gpus=auto']
+    prefix = sys.prefix
+    if kind == 'runtime':
+        prefix = str(tmp_path / 'other-runtime')
+        Path(prefix, 'bin').mkdir(parents=True)
+        Path(prefix, 'bin/python').symlink_to(sys.executable)
+    elif kind == 'selector':
+        additions = [f'safety.gpus=[{other}]']
+    elif kind == 'no_pool':
+        additions += ['methodology.budget.min_vram_per_experiment=1024',
+                      'methodology.budget.initial_vram_per_experiment=2048']
+    elif kind == 'empty':
+        additions = ['safety.gpus=[]']
+    argv = arguments(repo, [*overrides, *additions], 'launch')
+    argv[argv.index('--cpu-only')] = '--allow-gpu'
+    assert bootstrap.main([*argv, '--gpu-device-uuid', device, '--gpu-runtime-prefix', prefix]) == 2
+    expected = {'runtime': 'must match', 'selector': 'not in the Host-authorized',
+                'no_pool': 'shared GPU pool', 'empty': 'safety.gpus=[]'}
+    assert expected[kind] in capsys.readouterr().err
+    assert not (repo / 'state').exists()
+
+
+def test_managed_notifications_use_explicit_file_and_keep_secrets_out_of_commands(checkout, tmp_path, capsys, monkeypatch):
+    repo, overrides = checkout
+    settings = 'notify.sinks.telegram={enabled: true, bot_token_env: TEST_BOT, chat_id_env: TEST_CHAT}'
+    argv = arguments(repo, [*overrides, settings], 'launch')
+    monkeypatch.setenv('TEST_BOT', '123:ambient-secret')
+    monkeypatch.setenv('TEST_CHAT', 'ambient-chat')
+    assert bootstrap.main(argv) == 2
+    assert 'does not inherit the interactive environment' in capsys.readouterr().err
+    credentials = tmp_path / 'notifications.env'
+    credentials.write_text('TEST_BOT=123:file-secret\nTEST_CHAT=private-recipient\nTEST_PROXY=http://127.0.0.1:12345\n')
+    credentials.chmod(0o600)
+    output = tmp_path / 'deliveries'
+    assert bootstrap.main([*argv, '--notification-credentials-file', str(credentials),
+        '--notification-proxy-env', 'TEST_PROXY', '--notification-output-root', str(output)]) == 0
+    raw = capsys.readouterr().out
+    result = json.loads(raw)
+    command = result['commands']['host_start']
+    for flag, value in (('--notification-credentials-file', str(credentials)),
+                        ('--notification-proxy-env', 'TEST_PROXY'), ('--notification-output-root', str(output))):
+        assert command[command.index(flag) + 1] == value
+        assert flag not in result['commands']['profile_check'] and flag not in result['commands']['start']
+    assert 'file-secret' not in raw and 'private-recipient' not in raw and 'ambient-secret' not in raw
+    assert result['effective_configuration']['notifications']['enabled_sinks'] == ['log', 'telegram', 'dashboard']
+    assert not output.exists() and not (repo / 'state').exists()
+
+
+@pytest.mark.parametrize('override,message', [
+    ('notify.sinks.telegram={enabled: true, credentials_file: /absent-init-fixture.env}', 'credentials file is unavailable'),
+    ('notify.sinks.dashboard.host=0.0.0.0', 'host must be 127.0.0.1'),
+])
+def test_invalid_enabled_services_are_rejected_before_launch(checkout, capsys, override, message):
+    repo, overrides = checkout
+    assert bootstrap.main(arguments(repo, [*overrides, override], 'launch')) == 2
+    assert message in capsys.readouterr().err
+    assert not (repo / 'state').exists()

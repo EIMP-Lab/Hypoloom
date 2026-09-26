@@ -37,6 +37,44 @@ _EFFORT_ERROR_BODY = b'{"type":"error","error":{"type":"invalid_request_error","
 _TOKEN_ERROR_BODY = b'{"type":"error","error":{"type":"invalid_request_error","message":"Agent token budget exhausted; no further generation admitted"}}'
 
 
+def validate_provider_connection(base_url: str, provider_environment: Mapping[str, str]):
+    """Validate the actual relay inputs without opening sockets or contacting a provider."""
+    if any(
+        str(provider_environment.get(name, "")).lower() not in {"", "0", "false"}
+        for name in _UNSUPPORTED_MODES
+    ):
+        raise ValueError(
+            "provider relay supports Anthropic-compatible HTTP only; Bedrock/Vertex/Foundry are unsupported"
+        )
+    try:
+        if not isinstance(base_url, str): raise ValueError("invalid endpoint")
+        endpoint = urlsplit(base_url)
+        _ = endpoint.port  # Validate malformed port values without opening a connection.
+        valid_endpoint = (
+            endpoint.scheme in {"http", "https"}
+            and bool(endpoint.hostname)
+            and not endpoint.username
+            and not endpoint.password
+            and not endpoint.query
+            and not endpoint.fragment
+        )
+    except ValueError:
+        valid_endpoint = False
+    if not valid_endpoint:
+        raise ValueError("invalid fixed provider endpoint")
+    credentials = {
+        name: provider_environment.get(name)
+        for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+        if provider_environment.get(name)
+    }
+    if not credentials or any(
+        not isinstance(value, str) or "\r" in value or "\n" in value
+        for value in credentials.values()
+    ):
+        raise ValueError("provider relay requires valid Host authentication")
+    return endpoint, credentials
+
+
 class _ExchangeCapture:
     """Optional, non-authoritative copy; IO failures never change transport."""
 
@@ -152,7 +190,13 @@ class _ExchangeCapture:
             return
         observed = self.observation.finish()
         if observed["message_complete"]:
-            tokens = sum(observed["usage"].values())
+            from .context_management import input_usage
+            usage = observed["usage"]
+            inputs = input_usage(usage, (self.relay.context_policy or {}).get(
+                "input_usage_semantics", "separate_cache"))
+            # Unknown semantics cannot weaken existing token-budget enforcement.
+            # Keep its conservative bound, never advertise it as exact usage.
+            tokens = sum(usage.values()) if inputs is None else inputs + usage.get("output_tokens", 0)
             with self.relay._lock:
                 self.relay._observed_tokens += max(0, tokens - self._counted_tokens)
             self._counted_tokens = max(tokens, self._counted_tokens)
@@ -234,29 +278,10 @@ class ProviderRelay:
         expected_effort: str | None = None,
         diagnostics: RuntimeDiagnostics | None = None,
         token_budget: int | None = None,
+        context_policy: Mapping[str, Any] | None = None,
     ) -> None:
-        if any(
-            provider_environment.get(name, "").lower() not in {"", "0", "false"}
-            for name in _UNSUPPORTED_MODES
-        ):
-            raise ValueError(
-                "provider relay supports Anthropic-compatible HTTP only; Bedrock/Vertex/Foundry are unsupported"
-            )
-        try:
-            endpoint = urlsplit(base_url)
-            port = endpoint.port
-            valid_endpoint = (
-                endpoint.scheme in {"http", "https"}
-                and bool(endpoint.hostname)
-                and not endpoint.username
-                and not endpoint.password
-                and not endpoint.query
-                and not endpoint.fragment
-            )
-        except ValueError:
-            valid_endpoint = False
-        if not valid_endpoint:
-            raise ValueError("invalid fixed provider endpoint")
+        endpoint, credentials = validate_provider_connection(base_url, provider_environment)
+        port = endpoint.port
         for limit in (max_request_bytes, max_response_bytes, max_requests):
             if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
                 raise ValueError("provider relay limits must be positive integers")
@@ -268,16 +293,6 @@ class ProviderRelay:
             raise ValueError("provider relay requires an exact model")
         if expected_effort is not None and expected_effort not in {"low", "medium", "high", "xhigh", "max"}:
             raise ValueError("provider relay requires a supported explicit effort")
-        credentials = {
-            name: provider_environment.get(name)
-            for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-            if provider_environment.get(name)
-        }
-        if not credentials or any(
-            not isinstance(value, str) or "\r" in value or "\n" in value
-            for value in credentials.values()
-        ):
-            raise ValueError("provider relay requires valid Host authentication")
         self.socket_path = Path(socket_path)
         if self.socket_path.exists() or self.socket_path.is_symlink():
             raise FileExistsError(self.socket_path)
@@ -296,6 +311,8 @@ class ProviderRelay:
         self.max_requests = max_requests
         self.deadline_at = float(deadline_at)
         self.token_budget = token_budget
+        self.context_policy = context_policy
+        self.context_limit_reached = False
         self._observed_tokens = 0
         self.token_limit_reached = False
         self._scheme, self._hostname, self._port = (
@@ -346,7 +363,8 @@ class ProviderRelay:
             ) -> None:
                 # Never reflect upstream error bodies, reason phrases, URLs,
                 # request headers or exception text across the credential boundary.
-                body = (_EFFORT_ERROR_BODY if message == "effort_mismatch" else
+                body = (b'{"type":"error","error":{"type":"invalid_request_error","message":"Hypoloom working context capacity reached; end this invocation for Host reconstruction."}}'
+                        if message == "context_capacity" else _EFFORT_ERROR_BODY if message == "effort_mismatch" else
                         _TOKEN_ERROR_BODY if message == "token_budget_exceeded" else _ERROR_BODY)
                 try:
                     self.send_response(code)
@@ -421,6 +439,13 @@ class ProviderRelay:
                         if not isinstance(output_config, dict) or output_config.get("effort") != relay.expected_effort:
                             raise _RelayRejected(400, "effort_mismatch")
                     stage = "request_limit"
+                    if relay.context_policy is not None and parsed.path == "/v1/messages":
+                        from .context_management import request_capacity
+                        capacity = request_capacity(document, relay.context_policy)
+                        capture.data["context_capacity"] = capacity
+                        if relay.context_limit_reached or not capacity["fits"]:
+                            relay.context_limit_reached = True
+                            raise _RelayRejected(400, "context_capacity")
                     relay._reserve_request(generation=parsed.path == "/v1/messages")
                     headers = dict(relay._headers)
                     for name in ("anthropic-version", "anthropic-beta"):

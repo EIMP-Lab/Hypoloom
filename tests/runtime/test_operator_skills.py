@@ -483,9 +483,9 @@ def test_public_skill_init_qualifies_the_expert_loop_profile_and_literature_wire
     assert "Older parser examples under `tests/fixtures/profiles/` are test inputs only" in normalized
     assert "`mode.research_loop: expert-six-node/1`" in text
     assert "requires the explicit `openalex` literature adapter" in normalized
-    assert "absolute regular, non-symlink mode-`0600` dotenv credentials file" in normalized
+    assert "directly in private `methodology.yaml`" in normalized
     assert "`literature.credentials_file`" in text
-    assert "Never create, copy, chmod, or edit that credential file" in normalized
+    assert "Do not copy, chmod or edit existing credential values" in normalized
     for argument in (
         "--literature-adapter openalex",
         "--credentials-file",

@@ -111,8 +111,9 @@ def test_native_stage_scoped_shared_prompts_close_proposals_design_run_and_repor
         elif stage == "EXPERIMENT_EXECUTION":
             assert _EXECUTION in instruction
             assert "Keep task_kind, summary and supporting_refs in the final execution typed_candidate." in instruction
-            assert "mcp__host-tools__submit_experiment" in instruction and "wait_experiment(exp_id)" in instruction
-            assert set(candidate["properties"]) == {"task_kind", "summary", "supporting_refs"}
+            assert "submit_experiment" in instruction and "wait_experiment" in instruction
+            assert set(candidate["properties"]) == {"task_kind", "summary", "supporting_refs", "waiting_for_experiment_id"}
+            assert "waiting_for_experiment_id" not in candidate["required"]
             assert row["terminal_reason"] == "SUCCEEDED"
         else:
             assert instruction.startswith("Invoke Skill hypoloom-grounding:final-report")
@@ -142,8 +143,9 @@ def test_native_stage_scoped_shared_prompts_close_proposals_design_run_and_repor
         "EXPERIMENT_EXECUTION": 1, "FINAL_REPORT": 2}
     design = stages["EXPERIMENT_DESIGN_IMPLEMENT"][0][1]
     execution = stages["EXPERIMENT_EXECUTION"][0][1]
-    assert execution["session"]["session_id"] == design["session"]["session_id"]
-    assert execution["session"]["launch_arguments"] == ["--resume", design["session"]["session_id"]]
+    assert execution["session"]["session_id"] != design["session"]["session_id"]
+    assert execution["session"]["branch"] == design["session"]["branch"]
+    assert execution["session"]["launch_arguments"] == ["--session-id", execution["session"]["session_id"]]
     closure = json.loads((tmp_path / "shared-final-retry-evidence.json").read_text())
     assert closure["agent_count"] == 12 and closure["process_count"] == 1
     assert closure["oracle"]["ok"] and closure["head"]["state"] == "COMPLETED"

@@ -304,12 +304,14 @@ def test_cli_passes_lifetime_factory_without_starting_readers_before_host_lock(t
     assert not (tmp_path / "state").exists()
 
 
-def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_delivery(tmp_path):
+@pytest.mark.parametrize("credentials_file", [False, True, "profile"])
+def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_delivery(tmp_path, credentials_file):
     from hypoloom.state_store import StateStore
 
     received = []
     class Receiver(BaseHTTPRequestHandler):
         def do_POST(self):
+            assert self.headers.get("Authorization") == "Bearer loopback-only-secret"
             received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
             self.send_response(503 if len(received) == 1 else 204)
             self.end_headers()
@@ -323,11 +325,25 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
         config = _notify(webhook=True)
         config["sinks"]["dashboard"] = {"enabled": True, "host": "127.0.0.1", "port": 0}
         config["events"]["webhook"] = config["events"]["log"] = ["run_started", "run_finished"]
+        if credentials_file == "profile":
+            config["sinks"]["webhook"] = {"enabled": True,
+                "url": f"http://127.0.0.1:{receiver.server_port}/events", "token": "loopback-only-secret"}
         root = _create_profile_run(tmp_path, config)
         stdout, stderr = tmp_path / "host.stdout", tmp_path / "host.stderr"
+        notification_env = {"TEST_WEBHOOK_URL": f"http://127.0.0.1:{receiver.server_port}/events",
+                            "TEST_WEBHOOK_TOKEN": "loopback-only-secret"}
+        flags = []
+        if credentials_file is True:
+            private = tmp_path / "notifications.env"
+            private.write_text("\n".join(key + "=" + value for key, value in notification_env.items()) + "\n")
+            private.chmod(0o600)
+            flags = ["--notification-credentials-file", str(private)]
+            notification_env = {"TEST_WEBHOOK_URL": "http://127.0.0.1:1/wrong", "TEST_WEBHOOK_TOKEN": "wrong-ambient-value"}
+        elif credentials_file == "profile":
+            notification_env = {"TEST_WEBHOOK_URL": "http://127.0.0.1:1/wrong", "TEST_WEBHOOK_TOKEN": "wrong-ambient-value"}
         with stdout.open("w") as output, stderr.open("w") as errors:
-            process = subprocess.Popen([sys.executable, "-m", "hypoloom.cli", "serve", "--state-root", str(root)], stdout=output, stderr=errors,
-                env={**os.environ, "TEST_WEBHOOK_URL": f"http://127.0.0.1:{receiver.server_port}/events", "TEST_WEBHOOK_TOKEN": "loopback-only-secret"})
+            process = subprocess.Popen([sys.executable, "-m", "hypoloom.cli", "serve", "--state-root", str(root), *flags], stdout=output, stderr=errors,
+                env={**os.environ, **notification_env})
             wait_for(lambda: "#token=" in stdout.read_text() or process.poll() is not None, timeout=15)
             assert process.poll() is None, stdout.read_text() + stderr.read_text()
             match = re.search(r"http://127\.0\.0\.1:(\d+)/#token=([^\s]+)", stdout.read_text())
@@ -355,6 +371,16 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
         assert {event["type"] for event in received} == {"run_started", "run_finished"}
         assert "503" in stderr.read_text()
         assert "loopback-only-secret" not in stdout.read_text() + stderr.read_text()
+        if credentials_file == "profile":
+            # Check actual DB/artifacts/Agent inputs, then both support scopes.
+            for path in root.rglob("*"):
+                if path.is_file():
+                    assert b"loopback-only-secret" not in path.read_bytes(), path
+            from hypoloom.support_bundle import build_support_bundle
+            for private in (False, True):
+                report, files = build_support_bundle(root, "notifications", include_private_data=private)
+                assert "loopback-only-secret" not in json.dumps(report)
+                assert all(b"loopback-only-secret" not in content for content in files.values())
         assert (tmp_path / "state-notifications/notifications/cursors/webhook.json").is_file()
         with socket.socket() as reused:
             reused.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

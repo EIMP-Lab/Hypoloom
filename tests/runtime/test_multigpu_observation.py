@@ -30,7 +30,8 @@ def _view(usage):
         "experiment_id": "experiment-1", "execution_id": "execution-1",
         "attempt_ordinal": 1, "terminal_reason": "CANCELLED", "process_group_id": None,
         "started_at": 1.0, "ended_at": 2.0}
-    reader = SimpleNamespace(execute=lambda *_args: SimpleNamespace(fetchall=lambda: [row]))
+    reader = SimpleNamespace(execute=lambda query, *_args: SimpleNamespace(
+        fetchall=lambda: [] if "agent_final_failure" in query else [row]))
     attempts, scientific = _attempt_views(reader, "run-1", ("researcher",),
         {"experiment-1": "component-1"}, {}, frozenset({("experiment-1", "execution-1")}))
     assert scientific == frozenset({"process-1"})

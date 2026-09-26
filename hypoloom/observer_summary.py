@@ -149,7 +149,7 @@ def _skill_counts(catalog, role=None):
         "coverage": coverage}
 
 
-def _logical_stages(agents, observed_at, state_root, run_id):
+def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=()):
     from .agent_budget import fold_agent_attempts
     from .provider_observation import read_exchanges, summarize_exchanges
 
@@ -159,7 +159,9 @@ def _logical_stages(agents, observed_at, state_root, run_id):
         grouped[(request.get("role"), identity)].append((row, observation, request))
     stages = []
     for (role, command_id), records in grouped.items():
-        row, observation, request = max(records, key=lambda item: (_time(item[0].get("started_at")) or 0, item[0]["attempt_id"]))
+        from .context_observation import attempt_order
+        row, observation, request = max(records, key=lambda item: attempt_order(
+            {**item[0], "started_at": _time(item[0].get("started_at")) or 0}, item[2]))
         task = request.get("task_context") or {}
         key = task.get("key") or {}
         start = _time(row.get("started_at"))
@@ -195,12 +197,28 @@ def _logical_stages(agents, observed_at, state_root, run_id):
             "observed_unsettled_tokens": observed_unsettled,
             "reserved_tokens": sum(item.tokens for item in reserved if item.tokens is not None),
             "unavailable_token_attempts": sum(item.tokens is None for item in charges)}
+        diagnostics = observation.get("diagnostics") or {}
+        from .context_observation import recovery_metrics
+        context_cost = recovery_metrics(records, charges)
+        reason = (diagnostics.get("provider_failure") or {}).get("code") or observation.get("failure_code")
+        final_failure = row["attempt_id"] in final_failure_ids
+        from .context_management import CONTEXT_FAILURES
+        rebuilding = row.get("state") == "OPEN" and request.get("schema_version", 0) >= 24 and any(
+            (value.get("diagnostics", {}).get("provider_failure") or {}).get("code") in CONTEXT_FAILURES
+            for record, value, _ in records if record["attempt_id"] != row["attempt_id"])
         stages.append({"role": role, "node": task.get("request_kind") or request.get("command"), "subkind": key.get("subkind"),
             "chain": key.get("chain"), "component_id": key.get("component_id", request.get("component_id")),
             "cycle": key.get("cycle", task.get("cycle")), "experiment_ordinal": key.get("experiment_ordinal"),
             "state": row.get("state"), "terminal_reason": row.get("terminal_reason"),
             "attempt_id": row["attempt_id"], "command_id": command_id, "attempts": len(records),
             "failed_attempts": len(failed), "accounting": accounting,
+            "context_recovery": context_cost,
+            "failure_code": reason, "failure_stage": observation.get("failure_stage"),
+            "operational_status": "rebuilding_context" if rebuilding else "recovery_exhausted" if final_failure else None,
+            "recovery_note": ("Initial request exceeds the local working allowance at minimum inline load. Change input/runtime limits for a new run; unchanged retries cannot help."
+                if (diagnostics.get("provider_failure") or {}).get("recovery_action") == "input_reconfiguration_required"
+                else "Automatic recovery ended for this node. API retry does not reopen it; required scientific acceptance still applies.") if final_failure else None,
+            "context": diagnostics.get("context"),
             "started_at": start, "ended_at": _time(row.get("ended_at")),
             "elapsed_seconds": None if start is None or finish is None else max(0.0, finish - start)})
     return sorted(stages, key=lambda item: (item["started_at"] or 0, item["attempt_id"]))
@@ -212,6 +230,11 @@ def _token_accounting(stages):
     return {key: sum(stage["accounting"][key] for stage in stages) for key in (
         "reported_tokens", "observed_unsettled_tokens", "reserved_tokens", "unknown_closed_attempts", "open_attempts",
         "unavailable_token_attempts")}
+
+
+def _context_accounting(stages):
+    from .context_observation import recovery_totals
+    return recovery_totals(stages)
 
 
 def _current_activity(stages, processes, observed_at):
@@ -451,7 +474,8 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         for row in attempts]
     observed = _time(observed_at)
     agents = list(_agents(attempts))
-    stages = _logical_stages(agents, observed, state_root, run_id)
+    final_failure_ids = {row["payload"].get("attempt_id") for row in transitions if row["payload"].get("agent_final_failure")}
+    stages = _logical_stages(agents, observed, state_root, run_id, final_failure_ids)
     literature = literature_catalog(state_root, run_id, attempts)
     skills = skill_catalog(state_root, run_id, attempts)
     leaders, debates = _interactions(transitions)
@@ -517,6 +541,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             for row in attempts if row.get("experiment_id") in experiment_ids)
         expert_values.append({"role": role, "cycle": max((item["cycle"] or 0 for item in own_stages), default=0),
             "accounting": _token_accounting(own_stages),
+            "context_recovery": _context_accounting(own_stages),
             "activity": _current_activity(own_stages, [row for row in attempts if row.get("kind") == "PROCESS"
                 and (row.get("experiment_id") or row.get("workflow_id")) in experiment_ids], observed),
             "reliability": summarize_reliability(reliability_by_role[role],
@@ -565,6 +590,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
     host_observation["orphaned"] = terminal is None and host_observation["availability"] == "absent"
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
         "reliability": reliability, "accounting": _token_accounting(stages),
+        "context_recovery": _context_accounting(stages),
         "host_observation": host_observation, "stages": stages,
         "waiting_human_seconds": waiting, "remaining_seconds": remaining,
         "last_activity_at": max((value for value in activity if value is not None), default=created),

@@ -453,8 +453,9 @@ def _assert_repair(evidence):
     assert len(evidence["execution_attempts"]) == len(evidence["design_attempts"]) == 1
     execution, design = evidence["execution_attempts"][0], evidence["design_attempts"][0]
     assert execution["terminal_reason"] == design["terminal_reason"] == "SUCCEEDED"
-    assert execution["session"]["session_id"] == design["session"]["session_id"]
-    assert execution["session"]["launch_arguments"] == ["--resume", design["session"]["session_id"]]
+    assert execution["session"]["session_id"] != design["session"]["session_id"]
+    assert execution["session"]["branch"] == design["session"]["branch"]
+    assert execution["session"]["launch_arguments"] == ["--session-id", execution["session"]["session_id"]]
     assert set(design["candidate"]) == _DESIGN_FIELDS
     first, repaired = evidence["submissions"]
     assert first["candidate"] == design["candidate"]

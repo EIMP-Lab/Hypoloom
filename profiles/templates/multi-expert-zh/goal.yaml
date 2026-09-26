@@ -8,4 +8,3 @@ constraints:
   - 说明不确定性，并保留失败实验作为证据。
 stop_conditions:
   max_rounds_per_expert: 4
-  max_wall_clock_hours: 6

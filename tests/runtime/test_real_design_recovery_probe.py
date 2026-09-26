@@ -423,8 +423,9 @@ def test_local_design_only_route_recovers_same_session_then_closes_cpu(tmp_path)
     assert [failed["terminal_reason"], recovered["terminal_reason"]] == ["FAILED", "SUCCEEDED"]
     assert failed["retry_class"] == "MODEL"
     session = failed["session"]["session_id"]
-    assert recovered["session"]["session_id"] == session
-    assert recovered["session"]["launch_arguments"] == ["--resume", session]
+    assert recovered["session"]["session_id"] != session
+    assert recovered["session"]["branch"] == failed["session"]["branch"]
+    assert recovered["session"]["launch_arguments"] == ["--session-id", recovered["session"]["session_id"]]
     assert Counter(item["attempt_id"] for item in evidence["design_outputs"]) == {
         failed["attempt_id"]: 3, recovered["attempt_id"]: 1}
     assert all(item["route"] == ("design" if item["command"] == _DESIGN.value else "local")

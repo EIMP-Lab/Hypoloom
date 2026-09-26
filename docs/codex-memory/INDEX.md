@@ -1,6 +1,51 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Integrated dev submission, September 26](../qualification.md#current-development--integrated-dev-submission-2026-09-26):
+  complete offline selection plus two resolved fixture/environment failures,
+  independent 15-root closure, packaging and installed CLI. User authorizes
+  commit/push; evidence: `.local/qualification/dev-submit-20260926/`.
+- [Version reminders, September 26](../qualification.md#current-development--version-reminders-2026-09-26):
+  advisory init/manual Git comparison, explicit unknown/offline results, bounded
+  auth/child cleanup, shared local identity and no checkout/run mutations.
+  [Guide](../guides/version-check.md) / [中文](../guides/version-check.zh-CN.md).
+  Evidence: `.local/qualification/version-check-20260926/`.
+- [Profile-local credentials, September 26](../qualification.md#current-development--profile-local-credentials-2026-09-26):
+  literature/notification literals stay in private Profile YAML; admission strips
+  values and derives existing file references. One reader, legacy compatibility,
+  actual CLI notification and issue-export privacy coverage. [Editing tutorial](../../config/README.md).
+  Evidence: `.local/qualification/profile-credentials-20260926/`.
+- [Init configuration consistency, September 26](../qualification.md#current-development--init-configuration-consistency-2026-09-26):
+  original 12-case audit at `.local/analysis/init-audit-20260926/`; unified budgets,
+  effective model/effort sources, early GPU/provider/service checks, explicit
+  existing notification credential-file input and preserved Host options.
+  [Initialization guide](../guides/initialization.md) / [中文](../guides/initialization.zh-CN.md).
+  Full G1 and fixture-only follow-up, independent bootstrap closure and actual
+  notification delivery evidence stay in `.local/qualification/init-consistency-20260926/`.
+- Context observation/cost follow-up, September 26: existing transcript events,
+  exact frozen-input rereads, disjoint failure/recovery charges, visible byte
+  estimates/reservations and early closure of unchanged first-request refusal.
+  `.local/qualification/context-observability-20260926/` holds tests, read-only
+  GLM event samples, the finite real-model protocol and individual trial roots.
+  Paid interpretation/rebuild samples are complete, including retained disabled
+  retry and timeout failures; final G1 passes 6,092 / 26 skips. Ten native roots
+  independently close 318 Agents / 26 CPU Processes, with clean Oracles and no
+  residue. [Results and limits](../qualification.md#current-development--context-observations-and-measured-recovery-costs-2026-09-26)
+  distinguish CLI estimates, unknown billing and observed quality from closure.
+- [Context management and recovery development plan 2026-09-25](../design/context-management-and-recovery.md):
+  ACI-24 D1–D5 bounded-input/session/recovery/closure/UI implementation, with separate
+  P1 measurement/source feedback. Framework facts plus stage summaries and
+  on-demand retrieval; no mandatory native compaction or vector memory service.
+  Evidence remains in `.local/analysis/research-progress-20260925-2043/` and
+  `.local/analysis/context-management-cross-model-20260925/`: real failure
+  replay, request composition, isolated native-CLI controls and seven-run census.
+  Core implementation and its full offline validation are complete; observation,
+  cost aggregation and scientific recovery quality are tracked in the follow-up.
+  Existing runs remain unchanged.
+  [Results and limits](../qualification.md#current-development--bounded-context-and-recovery-2026-09-26)
+  include 6,078 G1 passes, retained readers and nine independently audited native/CPU paths.
+  [User guide](../guides/context-management.md) / [中文](../guides/context-management.zh-CN.md).
+  Current evidence: `.local/qualification/context-management-20260925/`.
 - [Leader experience-sharing design 2026-09-25](../design/leader-experience-sharing.md):
   implemented in ACI 23 using existing auxiliary tasks, accepted evidence and
   proposal inputs. No peer pauses, extra research rounds or parallel message

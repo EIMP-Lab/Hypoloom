@@ -16,7 +16,7 @@ from test_claude_shared_final_retry_g3 import (
 )
 from test_full_cc_host_g3 import (
     _rows,
-    test_full_cc_host_recovers_committed_submit_and_resumes_same_session as _recover_submit,
+    test_full_cc_host_recovers_committed_submit_and_reconstructs_context as _recover_submit,
 )
 
 
@@ -36,7 +36,7 @@ def test_native_support_copy_explains_tool_repair_and_schema_rejection(tmp_path:
     assert "--json-schema" not in launch["argv"] and "--session-id" in launch["argv"]
     assert "/output-validation.sock" in launch["argv"]
     resumed = json.loads((diagnostic_root / evidence["final_attempts"][1] / "launch.json").read_text())
-    assert "--resume" in resumed["argv"]
+    assert "--session-id" in resumed["argv"] and "--resume" not in resumed["argv"]
     assert (failed / "prompt.txt").stat().st_size > 0
     envelope = next(row for row in reversed(_json_lines(failed / "stdout.log")) if row.get("type") == "result")
     assert envelope["subtype"] == "success" and envelope["is_error"] is False
@@ -89,7 +89,8 @@ def test_native_host_process_loss_keeps_partial_stdio_and_recovery_identity(tmp_
     observed = json.loads(lost["observation_json"])
     assert observed["session"]["archive_after_loss"] is True
     recovered = next(row for row in attempts if row["command_id"] == lost["command_id"] and row["terminal_reason"] == "SUCCEEDED")
-    assert json.loads(recovered["observation_json"])["session"]["session_id"] == observed["session"]["session_id"]
+    assert json.loads(recovered["observation_json"])["session"]["session_id"] != observed["session"]["session_id"]
+    assert json.loads(recovered["observation_json"])["session"]["branch"] == observed["session"]["branch"]
     assert len(_rows(root / "state.sqlite", "SELECT * FROM workflow_transitions WHERE workflow_kind='EXPERIMENT' AND revision=1")) == 2
     (tmp_path / "diagnostic-loss-evidence.json").write_text(json.dumps({
         "host_exit": 86, "not_sigkill": True, "lost_attempt_id": lost["attempt_id"],

@@ -18,7 +18,7 @@ from hypoloom.profile_v4 import project_profile_v4
 from test_plugin_host import ROLE, RUN
 from test_plugin_host import host as host
 from test_expert_loop_host import mount_root as mount_root
-from test_profile_v4 import documents
+from test_profile_v4 import canonical_documents as documents
 
 
 def _contract():

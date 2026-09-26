@@ -324,11 +324,19 @@ class _HostScenario:
                         assert _LOCAL_SUCCESS in _result_text(result), result
             elif request.command is AgentCommand.RESULT_ANALYSIS:
                 messages = json.dumps(document["messages"])
-                assert _LOCAL_FAILURE in messages
-                assert _LOCAL_SUCCESS in messages
-                assert "mcp__host-tools__submit_experiment" in messages
-                assert _PROCESS_FAILURE in messages
-                assert "mcp__host-tools__get_experiment_log" in messages
+                if request.schema_version < 24:
+                    assert _LOCAL_FAILURE in messages
+                    assert _LOCAL_SUCCESS in messages
+                    assert "mcp__host-tools__submit_experiment" in messages
+                    assert _PROCESS_FAILURE in messages
+                    assert "mcp__host-tools__get_experiment_log" in messages
+                else:
+                    # Analysis receives exact experiment sources in a new
+                    # session, not the implementation tool conversation.
+                    if step == 1:
+                        assert not any(message["role"] == "assistant" for message in document["messages"])
+                    assert any("outcome" in item.ref for item in request.input_artifacts)
+                    assert any("spec" in item.ref for item in request.input_artifacts)
         except Exception as exc:
             self.errors.append(
                 f"provider {len(self.requests)}: {type(exc).__name__}: {exc}"
@@ -618,7 +626,7 @@ def _profile_environment_payload(
 
 def _exercise_full_cc_host(
     tmp_path: Path, *, profile_environment: bool = False, timeout_seconds: float = 180,
-    execution_handoffs: int = 0
+    execution_handoffs: int = 0, execution_retries: int = 0
 ) -> None:
     # Fifteen native invocations plus tools exceeded the old 90s test-only
     # deadline on a shared server. Agent/run production budgets are unchanged.
@@ -684,7 +692,7 @@ def _exercise_full_cc_host(
                 and json.loads(row["observation_json"])["request"]["command"]
                 == AgentCommand.EXPERIMENT_EXECUTION.value
             ]
-            assert len(executions) == 1 + execution_handoffs
+            assert len(executions) == 1 + execution_handoffs + execution_retries
             assert all(row["state"] == "CLOSED" for row in attempts)
             assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2
             contracts = [
@@ -715,7 +723,7 @@ def _exercise_full_cc_host(
                 "execution_test_success",
                 "submit_repair",
                 "wait_repair",
-            }
+            } | ({"recover_list", "replay_submit"} if execution_retries else set())
             observations = [
                 json.loads(row["observation_json"])
                 for row in attempts
@@ -894,7 +902,7 @@ def _rows(database: Path, query: str) -> list[dict[str, Any]]:
         return [dict(row) for row in connection.execute(query)]
 
 
-def test_full_cc_host_recovers_committed_submit_and_resumes_same_session(
+def test_full_cc_host_recovers_committed_submit_and_reconstructs_context(
     tmp_path: Path,
 ) -> None:
     executable = _installed_claude()
@@ -963,11 +971,13 @@ def test_full_cc_host_recovers_committed_submit_and_resumes_same_session(
             sessions = [
                 json.loads(row["observation_json"])["session"] for row in executions
             ]
-            assert sessions[0]["session_id"] == sessions[1]["session_id"]
+            assert sessions[0]["session_id"] != sessions[1]["session_id"]
+            assert sessions[0]["scope"] == sessions[1]["scope"]
+            assert sessions[0]["branch"] == sessions[1]["branch"]
             assert sessions[0]["archive_after_loss"] is True
             assert sessions[1]["launch_arguments"] == [
-                "--resume",
-                sessions[0]["session_id"],
+                "--session-id",
+                sessions[1]["session_id"],
             ]
             assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2
             assert all(

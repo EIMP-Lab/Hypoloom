@@ -1,45 +1,87 @@
 # Personal configuration / 个人配置入口
 
-| What / 内容 | Where / 位置 |
+Literature and notification credentials live directly in your local Profile.
+No separate `.env` is required. Start from the existing six-file
+[Profile templates](../profiles/templates/), then fill only the ignored local copy.
+
+文献密钥和 Telegram token 直接填写到本地 Profile，无需维护单独的 `.env`。
+公开模板只保留空值；`bootstrap prepare --write` 创建的本地目录为 0700、文件为 0600。
+
+| Setting / 内容 | Local Profile field / 本地字段 |
 |---|---|
-| Empty credential template / 凭据空白模板 | [hypoloom.env.example](hypoloom.env.example) |
-| Private credentials / 真实凭据 | `<checkout>/.local/credentials/hypoloom.env` (ignored, directory 0700 / file 0600) |
-| English / 中文 Profile templates | [profiles/templates](../profiles/templates/) |
-| Your topic Profiles / 本地课题 | `<checkout>/profiles/local/<name>/` (ignored) |
-| Research state / 运行记录 | `<checkout>/state/<run-id>/` (ignored) |
+| OpenAlex API key / 文献密钥 | `methodology.yaml` → `literature.openalex_api_key` |
+| Unpaywall contact / PDF 后备联系方式 | `methodology.yaml` → `literature.unpaywall_email` |
+| Telegram bot token | `notify.yaml` → `sinks.telegram.bot_token` |
+| Telegram recipient / 接收会话 | `notify.yaml` → `sinks.telegram.chat_id` |
+| Optional webhook / 可选通知回调 | `notify.yaml` → `sinks.webhook.url` / `token` |
+| Optional notification proxy / 可选通知代理 | `notify.yaml` → `proxy_url` |
 
-The private `.local` directory is hidden in ordinary file listings. The template
-above is public and contains no secrets. Copy it once into your private location;
-never fill in the tracked template. The reader enforces mode 0600 and rejects
-symlinks; it does not repair permissions or overwrite an existing file.
+These are YAML fragments; retain the other fields in each file:
+以下是配置片段，保留文件中的其他字段：
 
-This dotenv file holds OpenAlex, Unpaywall and Telegram values. Model authentication
-still comes from the selected environment or existing Claude settings. Research
-datasets remain at their explicitly authorized paths. Nothing automatically sources
-this file into your shell or forwards all entries to a model.
+```yaml
+# profiles/local/YOUR_PROFILE/methodology.yaml
+literature:
+  enabled: true
+  tools: [web_search, web_fetch]
+  max_sources: 8
+  openalex_api_key: ""  # Fill locally / 本地填写
+  unpaywall_email: ""   # Only for Unpaywall / 仅 Unpaywall 需要
+```
 
-中文：`.local` 是隐藏目录，普通目录浏览可能看不到。上方模板可公开提交，真实值只
-填写到私有副本；读取器强制检查 0600 权限，拒绝符号链接，不会自动修改权限或覆盖文件。
-该文件集中存放文献、通知凭据和联系信息，不包含全部个人数据；模型认证与研究数据
-各有独立来源。多人共用检出目录时，各自引用自己的私有绝对路径，不共享填写后的文件。
+```yaml
+# profiles/local/YOUR_PROFILE/notify.yaml
+sinks:
+  telegram:
+    enabled: false      # Enable after reviewing recipient / 确认接收对象后开启
+    bot_token: ""       # Fill locally / 本地填写
+    chat_id: ""         # Quote numeric IDs too / 数字 ID 也须加引号
+```
 
-For API switching during a run, a separate optional mode-0600 connection JSON
-can live at `<checkout>/.local/credentials/provider-connection.json`. This is
-not the dotenv file above; it contains only model API credentials and endpoint,
-with no model/runtime changes. Use its absolute Host-side path as described in
-[API recovery](../docs/guides/provider-recovery.md).
+Prepare the Profile, edit these fields in a local editor, then repeat init or
+`profile-check`. Keep private files mode 0600. For a manually copied Profile,
+set permissions before validation (replace YOUR_PROFILE):
+先准备 Profile，用本地编辑器填写，再重新执行 init／`profile-check`。
+手工复制后可自行设置权限：
 
-运行中切换 API 可单独创建权限为 0600 的连接 JSON，例如
-`<checkout>/.local/credentials/provider-connection.json`。它不使用上方 dotenv 格式，
-仅包含模型 API 凭据与地址，不更换模型或运行配置。提交 Host 上的绝对路径，
-具体格式与操作见[API 状态与恢复](../docs/guides/provider-recovery.zh-CN.md)。
+```bash
+chmod 700 profiles/local/YOUR_PROFILE
+chmod 600 profiles/local/YOUR_PROFILE/*.yaml
+```
 
-Show actual paths and permissions without displaying values / 查看位置和权限：
+Never enter values through `--set`, shell arguments, chat, tracked templates or
+issue attachments. The helper rejects populated credential fields in templates
+and `--set`; it does not copy existing secrets into a new Profile.
+Sharing a filled Profile shares its credentials: share a blank template instead.
+
+秘密不通过 `--set`、命令行参数、对话、公开模板或 Issue 传递；分享配置时使用空白模板。
+准入剥离这些字段的明文，只保存原 YAML 文件引用。Host 复用既有私有文件读取器，
+不生成第二份凭据文件，不把明文放进 Agent 输入、运行契约或 issue 导出。
+含凭据文件必须为普通非符号链接文件、权限 0600，不能放进 Agent/实验的数据或运行
+环境挂载目录。保持文件在 Host 上可读，供通知和重启读取。
+
+Legacy `credentials_file`, dotenv and explicit notification environment sources
+remain compatible. Use one source per service: remove old file/environment
+fields when filling inline values. The old [dotenv example](hypoloom.env.example)
+is for compatibility only. Keep files still referenced by retained runs.
+
+旧文件和环境变量方式保留兼容；同一服务填写内联值后，应删除旧
+`credentials_file`／`*_env` 声明，冲突会报错。旧运行仍引用的凭据文件须保留，
+本次不会迁移运行或自动改写已有 Profile。
+
+Model authentication continues to use the selected existing Claude settings or
+environment. Runtime API switching uses the existing optional private connection
+JSON described in [API recovery](../docs/guides/provider-recovery.md).
+模型 API 认证仍使用既有 CC 配置；运行中切换见
+[API 状态与恢复](../docs/guides/provider-recovery.zh-CN.md)。
+
+Inspect locations and permissions without values / 仅查看位置与权限：
 
 ```bash
 ./.conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap paths --profile YOUR_PROFILE
 ```
 
-Omit `--profile` for the default layout. Profile-declared external credential paths
-are displayed separately from the suggested default. See [Setup](../SETUP.md),
-[安装配置](../SETUP.zh-CN.md) and [Profile guide](../profiles/README.md).
+`profile_credentials` lists the YAML files. The `credentials` and
+`credentials_template` entries describe legacy dotenv locations only.
+See [Setup](../SETUP.md), [安装配置](../SETUP.zh-CN.md) and
+[Profile guide](../profiles/README.md).

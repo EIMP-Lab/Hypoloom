@@ -21,11 +21,11 @@ from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
 from .agent_capabilities import capabilities_for
-from .agent_budget import DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS, AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
+from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
-from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings
+from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
@@ -379,11 +379,9 @@ class WorkflowHost:
         raw_delay = execution["delay_seconds"]
         allow_gpu = execution.get("allow_gpu", False)
         if not isinstance(allow_gpu, bool): raise ValueError("allow_gpu must be boolean")
-        if self.shared_gpu is not None and allow_gpu and int(contract.document["budget"].get("min_vram_per_experiment", 0)) <= 0:
-            raise ValueError("shared GPU admission requires a positive min_vram_per_experiment workload floor")
-        if allow_gpu and self.shared_gpu is None and "initial_vram_per_experiment" in contract.document["budget"]:
-            raise ValueError("initial_vram_per_experiment requires an explicitly configured shared GPU pool; "
-                             "configure the pool or omit the initial setting for fixed-grant GPU execution")
+        if allow_gpu:
+            from .profile_v4 import validate_gpu_pool_budget
+            validate_gpu_pool_budget(contract.document, pooled=self.shared_gpu is not None)
         if isinstance(raw_delay, bool) or not isinstance(raw_delay, (int, float)): raise ValueError("delay_seconds must be numeric")
         delay = float(raw_delay)
         if not math.isfinite(delay) or delay < 0: raise ValueError("delay_seconds must be finite and non-negative")
@@ -1518,14 +1516,8 @@ class WorkflowHost:
         return self.store.cached_read(("batch-science-failed", run_id, component_id, role, cycle),
             lambda: self._read_batch_science_failed(run_id, component_id, role, cycle))
     def _read_batch_science_failed(self, run_id: str, component_id: str, role: str, cycle: int) -> bool:
-        for failure in self._expert_final_failures(run_id):
-            attempt = self.store.get_attempt(failure["attempt_id"])
-            request = AgentRequest.from_dict(json.loads(attempt["observation_json"])["request"])
-            task = request.task_context
-            if not isinstance(task, ResearchNodeTask) or (task.key.component_id, task.key.expert_slot) != (component_id, role): continue
-            if (task.key.cycle == cycle and task.key.node_kind in {ResearchNodeKind.RESULT_ANALYSIS, ResearchNodeKind.ADJUDICATE, ResearchNodeKind.HYPOTHESIS_UPDATE, ResearchNodeKind.CYCLE_REPORT}
-                    or task.key.cycle == cycle + 1 and task.key.node_kind in {ResearchNodeKind.LITERATURE_REVIEW, ResearchNodeKind.HYPOTHESIS_PROPOSAL}): return True
-        return False
+        from .expert_batch import read_batch_science_failed
+        return read_batch_science_failed(self, run_id, component_id, role, cycle)
     def _batch_control_closed(self, run_id: str, component_id: str, role: str) -> bool:
         batch = self._batch_history(run_id, component_id, role).latest
         if batch is None: return False
@@ -2255,45 +2247,9 @@ class WorkflowHost:
                 if job.future.done(): self._literature_jobs.pop(key, None)
         return progressed
     def _provider_retry_status(self, run_id: str) -> dict[str, Any]:
-        # Durable gate view: closed Attempts carry the failure, an operator
-        # clear transition ends it early. No in-memory authority, so a
-        # reopened Host computes the identical gate.
-        from .provider_observation import provider_retry_gate
-        cleared = self.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
-            "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
-        rows = self.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
-            "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
-            "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
-            "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status, "
-            "(terminal_reason='SUCCEEDED' OR (json_extract(observation_json,'$.diagnostics.provider_observed_usage.completed_requests')>0 "
-            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IS NULL)) AS provider_success "
-            "FROM execution_attempts WHERE run_id=? AND kind='AGENT'", (run_id,))
-        try: cooldown = self._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
-        except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
-        if type(cooldown) not in (int, float) or not math.isfinite(float(cooldown)) or float(cooldown) < 0:
-            cooldown = DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
-        status = provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
-            attempt_limit=self._agent_attempt_limits(self._research_contract(run_id))[1],
-            cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
-        _, error = self._provider_connection(run_id)
-        if error:
-            status.update(pending=True, state="waiting_operator", requires_operator=True,
-                reason="connection_configuration", connection_error=error, next_retry_at=None)
-        return status
+        return provider_retry_status(self, run_id)
     def _provider_connection(self, run_id: str) -> tuple[dict[str, str], str | None]:
-        controls = self.store.inspect("SELECT command_id, payload_json FROM workflow_transitions WHERE run_id=? "
-            "AND workflow_kind='RUN' AND json_extract(payload_json,'$.provider_retry_clear') IS NOT NULL ORDER BY revision DESC", (run_id,))
-        source = next((json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path") for row in controls
-            if json.loads(row["payload_json"])["provider_retry_clear"].get("settings_path")), None)
-        if source is None: return dict(self._provider_environment), None
-        identity = controls[0]["command_id"]
-        cached = self._provider_connections.get(run_id)
-        if cached is None or cached[0] != identity:
-            from .host_settings import read_provider_connection
-            try: cached = (identity, read_provider_connection(Path(source)), None)
-            except HostConfigurationError as exc: cached = (identity, None, str(exc))
-            self._provider_connections[run_id] = cached
-        return {**self._provider_environment, **(cached[1] or {})}, cached[2]
+        return provider_connection(self, run_id)
     def _provider_environment_for(self, run_id: str) -> Mapping[str, str]:
         environment, error = self._provider_connection(run_id)
         if error: raise HostConfigurationError(error)
@@ -2492,6 +2448,17 @@ class WorkflowHost:
                 tool_workspace = AgentSessions(self.state_root, self.publisher).prepare(request, None if command is AgentCommand.PAPER_READ else binding)
                 from .paper_sources import prepare_sources
                 prepare_sources(self, tool_workspace, retrieval)
+                if request.schema_version >= 24:
+                    prior = next((row for row in reversed(attempts) if row["state"] == "CLOSED"), None)
+                    if prior is not None:
+                        from .agent_sessions import continuation_observation
+                        tool_workspace.continuation_observation = continuation_observation(self.publisher, prior)
+                        if command is AgentCommand.EXPERIMENT_EXECUTION:
+                            tool_workspace.continuation_observation["owned_experiments"] = [
+                                {"exp_id": item["exp_id"], "state": self.store.latest_transition(item["exp_id"])["state"]}
+                                for item in self._owned_tool_experiments(request)]
+                if request.schema_version >= 24 and command in {AgentCommand.GROUNDING, AgentCommand.LITERATURE_REVIEW, AgentCommand.DEBATE}:
+                    tool_workspace.prior_web_urls = frozenset(self._grounding_retrieved_urls(request))
             except (GitAuthoringPreparationError, OSError, ValueError) as exc:
                 _cleanup_tool_workspace(tool_workspace)
                 self._agent_failure(request, AttemptTerminalReason.FAILED, "agent_workspace_preparation", retryable=True,
@@ -2887,12 +2854,8 @@ class WorkflowHost:
                     "method_family_id": str(fact.method_family_id), "hypothesis_id": str(fact.hypothesis_id), "chain": member.chain_id,
                     **({"hypothesis_batch": {"cycle": cycle, "chains": members}} if index == len(candidate.hypotheses) - 1 else {})}))
     def _batch_chain_failed(self, run_id: str, component_id: str, role: str, cycle: int, chain: str) -> bool:
-        for failure in self._expert_final_failures(run_id):
-            attempt = self.store.get_attempt(failure["attempt_id"])
-            key = json.loads(attempt["observation_json"])["request"].get("task_context", {}).get("key", {})
-            if (key.get("component_id"), key.get("expert_slot"), key.get("cycle"), key.get("chain")) == (component_id, role, cycle, chain):
-                return True
-        return False
+        from .expert_batch import batch_chain_failed
+        return batch_chain_failed(self, run_id, component_id, role, cycle, chain)
     def _batch_context(self, run_id: str, component_id: str, role: str, cycle: int) -> tuple[dict[str, Any], dict[str, Any], tuple[str, ...]]:
         from .expert_loop import compared_tip
         history = self._batch_history(run_id, component_id, role); batch = history.batches[cycle - 1]
@@ -2978,7 +2941,8 @@ class WorkflowHost:
         if self.paper_reading.defer_failure(request, reason, code, retryable=retryable, details=details, owner_transition=owner_transition): return
         if request.command is AgentCommand.PAPER_READ: owner_transition = False
         rendezvous = None if request.command is not AgentCommand.ANSWER_RENDEZVOUS else RendezvousRequest.from_dict(json.loads(next(item for item in request.input_artifacts if item.ref.endswith("--rendezvous")).content_bytes()))
-        retry_class = _agent_retry_class(code, details, retryable=retryable)
+        retry_class = _agent_retry_class(code, details, retryable=retryable,
+            bounded_context=request.schema_version >= 24 and request.command is not AgentCommand.DEBATE)
         observation = {**dict(details or {}), "failure_code": code, "failure_stage": _agent_failure_stage(code, details), "retry_class": retry_class,
             **self._grounding_completed_web_metadata(request),
             **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})}
@@ -3302,22 +3266,8 @@ class WorkflowHost:
         return web_tool(self, request, tool, arguments, defer=defer)
 
     def _grounding_session_web_results(self, request: AgentRequest, session: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
-        from .grounding_background import transcript_web_results
-        from .agent_sessions import node_memory_limit
-        publication = session.get("transcript")
-        if not isinstance(publication, Mapping): return ()
-        key = AgentArtifactKey(run_id=request.run_id, attempt_id=request.attempt_id)
-        if (publication.get("key") != key.to_dict() or publication.get("artifact_id") != key.artifact_id
-                or publication.get("path") != "/".join(key.as_tuple())):
-            raise AgentACIError("invalid_candidate", "Grounding archive owner mismatch")
-        path = self.publisher.path_for(key)
-        self.publisher.verify(ArtifactPublication(key=key, schema_version=publication["schema_version"],
-            digest_algorithm=publication["digest_algorithm"], digest=publication["digest"], path=str(path),
-            relative_paths=tuple(publication["relative_paths"]), reused=True))
-        transcript = path / "transcript.jsonl"
-        if transcript.stat().st_size > node_memory_limit(request, "max_transcript_bytes", 64 * 1024 * 1024):
-            raise AgentACIError("invalid_candidate", "Grounding transcript exceeds its frozen memory budget")
-        return transcript_web_results(transcript.read_bytes(), session_id=session.get("session_id"))
+        from .agent_sessions import archived_web_results
+        return archived_web_results(self.publisher, request, session)
 
     def _grounding_completed_web_metadata(self, request: AgentRequest) -> dict[str, Any]:
         from .grounding_background import delivered_web_metadata
@@ -3329,22 +3279,12 @@ class WorkflowHost:
         return {"web_tool_results": records}
 
     def _grounding_retrieved_urls(self, request: AgentRequest) -> set[str]:
-        from .grounding_background import retrieved_web_urls
         real = getattr(self, "claude_agent_host", None) is not None
         session = getattr(self, "agent_session_metadata", {}).get(request.attempt_id)
         records = list(self._grounding_session_web_results(request, session or {})) if real or session is not None else list(self.web_tool_results.get(request.attempt_id, ()))
-        for row in self.store.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id):
-            if row["attempt_id"] == request.attempt_id: continue
-            observation = json.loads(row["observation_json"])
-            previous = observation.get("request", {})
-            if (previous.get("command") != request.command.value or previous.get("run_id") != request.run_id
-                    or previous.get("role") != request.role or row["state"] != "CLOSED"): continue
-            session = observation.get("session", {})
-            if isinstance(session.get("transcript"), Mapping):
-                records.extend(self._grounding_session_web_results(AgentRequest.from_dict(previous), session))
-            elif not real:
-                records.extend(observation.get("web_tool_results", ()))
-        return retrieved_web_urls(records)
+        from .agent_sessions import retrieved_session_urls
+        return retrieved_session_urls(self.publisher, request, records,
+            self.store.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id), real=real)
 
     def _tool_command(self, command_id: str) -> Mapping[str, Any] | None:
         rows = self.store.inspect("SELECT * FROM workflow_commands WHERE command_id=?", (command_id,))

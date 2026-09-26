@@ -2,6 +2,10 @@
 
 English · [简体中文](provider-recovery.zh-CN.md)
 
+Context capacity affects an individual task and does not trigger shared API
+cooldown. See [context recovery](context-management.md) for fresh-session
+continuation, usage display and the distinction from scientific termination.
+
 The Host derives API availability from existing Agent observations and operator
 control records. Web and TUI show API availability separately from the durable
 run state. An ACTIVE run can be waiting

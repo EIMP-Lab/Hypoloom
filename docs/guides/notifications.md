@@ -5,12 +5,14 @@ machine and require explicit approval of the transport, recipient and content.
 Read-only diagnosis or opening the monitor does not authorize delivery.
 
 In a local v4 Profile, configure `notify.yaml.sinks.telegram.enabled` and one
-credential source. The standard source is `credentials_file`: an absolute path
-to one dotenv file (template: `config/hypoloom.env.example`)
-holding `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The alternative is
-`bot_token_env` and `chat_id_env`, whose values name environment variables,
-never literal credentials. Use exactly one source, and supply either secret
-only to the approved notification process.
+credential source. Fill `sinks.telegram.bot_token` and `sinks.telegram.chat_id`
+directly in the private local `notify.yaml`, quoting both strings. Keep the file
+mode 0600. The public template has empty fields and disabled Telegram; no env
+file is required. The Host reads these values from the original Profile after
+admission removes them from the contract. Never pass them through `--set` or chat.
+Legacy `credentials_file` and `bot_token_env` / `chat_id_env` remain alternatives;
+remove those fields when using inline credentials. Use exactly one source.
+The [configuration tutorial](../../config/README.md) covers preparation and editing.
 
 `events.telegram` chooses event types. Include `grounding_question` to receive
 pending-human reminders and `grounding_answered` for answer acknowledgment.
@@ -37,14 +39,15 @@ hypoloom notify --state-root /absolute/state/run --run-id RUN_ID \
 ```
 
 The delivery cursor belongs in the explicit output directory, separate from
-the read-only source run. Proxy routing is explicit through `--proxy-env` when
-needed; do not infer or change another service's proxy configuration. A loopback
+the read-only source run. Set `notify.yaml.proxy_url` when a notification proxy
+is needed; legacy `--proxy-env` remains an alternative and cannot override that
+Profile value. Do not infer another service's proxy configuration. A loopback
 test proves local request behavior, not actual delivery to a public recipient.
 
-中文：请在本地 Profile 中开启通知并明确接收对象。密钥集中存放在一个 dotenv 凭据文件
-（`sinks.telegram.credentials_file` 声明其绝对路径；模板见
-`config/hypoloom.env.example`），或改用环境变量方式（`bot_token_env` /
-`chat_id_env`），二者选其一；秘密不能写进 YAML 或公开 Issue。提醒只是返回 TUI/Web
+中文：在私有 `notify.yaml` 中填写 `sinks.telegram.bot_token` 和 `chat_id`，
+两个值均加引号、文件保持 0600，确认接收对象后开启通知，无需单独 env。
+准入剥离明文，Host 从原 Profile 读取；旧文件/环境方式仍兼容，但同一服务不能混用。
+秘密不能写进公开模板、`--set`、对话或 Issue。提醒只是返回 TUI/Web
 操作的入口，不会自动接受建议或恢复调度。
 
 `events.telegram` 中的 `provider_waiting`、`provider_retry_requested`、
@@ -58,3 +61,19 @@ Dashboard 默认使用动态端口（`port: 0`）。Host 同时管理看板和�
 动态端口时，提醒会引导查看 TUI 的 **Web / local access** 或 Host 启动日志。
 独立通知可展示明确配置的固定端口，并标为 configured；这不代表已验证服务存活。
 认证请使用本地展示的令牌地址。
+
+
+For managed `/autoresearch init`, the caller's notification environment is not
+inherited. Inline Profile fields work without an additional credential option.
+Webhooks use `sinks.webhook.url` and optional `token`; the URL still requires
+HTTPS except for a local loopback receiver. `--notification-output-root` selects
+a separate absolute delivery directory. Preflight validates enabled sinks without
+sending or opening a dashboard. Missing input blocks launch. Optional old
+`--notification-credentials-file` and environment inputs remain compatibility
+paths only; model authentication remains separate.
+
+中文：托管 init 不继承交互式通知环境；内联 Profile 无需额外凭据参数。
+webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出目录可由
+`--notification-output-root` 指定。预览不会发送通知；凭据缺失会在启动前报错。
+旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
+源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。

@@ -9,4 +9,3 @@ constraints:
   - Explain uncertainty and preserve failed experiments as evidence.
 stop_conditions:
   max_rounds_per_expert: 4
-  max_wall_clock_hours: 6

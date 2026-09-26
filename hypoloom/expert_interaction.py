@@ -301,16 +301,8 @@ def _closed(row: Mapping[str, Any], run_id: str) -> tuple[Mapping[str, Any], Any
 
 
 def _session(observation: Mapping[str, Any]) -> tuple[str, str | None]:
-    binding, session = observation.get("session_binding", {}), observation.get("session", {})
-    values = (binding.get("session_id"), binding.get("parent_session_id"))
-    if values != (session.get("session_id"), session.get("parent_session_id")):
-        raise ValueError("observed session differs from the admitted session binding")
-    for index, value in enumerate(values):
-        if index == 1 and value is None:
-            continue
-        if not isinstance(value, str) or str(UUID(value)) != value:
-            raise ValueError("interaction source lacks its actual session identity")
-    return values
+    from .agent_sessions import observed_session_binding
+    return observed_session_binding(observation)
 
 
 def _observer(row: Mapping[str, Any], facts: InteractionFacts, *, kind=AuxiliaryRequestKind.OBSERVER) -> Mapping[str, Any]:

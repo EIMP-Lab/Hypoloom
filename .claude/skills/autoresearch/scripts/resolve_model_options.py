@@ -112,6 +112,11 @@ def _result(
     environment: Mapping[str, object],
     settings_model: object = None,
 ) -> dict[str, object]:
+    from hypoloom.provider_relay import validate_provider_connection
+    try:
+        validate_provider_connection(environment.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com"), environment)
+    except ValueError as exc:
+        raise ResolverError(str(exc)) from None
     model_environment = {
         name: environment[name]
         for name in _MODEL_INPUT_NAMES
@@ -141,7 +146,8 @@ def inspect_environment() -> dict[str, object]:
         raise ResolverError("environment_auth_unavailable")
     environment = {
         name: os.environ[name]
-        for name in _MODEL_INPUT_NAMES
+        for name in (*_MODEL_INPUT_NAMES, "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
+                     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
         if name in os.environ
     }
     return _result(

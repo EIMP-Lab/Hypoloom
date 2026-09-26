@@ -27,7 +27,7 @@ def handoff(request, experiment_id):
 
 def test_handoff_releases_agent_waits_then_collects_without_duplicate_work(execution):
     host, request, arguments = execution
-    assert request.schema_version == 22
+    assert request.schema_version == 24
     submitted = host.handle_agent_tool(request.attempt_id, 'submit_experiment', arguments)
     host._finish_fake_agent(request, handoff(request, submitted['exp_id']))
     attempt = host.store.get_attempt(request.attempt_id)

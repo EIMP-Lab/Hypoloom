@@ -88,7 +88,9 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
         "literature": {"enabled", "tools", "max_sources", "credentials_file"},
         "inner_loop": {"max_iterations_per_hypothesis", "repair_attempts"},
         "graph_evolution": {"enabled", "stagnation_rounds"},
-        "memory": {"max_transcript_bytes", "max_plugin_bytes", "max_memory_bytes", "retention"},
+        "memory": {"max_transcript_bytes", "max_plugin_bytes", "max_memory_bytes", "retention",
+            "working_context_tokens", "context_window_tokens", "runtime_context_tokens",
+            "max_inline_input_bytes", "input_usage_semantics"},
         "output_correction": {"max_failed_validations"},
     }
     for section, fields in definitions.items():
@@ -102,6 +104,9 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
                     v.error(location, "literature tools must be web_search, web_fetch or read_papers")
             elif key == "retention":
                 if item not in {"retain", "archive_on_close"}: v.error(location, "retention must be retain or archive_on_close")
+            elif key == "input_usage_semantics":
+                if item not in {"separate_cache", "includes_cache", "unknown"}:
+                    v.error(location, "input_usage_semantics must be separate_cache, includes_cache or unknown")
             elif key == "credentials_file":
                 text = v.text(item, location)
                 if not PurePosixPath(text).is_absolute() or "\x00" in text:
@@ -176,10 +181,23 @@ def restrict_profile_capabilities(contract: Mapping[str, Any], capabilities):
         busy_gpu_uuids=tuple(uuid for uuid in capabilities.busy_gpu_uuids if uuid in selected))
 
 
+def validate_gpu_pool_budget(contract: Mapping[str, Any], *, pooled: bool) -> None:
+    budget = contract["budget"]
+    if pooled and int(budget.get("min_vram_per_experiment", 0)) <= 0:
+        raise ValueError("shared GPU admission requires a positive min_vram_per_experiment workload floor")
+    if not pooled and "initial_vram_per_experiment" in budget:
+        raise ValueError("initial_vram_per_experiment requires an explicitly configured shared GPU pool; "
+                         "configure the pool or omit the initial setting for fixed-grant GPU execution")
+
+
 def _notify(v: _Validator, value: Mapping[str, Any]) -> None:
+    if "credentials_file" in value:
+        text = v.text(value["credentials_file"], "notify.yaml.credentials_file")
+        if not PurePosixPath(text).is_absolute():
+            v.error("notify.yaml.credentials_file", "expected an absolute private Profile path")
     sinks = v.object(value.get("sinks", {}), {"log", "telegram", "dashboard", "webhook"}, "notify.yaml.sinks")
     fields = {"log": {"level", "path"}, "telegram": {"enabled", "bot_token_env", "chat_id_env", "credentials_file"},
-        "dashboard": {"enabled", "host", "port"}, "webhook": {"enabled", "url_env", "token_env"}}
+        "dashboard": {"enabled", "host", "port"}, "webhook": {"enabled", "url_env", "token_env", "credentials_file"}}
     for name, raw in sinks.items():
         if name not in fields: continue
         selected = v.object(raw, fields[name], f"notify.yaml.sinks.{name}")
@@ -193,21 +211,26 @@ def _notify(v: _Validator, value: Mapping[str, Any]) -> None:
                 text = v.text(item, location)
                 if field.endswith("_env") and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text): v.error(location, "expected an environment variable name, never a secret literal")
                 if field == "credentials_file" and (not PurePosixPath(text).is_absolute() or "\x00" in text): v.error(location, "expected an absolute credentials file path, never a secret literal")
-        if name == "telegram" and selected.get("credentials_file") is not None and (
-                selected.get("bot_token_env") is not None or selected.get("chat_id_env") is not None):
-            v.error(f"notify.yaml.sinks.{name}.credentials_file", "use exactly one of credentials_file or bot_token_env/chat_id_env")
+        if selected.get("credentials_file") is not None and any(key.endswith("_env") for key in selected):
+            v.error(f"notify.yaml.sinks.{name}.credentials_file", "use exactly one credential source: file or environment")
     events = v.object(value.get("events", {}), {"log", "telegram", "dashboard", "webhook"}, "notify.yaml.events")
     for sink, names in events.items(): v.strings(names, "notify.yaml.events." + sink)
 
 
 def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], methodology: Mapping[str, Any],
-                       language: Mapping[str, Any], notify: Mapping[str, Any], safety: Mapping[str, Any]) -> ProfileV4Projection:
+                       language: Mapping[str, Any], notify: Mapping[str, Any], safety: Mapping[str, Any],
+                       profile_dir=None) -> ProfileV4Projection:
     v = _Validator()
+    from .credentials import project_profile_credentials
+    methodology, method_issues = project_profile_credentials(methodology, "methodology.yaml", profile_dir)
+    notify, notify_issues = project_profile_credentials(notify, "notify.yaml", profile_dir)
+    for location, message in (*method_issues, *notify_issues):
+        v.error(location, message)
     goal = v.object(goal, _GOAL, "goal.yaml")
     experts = v.object(experts, {"defaults", "grounding", "experts"}, "experts.yaml")
     methodology = v.object(methodology, _METHOD, "methodology.yaml")
     language = v.object(language, {"prompt_language", "report_language", "code_comment_language"}, "language.yaml")
-    notify = v.object(notify, {"sinks", "events"}, "notify.yaml")
+    notify = v.object(notify, {"sinks", "events", "credentials_file"}, "notify.yaml")
     safety = v.object(safety, _SAFETY, "safety.yaml")
     if methodology.get("schema_version") != 4: v.error("methodology.yaml.schema_version", "expected 4")
     title = v.text(goal.get("title"), "goal.yaml.title")
@@ -283,11 +306,24 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     default_effect_capacity = max(1, sum(value if type(value) is int and value > 0 else 1 for value in fork_limits))
     for field in ("max_active_agents", "max_active_processes", "max_active_reviews"):
         budget.setdefault(field, default_effect_capacity)
-    for field in ("total_budget_usd", "per_expert_budget_usd"):
-        if field in safety: budget[field] = safety[field]
-    if "max_wall_clock_hours" in stops: budget["wallclock_hours"] = stops["max_wall_clock_hours"]
-    if "experiment_timeout_minutes" in safety and isinstance(safety["experiment_timeout_minutes"], (int, float)):
-        budget["experiment_timeout"] = int(safety["experiment_timeout_minutes"] * 60)
+    budget_warnings = []
+    aliases = ((safety, "total_budget_usd", "total_budget_usd", "safety.yaml", 1),
+        (safety, "per_expert_budget_usd", "per_expert_budget_usd", "safety.yaml", 1),
+        (stops, "max_wall_clock_hours", "wallclock_hours", "goal.yaml.stop_conditions", 1),
+        (safety, "experiment_timeout_minutes", "experiment_timeout", "safety.yaml", 60))
+    for source, old, field, location, factor in aliases:
+        if old not in source: continue
+        canonical = "methodology.yaml.budget." + field
+        if field in budget:
+            v.error(location + "." + old, f"duplicate budget declaration; keep only {canonical}")
+            continue
+        value = source[old]
+        if factor != 1:
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value): continue
+            value = int(value * factor)
+        budget[field] = value
+        budget_warnings.append(ProfileV3Issue("legacy_budget_field", location + "." + old,
+            f"Use {canonical} for new Profiles" + (" (seconds)." if factor == 60 else ".")))
     role_budgets = budget.setdefault("roles", {})
     max_sources = methodology.get("literature", {}).get("max_sources", 8) if isinstance(methodology.get("literature", {}), dict) else 8
     if isinstance(role_budgets, dict):
@@ -302,7 +338,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
         **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {})}, "experts": experts,
         "methodology": {key: value for key, value in methodology.items() if key not in {"schema_version", "runtime", "budget"}},
         "language": language, "notify": notify, "safety": {key: value for key, value in safety.items() if key not in {"allow_read_paths", "sandbox_os", "experiment_timeout_minutes"}}}
-    warnings = _inactive_warnings(settings) if not v.issues else ()
+    warnings = (*budget_warnings, *_inactive_warnings(settings)) if not v.issues else ()
     legacy_notify = {"channels": [], "digest": False}
     legacy_safety = {"allow_read_paths": safety.get("allow_read_paths", []), "sandbox_os": safety.get("sandbox_os", "linux_bwrap")}
     return ProfileV4Projection(legacy, legacy_notify, legacy_safety, settings, warnings, tuple(v.issues) + legacy.issues)
@@ -332,7 +368,7 @@ def _inactive_warnings(settings: Mapping[str, Any]) -> tuple[ProfileV3Issue, ...
 
 
 def resolve_node_runtime(contract: Mapping[str, Any], role: str | None, route: str, *, designated_leader: bool = False,
-                         observer_source_role: str | None = None) -> dict[str, Any]:
+                         observer_source_role: str | None = None, sources: dict[str, str] | None = None) -> dict[str, Any]:
     """Materialize the admitted per-node controls once into its existing input."""
     if designated_leader and route != "hypothesis_proposal.synthesis":
         raise ValueError("Leader stage overrides require the designated SYNTHESIS task")
@@ -342,19 +378,25 @@ def resolve_node_runtime(contract: Mapping[str, Any], role: str | None, route: s
     if not isinstance(product, Mapping): return {}
     roster = product["experts"]
     expert = next((item for item in roster.get("experts", ()) if item["name"] == role and route != "grounding"), {})
-    selected = {key: value for key, value in roster.get("defaults", {}).items() if key in {"model", "effort"}}
-    selected.update({key: value for key, value in expert.items() if key in {"model", "effort"}})
+    selected = {}
+    def apply(values, location):
+        for key in ("model", "effort"):
+            if key in values:
+                selected[key] = values[key]
+                if sources is not None: sources[key] = location + "." + key
+    apply(roster.get("defaults", {}), "experts.yaml.defaults")
+    expert_location = f"experts.yaml.experts[{role}]"
+    apply(expert, expert_location)
     stage = {"experiment_design_implement": "inner_loop.code", "experiment_execution": "inner_loop.run",
              "result_analysis": "inner_loop.analysis", "literature_review.query_plan": "literature_review",
              "literature_review.main": "literature_review"}.get(route, route)
     overrides = expert.get("stage_overrides", {})
-    for key in (stage.split(".")[0], stage): selected.update(overrides.get(key, {}))
-    if route == "grounding": selected.update(roster.get("grounding", {}))
-    if designated_leader: selected.update(overrides.get("leader", {}))
+    for key in (stage.split(".")[0], stage): apply(overrides.get(key, {}), expert_location + ".stage_overrides." + key)
+    if route == "grounding": apply(roster.get("grounding", {}), "experts.yaml.grounding")
+    if designated_leader: apply(overrides.get("leader", {}), expert_location + ".stage_overrides.leader")
     if observer_source_role is not None:
         source = next((item for item in roster.get("experts", ()) if item["name"] == observer_source_role), {})
-        selected.update({key: value for key, value in source.get("stage_overrides", {}).get("observer", {}).items()
-            if key in {"model", "effort"}})
+        apply(source.get("stage_overrides", {}).get("observer", {}), f"experts.yaml.experts[{observer_source_role}].stage_overrides.observer")
     comments = product["language"].get("code_comment_language")
     if comments is not None: selected["code_comment_language"] = comments
     if "memory" in product["methodology"]: selected["memory"] = copy.deepcopy(product["methodology"]["memory"])

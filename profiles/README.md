@@ -18,44 +18,34 @@ Each Profile contains **exactly six** regular, non-symlink UTF-8 YAML files.
 Put documentation outside the Profile directory. Unknown fields, duplicate
 keys, mixed layouts and unbound runtime paths fail admission.
 
-## Credential file / 凭据文件
+## Private credentials / 私有凭据
 
-Keep literature and notification credentials (OpenAlex key, Unpaywall contact, Telegram bot
-token/chat ID) in **one dotenv file** in an ignored directory, for example the
-project's `.local/credentials/hypoloom.env` (`/.local/` is Git-ignored):
-`mkdir -m 700 -p .local/credentials`, copy
-[config/hypoloom.env.example](../config/hypoloom.env.example) there, keep
-the file mode 0600, and fill in the values you use. The format is a strict
-subset: `KEY=VALUE` lines and `#` comments. Profiles reference the file by
-absolute path — never inline secret literals:
+Fill keys directly in the ignored local Profile, after preparing the six files.
+No separate env is required. In `methodology.yaml`, use
+`literature.openalex_api_key` and optional `literature.unpaywall_email`.
+In `notify.yaml`, use `sinks.telegram.bot_token` / `chat_id`, optional
+`sinks.webhook.url` / `token` and `proxy_url`. Quote all credential strings,
+including chat IDs. Keep private files mode 0600 and never populate public templates.
 
-- `methodology.yaml` → `literature.credentials_file` (absolute path). The
-  operator flow passes it to the Host as `--credentials-file`, providing
-  `OPENALEX_API_KEY` and, for the Unpaywall PDF fallback, `UNPAYWALL_EMAIL`.
-- `notify.yaml` → `sinks.telegram.credentials_file` (absolute path), providing
-  `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`; or the environment-variable
-  alternative `bot_token_env` / `chat_id_env`. Use exactly one source.
+Admission removes values and derives references to the original YAML files;
+only Host consumers read them. Existing dotenv/environment sources remain
+compatible, but cannot be mixed with inline credentials for the same service.
+No automatic migration of existing Profiles or runs is performed.
+Model authentication continues to use the selected CC settings/environment.
 
-中文：文献和通知凭据（OpenAlex 密钥、Unpaywall 联系方式、Telegram bot
-令牌/会话 ID）集中存放在一个 dotenv 文件中（如项目
-`.local/credentials/hypoloom.env`，`/.local/` 已被 Git 忽略；目录 0700、
-文件 0600）。复制 `config/hypoloom.env.example` 后按需填写，格式为严格
-子集（`KEY=VALUE` 行与 `#` 注释）。Profile 里只写绝对路径
-（`literature.credentials_file`、`sinks.telegram.credentials_file`），不写
-秘密明文；Telegram 也可用环境变量方式，两种方式二选一。
-
-Model authentication uses the separately selected environment or Claude settings;
-this file is not automatically sourced into your shell. 模型认证仍使用单独选定的
-环境变量或 Claude 设置文件，此 dotenv 文件不会自动加载到 shell 环境。
+中文：文献密钥和 Telegram token 直接填写本地 Profile，无需维护独立 env。
+准入会剥离明文，Host 复用既有私有读取器读取原 YAML，不生成第二份凭据文件。
+保留 0600 权限、Git 忽略和运行/Agent 数据隔离；不要通过 `--set`、聊天或 Issue
+传递真实值。详细步骤、字段表和兼容说明见[个人配置教程](../config/README.md)。
 
 | File | Meaning / 职责 |
 |---|---|
 | `goal.yaml` | Goal, constraints, completion choice and stopping limits / 目标与完成要求 |
 | `experts.yaml` | Stable expert names, persona, model and branching / 专家背景及模型配置 |
-| `methodology.yaml` | `schema_version: 4`, runtime paths, research controls and invocation budgets |
+| `methodology.yaml` | `schema_version: 4`, runtime paths, research controls and all time/financial/invocation budgets |
 | `language.yaml` | `prompt_language`, `report_language`, `code_comment_language` |
-| `notify.yaml` | Notification sinks/events; secrets referenced by absolute file path or environment-variable name |
-| `safety.yaml` | Read roots, GPU permission, sandbox, experiment timeout and USD ceilings |
+| `notify.yaml` | Notification sinks/events and private local credentials / 通知及本地私有凭据 |
+| `safety.yaml` | Read roots, GPU permission and sandbox / 数据访问与执行权限 |
 
 ## Dashboard port / 看板端口
 
@@ -123,9 +113,9 @@ For example, this command previews only; replace paths and the exact model:
 list when necessary. Budgets, research policy and scientific text remain explicit
 Profile choices. An unbound starter can be written for later editing, but exit 2
 and admission blockers never authorize a launch. For real work, include the
-reviewed `--literature-adapter openalex` options; the Profile's declared
-`literature.credentials_file` is used unless an explicit credential source is
-selected. Configuration checks do not contact providers. The helper neither
+reviewed `--literature-adapter openalex` options; inline Profile credentials
+derive the existing Host file argument automatically. Conflicting CLI sources
+are refused. Configuration checks do not contact providers. The helper neither
 creates credentials nor deploys a GPU pool; existing pool selection and consent
 remain in the interactive flow.
 
@@ -134,9 +124,25 @@ remain in the interactive flow.
 `--set` 或 `--write` 覆盖。`launch` 默认只展示由同一参数源生成的命令；已授权真实
 启动时才加 `--start`，并在 Host 就绪前后复查实际配置。请求结果不明确时先查状态，
 不重复创建。课题目标、预算、并发与交互策略仍由 Profile 决定；模型可用性和科学
-质量需要单独验证。真实凭据仍由用户在私有文件中填写，不能放入 `--set`。
+质量需要单独验证。真实凭据由用户在私有 Profile 中填写，不能放入 `--set`。
 
 ## Budgets and GPU use / 预算与 GPU
+
+New v4 templates keep resource, time and financial limits together under
+`methodology.yaml.budget`: `total_budget_usd`, `per_expert_budget_usd`,
+`wallclock_hours`, `experiment_timeout` (seconds), plus invocation/retry/concurrency
+limits. Goal retains scientific completion and round limits; safety retains
+permissions. The six-file layout and admitted runtime budget do not change.
+Legacy safety USD/timeout and goal wall-clock fields are accepted individually
+with a migration warning; declaring the same bound in both places is an error,
+even when values match. Existing Profiles and runs are never rewritten automatically.
+
+中文：新模板将费用、时限、单次调用、重试及并发限制统一放在
+`methodology.yaml.budget`，实验超时 `experiment_timeout` 的单位是秒。
+旧 `safety` 费用/分钟超时、`goal.stop_conditions.max_wall_clock_hours`
+单独声明时仍兼容并提示迁移；与 budget 重复声明会报错，不再静默覆盖。
+无需增加文件或升级已有运行。完整生效配置与通知设置见
+[初始化指南](../docs/guides/initialization.zh-CN.md)。
 
 The multi-expert pair starts with three experts, a total USD ceiling of 45,
 15 per expert, at most four rounds and a six-hour run limit. Both languages use
@@ -169,7 +175,7 @@ evaluation protocol. GPU availability is live Host information, not permanent
 skill memory. Public templates and local topics keep their own budget choices.
 
 In ACI 22 and later, EXECUTION can hand a submitted experiment to Host waiting,
-then resume the same node/session after collection. Both invocations consume
+then resume the same node after collection. Both invocations consume
 normal budgets; waiting does not extend an invocation deadline. An expected
 short experiment may finish after one bounded wait in the same invocation.
 Agent and experiment timeouts remain independent. Framework ownership, publication,
@@ -184,18 +190,23 @@ archival validation and resource safeguards cannot be disabled by a skill.
 控制保持原义。Agent／Process／review 并发是各自上限，
 不会自动拆分单个实验的 seed 或变体；拆分应在目标实现中保持评测协议。GPU 空闲
 情况由 Host 实时观察，不能固化为 skill 记忆。ACI 22 及后续版本的运行可提交后交还 Host
-等待，结果收集后继续同一节点／会话；前后调用均计入预算，独立时限不延长。
+等待，结果收集后继续同一节点；前后调用均计入预算，独立时限不延长。
 框架的所有权、发布、归档验证与资源保护不由 skill 覆盖。
 
 ## Selective paper reading / 选择性精读
 
+ACI 24 rebuilds ordinary model sessions while retaining research workspaces.
+Optional `methodology.memory` capacity and usage-adapter controls are described
+in [context management](../docs/guides/context-management.md).
+ACI 24 重建普通模型会话并保留科研工作区；`methodology.memory` 的可选容量和用量
+适配配置见[上下文管理](../docs/guides/context-management.zh-CN.md)。
+
 Literature MAIN can use retained originals and bounded text under `/papers`.
 `web_search(scope="academic")` uses the Host-selected OpenAlex client directly;
 `web_fetch(mode="document", url=...)` prepares exact sources, and `paper_ref`
-reuses an admitted source. The Profile declares the dotenv credentials file by
-absolute path (`literature.credentials_file`); the secret bytes stay in the
-ignored credential directory, outside the Profile, the contract and reader
-prompts.
+reuses an admitted source. Literature credentials stay in private
+`methodology.yaml`; only the derived file reference enters the admitted contract.
+The Host reads the original file, and readers never receive the secret bytes.
 
 To opt into Host-managed independent readers in a fresh ACI-20 run, add
 `read_papers` to `methodology.yaml`'s existing list:

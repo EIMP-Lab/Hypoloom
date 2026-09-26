@@ -1575,7 +1575,9 @@ def test_draft_invocation_deadline_after_pgid_bind_is_retryable(
         host.close()
 
     assert [workspace.attempt_id for workspace in prepared] == [first_attempt_id, second_attempt_id]
-    assert prepared[0].binding == prepared[1].binding
+    assert prepared[0].binding["session_id"] != prepared[1].binding["session_id"]
+    assert prepared[0].binding["branch"] == prepared[1].binding["branch"]
+    assert prepared[0].binding["scope"] == prepared[1].binding["scope"]
     assert all(workspace.resources == [] for workspace in prepared)
     assert all(workspace.worktree_root.is_dir() for workspace in prepared)
     assert second_pgid is not None and not process_group_exists(second_pgid)

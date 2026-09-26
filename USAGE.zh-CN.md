@@ -2,6 +2,10 @@
 
 [English](USAGE.md) · 简体中文
 
+新建 ACI-24 运行的[上下文与记忆说明](docs/guides/context-management.zh-CN.md)解释了
+末次请求输入与累计用量的区别。容量恢复重建短会话，API 等待使用既有连接控制；
+恢复耗尽的节点显示失败原因，不能通过 API 重试重新打开。
+
 首次配置见 [SETUP](SETUP.zh-CN.md)。在项目目录启动 Claude Code 后使用 `/autoresearch init`，
 选择 Profile 和语言，审阅真实路径、模型、预算、通知对象及 CPU/GPU，然后选择
 `Start now` 或 `Prepare only`。默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`，Request ID

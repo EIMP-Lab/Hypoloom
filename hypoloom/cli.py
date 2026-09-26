@@ -91,6 +91,19 @@ def _add_literature_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--literature-max-pdf-pages", type=int, default=2_000)
 
 
+def _profile_literature_source(args, report) -> None:
+    """Derive the existing Host file argument from the admitted Profile."""
+    if args.literature_adapter != "openalex" or not report.admitted:
+        return
+    product = report.create_run_payload["research_contract"]["methodology"]["controls"].get("product", {})
+    source = product.get("methodology", {}).get("literature", {}).get("credentials_file")
+    if source is None:
+        return
+    if (args.credentials_file is not None and args.credentials_file != source) or args.openalex_api_key_file is not None:
+        raise ValueError("literature credentials are declared in the Profile; remove the conflicting CLI source")
+    args.credentials_file = source
+
+
 def _literature_adapter(args: argparse.Namespace) -> object | None:
     if args.literature_adapter == "offline":
         if args.literature_pdf_fallback != "semantic-scholar" or args.unpaywall_email_file is not None:
@@ -166,9 +179,18 @@ def _submit(args: argparse.Namespace, command: str, payload: dict[str, object]) 
 
 def build_parser() -> argparse.ArgumentParser:
     from .web_observer import DEFAULT_PORT
+    from .version_check import DEFAULT_TIMEOUT
 
     parser = argparse.ArgumentParser(prog="hypoloom")
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
+
+    versions = subparsers.add_parser("version-check", help="advisory comparison with the remote Git branch; never updates code")
+    versions.add_argument("--repository", help="checkout to inspect; default: the current Hypoloom installation")
+    versions.add_argument("--remote", help="configured Git remote name; default: branch upstream, then origin")
+    versions.add_argument("--branch", help="remote branch; default: tracked branch, then current branch")
+    versions.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help=f"total check deadline in seconds (default: {DEFAULT_TIMEOUT:g}, maximum: 30)")
+    versions.add_argument("--offline", action="store_true", help="show local identity without contacting a remote")
+    versions.add_argument("--json", action="store_true")
 
     comparison = subparsers.add_parser("reliability-compare", help="compare provider execution evidence across Hypoloom roots, read-only")
     comparison.add_argument("--state-root", action="append", required=True)
@@ -196,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--fake-agent-mode")
     serve.add_argument("--notification-output-root", help="disjoint notification delivery output; default: state-root sibling ending -notifications")
     serve.add_argument("--notification-proxy-env", help="explicit environment variable for the notification HTTP CONNECT proxy")
+    serve.add_argument("--notification-credentials-file", help="existing 0600 dotenv file supplying notification variables; replaces ambient notification values")
     serve.add_argument("--claude-executable")
     serve.add_argument("--claude-settings")
     serve.add_argument(
@@ -451,6 +474,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.subcommand == "version-check":
+            from .version_check import check_updates
+            checked = check_updates(args.repository, offline=args.offline, remote=args.remote,
+                                    branch=args.branch, timeout=args.timeout)
+            if args.json:
+                print(json.dumps(checked, ensure_ascii=False, sort_keys=True))
+            else:
+                print(f"Hypoloom {checked['package_version'] or 'unknown'} | "
+                      f"HEAD {(checked['local_revision'] or 'unknown')[:12]} | {checked['branch'] or 'no current branch'}")
+                print(checked["message"])
+            return 0
         if args.subcommand == "reliability-compare":
             from .reliability_compare import as_markdown, compare_roots
             comparison = compare_roots(args.state_root)
@@ -575,6 +609,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 from .grounding_web import GroundingWeb
                 web_options["grounding_web"] = GroundingWeb(academic_search=literature_io.fetcher,
                     search_fallback=literature_io.fetcher if args.web_search_fallback is not None else None)
+            from .notification_tailer import notification_environment
+            notification_env = notification_environment(args.notification_credentials_file)
             return serve(
                 _state_root(args.state_root),
                 fault_point=args.fault_point,
@@ -587,7 +623,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 literature_io=literature_io,
                 **web_options,
                 services_factory=lambda: ObserverServices(_state_root(args.state_root), output_root=args.notification_output_root,
-                    proxy_env=args.notification_proxy_env),
+                    proxy_env=args.notification_proxy_env, environ=notification_env),
             )
         if args.subcommand in {"profile-check", "start"}:
             from .profile_admission import ProfileBlocker, admit_profile
@@ -599,6 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 delay_seconds=args.process_delay,
             )
             try:
+                _profile_literature_source(args, report)
                 literature_preflight = _literature_preflight(args)
             except ValueError as exc:
                 code = getattr(getattr(exc, "code", None), "value", None)

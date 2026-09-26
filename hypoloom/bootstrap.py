@@ -75,11 +75,13 @@ def locations(repository: Path, profile: str | None = None) -> dict:
     local = repository / "profiles/local"
     templates = repository / "profiles/templates"
     result = {
+        "credential_storage": "Private Profile methodology.yaml and notify.yaml; no separate env required.",
         "credentials": _path_info(repository / ".local/credentials/hypoloom.env"),
         "credentials_template": _path_info(repository / "config/hypoloom.env.example"),
         "profiles_root": str(local), "templates_root": str(templates),
         "state_root": str(repository / "state"),
         "model_auth": "Separate: selected environment or existing Claude settings; not this dotenv file.",
+        "legacy_credentials_note": "credentials and credentials_template describe optional legacy dotenv compatibility only.",
     }
     for key, root in (("local_profiles", local), ("profile_templates", templates)):
         result[key] = sorted(p.name for p in root.iterdir()
@@ -87,6 +89,8 @@ def locations(repository: Path, profile: str | None = None) -> dict:
     if profile:
         selected = _child(local, profile)
         result["profile"] = _path_info(selected)
+        result["profile_credentials"] = {name: _path_info(selected / name)
+            for name in ("methodology.yaml", "notify.yaml")}
         declared = {}
         for name in ("methodology.yaml", "notify.yaml"):
             path = selected / name
@@ -142,6 +146,10 @@ def candidate(repository: Path, profile: str, template: str | None, overrides: l
     methodology = yaml.load(texts["methodology.yaml"], Loader=_UniqueKeyLoader)
     if not isinstance(methodology, dict) or methodology.get("schema_version") != 4:
         raise ValueError("new Profiles must use a v4 template; no format migration")
+    from .credentials import profile_has_credentials
+    for name in ("methodology.yaml", "notify.yaml"):
+        if profile_has_credentials(yaml.load(texts[name], Loader=_UniqueKeyLoader), name):
+            raise ValueError("fill credentials directly in the private Profile after prepare; never put values in --set or public templates")
     return destination, texts
 
 
@@ -163,10 +171,44 @@ def _literature_arguments(args) -> list[str]:
             for value in ("--" + name.replace("_", "-"), str(getattr(args, name)))]
 
 
-def launch_arguments(args, repository: Path, report) -> dict:
+def model_review(contract: dict, host_model: str) -> dict:
+    """An ephemeral explanation using the same resolver as actual Agent requests."""
+    from .profile_language import PROFILE_LANGUAGE_ROUTES
+    from .profile_v4 import resolve_node_runtime
+    roster = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("experts", {})
+    if not roster:
+        return {"host_default_model": host_model, "routes": [], "profile_models_overriding_host_default": [],
+                "note": "Legacy Profile: all Agent routes use the Host model; interactive session model is not inherited."}
+    rows = []
+    def add(role, route, **options):
+        sources = {}
+        runtime = resolve_node_runtime(contract, role, route, sources=sources, **options)
+        rows.append({"role": role, "route": route, **options,
+            "model": runtime.get("model", host_model), "effort": runtime.get("effort"),
+            "sources": {"model": sources.get("model", "Host --claude-model"),
+                        "effort": sources.get("effort", "native CLI default (not inherited from interactive session)")}})
+    for route in ("grounding", "graph_evolve", "observer", "debate_judge", "final_report"):
+        add(None, route)
+    for expert in roster.get("experts", ()):
+        role = expert["name"]
+        for route in (*PROFILE_LANGUAGE_ROUTES[1:], "self_evolve", "adjudicate", "debate", "leader"):
+            add(role, route)
+        add(None, "observer", observer_source_role=role)
+        add(role, "hypothesis_proposal.synthesis", designated_leader=True)
+    different = sorted({row["model"] for row in rows if row["model"] != host_model})
+    return {"host_default_model": host_model, "routes": rows,
+        "profile_models_overriding_host_default": different,
+        "note": "All possible routes, including conditional roles. Profile overrides take precedence; interactive session model is not inherited."}
+
+
+def launch_arguments(args, repository: Path, report, *, review: dict | None = None) -> dict:
     """Project admitted budgets and one literature vector into existing commands."""
     if not report.admitted:
         raise ValueError("launch arguments require an admitted Profile")
+    review = {} if review is None else review
+    payload = report.create_run_payload
+    contract = payload["research_contract"]
+    review["budget"] = contract["budget"]
     python = Path(args.control_python)
     if not python.is_absolute() or not python.is_file() or not os.access(python, os.X_OK):
         raise ValueError("control Python must be an absolute executable file")
@@ -195,8 +237,25 @@ def launch_arguments(args, repository: Path, report) -> dict:
     if args.allow_gpu:
         if not args.gpu_device_uuid or not args.gpu_runtime_prefix:
             raise ValueError("GPU launch needs the exact approved UUIDs and runtime prefix")
-        from .compute_resources import LocalComputeResources
-        LocalComputeResources(allowed_gpu_uuids=tuple(args.gpu_device_uuid), gpu_runtime_prefix=args.gpu_runtime_prefix)
+        from .compute_resources import LocalComputeResources, ComputeResourceError
+        from .profile_v4 import restrict_profile_capabilities, validate_gpu_pool_budget
+        prefix = Path(args.gpu_runtime_prefix)
+        if not prefix.is_absolute() or str(prefix.resolve()) != payload["execution"]["runtime_prefix"]:
+            raise ValueError("Host GPU runtime must match the admitted Profile runtime.conda_env")
+        validate_gpu_pool_budget(contract, pooled=args.gpu_pool_socket is not None)
+        resources = LocalComputeResources(allowed_gpu_uuids=tuple(args.gpu_device_uuid), gpu_runtime_prefix=prefix)
+        try:
+            inventory = resources.snapshot()
+        except ComputeResourceError as exc:
+            raise ValueError(str(exc)) from exc
+        if {gpu.uuid for gpu in inventory.gpus} != set(args.gpu_device_uuid):
+            raise ValueError("Host-authorized GPU UUIDs must all be present in the observed inventory")
+        selected = restrict_profile_capabilities(contract, inventory)
+        if not selected.gpus:
+            raise ValueError("GPU launch conflicts with Profile safety.gpus=[]; select CPU-only or review the prospective Profile")
+        review["gpu"] = {"host_authorized_uuids": list(resources.allowed_gpu_uuids),
+                         "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
+                         "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
     elif args.gpu_device_uuid or args.gpu_runtime_prefix or args.gpu_pool_socket:
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":
@@ -209,12 +268,14 @@ def launch_arguments(args, repository: Path, report) -> dict:
             raise ValueError("settings and environment authentication cannot be mixed")
         if args.auth_transport == "environment" and not os.environ.get("ANTHROPIC_API_KEY"):
             raise ValueError("environment authentication is unavailable")
-        auth_code, _ = _invoke([str(python), "-B", str(repository /
+        auth_code, auth = _invoke([str(python), "-B", str(repository /
             ".claude/skills/autoresearch/scripts/resolve_model_options.py"),
             *(["--settings", args.claude_settings] if args.claude_settings else ["--environment"])],
             {"PYTHONDONTWRITEBYTECODE": "1", "HYPOLOOM_RUNTIME_FAMILY": "hypoloom"}, cwd=repository)
         if auth_code:
-            raise ValueError("selected model authentication source is not qualified")
+            raise ValueError("selected model authentication source is not qualified: " + str(auth.get("error", "inspection failed")))
+        review["models"] = model_review(contract, args.claude_model)
+        review["models"]["selected_auth_source_default"] = auth.get("configured_default")
         from .claude_agent_host import ClaudeAgentHost, AgentHostError
         try:
             ClaudeAgentHost(claude_executable=args.claude_executable, settings_path=args.claude_settings,
@@ -223,6 +284,19 @@ def launch_arguments(args, repository: Path, report) -> dict:
             raise ValueError(str(exc)) from exc
     elif args.claude_model or args.claude_executable or args.claude_settings:
         raise ValueError("fake launch cannot contain Claude authentication or model options")
+    from .notification_tailer import notification_environment, notification_preflight
+    product = contract.get("methodology", {}).get("controls", {}).get("product", {})
+    if args.notification_output_root is not None and not Path(args.notification_output_root).is_absolute():
+        raise ValueError("notification output root must be absolute")
+    notification_env = notification_environment(args.notification_credentials_file, environ={})
+    try:
+        review["notifications"] = notification_preflight(product.get("notify", {}), state_root=state,
+            output_root=None if args.notification_output_root is None else Path(args.notification_output_root),
+            environ=notification_env, proxy_env=args.notification_proxy_env)
+    except ValueError as exc:
+        raise ValueError(str(exc) + "; fill notification credentials in the private notify.yaml; "
+                         "legacy file sources remain supported, but managed init does not inherit the interactive environment") from None
+    review["notifications"]["credentials_file"] = args.notification_credentials_file
     literature = _literature_arguments(args)
     cli = [str(python), "-B", "-m", "hypoloom.cli"]
     # manage_host validates the established Python -m hypoloom.cli serve shape;
@@ -238,7 +312,8 @@ def launch_arguments(args, repository: Path, report) -> dict:
                           ("max_cost", "--agent-max-cost-usd")):
             serve += [flag, "null" if budget[key] is None else str(budget[key])]
     for name in ("claude_settings", "gpu_runtime_prefix", "gpu_pool_socket", "gpu_pool_namespace",
-                 "gpu_pool_server_uid", "web_search_fallback"):
+                 "gpu_pool_server_uid", "web_search_fallback", "notification_output_root", "notification_proxy_env",
+                 "notification_credentials_file"):
         if getattr(args, name) is not None:
             serve += ["--" + name.replace("_", "-"), str(getattr(args, name))]
     for uuid in args.gpu_device_uuid or ():
@@ -310,11 +385,14 @@ def start_fresh(commands: dict, payload: dict) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from .version_check import DEFAULT_TIMEOUT
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     paths = commands.add_parser("paths", help="show private data and template locations without reading secrets")
     paths.add_argument("--repository", default=str(Path.cwd()))
     paths.add_argument("--profile")
+    paths.add_argument("--offline", action="store_true", help="skip the advisory remote version check")
+    paths.add_argument("--version-timeout", type=float, default=DEFAULT_TIMEOUT, help="total version-check deadline in seconds (maximum 30)")
     for action in ("prepare", "launch"):
         command = commands.add_parser(action, help="preview Profile preparation" if action == "prepare" else "derive reviewed CLI arguments without starting anything")
         command.add_argument("--repository", default=str(Path.cwd()))
@@ -331,7 +409,8 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--ready-timeout", type=float, default=30)
             command.add_argument("--auth-transport", choices=("none", "settings", "environment"), required=True)
             for name in ("claude-executable", "claude-model", "claude-settings", "gpu-runtime-prefix",
-                         "gpu-pool-socket", "gpu-pool-namespace"):
+                         "gpu-pool-socket", "gpu-pool-namespace", "notification-output-root", "notification-proxy-env",
+                         "notification-credentials-file"):
                 command.add_argument("--" + name)
             command.add_argument("--claude-bwrap", default="/usr/bin/bwrap")
             command.add_argument("--gpu-device-uuid", action="append")
@@ -348,6 +427,8 @@ def main(argv=None) -> int:
         repository = _repository(args.repository)
         if args.action == "paths":
             result = locations(repository, args.profile)
+            from .version_check import check_updates
+            result["version_check"] = check_updates(repository, offline=args.offline, timeout=args.version_timeout)
         else:
             if args.profiles_root is not None and Path(args.profiles_root).resolve() != repository / "profiles/local":
                 raise ValueError("bootstrap profiles root must be repository/profiles/local")
@@ -357,10 +438,8 @@ def main(argv=None) -> int:
             result = {"admission": report.to_dict(), "profile_written": False,
                       "provider_probe_performed": False, "paths": locations(repository)}
             try:
-                if args.credentials_file is None and args.openalex_api_key_file is None and args.literature_adapter == "openalex":
-                    methodology = yaml.load(texts["methodology.yaml"] if texts is not None else
-                        (destination / "methodology.yaml").read_text(), Loader=_UniqueKeyLoader)
-                    args.credentials_file = _credentials_reference(methodology, "literature")
+                from .cli import _profile_literature_source
+                _profile_literature_source(args, report)
                 result["literature_preflight"] = _literature_preflight(args)
             except ValueError as exc:
                 result["literature_preflight"] = {"qualified": False, "network_probe_performed": False, "error": str(exc)}
@@ -375,7 +454,8 @@ def main(argv=None) -> int:
                     result["profile_written"] = True
                 result["candidate_files"] = texts
             elif report.admitted:
-                result["commands"] = launch_arguments(args, repository, report)
+                result["effective_configuration"] = {}
+                result["commands"] = launch_arguments(args, repository, report, review=result["effective_configuration"])
                 if args.start:
                     if texts is not None:
                         raise ValueError("prepare the reviewed Profile before --start; templates cannot launch directly")

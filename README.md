@@ -134,8 +134,8 @@ return status in the same interaction. No CLI `init` subcommand is required.
 | Configuration entry | Location |
 |---|---|
 | Private credential setup | [config/README.md](config/README.md) |
-| Empty credential template | [config/hypoloom.env.example](config/hypoloom.env.example) |
-| Your credential file | `.local/credentials/hypoloom.env` (hidden, Git-ignored) |
+| Credential fields | Included as empty fields in the six-file Profile templates |
+| Your private keys/tokens | `profiles/local/<name>/methodology.yaml` and `notify.yaml` (0600, Git-ignored) |
 | Topic templates / your Profiles | `profiles/templates/` / `profiles/local/<name>/` |
 
 Init previews filled template values through the existing validator before
@@ -145,11 +145,11 @@ the managed sequence; model choices do not change the required checks.
 A Profile is six YAML files (goal, experts, methodology, language, notify and
 safety); init previews your model selector and target/data/runtime bindings,
 then writes the reviewed files into a new `profiles/local/<name>` without
-overwriting existing Profiles. Secrets never enter the Profile: a single
-mode-0600 dotenv file in an ignored directory (template
-[config/hypoloom.env.example](config/hypoloom.env.example))
-holds keys such as `OPENALEX_API_KEY`, and the Profile references it by
-absolute path. The full construction rules are in
+overwriting existing Profiles. Fill literature keys and notification tokens
+directly in the private Profile, keeping files mode 0600; no separate env is
+required. Admission strips values before persistence or Agent inputs, and only
+Host consumers read the original YAML. Keep public templates blank and do not
+pass secrets through `--set` or chat. The full construction rules are in
 [profiles/README](profiles/README.md) and [SETUP](SETUP.md).
 
 The default Run ID is `<profile>-<YYYYMMDDHHMM>` and Request ID is that identity

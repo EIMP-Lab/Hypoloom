@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, Mapping, Sequence
 
-from .agent_aci import AgentRequest, WorkspaceArtifact
+from .agent_aci import AgentACIError, AgentRequest, WorkspaceArtifact
 from .artifacts import AgentArtifactKey, ArtifactPublisher, ArtifactPublication
 from .domain import AgentCommand
 from .execution_workspace import GitTargetBinding
@@ -265,6 +265,8 @@ class PreparedSessionWorkspace:
     captured_acceptance_files: dict[str, bytes] = field(default_factory=dict)
     papers: Any = None
     session_usage_baseline: Mapping[str, Any] | None = None
+    prior_web_urls: frozenset[str] = frozenset()
+    continuation_observation: Mapping[str, Any] | None = None
 
     @property
     def attempt_id(self) -> str:
@@ -501,6 +503,70 @@ class PreparedSessionWorkspace:
             self.papers = None
 
 
+def read_session_archive(publisher: ArtifactPublisher, request: AgentRequest, session: Mapping[str, Any]) -> bytes:
+    publication = session.get("transcript")
+    if not isinstance(publication, Mapping): return b""
+    key = AgentArtifactKey(run_id=request.run_id, attempt_id=request.attempt_id)
+    if (publication.get("key") != key.to_dict() or publication.get("artifact_id") != key.artifact_id
+            or publication.get("path") != "/".join(key.as_tuple())):
+        raise AgentACIError("invalid_candidate", "Agent archive owner mismatch")
+    path = publisher.path_for(key)
+    publisher.verify(ArtifactPublication(key=key, schema_version=publication["schema_version"],
+        digest_algorithm=publication["digest_algorithm"], digest=publication["digest"], path=str(path),
+        relative_paths=tuple(publication["relative_paths"]), reused=True))
+    transcript = path / "transcript.jsonl"
+    if transcript.stat().st_size > node_memory_limit(request, "max_transcript_bytes", 64 * 1024 * 1024):
+        raise AgentACIError("invalid_candidate", "Agent transcript exceeds its frozen memory budget")
+    return transcript.read_bytes()
+
+
+def archived_web_results(publisher, request, session):
+    from .grounding_background import transcript_web_results
+    return transcript_web_results(read_session_archive(publisher, request, session), session_id=session.get("session_id"))
+
+
+def continuation_observation(publisher, prior):
+    from .agent_context import bounded_diagnostic_text
+    from .context_management import recovery_tool_notes
+    observed = json.loads(prior["observation_json"])
+    diagnostic = observed.get("diagnostics") or {}
+    session = observed.get("session") or {}
+    content = read_session_archive(publisher, AgentRequest.from_dict(observed["request"]), session)
+    return {"source_attempt_id": prior["attempt_id"], "terminal_reason": prior["terminal_reason"],
+        "failure_code": observed.get("failure_code"), "provider_failure": diagnostic.get("provider_failure"),
+        "diagnostic": bounded_diagnostic_text(diagnostic.get("provider_diagnostic")),
+        "worktree_commit": session.get("commit"), "previous_tools": recovery_tool_notes(content, session.get("session_id")),
+        "authority": "operational observation only; frozen inputs and accepted facts still govern"}
+
+
+def retrieved_session_urls(publisher, request, records, attempts, *, real):
+    from .grounding_background import retrieved_web_urls
+    for row in attempts:
+        if row["attempt_id"] == request.attempt_id: continue
+        observation = json.loads(row["observation_json"])
+        previous = observation.get("request", {})
+        if (previous.get("command") != request.command.value or previous.get("run_id") != request.run_id
+                or previous.get("role") != request.role or row["state"] != "CLOSED"): continue
+        session = observation.get("session", {})
+        if isinstance(session.get("transcript"), Mapping):
+            records.extend(archived_web_results(publisher, AgentRequest.from_dict(previous), session))
+        elif not real:
+            records.extend(observation.get("web_tool_results", ()))
+    return retrieved_web_urls(records)
+
+def observed_session_binding(observation: Mapping[str, Any]) -> tuple[str, str | None]:
+    binding, session = observation.get("session_binding", {}), observation.get("session", {})
+    values = (binding.get("session_id"), binding.get("parent_session_id"))
+    if values != (session.get("session_id"), session.get("parent_session_id")):
+        raise ValueError("observed session differs from the admitted session binding")
+    for index, value in enumerate(values):
+        if index == 1 and value is None:
+            continue
+        if not isinstance(value, str) or str(uuid.UUID(value)) != value:
+            raise ValueError("interaction source lacks its actual session identity")
+    return values
+
+
 class AgentSessions:
     # Process-local memory: cleanup re-runs only when the accepted batch
     # history moved past the last fully reconciled revision; a retained dirty
@@ -600,7 +666,8 @@ class AgentSessions:
                     or request.role != "grounding" or request.component_id != "grounding"):
                 raise ValueError("manager session requires its run-scoped Grounding owner")
             return {"version": SESSION_VERSION,
-                "session_id": str(uuid.uuid5(_NAMESPACE, request.run_id + "/grounding/manager")),
+                "session_id": str(uuid.uuid5(_NAMESPACE, request.run_id + "/grounding/manager"
+                    + ("/" + request.attempt_id if request.schema_version >= 24 else ""))),
                 "parent_session_id": None, "scope": "grounding-manager", "chain": None,
                 "cycle": 1, "branch": "prom/grounding/r1/grounding-manager"}
         cycle = (
@@ -616,7 +683,7 @@ class AgentSessions:
         )
         inner = request.command in _INNER
         chain = task.key.chain if isinstance(task, ResearchNodeTask) else None
-        # Expert chains and the graph manager keep their existing conversation.
+        # Legacy chains keep their conversation; current Attempts keep only Git scope.
         stateless = request.command in STATELESS_SESSION_COMMANDS
         scope_key = request.command_id + "/" + request.attempt_id if stateless else request.command_id
         scope = (
@@ -638,6 +705,12 @@ class AgentSessions:
             promotion = transfer[1]
             if inner: parent = promotion["session_id"]
             else: session_id, parent = promotion["session_id"], promotion["original_session_id"]
+        if request.schema_version >= 24:
+            # Source/Git scope stays stable; mutable model history is disposable.
+            # Every invocation reconstructs from its admitted task, evidence and
+            # existing memory. This also bounds ordinary corrective retries.
+            session_id = str(uuid.uuid5(_NAMESPACE, common + "/" + scope + "/" + request.attempt_id))
+            parent = None
         return {
             "version": SESSION_VERSION,
             "session_id": session_id,
@@ -671,7 +744,7 @@ class AgentSessions:
         own_transcript = session_root / f"{descriptor['session_id']}.jsonl"
         source_content = None
         retained_source = None
-        if transfer is not None and (transfer[0] or request.command not in _INNER):
+        if transfer is not None and (transfer[0] or request.command not in _INNER or request.schema_version >= 24):
             _, context, original, session = transfer
             archive = session["transcript"]
             key = AgentArtifactKey(run_id=request.run_id, attempt_id=original.attempt_id)
@@ -688,7 +761,8 @@ class AgentSessions:
             if source_root.resolve() != source_root:
                 raise GitAuthoringIntegrityError("session transfer source is not its canonical private path")
             retained_source = GitAuthoringWorkspace(source_root).retained("chain", base_commit=session["base_commit"])
-            if not transfer[0] and not own_transcript.exists(): _write_new(own_transcript, source_content)
+            if request.schema_version < 24 and not transfer[0] and not own_transcript.exists():
+                _write_new(own_transcript, source_content)
         session_usage_baseline = None
         if own_transcript.exists():
             own_content = _regular(own_transcript, transcript_limit)

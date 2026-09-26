@@ -6,11 +6,10 @@ literature:
   enabled: true
   tools: [web_search, web_fetch]
   max_sources: 8
-  # Optional Host-launch dotenv credentials file holding OPENALEX_API_KEY and
-  # UNPAYWALL_EMAIL (see config/hypoloom.env.example); the
-  # operator flow passes it to the Host as --credentials-file.
-  # Absolute path, never a secret literal:
-  # credentials_file: /absolute/path/to/hypoloom.env
+  # Fill only in your ignored local Profile (mode 0600), never in this template.
+  # Host-only values: omitted from admitted contracts and Agent inputs.
+  openalex_api_key: ""
+  unpaywall_email: ""  # Required only for the Unpaywall PDF fallback.
 inner_loop:
   max_iterations_per_hypothesis: 4
   repair_attempts: 2
@@ -37,6 +36,10 @@ memory:
   max_memory_bytes: 8388608
   max_plugin_bytes: 1048576
 budget:
+  total_budget_usd: 45
+  per_expert_budget_usd: 15
+  wallclock_hours: 6
+  experiment_timeout: 1800  # seconds / 秒
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3

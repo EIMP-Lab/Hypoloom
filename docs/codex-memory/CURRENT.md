@@ -1,5 +1,102 @@
 # Current Hypoloom development state
 
+- September 26 dev submission: user authorizes committing/pushing the accumulated
+  context/recovery/observability, init consistency, Profile credentials and version
+  reminder work. Integrated G1: 6,153 passed, two failed, 26 opt-in skips; both
+  failures resolve in 79 passing follow-up checks with production bytes unchanged.
+  One native fixture exceeded AF_UNIX path length (short base resolves it); one
+  old template assertion expected blank secret fields in the admitted product.
+  It now independently requires their removal while preserving exact control
+  comparisons. Fifteen audited roots close 380 Agents / 32 CPU Processes with
+  clean Oracles and no residue. Wheel/sdist build and isolated installed CLI pass;
+  140 runtime files match source, private directories excluded. Original serial
+  interruption and full-run failures remain at
+  `.local/qualification/dev-submit-20260926/`. No existing research-run edits,
+  new paid/GPU/public-notification tests or formal G0–G5 release claim.
+
+- September 26 version reminder: init's existing bootstrap paths and manual
+  `hypoloom version-check` compare HEAD with the actual configured upstream using
+  ls-remote. Existing Git facts and the shared support-export identity reader
+  remain authoritative; no fetch, cache, updater or launch gate. Default five-second
+  total deadline, offline mode and noninteractive auth; timeout/interrupt close
+  owned Git/helper groups. Unknown ancestry stays remote_differs, including
+  incomplete/partial histories. Final 190 focused checks and seven doc/template
+  checks pass. Actual CLI/init report HEAD matching origin/dev with dirty worktree,
+  preserving Git metadata and tracked files. Three-second network timeouts and
+  the fixed interrupt residue reproduction remain in the evidence directory:
+  `.local/qualification/version-check-20260926/`. Bilingual guides updated;
+  existing runs untouched, no paid/GPU/full-G1 qualification or commit/push.
+
+- September 26 Profile credentials follow-up: user wants literature keys and
+  Telegram tokens directly in the local Profile, without separate env maintenance.
+  Six files/v4 remain: private methodology/notify authoring fields compile to
+  existing credentials_file references after literal removal. Existing 0600,
+  no-symlink reader now accepts the source YAML; no copied store or new authority.
+  Webhook/proxy inline fields share the same path. Legacy inputs remain compatible,
+  conflicting service sources fail, and model authentication stays with existing
+  CC settings. Bilingual templates/guides updated. Focused 455 and seven doc checks
+  pass; two independently audited real-CLI/scripted-Agent roots close 11 Agents /
+  two CPU Processes with clean Oracles and no residue. Inline notification case
+  checks DB/artifacts and both issue-export scopes for absence of synthetic tokens.
+  Evidence: `.local/qualification/profile-credentials-20260926/`. No real secrets
+  copied, existing Profile/run edits, paid/GPU/public notification or commit/push.
+
+- September 26 init follow-up: user authorizes fixing the audited init gaps and
+  simplifying Profile budgets. New templates place time/financial limits in
+  methodology.budget; old single aliases remain readable with warnings and
+  duplicate declarations fail. Effective model/effort explanations reuse runtime
+  resolution. GPU/provider/notification checks use existing validators; managed
+  notification variables use an explicitly selected existing private dotenv file.
+  No new manifest or authority. Focused 346 pass; G1 has 6,102 passes, seven old
+  warning-fixture failures and 26 opt-in skips. Fixture-only fixes retain assertions;
+  all seven pass in the 128-check follow-up, with production code unchanged.
+  Actual CLI bootstrap independently closes two Agents/two CPU Processes with
+  clean Oracle and no residue; two CLI notification cases pass, plus seven doc
+  checks. Evidence: `.local/qualification/init-consistency-20260926/`.
+  Existing local Profile admits
+  read-only; no existing run/Profile/settings edits, paid/GPU qualification or
+  commit/push. Guides and detailed evidence are routed through INDEX.
+
+- September 26 follow-up: user authorizes completing context observations and
+  recovery-cost statistics, ending demonstrably futile reconstruction, then
+  evaluating real-model quality/benefit. Existing CC settings are authorized
+  without a user spend cap; the finite sample allocates 30 USD across five
+  fresh CPU/analysis-only trials, with 2 USD/32-turn/300-second invocation caps.
+  Native event/read telemetry and recovery costs derive from existing captures
+  and the charge fold. Minimum-inline initial local refusals end unchanged
+  retries only with complete evidence of no forwarded generation; tool-progress
+  recovery remains available. Focused/browser 176 and refreshed native/CPU 12
+  pass; the additional native first-refusal case closes two nodes at three
+  Attempts each despite nine allowed infrastructure retries, with zero upstream
+  generation. Five paid roots close 57 Agents / 5 CPU Processes cleanly. Normal,
+  small-inline and default-rebuild analysis pass the scoped quality checks;
+  small-inline rebuild times out, and a retained disabled-retry control correctly
+  does not reconstruct. Final G1: 6,092 passed / 26 opt-in skips. Ten native roots
+  independently close 318 Agents / 26 CPU Processes, all Oracles clean and no
+  residue. Existing CLI unknown-pricing flags are visible; a reproduced clock-step
+  cost-order bug now uses existing Attempt ordinals. Reported CLI estimates total
+  1.467626 USD plus one unknown invocation (2 USD reservation, not spend);
+  all current MiMo cost-state records mark unknown model pricing, so these are
+  not verified vendor bills. Keep the default inline allowance: smaller prompts
+  increased calls/tokens in the no-fault comparison. Earlier “D1–D6 complete” wording
+  was too broad: core mechanics passed, native observation and cost aggregation
+  were still missing; the new sample does not qualify long-horizon science. Evidence:
+  `.local/qualification/context-observability-20260926/`. Existing research runs
+  remain read-only. No commit/push or GPU qualification requested.
+
+- September 26: implemented the accepted context/recovery plan for new ACI-24
+  runs. Ordinary Attempts reconstruct model sessions while retaining Git, frozen
+  sources, owned effects and charges; bounded Debate preserves its fork protocol.
+  Prompt/relay limits, latest-input observation, technical-failure closure, UI,
+  source correction and measurement guidance are complete. Promoted code survives
+  fresh sessions; valid measured work survives controller timeout, while archive,
+  stop and budget restrictions retain precedence. Final G1: 6,078 passed, 26
+  opt-in skips; nine native/local-provider cases independently close 311 Agents
+  and 26 CPU Processes with clean Oracles and no residue. GLM/MiMo prompt replays
+  and retained-run readers are read-only. Bilingual guides and detailed evidence
+  are routed through INDEX. Existing runs/Profiles remain unchanged. No paid/GPU
+  qualification, commit or push; scientific recovery quality remains unqualified.
+
 - September 25: implemented general Leader experience sharing for new ACI-23
   runs. The selected expert authors one bounded LEADER auxiliary output from
   accepted facts/reports; peers continue without automatic pauses, priority,

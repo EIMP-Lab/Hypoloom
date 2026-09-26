@@ -80,16 +80,19 @@ class _LocalAnalysisScenario(_AcceptanceScenario):
 
 
 def _probe_payload(root, mount, run_id, analysis_model, node_budget, allocation,
-                   *, max_retries=2, run_wall_seconds=300):
+                   *, max_retries=2, run_wall_seconds=300, context_memory=None, infrastructure_retries=0):
     allocation = _positive_allocation(allocation)
     assert 0 < Decimal(node_budget.max_cost) <= allocation
     _payload(root, mount, roles=(_GOAL,))
     profile = root / "profile"
     methodology = yaml.safe_load((profile / "methodology.yaml").read_text())
     methodology["output_correction"] = {"max_failed_validations": 3}
-    methodology["budget"].update(max_retries=max_retries, agent_invocation=node_budget.to_dict())
+    methodology["budget"].update(max_retries=max_retries, max_infrastructure_retries=infrastructure_retries,
+        agent_invocation=node_budget.to_dict())
     experts = yaml.safe_load((profile / "experts.yaml").read_text())
     experts["experts"][0]["stage_overrides"] = {"inner_loop.analysis": {"model": analysis_model}}
+    if context_memory is not None:
+        methodology.setdefault("memory", {}).update(context_memory)
     safety = yaml.safe_load((profile / "safety.yaml").read_text())
     safety["total_budget_usd"] = safety["per_expert_budget_usd"] = float(allocation)
     goal = yaml.safe_load((profile / "goal.yaml").read_text())
@@ -160,13 +163,13 @@ def _assert_probe(host, run_id, nonce, routes, analysis_model, node_budget, allo
     inner = [(row, observed) for row, observed in agents if observed["request"]["command"] in {
         "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
     sessions = {observed["session"]["session_id"] for _, observed in inner}
-    assert len(sessions) == 1
-    session = sessions.pop()
+    assert len(sessions) == len(inner)
+    assert len({observed["session"]["branch"] for _, observed in inner}) == 1
     analyses = [(row, observed) for row, observed in inner if observed["request"]["command"] == _ANALYSIS.value]
     assert len({row["command_id"] for row, _ in analyses}) == 1
     for row, observed in inner:
         if observed["request"]["command"] != "EXPERIMENT_DESIGN_IMPLEMENT":
-            assert observed["session"]["launch_arguments"] == ["--resume", session]
+            assert observed["session"]["launch_arguments"] == ["--session-id", observed["session"]["session_id"]]
     for row, observed in analyses:
         request = observed["request"]
         assert request["required_output_schema"] == "ExpertLoopCandidate/v1"
@@ -176,9 +179,16 @@ def _assert_probe(host, run_id, nonce, routes, analysis_model, node_budget, allo
         if row["terminal_reason"] == "SUCCEEDED":
             assert observed["response"]["typed_candidate"]["task_kind"] == "RESULT_ANALYSIS"
     for previous, current in zip(analyses, analyses[1:]):
-        assert previous[0]["terminal_reason"] == "FAILED" and previous[1]["retry_class"] == "MODEL"
+        assert previous[0]["terminal_reason"] == "FAILED"
         assert current[1]["request"]["attempt_ordinal"] > previous[1]["request"]["attempt_ordinal"]
-        _input(current[1]["request"], previous[0]["attempt_id"] + "--agent-retry-diagnostic", immutable=False)
+        if previous[1]["retry_class"] == "INFRASTRUCTURE":
+            from hypoloom.context_management import CONTEXT_FAILURES
+            assert previous[1]["diagnostics"]["provider_failure"]["code"] in CONTEXT_FAILURES
+            assert previous[1]["request"]["input_artifacts"] == current[1]["request"]["input_artifacts"]
+            assert previous[1]["session"]["session_id"] != current[1]["session"]["session_id"]
+        else:
+            assert previous[1]["retry_class"] == "MODEL"
+            _input(current[1]["request"], previous[0]["attempt_id"] + "--agent-retry-diagnostic", immutable=False)
     assert len(routes) == len(agents)
     routed = {item["attempt_id"]: item for item in routes}
     tools = []
@@ -209,7 +219,8 @@ def _assert_probe(host, run_id, nonce, routes, analysis_model, node_budget, allo
 
 
 def _run_probe(root, *, analysis_adapter=None, analysis_model=None, fresh_allocation_usd=None,
-               node_budget=_LOCAL_BUDGET, max_retries=2, run_wall_seconds=300, progress_callback=None):
+               node_budget=_LOCAL_BUDGET, max_retries=2, run_wall_seconds=300, progress_callback=None,
+               context_memory=None, infrastructure_retries=0):
     """Explicit runner entrypoint; callers own permission and fresh allocation."""
     paid = analysis_adapter is not None
     if paid:
@@ -223,7 +234,8 @@ def _run_probe(root, *, analysis_adapter=None, analysis_model=None, fresh_alloca
     run_id, nonce = "analysis-probe-" + secrets.token_hex(8), secrets.token_hex(12)
     mount = Path(tempfile.mkdtemp(prefix="prom-analysis-probe-", dir="/var/tmp"))
     payload = _probe_payload(root, mount, run_id, analysis_model, node_budget, allocation,
-                             max_retries=max_retries, run_wall_seconds=run_wall_seconds)
+                             max_retries=max_retries, run_wall_seconds=run_wall_seconds,
+                             context_memory=context_memory, infrastructure_retries=infrastructure_retries)
     _write_json(root / "settings.json", {})
     evidence = {"kind": "analysis_only_compatibility", "paid_analysis": paid, "g5": False,
                 "run_id": run_id, "fixture_root": str(mount), "analysis_accepted": False,

@@ -2,6 +2,9 @@
 
 [English](provider-recovery.md) · 简体中文
 
+上下文容量问题只影响相关任务，不触发全局 API 冷却。短会话续跑、用量显示及
+技术阻塞与科研终止的区别见[上下文恢复](context-management.zh-CN.md)。
+
 Host 从已有 Agent 调用观察和操作者控制记录推导 API 状态。Web、TUI 显示正常、
 冷却、等待操作者或正在尝试恢复；它们与运行的持久化状态分开。ACTIVE 不代表
 Agent 一定在工作。无法获得实时 Host 状态时，API 可用性显示未知。
