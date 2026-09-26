@@ -1,6 +1,12 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Local workspace organization](../guides/local-workspace.md) /
+  [中文](../guides/local-workspace.zh-CN.md): ignored current/history browsing
+  entries, original canonical evidence paths, private draft archiving and
+  Git-based interpretation of the selected baseline. The September 26 local
+  organization preserves runs, worktrees, environments and secrets; checks stay
+  in `.local/qualification/local-workspace-20260926/`.
 - [Integrated dev submission, September 26](../qualification.md#current-development--integrated-dev-submission-2026-09-26):
   complete offline selection plus two resolved fixture/environment failures,
   independent 15-root closure, packaging and installed CLI. User authorizes

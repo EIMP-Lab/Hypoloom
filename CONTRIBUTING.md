@@ -22,6 +22,11 @@ Use disposable test roots; never attach a development test to a research Host
 or a shared resource pool implicitly. Keep secrets, real Profiles, datasets,
 logs and runtime environments outside version control.
 
+Use the [local workspace guide](docs/guides/local-workspace.md) to separate
+current validation from private development history. Keep evidence and
+path-dependent state at their original locations; the optional `current/` and
+`history/` directories are browsing links, not runtime inputs or version proofs.
+
 Prefer existing validators, durable identities, transactions and ordinary
 tests. New hashes, authority files, gates or custom process protocols require a
 concrete failure justification; avoid duplicating the production reducer in a

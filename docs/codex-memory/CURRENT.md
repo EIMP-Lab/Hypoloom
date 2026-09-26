@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- September 26 local workspace organization: user authorizes separating current
+  evidence from private development history, bilingual documentation and
+  commit/push to dev. Ignored `current/` links to the integrated `40a75a0`
+  runtime baseline; `history/` indexes prior stages without relabeling them as
+  exact-HEAD qualification. Eleven unreferenced commit drafts move into history;
+  original evidence, canonical run/session paths, registered worktrees, installed
+  prefixes and service/credential stores stay in place. No run migration,
+  deletion, new runtime behavior or version authority. Shared bilingual guides
+  and local READMEs explain that links are for browsing only. Four documentation
+  checks pass; seven local READMEs, 26 document links and 101 navigation links
+  resolve, private paths remain ignored and runtime inputs are unchanged. Evidence:
+  `.local/qualification/local-workspace-20260926/`; details routed through INDEX.
+
 - September 26 dev submission: user authorizes committing/pushing the accumulated
   context/recovery/observability, init consistency, Profile credentials and version
   reminder work. Integrated G1: 6,153 passed, two failed, 26 opt-in skips; both

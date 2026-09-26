@@ -18,6 +18,7 @@ Current user entry points:
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
+- [Local workspace](guides/local-workspace.md): current evidence, private development history and original-path preservation.
 - [Contributing](../CONTRIBUTING.md): local development and validation.
 
 Each linked guide has a 简体中文 version linked at its top (except the bilingual

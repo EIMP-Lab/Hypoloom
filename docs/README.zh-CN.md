@@ -21,6 +21,7 @@
 - [资格](qualification.zh-CN.md):G0–G5、可运行的测试选择与状态
   (框架与摘要;完整台账为[英文版](qualification.md))。
 - [贡献](../CONTRIBUTING.zh-CN.md):本地开发与验证。
+- [本地工作目录](guides/local-workspace.zh-CN.md)：当前证据、私人开发历史与原路径保留。
 
 根目录教程是主要的用户入口。资格结论属于资格文档,而不是在各指南中复制的
 状态表。代码、带类型 schema 和可观察的测试结果用于裁决解释性文字中的冲突。
