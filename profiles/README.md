@@ -47,6 +47,19 @@ Model authentication continues to use the selected CC settings/environment.
 | `notify.yaml` | Notification sinks/events and private local credentials / 通知及本地私有凭据 |
 | `safety.yaml` | Read roots, GPU permission and sandbox / 数据访问与执行权限 |
 
+## Hypothesis and Agent limits / 假设与 Agent 上限
+
+Limits are ceilings, not requested counts. `max_hypotheses_per_round` limits
+candidates, `max_forks` limits active research chains, and `max_active_agents`
+also covers FORWARD/BACKWARD tasks and readers. New ACI-26 runs can overlap both
+arguments without extra configuration; these are not two hypotheses.
+[Reading and proposals](../docs/guides/reading-and-proposals.md).
+
+中文：各数量均为上限，不要求填满。`max_hypotheses_per_round` 限制候选，
+`max_forks` 限制活跃研究链，`max_active_agents` 同时约束论证任务和阅读助手。
+新 ACI-26 运行无需额外开关即可并行论证；两侧论证不等于两条假设。
+详见[阅读与论证教程](../docs/guides/reading-and-proposals.zh-CN.md)。
+
 ## Dashboard port / 看板端口
 
 Both templates set `notify.yaml.sinks.dashboard.port: 0`. Zero (or an omitted

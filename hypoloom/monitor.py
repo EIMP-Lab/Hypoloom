@@ -1392,6 +1392,10 @@ def build_monitor_snapshot(
                 for row in reader.list_attempts(run_id=run_id)
             )
             research_facts = reader.list_facts(run_id)
+            reading_commands = tuple(dict(row) for row in reader.execute(
+                "SELECT command_id,request_json FROM workflow_commands WHERE run_id=? AND response_status='accepted' "
+                "AND (json_type(request_json,'$.paper_reading')='object' OR json_type(request_json,'$.cancel_paper_reading')='text') ORDER BY rowid",
+                (run_id,)).fetchall()) if _include_overview else ()
             heads = reader.list_workflow_heads(run_id)
             status = build_status_projection(
                 store,
@@ -1485,7 +1489,7 @@ def build_monitor_snapshot(
     observed_at = time.time()
     experts = _expert_views(contract, attempts, scientific_process_attempt_ids)
     overview = build_run_summary(root, run_id, facts=research_facts,
-        transitions=transition_rows, attempts=raw_attempts,
+        transitions=transition_rows, attempts=raw_attempts, reading_commands=reading_commands,
         experts=[asdict(item) for item in experts],
         graph=product_graph([asdict(item) for item in hypotheses], transition_rows),
         observed_at=observed_at, created_at=run["created_at"]) if _include_overview else {}

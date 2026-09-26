@@ -16,6 +16,7 @@ Current user entry points:
 - [Architecture](architecture.md): components, ownership and durable boundaries.
 - [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
+- [Reading and proposals](guides/reading-and-proposals.md): references, assistants, parallel arguments and hypothesis limits.
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
 - [Local workspace](guides/local-workspace.md): current evidence, private development history and original-path preservation.

@@ -1,14 +1,53 @@
-"""Read expert batches and selections from existing accepted relations.
+"""Read expert batches and schedule proposal tasks through their existing Host.
 
-This module does not write state or choose a scientific outcome. WorkflowHost
-owns transactions; the ordinary Policy still decides each experiment action.
+This module does not choose a scientific outcome. WorkflowHost owns transactions; the ordinary Policy still decides each experiment action.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
+from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, DerivedWorkState, ExpertLineage,
+    ExpertLineageInput, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask,
+    ScientificNodeRefs, reduce_expert_lineage)
+from .agent_aci import PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION
+
+
+def proposal_siblings(task, other, version):
+    """The sole new overlap: two different wings of the exact same proposal."""
+    if version < PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION or not isinstance(task, ResearchNodeTask): return False
+    key = task.key.to_dict()
+    return (key["node_kind"] == "HYPOTHESIS_PROPOSAL"
+        and {key["subkind"], other.get("subkind")} == {"FORWARD", "BACKWARD"}
+        and {**key, "subkind": other.get("subkind")} == other)
+
+
+def sibling_proposal_failed(host, request):
+    task = request.task_context
+    if (request.schema_version < PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION or not isinstance(task, ResearchNodeTask)
+            or task.key.node_kind is not ResearchNodeKind.HYPOTHESIS_PROPOSAL
+            or task.key.subkind not in {ResearchNodeSubkind.FORWARD, ResearchNodeSubkind.BACKWARD}): return False
+    other = ResearchNodeSubkind.BACKWARD if task.key.subkind is ResearchNodeSubkind.FORWARD else ResearchNodeSubkind.FORWARD
+    return host._expert_task_final_failure(request.run_id, ResearchNodeTask(key=replace(task.key, subkind=other))) is not None
+
+
+def next_proposal_task(host, keys):
+    """Select from existing task records; requests, not an extra queue, own work."""
+    tasks = [ResearchNodeTask(key=key) for key in keys]
+    pending = [task for task in tasks if host._expert_success(task) is None]
+    if not pending: return None
+    first = pending[0]
+    version = int(host.store.get_run(first.key.run_id)["agent_aci_version"])
+    if version < PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION: return first
+    wings = [task for task in pending if task.key.subkind in {ResearchNodeSubkind.FORWARD, ResearchNodeSubkind.BACKWARD}]
+    if first.key.node_kind is ResearchNodeKind.LITERATURE_REVIEW or not wings: return first
+    # Do not hide a failed wing by repeatedly selecting the still-running one.
+    for task in wings:
+        if host._expert_task_exhausted(task.key.run_id, task): return task
+    for task in wings:
+        if not any(row["state"] == "OPEN" for row in host._expert_attempts(task)): return task
+    return None
 
 
 def supports_hypothesis_batches(version: object) -> bool:
@@ -218,3 +257,94 @@ def batch_chain_failed(host, run_id: str, component_id: str, role: str, cycle: i
                             for row in host.store.list_facts(run_id, "CanonicalOutcomeAccepted")): continue
             return True
     return False
+
+
+def drive_expert_proposal(
+    host, run_id: str, component_id: str, role: str, *, cycle: int = 1,
+    parent_hypothesis_id: str | None = None, restart_from_hypothesis: bool = False,
+) -> None:
+    from .workflow_host import OperationalHalt
+    contract = host._research_contract(run_id)
+    batch_proposal = host._batch_enabled(run_id) and int(host.store.get_run(run_id)["agent_aci_version"]) >= 17
+    keys = (
+        ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
+                        node_kind=ResearchNodeKind.LITERATURE_REVIEW, subkind=ResearchNodeSubkind.QUERY_PLAN),
+        ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
+                        node_kind=ResearchNodeKind.LITERATURE_REVIEW),
+        ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
+                        node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.FORWARD),
+        ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
+                        node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.BACKWARD),
+        ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
+                        node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.SYNTHESIS),
+    )
+    if batch_proposal:
+        history = host._batch_history(run_id, component_id, role)
+        if len(history.batches) >= cycle: return  # An accepted batch is the SYNTHESIS proof, even without a selected tip.
+        if len(history.batches) != cycle - 1: raise OperationalHalt("expert batch proposal is not the next cycle")
+        if cycle == 1:
+            if parent_hypothesis_id is not None: raise OperationalHalt("first batch cannot have a parent")
+        elif (directed := host.interaction.directed_round(run_id, role, component_id, cycle)) is not None:
+            if directed["parent_hypothesis_id"] != parent_hypothesis_id:
+                raise OperationalHalt("directed successor differs from its accepted parent")
+        elif history.selected_tip is not None:
+            if history.selected_tip["node_id"] != parent_hypothesis_id: raise OperationalHalt("expert successor cycle has the wrong selected parent")
+        elif parent_hypothesis_id is not None or not host._unselected_batch_revision_ready(run_id, component_id, role):
+            raise OperationalHalt("unselected batch successor lacks closed explicit revision")
+    else:
+        lineage = ExpertLineage(run_id=run_id, component_id=component_id, expert_slot=role,
+            cycle=cycle, parent_hypothesis_id=parent_hypothesis_id)
+        chain = host._expert_hypothesis_chain(run_id, component_id, role)
+        if len(chain) > cycle: raise OperationalHalt("expert hypothesis lineage is ahead of its cycle")
+        if cycle > 1 and (len(chain) < cycle - 1 or str(chain[cycle - 2]["hypothesis_id"]) != parent_hypothesis_id):
+            raise OperationalHalt("expert successor cycle has the wrong parent")
+        hypothesis = chain[cycle - 1] if len(chain) == cycle else None
+    if host._expert_success(grounding_plan := AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)) is None:
+        if host._expert_task_exhausted(run_id, grounding_plan):
+            host._record_expert_final_failure(run_id, component_id, role, grounding_plan, "grounding_query_plan_exhausted"); return
+        host._expert_agent_step(run_id, run_id, grounding_plan, contract.role_ids[0], str(contract.components[0].component_id)); return
+    if restart_from_hypothesis:
+        plan = host.interaction.debate.designated_round(run_id, component_id)
+        if (plan is None or not plan.get("restart_from_hypothesis") or (plan["role"], plan["cycle"], plan["parent_hypothesis_id"]) != (role, cycle, parent_hypothesis_id)):
+            raise OperationalHalt("hypothesis-stage restart lacks its actual Debate authorization")
+        # The explicit control resumes at HP. Do not invent CLOSED LR views
+        # for this cycle; FORWARD reads the actual prior LR Attempt instead.
+        task = next_proposal_task(host, keys[2:])
+        if task is None or any(row["state"] == "OPEN" for row in host._expert_attempts(task)): return
+    elif batch_proposal:
+        grounding = host._expert_grounding_view(run_id)
+        if grounding is None or grounding.state is not DerivedWorkState.CLOSED or not grounding.artifact_ids:
+            task = host._grounding_task(run_id)
+        else:
+            task = next_proposal_task(host, keys)
+            if task is None:
+                if host._expert_success(ResearchNodeTask(key=keys[-1])) is not None:
+                    raise OperationalHalt("successful SYNTHESIS lacks its atomically accepted batch")
+                return
+        if any(row["state"] == "OPEN" for row in host._expert_attempts(task)): return
+    else:
+        decision = reduce_expert_lineage(
+            ExpertLineageInput(
+                lineage=lineage,
+                scientific_refs=ScientificNodeRefs(
+                    hypothesis_id=None if hypothesis is None else str(hypothesis["hypothesis_id"]),
+                ),
+            ),
+            tuple(host._expert_node_view(key) for key in keys),
+            host._expert_grounding_view(run_id),
+        )
+        task = decision.next_task
+        if task is None or decision.task_state is DerivedWorkState.OPEN: return
+    if (isinstance(task, ResearchNodeTask)
+            and task.key.node_kind is ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT):
+        return
+    if host._expert_task_exhausted(run_id, task):
+        code = "grounding_exhausted" if isinstance(task, AuxiliaryTask) else "expert_node_exhausted"
+        host._record_expert_final_failure(run_id, component_id, role, task, code)
+        return
+    dispatch_role = contract.role_ids[0] if isinstance(task, AuxiliaryTask) else role
+    dispatch_component = (str(contract.components[0].component_id)
+                          if isinstance(task, AuxiliaryTask) else component_id)
+    host._expert_agent_step(
+        run_id, run_id, task, dispatch_role, dispatch_component,
+    )

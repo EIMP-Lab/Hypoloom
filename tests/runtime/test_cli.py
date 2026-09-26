@@ -171,7 +171,7 @@ def test_claude_cli_builds_one_explicit_bounded_adapter(
     assert adapter is not None
     assert adapter.__class__.__module__ == "hypoloom.claude_agent_host"
     assert adapter.settings_path == settings
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/63"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/64"
     assert observed["claude_model"] == "exact-model-v1[1m]"
     assert observed["provider_environment"] == {}
     assert observed["exit_when_terminal"] is True
@@ -216,12 +216,12 @@ def test_serve_builds_the_same_explicit_openalex_adapter(
     assert secret not in repr(literature_io.configuration)
 
 
-def test_current_new_write_identity_tracks_bounded_context() -> None:
+def test_current_new_write_identity_tracks_parallel_proposals() -> None:
     version = installed_run_version()
 
     assert version.research_contract_version == "hypoloom-research-v10"
-    assert version.agent_aci_version == "25"
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/63"
+    assert version.agent_aci_version == "26"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/64"
 
 
 @pytest.mark.parametrize("base_url", [None, "https://approved-gateway.invalid"])

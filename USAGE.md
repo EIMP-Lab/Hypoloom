@@ -89,6 +89,13 @@ permit API switching. See [API recovery](docs/guides/provider-recovery.md).
 
 ## Research loop and completion
 
+For new ACI-26 runs, the Host can run an expert's FORWARD/BACKWARD arguments
+concurrently and joins their accepted outputs before SYNTHESIS. Expert cards
+separate these tasks from hypotheses and reading assistants, including rejected
+reading calls and incomplete observation coverage. See
+[reading and proposals](docs/guides/reading-and-proposals.md) for tool examples,
+capacity/branch limits and retry behavior.
+
 Grounding reads the goal and data and establishes the research constraints.
 Experts progress through LITERATURE_REVIEW, HYPOTHESIS_PROPOSAL,
 EXPERIMENT_DESIGN_IMPLEMENT, EXPERIMENT_EXECUTION, RESULT_ANALYSIS and

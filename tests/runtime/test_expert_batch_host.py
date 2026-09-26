@@ -193,7 +193,9 @@ class LeaderRoundAgent(SharedGoalAgent):
 @pytest.fixture
 def batch_host(tmp_path, monkeypatch, request):
     # Retain an explicit ACI13 case while exercising ACI14 batch semantics.
-    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 13 if getattr(request, "param", None) == "legacy13" else 14)
+    mode = getattr(request, "param", None)
+    version = 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", version)
     with tempfile.TemporaryDirectory(prefix="hypoloom-batch-target-", dir="/var/tmp") as directory:
         payload = _pilot_payload(tmp_path, Path(directory), "batch-host")
         contract = payload["research_contract"]
@@ -202,10 +204,12 @@ def batch_host(tmp_path, monkeypatch, request):
         settings["experts"]["defaults"]["max_hypotheses_per_round"] = 2
         settings["goal"]["completion_mode"] = "explicit_signals"
         mode = getattr(request, "param", None)
+        if mode == "proposal-one-slot": contract["budget"]["max_active_agents"] = 1
+        if mode == "proposal-peers": contract["budget"]["max_active_agents"] = 4
         if mode in {"fifo", "fifo-cross"}: contract["budget"]["max_active_processes"] = 1
         settings["methodology"]["interaction"] = {"leader": {"enabled": mode in {"observer-none", "leader-round"}, "check_after": "cycle_report", "min_rounds_before_leader": 1}, "debate": {"enabled": False, "rounds": 3}}
         settings["methodology"]["graph_evolution"]["enabled"] = mode in {"managed", "managed-up-down"}
-        shared = mode in {"shared-success", "shared-refuted", "leader-round"}
+        shared = mode in {"shared-success", "shared-refuted", "leader-round", "proposal-peers"}
         if shared:
             settings["goal"]["completion_mode"] = "shared_goal"
             settings["experts"]["defaults"]["max_hypotheses_per_round"] = 1
@@ -226,7 +230,7 @@ def batch_host(tmp_path, monkeypatch, request):
                 settings["goal"]["completion_mode"] = "explicit_signals"
         settings["experts"]["defaults"]["max_forks"] = 1 if mode == "max-forks-one" else 4
         if mode in {"parallel", "max-forks-one", "restart"}: payload["execution"]["delay_seconds"] = 0.6
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 3 if mode == "managed-up-down" else 2 if mode in {"two-cycles", "outer-budget-exhausted", "managed", "leader-round"} else 1
+        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 3 if mode == "managed-up-down" else 2 if mode in {"two-cycles", "outer-budget-exhausted", "managed", "leader-round", "proposal-two-cycles"} else 1
         iterate = mode in {"iterate", "iterate-exhausted"}
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 2 if iterate else 1, "repair_attempts": 1}
         contract["methodology"]["controls"]["product"] = settings
@@ -257,7 +261,7 @@ def batch_host(tmp_path, monkeypatch, request):
             payload["execution"]["delay_seconds"] = 1.0
         if mode not in {"iterate-exhausted", "outer-budget-exhausted"}: contract["roles"][0]["budget"]["max_experiments"] = 6
         agent = (LeaderRoundAgent() if mode == "leader-round" else MissingFinalReportAgent() if mode == "final-report-missing" else UpDownManagedAgent() if mode == "managed-up-down" else SharedGoalAgent(all_refuted=mode == "shared-refuted") if shared else ManagedBatchAgent() if mode == "managed" else FailedDesignBatchAgent(mode == "all-designs-fail") if mode in {"one-design-fails", "all-designs-fail"}
-            else TwoCycleBatchAgent() if mode in {"two-cycles", "round-exhausted", "outer-budget-exhausted"}
+            else TwoCycleBatchAgent() if mode in {"two-cycles", "round-exhausted", "outer-budget-exhausted", "proposal-two-cycles"}
             else IteratingBatchAgent() if iterate else BatchAgent())
         host = WorkflowHost(tmp_path / "state", local_agent=agent)
         host.initialize()

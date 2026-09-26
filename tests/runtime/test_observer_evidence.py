@@ -122,6 +122,18 @@ def test_ordinary_tool_error_is_observed_without_overriding_required_action(tmp_
     assert "PRIVATE_TOOL_BODY" not in json.dumps(result)
 
 
+def test_rejected_reading_calls_are_counted_once_without_inventing_readers(tmp_path):
+    row = _row(command="LITERATURE_REVIEW")
+    call = _call("bad-ref", "mcp__host-tools__read_papers", {"paper_ref": "PRIVATE_REFERENCE"})
+    reply = _result("bad-ref", error=True)
+    _write(tmp_path, row, [_init(), call, reply, call, reply,
+        _call("pending", "mcp__host-tools__read_papers"), _terminal()])
+    result = read_attempt_evidence(tmp_path, "run", row)
+    assert result["reading_calls"] == {"calls": 2, "rejected": 1, "unanswered": 1, "last_wait_reason": None}
+    assert result["coverage"] == "partial"
+    assert "PRIVATE" not in json.dumps(result)
+
+
 @pytest.mark.parametrize("change", ["open", "no_terminal", "unpaired", "malformed", "truncated", "capture_error", "foreign_session"])
 def test_incomplete_evidence_never_reports_met_or_missed(tmp_path, monkeypatch, change):
     from hypoloom import observer_details

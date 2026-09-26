@@ -69,6 +69,11 @@ API 恢复使用独立操作权限：TUI **p → Browser**，或启动独立 Web
 
 ## 研究闭环与完成标准
 
+新 ACI-26 运行允许 Host 并行执行专家的 FORWARD/BACKWARD，在两侧结果正式
+接纳后才进行综合。专家卡片区分论证任务、科学假设和阅读助手，并展示阅读调用
+拒绝及观测不完整情况。工具示例、容量/分支上限与重试行为见
+[阅读与论证教程](docs/guides/reading-and-proposals.zh-CN.md)。
+
 Grounding 读取目标和数据，建立研究约束。专家按 LITERATURE_REVIEW、HYPOTHESIS_PROPOSAL、
 EXPERIMENT_DESIGN_IMPLEMENT、EXPERIMENT_EXECUTION、RESULT_ANALYSIS、HYPOTHESIS_UPDATE
 推进，并使用 Host-owned 链工作树。原生工具、Bash、MCP 与网络访问受每次请求权限约束。

@@ -117,21 +117,21 @@ _WEB_TOOLS = (
          "scope": {"type": "string", "enum": ["web", "academic"]},
          "max_results": {"type": "integer", "minimum": 1, "maximum": 10}},
          "required": ["query"], "additionalProperties": False}},
-    {"name": "web_fetch", "description": "Retrieve a public HTTPS source for this research invocation. Report truncation and missing evidence honestly.",
+    {"name": "web_fetch", "description": "Retrieve a public HTTPS source. mode=document prepares readable source files and returns source_ref; copy that value as paper_ref to reuse the document or submit read_papers. Report missing evidence honestly.",
      "inputSchema": {"type": "object", "properties": {
          "url": {"type": "string", "minLength": 1},
          "mode": {"type": "string", "enum": ["document"]},
-         "paper_ref": {"type": "string", "minLength": 1},
+         "paper_ref": {"type": "string", "minLength": 1, "description": "Exact source_ref from an available document result or /papers/INDEX.md, not a URL. Requires mode=document; supply either url or paper_ref."},
          "sources": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"type": "object",
              "properties": {"url": {"type": "string"}, "paper_ref": {"type": "string"}}, "additionalProperties": False}},
          "max_chars": {"type": "integer", "minimum": 1, "maximum": 100000}},
          "additionalProperties": False}},
 )
-_READING_TOOLS = ({"name": "read_papers", "description": "Submit independent selected paper questions to Host-managed readers; status/wait/cancel only your own readings. Readers share existing Agent capacity and your expert/run budget. When blocked with no active readers, cancel pending work and read serially.",
+_READING_TOOLS = ({"name": "read_papers", "description": "Submit independent questions about prepared papers to Host-managed readers. First obtain source_ref from web_fetch(mode=document, url=...) or /papers/INDEX.md. Submit only action and readings; then use status, wait or cancel. No wait_for_completion field. Readers share Agent capacity and expert/run budget; when blocked without active readers, cancel pending work and read serially.",
     "inputSchema": {"type": "object", "properties": {
         "action": {"type": "string", "enum": ["submit", "status", "wait", "cancel"]},
         "readings": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "object", "properties": {
-            "reading_id": {"type": "string", "minLength": 1, "maxLength": 64}, "paper_ref": {"type": "string"},
+            "reading_id": {"type": "string", "minLength": 1, "maxLength": 64}, "paper_ref": {"type": "string", "description": "Copy the exact source_ref from a successful web_fetch document result or /papers/INDEX.md. A URL, DOI or paper title is not an admitted source_ref."},
             "question": {"type": "string", "minLength": 1, "maxLength": 4000}},
             "required": ["reading_id", "paper_ref", "question"], "additionalProperties": False}},
         "reading_ids": {"type": "array", "maxItems": 32, "uniqueItems": True, "items": {"type": "string"}},
@@ -187,9 +187,12 @@ def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
     schema = _TOOL_SCHEMAS[tool]
     properties = schema["properties"]
     if set(arguments) - set(properties):
-        raise ValueError("unknown tool arguments")
+        # Bound field names, never echo arbitrary values (which can hold secrets).
+        unknown = ", ".join(json.dumps(str(name)[:64]) for name in sorted(set(arguments) - set(properties), key=str)[:8])
+        hint = " Submit action=submit with readings only; collect via action=status or action=wait with max_wait_seconds." if tool == "read_papers" else ""
+        raise ValueError(f"unknown tool arguments: {unknown}; allowed fields: {', '.join(properties)}." + hint)
     if set(schema.get("required", ())) - set(arguments):
-        raise ValueError("missing required tool arguments")
+        raise ValueError("missing required tool arguments: " + ", ".join(sorted(set(schema["required"]) - set(arguments))))
     if tool == "web_fetch" and "mode" not in arguments and "url" not in arguments:
         raise ValueError("missing required tool arguments")
     for name, value in arguments.items():

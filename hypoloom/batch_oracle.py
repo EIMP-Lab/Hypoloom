@@ -484,6 +484,21 @@ class _Audit:
                       and matches[0][1] == {"fact_id": fact["fact_id"], "fact_type": "HypothesisProposed", "payload": fact},
                       "unselected proposal parent is not its exact immutable accepted hypothesis fact")
 
+    def proposal_join(self, attempt_id):
+        request = self.observations[attempt_id].get("request", {})
+        key = (request.get("task_context") or {}).get("key", {})
+        if request.get("schema_version", 0) < 26 or (key.get("node_kind"), key.get("subkind")) != ("HYPOTHESIS_PROPOSAL", "SYNTHESIS"):
+            return
+        for wing in ("FORWARD", "BACKWARD"):
+            sources = [identity for identity, value in self.observations.items()
+                if (value.get("request", {}).get("task_context") or {}).get("key") == {**key, "subkind": wing}
+                and self.attempts[identity]["state"] == "CLOSED" and self.attempts[identity]["terminal_reason"] == "SUCCEEDED"]
+            _need(len(sources) == 1, "parallel proposal join lacks one accepted result per wing")
+            source_id = sources[0]
+            _, _, response, _ = self.source(source_id, "HYPOTHESIS_PROPOSAL")
+            _need(_input(request, source_id + "--response") == response,
+                  "parallel proposal join does not contain its exact accepted wing response")
+
     def dependencies(self, attempt_id):
         request = self.observations[attempt_id].get("request", {})
         key = (request.get("task_context") or {}).get("key", {})
@@ -832,6 +847,10 @@ def audit_batches(run_id: str, attempts: Sequence[Mapping[str, Any]], attempt_pa
         if request.get("schema_version", 0) >= 14 and not any(batch[1]["agent_attempt_id"] == source_id for batch in audit.batches.values()):
             issues.append(("batch_source_invalid", "accepted hypothesis has no complete accepted batch source", (str(row["fact_id"]),)))
     for attempt_id in audit.observations:
+        try:
+            audit.proposal_join(attempt_id)
+        except (KeyError, TypeError, ValueError, StopIteration) as exc:
+            issues.append(("proposal_join_invalid", str(exc), (str(attempt_id),)))
         try:
             audit.unselected_successor(attempt_id)
         except (KeyError, TypeError, ValueError, StopIteration) as exc:

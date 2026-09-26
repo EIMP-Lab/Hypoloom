@@ -75,7 +75,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/63"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/64"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -3148,6 +3148,10 @@ def _instruction(
                 "Each hypotheses item contains only chain_id and candidate; candidate is one complete falsifiable HypothesisCandidate. "
                 "Keep this wrapper even for a single hypothesis. "
                 "Use unique chain_id values and do not exceed the admitted effective_max_forks. "
+                "Choose multiple candidates when distinct evidence-backed mechanisms have independently testable predictions "
+                "and affordable experiments. A single candidate is appropriate when evidence is limited, work is dependent, "
+                "or alternatives are only ordinary hyperparameter variants. Explain the choice briefly in the existing rationale. "
+                "The candidate limit is a ceiling, not a target; FORWARD/BACKWARD arguments are not separate hypotheses. "
                 "The following component, role, method-family and lineage constraints apply to every member candidate. "
                 if _expected_output_schema(request) == "HypothesisSet/v1"
                 else "one falsifiable HypothesisCandidate. "

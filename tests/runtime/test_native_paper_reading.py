@@ -27,9 +27,10 @@ def _main(request):
 
 
 class ReadingScenario(_FinalReportHostScenario):
-    def __init__(self, root, *, batch_documents=False):
+    def __init__(self, root, *, batch_documents=False, correct_errors=False):
         super().__init__(root)
         self.batch_documents = batch_documents
+        self.correct_errors = correct_errors
         self.nonce = "method-page-" + secrets.token_hex(12)
         self.sources = {}; self.results = {}; self.readers = set()
         # The local provider can finish a reader before bounded Host dispatch
@@ -51,7 +52,12 @@ class ReadingScenario(_FinalReportHostScenario):
                     assert not result.get("is_error"), result
                     source = json.loads(_result_text(result))
                     self.sources[request.attempt_id] = source["documents"] if self.batch_documents else [source]
-                if step >= 4:
+                if self.correct_errors and step in {3, 4}:
+                    suffix = "__bad_fields" if step == 3 else "__bad_reference"
+                    result = next(value for key, value in results.items() if key.endswith(suffix))
+                    assert result.get("is_error"), result
+                    assert ("wait_for_completion" if step == 3 else "web_fetch") in _result_text(result)
+                if step >= (6 if self.correct_errors else 4):
                     result = next(value for key, value in results.items() if key.endswith(f"__reading_wait_{step - 1}_call"))
                     assert not result.get("is_error"), result
                     self.results[request.attempt_id] = json.loads(_result_text(result))
@@ -88,6 +94,12 @@ class ReadingScenario(_FinalReportHostScenario):
                 arguments = {"mode": "document", "sources": [{"url": DOC}, {"url": DOC + "/second"}]} if self.batch_documents else {"mode": "document", "url": DOC}
                 return (("prepare_source", "mcp__host-tools__web_fetch", arguments),)
             if step == 2:
+                if self.correct_errors:
+                    return (("bad_fields", "mcp__host-tools__read_papers", {"action": "submit", "readings": [], "wait_for_completion": True}),)
+            if step == 3 and self.correct_errors:
+                return (("bad_reference", "mcp__host-tools__read_papers", {"action": "submit", "readings": [
+                    {"reading_id": "url-mistake", "paper_ref": DOC, "question": "Check the method."}]}),)
+            if step == (4 if self.correct_errors else 2):
                 return (("submit_readers", "mcp__host-tools__read_papers", {"action": "submit", "readings": [
                     {"reading_id": f"question-{i}", "paper_ref": self.sources[request.attempt_id][i % len(self.sources[request.attempt_id])]["source_ref"],
                      "question": f"Independent method question {i}: quote the exact coefficient label and state the limitation."} for i in range(3)]}),)
@@ -96,10 +108,10 @@ class ReadingScenario(_FinalReportHostScenario):
         return super()._unscoped_tool_calls(number)
 
 
-@pytest.mark.parametrize("end_run,batch_documents", [(False, False), (True, False), (False, True)],
-                         ids=["cpu-completion", "end-run", "batch-documents"])
-def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, end_run, batch_documents):
-    scenario = ReadingScenario(tmp_path, batch_documents=batch_documents)
+@pytest.mark.parametrize("end_run,batch_documents,correct_errors", [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+                         ids=["cpu-completion", "end-run", "batch-documents", "correct-errors"])
+def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, end_run, batch_documents, correct_errors):
+    scenario = ReadingScenario(tmp_path, batch_documents=batch_documents, correct_errors=correct_errors)
     secret = "isolated-script-only-" + secrets.token_hex(12)
     provider, thread = _start_provider(scenario, secret)
     settings_file = tmp_path / "settings.json"
@@ -153,6 +165,11 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         report = Oracle(host.store.database_path, host.publisher.root).audit(run_id)
         (tmp_path / "oracle.json").write_text(json.dumps(report.to_dict(), indent=2))
         assert report.ok, report.to_dict()
+        if correct_errors:
+            from hypoloom.monitor import build_monitor_snapshot
+            summary = build_monitor_snapshot(host.state_root, run_id).overview["experts"][0]["parallel_activity"]["readers"]
+            assert summary["tasks"] == summary["attempts"] == summary["states"]["completed"] == 3
+            assert summary["calls"]["rejected"] == 2
         assert not host.running_agents and not host.running
         assert not list((host.state_root / "paper-staging").iterdir())
         assert all(not process_group_exists(row["process_group_id"]) for row in attempts if row["process_group_id"] is not None)

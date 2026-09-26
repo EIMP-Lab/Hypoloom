@@ -10,9 +10,9 @@ from test_interaction_host import StoredHost, node
 from test_interaction_oracle import RawRecords
 
 
-@pytest.fixture
-def host(tmp_path):
-    value = StoredHost(tmp_path / "state", agent_version=23, rounds=1)
+@pytest.fixture(params=[23, 26])
+def host(tmp_path, request):
+    value = StoredHost(tmp_path / "state", agent_version=request.param, rounds=1)
     yield value
     value.store.close()
 

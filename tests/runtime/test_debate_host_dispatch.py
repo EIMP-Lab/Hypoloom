@@ -32,13 +32,15 @@ def test_host_dispatches_exact_debate_command_and_its_delegated_context(batch_ho
     assert request["input_artifacts"] == [item.to_dict() for item in supplied]
 
 
-def test_authorized_debate_restart_starts_forward_without_a_synthetic_literature_node():
+@pytest.mark.parametrize("version", [25, 26])
+def test_authorized_debate_restart_starts_forward_without_a_synthetic_literature_node(version):
     dispatched = []
     plan = {"role": "researcher", "component_id": "component", "cycle": 2,
         "parent_hypothesis_id": "accepted-parent", "source_cycle": 1,
         "source_literature_attempt_id": "actual-literature", "source_literature_command_id": "actual-command",
         "restart_from_hypothesis": True}
     host = SimpleNamespace(
+        store=SimpleNamespace(get_run=lambda run: {"agent_aci_version": str(version)}),
         _batch_enabled=lambda _run: False,
         _research_contract=lambda run: SimpleNamespace(role_ids=("researcher",), components=()),
         _expert_hypothesis_chain=lambda *args: ({"hypothesis_id": "accepted-parent"},),

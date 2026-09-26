@@ -44,6 +44,7 @@ def evidence_read_budget(max_reads=16):
 
 def _summary(coverage="unavailable", source=None, *, status="unknown", reason="current_stdout_unavailable", name=None):
     return {"coverage": coverage, "source": source, "tool_calls": 0, "tool_errors": 0,
+        "reading_calls": {"calls": 0, "rejected": 0, "unanswered": 0, "last_wait_reason": None},
         "counts_scope": "observed_current_invocation",
         "required_action": {"status": status, "name": name, "reason": reason}}
 
@@ -279,6 +280,24 @@ def read_attempt_evidence(root, run_id, row):
         result = _summary("complete" if complete else "partial", "runtime_diagnostics")
         result.update(tool_calls=len(uses), tool_errors=sum(
             result[1].get("is_error") is True for key, result in results.items() if key in uses))
+        reading = result["reading_calls"]
+        for identity, (position, call, _) in uses.items():
+            if call.get("name") != "mcp__host-tools__read_papers": continue
+            reading["calls"] += 1
+            reply = results.get(identity)
+            if reply is None or reply[0] <= position:
+                reading["unanswered"] += 1
+                continue
+            reading["rejected"] += int(reply[1].get("is_error") is True)
+            # Only existing bounded reason codes leave the private tool trace.
+            content = reply[1].get("content")
+            if isinstance(content, str):
+                try: content = json.loads(content)
+                except (ValueError, RecursionError): content = None
+            if isinstance(content, dict) and not reply[1].get("is_error"):
+                reason = content.get("wait_reason")
+                reading["last_wait_reason"] = reason if reason in {
+                    "parent_deadline", "run_deadline", "provider_backoff", "agent_capacity", "budget_capacity"} else None
         _required(result, requirement, prompt, request, init, uses, results, bodies, complete)
         result = details._clean(result)
         if stable:

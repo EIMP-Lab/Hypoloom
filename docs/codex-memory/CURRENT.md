@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- September 27 reading/proposal implementation: user authorizes D1–D4 and
+  commit/push to dev; confirms the retained research run is stopped. ACI-26 /
+  bwrap64 reuses source lookup and actionable read_papers feedback, schedules
+  exact FORWARD/BACKWARD siblings with original FORWARD-bound Leader inputs,
+  joins accepted responses and drains a failed sibling. One-slot/old-version
+  serial behavior, existing recovery/budgets and legal single candidates remain.
+  Read-only observations distinguish reader commands/Attempts, arguments and
+  scientific chains, with unknown trace/price coverage. No new ledger or spawn API.
+  Final G1: 6275 pass / 26 opt-in skips; initial 13 failures remain as evidence.
+  Last UI-only zero-candidate wording change follows G1, with 61 focused passes
+  and a separate rejected-SYNTHESIS browser case. Six native roots close 80 Agents /
+  4 CPU; five retained reader comparisons are unchanged (one prior archive issue).
+  Finite MiMo parallel proposal and higher-budget reading follow-up succeed;
+  original role/invocation-budget failures and a missing-lineage-field serial
+  output remain failures. Exact unsupported-field replay is scripted; actual model
+  errors are empty readings and URL references. Five real roots close 37 Agents,
+  no residue; 1259537 tokens / CLI estimate USD 2.6614696, unknown vendor pricing.
+  No repeatable speed/cost or full G5 claim. Evidence stays in
+  `.local/qualification/parallel-proposals-20260927/`; existing runs/Profiles untouched.
+  [Plan](../design/tool-guided-reading-and-parallel-proposals.md) and
+  [qualification](../qualification.md#current-development--reading-tools-and-parallel-proposals-2026-09-27).
+
 - September 26 dev submission: user authorizes committing and pushing the
   accumulated ACI-25 capacity/continuation repair, regression tests, bilingual
   guidance and 3000-second evaluation findings. Reuse completed G1/focused/native

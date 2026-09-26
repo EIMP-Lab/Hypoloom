@@ -1460,6 +1460,29 @@ def test_browser_leader_crown_follows_accepted_round_across_tasks_and_idle(brows
     page.wait("document.querySelectorAll('.leader-crown').length === 0")
 
 
+def test_browser_parallel_proposals_do_not_appear_as_hypotheses_or_readers(browser, tmp_path):
+    from test_observer_summary import _summary, _attempt
+    rows = [_attempt(name, role="expert-a", node="HYPOTHESIS_PROPOSAL", subkind=name, state="OPEN", chain=None)
+        for name in ("FORWARD", "BACKWARD")]
+    summary = _summary(tmp_path, attempts=rows, experts=[{"role": "expert-a"}])
+    browser.evaluate("fixture.snapshot.overview.experts=" + json.dumps(summary["experts"]))
+    selector = '.expert-preview[data-expert-role="expert-a"] .expert-parallel-work'
+    browser.wait(f"document.querySelector('{selector}') !== null")
+    text = browser.text(selector)
+    assert "FORWARD: OPEN" in text and "BACKWARD: OPEN" in text
+    assert "SYNTHESIS: not dispatched" in text
+    assert "hypotheses: 0 accepted" in text and "Reading assistants: 0 tasks" in text
+    assert "≥0 rejected" in text and "2 attempt traces incomplete/unavailable" in text
+    failed = _attempt("invalid-output", role="expert-a", node="HYPOTHESIS_PROPOSAL",
+        subkind="SYNTHESIS", reason="FAILED", chain=None, start=25, end=30)
+    closed_wings = [{**row, "state": "CLOSED", "terminal_reason": "SUCCEEDED", "ended_at": 20} for row in rows]
+    summary = _summary(tmp_path, attempts=[*closed_wings, failed], experts=[{"role": "expert-a"}])
+    browser.evaluate("fixture.snapshot.overview.experts=" + json.dumps(summary["experts"]))
+    browser.wait(f"document.querySelector('{selector}').textContent.includes('SYNTHESIS: FAILED')")
+    assert "hypotheses: 0 accepted" in browser.text(selector)
+    assert "not submitted" not in browser.text(selector)
+
+
 def test_browser_refresh_is_sequential_pauses_hidden_and_preserves_unchanged_dom(browser):
     page = browser
     assert page.evaluate("fixtureRequests.some(row => row[1] === '/api/refresh')")

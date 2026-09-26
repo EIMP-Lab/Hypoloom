@@ -1,6 +1,15 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Tool-guided reading and parallel proposals, September 27](../design/tool-guided-reading-and-parallel-proposals.md):
+  implemented D1–D4 in ACI-26 / bwrap64, existing reference/tool reuse,
+  fixed proposal branches versus dynamic readers, FORWARD-bound Leader advice,
+  branch recovery and derived observation. [Results and limits](../qualification.md#current-development--reading-tools-and-parallel-proposals-2026-09-27)
+  distinguish native/CPU closure, retained readers and finite MiMo samples. Original
+  read-only evidence stays in `.local/analysis/expert-forks-20260927-010341/`;
+  implementation evidence in `.local/qualification/parallel-proposals-20260927/`.
+  [Guide](../guides/reading-and-proposals.md) / [中文](../guides/reading-and-proposals.zh-CN.md).
+  No retained-run/Profile edits or cross-version migration.
 - [User-authorized 3000-second Grounding reevaluation](../qualification.md#current-development--3000-second-grounding-follow-up-2026-09-26):
   retained time-only protocol failure, corrected raw interface and private-driver
   isolation assertion, zero-paid positive/negative controls, successful real

@@ -2,6 +2,149 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — reading tools and parallel proposals, 2026-09-27
+
+ACI-26 / `claude-code-bwrap/64` implements the
+[reading/proposal plan](design/tool-guided-reading-and-parallel-proposals.md).
+Document preparation and reader admission share the caller's existing source
+lookup. Tool errors identify unsupported fields and explain the `source_ref` to
+`paper_ref` handoff. Submission still validates the whole batch before admitting
+any readers. No separate reference tool or implicit download is introduced.
+
+The Host can run the exact same proposal's FORWARD and BACKWARD tasks together,
+subject to ordinary capacity and budgets. Both retain the original FORWARD-bound
+Leader advice. SYNTHESIS requires both accepted responses; retries retain a
+successful sibling, while final failure cancels the remaining native process.
+Other stages, duplicate tasks and unrelated cycles do not gain this overlap.
+One slot and retained ACI-25 proposals remain serial. Guidance explains independent
+mechanisms and legal single-candidate choices without increasing fork defaults.
+
+The existing read-only summary distinguishes proposal tasks, admitted reading
+commands, reader Attempts and scientific chains. It uses the actual request's
+candidate limit, shared reading-state logic and already-read tool observations.
+Incomplete tool traces remain lower bounds; wait reasons are historical, and
+unknown CLI prices remain estimates. No additional state ledger or transcript
+scan is required. See the [user guide](guides/reading-and-proposals.md).
+
+Evidence remains in `.local/qualification/parallel-proposals-20260927/`.
+The final full G1 invocation passes **6275 tests, with 26 opt-in skips and
+30 warnings, in 1095.45 seconds**. The initial 6261-pass/13-failure invocation
+is retained: it exposed an omitted ACI-26 reader registration, nullable review
+contexts in the new join Oracle, stale version/error-message assertions, an
+incomplete mock Host and an invalid fixture assumption that sequential retries
+cannot resume their own session. The 289-test follow-up and actual native retry
+pass before the final full run. A separate failing counterexample also repairs
+active-chain deduplication using CREATE_EXPERIMENT's actual `expert_cycle` field.
+Neither strict join/source checks nor session isolation is weakened.
+After the full invocation, the only runtime edit changes the Web's zero-candidate
+wording to `0 accepted`, because a rejected submitted proposal is not proof of
+no submission. The final browser/summary/document selection passes **61 tests**;
+the realistic closed-wings/rejected-SYNTHESIS case separately passes. The full
+G1 was not repeated after this presentation-only change.
+
+Focused Host tests cover either completion order, one slot, retained semantics,
+retry, successful-wing recovery, late output after failure, other experts and
+two CPU cycles. Native CLI/local-provider tests cover actual process overlap,
+different sessions, complete/retry/exhausted/stop/restart paths and the two
+original malformed reading calls followed by three readers. The independent
+six-root native census counts **80 Agent Attempts and four CPU Processes**,
+all closed, with exact creation/outcome/publication counts, clean Oracles and
+no duplicate outcomes, pending effects, live owned groups or sockets. Original
+fixture failures remain separate, including the terminal-state expectation,
+missing stop cause and source editing during a pinned native invocation.
+
+G2 compares five stopped retained ACI-19/21/22/23/25 roots against the Git baseline.
+Selected monitoring/count/accounting values and full Oracle output are identical;
+database size and modification time remain unchanged. Four Oracles are clean.
+The ACI-21 root's existing `session_archive_missing` issue is identical before
+and after. This comparison does not migrate or qualify a restart of old runs.
+
+Finite real-model probes use the existing CC MiMo connection, scripted
+prerequisites and isolated roots; no existing research run, personal Profile,
+GPU or public notification is used. Each selected invocation allows 24 turns,
+150000 enforced tokens, 600 seconds and USD 2; each root has a 2100-second deadline
+and zero model/infrastructure retries. Reading permits five selected calls;
+each proposal arm permits three. Reading deliberately elicits the known malformed
+forms against synthetic original documents, so it measures compatibility rather
+than a natural error rate or public-web reliability. Successful probes stop
+through CANCEL after the selected phase, before experiment design; they are not
+whole-topic G5 qualification.
+
+The initial serial sample correctly fails budget admission: its private driver
+retained a fixture role cap of 200000 tokens, leaving BACKWARD only 107303 tokens;
+that invocation reports 116588. FORWARD succeeds with 92693. There is no SYNTHESIS,
+no context refusal and no leaked process. The failed root is retained and excluded
+from matched timing comparisons. A documented protocol correction explicitly sets
+750000 role tokens for a fresh finite cohort while keeping invocation limits and
+production defaults unchanged. Zero-paid routing/closure controls pass. Declared
+allocations are USD 6 for the original sample and USD 22 for the corrected cohort,
+not vendor billing; no corrected failure is automatically rerun.
+
+The corrected serial sample accepts FORWARD and BACKWARD, but rejects SYNTHESIS
+as `invalid_structured_output`: its candidate omits the required
+`parent_hypothesis_id` and `relation` fields (both must be explicit null here).
+The proposed single mechanism is not an accepted hypothesis. With zero
+model retries, the sample ends without a scientific fact; 261412 reported tokens
+and CLI-estimated USD 0.5590144 are retained, with a clean Oracle and no OPEN
+Attempts or owned process residue. No acceptance rule is relaxed to pass this
+sample. The operational `COMPLETED` state in this explicit-signals fixture does
+not assert goal success or scientific completion.
+
+The corrected parallel sample accepts both wings and one SYNTHESIS hypothesis
+in **426.39 seconds** (319686 reported tokens; CLI-estimated USD 0.6633936).
+Both native process groups are observed alive together with different sessions,
+scopes and branches; durable Attempt intervals overlap for **109.14 seconds**.
+The accepted claim links the forward invariance argument to a backward paired
+baseline test, preserves the frozen split/seeds/threshold, and explains the
+single-candidate choice by the lack of evidence for distinct mechanisms. Its
+CNN and augmentation assumptions are explicitly unverified; the combined recipe
+does not isolate individual factors. No actual scientific experiment runs in
+this probe. One accepted sample establishes bounded compatibility, not stronger
+scientific quality, repeated diversity, or speed/cost improvement over the failed
+serial sample. Both corrected roots have clean Oracles and no OPEN or live residue.
+
+The first real reading sample corrects both malformed calls, prepares both
+originals and admits two readers; the parent's tool replies contain both results.
+Both readers report
+the exact **0.83 coefficient / 5-turn window** and the stated limitations.
+However, MAIN consumes 165377 tokens, and the next request is locally refused
+by its 150000-token invocation limit before further model synthesis. Its outer failure is `nonzero_exit`, with
+the specific `provider_failure.code=token_budget_exceeded`; the current input
+estimate fits the context window. MAIN is not accepted. The private objective
+also incorrectly demanded physical pages for HTML: those page claims do not
+qualify source-location accuracy. All four selected invocations close cleanly;
+this is partial tool compatibility, not a completed literature phase.
+
+One separately declared reading follow-up keeps the USD 10/five-call/2100-second
+root and USD 2/24-turn/600-second invocation bounds, raises only its private
+invocation/role/run token limits to 300000/1500000/2000000, and requests HTML lines
+or PDF physical pages as appropriate. Total declared allocation across original
+and follow-up real roots is USD 38. Original failures remain unchanged; this is
+not a matched performance experiment or a product/Profile budget change.
+
+The follow-up completes the literature phase in **383.83 seconds**: both readers
+and MAIN are accepted, with accurate 0.83/5-turn values, limitations and HTML
+extraction line references. MAIN separates the synthetic evidence from the
+untested pilot goal. It uses 153023 tokens; all four real invocations total
+228323 reported tokens and CLI-estimated USD 0.4868184. Across both real reading
+samples, the model emits an empty `readings` array and a URL-as-reference error;
+it does **not** emit the requested unsupported `wait_for_completion` field. The
+second sample additionally places `max_wait_seconds` in its empty submit. Thus
+the exact unsupported-field replay is covered by native scripted-provider tests,
+while real-model evidence covers empty-batch and URL-reference correction,
+delegation, original reading and successful synthesis. It is not a natural error
+rate measurement or evidence that every malformed form will be repaired.
+
+The five real roots independently close **37 Agent Attempts**, with clean Oracles,
+no OPEN Attempts, duplicate/pending effects, live owned groups or sockets. They
+run no scientific CPU/GPU experiments; that coverage is in the native/CPU tests.
+All real samples together report **1259537 tokens** and CLI-estimated
+**USD 2.6614696**. MiMo pricing is unknown to this CLI, so these dollars are
+fallback estimates, not vendor billing or a spend guarantee. The first reading
+root also retains one locally refused, zero-forwarded request as an unmeasured
+observation. No cross-provider, sustained-run, GPU, scientific superiority or
+repeatable speed/cost claim follows from these finite probes.
+
 ## Current development — measured context and task continuation, 2026-09-26
 
 ACI-25 / `claude-code-bwrap/63` repairs the reproduced ACI-24 Grounding

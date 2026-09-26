@@ -137,7 +137,7 @@ def test_diagnostic_io_failure_is_visible_without_masking_tool_error(tmp_path, m
     ({"tool": "operator_cancel_run", "arguments": {}},
         "Host tool is not authorized for this invocation scope", None),
     ({"tool": "submit_experiment", "arguments": {"candidate": {}, "workspace_files": []}},
-        "unknown tool arguments", "submit_experiment"),
+        'unknown tool arguments: "workspace_files"; allowed fields: candidate, command, gpus, timeout_min, description, replaces_experiment_id, resource_estimate.', "submit_experiment"),
 ))
 def test_socket_validation_rejection_records_stack_without_authorizing_effects(
     tmp_path, document, message, tool,

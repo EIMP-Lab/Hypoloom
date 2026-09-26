@@ -438,6 +438,29 @@ def test_raw_batch_adjudication_and_selected_projection_are_independent():
     assert vars(data) == before
 
 
+@pytest.mark.parametrize("tamper", [None, "missing", "failed", "foreign", "changed"])
+def test_parallel_join_reads_exact_successful_wing_sources(tamper):
+    from hypoloom.batch_oracle import _Audit
+    data = _fixture()
+    inputs = []
+    for wing in (ResearchNodeSubkind.FORWARD, ResearchNodeSubkind.BACKWARD):
+        row, observed = data.agent("wing-" + wing.value, ResearchNodeKind.HYPOTHESIS_PROPOSAL,
+            {"summary": wing.value}, subkind=wing)
+        inputs.append(_input(row["attempt_id"] + "--response", observed["response"]))
+    _, observed = data.agent("joined", ResearchNodeKind.HYPOTHESIS_PROPOSAL, {},
+        subkind=ResearchNodeSubkind.SYNTHESIS, inputs=inputs)
+    observed["request"]["schema_version"] = 26
+    if tamper == "missing": observed["request"]["input_artifacts"].pop()
+    if tamper == "failed": data.attempts[-2]["terminal_reason"] = "FAILED"
+    if tamper == "foreign": data.attempt_payloads["wing-BACKWARD"]["request"]["task_context"]["key"]["cycle"] = 2
+    if tamper == "changed": data.attempt_payloads["wing-BACKWARD"]["response"]["typed_candidate"]["summary"] = "changed"
+    audit = _Audit(data.run_id, data.attempts, data.attempt_payloads, data.facts,
+        data.fact_payloads, data.transitions, data.commands)
+    if tamper is None: audit.proposal_join("joined")
+    else:
+        with pytest.raises(ValueError): audit.proposal_join("joined")
+
+
 @pytest.mark.parametrize("change", [None, "target", "direction", "parse_rule"])
 def test_batch_measurement_uses_typed_decimal_equivalence_but_rejects_scientific_changes(change):
     from test_measurement_contract import declaration

@@ -46,6 +46,51 @@ def _packet(ref, papers):
         "content_base64": base64.b64encode(json.dumps({"papers": papers}).encode()).decode()}
 
 
+def test_reading_projection_counts_commands_separately_from_retries_and_waits(tmp_path):
+    rows = [_attempt("parent", node="LITERATURE_REVIEW", state="OPEN"),
+        _attempt("bad", node="PAPER_READ", command_id="reader-1", reason="FAILED"),
+        _attempt("good", node="PAPER_READ", command_id="reader-1", start=30)]
+    rows[1]["attempt_ordinal"], rows[2]["attempt_ordinal"] = 1, 2
+    commands = [{"command_id": identity, "request_json": json.dumps({
+        "task_context": {"expert_slot": "scientist"},
+        "paper_reading": {"reading_id": identity, "parent_attempt_id": "parent"}})}
+        for identity in ("reader-1", "reader-2", "reader-3")]
+    commands.append({"command_id": "cancel", "request_json": json.dumps({"cancel_paper_reading": "reader-3"})})
+    result = _summary(tmp_path, attempts=rows, reading_commands=commands, transitions=[_transition(1)])
+    readers = result["experts"][0]["parallel_activity"]["readers"]
+    assert readers["tasks"] == 3 and readers["attempts"] == 2
+    assert readers["states"] == {"queued": 1, "running": 0, "completed": 1, "failed": 0, "cancelled": 1, "unknown": 0}
+    assert readers["calls"]["unknown_attempts"] == 3
+    assert readers["calls"]["rejected"] == 0  # An unobserved lower bound, not zero errors.
+
+
+def test_current_proposal_counts_use_the_request_limit_and_two_wings(tmp_path):
+    inputs = [{"ref": "config--expert-config", "media_type": "application/json",
+        "content_base64": base64.b64encode(json.dumps({"effective_max_forks": 2}).encode()).decode()}]
+    rows = [_attempt(name, node="HYPOTHESIS_PROPOSAL", subkind=name, state="OPEN", chain=None, inputs=inputs)
+        for name in ("FORWARD", "BACKWARD")]
+    value = _summary(tmp_path, attempts=rows)["experts"][0]
+    proposal, = value["parallel_activity"]["proposals"]
+    assert value["active_chains"] == value["hypotheses"] == proposal["accepted_candidates"] == 0
+    assert proposal["candidate_limit"] == 2
+    assert {stage["subkind"] for stage in proposal["stages"]} == {"FORWARD", "BACKWARD"}
+    assert value["parallel_activity"]["readers"]["tasks"] == 0
+
+
+def test_open_process_keeps_chain_active_and_deduplicates_its_execution_agent(tmp_path):
+    creation = _transition(1, kind="EXPERIMENT", identity="exp", payload={
+        "role": "scientist", "component_id": "primary.score", "expert_cycle": 2, "chain": "mechanism"})
+    creation["command_type"] = "CREATE_EXPERIMENT"
+    process = {"kind": "PROCESS", "attempt_id": "cpu", "run_id": "r", "workflow_id": "exp",
+        "state": "OPEN", "started_at": 10, "ended_at": None}
+    result = _summary(tmp_path, transitions=[creation], attempts=[process])
+    assert result["experts"][0]["active_chains"] == result["totals"]["active_chains"] == 1
+    agent = _attempt("execution", node="EXPERIMENT_EXECUTION", state="OPEN",
+        component="primary.score", cycle=2, chain="mechanism")
+    result = _summary(tmp_path, transitions=[creation], attempts=[process, agent])
+    assert result["experts"][0]["active_chains"] == result["totals"]["active_chains"] == 1
+
+
 def test_logical_retry_cost_reuses_closed_accounting_and_separates_reservations(tmp_path):
     rows = [_attempt("failed", command_id="design", reason="FAILED"),
             _attempt("good", command_id="design", start=25),

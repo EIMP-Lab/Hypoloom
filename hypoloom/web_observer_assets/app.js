@@ -909,6 +909,31 @@
     });
     if (!stages.length) activity.append(element("p", "panel-copy", "Current stage unavailable; open the expert history for retained evidence."));
     parent.append(activity);
+    const parallel = object(summary.parallel_activity);
+    if (Object.keys(parallel).length) {
+      const counts = element("div", "expert-parallel-work");
+      counts.setAttribute("aria-label", "Hypotheses, proposal tasks and reading assistants");
+      counts.append(element("p", "panel-copy", `Active research chains: ${summary.active_chains ?? "?"} / ${parallel.chain_limit ?? "?"}`));
+      list(parallel.proposals).forEach((proposal) => {
+        const admitted = `${proposal.accepted_candidates ?? "?"} accepted`;
+        counts.append(element("p", "panel-copy", `${proposal.component_id} · cycle ${proposal.cycle} · hypotheses: ${admitted} / limit ${proposal.candidate_limit ?? "?"}`));
+        if (!list(proposal.stages).length) return;
+        const wings = element("p", "panel-copy proposal-wings");
+        ["FORWARD", "BACKWARD", "SYNTHESIS"].forEach((name) => {
+          const stage = list(proposal.stages).find((item) => item.subkind === name);
+          const value = !stage ? "not dispatched" : stage.terminal_reason === "SUCCEEDED" ? "accepted"
+            : stage.operational_status === "recovery_exhausted" ? "failed · recovery ended" : stage.terminal_reason || stage.state;
+          wings.append(element("span", "", `${name}: ${value}${stage?.attempts > 1 ? ` (${stage.attempts} attempts)` : ""} · `));
+        });
+        counts.append(wings);
+      });
+      const readers = object(parallel.readers), statuses = object(readers.states), calls = object(readers.calls);
+      counts.append(element("p", "panel-copy", `Reading assistants: ${readers.tasks ?? "?"} tasks · ${readers.attempts ?? "?"} attempts · queued ${statuses.queued ?? "?"} · running ${statuses.running ?? "?"} · completed ${statuses.completed ?? "?"} · failed ${statuses.failed ?? "?"} · cancelled ${statuses.cancelled ?? "?"}${statuses.unknown ? ` · unknown ${statuses.unknown}` : ""}`));
+      const prefix = calls.unknown_attempts ? "≥" : "";
+      counts.append(element("p", "panel-copy reading-tool-observation", `Reading tool: ${prefix}${calls.calls ?? "?"} calls · ${prefix}${calls.rejected ?? "?"} rejected${calls.unknown_attempts ? ` · ${calls.unknown_attempts} attempt traces incomplete/unavailable` : ""}${calls.unanswered ? ` · ${calls.unanswered} results unobserved` : ""}`));
+      list(calls.observed_wait_reasons).forEach((reason) => counts.append(element("p", "panel-copy", `Recorded reading wait: ${reason} · may have changed`)));
+      parent.append(counts);
+    }
   }
 
   function workingTilePhase(attemptId) {

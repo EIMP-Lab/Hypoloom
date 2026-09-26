@@ -394,6 +394,8 @@ def _experiment_records(facts, transitions, agents, experts):
             payload = _payload(row)
             record = experiments.setdefault(row["workflow_id"], {})
             record["state"] = row["state"]
+            if row.get("command_type") == "CREATE_EXPERIMENT" and payload.get("chain") is not None:
+                record["chain_identity"] = (payload.get("component_id"), payload.get("expert_cycle"), payload["chain"])
             role = payload.get("role") or payload.get("proposer_role") or owners.get(payload.get("component_id"))
             if role:
                 record["role"] = role
@@ -460,8 +462,71 @@ def _chain_coverage(nodes, stages, chains):
     return "partial" if missing and chains else "unavailable" if missing else "complete"
 
 
+def _parallel_activity(role, agents, stages, nodes, commands, contract, run_active, reliability):
+    from .agent_budget import agent_attempts_exhausted
+    from .paper_reading import reading_state
+    from .observer_details import decode_embedded_content
+    from .expert_batch import batch_limits
+
+    by_id = {row["attempt_id"]: row for row, _, _ in agents}
+    by_command = defaultdict(list)
+    for row, _, request in agents:
+        by_command[request.get("command_id", row.get("command_id"))].append(row)
+    commands = [(row["command_id"], json.loads(row["request_json"])) for row in commands]
+    cancelled = {value["cancel_paper_reading"] for _, value in commands if "cancel_paper_reading" in value}
+    readers = []
+    for command_id, value in commands:
+        job = value.get("paper_reading")
+        if job is None or value.get("task_context", {}).get("expert_slot") != role: continue
+        rows = sorted(by_command[command_id], key=lambda row: row.get("attempt_ordinal", 0))
+        parent = by_id.get(job["parent_attempt_id"])
+        budget = contract.get("budget", {})
+        # Legacy missing retry limits are unknown; do not guess Host defaults.
+        exhausted = (agent_attempts_exhausted(contract, rows, model_fallback=1, infrastructure_fallback=1)
+            if all(budget.get(key) is not None for key in ("max_retries", "max_infrastructure_retries")) else None)
+        status = reading_state(rows, cancelled=command_id in cancelled, run_active=run_active,
+            parent_active=parent is not None and parent["state"] == "OPEN", exhausted=exhausted)
+        readers.append({"command_id": command_id, "status": status, "attempts": len(rows)})
+    traces = [attempt["trace"] for node in reliability for attempt in node["attempts"]]
+    calls = {key: sum(trace.get("reading_calls", {}).get(key, 0) for trace in traces)
+             for key in ("calls", "rejected", "unanswered")}
+    calls["unknown_attempts"] = sum(trace.get("coverage") != "complete" for trace in traces)
+    calls["observed_wait_reasons"] = sorted({trace["reading_calls"]["last_wait_reason"] for trace in traces
+        if trace.get("reading_calls", {}).get("last_wait_reason") is not None})
+    cycles = {}
+    for stage in stages:
+        if stage["component_id"] is not None and stage["cycle"] is not None:
+            cycles[stage["component_id"]] = max(cycles.get(stage["component_id"], 0), stage["cycle"])
+    proposals = [stage for stage in stages if stage["cycle"] == cycles.get(stage["component_id"])
+        and stage["node"] == "HYPOTHESIS_PROPOSAL"]
+    limits = {}
+    for _, _, request in agents:
+        key = (request.get("task_context") or {}).get("key") or {}
+        if request.get("role") != role or key.get("cycle") is None or key.get("cycle") != cycles.get(request.get("component_id")): continue
+        for item in request.get("input_artifacts", ()):
+            if str(item.get("ref", "")).endswith("--expert-config"):
+                config = decode_embedded_content(item)
+                if isinstance(config, str):
+                    try: config = json.loads(config)
+                    except ValueError: continue
+                if isinstance(config, dict):
+                    component = request.get("component_id")
+                    limits[component] = config.get("effective_max_forks")
+    try: chain_limit = batch_limits(contract, role)["parallel_chains"] if contract else None
+    except (ValueError, KeyError, TypeError): chain_limit = None
+    return {"cycle": max(cycles.values(), default=0), "chain_limit": chain_limit,
+        "proposals": [{"component_id": component, "cycle": cycle,
+            "accepted_candidates": len([node for node in nodes if node.get("component_id") == component and node.get("cycle") == cycle]),
+            "candidate_limit": limits.get(component),
+            "stages": [stage for stage in proposals if stage["component_id"] == component]} for component, cycle in sorted(cycles.items())],
+        "readers": {"tasks": len(readers), "attempts": sum(item["attempts"] for item in readers),
+            "states": {status: sum(item["status"] == status for item in readers)
+                       for status in ("queued", "running", "completed", "failed", "cancelled", "unknown")},
+            "calls": calls}}
+
+
 def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions,
-                      attempts, experts, graph, observed_at, created_at=None) -> dict[str, Any]:
+                      attempts, experts, graph, observed_at, created_at=None, reading_commands=()) -> dict[str, Any]:
     """Build all-run counts from complete transaction rows, never event pages."""
     from .observer_details import skill_catalog
     from .observer_reliability import build_reliability, summarize_reliability
@@ -530,6 +595,13 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         own_activity = [item["ended_at"] or item["started_at"] for item in own_stages]
         hypothesis_ids = {node["hypothesis_id"] for node in nodes}
         experiment_ids = {identity for identity, item in experiments.items() if item.get("role") == role}
+        own_processes = [row for row in attempts if row.get("kind") == "PROCESS"
+            and (row.get("experiment_id") or row.get("workflow_id")) in experiment_ids]
+        active_chains = {(stage["component_id"], stage["cycle"], stage["chain"]) for stage in own_stages
+            if stage["state"] == "OPEN" and stage["chain"] is not None}
+        active_chains.update(experiments[row.get("experiment_id") or row["workflow_id"]]["chain_identity"]
+            for row in own_processes if row["state"] == "OPEN"
+            and "chain_identity" in experiments[row.get("experiment_id") or row["workflow_id"]])
         for row in (*facts, *transitions):
             payload = _payload(row)
             if (payload.get("proposer_role") == role or payload.get("role") == role
@@ -542,13 +614,14 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         expert_values.append({"role": role, "cycle": max((item["cycle"] or 0 for item in own_stages), default=0),
             "accounting": _token_accounting(own_stages),
             "context_recovery": _context_accounting(own_stages),
-            "activity": _current_activity(own_stages, [row for row in attempts if row.get("kind") == "PROCESS"
-                and (row.get("experiment_id") or row.get("workflow_id")) in experiment_ids], observed),
+            "parallel_activity": _parallel_activity(role, agents, own_stages, nodes, reading_commands,
+                goal.get("research_contract", {}), bool(run_rows) and run_rows[-1]["state"] == "ACTIVE", reliability_by_role[role]),
+            "activity": _current_activity(own_stages, own_processes, observed),
             "reliability": summarize_reliability(reliability_by_role[role],
                 include_nodes=False, include_groups=True),
             "stages": _visible_stages(own_stages), "hypotheses": len({item["hypothesis_id"] for item in nodes}),
             "chains": chains, "chain_coverage": _chain_coverage(nodes, own_stages, chains),
-            "active_chains": sum(any(stage["state"] == "OPEN" for stage in chain["stages"]) for chain in chains),
+            "active_chains": len(active_chains),
             "experiments": _experiment_counts(experiments, role), "literature": _literature_counts(literature, role),
             "skills": _skill_counts(skills, role), "evolutions": _evolutions(agents, role),
             "leader": _interaction_counts(leaders, role), "debate": _interaction_counts(debates, role),

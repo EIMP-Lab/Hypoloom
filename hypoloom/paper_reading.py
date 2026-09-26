@@ -18,6 +18,19 @@ from .domain import AgentCommand, AttemptTerminalReason
 from .lifecycle import Command, RunState
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, task_context_from_dict
 from .profile_v4 import request_literature_tools, request_node_runtime
+from .paper_sources import admitted_source
+
+
+def reading_state(attempts, *, cancelled, run_active, parent_active, exhausted):
+    """Shared read projection; unknown retry coverage must not imply zero work."""
+    if any(a["state"] == "OPEN" for a in attempts): return "running"
+    if cancelled: return "cancelled"
+    if attempts and attempts[-1]["terminal_reason"] == "SUCCEEDED": return "completed"
+    if not run_active or not parent_active: return "cancelled"
+    if not attempts: return "queued"
+    if callable(exhausted): exhausted = exhausted()
+    if exhausted is None: return "unknown"
+    return "failed" if exhausted else "queued"
 
 
 class PaperReadingHost:
@@ -66,24 +79,28 @@ class PaperReadingHost:
             if not isinstance(readings, list) or not 1 <= len(readings) <= 32:
                 raise AgentACIError("tool_arguments", "submit requires 1..32 selected source/questions")
             workspace = getattr(self.host.running_agents.get(request.attempt_id), "tool_workspace", None)
-            sources = {s["source_ref"]: s for s in getattr(getattr(workspace, "papers", None), "sources", [])}
+            sources = getattr(getattr(workspace, "papers", None), "sources", [])
             seen = set(); existing = {row["request"]["paper_reading"]["reading_id"]: row for row in self.rows(request.attempt_id)}
             if len(existing.keys() | {str(item.get("reading_id")) for item in readings if isinstance(item, Mapping)}) > 32:
                 raise AgentACIError("tool_arguments", "at most 32 selected reading questions per parent Attempt")
             admitted = []
-            for item in readings:
-                if (not isinstance(item, dict) or set(item) != {"reading_id", "paper_ref", "question"}
-                        or not isinstance(item["reading_id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", item["reading_id"])
-                        or not isinstance(item["question"], str) or not 1 <= len(item["question"].strip()) <= 4000 or "\x00" in item["question"]
-                        or not isinstance(item["paper_ref"], str) or item["paper_ref"] not in sources
-                        or item["reading_id"] in seen):
-                    raise AgentACIError("tool_arguments", "each reading needs a unique ID, admitted source_ref and concrete bounded question")
+            for index, item in enumerate(readings):
+                prefix = f"readings[{index}]: "
+                if not isinstance(item, dict) or set(item) != {"reading_id", "paper_ref", "question"}:
+                    raise AgentACIError("tool_arguments", prefix + "supply exactly reading_id, paper_ref and question")
+                if not isinstance(item["reading_id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", item["reading_id"]):
+                    raise AgentACIError("tool_arguments", prefix + "reading_id must be 1..64 letters/digits/_.-, starting with a letter or digit")
+                if item["reading_id"] in seen:
+                    raise AgentACIError("tool_arguments", prefix + "reading_id duplicates another item in this submission; use a unique ID for each question")
+                if not isinstance(item["question"], str) or not 1 <= len(item["question"].strip()) <= 4000 or "\x00" in item["question"]:
+                    raise AgentACIError("tool_arguments", prefix + "question must contain 1..4000 nonempty characters without NUL")
+                source = admitted_source(sources, item["paper_ref"])
                 seen.add(item["reading_id"])
                 value = {**item, "parent_attempt_id": request.attempt_id}
                 if item["reading_id"] in existing:
                     if existing[item["reading_id"]]["request"]["paper_reading"] != value:
                         raise AgentACIError("reading_id_conflict", "reading_id already names a different source/question")
-                else: admitted.append((value, sources[item["paper_ref"]]))
+                else: admitted.append((value, source))
             with self.host.store.transaction() as tx:
                 ordinal = len(self.rows()) + 1
                 for value, source in admitted:
@@ -110,16 +127,11 @@ class PaperReadingHost:
     def _state(self, row, cancelled):
         task = task_context_from_dict(row["request"]["task_context"])
         attempts = self.host._expert_attempts(task)
-        if any(a["state"] == "OPEN" for a in attempts): return "running", attempts
-        if row["command_id"] in cancelled: return "cancelled", attempts
-        if attempts and attempts[-1]["terminal_reason"] == "SUCCEEDED": return "completed", attempts
-        if self.host.store.latest_transition(row["run_id"])["state"] != "ACTIVE": return "cancelled", attempts
         parent = self.host.store.get_attempt(row["request"]["paper_reading"]["parent_attempt_id"])
-        if parent is None or parent["state"] != "OPEN" or parent["host_generation"] != self.host.generation:
-            return "cancelled", attempts
-        if attempts and self.host._agent_attempts_exhausted(self.host._research_contract(row["run_id"]), attempts):
-            return "failed", attempts
-        return "queued", attempts
+        return reading_state(attempts, cancelled=row["command_id"] in cancelled,
+            run_active=self.host.store.latest_transition(row["run_id"])["state"] == "ACTIVE",
+            parent_active=parent is not None and parent["state"] == "OPEN" and parent["host_generation"] == self.host.generation,
+            exhausted=lambda: self.host._agent_attempts_exhausted(self.host._research_contract(row["run_id"]), attempts)), attempts
 
     def reason(self, request):
         if datetime.fromisoformat(request.deadline.replace("Z", "+00:00")) <= datetime.now(timezone.utc): return "parent_deadline"

@@ -169,7 +169,7 @@ def test_native_source_error_is_corrected_in_same_attempt_before_cpu_closure(tmp
         observations = [json.loads(raw) for raw, in connection.execute(
             "SELECT observation_json FROM execution_attempts WHERE kind='AGENT'")]
     grounding, = [item for item in observations if item["request"]["command"] == "GROUNDING"]
-    assert grounding["request"]["schema_version"] == 25
+    assert grounding["request"]["schema_version"] == 26
     assert grounding["response"]["typed_candidate"]["web_sources"] == [DOC]
     trace = grounding["diagnostics"]["structured_output_correction"]
     assert trace["status"] == "recovered" and trace["accepted"]

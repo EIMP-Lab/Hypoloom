@@ -2,6 +2,15 @@
 
 English · [简体中文](architecture.zh-CN.md)
 
+ACI 26 schedules FORWARD/BACKWARD through existing task/Attempt identities with
+a narrow same-proposal overlap exception. SYNTHESIS joins accepted responses;
+retries retain the successful wing and final failure drains the sibling. First
+FORWARD inputs remain the source of Leader advice. Existing sessions, budgets,
+publication validators and Oracle checks own the boundaries. Source-reference
+lookup is shared by document reuse and reading submission; reader/argument counts
+are read projections over existing records, not another task store.
+See [reading and proposals](guides/reading-and-proposals.md).
+
 ACI 25 separates persistent research workspaces from bounded model sessions.
 New tasks reconstruct from frozen facts, summaries and indexed sources; eligible
 same-task corrections retain their archived session. The relay checks a shared

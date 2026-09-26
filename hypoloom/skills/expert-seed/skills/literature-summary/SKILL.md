@@ -12,6 +12,12 @@ only the exact allowed source references; missing retrieval is not permission to
 invent papers, results or quotations. Explain relevance to this expert's focus,
 compare methods and limitations, and identify a discriminating next experiment.
 
+When recommending follow-up hypotheses, distinguish independently falsifiable
+mechanisms from ordinary hyperparameter variants. Explain whether the available
+evidence supports several affordable independent tests or one focused candidate
+in the existing summary. Candidate and active-chain limits are ceilings; the
+FORWARD/BACKWARD argument tasks are not separate scientific hypotheses.
+
 Start from the current question and relevant previous hypotheses, experiment
 results, queries and reading notes. Reuse a source/note when its version and
 question still apply. Failed transport is not evidence that no literature
@@ -37,6 +43,16 @@ and synthesize the comparison. A newly discovered prerequisite goes back to you
 for a dependent follow-up, not recursive delegation. When no reader is active
 and wait reports capacity/budget/backoff, cancel unstarted work and read serially
 or report the limitation. Collect or cancel all readers before finishing.
+
+Copy the returned `source_ref` into `paper_ref`; do not substitute a URL or DOI.
+For example, after `web_fetch(mode="document", url=...)` returns an available
+document, call `read_papers(action="submit", readings=[{"reading_id":"method-check",
+"paper_ref":RETURNED_SOURCE_REF,"question":"Which assumptions support this method?"}])`.
+Submit takes only `action` and `readings`, without `wait_for_completion`. Inspect
+`read_papers(action="status")`, collect with `read_papers(action="wait",
+max_wait_seconds=10)`, or cancel with `read_papers(action="cancel")`.
+Correct the specific field reported by a tool error; a rejected submission has
+not created readers. Existing entries in `/papers/INDEX.md` can be used directly.
 
 Record why the search/read followed the prior result, the source/version/pages,
 the useful finding, its limits and the next unresolved question in the ordinary

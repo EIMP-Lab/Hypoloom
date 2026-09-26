@@ -141,6 +141,48 @@ def _submit(host, parent, ref, count=5):
         for i in range(count)]})
 
 
+def test_rejected_reading_calls_can_be_corrected_without_partial_admission(reading_host):
+    from hypoloom.host_tools_server import _arguments
+    host, parent, ref, held, finish = reading_host
+    item = {"reading_id": "method-check", "paper_ref": DOC, "question": "Which coefficient is used?"}
+    arguments = {"action": "submit", "readings": [item], "wait_for_completion": "private-value"}
+    with pytest.raises(ValueError) as error:
+        _arguments("read_papers", arguments)
+    assert "wait_for_completion" in str(error.value) and "action=wait" in str(error.value)
+    assert "private-value" not in str(error.value)
+    arguments.pop("wait_for_completion")
+    with pytest.raises(AgentACIError, match='web_fetch\\(mode="document"'):
+        host.handle_agent_tool(parent.attempt_id, "read_papers", _arguments("read_papers", arguments))
+    assert not host.paper_reading.rows(parent.attempt_id)
+    arguments["readings"] = [{**item, "paper_ref": ref}, {**item, "reading_id": "second"}]
+    with pytest.raises(AgentACIError):
+        host.handle_agent_tool(parent.attempt_id, "read_papers", arguments)
+    assert not host.paper_reading.rows(parent.attempt_id)
+    arguments["readings"] = [{**item, "paper_ref": ref}]
+    host.handle_agent_tool(parent.attempt_id, "read_papers", arguments)
+    host.handle_agent_tool(parent.attempt_id, "read_papers", arguments)
+    assert len(host.paper_reading.rows(parent.attempt_id)) == 1
+    host.paper_reading.tick()
+    readers = [pair for pair in held.values() if pair[0].command is AgentCommand.PAPER_READ]
+    assert len(readers) == 1
+    finish(*readers[0])
+    status = host.paper_reading.status(parent)
+    assert status["terminal"] and status["readings"][0]["status"] == "completed"
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"reading_id": "not a valid ID"}, "reading_id must"),
+    ({"question": " "}, "question must"),
+    ({"unexpected": True}, "supply exactly"),
+])
+def test_reading_validation_identifies_the_field(reading_host, change, message):
+    host, parent, ref, _, _ = reading_host
+    with pytest.raises(AgentACIError, match=message):
+        host.handle_agent_tool(parent.attempt_id, "read_papers", {"action": "submit", "readings": [
+            {"reading_id": "method-check", "paper_ref": ref, "question": "Which coefficient?", **change}]})
+    assert not host.paper_reading.rows(parent.attempt_id)
+
+
 def test_quarantine_never_dispatches_queued_paper_readers(reading_host):
     host, parent, ref, held, finish = reading_host
     _submit(host, parent, ref, count=3)

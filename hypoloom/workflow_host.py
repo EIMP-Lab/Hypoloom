@@ -44,7 +44,7 @@ from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReas
 from .fake_agent import FakeAgent, FakeAgentMode
 from .execution_workspace import (EXECUTION_WORKSPACE_VERSION, ExecutionWorkspace, ExecutionWorkspaceError, GitTargetBinding, PreparedAgentWorkspace, PreparedExecution, TargetPreparationError, bind_clean_git_target, execution_environment_contract, execution_read_root_projection, verify_downstream_implementation_contracts)
 from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, AuxiliaryTaskView, DerivedWorkState, ExpertLineage, ExpertLineageInput, HypothesisUpdateDisposition, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask, ResearchNodeView, ScientificNodeRefs, _EXPERT_NODE_ORDER, reduce_expert_lineage)
-from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batches
+from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batches, proposal_siblings, sibling_proposal_failed
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
 from .grounding_context import build_grounding_context_bytes
 from .lifecycle import Command, ExperimentState, Machine, RunState, WORKFLOW_DEFINITION_VERSION, validate_transition
@@ -1092,7 +1092,7 @@ class WorkflowHost:
             return int(self.store.inspect(sql, (run_id, "AGENT" if kind == "REVIEW" else kind))[0]["n"]) >= self._effect_capacity(run_id, kind)
         return int(self.store.inspect("SELECT COUNT(*) AS n FROM execution_attempts WHERE state='OPEN'")[0]["n"]) >= 3
     def _participant_busy(self, run_id: str, role: str, *, execution_node_command_id: str | None = None,
-                          component_id: str | None = None, chain: str | None = None) -> bool:
+                          component_id: str | None = None, chain: str | None = None, proposal_task=None) -> bool:
         if self._batch_enabled(run_id) and chain is not None:
             active = self._active_expert_chains(run_id, role)
             if (component_id, chain) not in active and len(active) >= batch_limits(self._research_contract(run_id).document, role)["parallel_chains"]: return True
@@ -1105,7 +1105,10 @@ class WorkflowHost:
                     identity = {} if not creation else json.loads(creation[0]["payload_json"])
                     if identity.get("role") == role and identity.get("component_id") == component_id and identity.get("chain") == chain and identity.get("execution_node_command_id") != execution_node_command_id: return True
             return False
-        return bool(self.store.inspect("SELECT 1 FROM execution_attempts a JOIN workflow_transitions t ON t.workflow_id=a.workflow_id AND t.command_id=a.command_id WHERE a.run_id=? AND a.state='OPEN' AND json_extract(t.payload_json,'$.role')=? AND NOT((a.kind='AGENT' AND a.command_id=COALESCE(?,'')) OR (a.kind='PROCESS' AND EXISTS(SELECT 1 FROM workflow_transitions creation WHERE creation.workflow_id=a.workflow_id AND creation.revision=1 AND json_extract(creation.payload_json,'$.execution_node_command_id')=COALESCE(?,'')))) LIMIT 1", (run_id, role, execution_node_command_id, execution_node_command_id)))
+        busy = self.store.inspect("SELECT a.* FROM execution_attempts a JOIN workflow_transitions t ON t.workflow_id=a.workflow_id AND t.command_id=a.command_id WHERE a.run_id=? AND a.state='OPEN' AND json_extract(t.payload_json,'$.role')=? AND NOT((a.kind='AGENT' AND a.command_id=COALESCE(?,'')) OR (a.kind='PROCESS' AND EXISTS(SELECT 1 FROM workflow_transitions creation WHERE creation.workflow_id=a.workflow_id AND creation.revision=1 AND json_extract(creation.payload_json,'$.execution_node_command_id')=COALESCE(?,''))))", (run_id, role, execution_node_command_id, execution_node_command_id))
+        version = int(self.store.get_run(run_id)["agent_aci_version"])
+        return any(row["kind"] != "AGENT" or not proposal_siblings(proposal_task,
+            (json.loads(row["observation_json"]).get("request", {}).get("task_context") or {}).get("key", {}), version) for row in busy)
     def _busy_gpu_uuids(self, exclude_workflow: str | None = None) -> tuple[str, ...]:
         rows = self.store.inspect("SELECT a.workflow_id,COALESCE(json_extract(f.payload_json,'$.execution_contract.resource_grant'),(SELECT json_extract(t.payload_json,'$.resource_grant') FROM workflow_transitions t WHERE t.run_id=a.run_id AND t.workflow_id=a.workflow_id AND json_extract(t.payload_json,'$.attempt_id')=a.attempt_id AND json_type(t.payload_json,'$.resource_grant')='object')) resource_grant FROM execution_attempts a JOIN research_facts f ON f.run_id=a.run_id AND f.fact_type='ExperimentPreregistered' AND f.execution_id=a.execution_id WHERE a.kind='PROCESS' AND a.state='OPEN'")
         return tuple(sorted({uuid for row in rows if row["workflow_id"] != exclude_workflow and row["resource_grant"] is not None
@@ -1691,91 +1694,9 @@ class WorkflowHost:
         if len(chain) != len(candidates):
             raise OperationalHalt("expert hypothesis lineage is disconnected")
         return tuple(chain)
-    def _drive_expert_proposal(
-        self, run_id: str, component_id: str, role: str, *, cycle: int = 1,
-        parent_hypothesis_id: str | None = None, restart_from_hypothesis: bool = False,
-    ) -> None:
-        contract = self._research_contract(run_id)
-        batch_proposal = self._batch_enabled(run_id) and int(self.store.get_run(run_id)["agent_aci_version"]) >= 17
-        keys = (
-            ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
-                            node_kind=ResearchNodeKind.LITERATURE_REVIEW, subkind=ResearchNodeSubkind.QUERY_PLAN),
-            ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
-                            node_kind=ResearchNodeKind.LITERATURE_REVIEW),
-            ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
-                            node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.FORWARD),
-            ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
-                            node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.BACKWARD),
-            ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=cycle,
-                            node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.SYNTHESIS),
-        )
-        if batch_proposal:
-            history = self._batch_history(run_id, component_id, role)
-            if len(history.batches) >= cycle: return  # An accepted batch is the SYNTHESIS proof, even without a selected tip.
-            if len(history.batches) != cycle - 1: raise OperationalHalt("expert batch proposal is not the next cycle")
-            if cycle == 1:
-                if parent_hypothesis_id is not None: raise OperationalHalt("first batch cannot have a parent")
-            elif (directed := self.interaction.directed_round(run_id, role, component_id, cycle)) is not None:
-                if directed["parent_hypothesis_id"] != parent_hypothesis_id:
-                    raise OperationalHalt("directed successor differs from its accepted parent")
-            elif history.selected_tip is not None:
-                if history.selected_tip["node_id"] != parent_hypothesis_id: raise OperationalHalt("expert successor cycle has the wrong selected parent")
-            elif parent_hypothesis_id is not None or not self._unselected_batch_revision_ready(run_id, component_id, role):
-                raise OperationalHalt("unselected batch successor lacks closed explicit revision")
-        else:
-            lineage = ExpertLineage(run_id=run_id, component_id=component_id, expert_slot=role,
-                cycle=cycle, parent_hypothesis_id=parent_hypothesis_id)
-            chain = self._expert_hypothesis_chain(run_id, component_id, role)
-            if len(chain) > cycle: raise OperationalHalt("expert hypothesis lineage is ahead of its cycle")
-            if cycle > 1 and (len(chain) < cycle - 1 or str(chain[cycle - 2]["hypothesis_id"]) != parent_hypothesis_id):
-                raise OperationalHalt("expert successor cycle has the wrong parent")
-            hypothesis = chain[cycle - 1] if len(chain) == cycle else None
-        if self._expert_success(grounding_plan := AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)) is None:
-            if self._expert_task_exhausted(run_id, grounding_plan):
-                self._record_expert_final_failure(run_id, component_id, role, grounding_plan, "grounding_query_plan_exhausted"); return
-            self._expert_agent_step(run_id, run_id, grounding_plan, contract.role_ids[0], str(contract.components[0].component_id)); return
-        if restart_from_hypothesis:
-            plan = self.interaction.debate.designated_round(run_id, component_id)
-            if (plan is None or not plan.get("restart_from_hypothesis") or (plan["role"], plan["cycle"], plan["parent_hypothesis_id"]) != (role, cycle, parent_hypothesis_id)):
-                raise OperationalHalt("hypothesis-stage restart lacks its actual Debate authorization")
-            # The explicit control resumes at HP. Do not invent CLOSED LR views
-            # for this cycle; FORWARD reads the actual prior LR Attempt instead.
-            task = next((ResearchNodeTask(key=key) for key in keys[2:] if self._expert_success(ResearchNodeTask(key=key)) is None), None)
-            if task is None or any(row["state"] == "OPEN" for row in self._expert_attempts(task)): return
-        elif batch_proposal:
-            grounding = self._expert_grounding_view(run_id)
-            if grounding is None or grounding.state is not DerivedWorkState.CLOSED or not grounding.artifact_ids:
-                task = self._grounding_task(run_id)
-            else:
-                task = next((ResearchNodeTask(key=key) for key in keys if self._expert_success(ResearchNodeTask(key=key)) is None), None)
-                if task is None: raise OperationalHalt("successful SYNTHESIS lacks its atomically accepted batch")
-            if any(row["state"] == "OPEN" for row in self._expert_attempts(task)): return
-        else:
-            decision = reduce_expert_lineage(
-                ExpertLineageInput(
-                    lineage=lineage,
-                    scientific_refs=ScientificNodeRefs(
-                        hypothesis_id=None if hypothesis is None else str(hypothesis["hypothesis_id"]),
-                    ),
-                ),
-                tuple(self._expert_node_view(key) for key in keys),
-                self._expert_grounding_view(run_id),
-            )
-            task = decision.next_task
-            if task is None or decision.task_state is DerivedWorkState.OPEN: return
-        if (isinstance(task, ResearchNodeTask)
-                and task.key.node_kind is ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT):
-            return
-        if self._expert_task_exhausted(run_id, task):
-            code = "grounding_exhausted" if isinstance(task, AuxiliaryTask) else "expert_node_exhausted"
-            self._record_expert_final_failure(run_id, component_id, role, task, code)
-            return
-        dispatch_role = contract.role_ids[0] if isinstance(task, AuxiliaryTask) else role
-        dispatch_component = (str(contract.components[0].component_id)
-                              if isinstance(task, AuxiliaryTask) else component_id)
-        self._expert_agent_step(
-            run_id, run_id, task, dispatch_role, dispatch_component,
-        )
+    def _drive_expert_proposal(self, run_id, component_id, role, **kwargs):
+        from .expert_batch import drive_expert_proposal
+        drive_expert_proposal(self, run_id, component_id, role, **kwargs)
     def _ensure_expert_analysis(self, run_id: str, component_id: str, experiment_id: str | None = None) -> bool:
         contract = self._research_contract(run_id); component = contract.component(component_id)
         if component is None: raise OperationalHalt(f"unknown analysis component {component_id!r}")
@@ -2288,7 +2209,7 @@ class WorkflowHost:
         if command is AgentCommand.LEADER and self._participant_paused(run_id, role, component_id, command.value): return
         if self._at_capacity(run_id) or command is not AgentCommand.PAPER_READ and self._participant_busy(run_id, role,
                 execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
-                component_id=component_id, chain=chain): return
+                component_id=component_id, chain=chain, proposal_task=task): return
         if self._tick_deadline is not None and isinstance(task, ResearchNodeTask) and self._cycle_reports_enabled(run_id):
             if not self._prepare_role_view(run_id, role, task): return
         self._agent_dispatches += 1
@@ -2897,7 +2818,8 @@ class WorkflowHost:
             self._diagnostic_context = {"phase": "agent_observation", "run_id": handle.request.run_id, "command_id": handle.request.command_id, "attempt_id": attempt_id}
             run_head = self.store.latest_transition(handle.request.run_id)
             paused = handle.request.run_id in self.dispatch_errors and run_head["state"] != RunState.STOPPING.value
-            if paused: self.claude_agent_host.cancel(handle)
+            sibling_failed = sibling_proposal_failed(self, handle.request)
+            if paused or sibling_failed: self.claude_agent_host.cancel(handle)
             observation = self.claude_agent_host.poll(handle)
             if observation is None: continue
             progressed = True; self.running_agents.pop(attempt_id, None)
@@ -2919,6 +2841,9 @@ class WorkflowHost:
                 self._agent_failure(handle.request, AttemptTerminalReason.CANCELLED, "run_stopping", retryable=False, details=details, owner_transition=False)
             elif paused:
                 self._agent_failure(handle.request, AttemptTerminalReason.FAILED, "dispatch_paused", retryable=False, owner_transition=False, details={**details, "dispatch_error": dict(self.dispatch_errors[handle.request.run_id]), **({"discarded_response": observation.response.to_dict()} if observation.response is not None else {})})
+            elif sibling_failed:
+                self._agent_failure(handle.request, AttemptTerminalReason.CANCELLED, "proposal_sibling_failed", retryable=False,
+                    owner_transition=False, details={**details, **({"discarded_response": observation.response.to_dict()} if observation.response is not None else {})})
             elif self._run_wallclock_expired(handle.request.run_id):
                 details.update({"discarded_response": observation.response.to_dict()} if observation.response is not None else {}); self._agent_failure(handle.request, AttemptTerminalReason.TIMED_OUT, "profile_wallclock_exhausted", retryable=False, details=details)
             elif observation.response is not None:
@@ -3012,6 +2937,9 @@ class WorkflowHost:
             if proceed and success and preflight_role is not None: hypotheses = {str(row["fact_id"]) for row in tx.list_facts(request.run_id, "HypothesisProposed") if row["payload"].get("component_id") == request.component_id}; origin, record = preflight_origin(request, contract, prepared.attempt_id, hypotheses, preflight_role); tx.append_transition(self._transition_record(tx, request.run_id, request.owner_workflow_id, "EXPERIMENT", Command.REQUEST_RENDEZVOUS, ExperimentState.DRAFTED, payload={"role": request.role, "component_id": request.component_id, "rendezvous_id": origin.rendezvous_id, "rendezvous_origin": record, "rendezvous_request": origin.request(request.run_id).to_dict()}))
         if proceed and success and preflight_role is None: self._accept_agent_response(request, response, review_complete=True)
     def _accept_agent_response(self, request: AgentRequest, response: AgentResponse, *, review_complete: bool = False, diagnostics: Mapping[str, Any] | None = None) -> None:
+        if sibling_proposal_failed(self, request):
+            self._agent_failure(request, AttemptTerminalReason.CANCELLED, "proposal_sibling_failed", retryable=False,
+                owner_transition=False, details={"discarded_response": response.to_dict(), "diagnostics": dict(diagnostics or {})}); return
         if self.paper_reading.defer_response(request, response, review_complete=review_complete, diagnostics=diagnostics): return
         validated = validate_postflight(request, response); self._crash("after_agent_observation_before_close")
         if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and self._tool_execution_enabled(request.run_id):
