@@ -275,12 +275,24 @@ def test_git_timeout_terminates_owned_helper_and_suppresses_prompts(tmp_path, mo
     assert "BatchMode=yes" in data["env"]["GIT_SSH_COMMAND"]
     for pid in (data["parent"], data["child"]):
         path = Path(f"/proc/{pid}/stat")
-        try:
-            state = path.read_text().split(")", 1)[1].split()[0]
-        except FileNotFoundError:
-            continue
-        if state != "Z":
-            os.kill(pid, signal.SIGKILL)
+        # SIGKILL delivery and procfs removal can lag the waited parent/pipe
+        # closure. Require the helper to disappear or become a zombie within
+        # a short bound; a live helper still fails and is cleaned up.
+        deadline = time.monotonic() + 1
+        while True:
+            try:
+                state = path.read_text().split(")", 1)[1].split()[0]
+            except FileNotFoundError:
+                break
+            if state == "Z":
+                break
+            if time.monotonic() < deadline:
+                time.sleep(0.01)
+                continue
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                break
             pytest.fail(f"version check left a live process: {pid}")
 
 

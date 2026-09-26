@@ -21,6 +21,7 @@ from typing import Any, ClassVar, Mapping, Sequence
 from .agent_aci import AgentACIError, AgentRequest, WorkspaceArtifact
 from .artifacts import AgentArtifactKey, ArtifactPublisher, ArtifactPublication
 from .domain import AgentCommand
+from .context_management import continuation_observation
 from .execution_workspace import GitTargetBinding
 from .expert_batch import BatchHistory
 from .expert_loop import ResearchNodeSubkind, ResearchNodeTask, chain_session_scope
@@ -525,18 +526,75 @@ def archived_web_results(publisher, request, session):
     return transcript_web_results(read_session_archive(publisher, request, session), session_id=session.get("session_id"))
 
 
-def continuation_observation(publisher, prior):
-    from .agent_context import bounded_diagnostic_text
-    from .context_management import recovery_tool_notes
-    observed = json.loads(prior["observation_json"])
-    diagnostic = observed.get("diagnostics") or {}
-    session = observed.get("session") or {}
-    content = read_session_archive(publisher, AgentRequest.from_dict(observed["request"]), session)
-    return {"source_attempt_id": prior["attempt_id"], "terminal_reason": prior["terminal_reason"],
-        "failure_code": observed.get("failure_code"), "provider_failure": diagnostic.get("provider_failure"),
-        "diagnostic": bounded_diagnostic_text(diagnostic.get("provider_diagnostic")),
-        "worktree_commit": session.get("commit"), "previous_tools": recovery_tool_notes(content, session.get("session_id")),
-        "authority": "operational observation only; frozen inputs and accepted facts still govern"}
+def same_frozen_task(previous: AgentRequest, request: AgentRequest) -> bool:
+    def frozen(value):
+        data = value.to_dict()
+        for name in ("attempt_id", "attempt_ordinal", "budget", "deadline"):
+            data.pop(name)
+        correction = ("--agent-retry-diagnostic", "--candidate-validation-error")
+        data["input_artifacts"] = [item for item in data["input_artifacts"] if not item["ref"].endswith(correction)]
+        data["immutable_context_refs"] = [ref for ref in data["immutable_context_refs"] if not ref.endswith(correction)]
+        return data
+    return frozen(previous) == frozen(request)
+
+
+def session_resume_allowed(transaction, request: AgentRequest) -> bool:
+    """A selected/reloaded connection makes later retry history nonportable.
+
+    Reuse the existing operator transition, including reloads without a path.
+    We deliberately keep subsequent retries fresh instead of inventing a
+    connection fingerprint or ordering model-connection changes by wall time.
+    """
+    if request.schema_version < 25: return True
+    return transaction.execute("SELECT 1 FROM workflow_transitions WHERE run_id=? "
+        "AND workflow_kind='RUN' AND json_extract(payload_json,'$.provider_retry_clear') IS NOT NULL LIMIT 1",
+        (request.run_id,)).fetchone() is None
+
+
+def resumable_task_session(request: AgentRequest, prior: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """Derive bounded retry continuity from the preceding durable Attempt only."""
+    if request.schema_version < 25 or request.command in STATELESS_SESSION_COMMANDS | {AgentCommand.DEBATE} or prior is None:
+        return None
+    if (prior.get("state") != "CLOSED" or prior.get("kind") != "AGENT"
+            or prior.get("terminal_reason") not in {"FAILED", "TIMED_OUT"}
+            or prior.get("attempt_ordinal") != request.attempt_ordinal - 1): return None
+    observation = json.loads(prior["observation_json"])
+    if observation.get("retry_class") not in {"MODEL", "INFRASTRUCTURE"}: return None
+    from .agent_context import RETRYABLE_AGENT_FAILURES, candidate_failure_retryable
+    code = observation.get("failure_code")
+    if code not in RETRYABLE_AGENT_FAILURES and not candidate_failure_retryable(code): return None
+    diagnostic = observation.get("diagnostics") or {}
+    failure = diagnostic.get("provider_failure") or {}
+    # Capacity/compaction, empty-output exhaustion, credentials, and quota waits
+    # are not evidence that the old conversation is safe to continue.
+    if failure.get("code") not in {None, "provider_error", "transport_error", "http_error"}: return None
+    previous = AgentRequest.from_dict(observation["request"])
+    if (prior.get("attempt_id"), prior.get("run_id"), prior.get("workflow_id"), prior.get("command_id")) != (
+            previous.attempt_id, request.run_id, request.owner_workflow_id, request.command_id): return None
+    if not same_frozen_task(previous, request): return None
+    session, opened = observation.get("session") or {}, observation.get("session_binding") or {}
+    if (session.get("transcript_complete") is not True or not isinstance(session.get("transcript"), Mapping)
+            or not opened or any(session.get(key) != value for key, value in opened.items())): return None
+    context = diagnostic.get("context") or {}
+    tokens, limit = context.get("last_observed_input_tokens"), context.get("available_input_tokens")
+    exchange = context.get("current_request_exchange")
+    if (context.get("current_request_fits") is not True or exchange is None
+            or type(tokens) is not int or tokens < 0 or type(limit) is not int): return None
+    if exchange != context.get("last_observed_exchange"):
+        # A transport may fail after a measured-prefix request was admitted.
+        # Keep that conservative projection only when its complete usage anchor
+        # is the last observed exchange; a raw byte guess is insufficient.
+        if (context.get("current_request_estimate_source") != "provider_usage_plus_delta_estimate"
+                or context.get("anchor_exchange") != context.get("last_observed_exchange")): return None
+        tokens = context.get("current_request_estimated_input_tokens")
+        if type(tokens) is not int or tokens < 0: return None
+    from .context_management import context_policy
+    # The retry adds its bounded prompt and correction. This eligibility check
+    # leaves headroom; the relay still measures every actual outgoing request.
+    policy = context_policy(request)
+    output = context.get("output_reserve_tokens", 0)
+    if type(output) is not int or output < 0 or tokens + policy["max_inline_input_bytes"] + output > limit: return None
+    return session
 
 
 def retrieved_session_urls(publisher, request, records, attempts, *, real):
@@ -649,8 +707,11 @@ class AgentSessions:
         return errors
 
     @staticmethod
-    def binding(request: AgentRequest) -> dict[str, Any]:
+    def binding(request: AgentRequest, prior: Mapping[str, Any] | None = None, *, allow_resume: bool = True) -> dict[str, Any]:
         task = request.task_context
+        resumed = resumable_task_session(request, prior) if allow_resume else None
+        if resumed is not None:
+            return {key: resumed[key] for key in ("version", "session_id", "parent_session_id", "scope", "chain", "cycle", "branch")}
         transfer = _session_transfer(request)
         if transfer is not None and transfer[0]:
             context = transfer[1]
@@ -722,11 +783,20 @@ class AgentSessions:
         }
 
     def prepare(
-        self, request: AgentRequest, binding: GitTargetBinding | None
+        self, request: AgentRequest, binding: GitTargetBinding | None, *,
+        prior: Mapping[str, Any] | None = None, recovering: bool = False,
+        admitted_binding: Mapping[str, Any] | None = None,
     ) -> PreparedSessionWorkspace:
         if request.schema_version < 11:
             raise ValueError("persistent sessions require ACI 11")
-        descriptor = self.binding(request)
+        descriptor = self.binding(request, prior)
+        if admitted_binding is not None:
+            # OPEN intent fixes the launch even if a later operator control
+            # reloads the connection. Only the normal fresh binding or verified
+            # immediate-predecessor retry binding can have been admitted.
+            if dict(admitted_binding) not in (descriptor, self.binding(request)):
+                raise GitAuthoringIntegrityError("admitted session differs from its task and preceding archive")
+            descriptor = dict(admitted_binding)
         transfer = _session_transfer(request)
         transcript_limit = node_memory_limit(request, "max_transcript_bytes", _MAX_TRANSCRIPT_BYTES)
         common = (
@@ -742,6 +812,19 @@ class AgentSessions:
         root = _directory(common / descriptor["scope"])
         session_root = _directory(root / "projects")
         own_transcript = session_root / f"{descriptor['session_id']}.jsonl"
+        resumed = resumable_task_session(request, prior)
+        if resumed is not None and resumed["session_id"] != descriptor["session_id"]:
+            resumed = None
+        if resumed is not None:
+            original = AgentRequest.from_dict(json.loads(prior["observation_json"])["request"])
+            archived = read_session_archive(self.publisher, original, resumed)
+            if not archived or not _validate_transcript(archived, descriptor):
+                raise GitAuthoringIntegrityError("task retry requires its complete published transcript")
+            if own_transcript.exists():
+                if not recovering and _regular(own_transcript, transcript_limit) != archived:
+                    raise GitAuthoringIntegrityError("task transcript differs from its preceding published archive")
+            else:
+                _write_new(own_transcript, archived)
         source_content = None
         retained_source = None
         if transfer is not None and (transfer[0] or request.command not in _INNER or request.schema_version >= 24):

@@ -113,7 +113,11 @@ def test_registered_bwrap_cpu_retains_binding_across_service_sigkill_restart(ser
     handle = runner.start(request, before_exec=register)
     try:
         assert registered == [handle.pgid]
-        _await(lambda: (tmp_path / "output/executed").exists(), "bwrap CPU did not execute")
+        # Creation precedes write_text's completed write. Observe the actual
+        # workload result before treating the child as ready for service death.
+        _await(lambda: (tmp_path / "output/executed").exists()
+               and (tmp_path / "output/executed").read_text() == "49995000",
+               "bwrap CPU did not finish its calculation")
         assert (tmp_path / "output/executed").read_text() == "49995000"
         assert process_group_exists(handle.pgid)
         assert audit_gpu_pool(service.root)["ok"]

@@ -2,11 +2,208 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — measured context and task continuation, 2026-09-26
+
+ACI-25 / `claude-code-bwrap/63` repairs the reproduced ACI-24 Grounding
+regression. Unchanged request history uses complete observed usage plus bounded
+new-text estimates, or an already available matching provider count. Unknown
+input remains explicitly estimated; independent byte/time/request/total-token
+and cost limits remain. Current-request estimates and last successful measured
+input have separate exchange identities in monitoring and support exports.
+
+The existing OPEN session binding admits eligible same-task correction or
+transport retries, with complete archives, unchanged sources and capacity
+headroom. Capacity/compaction failure, new tasks and connection reloads use fresh
+sessions. Existing Git, source publications and tool transcripts provide bounded
+continuation observations and Grounding draft locations. The optional capacity
+advisory reuses the native output socket without granting tool permission or
+accepting output. No new fact store, checkpoint or mandatory paid summary exists.
+
+Evidence stays in `.local/qualification/context-regression-20260926/` and the
+capacity-specific `.local/qualification/context-capacity-20260926/`. The original
+report ZIPs and historical runs remain at their original paths, read-only.
+The four complete request/usage pairs recoverable from the two private reports
+all fit the unchanged 205568-token input allowance after measured-prefix
+projection. A read-only replay of 17 successful historical GLM/MiMo Attempts
+covers 235 requests: 82 formerly refused low-usage requests project within the
+limit, but only 38 are reachable before the first refusal latch in that replay.
+All 81 genuinely above-limit observations remain refused. This is not evidence
+that 82 whole requests or 17 new-model tasks would now complete. Four historical
+count responses do not match the following complete input and are not borrowed.
+
+The native tests use the real Host/CLI and a scripted local provider; their
+synthetic usage proves the mechanism, not real-provider token accuracy. The CLI
+also moves known ephemeral cache annotations across multi-text and tool-result
+blocks. Four failing measurement regressions preceded the narrow normalization fix; actual wire content, order, tool identities and thinking
+signatures remain unchanged. The original long-discovery ninth request had
+214575 input bytes; the repaired projection uses 16786 estimated input tokens
+and forwards it. Actual Grounding performs 14 source reads, preserves three
+drafts and 12 bounded tool observations, then reconstructs, reads and repairs
+the evaluator without repeating discovery. The accepted evaluator produces
+0.75 on each suite in a real CPU Process. Ordinary MODEL correction separately
+resumes its complete archived session, charges only the new invocation's usage,
+and starts subsequent scientific stages with fresh sessions.
+
+The analysis fixture explicitly covers MODEL correction, a resumed first request
+refused without a new relay measurement, and one allowed INFRASTRUCTURE fresh
+rebuild. It reads the original correction source and completes the existing CPU
+result path. Zero infrastructure retries still disables that reconstruction;
+no default window, retry allowance or user Profile is enlarged.
+
+Initial focused verification passes 324 checks. Six selected native roots are
+independently counted as 67 closed Agent Attempts and six actually spawned CPU
+Processes, with clean Oracles and no duplicate outcomes, pending effects, live
+owned groups or sockets. Original fixture assertion failures are retained and
+identified separately: a wrong terminal-state field, an offloaded diagnostic
+incorrectly expected inline, and native CLI outer-usage aggregation. Strict
+wire/model-ledger totals, fees, parser checks and scientific acceptance remain.
+The final full G1 invocation passes **6,229 tests, with 26 opt-in skips and
+30 warnings, in 916.90 seconds** using eight workers and a short socket base.
+The original full invocation remains as evidence: 6,199 passed / 25 failed /
+26 skipped. Its failures identify the cache-marker regression, old version and
+always-fresh expectations, the analysis reconstruction budget boundary, the
+existing authority LOC allocation, and two fixture/process-observation races.
+The LOC allocation stays unchanged; context observation formatting reuses the
+existing context module and Host imports are consolidated without removing
+binding checks. All initial non-opt-in identities have passing final evidence.
+
+After the full G1 and paid Hosts exit, the final source change removes one new
+same-task Oracle assertion that incorrectly orders Attempts by wall-clock time.
+The red regression reproduces a legal CLOSED-to-OPEN retry after clock rollback;
+existing transactions, immediate Attempt ordinals, frozen requests and published
+archives establish the order. OPEN predecessors and skipped ordinals remain
+rejected. This is a focused final Oracle repair after the full-suite invocation,
+not a claim that the full suite ran after that last line changed. The final
+focused selection passes **137 tests in 27.80 seconds**, including the new
+clock-step counterexample and the OPEN-predecessor/ordinal negative cases.
+Fifteen earlier native roots are re-audited read-only using the final Oracle:
+193 Agent Attempts / 16 CPU Processes close cleanly, with no pending or duplicate
+effects, owned groups or sockets; original databases are unchanged.
+The final independent selection separately audits ten full-G1 end-to-end roots:
+312 Agent Attempts / 25 actually spawned CPU Processes, all closed with clean
+Oracles and no OPEN Attempts, pending effects, duplicate outcomes, live groups
+or sockets. Together with the two paid roots below, the final census is 12 roots,
+320 Agents and 25 CPU Processes. See `final-independent-audit.json`; earlier
+fixture failures and deliberately OPEN unit-test roots are excluded explicitly.
+Four documentation checks, undefined-name checks and Git whitespace also pass.
+
+Two finite real-model arms use the existing CC `mimo-v2.6-pro` connection, high
+effort/adaptive thinking, the same two-suite Grounding task, USD 8 / 900 seconds
+per arm and USD 2 / 300 seconds / 40 turns per invocation. Total allocation is
+USD 16 / 1800 seconds; only Grounding calls a real model. The baseline has no
+injected fault; the rebuild arm would inject one capacity refusal only after an
+authored evaluator passes its self-test. Other stages use a scripted local
+provider. No configured GLM connection is available; GLM evidence is historical
+request replay only. The protocol and results remain in
+`GROUNDING-PROTOCOL.md`, `model-cohort-analysis.json` and each arm's
+`quality-output.json` under the evidence directory.
+
+| Real Grounding arm | Outcome | Completed request tokens | Unmeasured requests | Accepted evaluator / CPU |
+|---|---|---:|---:|---|
+| Baseline | Two 300-second timeouts; second invocation resumes | 59292 | 2 | No / 0 |
+| Rebuild | Two 300-second timeouts; planned injection never reached | 57069 | 2 | No / 0 |
+
+All ten real generation requests were forwarded and returned HTTP 200; none was
+locally refused for capacity. The resumed first requests use byte estimates
+156517 / 148863, within the unchanged 205568 input allowance. Each arm completes
+seven initial investigation tool calls, then reaches its deadline during a long
+thinking stream; the retry produces no new tool action. This establishes bounded
+timeout closure and an admitted same-task resume for this configuration. **It
+does not establish successful real-model Grounding, post-draft reconstruction
+quality, fewer rereads or cost savings.** Both quality checks fail, with no
+accepted evaluator, parser semantic checks or CPU result. The long-discovery and
+post-draft scientific closure evidence above comes from scripted-provider native
+tests, not these paid arms. These original samples retain their failed quality
+results; the later user-authorized 3000-second follow-up is recorded separately below.
+
+The four Grounding charges each retain a declared USD 2 / 200000-token allowance:
+USD 8 / 800000 tokens is conservative accounting, not observed vendor spend or
+actual total tokens. Six completed responses measure 116361 tokens; four
+interrupted streams lack complete usage. CLI pricing is unknown in every paid
+Attempt and terminal provider accounting is unavailable. Complete native archive
+observation does not imply complete provider billing. The two trial runs reach
+durable COMPLETED with scientific verdict INCONCLUSIVE, closing eight Agent
+Attempts with clean Oracles and no owned process/socket residue.
+An initial driver model-routing assertion failed before any provider request;
+its original root remains separately identified with one durable OPEN Attempt
+and no spawned group/socket, excluded from passing closure counts. A real-CLI,
+all-local model-name probe passes before correcting that test driver and running
+the same two planned science arms. No personal Profile, existing research run,
+GPU resource or public notification is changed. These are bounded development
+samples, not whole-topic G5 or long-horizon scientific-quality qualification.
+
+The historical replay is a capacity-only counterfactual, not a full new-session
+replay. Some large initial requests lack an anchor, and large appended text can
+still be conservatively refused. Earlier complete successful provider usage
+does not establish the next request's exact count. Native compaction remains
+optional; budgets, archive integrity and scientific acceptance remain binding.
+Existing ACI-24 and older runs keep their pinned behavior; no migration or
+restart of a retained run is performed.
+
 Qualification belongs to an exact candidate and environment. Hypoloom retains
 the existing G0–G5 promotion model, runtime oracles and regression fixtures.
 The [test selector](../scripts/qualify.py) runs ordinary pytest selections; its
 exit code is a test result, not an aggregate release decision. A skipped lane,
 missing retained cohort or unfinished cleanup cannot be recorded as passed.
+
+## Current development — 3000-second Grounding follow-up, 2026-09-26
+
+The user authorizes reevaluation with **3000 seconds per Agent invocation**.
+New isolated trials use 9300 seconds per arm, including retry and cleanup
+allowance; an external watchdog is 9360 seconds. Existing CC MiMo selection,
+adaptive/high effort, USD 2 per invocation / USD 8 per arm, 40 turns and
+200000-token observe mode remain. Production defaults, personal Profiles and
+retained research runs are unchanged.
+
+The first time-only sample completes Grounding in **1100.23 seconds**, with no
+capacity refusal or compaction. It then exposes two private-driver defects:
+the task never specified the scripted experiment's per-suite raw label layout,
+so the model chose top-level labels and the actual CPU returned zero/zero with
+`complete=false`; a report fixture also incorrectly required the nonexistent
+ancestor of an explicitly allowed data mount. The root retains its original
+failure and one OPEN report Attempt, with no live OS resources. Consistency is
+not full closure. Evidence: `.local/qualification/grounding-3000s-20260926/`.
+
+The corrected driver states the existing raw shape in TASK and tests the exact
+allowed directory children and hidden private assets while preserving all
+original read-only, role and hidden-path protections. Accepted evaluator bytes
+are compared directly at the expert mount; no new hash or authority is added.
+The old CPU/semantic expectations remain unchanged. A zero-paid positive control
+passes; a negative control actually executes report protection and correctly
+rejects two 0.5 measurements. Together they close 26 Agents and two real CPUs.
+These protocol corrections mean the new pair is not a time-only comparison.
+
+| Corrected real-model arm | Grounding time | Independent semantics / CPU | Completed response tokens |
+|---|---:|---|---:|
+| Baseline | 888.76 s, one invocation | Four cases pass; 0.75 on both suites | 514987 |
+| Rebuild | 387.91 s before injection + 162.72 s after reconstruction | Four cases pass; 0.75 on both suites | 627177 |
+
+The rebuild arm actually injects one capacity refusal after an authored evaluator
+passes its self-test. The new session reads the retained evaluator and smoke
+input before completing. Both real-model quality checks pass, with 23 Agent
+Attempts and two actual CPU Processes closed. All 28 forwarded generation
+responses have complete usage, totaling 1142164 tokens including cache reads;
+the extra locally refused exchange forwards zero bytes. The observation fold
+still labels that local refusal as one unmeasured request, which is not an
+unmetered vendor generation. No native compaction is observed.
+
+The independent four-root census closes **49 Agents / four actual CPUs**: paid
+23/2, local controls 26/2, without OPEN Attempts, pending/duplicate effects,
+owned groups or sockets. Reconstruction uses a distinct session; its third tool
+successfully reads the evaluator, and no subsequent Write/Edit or inspected
+shell command changes it. The first invocation's complete successful Write/Edit
+history reconstructs the same 18358 bytes as the accepted source and actual CPU
+parser. Four documentation checks and Git whitespace checks pass. The original
+protocol-failure root is explicitly excluded from these clean closure totals.
+
+The corrected pair's CLI estimates total approximately USD 2.5063584; every paid
+Attempt reports unknown model pricing. The earlier protocol-failure sample
+separately reports USD 1.1803776 and 606728 tokens. These estimates are not vendor
+bills. One successful recovery sample establishes bounded draft continuity for
+this task, not repeatable cost savings, cross-model quality or long-running
+scientific readiness. GLM has no new live sample. Evidence and original failures
+remain under `.local/qualification/grounding-3000s-contract-20260926/` and the
+preceding directory. No production code is changed by this follow-up.
 
 ## Current development — integrated dev submission, 2026-09-26
 

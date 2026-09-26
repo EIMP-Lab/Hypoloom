@@ -230,6 +230,12 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
             "--timeout-seconds", str(request.budget.wall_seconds)))
         settings.setdefault("hooks", {})["Stop"] = [{"hooks": [{"type": "command",
             "command": command, "timeout": request.budget.wall_seconds}]}]
+        if request.schema_version >= 25:
+            notice_command = shlex.join(("/usr/bin/python3", "/runtime/native_output.py", "--socket", "/output-validation.sock",
+                "--max-bytes", str(max(4 * 1024 * 1024, request.budget.max_output_bytes * 2)),
+                "--timeout-seconds", "2", "--context-notice"))
+            settings["hooks"].setdefault("PreToolUse", []).append({"matcher": "*", "hooks": [{
+                "type": "command", "command": notice_command, "timeout": 3}]})
     settings["autoMemoryEnabled"] = False
     native_tools = ("Read", "Glob", "Grep") if request.command.value == "PAPER_READ" else FULL_CC_TOOLS
     allowed = list(native_tools)
@@ -438,11 +444,21 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "ask the operator only about consequential ambiguity. No local C5 result alone proves the whole goal. "
         )
         if request.command.value == "GROUNDING":
+            if request.schema_version >= 25:
+                common += (
+                    "Inspect retained /acceptance drafts and any work notes before rediscovering their interfaces. "
+                    "During long exploration, keep a concise optional /acceptance/WORK_NOTES.md with paths, validated "
+                    "interfaces, completed checks, unresolved errors and the next step; it is unaccepted working material. "
+                    "Do not declare work notes as parser_files or treat a draft as an accepted evaluator. "
+                )
             return common + (
                 "In the final JSON object, declared_effects is a top-level sibling of typed_candidate, never nested inside it. "
                 "Investigate actual repository, data, runtime and references, reading the persisted --grounding-dialogue. "
                 "When clarification is needed return clarification with question/rationale/options, background=null and "
-                "acceptance=null; the Host waits without a model then resumes this same session after a real answer. "
+                "acceptance=null; " + (
+                    "the Host waits without a model then supplies the persisted dialogue to the next invocation. "
+                    if request.schema_version >= 24 else
+                    "the Host waits without a model then resumes this same session after a real answer. ") +
                 "Once clear, write and actually test/repair an executable common parser under /acceptance. "
                 "Return all seven background fields, clarification=null and acceptance with summary, rule ALL or ANY, "
                 "numeric GT/GE/LT/LE/EQ or IS_TRUE criteria, always-required validity_checks, parser_argv, parser_files "
@@ -683,7 +699,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "When a consequential ambiguity changes the goal, comparison or authority, return clarification with one concise "
                 "question, evidence-based rationale and optional suggested options (free-text answers are always allowed), and "
                 "background=null. Do not invent a complete background to ask a question. Host will close this invocation, "
-                "persist the question and wait without a model process; after the user answers, this same session resumes. "
+                "persist the question and wait without a model process; " + (
+                    "after the user answers, the next invocation receives the persisted dialogue. "
+                    if request.schema_version >= 24 else
+                    "after the user answers, this same session resumes. ") +
                 "Once sufficiently clear, return all seven background fields and clarification=null; document the confirmed "
                 "evaluation intent in how_to_run_experiment. Background completion is not publication of an executable common "
                 "evaluator or proof that the goal is achieved. Do not submit experiments or change the target repository. "

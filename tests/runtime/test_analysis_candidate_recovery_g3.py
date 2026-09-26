@@ -1,9 +1,9 @@
-"""Native analysis corrects an inadmissible ITERATE through the existing retry.
+"""Native analysis preserves MODEL correction through a resumed capacity refusal.
 
 The local scripted provider changes the parser during execution after a valid
 DESIGN sample, submits a wrong frozen local-parser envelope, then
 requests scientific iteration on its operational failure. Real Claude/bwrap,
-Host, CPU collection, retry/session persistence and Oracle own the boundaries.
+Host, CPU collection, resume/fresh recovery and Oracle own the boundaries.
 The common parser independently qualifies the goal; local failure stays failed.
 """
 
@@ -14,7 +14,10 @@ import json
 import secrets
 import tempfile
 import time
+from decimal import Decimal
 from pathlib import Path
+
+import yaml
 
 from hypoloom.agent_aci import WorkspaceArtifact
 from hypoloom.agent_budget import fold_agent_attempts
@@ -22,8 +25,10 @@ from hypoloom.claude_agent_host import _output_schema, process_group_exists
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
 from hypoloom.oracle import Oracle
+from hypoloom.profile_admission import admit_profile
+from hypoloom.provider_observation import read_exchanges
 
-from test_claude_file_tool_cli import _installed_claude, _tool_results, native_output_schema
+from test_claude_file_tool_cli import _installed_claude, _result_text, _tool_results, native_output_schema
 from test_claude_measurement_g3 import _NoPublicWeb
 from test_claude_shared_acceptance_g3 import (
     _AcceptanceScenario, _DECLARATION, _GOAL, _RUN, _common_source,
@@ -44,6 +49,7 @@ class _AnalysisCorrectionScenario(_AcceptanceScenario):
         super().__init__(root, nonce)
         self.rejected_analysis = None
         self.analysis_feedback = {}
+        self.correction_source_reads = set()
 
     def record(self, document):
         request = _request_from_provider(document)
@@ -78,6 +84,13 @@ class _AnalysisCorrectionScenario(_AcceptanceScenario):
                     assert "ITERATE" in feedback["diagnostic_summary"]
                     assert "operational" in feedback["diagnostic_summary"]
                     self.analysis_feedback[request.attempt_id] = feedback
+                    if self.steps[request.attempt_id] > 1:
+                        result = _tool_results(observed)["analysis_correction_source"]
+                        assert not result.get("is_error")
+                        text = _result_text(result)
+                        assert _ERROR in text and self.rejected_analysis in text
+                        assert "ITERATE" in text and "operational" in text
+                        self.correction_source_reads.add(request.attempt_id)
         except Exception as exc:
             self.errors.append(f"analysis correction provider: {type(exc).__name__}: {exc}")
         self.requests[-1] = document
@@ -92,6 +105,11 @@ class _AnalysisCorrectionScenario(_AcceptanceScenario):
             # it in EXECUTION to reach the analysis retry boundary under test.
             calls = (("wrong_local_envelope", "Write", {"file_path": "/workspace/parse_local.py",
                 "content": _common_source(self.nonce)}),)
+        elif (request.command is _ANALYSIS and request.attempt_id != self.rejected_analysis
+                and self.steps[request.attempt_id] == 1):
+            index = next(index for index, item in enumerate(request.input_artifacts)
+                if item.ref == self.rejected_analysis + "--agent-retry-diagnostic")
+            calls = (("analysis_correction_source", "Read", {"file_path": f"/inputs/{index:04d}.txt"}),)
         else:
             calls = super().tool_calls(number)
         if request.command is _ANALYSIS:
@@ -114,7 +132,7 @@ class _AnalysisCorrectionScenario(_AcceptanceScenario):
             for identity, tool, arguments in calls)
 
 
-def test_native_analysis_candidate_retries_same_session_and_preserves_operational_failure(tmp_path):
+def test_native_analysis_correction_survives_resumed_capacity_rebuild_and_preserves_operational_failure(tmp_path):
     nonce = "analysis-correction-" + secrets.token_hex(12)
     scenario = _AnalysisCorrectionScenario(tmp_path, nonce)
     key = "local-analysis-correction-only-" + secrets.token_hex(16)
@@ -128,7 +146,17 @@ def test_native_analysis_candidate_retries_same_session_and_preserves_operationa
     try:
         mount = Path(tempfile.mkdtemp(prefix="prom-analysis-correction-", dir="/var/tmp"))
         evidence["fixture_root"] = str(mount)
-        payload = _payload(tmp_path, mount, roles=(_GOAL,))
+        _payload(tmp_path, mount, roles=(_GOAL,))
+        methodology = tmp_path / "profile/methodology.yaml"
+        document = yaml.safe_load(methodology.read_text())
+        # The correction retries the same logical task/session. Its accumulated
+        # first request has no per-relay usage anchor and reaches the unchanged
+        # capacity bound, so allow exactly one infrastructure reconstruction.
+        document["budget"]["max_infrastructure_retries"] = 1
+        methodology.write_text(yaml.safe_dump(document))
+        admission = admit_profile(tmp_path / "profile", run_id=_RUN, allow_gpu=False)
+        assert admission.admitted, admission.to_dict()
+        payload = admission.create_run_payload
         original = copy.deepcopy(payload)
         host.initialize()
         created = host.handle(ControlRequest(1, "create-analysis-correction", 0, "CREATE_RUN", payload))
@@ -160,32 +188,54 @@ def test_native_analysis_candidate_retries_same_session_and_preserves_operationa
             preregistrations=specs, outcomes=outcomes, assessments=assessments, verdicts=verdicts,
             oracle=audit.to_dict())
         assert not scenario.errors, scenario.errors
-        assert len(analyses) == 2, "operational ITERATE rejection must retry the same analysis command"
-        failed, retry = analyses
+        assert len(analyses) == 3, "MODEL correction must survive one resumed capacity refusal and fresh reconstruction"
+        failed, refused, retry = analyses
         assert failed[0] == first_failed_analysis, "the rejected Attempt remains unchanged after correction"
-        assert [row["terminal_reason"] for row, _ in analyses] == ["FAILED", "SUCCEEDED"]
-        assert [row["attempt_ordinal"] for row, _ in analyses] == [1, 2]
-        assert failed[0]["command_id"] == retry[0]["command_id"]
+        assert [row["terminal_reason"] for row, _ in analyses] == ["FAILED", "FAILED", "SUCCEEDED"]
+        assert [row["attempt_ordinal"] for row, _ in analyses] == [1, 2, 3]
+        assert len({row["command_id"] for row, _ in analyses}) == 1
         assert failed[1]["failure_code"] == _ERROR and failed[1]["retry_class"] == "MODEL"
         assert failed[1]["diagnostics"]["validation_error"]["code"] == _ERROR
         assert failed[1]["diagnostics"]["provider_subtype"] == "success"
         assert failed[1]["returncode"] == 0 and failed[1].get("response") is None
+        assert refused[1]["retry_class"] == "INFRASTRUCTURE"
+        assert refused[1]["failure_stage"] == "context_reconstruction"
+        provider_failure = refused[1]["diagnostics"]["provider_failure"]
+        assert provider_failure["code"] == "context_capacity" and "recovery_action" not in provider_failure
+        exchanges = read_exchanges(tmp_path / "state/diagnostics/agents" / _RUN
+            / refused[0]["attempt_id"] / "provider")
+        generations = [item for item in exchanges if item.get("request_path") == "/v1/messages"]
+        assert generations and all(item["request_bytes_forwarded"] == 0
+            and item["request_body_complete"] is True for item in generations)
+        assert refused[0]["attempt_id"] not in scenario.agent_requests
         assert retry[1]["response"]["typed_candidate"]["iteration_disposition"] == "COMPLETE"
         inner = [observed for _, observed in agents if observed["request"]["command"] in {
             "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
         sessions = {observed["session"]["session_id"] for observed in inner}
-        assert len(sessions) == len(inner)
+        assert len(sessions) == len(inner) - 1
         assert len({observed["session"]["branch"] for observed in inner}) == 1
+        assert refused[1]["session"]["session_id"] == failed[1]["session"]["session_id"]
+        assert retry[1]["session"]["session_id"] != failed[1]["session"]["session_id"]
         for observed in inner:
             if observed["request"]["command"] != "EXPERIMENT_DESIGN_IMPLEMENT":
-                assert observed["session"]["launch_arguments"] == ["--session-id", observed["session"]["session_id"]]
+                expected_launch = "--resume" if observed is refused[1] else "--session-id"
+                assert observed["session"]["launch_arguments"] == [expected_launch, observed["session"]["session_id"]]
         first_request, retry_request = failed[1]["request"], retry[1]["request"]
+        assert retry_request["input_artifacts"] == refused[1]["request"]["input_artifacts"]
         assert first_request["task_context"] == retry_request["task_context"]
         assert first_request["immutable_context_refs"] == retry_request["immutable_context_refs"]
         assert [item for item in retry_request["input_artifacts"]
             if item["ref"] in retry_request["immutable_context_refs"]] == first_request["input_artifacts"]
         correction_ref = failed[0]["attempt_id"] + "--agent-retry-diagnostic"
         assert json.loads(_input(retry_request, correction_ref, immutable=False)) == scenario.analysis_feedback[retry[0]["attempt_id"]]
+        assert scenario.correction_source_reads == {retry[0]["attempt_id"]}
+        prompt = json.loads((tmp_path / "state/diagnostics/agents" / _RUN
+            / retry[0]["attempt_id"] / "prompt.txt").read_text())
+        index = next(index for index, item in enumerate(retry_request["input_artifacts"])
+            if item["ref"] == correction_ref)
+        source = next(item for item in prompt["rendered_inputs"] if item["ref"] == correction_ref)
+        assert source["path"] == f"/inputs/{index:04d}.txt"
+        assert source["size_bytes"] == len(_input(retry_request, correction_ref, immutable=False))
         assert correction_ref not in retry_request["immutable_context_refs"]
         assert len(retry_request["input_artifacts"]) == len(first_request["input_artifacts"]) + 1
         assert outcomes == first_outcomes and len(specs) == len(outcomes) == len(assessments) == len(verdicts) == 1
@@ -246,13 +296,21 @@ def test_native_analysis_candidate_retries_same_session_and_preserves_operationa
                 assert correction_ref.encode() in content and _ERROR.encode() in content
         assert {"mcp__host-tools__submit_experiment", "mcp__host-tools__wait_experiment"} <= {tool["name"] for tool in tools}
         assert any(tool["name"] == "Skill" and tool["input"]["skill"].endswith(":final-report") for tool in tools)
-        assert len(agents) == 12 and len(attempts) == 13
+        assert len(agents) == 13 and len(attempts) == 14
         assert sum(observed["request"]["command"] == "FINAL_REPORT" and row["terminal_reason"] == "SUCCEEDED"
             for row, observed in agents) == 1
         assert all(row["state"] == "CLOSED" for row in attempts)
-        assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts if row["attempt_id"] != failed[0]["attempt_id"])
+        expected_failures = {failed[0]["attempt_id"], refused[0]["attempt_id"]}
+        assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts
+            if row["attempt_id"] not in expected_failures)
         charges = fold_agent_attempts(sorted(attempts, key=lambda row: (row["started_at"], row["attempt_id"])))
-        assert all(charge.source != "declared" for charge in charges), "scripted complete usage remains accounted on rejected output"
+        for charge in charges:
+            if charge.attempt_id == refused[0]["attempt_id"]:
+                budget = refused[1]["request"]["budget"]
+                assert charge.source == "declared" and charge.tokens == budget["max_tokens"]
+                assert charge.turns == budget["max_turns"] and charge.cost == Decimal(budget["max_cost"])
+            else:
+                assert charge.source != "declared", "scripted complete usage remains accounted on rejected output"
         assert audit.ok, audit.to_dict()
         assert audit.artifact_counts["TRANSCRIPT"] == len(agents)
         assert audit.open_attempt_count == audit.pending_effect_count == audit.duplicate_effect_count == 0

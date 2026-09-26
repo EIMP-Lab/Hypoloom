@@ -36,7 +36,7 @@ def test_native_support_copy_explains_tool_repair_and_schema_rejection(tmp_path:
     assert "--json-schema" not in launch["argv"] and "--session-id" in launch["argv"]
     assert "/output-validation.sock" in launch["argv"]
     resumed = json.loads((diagnostic_root / evidence["final_attempts"][1] / "launch.json").read_text())
-    assert "--session-id" in resumed["argv"] and "--resume" not in resumed["argv"]
+    assert "--resume" in resumed["argv"] and "--session-id" not in resumed["argv"]
     assert (failed / "prompt.txt").stat().st_size > 0
     envelope = next(row for row in reversed(_json_lines(failed / "stdout.log")) if row.get("type") == "result")
     assert envelope["subtype"] == "success" and envelope["is_error"] is False

@@ -111,6 +111,22 @@ def test_prior_progress_and_missing_capture_preserve_recovery():
         assert "recovery_action" not in provider_failure(exchanges)
 
 
+@pytest.mark.parametrize("fresh_session", [True, False, None])
+def test_current_initial_refusal_stops_only_proven_fresh_unchanged_retry(fresh_session):
+    policy = context_policy(replace(request24(working_context_tokens=1000), schema_version=25))
+    capacity = request_capacity({"messages": [{"role": "user", "content": "x" * 2000}]}, policy)
+    refused = {"request_path": "/v1/messages", "failure_reason": "context_capacity",
+        "request_bytes_forwarded": 0, "request_body_complete": True, "context_capacity": capacity}
+    assert policy["max_inline_input_bytes"] > policy["minimum_inline_input_bytes"]
+    failure = provider_failure([refused], fresh_session=fresh_session)
+    assert (failure.get("recovery_action") == "input_reconfiguration_required") is (fresh_session is True)
+    progressed = {"request_path": "/v1/messages", "upstream_status": 200,
+        "request_bytes_forwarded": 100, "request_body_complete": True}
+    for exchanges in ([progressed, refused], [{**refused, "request_body_complete": False}],
+            [{**refused, "request_bytes_forwarded": None}], [{**refused, "context_capacity": {}}]):
+        assert "recovery_action" not in provider_failure(exchanges, fresh_session=fresh_session)
+
+
 def test_recovery_cost_order_uses_attempt_ordinals_despite_wall_clock_step(tmp_path):
     first = _attempt("z", command_id="node", start=20, end=25, reason="FAILED")
     second = _attempt("a", command_id="node", start=10, end=15)

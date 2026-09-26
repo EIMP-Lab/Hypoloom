@@ -21,6 +21,8 @@ from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
 from .agent_capabilities import capabilities_for
+from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
+from .context_management import continuation_observation
 from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
@@ -283,17 +285,20 @@ class WorkflowHost:
             if attempt["kind"] == "AGENT":
                 intent = json.loads(attempt["observation_json"]); request = AgentRequest.from_dict(intent["request"])
                 if intent.get("session_binding") is not None:
-                    from .agent_sessions import AgentSessions
                     target = self._run_config(request.run_id)["execution"].get("target")
                     binding = None if not isinstance(target, Mapping) else GitTargetBinding(checkout=Path(str(target["checkout"])), commit=str(target["commit"]))
                     prepared = None
                     try:
-                        prepared = AgentSessions(self.state_root, self.publisher).prepare(request, None if request.command is AgentCommand.PAPER_READ else binding)
+                        previous = [row for row in self.store.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id)
+                            if row["kind"] == "AGENT" and row["attempt_ordinal"] < request.attempt_ordinal]
+                        prepared = AgentSessions(self.state_root, self.publisher).prepare(request, None if request.command is AgentCommand.PAPER_READ else binding,
+                            prior=previous[-1] if previous else None, recovering=True, admitted_binding=intent["session_binding"])
+                        if prepared.binding != intent["session_binding"]:
+                            raise GitAuthoringIntegrityError("recovered session differs from its OPEN binding")
                         from .paper_sources import restore_sources
                         restore_sources(self, prepared)
                         self.agent_session_metadata[request.attempt_id] = {**prepared.finish_node(), "launch_arguments": None, "archive_after_loss": True}
                     except (OSError, ValueError, GitAuthoringPreparationError, GitAuthoringIntegrityError) as exc:
-                        from .agent_sessions import SessionFinishError
                         if isinstance(exc, SessionFinishError):
                             self.agent_session_metadata[request.attempt_id] = {**exc.metadata,
                                 "launch_arguments": None, "archive_after_loss": True}
@@ -1306,7 +1311,6 @@ class WorkflowHost:
             component_id, role = str(component.component_id), component.owner_role
             history = self._batch_history(run_id, component_id, role); batch = history.latest
             if any(item.selection is not None for item in history.batches):
-                from .agent_sessions import AgentSessions
                 AgentSessions(self.state_root, self.publisher).retire_adjudicated_worktrees(
                     history, self.store.list_attempts(state="OPEN"), creations=self.store.inspect(
                         "SELECT run_id,workflow_id,payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (run_id,)))
@@ -2423,8 +2427,8 @@ class WorkflowHost:
                 required_adapter_version=CLAUDE_AGENT_HOST_VERSION if real else self.local_agent_adapter)
             intent = {"request": request.to_dict(), **({"preflight_diagnostics": preflight_diagnostics} if preflight_diagnostics else {})}
             if real and request.schema_version >= 11:
-                from .agent_sessions import AgentSessions
-                intent["session_binding"] = AgentSessions.binding(request)
+                intent["session_binding"] = AgentSessions.binding(request, attempts[-1] if attempts else None,
+                    allow_resume=session_resume_allowed(tx, request))
             tx.open_attempt({"attempt_id": attempt_id, "run_id": run_id, "workflow_id": owner_id, "command_id": task.command_id, "kind": "AGENT", "attempt_ordinal": ordinal, "host_generation": self.generation, "started_at": time.time() if attempt_started_at is None else attempt_started_at, "payload": intent})
         self._diagnostic_context = {"phase": "agent_launch", "run_id": run_id, "command_id": task.command_id, "attempt_id": attempt_id}
         if rejected:
@@ -2441,18 +2445,19 @@ class WorkflowHost:
         self._check_agent_runtime()
         tool_workspace: PreparedGitAuthoringWorkspace | None = None
         if request.schema_version >= 11:
-            from .agent_sessions import AgentSessions
             target = dict(self._run_config(run_id))["execution"].get("target")
             binding = None if not isinstance(target, Mapping) else GitTargetBinding(checkout=Path(str(target["checkout"])), commit=str(target["commit"]))
             try:
-                tool_workspace = AgentSessions(self.state_root, self.publisher).prepare(request, None if command is AgentCommand.PAPER_READ else binding)
+                tool_workspace = AgentSessions(self.state_root, self.publisher).prepare(request, None if command is AgentCommand.PAPER_READ else binding,
+                    prior=attempts[-1] if attempts else None, admitted_binding=intent["session_binding"])
+                if tool_workspace.binding != intent["session_binding"]:
+                    raise GitAuthoringIntegrityError("prepared session differs from its OPEN binding")
                 from .paper_sources import prepare_sources
                 prepare_sources(self, tool_workspace, retrieval)
                 if request.schema_version >= 24:
                     prior = next((row for row in reversed(attempts) if row["state"] == "CLOSED"), None)
                     if prior is not None:
-                        from .agent_sessions import continuation_observation
-                        tool_workspace.continuation_observation = continuation_observation(self.publisher, prior)
+                        tool_workspace.continuation_observation = continuation_observation(self.publisher, prior, tool_workspace)
                         if command is AgentCommand.EXPERIMENT_EXECUTION:
                             tool_workspace.continuation_observation["owned_experiments"] = [
                                 {"exp_id": item["exp_id"], "state": self.store.latest_transition(item["exp_id"])["state"]}
@@ -2618,7 +2623,6 @@ class WorkflowHost:
                 required_adapter_version=CLAUDE_AGENT_HOST_VERSION if real else self.local_agent_adapter)
             intent = {"request": request.to_dict()}
             if real and request.schema_version >= 11:
-                from .agent_sessions import AgentSessions
                 intent["session_binding"] = AgentSessions.binding(request)
             tx.open_attempt({"attempt_id": attempt_id, "run_id": run_id, "workflow_id": owner_id,
                 "command_id": effect_command_id, "kind": "AGENT", "attempt_ordinal": ordinal,
@@ -2635,7 +2639,6 @@ class WorkflowHost:
             self._crash("after_agent_pgid_bind_before_release")
         tool_workspace: PreparedAgentWorkspace | None = None
         if request.schema_version >= 11:
-            from .agent_sessions import AgentSessions
             target = operational["execution"]["target"]
             try:
                 binding = None if target is None else GitTargetBinding(checkout=Path(str(target["checkout"])), commit=str(target["commit"]))
@@ -2680,7 +2683,6 @@ class WorkflowHost:
             except (ValueError, OSError) as exc: raise AgentACIError("invalid_candidate", str(exc)) from exc
         if request.command is AgentCommand.CYCLE_REPORT:
             from .expert_memory import ExpertMemory, MemoryError
-            from .agent_sessions import node_memory_limit
             resources = json.loads(next(item for item in request.input_artifacts if item.ref.endswith("--expert-resources")).content_bytes())
             supplied = json.loads(next(item for item in request.input_artifacts if item.ref.endswith("--cycle-assessments")).content_bytes())
             try:
@@ -2907,7 +2909,6 @@ class WorkflowHost:
                     if observation.response is not None and (not isinstance(session.get("transcript"), Mapping) or session.get("transcript_complete") is not True):
                         raise ValueError("successful Agent requires a complete archived transcript")
                 except (OSError, ValueError, GitAuthoringPreparationError, GitAuthoringIntegrityError) as exc:
-                    from .agent_sessions import SessionFinishError
                     if isinstance(exc, SessionFinishError):
                         self.agent_session_metadata[attempt_id] = exc.metadata
                     self._agent_failure(handle.request, AttemptTerminalReason.FAILED, "session_archive_failed", retryable=False,
@@ -3266,7 +3267,6 @@ class WorkflowHost:
         return web_tool(self, request, tool, arguments, defer=defer)
 
     def _grounding_session_web_results(self, request: AgentRequest, session: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
-        from .agent_sessions import archived_web_results
         return archived_web_results(self.publisher, request, session)
 
     def _grounding_completed_web_metadata(self, request: AgentRequest) -> dict[str, Any]:
@@ -3282,7 +3282,6 @@ class WorkflowHost:
         real = getattr(self, "claude_agent_host", None) is not None
         session = getattr(self, "agent_session_metadata", {}).get(request.attempt_id)
         records = list(self._grounding_session_web_results(request, session or {})) if real or session is not None else list(self.web_tool_results.get(request.attempt_id, ()))
-        from .agent_sessions import retrieved_session_urls
         return retrieved_session_urls(self.publisher, request, records,
             self.store.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id), real=real)
 

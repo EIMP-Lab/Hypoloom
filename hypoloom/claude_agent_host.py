@@ -75,7 +75,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/62"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/63"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -623,6 +623,7 @@ class ClaudeAgentHost:
                 max_request_bytes=max(4 * 1024 * 1024, request.budget.max_output_bytes * 2),
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 diagnostics=runtime_diagnostics,
+                context_notice=relay.context_notice if request.schema_version >= 25 else None,
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
@@ -1113,7 +1114,9 @@ class ClaudeAgentHost:
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
                 from .context_management import context_policy, latest_context
                 diagnostics["context"] = latest_context(exchanges, context_policy(handle.request))
-                if (failure := provider_failure(exchanges)) is not None:
+                fresh_session = (isinstance(handle.tool_workspace, PreparedSessionWorkspace)
+                    and handle.tool_workspace.session_arguments[:1] == ("--session-id",))
+                if (failure := provider_failure(exchanges, fresh_session=fresh_session)) is not None:
                     diagnostics["provider_failure"] = failure
             except (OSError, ValueError, TypeError):
                 diagnostics["served_models"] = []  # Observation cannot block authoritative closure.
@@ -2899,8 +2902,18 @@ def _instruction(
         )
     if full_cc:
         if request.schema_version >= 24:
+            if request.schema_version >= 25:
+                common += (
+                    "The Host may resume an eligible retry of this same task; a new task or capacity recovery uses a fresh session. "
+                    "Use the current request as authority even when the transcript is retained. "
+                    "A context-capacity advisory is a request to finish bounded work and preserve concise progress, "
+                    "not permission to skip required checks or invent a completed result. "
+                    "On reconstruction, use continuation tool arguments, file paths, checks and draft locations to inspect "
+                    "unfinished work before repeating discovery. They are observations, not accepted facts. "
+                )
             common += (
-                "This is a bounded working session reconstructed from the current request. "
+                ("This is a bounded working session for the current task. " if request.schema_version >= 25 else
+                 "This is a bounded working session reconstructed from the current request. ") +
                 "R aliases and /inputs filenames belong ONLY to this request; reread its mapping after "
                 "any session change or compaction. Before acting, read the complete goal constraints, "
                 "current specification and relevant accepted results from their supplied sources, even "

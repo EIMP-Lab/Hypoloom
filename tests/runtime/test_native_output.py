@@ -40,6 +40,58 @@ def _call(server, text=VALID, session_id="session-owned"):
         last_assistant_message=text, max_request_bytes=4096, timeout_seconds=2)
 
 
+def test_context_advisory_does_not_accept_candidate_or_change_correction_count(tmp_path):
+    server = _server(tmp_path, context_notice=lambda: "Input estimate near capacity; preserve draft paths and checks.")
+    try:
+        notice = native_output.call_context_notice(str(server.socket_path), session_id="session-owned",
+            max_request_bytes=4096, timeout_seconds=2)
+        assert notice == {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "additionalContext": "Input estimate near capacity; preserve draft paths and checks."}}
+        assert server.snapshot()["accepted"] is False
+        assert server.snapshot()["call_count"] == 0
+        assert _call(server, INVALID)["decision"] == "block"
+        assert _call(server) == {}
+        assert server.snapshot()["status"] == "recovered"
+    finally:
+        server.close()
+
+
+def test_missing_advisory_telemetry_does_not_disable_output_validation(tmp_path):
+    def unavailable():
+        raise RuntimeError("observation unavailable")
+    server = _server(tmp_path, context_notice=unavailable)
+    try:
+        assert native_output.call_context_notice(str(server.socket_path), session_id="session-owned",
+            max_request_bytes=4096, timeout_seconds=2) == {}
+        assert _call(server, INVALID)["decision"] == "block"
+        assert _call(server) == {}
+    finally:
+        server.close()
+
+
+def test_context_advisory_cannot_cross_attempt_session_boundary(tmp_path):
+    server = _server(tmp_path, context_notice=lambda: "private progress")
+    try:
+        with pytest.raises(ValueError, match="session"):
+            native_output.call_context_notice(str(server.socket_path), session_id="foreign",
+                max_request_bytes=4096, timeout_seconds=2)
+        assert server.snapshot()["accepted"] is False
+        assert server.snapshot()["call_count"] == 0
+    finally:
+        server.close()
+
+
+def test_advisory_cli_unavailable_is_optional_but_stop_remains_fail_closed(tmp_path):
+    base = [sys.executable, str(Path(native_output.__file__).resolve()), "--socket", str(tmp_path / "missing.sock"),
+        "--max-bytes", "4096", "--timeout-seconds", "1"]
+    payload = json.dumps({"session_id": "session-owned", "last_assistant_message": VALID})
+    notice = subprocess.run([*base, "--context-notice"], input=payload, text=True, capture_output=True, timeout=5)
+    stop = subprocess.run(base, input=payload, text=True, capture_output=True, timeout=5)
+    assert notice.returncode == stop.returncode == 0
+    assert json.loads(notice.stdout) == {}
+    assert json.loads(stop.stdout)["continue"] is False
+
+
 def test_report_missing_citation_is_repaired_inside_the_same_native_call(tmp_path):
     from hypoloom.final_report import validate_final_report
     from test_final_report import report_request

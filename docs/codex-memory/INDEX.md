@@ -1,6 +1,25 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [User-authorized 3000-second Grounding reevaluation](../qualification.md#current-development--3000-second-grounding-follow-up-2026-09-26):
+  retained time-only protocol failure, corrected raw interface and private-driver
+  isolation assertion, zero-paid positive/negative controls, successful real
+  MiMo baseline and actual post-draft reconstruction with correct CPU outcomes.
+  Four roots / 49 Agents / 4 CPU close cleanly; pricing/savings limits stay explicit.
+  Evidence: `.local/qualification/grounding-3000s-20260926/` and
+  `.local/qualification/grounding-3000s-contract-20260926/`.
+- [Measured context and task continuation, September 26](../qualification.md#current-development--measured-context-and-task-continuation-2026-09-26):
+  ACI-25 fixes the reported Grounding byte/token regression using existing usage,
+  bounded same-task continuity, richer tool/draft handoff and separate current/
+  prior observations. [Updated design](../design/context-management-and-recovery.md)
+  supersedes the ACI-24 universal reconstruction policy. Original reports and
+  history remain read-only; evidence lives in
+  `.local/qualification/context-regression-20260926/` and
+  `.local/qualification/context-capacity-20260926/`. G1: 6,229 passes / 26 skips;
+  final clock-order repair: 137 focused passes. Scripted-provider native/CPU
+  recovery passes; the original finite MiMo Grounding arms time out without a
+  draft. Later user-authorized real-model quality evidence is in the entry above;
+  repeatable cost benefits remain unqualified.
 - [Local workspace organization](../guides/local-workspace.md) /
   [中文](../guides/local-workspace.zh-CN.md): ignored current/history browsing
   entries, original canonical evidence paths, private draft archiving and

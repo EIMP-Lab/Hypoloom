@@ -152,7 +152,11 @@ def _assert_closed_billing(tmp_path: Path):
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
             assert charge.cost == Decimal(str(view["total_cost_usd"]))
         else:
-            assert model_input == sum(observed.values()) == 29 > _normalized_input(outer["usage"]) == 4
+            assert model_input == sum(observed.values()) == 29
+            # Native versions/session paths differ in whether outer usage folds
+            # the fallback JSON. The complete per-Attempt model ledger and wire
+            # evidence must include it in either representation.
+            assert _normalized_input(outer["usage"]) in {4, 29}
             accounting = diagnostics["provider_accounting"]
             assert charge.source == "response"
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
@@ -171,10 +175,13 @@ def _assert_closed_billing(tmp_path: Path):
     outer = records[accepted[0]["attempt_id"]][-1]
     model = _session_usage_view(outer, baselines[accepted[0]["attempt_id"]])[
         "modelUsage"][accepted[1]["request"]["required_model_identity"]]
-    assert model["inputTokens"] - outer["usage"]["input_tokens"] == 17
-    assert model["cacheCreationInputTokens"] - outer["usage"].get("cache_creation_input_tokens", 0) == 3
-    assert model["cacheReadInputTokens"] - outer["usage"].get("cache_read_input_tokens", 0) == 5
-    assert model["outputTokens"] - outer["usage"]["output_tokens"] == 7
+    outer_omission = (model["inputTokens"] - outer["usage"]["input_tokens"],
+        model["cacheCreationInputTokens"] - outer["usage"].get("cache_creation_input_tokens", 0),
+        model["cacheReadInputTokens"] - outer["usage"].get("cache_read_input_tokens", 0),
+        model["outputTokens"] - outer["usage"]["output_tokens"])
+    assert outer_omission in {(17, 3, 5, 7), (0, 0, 0, 0)}
+    assert (model["inputTokens"], model["cacheCreationInputTokens"],
+        model["cacheReadInputTokens"], model["outputTokens"]) == (21, 3, 5, 11)
     accepted_root = tmp_path / "state/diagnostics/agents" / _RUN / accepted[0]["attempt_id"]
     responses = sorted((accepted_root / "provider").glob("*/response.body"))
     assert len(responses) == 6

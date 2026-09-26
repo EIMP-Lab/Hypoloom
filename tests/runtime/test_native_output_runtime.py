@@ -22,8 +22,10 @@ def test_native_stop_block_cap_follows_admitted_correction_cap(cap):
     assert "ANTHROPIC_AUTH_TOKEN" not in environment
 
 
-def _argv(tmp_path, *, endpoint=True, patterns=(), max_output_bytes=65536):
+def _argv(tmp_path, *, endpoint=True, patterns=(), max_output_bytes=65536, schema_version=None):
     request = default_request()
+    if schema_version is not None:
+        request = replace(request, schema_version=schema_version)
     request = replace(request, budget=replace(request.budget, max_output_bytes=max_output_bytes, wall_seconds=37.5),
         input_artifacts=(EmbeddedInput.from_bytes("node--expert-config", "application/json",
             json.dumps({"node_runtime": {"safety": {"bash": {"deny_patterns": list(patterns)}}}}).encode()),))
@@ -33,6 +35,18 @@ def _argv(tmp_path, *, endpoint=True, patterns=(), max_output_bytes=65536):
         model="mimo-v2.5-pro", workspace=_workspace(tmp_path), provider_socket=tmp_path / "provider.sock",
         host_socket=None, output_socket=tmp_path / "output.sock" if endpoint else None,
         output_schema=schema, extra_paths=()), schema
+
+
+def test_aci25_advisory_preserves_bash_denial_and_stop_hook(tmp_path):
+    argv, _ = _argv(tmp_path, patterns=("forbidden-command",), schema_version=25)
+    hooks = json.loads(argv[argv.index("--settings") + 1])["hooks"]
+    assert hooks["PreToolUse"][0]["matcher"] == "Bash"
+    assert "forbidden-command" in hooks["PreToolUse"][0]["hooks"][0]["command"]
+    advisory = hooks["PreToolUse"][1]
+    assert advisory["matcher"] == "*"
+    assert "--context-notice" in shlex.split(advisory["hooks"][0]["command"])
+    assert "--context-notice" not in shlex.split(hooks["Stop"][0]["hooks"][0]["command"])
+    assert advisory["hooks"][0]["timeout"] == 3
 
 
 @pytest.mark.parametrize("patterns", [(), ("forbidden-command",)])

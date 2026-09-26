@@ -1,5 +1,53 @@
 # Current Hypoloom development state
 
+- September 26 dev submission: user authorizes committing and pushing the
+  accumulated ACI-25 capacity/continuation repair, regression tests, bilingual
+  guidance and 3000-second evaluation findings. Reuse completed G1/focused/native
+  and real-model evidence below; no new production changes or paid qualification
+  are required for submission. Private reports, Profiles, credentials and raw
+  evaluation artifacts remain ignored and outside the commit.
+
+- September 26 user-authorized 3000-second Grounding reevaluation: invocation
+  3000 s, arm 9300 s; model/effort/turn/token/monetary limits unchanged. The first
+  time-only sample completes Grounding in 1100.23 s but exposes omitted raw
+  input shape and a mistaken private-driver ancestor-directory assertion; its
+  original failed root remains OPEN at report, without OS residue. Corrected
+  private protocol preserves independent expectations and all actual isolation
+  protections. Two zero-paid positive/negative controls pass their expectations.
+  Corrected real MiMo baseline passes in 888.76 s; post-self-test capacity
+  injection reconstructs and completes in 387.91 + 162.72 s, reading the retained
+  evaluator. Both pass four semantic cases and real CPU 0.75/0.75. Four-root
+  independent census: 49 Agents / 4 CPU, closed and clean (paid subset 23/2).
+  28 forwarded real responses measure 1142164 tokens; the one locally refused
+  zero-forwarded exchange is separately unmeasured in the observation fold.
+  CLI estimate 2.5063584 USD has unknown pricing; no vendor-billing or repeatable
+  savings claim. This establishes finite-task recovery quality, not G5/GLM or
+  long-horizon readiness. Original evidence remains in
+  `.local/qualification/grounding-3000s-20260926/`; corrected evidence in
+  `.local/qualification/grounding-3000s-contract-20260926/`. No production code,
+  personal Profile, retained research run, GPU, commit or push changes.
+
+- September 26 ACI-25 Grounding regression repair: complete same-relay usage
+  plus verified-prefix deltas replaces whole-history byte recounting; exact
+  observed counts have priority, and unknown inputs remain explicit estimates.
+  Narrow text/cache-marker equivalence never rewrites wire or thinking blocks.
+  Eligible same-frozen-task retries resume complete archives; capacity failures,
+  new tasks and API reloads reconstruct with retained source/draft/tool observations.
+  Existing native hooks provide advisory headroom; monitor/export distinguish
+  current estimates from prior measured input. No new fact store or summarizer.
+  G1 passes 6,229 / 26 opt-in skips. A final one-line Oracle clock-order repair
+  follows: 137 focused passes and read-only native re-audits; transaction/ordinal
+  protections remain. Final independent selection: 12 roots / 320 Agents /
+  25 CPU Processes, clean Oracles and no residue; failed bootstrap is separate.
+  Report/history replays and actual CLI/local-provider/CPU recovery pass. Both finite real MiMo Grounding arms time out at two 300-second
+  calls: no capacity refusal, evaluator, CPU or post-draft injection. Those
+  original samples do not qualify quality or savings; later authorized follow-up
+  is above. USD 8 / 800000 tokens are declared reservations;
+  116361 tokens are measured across six completed responses, with four incomplete
+  streams and unknown vendor billing. GLM has historical replay only. Evidence:
+  `.local/qualification/context-regression-20260926/`; bilingual guides/results
+  routed through INDEX. No retained-run/Profile edits, GPU, commit or push.
+
 - September 26 local workspace organization: user authorizes separating current
   evidence from private development history, bilingual documentation and
   commit/push to dev. Ignored `current/` links to the integrated `40a75a0`

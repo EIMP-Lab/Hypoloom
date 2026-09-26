@@ -111,9 +111,9 @@ def test_native_query_plan_root_field_rejects_then_same_session_retry_closes_cpu
     assert trace["rounds"] == [{"ordinal": ordinal, "status": "rejected",
                                 "validation_error": diagnostic} for ordinal in (1, 2)]
     session = failed[1]["session"]["session_id"]
-    assert retry[1]["session"]["session_id"] != session
+    assert retry[1]["session"]["session_id"] == session
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
-    assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+    assert retry[1]["session"]["launch_arguments"] == ["--resume", session]
     assert any(item["ref"] == failed[0]["attempt_id"] + "--agent-retry-diagnostic"
                for item in retry[1]["request"]["input_artifacts"])
     assert scenario.query_schemas[failed[0]["attempt_id"]] == scenario.query_schemas[retry[0]["attempt_id"]]

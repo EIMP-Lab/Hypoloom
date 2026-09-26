@@ -33,9 +33,9 @@ def test_native_structured_failure_accounts_final_exchange_before_same_session_r
     assert failed[1]["failure_code"] == "invalid_structured_output" and failed[1]["retry_class"] == "MODEL"
     assert failed[1].get("response") is None
     assert failed[0]["command_id"] == retry[0]["command_id"]
-    assert retry[1]["session"]["session_id"] != failed[1]["session"]["session_id"]
+    assert retry[1]["session"]["session_id"] == failed[1]["session"]["session_id"]
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
-    assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+    assert retry[1]["session"]["launch_arguments"] == ["--resume", retry[1]["session"]["session_id"]]
 
     diagnostic_root = tmp_path / "state/diagnostics/agents" / _RUN / failed[0]["attempt_id"]
     source = diagnostic_root / "stdout.log"

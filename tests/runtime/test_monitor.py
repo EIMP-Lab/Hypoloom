@@ -522,6 +522,49 @@ def test_live_attempt_context_overrides_only_open_agent_attempts(tmp_path: Path)
         {"no-wire": observations["open-1"]})[0].context_tokens is None
 
 
+@pytest.mark.parametrize("state", ["OPEN", "CLOSED"])
+def test_rejected_context_preserves_prior_usage_without_assigning_it_to_current_request(tmp_path, state):
+    from hypoloom.context_management import context_policy
+    from hypoloom.tui import AttemptsPanel
+    request = replace(default_request(AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT), schema_version=25)
+    policy = context_policy(request)
+    attempt = AttemptView(attempt_id=request.attempt_id, kind="AGENT", state=state,
+        workflow_id=request.owner_workflow_id, command=request.command.value, component_id=request.component_id,
+        phase="design", role=request.role, slot_ordinal=1, attempt_ordinal=1, terminal_reason=None,
+        process_group_id=None, started_at=1, ended_at=None, gpu_uuid=None, minimum_free_memory_mib=None,
+        latest_free_memory_mib=None, latest_utilization_percent=None, resource_pressure_exceeded=None,
+        cumulative_tokens=3722840)
+    session = {"scope": "chain", "cycle": 1, "session_id": "session"}
+    observation = {"request": request.to_dict(), "session_binding": session}
+    transcript = (tmp_path / "run/sessions" / request.role / "c1" / request.component_id
+        / "chain/projects/session.jsonl")
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 999999}}}) + "\n")
+    records = [{"exchange": 5, "upstream_status": 200, "usage": {"input_tokens": 59326},
+        "response_body_complete": True, "message_complete": True},
+        {"exchange": 6, "failure_reason": "context_capacity", "context_capacity": {
+            **policy, "estimated_input_tokens": 211464, "fits": False,
+            "estimate_source": "provider_usage_plus_delta_estimate", "estimate_reason": "unchanged_prefix"}}]
+    for record in records:
+        directory = tmp_path / "diagnostics/agents/run" / request.attempt_id / "provider" / f"{record['exchange']:06d}"
+        directory.mkdir(parents=True)
+        (directory / "exchange.json").write_text(json.dumps({"request_path": "/v1/messages", "served_models": ["model"], **record}))
+    observed, = _with_live_attempt_context(tmp_path, "run", (attempt,), {request.attempt_id: observation})
+    assert observed.context_tokens is None and observed.context_source == "estimate"
+    assert observed.cumulative_tokens == 3722840
+    assert observed.context["last_observed_input_tokens"] == 59326
+    assert observed.context["last_observed_exchange"] == 5
+    assert observed.context["current_request_exchange"] == 6
+    assert observed.context["current_request_estimated_input_tokens"] == 211464
+    lines = []
+    AttemptsPanel.update_snapshot(SimpleNamespace(update=lines.append),
+        SimpleNamespace(attempts=(observed,), observed_at=10))
+    assert "last measured input=59326 · exchange=5 (earlier request)" in lines[0]
+    assert "current request exchange=6 · provider input=-" in lines[0]
+    assert "current request estimate=211464 · source=provider_usage_plus_delta_estimate" in lines[0]
+    assert "999999" not in lines[0]
+
+
 def _v4_payload(
     run_id: str, *, component_count: int = 1, delay_seconds: float = 0.0,
 ) -> dict[str, object]:

@@ -93,6 +93,33 @@ def test_default_bundle_omits_raw_data_and_keeps_safe_failure_metadata(tmp_path)
     assert exchange["status"] == 429
 
 
+@pytest.mark.parametrize("private", [False, True])
+def test_support_context_keeps_measured_and_estimated_requests_separate_without_credentials(tmp_path, private):
+    root = tmp_path / "state"
+    run_id, first, _ = _seed_agent_retry(root)
+    selected = root / f"diagnostics/agents/{run_id}/{first}"
+    context = {"input_tokens": None, "last_observed_exchange": 5, "last_observed_input_tokens": 59326,
+        "current_request_exchange": 6, "current_request_estimated_input_tokens": 211464,
+        "current_request_estimate_source": "provider_usage_plus_delta_estimate",
+        "current_request_estimate_reason": "unchanged_prefix", "current_request_fits": False}
+    capacity = {"capacity_measurement_version": 25, "request_input_bytes": 300000,
+        "estimate_reason": "unchanged_prefix", "anchor_exchange": 5,
+        "anchor_input_tokens": 59326, "added_input_bytes": 152138, "estimated_input_tokens": 211464}
+    _write(selected / "events.jsonl", json.dumps({"kind": "ended", "context": context,
+        "api_key": "synthetic-context-secret", "prompt": "private research"}) + "\n")
+    _write(selected / "provider/000006/exchange.json", json.dumps({"context_capacity": capacity,
+        "authorization": "Bearer synthetic-context-secret", "request_body": {"messages": ["private research"]}}))
+    output = tmp_path / "export"
+    report = export_support_bundle(root, run_id, output, attempt_id=first, include_private_data=private)
+    copied_context = json.loads(_attachment(output, report, "events.jsonl").read_text())["context"]
+    assert copied_context == context
+    assert json.loads(_attachment(output, report, "exchange.json").read_text())["context_capacity"] == capacity
+    exported = b"\n".join(_tree(output).values())
+    assert b"synthetic-context-secret" not in exported
+    if not private:
+        assert b"private research" not in exported
+
+
 def test_mcp_traceback_requires_private_opt_in_and_remains_redacted(tmp_path):
     root = tmp_path / "state"
     run_id, first, _ = _seed_agent_retry(root)

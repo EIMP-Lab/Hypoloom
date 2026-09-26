@@ -210,6 +210,25 @@ def prepare_sources(host, workspace, retrieval=None) -> None:
     if workspace.request.schema_version < 20: return
     papers = PaperWorkspace(host.state_root / "paper-staging", workspace.request)
     workspace.papers = papers
+    if workspace.request.schema_version >= 25 and workspace.request.attempt_ordinal > 1:
+        # Same-task retries keep already authorized, published sources. In
+        # particular Grounding is auxiliary and does not receive history_input.
+        # Reuse original attachments through the existing archive verifier;
+        # no network retrieval, reading claim or cross-task memory is added.
+        previous = [row for row in host.store.list_attempts(workflow_id=workspace.request.owner_workflow_id,
+            command_id=workspace.request.command_id) if row["kind"] == "AGENT" and row["state"] == "CLOSED"
+            and row["attempt_ordinal"] < workspace.request.attempt_ordinal]
+        if previous:
+            row = previous[-1]
+            original = json.loads(row["observation_json"])
+            from .agent_sessions import same_frozen_task
+            source_request = AgentRequest.from_dict(original["request"])
+            if same_frozen_task(source_request, workspace.request):
+                for source in original.get("session", {}).get("paper_sources", []):
+                    found, root, owner = published_source(host, row, source["source_ref"])
+                    try: papers.reuse_archive(found, root, owner)
+                    except AgentACIError:
+                        papers.omitted.append({"source_ref": source["source_ref"], "reason": "paper_source_limit"})
     if retrieval is not None:
         traces = {paper.pdf_trace.artifact_ref: paper for paper in retrieval.packet.papers if paper.pdf_trace is not None}
         for artifact in retrieval.pdf_artifacts:

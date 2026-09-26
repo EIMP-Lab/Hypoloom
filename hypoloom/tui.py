@@ -982,9 +982,21 @@ class AttemptsPanel(CockpitPanel):
                     f"   [yellow]{_short_text(attempt.diagnostic_summary, limit=220)}[/yellow]"
                 )
             if attempt.kind == "AGENT":
-                lines.append(f"   last input={_value(attempt.context_tokens)} · working limit={_value(attempt.context_window_tokens)} "
-                    f"({_value(attempt.context_window_source)}) · cumulative tokens={_value(attempt.cumulative_tokens)}")
                 context = attempt.context or {}
+                if "current_request_exchange" in context:
+                    lines.append(f"   current request exchange={_value(context.get('current_request_exchange'))} · provider input={_value(attempt.context_tokens)} "
+                        f"· source={_value(attempt.context_source)}")
+                    earlier = context.get("last_observed_exchange") != context.get("current_request_exchange")
+                    lines.append(f"   last measured input={_value(context.get('last_observed_input_tokens'))} · exchange={_value(context.get('last_observed_exchange'))}"
+                        + (" (earlier request)" if earlier and context.get("last_observed_input_tokens") is not None else ""))
+                    lines.append(f"   current request estimate={_value(context.get('current_request_estimated_input_tokens'))} "
+                        f"· source={_value(context.get('current_request_estimate_source'))} · fits={_value(context.get('current_request_fits'))} "
+                        f"· basis={_value(context.get('current_request_estimate_reason'))}")
+                else:
+                    lines.append(f"   last input={_value(attempt.context_tokens)} · source={_value(attempt.context_source)}")
+                    lines.append(f"   estimated input={_value(context.get('estimated_input_tokens'))} · source={_value(context.get('estimate_source'))}")
+                lines.append(f"   working limit={_value(attempt.context_window_tokens)} ({_value(attempt.context_window_source)}) "
+                    f"· cumulative tokens={_value(attempt.cumulative_tokens)}")
                 metrics = attempt.context_observation or {}
                 if metrics.get("cli_unknown_model_pricing") is True:
                     lines.append("   CLI session pricing unknown · reported dollars are fallback estimates, not a vendor bill")
@@ -994,7 +1006,7 @@ class AttemptsPanel(CockpitPanel):
                     if compact:
                         lines.append(f"   last native compaction input={_value(compact['pre_tokens'])} → {_value(compact['post_tokens'])} · {_value(compact['duration_ms'])} ms")
                     lines.append(f"   successful Read={metrics['read_calls']} · exact frozen-input rereads={metrics['exact_reread_calls']} (shell reads excluded)")
-                lines.append(f"   estimated input={_value(context.get('estimated_input_tokens'))} · source={_value(attempt.context_source)} · declared window={_value(context.get('declared_context_tokens'))} "
+                lines.append(f"   declared window={_value(context.get('declared_context_tokens'))} "
                     f"· cache read/create={_value(context.get('cache_read_input_tokens'))}/{_value(context.get('cache_creation_input_tokens'))} "
                     f"· session scope={_value(attempt.session_scope)}")
                 if attempt.operational_reason:

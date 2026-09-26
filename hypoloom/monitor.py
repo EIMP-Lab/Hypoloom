@@ -738,8 +738,11 @@ def _with_live_attempt_context(
                     policy = context_policy(AgentRequest.from_dict(observation["request"]))
             except (AgentACIError, KeyError, TypeError, ValueError):
                 policy = None  # Missing old observation is not a capacity claim.
+            current_context = observation.get("request", {}).get("schema_version", 0) >= 25
             context = latest_context(read_exchanges(root / "diagnostics" / "agents" / run_id
-                / attempt.attempt_id / "provider", latest_generation_only=True), policy)
+                / attempt.attempt_id / "provider", latest_generation_only=not current_context,
+                latest_context_only=current_context,
+                input_usage_semantics=(policy or {}).get("input_usage_semantics", "separate_cache")), policy)
             tokens = context.get("input_tokens")
             if tokens is not None:
                 rendered.append(replace(attempt, context_tokens=tokens, context_source=context["source"],
@@ -750,6 +753,12 @@ def _with_live_attempt_context(
                 attempt = replace(attempt, context=context,
                     context_window_tokens=context.get("effective_context_tokens"),
                     context_window_source=context.get("window_source"))
+                if "current_request_exchange" in context:
+                    # An earlier measured exchange remains visible separately;
+                    # a rejected/unmeasured request cannot inherit transcript usage.
+                    rendered.append(replace(attempt, context_tokens=None,
+                        context_source=context.get("source")))
+                    continue
         # A CLOSED Attempt must not read a subsequently appended shared session.
         if attempt.state != "OPEN":
             rendered.append(attempt)

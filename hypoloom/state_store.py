@@ -175,9 +175,11 @@ class StateTransaction:
                 raise ValueError("preflight_diagnostics must be an object")
             if "session_binding" in intent:
                 from .agent_aci import AgentRequest
-                from .agent_sessions import AgentSessions
+                from .agent_sessions import AgentSessions, session_resume_allowed
                 request = AgentRequest.from_dict(intent["request"])
-                if request.schema_version < 11 or intent["session_binding"] != AgentSessions.binding(request):
+                previous = self.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id, kind="AGENT")
+                if request.schema_version < 11 or intent["session_binding"] != AgentSessions.binding(request, previous[-1] if previous else None,
+                        allow_resume=session_resume_allowed(self, request)):
                     raise ValueError("session binding differs from its typed Agent owner")
         if kind == "PROCESS" and intent is not None: raise ValueError("PROCESS OPEN attempt cannot carry observation payload")
         observation = None if intent is None else _json(intent)

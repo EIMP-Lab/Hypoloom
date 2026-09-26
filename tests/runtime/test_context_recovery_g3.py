@@ -14,8 +14,8 @@ def test_native_capacity_rebuild_preserves_committed_experiment_and_closes_cpu_s
     original_capacity = context.request_capacity
     injected = []
 
-    def refuse_after_submit(document, policy):
-        capacity = original_capacity(document, policy)
+    def refuse_after_submit(document, policy, **kwargs):
+        capacity = original_capacity(document, policy, **kwargs)
         request = native._request_from_provider(document)
         results = native._tool_results(document)
         if not injected and request.command is AgentCommand.EXPERIMENT_EXECUTION and "submit_experiment" in results:
@@ -61,7 +61,7 @@ def test_native_capacity_rebuild_preserves_committed_experiment_and_closes_cpu_s
         for _, value in agents)
 
 
-def test_native_initial_refusal_stops_at_minimum_without_spending_nine_retries(tmp_path):
+def test_native_initial_refusal_stops_without_spending_nine_unchanged_retries(tmp_path):
     import tempfile
     import time
     from collections import Counter
@@ -100,15 +100,14 @@ def test_native_initial_refusal_stops_at_minimum_without_spending_nine_retries(t
             rows = host.store.list_attempts()
             assert rows and all(row["kind"] == "AGENT" and row["state"] == "CLOSED" for row in rows)
             counts = Counter(row["command_id"] for row in rows)
-            assert max(counts.values()) == 3 and all(count <= 3 for count in counts.values())
+            assert set(counts.values()) == {1}
             assert not scenario.requests  # Actual native CLI; zero upstream calls.
             for row in rows:
                 observation = json.loads(row["observation_json"])
                 failure = observation["diagnostics"]["provider_failure"]
                 assert failure["code"] == "context_capacity"
-                if row["attempt_ordinal"] == 3:
-                    assert failure["recovery_action"] == "input_reconfiguration_required"
-                    assert observation["retry_class"] is None
+                assert failure["recovery_action"] == "input_reconfiguration_required"
+                assert observation["retry_class"] is None
             audit = Oracle(host.store.database_path, host.publisher.root).audit(_RUN)
             assert audit.ok, audit.to_dict()
             assert audit.open_attempt_count == audit.pending_effect_count == 0

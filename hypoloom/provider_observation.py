@@ -40,6 +40,7 @@ class ProviderObservation:
         self.dropping_line = False
         self.models = set()
         self.usage = {}
+        self.invalid_usage = False
         self.stop_reason = None
         self.message_complete = False
         self.first_content_at = None
@@ -89,6 +90,8 @@ class ProviderObservation:
             for key in _TOKEN_FIELDS:
                 if type(value.get(key)) is int and value[key] >= 0:
                     self.usage[key] = value[key]
+                elif key in value:
+                    self.invalid_usage = True
 
     def feed(self, chunk):
         if self.json_response is None:
@@ -127,6 +130,7 @@ class ProviderObservation:
         return {"served_models": sorted(self.models),
             "served_model": next(iter(self.models)) if len(self.models) == 1 else None,
             "stop_reason": self.stop_reason, "usage": dict(self.usage),
+            "usage_valid": not self.invalid_usage,
             "provider_error_code": self.provider_error_code,
             "message_complete": self.message_complete, "first_content_at": self.first_content_at}
 
@@ -257,7 +261,7 @@ def retry_after_seconds(value, *, now):
         return None
 
 
-def provider_failure(exchanges):
+def provider_failure(exchanges, *, fresh_session: bool | None = None):
     """Last transport outcome; a subsequent success clears a transient error."""
     if not exchanges:
         return None
@@ -271,8 +275,10 @@ def provider_failure(exchanges):
             first = generations[0]
             capacity = first.get("context_capacity") or {}
             minimum = capacity.get("minimum_inline_input_bytes")
+            unchanged_retry_input = (fresh_session is True if capacity.get("capacity_measurement_version", 0) >= 25
+                else type(minimum) is int and capacity.get("max_inline_input_bytes") == minimum)
             if (first.get("failure_reason") == "context_capacity" and capacity.get("fits") is False
-                    and type(minimum) is int and capacity.get("max_inline_input_bytes") == minimum
+                    and unchanged_retry_input
                     and all(item.get("request_bytes_forwarded") == 0 and item.get("request_body_complete") is True for item in generations)):
                 action = "input_reconfiguration_required"
         return {"code": code, "http_status": status,
@@ -312,10 +318,12 @@ def provider_failure(exchanges):
     return None
 
 
-def read_exchanges(directory, *, latest_generation_only=False):
+def read_exchanges(directory, *, latest_generation_only=False, latest_context_only=False,
+                   input_usage_semantics="separate_cache"):
     """Derive old and new exchanges from existing diagnostic files, read-only."""
     result = []
-    for child in sorted(directory.glob("[0-9][0-9][0-9][0-9][0-9][0-9]"), reverse=latest_generation_only):
+    newest_first = latest_generation_only or latest_context_only
+    for child in sorted(directory.glob("[0-9][0-9][0-9][0-9][0-9][0-9]"), reverse=newest_first):
         if latest_generation_only and result: break
         try:
             if child.is_symlink():
@@ -326,24 +334,29 @@ def read_exchanges(directory, *, latest_generation_only=False):
             data = json.loads(path.read_bytes())
             if not isinstance(data, dict):
                 continue
-            if latest_generation_only and data.get("request_path") != "/v1/messages": continue
+            if newest_first and data.get("request_path") != "/v1/messages": continue
             if "served_models" not in data:
                 source = child / "response.body"
-                if source.is_symlink() or not source.is_file():
-                    result.append(data)
-                    continue
-                parser = ProviderObservation()
-                with source.open("rb") as stream:
-                    for _ in range(128):
-                        chunk = stream.read(65536)
-                        if not chunk:
-                            break
-                        parser.feed(chunk)
-                observed = parser.finish()
-                # Reading an old file now cannot recover token arrival time.
-                observed["first_content_at"] = None
-                data.update(observed)
+                if not source.is_symlink() and source.is_file():
+                    parser = ProviderObservation()
+                    with source.open("rb") as stream:
+                        for _ in range(128):
+                            chunk = stream.read(65536)
+                            if not chunk:
+                                break
+                            parser.feed(chunk)
+                    observed = parser.finish()
+                    # Reading an old file now cannot recover token arrival time.
+                    observed["first_content_at"] = None
+                    data.update(observed)
             result.append(data)
+            if latest_context_only:
+                from .context_management import input_usage
+                if (data.get("upstream_status") == 200 and data.get("message_complete") is True
+                        and data.get("response_body_complete") is True
+                        and data.get("usage_valid") is not False
+                        and input_usage(data.get("usage") or {}, input_usage_semantics) is not None):
+                    break
         except (OSError, ValueError, UnicodeError, RecursionError):
             continue
-    return result
+    return list(reversed(result)) if latest_context_only else result

@@ -1291,6 +1291,49 @@ def test_browser_shared_acceptance_metric_trends_per_hypothesis_chain(browser, t
     page.screenshot(tmp_path / 'metric-trends.png')
 
 
+def test_browser_context_rejection_separates_last_measured_usage_from_current_estimate(browser):
+    page = browser
+    attempt = {"attempt_id": "context-rejected", "kind": "AGENT", "state": "OPEN", "role": "expert-a",
+        "command": "EXPERIMENT_DESIGN_IMPLEMENT", "context_tokens": None, "context_source": "estimate",
+        "context_window_tokens": 262144, "context_window_source": "working_limit_only",
+        "cumulative_tokens": 3722840, "context": {"last_observed_exchange": 5,
+            "last_observed_input_tokens": 59326, "current_request_exchange": 6,
+            "current_request_estimated_input_tokens": 211464,
+            "current_request_estimate_source": "provider_usage_plus_delta_estimate",
+            "current_request_estimate_reason": "unchanged_prefix", "current_request_fits": False}}
+    page.evaluate(f"fixture.snapshot.attempts.push({json.dumps(attempt)})")
+    tile = '.agent-tile[data-attempt="context-rejected"]'
+    page.wait(f"document.querySelector('{tile}') !== null")
+    assert page.text(f"{tile} .agent-tile-value") == "last 59.33K"
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "0%"
+    title = page.evaluate(f"document.querySelector('{tile}').title")
+    assert "Current request: exchange 6 · no provider input usage" in title
+    assert "Last measured input: 59.33K tokens · exchange 5 (earlier request)" in title
+    assert "Current request estimate: 211.46K · prior measured usage plus estimated added input" in title
+    assert "exceeds input allowance" in title
+    assert "conservative UTF-8 byte estimate" not in title
+
+    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a => a.attempt_id === 'context-rejected').context, "
+        "{last_observed_exchange:null,last_observed_input_tokens:null,current_request_estimated_input_tokens:300000,"
+        "current_request_estimate_source:'utf8_bytes_conservative_estimate',current_request_estimate_reason:'no_usage_anchor'})")
+    page.wait(f"document.querySelector('{tile}').title.includes('Last measured input: unavailable')")
+    assert page.text(f"{tile} .agent-tile-value") == "—"
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "0%"
+    title = page.evaluate(f"document.querySelector('{tile}').title")
+    assert "Current request estimate: 300K · conservative UTF-8 byte estimate" in title
+
+    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a => a.attempt_id === 'context-rejected'), "
+        "{context_tokens:65536,context_source:'provider_usage_final',context:{last_observed_exchange:7,"
+        "last_observed_input_tokens:65536,current_request_exchange:7,current_request_estimated_input_tokens:65536,"
+        "current_request_estimate_source:'provider_count_tokens',current_request_fits:true}})")
+    page.wait(f"document.querySelector('{tile}').title.includes('exchange 7')")
+    assert page.text(f"{tile} .agent-tile-value") == "65.54K"
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "25%"
+    title = page.evaluate(f"document.querySelector('{tile}').title")
+    assert "Current request estimate: 65.54K · provider token count" in title
+    assert "earlier request" not in title
+
+
 def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_path):
     page = browser
     assert page.evaluate("document.querySelector('.expert-preview h3 .breath-dot') === null")

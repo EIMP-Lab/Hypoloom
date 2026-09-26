@@ -89,7 +89,8 @@ def test_native_exhausted_grounding_restarts_and_reports_inconclusive(tmp_path: 
             assert len(grounding) == 2, grounding  # Original max_retries=1.
             assert [row["attempt_ordinal"] for row, _ in grounding] == [1, 2]
             assert len({row["command_id"] for row, _ in grounding}) == 1
-            assert len({observation["session"]["session_id"] for _, observation in grounding}) == len(grounding)
+            assert len({observation["session"]["session_id"] for _, observation in grounding}) == 1
+            assert grounding[1][1]["session"]["launch_arguments"] == ["--resume", grounding[0][1]["session"]["session_id"]]
             assert len({observation["session"]["branch"] for _, observation in grounding}) == 1
             assert any(item["ref"] == grounding[0][0]["attempt_id"] + "--agent-retry-diagnostic"
                        for item in grounding[1][1]["request"]["input_artifacts"])

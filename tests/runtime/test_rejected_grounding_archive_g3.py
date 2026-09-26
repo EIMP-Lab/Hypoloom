@@ -1,7 +1,7 @@
 """Real CC preserves a rejected evaluator archive through retry and CPU closure.
 
 Only the existing local provider's first Grounding web citation is changed.
-Native and Host validation, archive capture, fresh-session retry, CPU and Oracle stay real.
+Native and Host validation, archive capture, bounded same-task retry, CPU and Oracle stay real.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class _RejectedGroundingScenario(shared_retry._FinalRetryScenario):
             return calls
         if (request.command is AgentCommand.GROUNDING and self.steps[request.attempt_id] == 1
                 and self.rejected_grounding is not None and request.attempt_id != self.rejected_grounding):
-            # A new native session must read retained source before editing it.
+            # The retried task must read retained source before editing it.
             calls = (*calls, ("ground_existing", "Read", {"file_path": "/acceptance/evaluate.py"}))
         for identity, tool, arguments in calls:
             if request.command is AgentCommand.GROUNDING and tool == "StructuredOutput":
@@ -117,9 +117,9 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
     assert accepted["typed_candidate"]["web_sources"] == []
     assert rejected["typed_candidate"]["acceptance"] == accepted["typed_candidate"]["acceptance"] == _DECLARATION
     session_id = failed[1]["session"]["session_id"]
-    assert retry[1]["session"]["session_id"] != session_id
+    assert retry[1]["session"]["session_id"] == session_id
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
-    assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+    assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
     correction_ref = failed[0]["attempt_id"] + "--agent-retry-diagnostic"
     corrections = [item for item in retry[1]["request"]["input_artifacts"] if item["ref"] == correction_ref]
     assert len(corrections) == 1
@@ -154,7 +154,7 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
         result = next(item for item in reversed([json.loads(line) for line in stdout.read_text().splitlines()])
                       if item.get("type") == "result")
         assert result["subtype"] == "success"  # A CLI success label alone cannot bypass native semantic rejection.
-    assert not transcripts[1].startswith(transcripts[0])
+    assert transcripts[1].startswith(transcripts[0])
     assert len(agents) == 13 and len(attempts) == 14
     assert sum(row["kind"] == "PROCESS" for row in attempts) == 1
     assert all(row["state"] == "CLOSED" for row in attempts)
@@ -170,7 +170,7 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
         "paid_model": False, "gpu": False, "agent_count": len(agents), "process_count": 1,
         "grounding_attempts": [row["attempt_id"] for row, _ in groundings], "session_id": session_id,
         "native_rejection": failed[1]["diagnostics"]["validation_error"], "correction_ref": correction_ref,
-        "first_archive_unchanged_across_retry": True, "retry_transcript_extends_first": False,
+        "first_archive_unchanged_across_retry": True, "retry_transcript_extends_first": True,
         "archives": archives, "tool_identities": scenario.tool_identities,
         "oracle": audit.to_dict(), "head": closure["head"]}, indent=2))
     assert audit.ok, audit.to_dict()

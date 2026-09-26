@@ -952,21 +952,35 @@
     tile.classList.toggle("debate", attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE");
     tile.classList.toggle("leader", attempt.command === "LEADER");
     const isProcess = attempt.kind === "PROCESS";
+    const context = attempt.context || {};
+    const separatedContext = Object.prototype.hasOwnProperty.call(context, "current_request_exchange");
     const known = !isProcess && Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
+    const priorKnown = separatedContext && Number.isInteger(context.last_observed_input_tokens) && context.last_observed_input_tokens >= 0;
     const limit = Number.isInteger(attempt.context_window_tokens) && attempt.context_window_tokens > 0 ? attempt.context_window_tokens : null;
-    const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens) : "—";
+    const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens)
+      : priorKnown ? `last ${compactNumber(context.last_observed_input_tokens)}` : "—";
     value.textContent = attempt.operational_status === "compacting" ? `↻ ${valueText}` : valueText;
     fill.style.width = known && limit ? `${Math.min(100, Math.round((attempt.context_tokens / limit) * 1000) / 10)}%` : "0%";
     const lines = [`${label} · attempt ${attempt.attempt_id}`];
     if (isProcess) {
       lines.push(`elapsed ${compactDuration(elapsed)} · OPEN is durable state, not process liveness`);
     } else {
-      lines.push(!known ? "no context reading yet"
-        : `last input ${compactNumber(attempt.context_tokens)}${limit ? ` / ${compactNumber(limit)} working context limit` : " · context window unknown"} · ${attempt.context_source || "unknown source"}`);
+      if (separatedContext) {
+        const currentExchange = context.current_request_exchange ?? "unknown";
+        lines.push(`Current request: exchange ${currentExchange} · ${known ? `${compactNumber(attempt.context_tokens)} input tokens · ${attempt.context_source || "unknown source"}` : "no provider input usage"}`);
+        lines.push(priorKnown ? `Last measured input: ${compactNumber(context.last_observed_input_tokens)} tokens · exchange ${context.last_observed_exchange ?? "unknown"}${context.last_observed_exchange !== context.current_request_exchange ? " (earlier request)" : ""}` : "Last measured input: unavailable");
+        const estimate = context.current_request_estimated_input_tokens;
+        const estimateSources = {provider_count_tokens: "provider token count", provider_usage_plus_delta_estimate: "prior measured usage plus estimated added input", utf8_bytes_conservative_estimate: "conservative UTF-8 byte estimate"};
+        lines.push(`Current request estimate: ${Number.isInteger(estimate) ? compactNumber(estimate) : "unknown"} · ${estimateSources[context.current_request_estimate_source] || context.current_request_estimate_source || "unknown source"}`);
+        if (typeof context.current_request_fits === "boolean") lines.push(`Current request capacity check: ${context.current_request_fits ? "within" : "exceeds"} input allowance`);
+        if (context.current_request_estimate_reason) lines.push(`Estimate basis: ${context.current_request_estimate_reason}`);
+      } else {
+        lines.push(!known ? "no context reading yet"
+          : `last input ${compactNumber(attempt.context_tokens)}${limit ? ` / ${compactNumber(limit)} working context limit` : " · context window unknown"} · ${attempt.context_source || "unknown source"}`);
+        if (Number.isInteger(context.estimated_input_tokens)) lines.push(`Estimated input: ${compactNumber(context.estimated_input_tokens)} (conservative UTF-8 byte estimate, separate from provider usage)`);
+      }
       if (attempt.context_window_source === "working_limit_only") lines.push("Provider window unconfirmed; limit is the framework working estimate.");
       if (Number.isInteger(attempt.cumulative_tokens)) lines.push(`Cumulative invocation usage: ${compactNumber(attempt.cumulative_tokens)} tokens`);
-      const context = attempt.context || {};
-      if (Number.isInteger(context.estimated_input_tokens)) lines.push(`Estimated input: ${compactNumber(context.estimated_input_tokens)} (conservative UTF-8 byte estimate, separate from provider usage)`);
       if (Number.isInteger(context.available_input_tokens)) lines.push(`Admission input allowance: ${compactNumber(context.available_input_tokens)} · output reserve ${context.output_reserve_tokens ?? "?"} · tools ${context.tool_reserve_tokens ?? "?"} · margin ${context.estimate_margin_tokens ?? "?"}`);
       if (Number.isInteger(context.declared_context_tokens)) lines.push(`Configured provider window: ${compactNumber(context.declared_context_tokens)} tokens`);
       if (Number.isInteger(context.cache_read_input_tokens)) lines.push(`Cache read: ${compactNumber(context.cache_read_input_tokens)} input tokens`);

@@ -161,7 +161,8 @@ class NativeOutputValidator:
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
-                 final_report_check: Callable[[], Any] | None = None) -> None:
+                 final_report_check: Callable[[], Any] | None = None,
+                 context_notice: Callable[[], str | None] | None = None) -> None:
         if acceptance_smoke and measurement_smoke:
             raise ValueError("a node authors either the common or the local parser")
         if (acceptance_smoke or measurement_smoke) and parser_source_root is None:
@@ -191,6 +192,7 @@ class NativeOutputValidator:
         self.execution_tool_socket = execution_tool_socket
         self.candidate_check = candidate_check
         self.final_report_check = final_report_check
+        self.context_notice = context_notice
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
         self._lock = threading.RLock()
@@ -211,7 +213,7 @@ class NativeOutputValidator:
                             raise ValueError("native output validator is closed")
                         endpoint._connections.add(self.request)
                     raw = _read_line(self.request, endpoint.max_request_bytes, endpoint.deadline_at)
-                    response = {"ok": True, "result": endpoint._validate(_decode(raw))}
+                    response = {"ok": True, "result": endpoint._dispatch(_decode(raw))}
                     payload = _encode(response)
                     if len(payload) > endpoint.max_request_bytes:
                         raise ValueError("native output response exceeds size limit")
@@ -244,6 +246,27 @@ class NativeOutputValidator:
             self._status, self._accepted = "validation_failed", False
         if self.diagnostics is not None:
             self.diagnostics.event("native_output_validation_error", message=message)
+
+    def _dispatch(self, document: Any) -> dict[str, Any]:
+        # Reuse the existing Attempt/session boundary. An advisory cannot validate
+        # a candidate, change tool permissions or consume a correction round.
+        if isinstance(document, dict) and document.get("operation") == "context_notice":
+            with self._lock:
+                _remaining(self.deadline_at)
+                if self._closed.is_set() or self._error is not None:
+                    raise ValueError("native output validator is unavailable")
+                if set(document) != {"session_id", "operation"} or document["session_id"] != self.session_id:
+                    raise ValueError("native context notice session mismatch")
+            try:
+                notice = self.context_notice() if self.context_notice is not None else None
+            except Exception:
+                # Missing telemetry does not weaken Stop validation or block tools.
+                return {}
+            if not isinstance(notice, str) or not notice:
+                return {}
+            notice = notice.encode("utf-8")[:1536].decode("utf-8", errors="ignore")
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": notice}}
+        return self._validate(document)
 
     def _validate(self, document: Any) -> dict[str, Any]:
         with self._lock:
@@ -426,12 +449,40 @@ def call_validator(socket_path: str, *, session_id: str, last_assistant_message:
     """Forward native final text; the Host owns schema and parser validation."""
     if not isinstance(session_id, str) or not session_id or not isinstance(last_assistant_message, str):
         raise ValueError("native Stop hook requires session_id and last_assistant_message")
+    result = _call_endpoint(socket_path,
+        {"session_id": session_id, "last_assistant_message": last_assistant_message},
+        max_request_bytes=max_request_bytes, timeout_seconds=timeout_seconds)
+    if not (result == {} or (
+        set(result) == {"decision", "reason"} and result["decision"] == "block"
+        and isinstance(result["reason"], str) and result["reason"])):
+        raise ValueError("invalid native Stop validation result")
+    return result
+
+
+def call_context_notice(socket_path: str, *, session_id: str,
+                        max_request_bytes: int, timeout_seconds: float) -> dict[str, Any]:
+    if not isinstance(session_id, str) or not session_id:
+        raise ValueError("native context notice requires session_id")
+    result = _call_endpoint(socket_path, {"session_id": session_id, "operation": "context_notice"},
+        max_request_bytes=max_request_bytes, timeout_seconds=timeout_seconds)
+    if result == {}:
+        return result
+    output = result.get("hookSpecificOutput")
+    if (set(result) != {"hookSpecificOutput"} or not isinstance(output, dict)
+            or set(output) != {"hookEventName", "additionalContext"}
+            or output["hookEventName"] != "PreToolUse"
+            or not isinstance(output["additionalContext"], str)):
+        raise ValueError("invalid native context notice result")
+    return result
+
+
+def _call_endpoint(socket_path: str, document: dict[str, Any], *,
+                   max_request_bytes: int, timeout_seconds: float) -> dict[str, Any]:
     if type(max_request_bytes) is not int or max_request_bytes < 1:
         raise ValueError("native Stop hook size limit must be positive")
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("native Stop hook timeout must be positive and finite")
     deadline = time.monotonic() + timeout_seconds
-    document = {"session_id": session_id, "last_assistant_message": last_assistant_message}
     payload = _encode(document)
     if len(payload) > max_request_bytes:
         raise ValueError("native Stop hook request exceeds size limit")
@@ -444,10 +495,8 @@ def call_validator(socket_path: str, *, session_id: str, last_assistant_message:
         raise ValueError(response.get("error", "native output validator rejected the request")
                          if isinstance(response, dict) else "invalid native output validation response")
     result = response.get("result")
-    if not isinstance(result, dict) or not (result == {} or (
-        set(result) == {"decision", "reason"} and result["decision"] == "block"
-        and isinstance(result["reason"], str) and result["reason"])):
-        raise ValueError("invalid native Stop validation result")
+    if not isinstance(result, dict):
+        raise ValueError("invalid native output endpoint result")
     return result
 
 
@@ -469,6 +518,7 @@ def main() -> int:
     parser.add_argument("--socket", required=True)
     parser.add_argument("--max-bytes", type=int, required=True)
     parser.add_argument("--timeout-seconds", type=float, required=True)
+    parser.add_argument("--context-notice", action="store_true")
     arguments = parser.parse_args()
     try:
         if arguments.max_bytes < 1 or not math.isfinite(arguments.timeout_seconds) or arguments.timeout_seconds <= 0:
@@ -477,12 +527,18 @@ def main() -> int:
         hook = _decode(_read_stdin(arguments.max_bytes, deadline))
         if not isinstance(hook, dict):
             raise ValueError("native Stop hook input must be an object")
-        result = call_validator(arguments.socket, session_id=hook.get("session_id"),
+        if arguments.context_notice:
+            result = call_context_notice(arguments.socket, session_id=hook.get("session_id"),
+                                max_request_bytes=arguments.max_bytes,
+                                timeout_seconds=_remaining(deadline))
+        else:
+            result = call_validator(arguments.socket, session_id=hook.get("session_id"),
                                 last_assistant_message=hook.get("last_assistant_message"),
                                 max_request_bytes=arguments.max_bytes,
                                 timeout_seconds=_remaining(deadline))
     except (ValueError, OSError, TypeError):
-        result = {"continue": False, "stopReason": "Host output validation unavailable; this candidate must not be accepted."}
+        result = {} if arguments.context_notice else {
+            "continue": False, "stopReason": "Host output validation unavailable; this candidate must not be accepted."}
     sys.stdout.buffer.write(_encode(result))
     sys.stdout.buffer.flush()
     return 0

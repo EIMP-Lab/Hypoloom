@@ -59,6 +59,31 @@ def test_old_http_failure_without_body_keeps_exchange_metadata(tmp_path):
     assert read_exchanges(tmp_path) == [metadata]
 
 
+def test_live_context_reads_latest_request_and_last_complete_usage_without_older_bodies(tmp_path, monkeypatch):
+    from pathlib import Path
+    from hypoloom.provider_observation import read_exchanges
+    completed = {"request_path": "/v1/messages", "upstream_status": 200,
+        "response_body_complete": True, "message_complete": True,
+        "served_models": ["model"], "usage": {"input_tokens": 59326, "output_tokens": 100}}
+    rows = [completed, completed, {**completed, "usage_valid": False}, {**completed, "message_complete": False},
+        {"request_path": "/v1/messages/count_tokens", "upstream_status": 404},
+        {"request_path": "/v1/messages", "failure_reason": "context_capacity"}]
+    for index, row in enumerate(rows, 1):
+        directory = tmp_path / f"{index:06d}"
+        directory.mkdir()
+        (directory / "exchange.json").write_text(json.dumps({"exchange": index, **row}))
+    read = Path.read_bytes
+    def refuse_older(path):
+        assert path.parent.name != "000001", "live observation must stop at the last complete usage"
+        return read(path)
+    monkeypatch.setattr(Path, "read_bytes", refuse_older)
+    recent = read_exchanges(tmp_path, latest_context_only=True)
+    assert [item["exchange"] for item in recent] == [2, 3, 4, 6]
+    assert recent[0]["usage"]["input_tokens"] == 59326
+    assert recent[-1]["failure_reason"] == "context_capacity"
+    assert [item["exchange"] for item in read_exchanges(tmp_path, latest_generation_only=True)] == [6]
+
+
 def test_usage_lower_bound_counts_complete_generations_only():
     from hypoloom.provider_observation import summarize_exchanges
     complete = {"request_path": "/v1/messages", "upstream_status": 200,

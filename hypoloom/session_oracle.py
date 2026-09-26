@@ -92,6 +92,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
     selected: list[tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]] = []
     rows = {str(row["attempt_id"]): row for row in attempts}
     transfers = {}
+    continuations = {}
 
     def issue(code: str, message: str, identity: str) -> None:
         issues.append((code, message, (identity,)))
@@ -135,6 +136,48 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
         debate = transfer is not None and transfer[0]
         promotion = transfer is not None and not transfer[0]
         bounded = request.get("schema_version", 0) >= 24 and not debate
+        if request.get("schema_version", 0) >= 25 and not debate:
+            previous = [item for item in attempts if item["kind"] == "AGENT"
+                and (prior_request := payloads.get(str(item["attempt_id"]), {}).get("request", {})).get("command_id") == request.get("command_id")
+                and prior_request.get("owner_workflow_id") == request.get("owner_workflow_id")
+                and prior_request.get("attempt_ordinal") == request.get("attempt_ordinal", 0) - 1]
+            if len(previous) == 1:
+                prior_row = previous[0]
+                prior = payloads[str(prior_row["attempt_id"])]
+                if prior.get("session_binding", {}).get("session_id") == binding.get("session_id"):
+                    try:
+                        assert request["command"] not in {"OBSERVER", "DEBATE_JUDGE", "LEADER"}
+                        assert prior_row["state"] == "CLOSED" and prior_row["terminal_reason"] in {"FAILED", "TIMED_OUT"}
+                        assert prior.get("retry_class") in {"MODEL", "INFRASTRUCTURE"}
+                        assert prior["session"]["transcript_complete"] is True and isinstance(prior["session"]["transcript"], Mapping)
+                        assert all(prior["session"].get(name) == value for name, value in binding.items())
+                        for name, value in request.items():
+                            if name not in {"attempt_id", "attempt_ordinal", "budget", "deadline", "input_artifacts", "immutable_context_refs"}:
+                                assert prior["request"].get(name) == value
+                        suffixes = ("--agent-retry-diagnostic", "--candidate-validation-error")
+                        assert [item for item in request["input_artifacts"] if not item["ref"].endswith(suffixes)] == [
+                            item for item in prior["request"]["input_artifacts"] if not item["ref"].endswith(suffixes)]
+                        assert [ref for ref in request["immutable_context_refs"] if not ref.endswith(suffixes)] == [
+                            ref for ref in prior["request"]["immutable_context_refs"] if not ref.endswith(suffixes)]
+                        diagnostic = prior.get("diagnostics") or {}
+                        assert (diagnostic.get("provider_failure") or {}).get("code") in {None, "provider_error", "transport_error", "http_error"}
+                        context = diagnostic["context"]
+                        assert context["current_request_fits"] is True
+                        assert context["last_observed_exchange"] is not None
+                        tokens = context["last_observed_input_tokens"]
+                        if context["last_observed_exchange"] != context["current_request_exchange"]:
+                            assert context["current_request_estimate_source"] == "provider_usage_plus_delta_estimate"
+                            assert context["anchor_exchange"] == context["last_observed_exchange"]
+                            tokens = context["current_request_estimated_input_tokens"]
+                        assert type(tokens) is int and 0 <= tokens < context["available_input_tokens"]
+                        inline = context.get("max_inline_input_bytes", 49152)
+                        output = context.get("output_reserve_tokens", 0)
+                        assert type(inline) is int and inline > 0 and type(output) is int and output >= 0
+                        assert tokens + inline + output <= context["available_input_tokens"]
+                        assert binding == prior["session_binding"]
+                        continuations[identity] = str(prior_row["attempt_id"])
+                    except (AssertionError, KeyError, ValueError, TypeError):
+                        issue("session_restart_identity", "task retry resumed without matching frozen inputs, complete archive and capacity evidence", identity)
         try:
             session_id = str(uuid.UUID(binding["session_id"]))
             parent_id = binding["parent_session_id"]
@@ -178,7 +221,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             str(request["run_id"]), str(request["role"]), str(request["component_id"]), transfer[4]["cycle"], transfer[4]["scope"])
         if session_id in sessions and sessions[session_id] != group and not promoted_group:
             issue("session_cross_owner", "one CC session is bound to different chain owners", identity)
-        if bounded and session_id in session_attempts and session_attempts[session_id] != identity:
+        if bounded and session_id in session_attempts and session_attempts[session_id] != identity and identity not in continuations:
             issue("session_restart_identity", "bounded invocation reused another Attempt's model session", identity)
         if not bounded and group in groups and groups[group] != session_id:
             issue("session_restart_identity", "the same chain changed CC session identity", identity)
@@ -214,7 +257,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
         if request.get("schema_version", 0) < 24 and transfer is not None and not transfer[0] and request["command"] not in _INNER:
             valid_arguments = [["--resume", binding["session_id"]]]
         if request.get("schema_version", 0) >= 24 and request["command"] != "DEBATE":
-            valid_arguments = [["--session-id", binding["session_id"]]]
+            valid_arguments = [["--resume" if identity in continuations else "--session-id", binding["session_id"]]]
         recovered_unknown = row["terminal_reason"] == "LOST" and closed.get("archive_after_loss") is True and arguments is None
         if arguments not in valid_arguments and not recovered_unknown:
             issue("session_launch_mismatch", "node did not use its bound seed/fork/resume arguments", identity)

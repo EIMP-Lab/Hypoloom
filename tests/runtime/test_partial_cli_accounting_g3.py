@@ -134,7 +134,7 @@ def test_native_partial_cli_accounting_retains_reservation_then_retry_closes_cpu
         "declared", budget["max_tokens"], budget["max_turns"], Decimal(budget["max_cost"]))
     assert charge.tokens > partial["token_usage"]["total_tokens"]
     assert charge.cost > Decimal(partial["cost"])
-    assert retry[1]["session"]["session_id"] != failed[1]["session"]["session_id"]
+    assert retry[1]["session"]["session_id"] == failed[1]["session"]["session_id"]
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
     retry_source = source.parent.parent / retry[0]["attempt_id"] / "stdout.log"
     retry_records = [json.loads(line) for line in retry_source.read_text().splitlines()]

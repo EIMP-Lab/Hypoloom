@@ -2,9 +2,12 @@
 
 English · [简体中文](context-management.zh-CN.md)
 
-New ACI-24 runs preserve research identity, Git worktrees, accepted results and
-memory across short model sessions. Every ordinary invocation starts a fresh
-session, including design, execution, analysis, graph management and retries.
+New ACI-25 runs preserve research identity, Git worktrees, accepted results and
+memory across bounded model sessions. New tasks and capacity reconstruction use
+fresh sessions. An eligible correction or transport retry of the same frozen
+task can resume its complete archived session when observed capacity leaves
+room for the retry. Missing evidence uses a fresh session. ACI-24 runs retain
+their original per-Attempt reconstruction behavior.
 Native compaction is optional; no extra paid summarizer is required. Three-round
 Debate retains its existing bounded fork protocol; a capacity failure there
 ends the auxiliary task instead of replaying the oversized conversation.
@@ -27,7 +30,12 @@ database or second fact authority.
 Infrastructure retries retain identical frozen inputs. Bounded operational
 observations identify the previous Attempt and owned submitted experiments;
 these are not scientific citations. Inspect and test retained unaccepted code.
-Unwritten reasoning cannot be recovered.
+ACI-25 includes bounded tool arguments, paths/ranges, checks and errors instead
+of only the last three results. Grounding sees retained `/acceptance` drafts and
+the same task's previously authorized paper sources. Optional
+`/acceptance/WORK_NOTES.md` can record checked interfaces and unfinished work;
+it is working material, not accepted parser source. Unwritten reasoning cannot
+be recovered. Ordinary nodes still cannot write expert MEMORY.md.
 
 ## Working limits
 
@@ -36,12 +44,28 @@ requests, including tool schemas, results and thinking, without rewriting signed
 blocks or tool pairs. Effective capacity is the minimum of known deployment,
 runtime and working ceilings, less output, tool-growth and estimation reserves.
 
-The fallback working ceiling is **262,144 estimated tokens**, using conservative
-UTF-8 byte size, with **49,152 inline input bytes**. This is an application
-allowance, not a detected provider window or universal tokenizer guarantee.
-Retries halve inline allowance up to a fourfold reduction; sources remain
-readable. Oversized essential material can still end in an explicit capacity
-failure. Do not omit constraints to make it fit.
+The fallback working ceiling remains **262,144 tokens**, with **49,152 inline
+input bytes**. This is an application allowance, not a detected provider window.
+ACI-25 keeps inline allowance stable across retries. Capacity measurement uses:
+
+1. An already observed successful provider count for the exact current input,
+   when available. The framework does not add count API requests.
+2. Complete same-relay provider usage for a verified unchanged prefix, plus a
+   conservative byte estimate of appended text and retained reserves.
+3. An explicitly labeled UTF-8 byte estimate when neither is usable. A refusal
+   on this fallback means capacity could not be confirmed, not that the provider
+   reported an overflow.
+
+These are not universal tokenizer guarantees. Changed history, model/protocol
+or tool definitions invalidate an anchor; new multimodal input and unknown
+cache semantics cannot silently inherit one. Counting recognizes the CLI's
+equivalent single text block/string representation and movement of known
+`ephemeral` cache annotations on text/tool-result blocks. It preserves content,
+order, tool identities and signed thinking; provider requests are not rewritten. Anchors are disposable per-invocation observations;
+a resumed invocation may still need fresh reconstruction if its first request
+cannot be reliably measured. That reconstruction uses the existing infrastructure
+retry allowance; with zero retries it stops and reports the reason. Byte, request,
+time, total-token and cost limits remain independent. Do not omit constraints to make an input fit.
 
 Optional `methodology.yaml` → `memory` controls for new runs:
 
@@ -58,7 +82,9 @@ A `[1m]` model suffix and invocation token budget do not establish capacity.
 A missing count endpoint does not disable local checks. Configuration is frozen
 for the run; switching API connections does not change it.
 
-Web/TUI separate last input and its source, working ceiling and cumulative usage.
+Web/TUI separate the current request estimate, last successful measured input
+and their exchange numbers, working ceiling and cumulative usage. A refused
+request cannot borrow the preceding request's usage for its occupancy bar.
 Provider usage can be final or partial; transcript readings are labeled separately.
 A working allowance does not make an unknown provider window known. Cached input
 still occupies context.
@@ -70,8 +96,12 @@ Capacity reconstruction spends `budget.max_infrastructure_retries` in
 is the separate model-output correction allowance; increasing it does not enable
 infrastructure recovery. Invocation/run budgets and stop conditions still apply.
 
-Web shows both provider-measured input and the conservative byte estimate, with
-output/tool/margin reservations. Only an explicit CLI `compacting` status means
+Web identifies provider count, measured-prefix estimate or byte fallback, with
+output/tool/margin reservations. Near 80% of the available input allowance,
+ACI-25 gives a bounded advisory through existing native tool hooks to finish
+work and preserve progress. It does not grant tool permission, accept output,
+force a summary API call or guarantee that the model follows the advice.
+Only an explicit CLI `compacting` status means
 compaction is ongoing. Native `compact_boundary` events supply completed counts,
 before/after input and duration; absent fields stay unknown.
 
@@ -98,10 +128,13 @@ Web/TUI and support metadata expose the CLI session's unknown-pricing flag;
 missing evidence is separately unavailable, not a verified price. This observation
 does not rewrite recorded charges or budgets.
 
-When the complete initial request is locally refused at minimum inline load and
+When a **fresh ACI-25 session's** complete initial request is locally refused and
 no generation request was forwarded, unchanged recovery ends early. New-run
-input/runtime configuration is needed. Missing capture or a capacity failure
-after model/tool progress retains ordinary bounded recovery.
+input/runtime configuration is needed. A resumed session, missing capture or
+a capacity failure after model/tool progress retains bounded reconstruction.
+ACI-24 retains its old minimum-inline rule. An operator API connection reload
+or switch makes subsequent ordinary retries use fresh sessions; it does not
+reinterpret already OPEN session bindings.
 
 | Observation | Behavior |
 |---|---|

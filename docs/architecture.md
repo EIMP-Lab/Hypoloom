@@ -2,9 +2,10 @@
 
 English · [简体中文](architecture.zh-CN.md)
 
-ACI 24 separates persistent research workspaces from short model sessions.
-Ordinary invocations reconstruct from frozen facts, existing summaries and
-indexed sources; the relay checks a shared working-context allowance. Capacity
+ACI 25 separates persistent research workspaces from bounded model sessions.
+New tasks reconstruct from frozen facts, summaries and indexed sources; eligible
+same-task corrections retain their archived session. The relay checks a shared
+working allowance using measured history where available. Capacity
 recovery preserves submitted experiments and costs, while technical analysis
 failure alone cannot override a legal revision. See [context and recovery](guides/context-management.md)
 for limits, Debate scope, source feedback and monitoring semantics.

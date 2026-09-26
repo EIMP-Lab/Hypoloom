@@ -2,8 +2,8 @@
 
 [English](USAGE.md) · 简体中文
 
-新建 ACI-24 运行的[上下文与记忆说明](docs/guides/context-management.zh-CN.md)解释了
-末次请求输入与累计用量的区别。容量恢复重建短会话，API 等待使用既有连接控制；
+新建 ACI-25 运行的[上下文与记忆说明](docs/guides/context-management.zh-CN.md)解释了
+当前请求估算、上次实测与累计用量的区别。容量恢复重建短会话，API 等待使用既有连接控制；
 恢复耗尽的节点显示失败原因，不能通过 API 重试重新打开。
 
 首次配置见 [SETUP](SETUP.zh-CN.md)。在项目目录启动 Claude Code 后使用 `/autoresearch init`，

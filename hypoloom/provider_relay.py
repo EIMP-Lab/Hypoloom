@@ -83,6 +83,8 @@ class _ExchangeCapture:
         self.observation = ProviderObservation()
         self.relay = relay
         self._counted_tokens = 0
+        self.request_document = None
+        self.request_protocol = None
         self.parent = relay.diagnostics
         self.recorder = None
         self.writer = None
@@ -95,10 +97,10 @@ class _ExchangeCapture:
             "failure_stage": None, "failure_reason": None,
             "response_partial_reason": "not_observed",
         }
+        with relay._lock:
+            relay._exchange_count += 1
+            self.data["exchange"] = relay._exchange_count
         if relay.diagnostics is not None:
-            with relay._lock:
-                relay._exchange_count += 1
-                self.data["exchange"] = relay._exchange_count
             self.recorder = self.call(
                 "child", relay.diagnostics.child,
                 f"provider/{self.data['exchange']:06d}",
@@ -176,6 +178,7 @@ class _ExchangeCapture:
         observed = self.call("response_observation", self.observation.finish)
         if observed is not None:
             self.data.update(observed)
+        self.relay._observe_context(self)
         if self.writer is not None:
             self.call("response_close", self.writer.close)
             self.data["response_capture"] = self.call("response_summary", self.writer.summary)
@@ -313,6 +316,13 @@ class ProviderRelay:
         self.token_budget = token_budget
         self.context_policy = context_policy
         self.context_limit_reached = False
+        # Derived, bounded observations belong to this fixed connection/model.
+        # They disappear with this relay and never modify the forwarded request.
+        self._context_anchor = None
+        self._context_count = None
+        self._latest_context_capacity = None
+        self._latest_context_exchange = None
+        self._context_serial = threading.Lock()
         self._observed_tokens = 0
         self.token_limit_reached = False
         self._scheme, self._hostname, self._port = (
@@ -366,6 +376,8 @@ class ProviderRelay:
                 body = (b'{"type":"error","error":{"type":"invalid_request_error","message":"Hypoloom working context capacity reached; end this invocation for Host reconstruction."}}'
                         if message == "context_capacity" else _EFFORT_ERROR_BODY if message == "effort_mismatch" else
                         _TOKEN_ERROR_BODY if message == "token_budget_exceeded" else _ERROR_BODY)
+                if message == "context_capacity" and getattr(self, "context_estimate_source", None) == "utf8_bytes_conservative_estimate":
+                    body = b'{"type":"error","error":{"type":"invalid_request_error","message":"Hypoloom cannot confirm that this request fits the configured working context limit using the available byte estimate; end this invocation for Host input review or reconstruction."}}'
                 try:
                     self.send_response(code)
                     self.send_header("Content-Type", "application/json")
@@ -383,6 +395,7 @@ class ProviderRelay:
                 capture = _ExchangeCapture(relay)
                 stage = "request_validation"
                 capture_rejected = False
+                context_locked = False
                 try:
                     self.connection.settimeout(relay._remaining())
                     parsed = urlsplit(self.path)
@@ -439,10 +452,34 @@ class ProviderRelay:
                         if not isinstance(output_config, dict) or output_config.get("effort") != relay.expected_effort:
                             raise _RelayRejected(400, "effort_mismatch")
                     stage = "request_limit"
+                    if (relay.context_policy or {}).get("capacity_measurement_version", 0) >= 25:
+                        # A following request may arrive after message_stop but
+                        # before the preceding HTTP EOF. Finish its observation
+                        # before selecting a measurement; deadline still bounds
+                        # all waiting and upstream work in this single Attempt.
+                        context_locked = relay._context_serial.acquire(timeout=relay._remaining())
+                        if not context_locked:
+                            raise _RelayRejected(504)
+                        capture.request_document = document
+                        capture.request_protocol = (self.headers.get("anthropic-version"),
+                            self.headers.get("anthropic-beta"), parsed.query)
                     if relay.context_policy is not None and parsed.path == "/v1/messages":
                         from .context_management import request_capacity
-                        capacity = request_capacity(document, relay.context_policy)
+                        anchor, counted = relay._context_anchor, relay._context_count
+                        if anchor is not None and anchor["protocol"] != capture.request_protocol:
+                            anchor = None
+                            relay._context_anchor = None
+                        if counted is not None and counted["protocol"] != capture.request_protocol:
+                            counted = None
+                        capacity = request_capacity(document, relay.context_policy,
+                            anchor=anchor, exact_count=counted)
                         capture.data["context_capacity"] = capacity
+                        if relay.context_policy.get("capacity_measurement_version", 0) >= 25:
+                            self.context_estimate_source = capacity["estimate_source"]
+                            relay._latest_context_capacity = capacity
+                            relay._latest_context_exchange = capture.data["exchange"]
+                            if capacity.get("estimate_reason") == "history_or_configuration_changed":
+                                relay._context_anchor = None
                         if relay.context_limit_reached or not capacity["fits"]:
                             relay.context_limit_reached = True
                             raise _RelayRejected(400, "context_capacity")
@@ -579,7 +616,11 @@ class ProviderRelay:
                         upstream.close()
                     with relay._lock:
                         relay._sockets.discard(upstream_socket)
-                    capture.finish()
+                    try:
+                        capture.finish()
+                    finally:
+                        if context_locked:
+                            relay._context_serial.release()
 
         self.server = _UnixHTTPServer(str(self.socket_path), Handler)
         self.socket_path.chmod(0o600)
@@ -593,6 +634,59 @@ class ProviderRelay:
         if self._closed.is_set() or remaining <= 0:
             raise _RelayRejected(504)
         return remaining
+
+    def _observe_context(self, capture: _ExchangeCapture) -> None:
+        """Reuse complete same-request provider results, without count probes."""
+        if ((self.context_policy or {}).get("capacity_measurement_version", 0) < 25
+                or capture.request_document is None):
+            return
+        data = capture.data
+        if (data.get("upstream_status") != 200 or data.get("failure_reason") is not None
+                or data.get("response_body_complete") is not True):
+            return
+        from .context_management import counting_material, usage_anchor
+        if data.get("request_path") == "/v1/messages/count_tokens":
+            observation = capture.observation
+            if not observation.json_response or observation.dropping_line:
+                return
+            try:
+                response = json.loads(observation.buffer)
+            except (ValueError, UnicodeError, RecursionError):
+                return
+            value = response.get("input_tokens") if isinstance(response, dict) else None
+            if type(value) is int and value >= 0:
+                self._context_count = {"document": counting_material(capture.request_document),
+                    "input_tokens": value, "exchange": data["exchange"],
+                    "protocol": capture.request_protocol}
+        elif (data.get("request_path") == "/v1/messages" and data.get("message_complete") is True
+                and not capture.observation.invalid_usage):
+            anchor = usage_anchor(capture.request_document, data.get("usage") or {},
+                                  self.context_policy, exchange=data["exchange"])
+            self._context_anchor = ({**anchor, "protocol": capture.request_protocol}
+                                    if anchor is not None else None)
+
+    def context_notice(self) -> str | None:
+        """Best-effort progress-saving advice from existing observations only."""
+        capacity = self._latest_context_capacity
+        if capacity is None or self.context_limit_reached:
+            return None
+        estimate = capacity["estimated_input_tokens"]
+        source = capacity["estimate_source"]
+        anchor = self._context_anchor
+        if anchor is not None and anchor.get("exchange") == self._latest_context_exchange:
+            estimate = anchor["input_tokens"]
+            source = "provider_usage_final"
+        limit = capacity["available_input_tokens"]
+        if estimate < limit * 0.8:
+            return None
+        label = {"provider_usage_final": "last complete provider input",
+            "provider_count_tokens": "same-request provider count",
+            "provider_usage_plus_delta_estimate": "measured history plus estimated new text",
+            "utf8_bytes_conservative_estimate": "unconfirmed byte-based input estimate"}[source]
+        return (f"Working context is near its configured input limit ({label}: {estimate}; limit: {limit}). "
+                "Preserve confirmed sources, draft paths, completed checks, unresolved issues and the next step "
+                "in existing summary fields or this task's permitted writable authoring space; finish bounded work soon. "
+                "This advice is not evidence of provider overflow or scientific acceptance.")
 
     def _reserve_request(self, *, generation: bool = True) -> None:
         self._remaining()
