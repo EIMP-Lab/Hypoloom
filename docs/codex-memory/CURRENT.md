@@ -1,5 +1,26 @@
 # Current Hypoloom development state
 
+- September 27 GPU capacity/replanning implementation: ACI 27 / bwrap65 reuses
+  existing Attempt evidence for 25/15/10% measured margins (calibrated minimum
+  512 MiB), with unchanged independent 25% OOM growth and device reserves.
+  Unknown workloads require pool exclusivity; measured sharing and empty-card
+  preference are transactional. One capacity calculation powers preview,
+  submission and impossible-queue detection. Existing command/release/technical
+  outcome/EXECUTION handoff/replacement paths close resource failures, including
+  crash recovery; observation and notifications explain the cause. No new ledger.
+  G1: 6288 pass / four failures / 26 opt-in skips; all four fixed, final 152 unit
+  and 149 Host/Oracle/native checks pass. Projection reuses readable ACI versions;
+  Oracle retains raw-source validation and shares only numeric policy. Old
+  co-location cases explicitly retain ACI 26. Eight final roots close cleanly;
+  native subset: 53 Agents / five real CPU Processes; all 11 GPU pool requests
+  released. User authorizes commit/push to dev, reusing the completed checks;
+  private evidence remains ignored. New GPU runs require a compatible pool;
+  existing runs/Profiles/pool remain unchanged, with no paid model/CUDA experiment.
+  [Plan](../design/gpu-capacity-and-resource-replanning.md),
+  [guide](../guides/gpu-resource-planning.md), [results and limits](../qualification.md#current-development--gpu-capacity-and-resource-replanning-2026-09-27).
+  Original failed peak is exactly 16198 MiB, not completed calibration; the fix
+  does not retroactively reduce its 20288 MiB budget or migrate that old run.
+
 - September 27 template model defaults: both public language templates omit
   `defaults.model` and inherit the initialization-selected Host model. Explicit
   Profile overrides remain supported; interactive `/model` is not automatically

@@ -40,7 +40,9 @@ _RESOURCE_ESTIMATE_SCHEMA = {
 _RESOURCE_TOOLS = ({
     "name": "get_resources",
     "description": "Read timestamped authorized resource availability and this expert's bounded measured history. This neither reserves capacity nor changes accepted inputs.",
-    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    "inputSchema": {"type": "object", "properties": {
+        "resource_estimate": _RESOURCE_ESTIMATE_SCHEMA,
+        "gpus": {"type": "integer", "minimum": 1}}, "additionalProperties": False},
     "annotations": {"readOnlyHint": True, "destructiveHint": False},
 },)
 _TOOLS = (

@@ -112,6 +112,54 @@ _INTENT_FIELDS = {"allowed_gpu_uuids", "gpu_count", "workload_memory_mib", "rese
 _ACTIVE = ("RESERVED", "LAUNCHING", "BOUND")
 
 
+def resource_wait_message(reason: str) -> str:
+    return {"capacity_unavailable": "Waiting for GPU memory to become available",
+        "capacity_unknown": "Waiting; usable GPU capacity is not fully known",
+        "capacity_requires_revision": "GPU request cannot fit; experiment needs resource revision",
+        "exclusive_wait": "Waiting for an exclusive GPU; workload sharing is not yet calibrated",
+        "fairness_wait": "Waiting for an earlier GPU request",
+        "incompatible_pool": "GPU pool must support this run's resource planning version"}.get(reason, reason)
+
+
+def assess_capacity(devices: Sequence[Mapping[str, Any]], intent: Mapping[str, Any]) -> dict[str, Any]:
+    """Explain the same admission arithmetic used inside the pool transaction.
+
+    Physical total is a conservative upper bound when driver reserve is unknown;
+    low live free memory alone never proves a structurally impossible request.
+    """
+    selected = {d["gpu_uuid"]: d for d in devices}
+    details, available, possible, unknown, exclusive_wait = [], 0, 0, False, False
+    for uuid in intent["allowed_gpu_uuids"]:
+        d = selected.get(uuid)
+        if d is None:
+            possible += 1; unknown = True
+            continue
+        reserve = max(d["reserve_memory_mib"], intent["reserve_memory_mib"])
+        structural_reserve = max(d["pool_reserve_memory_mib"], intent["reserve_memory_mib"])
+        system_reserved = d.get("system_reserved_memory_mib")
+        upper = max(0, d["total_memory_mib"] - (system_reserved or 0) - structural_reserve)
+        allocatable = max(0, d["free_memory_mib"] - d["outstanding_memory_mib"] - reserve)
+        fits = intent["workload_memory_mib"] <= upper
+        possible += fits
+        if fits and system_reserved is None: unknown = True
+        blocked = bool(d.get("exclusive_commitments", 0)) or (
+            intent.get("sharing") == "exclusive" and bool(d["active_commitments"]))
+        exclusive_wait |= blocked
+        ready = not blocked and intent["workload_memory_mib"] <= allocatable
+        available += ready
+        details.append({**{k: d[k] for k in ("total_memory_mib", "free_memory_mib", "outstanding_memory_mib",
+            "pool_reserve_memory_mib", "active_commitments", "exclusive_commitments")},
+            "gpu_uuid": uuid, "allocatable_memory_mib": allocatable,
+            "capacity_upper_bound_mib": upper, "system_reserved_memory_mib": system_reserved,
+            "reserve_memory_mib": reserve, "shortfall_mib": max(0, intent["workload_memory_mib"] - allocatable),
+            "ready": ready, "sharing_blocked": blocked})
+    count = intent["gpu_count"]
+    reason = ("capacity_requires_revision" if possible < count else "ready" if available >= count
+              else "exclusive_wait" if exclusive_wait else "capacity_unknown" if unknown else "capacity_unavailable")
+    return {"reason": reason, "gpu_count": count, "workload_memory_mib": intent["workload_memory_mib"],
+            "sharing": intent.get("sharing", "shared"), "devices": details}
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -184,6 +232,7 @@ class GpuPool:
         expected = set() if operation == "snapshot" else {"key"}
         if operation == "reserve":
             expected |= _INTENT_FIELDS
+            if "sharing" in arguments: expected.add("sharing")
         elif operation in {"activate", "bind_process"}:
             expected.add("process_group_id")
         _fields(arguments, expected, "operation arguments")
@@ -236,9 +285,12 @@ class GpuPool:
         count = _integer(arguments["gpu_count"], "gpu_count", 1)
         if count > len(allowed):
             raise PoolError("invalid_argument", "gpu_count exceeds allowed GPU identities")
+        if "sharing" in arguments and arguments["sharing"] not in ("exclusive", "shared"):
+            raise PoolError("invalid_argument", "sharing must be exclusive or shared")
         return {"allowed_gpu_uuids": list(allowed), "gpu_count": count,
                 "workload_memory_mib": _integer(arguments["workload_memory_mib"], "workload_memory_mib", 1),
-                "reserve_memory_mib": _integer(arguments["reserve_memory_mib"], "reserve_memory_mib")}
+                "reserve_memory_mib": _integer(arguments["reserve_memory_mib"], "reserve_memory_mib"),
+                **({"sharing": arguments["sharing"]} if "sharing" in arguments else {})}
 
     @staticmethod
     def _find(db: sqlite3.Connection, key: RequestKey) -> sqlite3.Row | None:
@@ -324,11 +376,26 @@ class GpuPool:
             outstanding += max(0, workload - (resident or 0))
             shared_reserve = max(shared_reserve, intent["reserve_memory_mib"])
             commitments.append({"request_seq": row["request_seq"], "state": row["state"],
-                                "workload_memory_mib": workload, "resident_memory_mib": resident})
+                                "workload_memory_mib": workload, "resident_memory_mib": resident,
+                                "sharing": intent.get("sharing", "shared")})
         return {"gpu_uuid": uuid, "total_memory_mib": device.total_memory_mib,
                 "free_memory_mib": device.free_memory_mib, "used_memory_mib": device.used_memory_mib,
                 "workload_memory_mib": budget, "reserve_memory_mib": shared_reserve,
                 "outstanding_memory_mib": outstanding, "commitments": commitments}
+
+    def _public_capacity(self, capacity: Mapping[str, Any], sample: CapacitySample) -> dict[str, Any]:
+        result = dict(capacity)
+        commitments = result.pop("commitments")
+        result.pop("workload_memory_mib")
+        device = next(d for d in sample.devices if d.uuid == result["gpu_uuid"])
+        result.update(pool_reserve_memory_mib=self.reserve_memory_mib,
+            system_reserved_memory_mib=device.system_reserved_memory_mib,
+            active_commitments=len(commitments),
+            exclusive_commitments=sum(c["sharing"] == "exclusive" for c in commitments),
+            unknown_attribution_commitments=sum(c["resident_memory_mib"] is None for c in commitments))
+        result["allocatable_memory_mib"] = max(0, result["free_memory_mib"]
+            - result["outstanding_memory_mib"] - result["reserve_memory_mib"])
+        return result
 
     def _schedule(self, db: sqlite3.Connection) -> None:
         queued = db.execute("SELECT * FROM requests WHERE state='QUEUED' ORDER BY request_seq").fetchall()
@@ -361,17 +428,27 @@ class GpuPool:
                         raise PoolError("unauthorized", "queued request membership was withdrawn")
                     all_capacity = [self._capacity(sample, active, uuid, intent["workload_memory_mib"],
                                                    intent["reserve_memory_mib"]) for uuid in allowed]
+                    assessment = assess_capacity([self._public_capacity(c, sample) for c in all_capacity], intent)
+                    if "sharing" in intent and assessment["reason"] == "capacity_requires_revision":
+                        raise PoolError("capacity_requires_revision", "request exceeds authorized device capacity")
                     feasible = [item for item in all_capacity if item["gpu_uuid"] in eligible
+                                and not any(c["sharing"] == "exclusive" for c in item["commitments"])
+                                and not (intent.get("sharing") == "exclusive" and item["commitments"])
                                 and item["free_memory_mib"] - item["outstanding_memory_mib"]
                                 >= item["workload_memory_mib"] + item["reserve_memory_mib"]]
-                    feasible.sort(key=lambda item: (-(item["free_memory_mib"] - item["outstanding_memory_mib"]
+                    feasible.sort(key=lambda item: (bool(item["commitments"]) if "sharing" in intent else False,
+                                                       -(item["free_memory_mib"] - item["outstanding_memory_mib"]
                                                        - item["reserve_memory_mib"]), item["gpu_uuid"]))
                     if len(feasible) < intent["gpu_count"]:
                         reason = "fairness_wait" if set(allowed) & blocked else "capacity_unavailable"
+                        if reason != "fairness_wait" and "sharing" in intent: reason = assessment["reason"]
                         raise PoolError(reason, "run head cannot fit")
                     chosen = sorted(feasible[:intent["gpu_count"]], key=lambda item: item["gpu_uuid"])
                 except PoolError as exc:
                     db.execute("UPDATE requests SET reason=? WHERE request_seq=?", (exc.code, row["request_seq"]))
+                    if exc.code == "capacity_requires_revision":
+                        admitted.add(row["request_seq"])
+                        continue
                     blocked.update(allowed)
                     continue
                 db.execute("UPDATE requests SET state='RESERVED',grant_json=?,decision_json=?,reason=NULL "
@@ -398,6 +475,9 @@ class GpuPool:
             others = [item for item in active if item["request_seq"] != row["request_seq"]]
             capacities = [self._capacity(sample, others, uuid, intent["workload_memory_mib"],
                                          intent["reserve_memory_mib"]) for uuid in json.loads(row["grant_json"])]
+            if any(any(c["sharing"] == "exclusive" for c in item["commitments"])
+                   or intent.get("sharing") == "exclusive" and item["commitments"] for item in capacities):
+                raise PoolError("exclusive_wait", "reserved GPU has incompatible sharing commitments")
             if any(item["free_memory_mib"] - item["outstanding_memory_mib"]
                    < item["workload_memory_mib"] + item["reserve_memory_mib"] for item in capacities):
                 raise PoolError("capacity_unavailable", "reserved GPU lost live capacity before launch")
@@ -454,16 +534,9 @@ class GpuPool:
         result = []
         for uuid in self.members[uid]:
             capacity = self._capacity(sample, active, uuid)
-            commitments = capacity.pop("commitments")
-            capacity.pop("workload_memory_mib")
-            capacity["active_commitments"] = len(commitments)
-            capacity["unknown_attribution_commitments"] = sum(
-                item["resident_memory_mib"] is None for item in commitments)
-            capacity["allocatable_memory_mib"] = max(0, capacity["free_memory_mib"]
-                - capacity["outstanding_memory_mib"] - capacity["reserve_memory_mib"])
-            result.append(capacity)
+            result.append(self._public_capacity(capacity, sample))
         return {"sampling_started_at": sampling_started_at, "sampled_at": sampled_at,
-                "devices": result}
+                "devices": result, "capabilities": ["resource_replanning/1"]}
 
 
 __all__ = ["CapacitySample", "GpuPool", "PoolError", "RequestKey"]

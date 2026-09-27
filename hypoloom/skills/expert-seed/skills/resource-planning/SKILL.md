@@ -51,6 +51,24 @@ An incomplete sample, failed/interrupted trial or low live free memory is not
 evidence for lowering it. Include successful measurement IDs and explain any
 reduction in `basis`; keep workload labels accurate when model/batch/shapes change.
 For retained nonpooled contracts, the Host's fixed-grant rules still apply.
+
+For ACI27+ pooled runs, preview the exact `resource_estimate` with `get_resources`
+(and optional positive `gpus`). The same resolver reports Profile/initial floors,
+submitted and measured budgets, OOM bounds, device reserve and capacity shortfall.
+The preview is read-only; submit rechecks capacity and captures its own sources.
+Uncalibrated comparable history retains 25% measured headroom and requests pool
+exclusivity. Complete successful measurements after the last failed/unknown trial
+must cover earlier sampled peaks before 15% is allowed; three such successes
+within 5% peak variation use 10%. Calibrated margins have a 512 MiB minimum and
+64 MiB rounding. Actual OOM growth remains 25% of the old admitted budget.
+These are sampling-based policies, not a guarantee against OOM. Describe model,
+batch, precision, shapes, data and all execution phases accurately; an altered
+workload must not borrow a smaller unrelated peak or merely rename a failed one.
+Unknown device reserve/capacity remains unknown, not proof of infeasibility.
+`capacity_requires_revision` means revise actual memory demand, not only its
+declared number. Already accepted impossible requests close technically and
+return through EXECUTION handoff for an ordinary bounded replacement.
+
 Never submit UUIDs, device indices, allowlists, reserve changes or runtime/mount
 overrides; never signal or inspect another owner's workload to gain capacity.
 

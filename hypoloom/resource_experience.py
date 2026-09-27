@@ -362,7 +362,7 @@ def _headroom_memory_mib(peak_mib: int) -> int:
 def resolve_workload_memory_mib(
     profile_floor_mib: int, estimate: ResourceEstimate | None,
     measurements: Sequence[Mapping[str, object]] = (),
-    *, initial_memory_mib: int | None = None,
+    *, initial_memory_mib: int | None = None, adaptive: bool = False,
 ) -> int:
     """Resolve a budget from exact, already scoped immutable source projections.
 
@@ -373,36 +373,93 @@ def resolve_workload_memory_mib(
     complete successful comparable trial releases that initial budget. Sampled
     peaks are lower bounds, not OOM guarantees.
     """
+    return explain_workload_memory(profile_floor_mib, estimate, measurements,
+        initial_memory_mib=initial_memory_mib, adaptive=adaptive)["resolved_workload_memory_mib"]
+
+
+def explain_workload_memory(
+    profile_floor_mib: int, estimate: ResourceEstimate | None,
+    measurements: Sequence[Mapping[str, object]] = (), *,
+    initial_memory_mib: int | None = None, adaptive: bool = False,
+) -> dict[str, object]:
+    """One budget calculation for admission, previews and validated audit sources.
+
+    Adaptive margins require completed comparable runs after the last failure,
+    covering all earlier observed peaks. This is evidence, not a peak guarantee.
+    OOM escalation deliberately retains its independent 25 percent rule.
+    """
+    if estimate is not None and not isinstance(estimate, ResourceEstimate):
+        raise ValueError("estimate must be a ResourceEstimate or None")
+    sources = []
+    for attempt_id in (() if estimate is None else estimate.measurement_attempt_ids):
+        matches = [item for item in measurements if isinstance(item, Mapping) and item.get("attempt_id") == attempt_id]
+        if len(matches) != 1 or matches[0].get("workload") != estimate.workload:
+            raise ValueError("measurement Attempt must have one exact matching workload source")
+        sources.append(matches[0])
+    return explain_measured_memory(profile_floor_mib,
+        None if estimate is None else estimate.peak_memory_mib, sources,
+        initial_memory_mib=initial_memory_mib, adaptive=adaptive)
+
+
+def explain_measured_memory(
+    profile_floor_mib: int, submitted_memory_mib: int | None,
+    sources: Sequence[Mapping[str, object]], *,
+    initial_memory_mib: int | None = None, adaptive: bool = False,
+) -> dict[str, object]:
+    """Pure numeric policy after callers verify identities and workload scope.
+
+    Admission uses typed estimates; the Oracle independently validates raw
+    evidence. Neither path needs the other's source validator to share arithmetic.
+    """
     if not _valid_memory_mib(profile_floor_mib) or profile_floor_mib == 0:
         raise ValueError("profile_floor_mib must be a positive JSON-safe integer")
     initial = profile_floor_mib if initial_memory_mib is None else initial_memory_mib
     if not _valid_memory_mib(initial) or initial < profile_floor_mib:
         raise ValueError("initial_memory_mib must be a JSON-safe integer at least profile_floor_mib")
-    if estimate is None:
-        return initial
-    if not isinstance(estimate, ResourceEstimate):
-        raise ValueError("estimate must be a ResourceEstimate or None")
-    resolved = max(profile_floor_mib, estimate.peak_memory_mib)
-    measured_success = False
-    for attempt_id in estimate.measurement_attempt_ids:
-        sources = [item for item in measurements if isinstance(item, Mapping) and item.get("attempt_id") == attempt_id]
-        if len(sources) != 1 or sources[0].get("workload") != estimate.workload:
-            raise ValueError("measurement Attempt must have one exact matching workload source")
-        source = sources[0]
+    if submitted_memory_mib is not None and (not _valid_memory_mib(submitted_memory_mib) or submitted_memory_mib == 0):
+        raise ValueError("submitted_memory_mib must be a positive JSON-safe integer or None")
+    peaks, successes = [], []
+    oom_floor = 0
+    for source in sources:
         peak = source.get("sample_peak_bytes")
         if source.get("measurement_status") == "complete" and _valid_memory_mib(peak):
-            resolved = max(resolved, _headroom_memory_mib((peak + 1_048_575) // 1_048_576))
-            measured_success |= source.get("terminal_status") == "SUCCEEDED" and source.get("oom") is not True
+            mib = (peak + 1_048_575) // 1_048_576
+            peaks.append(mib)
+            if source.get("terminal_status") == "SUCCEEDED" and source.get("oom") is not True:
+                successes.append((source, mib))
         admitted = source.get("admitted_workload_memory_mib")
         if source.get("oom") is True:
             if not _valid_memory_mib(admitted) or admitted == 0:
                 raise ValueError("observed OOM source requires its prior admitted workload budget")
-            resolved = max(resolved, _headroom_memory_mib(admitted))
-    if not measured_success:
+            oom_floor = max(oom_floor, _headroom_memory_mib(admitted))
+    peak_mib = max(peaks, default=0)
+    calibrated = []
+    if adaptive and sources and all(_finite_number(s.get("ended_at")) is not None for s in sources):
+        success_ids = {s["attempt_id"] for s, _ in successes}
+        last_failure = max((s["ended_at"] for s in sources if s["attempt_id"] not in success_ids), default=float("-inf"))
+        calibrated = [p for s, p in successes if s["ended_at"] > last_failure]
+        if not calibrated or max(calibrated) < peak_mib:
+            calibrated = []
+    percent = 25
+    if calibrated:
+        percent = 10 if len(calibrated) >= 3 and max(calibrated) * 100 <= min(calibrated) * 105 else 15
+    absolute_margin = 512 if calibrated else 0
+    measured_budget = ((peak_mib + max((peak_mib * percent + 99) // 100, absolute_margin) + 63) // 64) * 64 if peaks else 0
+    resolved = max(profile_floor_mib, submitted_memory_mib or 0, measured_budget, oom_floor)
+    initial_active = not (calibrated if adaptive else successes)
+    if initial_active or submitted_memory_mib is None:
         resolved = max(resolved, initial)
     if resolved > _MAX_JSON_SAFE_INTEGER:
         raise ValueError("resolved workload memory exceeds a JSON-safe integer")
-    return resolved
+    return {"resolved_workload_memory_mib": resolved, "profile_floor_mib": profile_floor_mib,
+        "initial_memory_mib": initial, "initial_floor_active": initial_active,
+        "submitted_memory_mib": submitted_memory_mib,
+        "sample_peak_mib": peak_mib if peaks else None, "headroom_percent": percent,
+        "minimum_headroom_mib": absolute_margin, "measured_budget_mib": measured_budget,
+        "oom_budget_floor_mib": oom_floor, "successful_measurements": len(successes),
+        "calibrated_measurements": len(calibrated),
+        "sharing": "shared" if calibrated else "exclusive",
+        "measurement_attempt_ids": [s["attempt_id"] for s in sources]}
 
 
 def _finite_number(value: object) -> float | None:

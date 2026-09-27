@@ -1,6 +1,15 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [GPU capacity feedback and resource replanning, September 27](../design/gpu-capacity-and-resource-replanning.md):
+  ACI 27 / bwrap65 implementation: evidence-based 25/15/10% measured margins,
+  unchanged OOM growth, capacity explanation, technical closure/handoff repair,
+  bounded replacement and conservative same-card sharing. [Guide](../guides/gpu-resource-planning.md)
+  / [中文](../guides/gpu-resource-planning.zh-CN.md); [results and limits](../qualification.md#current-development--gpu-capacity-and-resource-replanning-2026-09-27).
+  Local read-only evidence: `.local/analysis/research-progress-20260927-1850/`;
+  implementation checks: `.local/qualification/gpu-replanning-20260927/`.
+  Existing runs, Profiles and shared pool remain unchanged; no paid/CUDA tests
+  or cross-version run migration.
 - [Tool-guided reading and parallel proposals, September 27](../design/tool-guided-reading-and-parallel-proposals.md):
   implemented D1–D4 in ACI-26 / bwrap64, existing reference/tool reuse,
   fixed proposal branches versus dynamic readers, FORWARD-bound Leader advice,

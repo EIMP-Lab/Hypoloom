@@ -948,8 +948,13 @@ class WorkflowsPanel(CockpitPanel):
                     continue
                 lines.append(
                     f"[yellow]{_value(wait.get('experiment_id'))}[/yellow] · "
-                    f"{_short_text(wait.get('reason'), limit=200)}"
+                    f"{_short_text(wait.get('message') or wait.get('reason'), limit=200)}"
                 )
+                planning = wait.get("resource_planning") or {}
+                intent = planning.get("resource_intent") or {}
+                if intent:
+                    lines.append(f"   GPU budget {_value(intent.get('workload_memory_mib'))} MiB + "
+                                 f"reserve {_value(intent.get('reserve_memory_mib'))} MiB")
         self.update("\n".join(lines))
 
 

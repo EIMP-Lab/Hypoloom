@@ -675,6 +675,30 @@ def test_browser_host_absence_dispatch_pause_and_terminal_labels(browser):
     page.wait("document.querySelector('#run-state').textContent === 'CANCELLED'")
 
 
+def test_browser_resource_wait_explains_budget_and_does_not_invent_measurement(browser, tmp_path):
+    page = browser
+    page.evaluate("fixture.snapshot.status_source='sqlite+resident-host-status'")
+    page.evaluate("""fixture.snapshot.status.resource_waits=[{
+      experiment_id:'gpu-experiment',reason:'exclusive_wait',
+      message:'Waiting for an exclusive GPU; workload sharing is not yet calibrated',
+      resource_planning:{resource_intent:{workload_memory_mib:16384,reserve_memory_mib:4096,sharing:'exclusive'},
+        budget:{sample_peak_mib:null,headroom_percent:25}}
+    }]""")
+    page.wait("document.querySelector('#resource-wait-list').textContent.includes('16384 MiB')")
+    content = page.text('#resource-wait-list')
+    assert 'exclusive GPU' in content and '4096 MiB' in content
+    assert 'no complete measurement' in content and 'measured headroom' not in content
+    page.evaluate("""Object.assign(fixture.snapshot.status.resource_waits[0],{
+      reason:'capacity_unavailable',message:'Waiting for GPU memory to become available',
+      resource_planning:{resource_intent:{workload_memory_mib:18688,reserve_memory_mib:4096,sharing:'shared'},
+        budget:{sample_peak_mib:16198,headroom_percent:15}}
+    })""")
+    page.wait("document.querySelector('#resource-wait-list').textContent.includes('measured headroom 15%')")
+    assert '18688 MiB' in page.text('#resource-wait-list')
+    assert 'no complete measurement' not in page.text('#resource-wait-list')
+    page.screenshot(tmp_path / 'resource-budget.png')
+
+
 def test_browser_execution_reliability_filters_metrics_and_attempt_evidence(browser, tmp_path):
     page = browser
     page.click("#execution-reliability")

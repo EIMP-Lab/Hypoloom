@@ -378,6 +378,15 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "optional list of comparable closed Process Attempt IDs. Keep device free memory separate from "
                 "attributed workload use. Estimates do not choose GPUs or override Profile floors/reserves. "
             )
+            if request.schema_version >= 27:
+                common += (
+                    "Preview resource_estimate and optional positive gpus with get_resources before submitting. "
+                    "Read the resolved budget, measured headroom, sharing mode and capacity reason. "
+                    "A capacity_requires_revision result needs a change to actual workload demand; lowering "
+                    "the declared number alone cannot override measured bounds. Unknown workloads wait for "
+                    "an exclusive pool device. A prestart capacity failure is technical, not scientific refutation; "
+                    "after evidence linking, use replaces_experiment_id within the existing repair budget. "
+                )
         common += (
             "The raw experiment Process starts in /output; /output and /tmp are writable. "
             "Write generated outputs relative to the current working directory, for example Path('predictions.json'). "

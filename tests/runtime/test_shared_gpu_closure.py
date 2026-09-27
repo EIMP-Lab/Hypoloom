@@ -76,8 +76,11 @@ def test_shared_gpu_run_closes_collection_publication_and_independent_oracles(
 
 
 def test_independent_roots_overlap_one_gpu_without_sharing_private_run_state(
-    environment,
+    environment, monkeypatch,
 ):
+    # Retained uncalibrated sharing remains readable/executable under ACI 26.
+    # ACI 27 deliberately waits; its new behavior is covered separately.
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 26)
     make, free, pool, runtime = environment
     free.update({GPU_A: 18000, GPU_B: 1000})
     first, second = make("alpha"), make("beta")
@@ -131,6 +134,9 @@ def test_completing_owner_releases_capacity_for_waiting_independent_root(environ
         row["state"] == "QUEUED" and row["namespace"] == "beta"
         for row in _pool_rows(pool)
     )
+
+    assert all(json.loads(row["intent_json"])["sharing"] == "exclusive" for row in _pool_rows(pool))
+    assert any(wait[1] == "exclusive_wait" for wait in second.resource_waits.values())
 
     _finish(first)
     _clean(first)

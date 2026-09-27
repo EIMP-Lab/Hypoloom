@@ -65,6 +65,10 @@ user-systemd 服务。外部项目的池端点仍只能由操作员显式提供�
 服务;替换、停止或重新配置池始终是独立的操作员动作。共享容量支持同卡并发
 实验;reserve、显存估算和并发上限仍然执行。
 
+新建 ACI 27 运行根据实测采用 25%／15%／10% 余量；获得可比成功证据前默认
+池内独占。资源查询解释最终预算，无法满足的申请交还 Agent 进行有界技术修订。
+共享池兼容要求与采样局限见 [GPU 显存规划](guides/gpu-resource-planning.zh-CN.md)。
+
 使用 `hypoloom status`、`hypoloom monitor` 和 `hypoloom oracle`,并给出精确的
 `--state-root` 与 `--run-id`。持久的 ACTIVE 记录不能证明进程存活。
 `q / Leave monitor` 让后台工作继续运行。`x / End run` 确认取消,随后是任务清理

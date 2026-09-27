@@ -79,6 +79,12 @@ reconfiguring a pool remains a separate operator action. Shared capacity
 supports concurrent experiments on one card; reserve, memory estimates and
 concurrency limits remain enforced.
 
+New ACI 27 runs use measured 25/15/10% margins and exclusive scheduling until
+comparable successful evidence permits sharing. The resource query explains the
+final budget, and impossible requests return for bounded technical repair.
+See [GPU memory planning](guides/gpu-resource-planning.md), including pool
+compatibility and the limits of sampled peaks.
+
 Use `hypoloom status`, `hypoloom monitor` and `hypoloom oracle` with an exact
 `--state-root` and `--run-id`. A durable ACTIVE record does not establish process
 liveness. `q / Leave monitor` leaves background work running. `x / End run`

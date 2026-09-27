@@ -162,6 +162,11 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
             kind = "experiment_failed"
         if kind:
             values = {key: payload[key] for key in ("hypothesis_id", "experiment_id", "outcome_id", "outcome", "assessment", "verdict", "proposer_role", "component_id") if key in payload}
+            if kind == "experiment_failed":
+                resource_failure = next((a for a in attempts if a.get("experiment_id") == payload.get("experiment_id")
+                    and (a.get("observation") or json.loads(a.get("observation_json") or "{}")).get("resource_failure") == "capacity_requires_revision"), None)
+                if resource_failure is not None:
+                    values.update(error_code="capacity_requires_revision", reason="GPU request cannot fit; resource revision required")
             result.append(_event("fact", row["fact_id"], 1, kind, row["created_at"], run_id, fact_id=row["fact_id"], **values))
     for row in transitions:
         kind = None

@@ -116,6 +116,7 @@ class GpuRuntimeObservation:
     free_memory_mib: int
     used_memory_mib: int
     utilization_percent: int | None
+    system_reserved_memory_mib: int | None = None
 
     def __post_init__(self) -> None:
         _gpu_uuid(self.uuid)
@@ -135,6 +136,9 @@ class GpuRuntimeObservation:
                 "GPU runtime free_memory_mib and used_memory_mib must sum to "
                 "total_memory_mib"
             )
+        if self.system_reserved_memory_mib is not None:
+            _bounded_memory(self.system_reserved_memory_mib, self.used_memory_mib,
+                            "GPU runtime system_reserved_memory_mib")
         if self.utilization_percent is not None and (
             isinstance(self.utilization_percent, bool)
             or not isinstance(self.utilization_percent, int)
@@ -149,6 +153,8 @@ class GpuRuntimeObservation:
             "free_memory_mib": self.free_memory_mib,
             "used_memory_mib": self.used_memory_mib,
             "utilization_percent": self.utilization_percent,
+            **({"system_reserved_memory_mib": self.system_reserved_memory_mib}
+               if self.system_reserved_memory_mib is not None else {}),
         }
 
 
@@ -697,6 +703,12 @@ class _NvmlMemory(ctypes.Structure):
     ]
 
 
+class _NvmlMemoryV2(ctypes.Structure):
+    _fields_ = [("version", ctypes.c_uint), ("total", ctypes.c_ulonglong),
+                ("reserved", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong),
+                ("used", ctypes.c_ulonglong)]
+
+
 class _NvmlUtilization(ctypes.Structure):
     _fields_ = [
         ("gpu", ctypes.c_uint),
@@ -741,6 +753,17 @@ def _nvml_runtime_observation(gpu_uuid: str) -> GpuRuntimeObservation:
         )
         memory = _NvmlMemory()
         _nvml_check(get_memory(handle, ctypes.byref(memory)), "device memory")
+        system_reserved = None
+        try:
+            get_memory_v2 = _nvml_function(library, ("nvmlDeviceGetMemoryInfo_v2",),
+                (ctypes.c_void_p, ctypes.POINTER(_NvmlMemoryV2)), ctypes.c_int)
+        except ResourceUnavailable:
+            get_memory_v2 = None
+        if get_memory_v2 is not None:
+            extended = _NvmlMemoryV2(version=ctypes.sizeof(_NvmlMemoryV2) | (2 << 24))
+            if get_memory_v2(handle, ctypes.byref(extended)) == 0:
+                memory = extended
+                system_reserved = (extended.reserved + _MIB - 1) // _MIB
         utilization_percent: int | None = None
         if get_utilization is not None:
             utilization = _NvmlUtilization()
@@ -754,6 +777,7 @@ def _nvml_runtime_observation(gpu_uuid: str) -> GpuRuntimeObservation:
             free_memory_mib=free_memory_mib,
             used_memory_mib=total_memory_mib - free_memory_mib,
             utilization_percent=utilization_percent,
+            system_reserved_memory_mib=system_reserved,
         )
     finally:
         shutdown()

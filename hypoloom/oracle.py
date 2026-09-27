@@ -684,8 +684,9 @@ def audit_gpu_pool(pool_root: str | os.PathLike[str]) -> dict[str, Any]:
             issue("gpu_pool_process_binding_invalid", seq)
         try:
             intent = decode(row["intent_json"])
-            if (not isinstance(intent, dict) or set(intent) != {
+            if (not isinstance(intent, dict) or set(intent) - {"sharing"} != {
                     "allowed_gpu_uuids", "gpu_count", "workload_memory_mib", "reserve_memory_mib"}
+                    or ("sharing" in intent and intent["sharing"] not in ("exclusive", "shared"))
                     or not devices(intent["allowed_gpu_uuids"])
                     or not integer(intent["gpu_count"], 1)
                     or intent["gpu_count"] > len(intent["allowed_gpu_uuids"])
@@ -743,6 +744,8 @@ def audit_gpu_pool(pool_root: str | os.PathLike[str]) -> dict[str, Any]:
                         raise ValueError("invalid commitment reference")
                     seen.add(ref)
                     _, referenced, other_grant = parsed[ref]
+                    if intent.get("sharing") == "exclusive" or referenced.get("sharing") == "exclusive":
+                        issue("gpu_pool_sharing_conflict", seq)
                     budget = commitment["workload_memory_mib"]
                     resident = commitment["resident_memory_mib"]
                     if (not integer(budget, 1) or budget != referenced["workload_memory_mib"]
@@ -3758,14 +3761,27 @@ def _audit_pre_spawn_cancel(attempt, observation, commands, transitions, payload
         context = {**context, "resource": _audit_shared_process_resource(context["resource"], {}, attempt, observation, issues)}
     commands = {key: dict(row) for key, row in commands.items()}
     try:
-        assert attempt["state"] == "CLOSED" and attempt["terminal_reason"] == "CANCELLED"
+        revision = observation.get("resource_failure") == "capacity_requires_revision"
+        assert attempt["state"] == "CLOSED" and attempt["terminal_reason"] == ("FAILED" if revision else "CANCELLED")
         assert attempt["attempt_ordinal"] == 1 and attempt["process_group_id"] is None
         assert observation.get("synthetic_before_spawn") is True and context is not None
         command = commands[str(attempt["command_id"])]
         assert command["command_type"] == "CANCEL" and command["response_status"] == "accepted"
         assert (command["run_id"], command["workflow_id"]) == (attempt["run_id"], attempt["workflow_id"])
-        assert json.loads(command["request_json"]) == {"synthetic_cancel": True}
-        assert json.loads(command["result_json"]) == {"attempt_id": identity}
+        if revision:
+            from .gpu_pool import assess_capacity
+            diagnostic = {k: observation[k] for k in ("resource_failure", "capacity")}
+            assert command["command_id"] == f"{attempt['workflow_id']}--resource-revision"
+            assert json.loads(command["request_json"]) == diagnostic
+            assert json.loads(command["result_json"]) == {"repair_required": True}
+            capacity = diagnostic["capacity"]
+            intent = context["contract"]["resource_intent"]
+            assert intent["sharing"] in {"exclusive", "shared"}
+            assert capacity["reason"] == "capacity_requires_revision"
+            assert {k: v for k, v in capacity.items() if k != "observed_at"} == assess_capacity(capacity["devices"], intent)
+        else:
+            assert json.loads(command["request_json"]) == {"synthetic_cancel": True}
+            assert json.loads(command["result_json"]) == {"attempt_id": identity}
         request = observation["process_request"]
         assert _valid_process_request(request)
         assert all(observation.get(key) == attempt[key] for key in ("attempt_id", "attempt_ordinal", "execution_id", "terminal_reason"))
@@ -3776,9 +3792,13 @@ def _audit_pre_spawn_cancel(attempt, observation, commands, transitions, payload
                 attempt["run_id"], attempt["workflow_id"], "EXPERIMENT", "EVALUATING")
             and commands.get(str(row["command_id"]), {}).get("command_type") == "CANCEL"]
         closed = [row for row, value in cancelled if value.get("attempt_id") == identity and value.get("synthetic") is True]
-        assert len(closed) == 1 and closed[0]["previous_state"] == "EVALUATING"
-        assert any(row["revision"] < closed[0]["revision"] and row["previous_state"] in {"PREREGISTERED", "READY"}
-            for row, _ in cancelled)
+        assert len(closed) == 1
+        if revision:
+            assert closed[0]["previous_state"] in {"PREREGISTERED", "READY"}
+        else:
+            assert closed[0]["previous_state"] == "EVALUATING"
+            assert any(row["revision"] < closed[0]["revision"] and row["previous_state"] in {"PREREGISTERED", "READY"}
+                for row, _ in cancelled)
     except (AssertionError, KeyError, TypeError, ValueError) as exc:
         issues.append(OracleIssue("process_cancel_source_invalid", "Queued Process cancellation lacks its actual unspawned terminal/cancel source: " + str(exc), (identity,)))
         return
@@ -5000,13 +5020,15 @@ def _raw_reported_gpu_oom(observation: Mapping[str, Any], attempt: Mapping[str, 
 def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[str, Any], response: Mapping[str, Any],
                                 floor: int, context: Mapping[str, Any] | None, pool: Mapping[str, Any],
                                 *, initial_memory_mib: int | None = None,
-                                visited: frozenset[str] = frozenset(), memo: dict[str, int] | None = None) -> int:
+                                visited: frozenset[str] = frozenset(), memo: dict[str, int] | None = None,
+                                planning: dict[str, Any] | None = None) -> int:
     initial = floor if initial_memory_mib is None else initial_memory_mib
     if type(initial) is not int or not 0 < floor <= initial < 2**53:
         raise ValueError("initial memory must be JSON-safe and at least the positive Profile floor")
     if memo is None: memo = {}
     command_id = contract.get("source_submit_command_id")
-    if command_id is not None and command_id in memo: return memo[command_id]
+    if planning is not None: planning.update(sharing="exclusive")
+    if command_id is not None and command_id in memo and planning is None: return memo[command_id]
     arguments = response.get("arguments", {})
     if "resource_estimate" not in arguments: return initial
     if type(request.get("schema_version")) is not int or request["schema_version"] < 18:
@@ -5030,6 +5052,7 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
     accepted = datetime.fromisoformat(command["created_at"].replace("Z", "+00:00"))
     accepted_at = (accepted if accepted.tzinfo else accepted.replace(tzinfo=timezone.utc)).timestamp()
     measured_success = False
+    verified_measurements = []
     for identity in ids:
         source = attempts[identity]
         if (source["kind"] != "PROCESS" or source["state"] != "CLOSED" or source["run_id"] != request["run_id"]
@@ -5077,8 +5100,21 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
             mib = (peak + 1024**2 - 1) // 1024**2
             result = max(result, ((5 * mib + 255) // 256) * 64)
             measured_success |= source["terminal_reason"] == "SUCCEEDED"
-        if _raw_reported_gpu_oom(observation, source): result = max(result, ((5 * admitted + 255) // 256) * 64)
+        oom = _raw_reported_gpu_oom(observation, source)
+        if oom: result = max(result, ((5 * admitted + 255) // 256) * 64)
+        verified_measurements.append({"attempt_id": identity, "workload": estimate["workload"],
+            "measurement_status": "complete" if peak is not None else "unknown",
+            "sample_peak_bytes": peak, "terminal_status": source["terminal_reason"],
+            "ended_at": source["ended_at"], "oom": oom, "admitted_workload_memory_mib": admitted})
     if not measured_success: result = max(result, initial)
+    if request["schema_version"] >= 27:
+        # Ownership, time, GPU allocation and raw measurement validation above
+        # remain independent. Reuse the policy rather than a second reducer.
+        from .resource_experience import explain_measured_memory
+        explanation = explain_measured_memory(floor, estimate["peak_memory_mib"],
+            verified_measurements, initial_memory_mib=initial, adaptive=True)
+        result = explanation["resolved_workload_memory_mib"]
+        if planning is not None: planning.update(explanation)
     if not 0 < result < 2**53: raise ValueError("learned workload budget is not JSON-safe")
     memo[command_id] = result
     return result
@@ -5151,16 +5187,20 @@ def _audit_resource_contract(
     if "resource_intent" in contract:
         raw = contract["resource_intent"]
         expected_keys = {"kind", "allowed_gpu_uuids", "gpu_count", "workload_memory_mib", "reserve_memory_mib"}
+        adaptive = request.get("schema_version", 0) >= 27
+        if adaptive: expected_keys.add("sharing")
         environment = _raw_resource_environment(contract)
         minimum, reserve = budget.get("min_vram_per_experiment", 0), budget.get("gpu_vram_reserve_mb", 0)
         resolved = minimum
+        planning = {}
         if research_contract_version == "hypoloom-research-v12":
             try: resolved = _raw_learned_workload_budget(contract, request, response, minimum, learning_context, pool_binding,
-                initial_memory_mib=budget.get("initial_vram_per_experiment"))
+                initial_memory_mib=budget.get("initial_vram_per_experiment"), planning=planning)
             except (KeyError, TypeError, ValueError, RecursionError) as exc:
                 issues.append(OracleIssue("resource_learning_source_invalid", str(exc), (fact_id,)))
         valid = (shared_version and _valid_gpu_pool_binding(pool_binding) and "resource_grant" not in contract
             and isinstance(raw, Mapping) and set(raw) == expected_keys and raw.get("kind") == "GPU"
+            and (not adaptive or raw.get("sharing") == planning.get("sharing"))
             and count_valid and count > 0 and not cpu_only_artifact and contract_preference in {"AUTO", "GPU_REQUIRED"}
             and isinstance(raw.get("allowed_gpu_uuids"), list)
             and raw["allowed_gpu_uuids"] == sorted(gpu["uuid"] for gpu in gpus)

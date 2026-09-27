@@ -836,8 +836,17 @@
         const row = element("div", "resource-wait");
         row.append(
           element("strong", "", wait.experiment_id || "unnamed workflow"),
-          element("span", "", wait.reason || "unspecified resource wait"),
+          element("span", "", wait.message || wait.reason || "unspecified resource wait"),
         );
+        const planning = object(wait.resource_planning);
+        const intent = object(planning.resource_intent);
+        if (Number.isFinite(intent.workload_memory_mib)) {
+          const budget = object(planning.budget);
+          row.append(element("span", "", `GPU budget ${intent.workload_memory_mib} MiB + reserve ${intent.reserve_memory_mib} MiB` +
+            (Number.isFinite(budget.sample_peak_mib) && Number.isFinite(budget.headroom_percent)
+              ? ` · measured headroom ${budget.headroom_percent}% · ${intent.sharing}`
+              : intent.sharing ? ` · ${intent.sharing} · no complete measurement` : "")));
+        }
         waitsContainer.append(row);
       });
     }

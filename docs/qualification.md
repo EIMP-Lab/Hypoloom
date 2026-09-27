@@ -2,6 +2,85 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — GPU capacity and resource replanning, 2026-09-27
+
+ACI 27 / `claude-code-bwrap/65` implements the
+[capacity and replanning design](design/gpu-capacity-and-resource-replanning.md).
+The existing measured-budget calculation now explains admission and selects
+25%, 15% or 10% headroom from comparable completed Attempt evidence. Calibrated
+margins have a 512 MiB minimum; actual OOM budget growth remains independently
+25%. Unknown workloads request exclusive pool admission. The existing pool
+transaction enforces that condition in both directions and prefers empty GPUs.
+No additional measurement store or calibration marker is introduced.
+
+Read-only previews and submission use the same capacity arithmetic. A reliable
+capacity upper bound distinguishes impossible requests from temporary pressure;
+unknown telemetry does not become a guessed fixed reserve. Impossible queued
+work releases its existing pool request, closes as a technical execution failure
+and wakes EXECUTION through the existing handoff. Replacement submissions retain
+the original scientific constraints and budgets. Web/TUI explanations and the
+existing failure event expose the reason. See the [guide](guides/gpu-resource-planning.md).
+
+Evidence is retained in `.local/qualification/gpu-replanning-20260927/`.
+Focused tests exercise the 20288/20024 MiB reproduction, multi-device and unknown
+capacity, queue progress, measured calibration, concurrent exclusive admission,
+NVML reserve fallback, technical closure, replacement, and two Host crash/restart
+points. A separate pre-exec capacity-loss case covers a prior unstarted Attempt
+before resource revision. Tests count the single failure event, closed Attempts,
+released pool requests and accepted replacement result with the existing Oracle.
+Browser checks use the shipped JavaScript and distinguish absent measurement
+from measured headroom. Native local-provider tests execute real CLI/CPU work;
+synthetic GPU tests do not execute CUDA kernels.
+
+Independent read-only censuses verify five new simulated-GPU Host roots:
+**79 Agent Attempts, 11 Process Attempts and 11 released pool requests**. Two
+native resource roots close **42 Agent Attempts and four actual CPU Processes**,
+including resource-tool use and next-cycle Skill evolution. All seven roots have
+matching experiment creation/outcome/publication counts, clean Oracles, no open
+Attempts, duplicate outcomes, pending effects, live owned groups or sockets.
+The synthetic Process count includes technical/pre-exec closures and is not a
+count of GPU executions. Census outputs retain the original test-root paths.
+
+The initial focused run retains **577 passes, two failures and two skips**.
+Both failures were old uncalibrated co-location expectations: those scenarios now
+explicitly retain ACI 26, while ACI 27 independently requires exclusivity and
+release before another uncalibrated job starts. The follow-up has **268 passes**.
+The first browser fixture lacked resident-Host status; the corrected fixture
+passes without changing the observer's offline behavior.
+An accidentally serial full invocation was deliberately interrupted after
+715 passing tests and 787.85 seconds, then restarted with eight workers using
+the same selection. Its partial log, XML and interruption residue check remain;
+the interrupted test has no live owned process group or kernel socket.
+
+Full G1 then completes with **6288 passes, four failures, 26 opt-in skips and
+30 warnings in 1209.28 seconds**. The original failures remain. One exposes a
+duplicated node-projection version allowlist missing ACI 27; it now reuses the
+existing readable-version set, with current/legacy/unknown-version regressions.
+Another rejects a direct domain-validator import into the Oracle. The final
+calculation separates typed admission from pure numeric policy, keeping the
+Oracle's independent raw-source validation and the original import prohibition.
+Two fixture assertions now expect the additive wait message and the actual
+current Grounding version. No assertion was weakened to accept a bad outcome.
+The final unit selection passes **152 tests**; the final Host/Oracle/observation
+and native-CLI follow-up passes **149 tests in 151.29 seconds**, including the
+original Grounding failure. All four G1 failures are resolved. This bounded
+repair follows G1; the full suite was not repeated on the final bytes.
+The final-code census repeats the five simulated-GPU roots and includes three
+native roots: **79/11 simulated Agent/Process Attempts, 53 native Agent Attempts
+and five real CPU Processes**. All eight roots close cleanly with matching
+creation/outcome/publication counts. Seven isolated pools are clean; all 11 GPU
+requests are released, and both native CPU pools have no requests. Independent
+process-group and kernel-socket checks find no residue. Final evidence is in
+`final-followup.xml`, `final-census.json` and `final-census-summary.json` under the
+same qualification directory.
+
+Existing research runs, personal Profiles and the running shared pool remain
+unchanged. New GPU runs require a compatible pool advertising
+`resource_replanning/1`; old pools cannot silently ignore exclusivity. No paid
+model or actual CUDA experiment was run for this repair. These results establish
+framework behavior, not an OOM-rate improvement, an optimal headroom percentage,
+model repair quality or full G4/G5 qualification.
+
 ## Current development — reading tools and parallel proposals, 2026-09-27
 
 ACI-26 / `claude-code-bwrap/64` implements the

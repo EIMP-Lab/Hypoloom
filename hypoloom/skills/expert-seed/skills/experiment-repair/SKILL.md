@@ -6,6 +6,15 @@ description: Diagnose actual local or Host experiment failures and repair within
 Expert: {{ROLE}}
 Focus: {{FOCUS}}
 
+ACI27+ GPU resource planning: `capacity_requires_revision` is a technical
+prestart failure, never scientific refutation. Inspect `get_resources` with the
+proposed `resource_estimate`, and the predecessor's `resource_planning`/`capacity`
+fields. Change actual memory demand within the scientific protocol, then submit
+with `replaces_experiment_id` after the failure's evidence has been linked.
+Lowering the estimate alone cannot bypass Host measured/OOM bounds. Temporary
+capacity, fairness, unknown telemetry and exclusive-device waits remain Host
+waits; use the existing EXECUTION handoff instead of repeatedly resubmitting.
+
 Read the actual failing command, exit status, trace and Host tool result. Reproduce
 the smallest relevant local test using the admitted Profile runtime and data;
 repair and rerun it in this session. Preserve the frozen hypothesis, metric,

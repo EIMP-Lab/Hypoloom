@@ -8,6 +8,7 @@
 - [版本提醒](guides/version-check.zh-CN.md)：远端分支比较、离线模式与提醒状态。
 - [上下文与记忆](guides/context-management.zh-CN.md)：容量、短会话、检索与恢复。
 - [阅读与论证](guides/reading-and-proposals.zh-CN.md)：文献引用、阅读助手、并行论证与假设上限。
+- [GPU 显存规划](guides/gpu-resource-planning.zh-CN.md)：实测余量、容量预览、独占与共享、技术修订。
 
 - [README](../README.zh-CN.md):能力与最短开始路径
   ([English](../README.md))。

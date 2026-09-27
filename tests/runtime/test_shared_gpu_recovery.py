@@ -182,7 +182,10 @@ def test_activation_waits_beyond_process_cap_retry_lost_without_scientific_failu
 
 
 @pytest.mark.parametrize("same_run", [True, False], ids=["same-run", "distinct-runs"])
-def test_one_host_runs_two_open_experiments_on_the_same_gpu(environment, same_run):
+def test_one_host_runs_two_open_experiments_on_the_same_gpu(environment, same_run, monkeypatch):
+    # Retained protocol permits uncalibrated overlap. New ACI 27 exclusivity
+    # is tested independently with the same Host/pool boundaries.
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 26)
     make, free, pool, runtime = environment
     free.update({GPU_A: 23000, GPU_B: 1000})
     host = make("alpha")

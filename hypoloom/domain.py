@@ -607,6 +607,7 @@ class ResourceIntent:
     gpu_count: int
     workload_memory_mib: int
     reserve_memory_mib: int
+    sharing: str | None = None
     def __post_init__(self) -> None:
         if self.kind is not ResourceKind.GPU: raise ValueError("resource_intent kind must be ResourceKind.GPU")
         _require_text_tuple(self.allowed_gpu_uuids, "allowed_gpu_uuids")
@@ -619,15 +620,20 @@ class ResourceIntent:
             raise ValueError("workload_memory_mib must be a positive integer")
         if type(self.reserve_memory_mib) is not int or self.reserve_memory_mib < 0:
             raise ValueError("reserve_memory_mib must be a nonnegative integer")
+        if self.sharing is not None and self.sharing not in ("exclusive", "shared"):
+            raise ValueError("sharing must be exclusive or shared")
     def to_dict(self) -> dict[str, Any]:
         return {"kind": self.kind.value, "allowed_gpu_uuids": list(self.allowed_gpu_uuids),
                 "gpu_count": self.gpu_count, "workload_memory_mib": self.workload_memory_mib,
-                "reserve_memory_mib": self.reserve_memory_mib}
+                "reserve_memory_mib": self.reserve_memory_mib,
+                **({"sharing": self.sharing} if self.sharing is not None else {})}
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ResourceIntent:
         expected = {"kind", "allowed_gpu_uuids", "gpu_count", "workload_memory_mib", "reserve_memory_mib"}
-        if not isinstance(value, Mapping) or set(value) != expected or not isinstance(value["allowed_gpu_uuids"], list):
+        if not isinstance(value, Mapping) or set(value) not in (expected, expected | {"sharing"}) or not isinstance(value["allowed_gpu_uuids"], list):
             raise ValueError("resource_intent must contain exactly kind, allowed_gpu_uuids array, gpu_count, workload_memory_mib and reserve_memory_mib")
+        if "sharing" in value and value["sharing"] not in ("exclusive", "shared"):
+            raise ValueError("sharing must be exclusive or shared when present")
         return cls(**{**value, "kind": ResourceKind(value["kind"]), "allowed_gpu_uuids": tuple(value["allowed_gpu_uuids"])})
 @dataclass(frozen=True, slots=True, kw_only=True)
 class HypothesisCandidate:

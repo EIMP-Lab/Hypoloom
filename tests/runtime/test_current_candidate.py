@@ -5,8 +5,8 @@ from hypoloom.fake_agent import default_request
 from hypoloom.workflow_host import installed_run_version
 
 
-def test_fresh_host_defaults_to_parallel_proposal_scheduling():
-    assert installed_run_version().agent_aci_version == "26"
+def test_fresh_host_defaults_to_resource_replanning():
+    assert installed_run_version().agent_aci_version == "27"
 
 
 def test_retained_aci13_requests_remain_byte_compatible():

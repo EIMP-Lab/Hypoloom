@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
 from hypoloom.domain import AgentCommand
 from hypoloom.expert_loop import AuxiliaryRequestKind
 from hypoloom.grounding_web import GroundingWeb
@@ -169,7 +170,7 @@ def test_native_source_error_is_corrected_in_same_attempt_before_cpu_closure(tmp
         observations = [json.loads(raw) for raw, in connection.execute(
             "SELECT observation_json FROM execution_attempts WHERE kind='AGENT'")]
     grounding, = [item for item in observations if item["request"]["command"] == "GROUNDING"]
-    assert grounding["request"]["schema_version"] == 26
+    assert grounding["request"]["schema_version"] == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
     assert grounding["response"]["typed_candidate"]["web_sources"] == [DOC]
     trace = grounding["diagnostics"]["structured_output_correction"]
     assert trace["status"] == "recovered" and trace["accepted"]

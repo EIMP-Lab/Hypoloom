@@ -660,9 +660,9 @@ def derive_research_node_views(
     agent_aci_version: str | int = 10,
 ) -> tuple[ResearchNodeView, ...]:
     """Derive retry-safe work state without persisting a node-status mirror."""
-    from .agent_aci import execution_handoff
+    from .agent_aci import _READABLE_ACI_SCHEMA_VERSIONS, execution_handoff
     import json
-    if str(agent_aci_version) not in {"7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26"}:
+    if str(agent_aci_version) not in {str(version) for version in _READABLE_ACI_SCHEMA_VERSIONS if version >= 7}:
         return ()
     command_ids = {str(row["command_id"]) for row in commands}
     by_command: dict[str, list[Mapping[str, Any]]] = {}

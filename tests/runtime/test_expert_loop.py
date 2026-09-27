@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
 from hypoloom.expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -186,6 +187,13 @@ def test_projection_is_empty_for_legacy_runs_and_additively_maps_existing_refs()
     assert derive_research_node_views(
         (key,), command, attempt, agent_aci_version="9"
     )[0].state is DerivedWorkState.CLOSED
+    for version in (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, str(CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)):
+        assert derive_research_node_views(
+            (key,), command, attempt, agent_aci_version=version
+        )[0].state is DerivedWorkState.CLOSED
+    assert derive_research_node_views(
+        (key,), command, attempt, agent_aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION + 1
+    ) == ()
 
 
 def test_projection_rejects_missing_command_and_noncontiguous_attempts() -> None:

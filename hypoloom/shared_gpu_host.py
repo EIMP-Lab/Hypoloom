@@ -11,9 +11,9 @@ from typing import Any
 
 from .compute_resources import validate_gpu_uuid
 from .domain import ResourceEstimate, ResourceGrant, ResourceIntent, ResourceKind
-from .gpu_pool import PoolError, RequestKey
+from .gpu_pool import PoolError, RequestKey, assess_capacity
 from .gpu_pool_client import PoolClient
-from .resource_experience import resolve_workload_memory_mib, summarize_resource_measurements
+from .resource_experience import explain_workload_memory, resolve_workload_memory_mib, summarize_resource_measurements
 
 
 class SharedGpuHost:
@@ -57,6 +57,8 @@ class SharedGpuHost:
             if estimate is None: continue
             estimate = ResourceEstimate.from_dict(estimate)
             observation = json.loads(attempt["observation_json"])
+            if observation.get("synthetic_before_spawn") or observation.get("resource_wait_before_exec"):
+                continue
             records.append({"attempt_id": attempt["attempt_id"], "kind": "PROCESS", "state": "CLOSED",
                 "workload": dict(estimate.workload), "resource_usage": observation.get("resource_usage"),
                 "admitted_workload_memory_mib": contract.get("resource_intent", {}).get("workload_memory_mib"),
@@ -71,7 +73,7 @@ class SharedGpuHost:
         estimate = ResourceEstimate.from_dict(result["resource_estimate"])
         records = self.measurements(request.run_id, request.role, request.component_id, request.method_family_id)
         matching = [record for record in records if record["workload"] == dict(estimate.workload)
-                    and (record["measurement_status"] == "complete" or record["oom"])]
+                    and (request.schema_version >= 27 or record["measurement_status"] == "complete" or record["oom"])]
         # Validate explicit references too; they cannot be replaced by automatic matches.
         if estimate.measurement_attempt_ids:
             requested = self.measurements(request.run_id, request.role, request.component_id,
@@ -83,15 +85,32 @@ class SharedGpuHost:
         return result
 
     def workload_budget(self, request: Any, arguments: Mapping[str, Any], floor: int) -> int:
+        if not arguments.get("resource_estimate") and floor == 0:
+            return self.host._research_contract(request.run_id).document["budget"].get("initial_vram_per_experiment", 0)
+        return self.budget_plan(request, arguments, floor)["resolved_workload_memory_mib"]
+
+    def budget_plan(self, request: Any, arguments: Mapping[str, Any], floor: int) -> dict[str, Any]:
         budget = self.host._research_contract(request.run_id).document["budget"]
         initial = budget.get("initial_vram_per_experiment")
-        if "resource_estimate" not in arguments: return floor if initial is None else initial
-        estimate = ResourceEstimate.from_dict(arguments["resource_estimate"])
-        records = self.measurements(request.run_id, request.role, request.component_id,
+        estimate = ResourceEstimate.from_dict(arguments["resource_estimate"]) if "resource_estimate" in arguments else None
+        records = [] if estimate is None else self.measurements(request.run_id, request.role, request.component_id,
                                    request.method_family_id, estimate.measurement_attempt_ids)
-        return resolve_workload_memory_mib(floor, estimate, records, initial_memory_mib=initial)
+        return explain_workload_memory(floor, estimate, records, initial_memory_mib=initial,
+                                      adaptive=request.schema_version >= 27)
 
-    def resources(self, request: Any) -> dict[str, Any]:
+    def plan_intent(self, request: Any, arguments: Mapping[str, Any], intent: ResourceIntent) -> ResourceIntent:
+        if request.schema_version < 27: return intent
+        from dataclasses import replace
+        floor = self.host._research_contract(request.run_id).document["budget"]["min_vram_per_experiment"]
+        return replace(intent, sharing=self.budget_plan(request, arguments, floor)["sharing"])
+
+    def assess_intent(self, intent: ResourceIntent) -> dict[str, Any]:
+        snapshot = self.client.request("snapshot", {})
+        if "resource_replanning/1" not in snapshot.get("capabilities", []):
+            raise PoolError("incompatible_pool", "GPU pool lacks resource replanning; configure a compatible pool for this new run")
+        return {**assess_capacity(snapshot["devices"], intent.to_dict()), "observed_at": snapshot["sampled_at"]}
+
+    def resources(self, request: Any, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
         from .profile_v4 import restrict_profile_capabilities
         document = self.host._research_contract(request.run_id).document
         execution = self.host._run_config(request.run_id)["execution"]
@@ -106,6 +125,10 @@ class SharedGpuHost:
                 estimate_policy="initial_until_measured_success_then_max_profile_submitted_measured_headroom",
                 omitted_estimate_behavior="unestimated_profile_initial_only")
         if not execution["allow_gpu"]: return {**response, "status": "cpu_only"}
+        if request.schema_version >= 27:
+            arguments = self.resolve_arguments(request, arguments or {})
+            response["budget_preview"] = self.budget_plan(request, arguments, document["budget"]["min_vram_per_experiment"])
+            response["estimate_policy"] = "evidence_adaptive_25_15_10_percent"
         allowed = {gpu.uuid for gpu in restrict_profile_capabilities(document, self.host.compute_resources.snapshot()).gpus}
         try: snapshot = self.client.request("snapshot", {})
         except PoolError as error: return {**response, "status": "unavailable", "reason": error.code}
@@ -114,6 +137,17 @@ class SharedGpuHost:
         devices = snapshot.get("devices")
         if not isinstance(devices, list) or not all(isinstance(item, Mapping) and fields <= set(item) for item in devices):
             raise PoolError("invalid_response", "pool snapshot lacks capacity fields")
+        if request.schema_version >= 27:
+            if "resource_replanning/1" not in snapshot.get("capabilities", []):
+                return {**response, "status": "incompatible_pool", "reason": "GPU pool lacks resource_replanning/1"}
+            fields |= {"pool_reserve_memory_mib", "system_reserved_memory_mib", "exclusive_commitments"}
+            allowed = sorted(allowed)
+            if allowed:
+                intent = ResourceIntent(allowed_gpu_uuids=tuple(allowed), gpu_count=(arguments or {}).get("gpus", 1),
+                    workload_memory_mib=response["budget_preview"]["resolved_workload_memory_mib"],
+                    reserve_memory_mib=document["budget"].get("gpu_vram_reserve_mb", 0),
+                    sharing=response["budget_preview"]["sharing"])
+                response["capacity_preview"] = assess_capacity(devices, intent.to_dict())
         return {**response, "status": "ok", "sampling_started_at": snapshot["sampling_started_at"],
             "observed_at": snapshot["sampled_at"], "devices": [{name: item[name] for name in fields}
                 for item in devices if item["gpu_uuid"] in allowed]}
@@ -126,8 +160,14 @@ class SharedGpuHost:
         estimate = source.get("source_snapshot", {}).get("arguments", {}).get("resource_estimate")
         spec = self.host.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         intent = None if spec is None else spec["payload"].get("execution_contract", {}).get("resource_intent")
-        return {"estimate_status": "unestimated" if estimate is None else "submitted",
+        result = {"estimate_status": "unestimated" if estimate is None else "submitted",
                 "resource_estimate": estimate, "resource_intent": intent}
+        if intent is not None and intent.get("sharing") is not None and source.get("source_request") is not None:
+            from .agent_aci import AgentRequest
+            request = AgentRequest.from_dict(source["source_request"])
+            result["budget"] = self.budget_plan(request, source["source_snapshot"]["arguments"],
+                self.host._research_contract(run_id).document["budget"]["min_vram_per_experiment"])
+        return result
 
     def sample_owned(self, attempt_id: str, handle: Any, uuids: tuple[str, ...], devices: Mapping[str, Any]) -> None:
         from .gpu_attribution import GpuAttributionSampler, OwnedMemoryAccumulator
@@ -220,12 +260,17 @@ class SharedGpuHost:
         try:
             result = self._request("reserve", key, **arguments)
         except PoolError as error:
+            if intent.sharing is not None and error.code == "invalid_argument":
+                self._wait(key, "incompatible_pool")
+                raise PoolError("incompatible_pool", "GPU pool rejected resource planning fields; configure a compatible pool for the new run") from error
             self._wait(key, error.code)
             if error.code == "unavailable":
                 return None
             raise
         if result["state"] == "QUEUED":
             self._wait(key, result["reason"] or "capacity_unavailable")
+            if result["reason"] == "capacity_requires_revision" and intent.sharing is not None:
+                raise PoolError("capacity_requires_revision", "GPU request exceeds authorized device capacity; revise actual memory demand")
             return None
         if result["state"] != "RESERVED":
             raise PoolError("invalid_state", "future Process identity already launched or was released")

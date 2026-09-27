@@ -549,6 +549,7 @@ def test_frozen_gpu_unavailability_waits_without_attempt_or_cpu_fallback(
             {
                 "experiment_id": experiment_id,
                 "reason": f"granted GPU {GPU_UUID} is unavailable",
+                "message": f"granted GPU {GPU_UUID} is unavailable",
             }
         ]
         revision = host.store.latest_transition(run_id)["revision"]
