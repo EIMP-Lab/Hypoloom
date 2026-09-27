@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from hypoloom.profile_admission import admit_profile
+from hypoloom.bootstrap import model_review
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,13 +56,16 @@ def test_public_template_admits_bound_paths_without_starting_research(tmp_path, 
         subprocess.run(["git", *args], cwd=target, check=True, capture_output=True)
     source["methodology"]["runtime"].update(target_repo=str(target), conda_env=sys.prefix)
     source["safety"]["allow_read_paths"] = [str(data)]
-    source["experts"]["defaults"]["model"] = "scripted-exact-model"
     for section, document in source.items():
         (profile / (section + ".yaml")).write_text(yaml.safe_dump(document, allow_unicode=True))
     report = admit_profile(profile, run_id="public-" + name, allow_gpu=False)
     assert report.admitted, report.to_dict()
     contract = report.create_run_payload["research_contract"]
     product = contract["methodology"]["controls"]["product"]
+    review = model_review(contract, "selected-host-model")
+    assert review["routes"]
+    assert all(route["model"] == "selected-host-model" for route in review["routes"])
+    assert not review["profile_models_overriding_host_default"]
     assert product["language"] == source["language"]
     assert len(product["experts"]["experts"]) == 3
     assert not report.create_run_payload["execution"]["allow_gpu"]

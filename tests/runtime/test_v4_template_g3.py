@@ -75,7 +75,6 @@ def _template_profile(tmp_path: Path, mount: Path):
         b"/REPLACE_ME/research-target": str(target).encode(),
         b"/REPLACE_ME/project-runtime": sys.prefix.encode(),
         b"/REPLACE_ME/research-data": str(data).encode(),
-        b"REPLACE_WITH_PINNED_MODEL": TemplateAgent.model_identity.encode(),
     }
     profile = tmp_path / "tracked-profile"
     profile.mkdir()
@@ -89,10 +88,9 @@ def _template_profile(tmp_path: Path, mount: Path):
     source = {name[:-5]: yaml.safe_load(content) for name, content in materialized.items()}
     unchanged = {name[:-5]: yaml.safe_load(content) for name, content in originals.items()}
     expected = copy.deepcopy(unchanged)
-    expected["experts"]["defaults"]["model"] = TemplateAgent.model_identity
     expected["methodology"]["runtime"].update(target_repo=str(target), conda_env=sys.prefix)
     expected["safety"]["allow_read_paths"] = [str(data)]
-    assert source == expected, "Only the fixture paths/runtime/model may differ from the tracked template"
+    assert source == expected, "Only the fixture paths/runtime may differ from the tracked template"
     admitted = admit_profile(profile, run_id=_RUN, allow_gpu=False)
     (tmp_path / "profile-admission.json").write_text(json.dumps(admitted.to_dict(), indent=2))
     assert admitted.admitted and admitted.create_run_payload is not None, admitted.to_dict()

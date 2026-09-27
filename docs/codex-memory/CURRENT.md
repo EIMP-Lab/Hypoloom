@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- September 27 template model defaults: both public language templates omit
+  `defaults.model` and inherit the initialization-selected Host model. Explicit
+  Profile overrides remain supported; interactive `/model` is not automatically
+  inherited. Bilingual template/initialization guidance and existing admission/CPU
+  fixtures follow this. The 118 focused checks pass; user authorizes commit/push
+  to dev. Existing local Profiles and research runs remain unchanged.
+
 - September 27 reading/proposal implementation: user authorizes D1–D4 and
   commit/push to dev; confirms the retained research run is stopped. ACI-26 /
   bwrap64 reuses source lookup and actionable read_papers feedback, schedules

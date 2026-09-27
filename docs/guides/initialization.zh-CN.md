@@ -48,6 +48,15 @@ budget:
 包含条件性角色；这不代表每个角色都会执行。`profile_models_overriding_host_default`
 明确列出覆盖 Host 默认值的模型。effort 缺省时采用原生 CLI 默认值。
 
+中英文模板均省略 `experts.yaml` 中的 `defaults.model`。没有显式模型覆盖时，
+所有 Agent 阶段使用初始化时为 Host 选择的模型。若希望使用交互会话的模型，
+准备启动命令时通过 `--claude-model` 传入已确认的模型标识，并核对生效分配。
+仅需覆盖 Host 选择时才在 Profile 中添加模型字段。
+
+已有本地 Profile 不会自动修改。使用旧 Profile 创建新运行前，若希望跟随 Host
+选择，应删除 `defaults.model`，并检查专家、阶段及共享 Grounding 的模型覆盖。
+应省略该字段，不要改成空字符串或 `null`。已有运行保留已接纳的配置。
+
 交互式 Claude 会话的模型选择独立于这些配置；settings 文件的默认值也不能证明
 该会话当前的 `/model` 选择。新 Profile 如果希望统一使用一个模型，应一起审阅
 defaults 和所有显式覆盖；需要多模型时保留有意的覆盖，并核对最终分配。实际

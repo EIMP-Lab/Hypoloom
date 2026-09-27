@@ -1,6 +1,5 @@
 defaults:
-  # Replace with the exact selector supported by your configured provider.
-  model: REPLACE_WITH_PINNED_MODEL
+  # Omit model to use the Host model selected during initialization.
   effort: high
   max_forks: 2
   max_hypotheses_per_round: 2

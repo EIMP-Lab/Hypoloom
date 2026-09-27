@@ -56,6 +56,18 @@ and source, including conditional roles. It is not a schedule of future calls.
 Host selection. An absent effort uses the native CLI default, not an interactive
 session setting.
 
+The English and Chinese templates omit `experts.yaml`'s `defaults.model`.
+Without explicit model overrides, all Agent routes use the Host model selected
+at initialization. To use the interactive session's model, pass its reviewed
+selector as `--claude-model` when preparing the launch and check the effective
+routes. Add a Profile model only when an override is intended.
+
+Existing local Profiles are not rewritten. Before creating a new run from an
+older Profile, remove `defaults.model` if it should follow the Host selection,
+and review any expert, stage or shared Grounding overrides. Do not replace the
+field with an empty string or `null`; omit it. Existing runs keep their admitted
+configuration.
+
 The model selected in an interactive Claude session is independent. A settings
 file's configured default does not prove that session's current `/model` choice.
 To use one model everywhere in a new Profile, review its defaults and all explicit

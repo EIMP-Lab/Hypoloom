@@ -84,16 +84,20 @@ into a fresh ignored `profiles/local/<name>` directory after confirmation.
 It rejects an existing destination. Adopt an existing local Profile unchanged when
 its admitted semantics already match the request.
 
-Replace `REPLACE_WITH_PINNED_MODEL` with the exact model selector supported by
-the chosen provider. Replace `/REPLACE_ME/research-target`,
+Both templates omit `defaults.model`, so Agent models fall back to the Host
+model selected during initialization. Add an explicit model only when a Profile
+override is intended; the interactive session's `/model` selection must be
+passed to the Host explicitly. Replace `/REPLACE_ME/research-target`,
 `/REPLACE_ME/project-runtime` and `/REPLACE_ME/research-data` with existing,
 reviewed paths. The target is a clean Git repository; original target/data paths
-stay read-only to experiments. Runtime/model placeholders prevent a template
-from silently selecting a machine, account or research project.
+stay read-only to experiments. Runtime placeholders prevent a template
+from silently selecting a machine or research project.
 
 中文：通过 `/autoresearch init` 选择模板并审阅复制目标。中文模板不仅翻译本说明，也翻译
 目标、专家背景、研究原则及注释。两种语言的字段名、专家 ID、预算、权限和数值控制保持
-一致；`language.yaml` 分别选择 `en` 或 `zh-CN`。实际模型、数据和运行环境必须由你填写。
+一致；`language.yaml` 分别选择 `en` 或 `zh-CN`。两套模板均省略 `defaults.model`，
+使用初始化时为 Host 选择的模型；仅需覆盖时才添加模型字段。交互会话的 `/model`
+选择仍需明确传给 Host。数据和运行环境路径必须由你填写。
 
 ## Deterministic preparation / 确定性准备
 
@@ -111,16 +115,19 @@ uses `python -B -m hypoloom.bootstrap` with the qualified control Python:
   It checks the actual Profile before/after Host readiness and reconciles an
   ambiguous create response by querying the exact run, without duplicate creation.
 
-For example, this command previews only; replace paths and the exact model:
+For example, this command previews only; replace the paths:
 
 ```bash
 ./.conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap prepare my-topic \
   --template multi-expert-en --run-id my-topic-202609221010 --cpu-only \
-  --set 'experts.defaults.model=your-exact-provider-model' \
   --set 'methodology.runtime.target_repo=/absolute/research-target' \
   --set 'methodology.runtime.conda_env=/absolute/research-runtime' \
   --set 'safety.allow_read_paths=[/absolute/research-data]'
 ```
+
+To intentionally override the Host model, add
+`--set 'experts.defaults.model=your-exact-provider-model'`.
+中文：仅需让 Profile 覆盖 Host 模型时，才添加上述 `experts.defaults.model` 参数。
 
 `--set` uses the existing section/field names and YAML values; replace an entire
 list when necessary. Budgets, research policy and scientific text remain explicit

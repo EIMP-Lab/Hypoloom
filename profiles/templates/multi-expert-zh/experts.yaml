@@ -1,6 +1,5 @@
 defaults:
-  # 替换为已配置模型服务实际支持的精确模型标识。
-  model: REPLACE_WITH_PINNED_MODEL
+  # 省略 model，使用初始化时为 Host 选择的模型。
   effort: high
   max_forks: 2
   max_hypotheses_per_round: 2
