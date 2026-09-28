@@ -1,6 +1,15 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Init-managed GPU pool lifecycle](../design/init-managed-gpu-pool-lifecycle.md):
+  implemented same-interaction create/reuse/restore/upgrade/skip flow; scoped service
+  actions, bootstrap/Host coordination, dependency and legacy coverage, bounded
+  recovery and validation matrix. Section 8 records measured init latency,
+  CC auto-mode classifier failures and deterministic/compact orchestration;
+  section 9 records focused implementation evidence and native environment limits.
+  [Initialization guide](../guides/initialization.md) / [中文](../guides/initialization.zh-CN.md).
+  Validation: `.local/qualification/init-lifecycle-20260928/`.
+  Private timing metadata: `.local/analysis/init-latency-20260928/`.
 - [Runtime readiness and context recovery, September 28](../design/runtime-readiness-and-context-recovery.md):
   ACI 28 / bwrap66 / lifecycle v10 implementation: shared pool preflight,
   conservative managed service reuse, pre-submit technical closure and operator

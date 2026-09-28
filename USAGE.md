@@ -148,14 +148,14 @@ expert is never permanently bound to one card. The nonpooled path serializes
 by UUID within one state root and does not coordinate other independent
 Hosts either.
 
-Init read-only probes this project's conventional location
-(`.local/gpu-pools/shared/control.sock`) and recalls pool bindings stored by
-historical runs as candidates. When pooling is wanted but no live pool
-exists, the final review lists the exact pool plan, and once Start now
-approves it, `manage_gpu_pool.py ensure` creates a transient user service
-before the managed Host start. An external project's pool endpoint must
-still be supplied explicitly; stopping, replacing or changing pool members is
-always a separate operator action.
+Init inspects the project endpoint (`.local/gpu-pools/shared/control.sock`) and
+reviews the required pool action. Start now can create, reuse, restore or upgrade
+a managed pool before the Host starts, subject to dependency and ownership
+checks. Changing pool members or reserve is explicit reconfiguration. External
+pools must be supplied explicitly and are not taken over. Failure keeps the
+current init choices available for recheck or revision. See
+[initialization](docs/guides/initialization.md) and
+[runtime recovery](docs/guides/runtime-recovery.md).
 
 A pooled Profile can set `budget.min_vram_per_experiment` and
 `budget.initial_vram_per_experiment` separately. An initial estimate may only

@@ -370,6 +370,11 @@ class WorkflowHost:
             return ControlResponse.failure(request.request_id, "error", "host_error", str(exc))
         except Exception as exc: record(exc); return ControlResponse.failure(request.request_id, "error", "host_error", str(exc))
     def _create_run(self, request: ControlRequest) -> ControlResponse:
+        from .gpu_pool_lifecycle import admission_lock
+        socket_path = None if self.shared_gpu is None else self.shared_gpu.client.socket_path
+        with admission_lock(socket_path, self.state_root):
+            return self._create_run_with_pool_ready(request)
+    def _create_run_with_pool_ready(self, request: ControlRequest) -> ControlResponse:
         payload = request.payload; expected = {"run_id", "research_contract", "execution"}
         if set(payload) != expected: raise ValueError("CREATE_RUN payload has unknown or missing fields")
         run_id = str(payload["run_id"])

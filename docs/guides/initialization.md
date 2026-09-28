@@ -10,9 +10,48 @@ prospective Profile in memory; `bootstrap launch` produces commands and an
 a provider, sends a notification or edits an existing Profile/run. Review the
 result before the existing Start now / Prepare only decision.
 
-The initial `bootstrap paths` also includes a bounded
+Both `bootstrap inspect` and the retained `bootstrap paths` include a bounded
 [version reminder](version-check.md) against the configured remote branch.
 It is advisory and does not block initialization; `--offline` skips remote lookup.
+
+## Aggregate inspection and one launch
+
+The normal init path uses one compact, read-only inspection:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
+  .conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap inspect my-topic --cpu-only
+```
+
+Omit the Profile or execution mode to discover choices. For shared GPU scheduling,
+replace `--cpu-only` with `--allow-gpu --managed-pool` and repeat
+`--gpu-device-uuid` for the explicitly approved UUIDs. `--nonpooled` is an explicit
+alternative, subject to the existing Profile budget rules. Model/auth defaults
+are proposals from the selected CC source; review Profile overrides and supply
+`--claude-model` when another selector was chosen.
+
+Inspection returns missing choices, blockers, effective configuration, phase
+timings and, for a prepared Profile, a `launch_argv` array. Run inspection with
+the selected control Python so its dependency check describes that interpreter.
+Keep its run ID, state root and request ID on
+subsequent checks. Review the array as arguments, never eval JSON or paste secret
+values into it. Only after Start now approval append `--start` to that same
+launch command. Bootstrap generates the Host/CLI arguments and performs the
+reviewed pool preparation before creating the research run. Prepare only never
+starts, upgrades or stops a pool. New Profiles still use the reviewed
+`bootstrap prepare --write`, followed by inspection of the written Profile.
+
+`prepare --summary` and `launch --summary` omit raw candidate files, the complete
+admission payload and repeated command vectors. Full output remains available
+without that flag. Local validation does not establish provider availability.
+Stage timings measure helper work; tool approval delays, user waits and model
+responses are separate and are unknown unless recorded by the client.
+Repeated CC auto-mode classifier timeouts should be reported as tool-admission
+failures, not retried through increasingly complex shell commands.
+
+The compact skill loads detailed compatibility/operation references only when
+needed. It retains the existing validators and final pre-start checks; no saved
+init manifest or second configuration source is introduced.
 
 ## One place for budgets
 

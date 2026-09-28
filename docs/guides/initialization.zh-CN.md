@@ -9,8 +9,40 @@ Profile；`bootstrap launch` 输出启动命令及 `effective_configuration` 生
 预览不启动 Host、不调用模型、不发送通知，也不修改已有 Profile 或运行。
 审阅后仍通过既有的 Start now / Prepare only 选择决定是否执行。
 
-最初的 `bootstrap paths` 同时对已配置远端分支做有时限的
+`bootstrap inspect` 与保留的 `bootstrap paths` 都会对已配置远端分支做有时限的
 [版本检查](version-check.zh-CN.md)，结果仅提醒，不阻止初始化；`--offline` 跳过远端查询。
+
+## 聚合检查与一次启动
+
+常规 init 使用一次简洁、只读的检查：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
+  .conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap inspect my-topic --cpu-only
+```
+
+省略 Profile 或执行模式可以先发现选项。共享 GPU 将 `--cpu-only` 换为
+`--allow-gpu --managed-pool`，并为每个明确授权的 UUID 添加 `--gpu-device-uuid`。
+`--nonpooled` 表示明确选择非池 GPU，仍须通过 Profile 的预算规则。
+模型与认证默认值来自选中的 CC 配置，仅作为审阅建议；核对 Profile 覆盖，已选其他
+模型时传入 `--claude-model`。
+
+检查返回缺失选择、阻断原因、生效配置与阶段耗时；Profile 已准备时还返回
+`launch_argv` 参数数组。使用所选的 control Python 运行检查，依赖结果才对应实际解释器。
+后续复查沿用同一个 run ID、状态根和 request ID。按参数审阅数组，不用 eval 执行
+JSON，也不将密钥填入参数。只有获得 Start now 确认后，才给同一启动命令添加
+`--start`。bootstrap 自动生成 Host/CLI 参数，先完成审阅的池准备，再创建研究运行。
+Prepare only 不创建、升级或停止池。新 Profile 仍先执行审阅过的
+`bootstrap prepare --write`，随后检查实际写入的 Profile。
+
+`prepare --summary` 与 `launch --summary` 省略原始候选文件、完整接纳 payload 和
+重复命令向量；不加此选项仍可查看完整结果。本地检查通过不代表供应商在线或额度充足。
+阶段耗时仅计量 helper 工作；工具审批、用户等待和模型响应分别统计，客户端未提供证据
+时保持未知。反复出现 CC 自动模式分类超时，应报告工具准入故障，不能不断拼装更复杂
+的等价 shell 命令重试。
+
+简化后的技能按需读取详细兼容性和操作参考，仍复用既有验证器并保留启动前复核；
+不生成持久化 init 清单或第二份配置。
 
 ## 预算集中配置
 

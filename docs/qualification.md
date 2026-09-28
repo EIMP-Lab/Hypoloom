@@ -2,6 +2,30 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — Init pool lifecycle and latency, 2026-09-28
+
+The [init lifecycle design](design/init-managed-gpu-pool-lifecycle.md) is implemented
+with aggregate inspection, generated launch arguments and reviewed managed-pool
+preparation. Existing validators, databases, runtime pinning and controller locks
+remain authoritative. Directory flock coordinates service maintenance with new
+Host admission; its concrete race and minimal-mechanism justification are in the design.
+
+The focused set passes 232 checks, including real SQLite history, process groups,
+cross-process locking and the real Host CREATE_RUN path. Service supervision and
+pool transport use test adapters. Nine native socket cases cannot complete in this
+sandbox: Unix socket bind is denied (EPERM), and the user systemd manager is not
+reachable. Those checks were not weakened or counted as passing. This is not a
+complete G1 or native service/CUDA/paid-model qualification.
+
+A synthetic CPU Profile sample reduces prepare output from 13,535 to 1,947 bytes
+with `--summary`. Aggregate inspection reports its supervisor blocker in 0.0904 s
+in-process / 5,593 bytes without creating a state root or pool. Single sequential
+samples include cache differences and do not establish end-to-end CC speedup.
+The skill entry shrinks from 1,795 to 191 lines, with detailed references loaded
+on demand. Evidence: `.local/qualification/init-lifecycle-20260928/`.
+Existing production pools, research runs and private Profiles remain unchanged;
+verification made no provider calls. The user subsequently authorized commit/push to dev.
+
 ## Current development — Runtime readiness and context recovery, 2026-09-28
 
 ACI 28 / `claude-code-bwrap/66` / lifecycle v10 implements the

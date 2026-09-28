@@ -167,6 +167,174 @@ def test_invoke_runs_in_selected_checkout(tmp_path):
     assert code == 0 and result == {"cwd": str(tmp_path), "value": "selected checkout"}
 
 
+def test_aggregate_inspect_is_compact_and_returns_executable_arguments(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready", "linger": "no"})
+    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline"]
+    assert bootstrap.main(argv) == 0
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["status"] == "ready_for_review" and not result["missing"]
+    assert result["profile_written"] is False and result["provider_probe_performed"] is False
+    assert "create_run_payload" not in output and "candidate_files" not in output
+    assert not (repo / "state").exists()
+    assert len(output) < 12000
+    prepared = result["launch_argv"]
+    parsed = bootstrap.build_parser().parse_args(prepared[4:])
+    assert parsed.run_id == result["identity"]["run_id"]
+    assert parsed.request_id == parsed.run_id + "-create-1"
+    assert parsed.summary and not parsed.start
+    assert bootstrap.main(prepared[4:]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["admission"]["admitted"] and "commands" not in summary
+    assert summary["effective_configuration"]["budget"] == result["effective_configuration"]["budget"]
+
+
+def test_inspect_collects_missing_choices_without_default_gpu_authorization(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect
+    repo, _ = checkout
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda *a: {"status": "observed", "devices": [{"uuid": "suggestion-only"}]})
+    assert bootstrap.main(["inspect", "--repository", str(repo), "--auth-transport", "none", "--offline"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["missing"] == ["profile", "execution_mode"]
+    assert "launch_argv" not in result and not (repo / "state").exists()
+    assert bootstrap.main(["inspect", "--repository", str(repo), "--start"]) == 2
+    assert "read-only" in capsys.readouterr().err
+
+
+def test_generated_arguments_preserve_spaces_and_quotes_in_repository(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect
+    old, overrides = checkout
+    repo = old.with_name("checkout's space")
+    old.rename(repo)
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    assert bootstrap.main(["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ready_for_review"
+    argv = result["launch_argv"]
+    assert argv[argv.index("--repository") + 1] == str(repo)
+    assert bootstrap.main(argv[4:]) == 0
+    assert json.loads(capsys.readouterr().out)["admission"]["admitted"]
+
+
+def test_managed_inspect_preserves_full_pool_configuration_and_run_subset(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect, managed_gpu_pool
+    from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
+    repo, overrides = checkout
+    devices = ["GPU-00000000-0000-0000-0000-000000000001", "GPU-00000000-0000-0000-0000-000000000002"]
+    assert bootstrap.main([*arguments(repo, [*overrides, "safety.gpus=auto",
+        "methodology.budget.min_vram_per_experiment=1024"]), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda *a: {"status": "observed", "devices": []})
+    monkeypatch.setattr(bootstrap_inspect, "_pools", lambda *a: {"state": "legacy"})
+    monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=(
+        GpuCapability(index=1, uuid=devices[1], name="synthetic", total_memory_mib=24000,
+                      free_memory_mib=12000, driver_version="synthetic"),)))
+    seen = []
+    def proposal(args):
+        seen.append(args)
+        return {"status": "ok", "action": "upgrade", "prepare_available": True,
+            "start_ready": False, "members": {str(os.geteuid()): devices}, "reserve_mib": 789,
+            "socket_path": args.socket_path}
+    monkeypatch.setattr(managed_gpu_pool, "review", proposal)
+    assert bootstrap.main(["inspect", "topic", "--repository", str(repo), "--allow-gpu", "--managed-pool",
+        "--gpu-device-uuid", devices[1], "--auth-transport", "none", "--offline"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ready_for_review"
+    argv = result["launch_argv"]
+    parsed = bootstrap.build_parser().parse_args(argv[4:])
+    assert parsed.pool_action == "upgrade" and parsed.pool_device_uuid == devices and parsed.pool_reserve_mib == 789
+    assert parsed.gpu_device_uuid == [devices[1]]
+    assert parsed.gpu_pool_namespace == parsed.run_id and parsed.gpu_pool_server_uid == os.geteuid()
+    assert seen[0].member == [f"{os.geteuid()}={devices[1]}"]
+    assert bootstrap.main([value for value in argv[4:] if value != "--summary"]) == 0
+    commands = json.loads(capsys.readouterr().out)["commands"]
+    pool_args = managed_gpu_pool.build_parser().parse_args(commands["pool_prepare"][4:])
+    assert pool_args.reviewed_action == "upgrade" and pool_args.reserve_mib == 789
+    assert pool_args.member == [f"{os.geteuid()}=" + ",".join(devices)]
+    assert commands["pool_action_reviewed"] and commands["pool_preflight_available"]
+    host = commands["host_start"]
+    assert host[host.index("--gpu-device-uuid") + 1] == devices[1]
+    assert host.count("--gpu-device-uuid") == 1
+    assert not (repo / "state").exists() and not (repo / ".local/gpu-pools").exists()
+
+
+def test_inspect_reports_the_actual_control_interpreter(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect
+    repo, _ = checkout
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    assert bootstrap.main(["inspect", "--repository", str(repo), "--cpu-only", "--auth-transport", "none",
+        "--offline", "--control-python", "/other/python"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert {"code": "control_python_mismatch", "message": "Run inspect with the selected control Python"} in result["blockers"]
+    assert result["control"]["python"] == str(Path(sys.executable).resolve())
+
+
+def test_template_inspection_never_replays_overrides_in_generated_argv(checkout, capsys, monkeypatch):
+    from hypoloom import bootstrap_inspect
+    repo, overrides = checkout
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    argv = arguments(repo, [*overrides, "methodology.literature.openalex_api_key=private-test-value"], "inspect")
+    assert bootstrap.main([*argv, "--auth-transport", "none", "--offline"]) == 2
+    rejected = capsys.readouterr()
+    assert "fill credentials directly" in rejected.err and "private-test-value" not in rejected.err
+    assert not rejected.out
+    argv = arguments(repo, overrides, "inspect")
+    assert bootstrap.main([*argv, "--auth-transport", "none", "--offline"]) == 0
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["status"] == "ready_for_review" and result["profile_preparation_required"]
+    assert "launch_argv" not in result and "private-test-value" not in output
+    assert not (repo / "profiles/local/topic").exists()
+
+
+def test_compact_prepare_never_includes_profile_secret_or_raw_candidate(checkout, capsys):
+    import yaml
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    path = repo / "profiles/local/topic/methodology.yaml"
+    value = yaml.safe_load(path.read_text())
+    value.setdefault("literature", {})["openalex_api_key"] = "private-key-should-never-be-in-summary"
+    path.write_text(yaml.safe_dump(value))
+    assert bootstrap.main([*arguments(repo, [], template=None), "--summary"]) == 0
+    raw = capsys.readouterr().out
+    assert "private-key-should-never-be-in-summary" not in raw and "candidate_files" not in raw
+    assert json.loads(raw)["profile_written"] is False
+
+
+@pytest.mark.parametrize("prepared", [True, False])
+def test_managed_bootstrap_prepares_pool_before_any_host_or_run(monkeypatch, prepared):
+    names = ("profile_check", "pool_prepare", "pool_status", "host_start", "start", "status", "host_stop")
+    commands = {name: [name] for name in names}
+    commands.update(environment={}, working_directory=str(ROOT), pool_action_reviewed=True, pool_prepare_available=True)
+    calls = []
+    payload = {"run_id": "fresh"}
+    def invoke(argv, *a, **kw):
+        name = argv[0]; calls.append(name)
+        if name == "profile_check": return 0, {"admitted": True, "create_run_payload": payload}
+        if name == "pool_prepare": return (0, {"status": "upgraded"}) if prepared else (2, {"status": "pool_plan_changed"})
+        if name == "host_start": return 0, {"status": "ready"}
+        return 0, {"status": "accepted"}
+    monkeypatch.setattr(bootstrap, "_invoke", invoke)
+    result = bootstrap.start_fresh(commands, payload)
+    assert result["status"] == ("started" if prepared else "pool_prepare_failed")
+    assert [p["phase"] for p in result["phases"]] == calls
+    assert calls[:2] == ["profile_check", "pool_prepare"]
+    if prepared:
+        assert calls.index("pool_prepare") < calls.index("host_start") < calls.index("start")
+    else:
+        assert "host_start" not in calls and "start" not in calls
+        assert result["next_actions"] == ["recheck", "revise_selection", "prepare_only", "cancel"]
+
+
 def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(checkout, capsys):
     repo, overrides = checkout
     assert bootstrap.main(arguments(repo, overrides, "launch")) == 0
@@ -317,6 +485,11 @@ def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, m
         assert "--allow-gpu" in commands[name]
         assert "--gpu-pool-socket" not in commands[name] and "--gpu-device-uuid" not in commands[name]
     assert not (repo / "state").exists()
+    argv[argv.index("--gpu-pool-socket") + 1] = str(repo / ".local/gpu-pools/shared/control.sock")
+    external = repo.parent / "external-state"
+    argv[argv.index("--state-root") + 1] = str(external)
+    assert bootstrap.main(argv) == 2
+    assert "canonical managed pool" in capsys.readouterr().err and not external.exists()
 
 
 def test_bootstrap_runs_actual_cli_host_and_cpu_to_clean_closure(checkout, tmp_path, capsys, monkeypatch):

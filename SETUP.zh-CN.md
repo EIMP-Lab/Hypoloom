@@ -114,8 +114,10 @@ PDF 默认后备为 Semantic Scholar，也可显式选择 Unpaywall：在同一�
 ## 4. GPU 与后台 Host
 
 模板默认为 CPU。GPU 需要填写 Profile 并审阅精确 UUID、GPU runtime prefix、可用显存、
-reserve 和并发预算。独立资源池需要先由操作者明确配置；`gpu-pool-status` 只查询，不会
-创建或替换服务。共享池允许同卡多实验，实际容量和并发上限仍然生效。
+reserve 和并发预算。Init 可在已审阅的 Start now 中创建、复用、恢复或升级项目托管池，
+变更服务前检查依赖；外部池仍需操作者明确配置。`gpu-pool-status` 保持只读。
+汇总检查与生成启动参数的用法见[初始化指南](docs/guides/initialization.zh-CN.md)。
+共享池允许同卡多实验，实际容量和并发上限仍然生效。
 
 “允许使用其他用户也在使用的卡”与“接入共享池”是两个独立选择。共享池绑定通过 Host 的
 `--gpu-pool-socket`、`--gpu-pool-namespace` 和可选的 `--gpu-pool-server-uid` 传入，

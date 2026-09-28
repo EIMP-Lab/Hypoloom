@@ -18,21 +18,37 @@ and an explicitly allowed GPU subset. A compatible pool may contain more GPUs
 than the subset selected for a run. Cross-project or multi-user sharing requires
 an explicitly configured common service.
 
-Init preview reports actual service capabilities and membership. Preparation
-can retain a blocked/unavailable service for later repair; it does not reserve
-resources. Host creation checks again before Grounding or any research Agent.
-An ACI 28 GPU run requires `resource_replanning/1`. Busy compatible devices are
-a capacity wait; an incompatible service or missing membership blocks launch.
+Init uses `bootstrap inspect` to separate present readiness from a safe
+preparation plan. A missing or incompatible project pool can offer Start now
+when its creation or update is reviewable. ACI 28 still requires
+`resource_replanning/1` before Grounding or any research Agent. Busy compatible
+devices are a capacity wait.
 
-Managed `ensure` creates the standard pool or reuses a compatible live service.
-It refuses incompatible services, membership conflicts and overlapping named
-pools. A stopped pool with an existing database requires explicit operator
-recovery before init can proceed. It does not automatically replace or reconfigure an existing service:
-a run can still depend on it while doing CPU work, waiting for an API, or paused.
-An empty GPU or an empty request queue is insufficient evidence for replacement.
-Pool stop/reconfiguration remains a separate operator action after dependency
-and process cleanup checks. An unreachable or unauthorized endpoint is not
-proof that its owner has gone away.
+`--managed-pool` connects bootstrap to the managed service helper. Review the
+exact `--pool-action` (create, reuse, restore, upgrade or reconfigure), full pool
+membership and reserve. The run's UUID subset is separate from pool membership.
+A compatible pool is reused without restart; an upgrade preserves its known
+configuration and database. A stopped service whose configuration is unknown
+requires explicit reconfiguration of those values. Plain `ensure` retains its
+create/reuse-only behavior; replacement requires the reviewed action.
+
+Maintenance checks CREATED bindings, terminal run states, controller/process
+ownership and every unreleased pool request. CPU work, Grounding, API waits and
+paused runs remain dependencies even with no GPU requests. Unknown ownership or
+an unreadable database blocks replacement. Short-lived directory coordination
+covers maintenance and new Host admission; known controller locks prevent old
+roots from resuming during maintenance. These are project-local checks, not a
+machine-wide registry. The canonical pool requires new state roots under its
+repository's `state/`; external roots and cross-project sharing use explicitly
+configured external services. External services are not automatically replaced.
+
+Bootstrap prepares the pool, verifies the live service, then starts the Host
+and creates the run. Failures preserve the current init choices and offer
+recheck, revised selection, Prepare only or cancellation. There is no silent
+nonpooled/CPU fallback. Prepare only performs no pool or Host lifecycle action.
+A healthy pool survives a later Host-start failure. Service history is retained;
+there is no automatic database migration or guaranteed binary rollback.
+See [initialization](initialization.md) for the compact entry point and timings.
 
 ## Recover a pre-submit pool failure
 

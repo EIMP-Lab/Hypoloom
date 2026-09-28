@@ -110,10 +110,11 @@ OpenAlex 检索和可用 PDF 组成带来源的文献证据。
 reserve、工作负载估算和运行并发预算共同决定调度；专家没有永久绑定一张卡。
 非池化路径在同一个状态根内按 UUID 串行化，也不协调其他独立 Host。
 
-init 会只读探测本项目约定位置（`.local/gpu-pools/shared/control.sock`）并召回历史运行
-存储的池绑定作为候选；需要池化而没有存活池时，最终审查列出精确池计划，Start now 批准后
-由 `manage_gpu_pool.py ensure` 在托管 Host 启动前创建瞬态用户服务。外部项目的池端点仍需
-显式提供；池的停止、替换与成员变更始终是独立的操作员动作。
+init 检查项目端点（`.local/gpu-pools/shared/control.sock`），并审阅具体池操作。
+Start now 可以在 Host 启动前创建、复用、恢复或升级托管池，但须通过依赖与所有权检查。
+修改全池成员或 reserve 属于明确重配。外部池必须显式提供，不会被自动接管。
+失败时保留当前 init 选择，允许重新检查或调整。详见
+[初始化](docs/guides/initialization.zh-CN.md)与[运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
 
 池化 Profile 可以分别设置 `budget.min_vram_per_experiment` 与
 `budget.initial_vram_per_experiment`。初始估算只能在获得完整、成功且可比较的实验测量后

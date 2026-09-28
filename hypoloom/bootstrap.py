@@ -13,6 +13,7 @@ from pathlib import Path
 import stat
 import subprocess
 import sys
+import time
 
 import yaml
 
@@ -209,6 +210,28 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     payload = report.create_run_payload
     contract = payload["research_contract"]
     review["budget"] = contract["budget"]
+    if getattr(args, "nonpooled", False) and (not args.allow_gpu or args.gpu_pool_socket):
+        raise ValueError("--nonpooled requires GPU authorization and cannot include a pool endpoint")
+    if not getattr(args, "managed_pool", False) and any(getattr(args, name, None) is not None
+        for name in ("pool_action", "pool_device_uuid", "pool_reserve_mib")):
+        raise ValueError("pool maintenance arguments require --managed-pool")
+    if args.state_root is None:
+        args.state_root = str(repository / "state" / args.run_id)
+    if getattr(args, "managed_pool", False):
+        if not args.allow_gpu:
+            raise ValueError("managed pool requires explicit GPU authorization")
+        socket_path = str(repository / ".local/gpu-pools/shared/control.sock")
+        if args.gpu_pool_socket not in (None, socket_path):
+            raise ValueError("managed pool cannot replace an external pool selection")
+        args.gpu_pool_socket = socket_path
+        args.gpu_pool_namespace = args.gpu_pool_namespace or args.run_id
+        args.gpu_pool_server_uid = os.geteuid() if args.gpu_pool_server_uid is None else args.gpu_pool_server_uid
+        if args.gpu_pool_server_uid != os.geteuid():
+            raise ValueError("managed pool must belong to the invoking UID")
+        if Path(args.state_root).resolve().parent != repository / "state":
+            raise ValueError("managed pool requires repository-local state roots")
+    if args.allow_gpu and not args.gpu_runtime_prefix:
+        args.gpu_runtime_prefix = payload["execution"]["runtime_prefix"]
     python = Path(args.control_python)
     if not python.is_absolute() or not python.is_file() or not os.access(python, os.X_OK):
         raise ValueError("control Python must be an absolute executable file")
@@ -231,9 +254,13 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         raise ValueError("pool server UID requires a pool socket and nonnegative UID")
     if args.gpu_pool_socket is not None:
         from .gpu_pool import RequestKey
+        from .gpu_pool_lifecycle import managed_repository
         if not Path(args.gpu_pool_socket).is_absolute():
             raise ValueError("pool socket must be an absolute path")
         RequestKey(os.getuid(), args.gpu_pool_namespace, "run", "execution", "attempt")
+        owner = managed_repository(Path(args.gpu_pool_socket))
+        if owner is not None and state.parent != owner.resolve() / "state":
+            raise ValueError("canonical managed pool requires state roots under its repository/state; select an external service for external roots")
     if args.allow_gpu:
         if not args.gpu_device_uuid or not args.gpu_runtime_prefix:
             raise ValueError("GPU launch needs the exact approved UUIDs and runtime prefix")
@@ -257,19 +284,14 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
                          "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
                          "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
         if args.gpu_pool_socket is not None:
-            from .agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
-            from .gpu_pool_client import PoolClient, validate_pool_snapshot
-            from .gpu_pool import PoolError
-            try:
-                snapshot = PoolClient(args.gpu_pool_socket, expected_server_uid=args.gpu_pool_server_uid).request("snapshot", {})
-                validate_pool_snapshot(snapshot, aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
-                                       allowed_gpu_uuids=[gpu.uuid for gpu in selected.gpus])
-            except PoolError as exc:
-                review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
-                    "status": "blocked", "code": exc.code, "reason": str(exc), "start_ready": False}
+            if getattr(args, "managed_pool", False):
+                from . import managed_gpu_pool
+                pool_args = _pool_arguments(args, repository, contract)
+                proposal = managed_gpu_pool.review(pool_args)
+                review["gpu"]["pool"] = {**proposal, "namespace": args.gpu_pool_namespace,
+                    "start_available": proposal["prepare_available"]}
             else:
-                review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
-                    "status": "compatible", "capabilities": snapshot.get("capabilities", []), "start_ready": True}
+                _external_pool_review(args, selected, review)
     elif args.gpu_device_uuid or args.gpu_runtime_prefix or args.gpu_pool_socket:
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":
@@ -280,14 +302,11 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
             raise ValueError("real launch requires an exact model, Claude executable and OpenAlex")
         if (args.auth_transport == "settings") != (args.claude_settings is not None):
             raise ValueError("settings and environment authentication cannot be mixed")
-        if args.auth_transport == "environment" and not os.environ.get("ANTHROPIC_API_KEY"):
-            raise ValueError("environment authentication is unavailable")
-        auth_code, auth = _invoke([str(python), "-B", str(repository /
-            ".claude/skills/autoresearch/scripts/resolve_model_options.py"),
-            *(["--settings", args.claude_settings] if args.claude_settings else ["--environment"])],
-            {"PYTHONDONTWRITEBYTECODE": "1", "HYPOLOOM_RUNTIME_FAMILY": "hypoloom"}, cwd=repository)
-        if auth_code:
-            raise ValueError("selected model authentication source is not qualified: " + str(auth.get("error", "inspection failed")))
+        from .model_options import inspect_environment, inspect_settings, ResolverError
+        try:
+            auth = inspect_settings(Path(args.claude_settings), repository=repository) if args.claude_settings else inspect_environment()
+        except ResolverError as exc:
+            raise ValueError("selected model authentication source is not qualified: " + exc.code) from None
         review["models"] = model_review(contract, args.claude_model)
         review["models"]["selected_auth_source_default"] = auth.get("configured_default")
         from .claude_agent_host import ClaudeAgentHost, AgentHostError
@@ -298,6 +317,35 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
             raise ValueError(str(exc)) from exc
     elif args.claude_model or args.claude_executable or args.claude_settings:
         raise ValueError("fake launch cannot contain Claude authentication or model options")
+    return _launch_commands(args, repository, report, review, python, state, request_id, real)
+
+
+def _pool_arguments(args, repository: Path, contract: dict):
+    return argparse.Namespace(repository=str(repository),
+        pool_root=str(repository / ".local/gpu-pools/shared"), socket_path=args.gpu_pool_socket,
+        member=[f"{os.geteuid()}=" + ",".join(sorted(args.pool_device_uuid or args.gpu_device_uuid or ()))],
+        reserve_mib=args.pool_reserve_mib if args.pool_reserve_mib is not None else contract["budget"].get("gpu_vram_reserve_mb", 0),
+        ready_timeout=min(args.ready_timeout, 60), reviewed_action=args.pool_action)
+
+
+def _external_pool_review(args, selected, review):
+    from .agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+    from .gpu_pool_client import PoolClient, validate_pool_snapshot
+    from .gpu_pool import PoolError
+    try:
+        snapshot = PoolClient(args.gpu_pool_socket, expected_server_uid=args.gpu_pool_server_uid).request("snapshot", {})
+        validate_pool_snapshot(snapshot, aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
+                               allowed_gpu_uuids=[gpu.uuid for gpu in selected.gpus])
+    except PoolError as exc:
+        review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
+            "status": "blocked", "code": exc.code, "reason": str(exc), "start_ready": False}
+    else:
+        review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
+            "status": "compatible", "capabilities": snapshot.get("capabilities", []), "start_ready": True}
+
+
+def _launch_commands(args, repository, report, review, python, state, request_id, real):
+    contract = report.create_run_payload["research_contract"]
     from .notification_tailer import notification_environment, notification_preflight
     product = contract.get("methodology", {}).get("controls", {}).get("product", {})
     if args.notification_output_root is not None and not Path(args.notification_output_root).is_absolute():
@@ -346,6 +394,17 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     if args.gpu_pool_socket:
         commands["pool_status"] = [*cli, "gpu-pool-status", "--socket-path", args.gpu_pool_socket,
             *(["--expected-server-uid", str(args.gpu_pool_server_uid)] if args.gpu_pool_server_uid is not None else [])]
+        commands["pool_preflight_available"] = review["gpu"]["pool"].get("prepare_available",
+            review["gpu"]["pool"].get("start_ready", False))
+    if getattr(args, "managed_pool", False):
+        pool = _pool_arguments(args, repository, contract)
+        commands["pool_prepare"] = [str(python), "-B", "-m", "hypoloom.managed_gpu_pool", "ensure",
+            "--repository", str(repository), "--pool-root", pool.pool_root, "--socket-path", pool.socket_path,
+            "--member", pool.member[0], "--reserve-mib", str(pool.reserve_mib), "--ready-timeout", str(pool.ready_timeout)]
+        if args.pool_action is not None:
+            commands["pool_prepare"] += ["--reviewed-action", args.pool_action]
+        commands["pool_action_reviewed"] = args.pool_action is not None
+        commands["pool_prepare_available"] = review["gpu"]["pool"]["prepare_available"]
     return commands
 
 
@@ -367,61 +426,110 @@ def start_fresh(commands: dict, payload: dict) -> dict:
     Ambiguous CREATE_RUN results are reconciled with STATUS before any action.
     An automatic transport retry is deliberately unnecessary here.
     """
+    timings = []
     def call(name):
-        return _invoke(commands[name], commands["environment"], cwd=commands["working_directory"])
+        before = time.monotonic()
+        value = _invoke(commands[name], commands["environment"], cwd=commands["working_directory"])
+        timings.append({"phase": name, "seconds": round(time.monotonic() - before, 3), "exit_code": value[0]})
+        return value
+    def finish(status, **values):
+        return {"status": status, **values, "phases": timings}
 
     def checked():
         code, result = call("profile_check")
         return code == 0 and result.get("admitted") is True and result.get("create_run_payload") == payload
 
     if not checked():
-        return {"status": "profile_changed_before_host"}
+        return finish("profile_changed_before_host")
+    if commands.get("pool_preflight_available") is False:
+        return finish("pool_review_required", next_actions=["recheck", "revise_selection", "prepare_only", "cancel"])
+    prepared_pool = None
+    if "pool_prepare" in commands:
+        if not commands.get("pool_action_reviewed") or not commands.get("pool_prepare_available"):
+            return finish("pool_review_required")
+        code, prepared_pool = call("pool_prepare")
+        if code or prepared_pool.get("status") not in {"ready", "reused", "restored", "upgraded", "reconfigured"}:
+            return finish("pool_prepare_failed", pool=prepared_pool,
+                next_actions=["recheck", "revise_selection", "prepare_only", "cancel"])
     if "pool_status" in commands:
         code, pool = call("pool_status")
         if code:
-            return {"status": "pool_unavailable", "pool": pool}
+            return finish("pool_unavailable", pool=pool)
     code, host = call("host_start")
     if code or host.get("status") != "ready":
-        return {"status": "host_start_failed" if code == 2 else "host_start_uncertain", "host": host}
+        return finish("host_start_failed" if code == 2 else "host_start_uncertain", host=host, pool=prepared_pool)
     if not checked():
         _, stopped = call("host_stop")
-        return {"status": "profile_changed_before_create", "host": host, "cleanup": stopped}
+        return finish("profile_changed_before_create", host=host, cleanup=stopped, pool=prepared_pool)
     code, created = call("start")
     status_code, observed = call("status")
     if code == 0 and created.get("status") == "accepted":
-        return {"status": "started", "host": host, "creation": created, "observation": observed}
+        return finish("started", host=host, creation=created, observation=observed, pool=prepared_pool)
     if status_code == 0 and observed.get("status") == "accepted":
-        return {"status": "started", "host": host, "creation_reconciled": True, "observation": observed}
+        return finish("started", host=host, creation_reconciled=True, observation=observed, pool=prepared_pool)
     if observed.get("status") == "rejected" and observed.get("error", {}).get("code") == "not_found":
         _, stopped = call("host_stop")
-        return {"status": "create_failed", "host": host, "creation": created, "cleanup": stopped}
-    return {"status": "creation_uncertain", "host": host, "creation": created, "observation": observed}
+        return finish("create_failed", host=host, creation=created, cleanup=stopped, pool=prepared_pool)
+    return finish("creation_uncertain", host=host, creation=created, observation=observed, pool=prepared_pool)
+
+
+def compact_result(result: dict) -> dict:
+    """Allowlisted interactive projection; complete command/payload data stays internal."""
+    admission = result.get("admission", {})
+    payload = admission.get("create_run_payload") or {}
+    contract = payload.get("research_contract", {})
+    review = result.get("effective_configuration", {})
+    models = review.get("models", {})
+    routes = models.get("routes", [])
+    compact = {key: result[key] for key in ("profile_written", "provider_probe_performed", "literature_preflight") if key in result}
+    compact["admission"] = {key: admission[key] for key in (
+        "profile_name", "profile_path", "admitted", "blockers", "warnings", "resource_visibility") if key in admission}
+    compact["run_id"] = payload.get("run_id")
+    compact["effective_configuration"] = {
+        "budget": review.get("budget", contract.get("budget")),
+        "execution": payload.get("execution"),
+        "models": {"host_default_model": models.get("host_default_model"),
+            "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
+            "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
+        **{key: review[key] for key in ("gpu", "notifications") if key in review},
+    }
+    if "launch" in result:
+        launch = result["launch"]
+        compact["launch"] = {k: launch[k] for k in ("status", "phases", "pool", "host", "cleanup", "next_actions", "creation_reconciled") if k in launch}
+        for name in ("creation", "observation"):
+            if name in launch:
+                item = launch[name]
+                compact["launch"][name] = {k: item[k] for k in ("status", "error", "revision") if k in item}
+    return compact
 
 
 def build_parser() -> argparse.ArgumentParser:
     from .version_check import DEFAULT_TIMEOUT
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
+    inventory = commands.add_parser("inventory", help="read-only GPU device observation (no authorization)")
+    inventory.add_argument("--repository", default=str(Path.cwd()))
     paths = commands.add_parser("paths", help="show private data and template locations without reading secrets")
     paths.add_argument("--repository", default=str(Path.cwd()))
     paths.add_argument("--profile")
     paths.add_argument("--offline", action="store_true", help="skip the advisory remote version check")
     paths.add_argument("--version-timeout", type=float, default=DEFAULT_TIMEOUT, help="total version-check deadline in seconds (maximum 30)")
-    for action in ("prepare", "launch"):
+    for action in ("prepare", "launch", "inspect"):
         command = commands.add_parser(action, help="preview Profile preparation" if action == "prepare" else "derive reviewed CLI arguments without starting anything")
         command.add_argument("--repository", default=str(Path.cwd()))
         _add_profile_arguments(command)
+        command.add_argument("--summary", action="store_true", help="emit the compact non-secret interactive view")
         command.add_argument("--template", help="tracked v4 template for a new local Profile")
         command.add_argument("--set", dest="overrides", action="append", default=[], metavar="SECTION.FIELD=YAML")
         if action == "prepare":
             command.add_argument("--write", action="store_true", help="explicitly create the reviewed six-file destination; never start a run")
         else:
             command.add_argument("--start", action="store_true", help="explicitly authorize this fresh managed Host and run; default is preview only")
-            command.add_argument("--state-root", required=True)
+            command.add_argument("--state-root")
             command.add_argument("--request-id")
             command.add_argument("--control-python", default=sys.executable)
             command.add_argument("--ready-timeout", type=float, default=30)
-            command.add_argument("--auth-transport", choices=("none", "settings", "environment"), required=True)
+            command.add_argument("--auth-transport", choices=("none", "settings", "environment"), required=action == "launch")
             for name in ("claude-executable", "claude-model", "claude-settings", "gpu-runtime-prefix",
                          "gpu-pool-socket", "gpu-pool-namespace", "notification-output-root", "notification-proxy-env",
                          "notification-credentials-file"):
@@ -430,6 +538,21 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--gpu-device-uuid", action="append")
             command.add_argument("--gpu-pool-server-uid", type=int)
             command.add_argument("--web-search-fallback", choices=("openalex",))
+            scheduling = command.add_mutually_exclusive_group()
+            scheduling.add_argument("--managed-pool", action="store_true", help="plan management of this project's canonical shared pool")
+            scheduling.add_argument("--nonpooled", action="store_true", help="explicitly select GPU scheduling without a pool")
+            command.add_argument("--pool-action", choices=("create", "reuse", "restore", "upgrade", "reconfigure"))
+            command.add_argument("--pool-device-uuid", action="append", help="reviewed full pool membership, independent of this run's subset")
+            command.add_argument("--pool-reserve-mib", type=int)
+        if action == "inspect":
+            command.add_argument("--offline", action="store_true")
+            command.add_argument("--version-timeout", type=float, default=DEFAULT_TIMEOUT)
+            for option in command._actions:
+                if option.dest == "profile": option.nargs = "?"
+                if option.dest == "run_id": option.required = False
+            for group in command._mutually_exclusive_groups:
+                group.required = False
+            command.set_defaults(allow_gpu=None)
     return parser
 
 
@@ -439,7 +562,18 @@ def main(argv=None) -> int:
         if os.environ.get("HYPOLOOM_RUNTIME_FAMILY") not in (None, "", "hypoloom"):
             raise ValueError("conflicting runtime family")
         repository = _repository(args.repository)
-        if args.action == "paths":
+        if args.action == "inventory":
+            from .compute_resources import _nvml_inventory
+            print(json.dumps({"devices": [gpu.to_dict() for gpu in _nvml_inventory().gpus]}))
+            return 0
+        elif args.action == "inspect":
+            if args.start:
+                raise ValueError("inspect is read-only; review and use launch --start")
+            from .bootstrap_inspect import inspect
+            result = inspect(args, repository)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
+        elif args.action == "paths":
             result = locations(repository, args.profile)
             from .version_check import check_updates
             result["version_check"] = check_updates(repository, offline=args.offline, timeout=args.version_timeout)
@@ -474,9 +608,9 @@ def main(argv=None) -> int:
                     if texts is not None:
                         raise ValueError("prepare the reviewed Profile before --start; templates cannot launch directly")
                     result["launch"] = start_fresh(result["commands"], report.create_run_payload)
-                    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+                    print(json.dumps(compact_result(result) if args.summary else result, ensure_ascii=False, sort_keys=True))
                     return 0 if result["launch"]["status"] == "started" else 2
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            print(json.dumps(compact_result(result) if args.summary else result, ensure_ascii=False, sort_keys=True))
             return 0 if report.admitted else 2
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0

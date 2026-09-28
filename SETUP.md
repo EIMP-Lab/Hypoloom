@@ -164,10 +164,12 @@ root.
 
 Templates default to CPU. GPU work requires filling in the Profile and
 reviewing the exact UUIDs, GPU runtime prefix, free VRAM, reserve and
-concurrency budget. A standalone resource pool must first be configured
-explicitly by the operator; `gpu-pool-status` only queries and never creates
-or replaces a service. A shared pool allows multiple experiments on one card;
-actual capacity and concurrency limits still apply.
+concurrency budget. Init can create, reuse, restore or upgrade the project
+managed pool as part of the reviewed Start now action. It checks dependencies
+before changing a service; external pools require explicit operator configuration.
+`gpu-pool-status` remains read-only. See [initialization](docs/guides/initialization.md)
+for aggregate inspection and generated launch arguments. A shared pool allows
+multiple experiments on one card; actual capacity and concurrency limits still apply.
 
 "Allow using cards other users are also using" and "join the shared pool" are
 two independent choices. Pool binding enters through the Host's

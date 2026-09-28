@@ -67,17 +67,15 @@ for connection format, separate Web authorization and restart/restore behavior.
 ## Resources, observation and stopping
 
 CPU-only is the public template default. GPU starts require exact device UUIDs,
-a selected GPU runtime and matching Profile authorization. Init probes the
-conventional project pool endpoint (`.local/gpu-pools/shared/control.sock`)
-read-only and recalls prior runs' stored pool bindings as candidates; when
-pooled GPU work is wanted and no live pool exists, the final review carries an
-exact pool plan and the bounded `manage_gpu_pool.py ensure` helper deploys it
-as a transient user-systemd service immediately before the managed Host start.
-An external project's pool endpoint still enters only through explicit operator
-supply. Pool status queries do not create services; replacing, stopping or
-reconfiguring a pool remains a separate operator action. Shared capacity
-supports concurrent experiments on one card; reserve, memory estimates and
-concurrency limits remain enforced.
+a selected GPU runtime and matching Profile authorization. Aggregate
+`bootstrap inspect` checks the project pool and returns a concrete preparation
+plan. Start now can create, reuse, restore or upgrade it before the Host starts;
+member/reserve changes require explicit reconfiguration. Maintenance verifies
+project dependencies and coordinates with new admission. External services are
+only inspected/reused. Prepare only performs no service action. Failures retain
+the current init choices. See [initialization](guides/initialization.md) and
+[runtime recovery](guides/runtime-recovery.md) for scope and concurrency limits.
+Shared capacity, reserves, estimates and concurrency budgets remain enforced.
 
 New ACI 27 runs use measured 25/15/10% margins and exclusive scheduling until
 comparable successful evidence permits sharing. The resource query explains the

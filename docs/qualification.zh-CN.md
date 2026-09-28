@@ -2,6 +2,23 @@
 
 [English](qualification.md) · 简体中文
 
+## 当前开发：init 池生命周期与时延，2026-09-28
+
+[Init 生命周期方案](design/init-managed-gpu-pool-lifecycle.md)已实现聚合检查、自动生成
+启动参数及已审阅的托管池准备。既有验证器、数据库、运行版本固定和 controller 锁继续
+作为事实来源；目录 flock 协调服务维护与新 Host 接纳，其竞态依据及最小机制说明见设计。
+
+232 项针对性测试通过，覆盖真实 SQLite 历史、进程组、跨进程锁与真实 Host 的
+CREATE_RUN 路径；服务 supervisor 和池传输使用测试替身。9 项原生 socket 测试无法在
+本沙箱完成：Unix socket bind 被禁止（EPERM），user-systemd 也不可达。没有削弱这些
+检查或将其算作通过；本结果不等于完整 G1、原生服务、CUDA 或付费模型资格。
+
+合成 CPU Profile 单次样本中，`--summary` 将 prepare 输出从 13,535 B 减至 1,947 B；
+聚合检查用进程内 0.0904 s / 5,593 B 报告 supervisor 阻断，未创建状态根或池。顺序单次
+样本包含缓存差异，不能据此宣称 CC 端到端提速。默认技能入口从 1,795 行减至 191 行，
+详细参考按需加载。证据位于 `.local/qualification/init-lifecycle-20260928/`。
+现有生产池、研究运行与私有 Profile 保持原状；验证未调用供应商。用户随后授权提交并推送至 dev。
+
 ## 当前开发：运行准备与上下文恢复，2026-09-28
 
 ACI 28 / `claude-code-bwrap/66` / lifecycle v10 实施了

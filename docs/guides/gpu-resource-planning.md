@@ -8,6 +8,11 @@ New ACI 27 runs use evidence-based memory margins and conservative pool sharing.
 Existing runs retain their accepted runtime and resource intent. Updating the
 checkout does not change a running Host or upgrade its shared pool.
 
+A subsequent init can prepare the project managed pool within its reviewed
+Start now action. Creation, restoration and upgrades are separate from the
+advisory repository version reminder; they preserve existing pool history and
+require no unresolved dependencies. See [initialization](initialization.md).
+
 ## What the budget means
 
 The Host admits the maximum of the Profile floor, the Agent's estimate, the

@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- September 28 init lifecycle/latency follow-up: user authorizes implementation
+  and subsequently commit/push to dev, without production operations. Reuse the
+  completed focused validation. [Design](../design/init-managed-gpu-pool-lifecycle.md)
+  now has aggregate read-only inspect, compact output and generated launch argv;
+  bootstrap performs the reviewed create/reuse/restore/upgrade/reconfigure before
+  Host creation. Explicit skip/Prepare only never silently changes execution mode.
+  Existing bindings, Attempts, pool requests and process/controller ownership
+  block unsafe maintenance. Justified directory flock coordinates maintenance
+  and CREATE_RUN; no new persistent authority. Canonical pool scope is its own
+  repository/state roots; external/unknown ownership is not automatically managed.
+  New modules retain script compatibility, original validators and runtime pinning.
+  Default skill shrinks 1795 → 191 lines; detailed references and bilingual guides
+  retain operation boundaries. 232 focused checks pass; nine native socket cases
+  cannot complete under sandbox EPERM. Real SQLite, process/flock and Host admission
+  are covered; supervisor/pool transport are substituted, no full G1/G5 claim.
+  Synthetic CPU inspect sample: 0.0904 s in-process / 5593 B, correctly blocked by
+  unreachable user manager; no CC end-to-end speed claim. Evidence stays in
+  `.local/qualification/init-lifecycle-20260928/`. Prior latency metadata remains
+  `.local/analysis/init-latency-20260928/` (51 responses/74 tools; five auto-mode
+  classifier timeouts, 382.566 s). No raw transcripts/secrets copied, production
+  pool/run/Profile changes or provider calls. Private evidence remains ignored.
+
 - September 28 runtime readiness/recovery: user authorizes implementation and
   commit/push to dev. ACI 28 / bwrap66 / lifecycle v10 checks pool capability and
   selected membership before Agent launch, reuses compatible subset pools and

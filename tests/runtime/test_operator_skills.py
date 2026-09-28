@@ -19,7 +19,14 @@ MONITOR_LAUNCHER = (
 def _skill(name: str) -> str:
     path = SKILLS / name / "SKILL.md"
     assert path.is_file(), path
-    return path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    if name == "autoresearch":
+        # Keep checking the supported boundaries after progressive disclosure;
+        # the runtime loads these references only for the relevant operation.
+        reference = path.parent / "references"
+        text = text.replace("## Supported routing", (reference / "init-details.md").read_text() + "\n## Supported routing", 1)
+        text += "\n" + (reference / "operations.md").read_text()
+    return text
 
 
 def _init_contract() -> str:
@@ -49,15 +56,15 @@ def test_native_init_detects_and_deploys_project_pool_with_reviewed_binding(tmp_
                    "gpu-pool-status", "--expected-server-uid"):
         assert option in text
     assert "**Shared pool.**" in text
-    assert "unavailable or incompatible pool blocks `Start now`" in normalized
+    assert "safe reviewed preparation plan permits Start now" in normalized
     assert "partial own-use samples remain unknown" in normalized
     for marker in (
         "manage_gpu_pool.py",
         "status --repository",
-        "ensure --repository",
+        "pool_prepare",
         ".local/gpu-pools/",
         "hypoloom-gpu-pool@",
-        "`ready` or `reused`",
+        "`ready`, `reused`, `restored`, `upgraded` or `reconfigured`",
     ):
         assert marker in text
     for statement in (
@@ -68,7 +75,7 @@ def test_native_init_detects_and_deploys_project_pool_with_reviewed_binding(tmp_
         "service_busy",
         "pool_conflict",
         "gpu_vram_reserve_mb",
-        "separate operator actions outside init",
+        "reviewed init actions",
         "Different private pools must not coordinate the same shared device set independently",
     ):
         assert statement in normalized
@@ -955,10 +962,11 @@ def test_public_skill_prepare_only_has_one_compact_nonsecret_fallback() -> None:
 def test_public_skill_checks_user_systemd_read_only_and_never_enables_linger() -> None:
     init = _init_contract()
     before_choice = init.split("Use one final `AskUserQuestion`", 1)[0]
-    normalized = _normalized(before_choice)
+    assert "bootstrap inspect" in before_choice
+    normalized = _normalized(init)
 
-    assert "systemctl --user show --property=Version --value" in before_choice
-    assert 'loginctl show-user "$(id -u)" --property=Linger --value' in before_choice
+    assert "systemctl --user show --property=Version --value" in init
+    assert 'loginctl show-user "$(id -u)" --property=Linger --value' in init
     assert "Do not create a probe service or scope" in normalized
     assert "unavailable user manager blocks `Start now` but not `Prepare only`" in normalized
     assert "`Linger=no` does not block same-window operation" in normalized
@@ -966,6 +974,14 @@ def test_public_skill_checks_user_systemd_read_only_and_never_enables_linger() -
     assert "Never enable linger" in normalized
     assert "offer 30 seconds" in normalized
     assert "no more than 300 seconds" in normalized
+
+
+def test_init_entry_uses_progressive_disclosure_and_fixed_helpers():
+    text = (SKILLS / "autoresearch/SKILL.md").read_text()
+    assert len(text.splitlines()) < 260
+    for expected in ("bootstrap inspect", "launch_argv", "--pool-action", "prepare_available",
+                     "references/init-details.md", "references/operations.md", "classifier timeouts"):
+        assert expected in text
 
 
 def test_public_skill_rolls_back_pre_start_failures_and_reconciles_ambiguity() -> None:
