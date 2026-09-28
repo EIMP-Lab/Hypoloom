@@ -1085,10 +1085,17 @@ class WorkflowHost:
                 + _canonical(list(controls)).decode() if stopping else
                 f"As of the first report request, Research Policy recorded {verdicts[0]['payload']['verdict']}. Lifecycle closure alone does not establish completed research."),
             **({"stop_controls": list(controls)} if stopping else {})}
-        from .final_report import run_outcome_context
+        from .final_report import accepted_evaluation_summary_inputs, run_outcome_context
         context["run_outcome"] = outcome = run_outcome_context(facts,
             [row for row in self.store.list_attempts() if row["run_id"] == run_id], self._expert_final_failures(run_id),
             artifacts=self.store.inspect("SELECT artifact_id,execution_id,attempt_id FROM execution_artifacts WHERE run_id=?", (run_id,)))
+        summary_inputs, summary_index = accepted_evaluation_summary_inputs(
+            facts,
+            lambda outcome_id, artifact_id, logical_id: self._logical_sources(
+                run_id, outcome_id, artifact_id, logical_id),
+            max_bytes=maximum,
+        )
+        context["accepted_evaluation_summaries"] = summary_index
         context["stop_reason"] += (f" Actual progress: {outcome['expert_nodes_started']} expert nodes started, "
             f"{outcome['fact_counts']['HypothesisProposed']} hypotheses, "
             f"{outcome['fact_counts']['ExperimentPreregistered']} experiments, "
@@ -1106,6 +1113,7 @@ class WorkflowHost:
         inputs = [EmbeddedInput.from_bytes(f"{task.command_id}--grounding-config", "application/json", _canonical(config)),
             EmbeddedInput.from_bytes(f"{task.command_id}--grounding-resources", "application/json", _canonical({"plugin": plugin.to_dict()})),
             EmbeddedInput.from_bytes(f"{task.command_id}--final-report-context", "application/json", _canonical(context))]
+        inputs.extend(summary_inputs)
         inputs.extend(failed_reports)
         for row in self.store.list_attempts():
             if row["run_id"] == run_id and row["kind"] == "AGENT" and row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED":

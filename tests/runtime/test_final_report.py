@@ -122,6 +122,55 @@ def test_report_counts_research_nodes_once_and_accepts_contextless_reviews():
     assert result["process_attempt_details"] == []
 
 
+def test_accepted_evaluation_summaries_are_comparable_and_bounded(tmp_path):
+    from hypoloom.final_report import accepted_evaluation_summary_inputs
+
+    first = tmp_path / "first.json"
+    first.write_bytes(b'{"cells":["qwen","llama"]}')
+    second = tmp_path / "second.json"
+    second.write_bytes(b'{"cells":["too-large"]}')
+    calls = []
+
+    def resolve(outcome_id, artifact_id, logical_id):
+        calls.append((outcome_id, artifact_id, logical_id))
+        return (first if outcome_id == "outcome-one" else second,)
+
+    def outcome(identity, status):
+        return {"fact_type": "CanonicalOutcomeAccepted", "payload": {
+            "outcome_id": identity,
+            "artifact_id": f"artifact-{identity}",
+            "outcome": status,
+            "logical_artifacts": [{"logical_artifact": "evaluation_summary",
+                "paths": ["evaluation_summary.json"]}],
+        }}
+
+    inputs, index = accepted_evaluation_summary_inputs([
+        outcome("outcome-one", "SUCCESS"),
+        outcome("outcome-rejected", "INTEGRITY_REJECTED"),
+        outcome("outcome-two", "CLEAN_REFUTATION"),
+    ], resolve, max_bytes=len(first.read_bytes()))
+
+    assert [item.ref for item in inputs] == [
+        "outcome-one--accepted-evaluation-summary"
+    ]
+    assert inputs[0].content_bytes() == first.read_bytes()
+    assert calls == [
+        ("outcome-one", "artifact-outcome-one", "evaluation_summary"),
+        ("outcome-two", "artifact-outcome-two", "evaluation_summary"),
+    ]
+    assert index == {
+        "byte_limit": len(first.read_bytes()),
+        "bytes_included": len(first.read_bytes()),
+        "included": [{"outcome_id": "outcome-one",
+            "artifact_id": "artifact-outcome-one",
+            "refs": ["outcome-one--accepted-evaluation-summary"]}],
+        "omitted": [{"outcome_id": "outcome-two",
+            "artifact_id": "artifact-outcome-two",
+            "ref": "outcome-two--accepted-evaluation-summary",
+            "reason": "summary_byte_budget_exceeded"}],
+    }
+
+
 def _report_gpu_usage(uuid="GPU-11111111-1111-1111-1111-111111111111", *, free=50_901,
                       owned_bytes=4096, incomplete=False):
     from hypoloom.compute_resources import GpuPressureTracker, GpuRuntimeObservation

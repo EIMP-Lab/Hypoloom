@@ -4,6 +4,69 @@ from __future__ import annotations
 import json
 from collections import Counter
 from decimal import Decimal
+from pathlib import Path
+
+
+_COMPARABLE_OUTCOMES = frozenset({"SUCCESS", "CLEAN_REFUTATION"})
+
+
+def accepted_evaluation_summary_inputs(facts, resolve_logical, *, max_bytes):
+    """Materialize bounded accepted summaries through the Host's artifact resolver."""
+    from .agent_aci import EmbeddedInput
+
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+        raise ValueError("evaluation summary byte limit must be a positive integer")
+    inputs = []
+    included = []
+    omitted = []
+    remaining = max_bytes
+    for row in facts:
+        if row.get("fact_type") != "CanonicalOutcomeAccepted":
+            continue
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            try:
+                payload = json.loads(row["payload_json"])
+            except (KeyError, TypeError, json.JSONDecodeError):
+                continue
+        if payload.get("outcome") not in _COMPARABLE_OUTCOMES:
+            continue
+        logical = payload.get("logical_artifacts")
+        if not isinstance(logical, (list, tuple)) or not any(
+            isinstance(item, dict) and item.get("logical_artifact") == "evaluation_summary"
+            for item in logical
+        ):
+            continue
+        outcome_id = payload.get("outcome_id")
+        artifact_id = payload.get("artifact_id")
+        if not isinstance(outcome_id, str) or not isinstance(artifact_id, str):
+            continue
+        paths = tuple(resolve_logical(outcome_id, artifact_id, "evaluation_summary"))
+        refs = []
+        for index, raw_path in enumerate(paths, 1):
+            path = Path(raw_path)
+            ref = f"{outcome_id}--accepted-evaluation-summary"
+            if len(paths) > 1:
+                ref += f"-{index}"
+            try:
+                with path.open("rb") as stream:
+                    content = stream.read(remaining + 1)
+            except OSError:
+                omitted.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                    "ref": ref, "reason": "source_unavailable"})
+                continue
+            if len(content) > remaining:
+                omitted.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                    "ref": ref, "reason": "summary_byte_budget_exceeded"})
+                continue
+            inputs.append(EmbeddedInput.from_bytes(ref, "application/json", content))
+            refs.append(ref)
+            remaining -= len(content)
+        if refs:
+            included.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                "refs": refs})
+    return tuple(inputs), {"byte_limit": max_bytes, "bytes_included": max_bytes - remaining,
+        "included": included, "omitted": omitted}
 
 
 def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):

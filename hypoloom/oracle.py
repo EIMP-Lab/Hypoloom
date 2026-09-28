@@ -11780,7 +11780,14 @@ def _lineage_values_are_consistent(
         for item in results
     ]
     if require_identity:
-        return bool(pairs) and all(left is not None and right is not None for left, right in pairs) and len(set(pairs)) == 1
+        implementations = {left for left, _ in pairs}
+        configs = {right for _, right in pairs}
+        return (
+            bool(pairs)
+            and None not in implementations
+            and len(implementations) == 1
+            and (configs == {None} or None not in configs and len(configs) == 1)
+        )
     implementations = {left for left, _ in pairs}
     configs = {right for _, right in pairs}
     return (
@@ -11815,7 +11822,7 @@ def _audit_primary_implementation_lineage(
         issues.append(
             OracleIssue(
                 "primary_implementation_lineage_mismatch",
-                "primary component results do not share one implementation/core configuration identity",
+                "primary component results do not share one required implementation identity or one optional core configuration identity",
                 tuple(sorted(primary_ids)),
             )
         )

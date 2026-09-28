@@ -47,6 +47,21 @@ def execution(tmp_path: Path, request):
                 contract["methodology"]["controls"]["experiment_campaigns"] = {
                     "enabled": True, "required_roles": ["preflight", "analyze"],
                     "role_owners": {"*": {"preflight": "reviewer", "analyze": "reviewer"}}}
+            if getattr(request, "param", None) == "evaluation_summary":
+                contract = payload["research_contract"]
+                component = contract["components"][0]
+                component["required_artifacts"].append("evaluation_summary")
+                component["protocol"] = "evaluation-summary-test"
+                contract["protocols"][component["protocol"]] = {
+                    "result_kind": "metric",
+                    "requirements": {
+                        "required_artifacts": list(component["required_artifacts"]),
+                        "artifact_validators": [{
+                            "type": "json_contract", "artifact": "evaluation_summary",
+                            "required_paths": ["cells"],
+                        }],
+                    },
+                }
             result = host.handle(ControlRequest(schema_version=1, request_id="create-tools", expected_revision=0,
                 command="CREATE_RUN", payload=payload))
             assert result.status == "accepted", result
@@ -93,6 +108,44 @@ def test_submit_is_creation_and_replay_is_exactly_once(execution) -> None:
     assert source["source_agent_attempt_id"] == request.attempt_id
     assert source["source_submit_command_id"]
     report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
+    assert report.ok, report.to_dict()
+
+
+@pytest.mark.parametrize("execution", ["evaluation_summary"], indirect=True)
+def test_final_report_receives_published_accepted_evaluation_summary(execution) -> None:
+    host, request, arguments = execution
+    accepted = host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)
+    _until(host, lambda: _terminal(host, accepted["exp_id"]))
+    result = host.handle_agent_tool(request.attempt_id, "wait_experiment", {
+        "exp_id": accepted["exp_id"]})
+    assert result["outcome"]["outcome"] == "SUCCESS"
+    host._finish_fake_agent(request, FakeAgent().invoke(request))
+    _until(host, lambda: host.store.latest_transition(request.run_id)["state"] == "COMPLETED")
+
+    report_attempt = next(row for row in host.store.list_attempts()
+        if row["kind"] == "AGENT"
+        and json.loads(row["observation_json"])["request"]["command"] == "FINAL_REPORT")
+    report_request = AgentRequest.from_dict(
+        json.loads(report_attempt["observation_json"])["request"])
+    summaries = [item for item in report_request.input_artifacts
+        if item.ref.endswith("--accepted-evaluation-summary")]
+    assert len(summaries) == 1
+    assert json.loads(summaries[0].content_bytes())["cells"]
+    context = json.loads(next(item.content_bytes()
+        for item in report_request.input_artifacts
+        if item.ref.endswith("--final-report-context")))
+    assert context["accepted_evaluation_summaries"] == {
+        "byte_limit": 1024 * 1024,
+        "bytes_included": len(summaries[0].content_bytes()),
+        "included": [{
+            "outcome_id": result["outcome"]["outcome_id"],
+            "artifact_id": result["outcome"]["artifact_id"],
+            "refs": [summaries[0].ref],
+        }],
+        "omitted": [],
+    }
+    report = Oracle(host.store.database_path, host.publisher.root).audit(
+        request.run_id)
     assert report.ok, report.to_dict()
 
 
