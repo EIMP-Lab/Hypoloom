@@ -82,6 +82,11 @@ TUI Web、独立 Web 和 Profile dashboard 默认使用端口 `0`，由系统在
 `notify.yaml.sinks.dashboard.port`。固定端口被占用时会报告冲突，不会自动换端口，
 TUI 仍可使用。`monitor --no-web` 仅关闭该 TUI 自己的 Web 监听。
 
+TUI 打开的 Web 服务与该 TUI 属于同一进程。TUI 退出或崩溃会关闭这个 Web 监听，
+独立运行的科研 Host 继续工作。遇到意外退出，可检查
+`<state-root>/diagnostics/host.jsonl` 中 `phase: "tui"` 的异常，然后重新打开
+同一个 run 的监控。重开后从 **Web / local access** 获取当前 Web 地址和 SSH 端口。
+
 默认仅监听 loopback，并使用 bearer 链接。普通分享链接只读。
 `--allow-human-answers` 明确创建可提交人工答复的操作者链接；不要公开该链接。
 `WAITING_HUMAN` 需要用户真实答复；建议选项不能被自动提交。

@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- September 29 TUI/Web disconnect: two retained `phase=tui` crashes are
+  `KeyError: read_calls` in AttemptsPanel. Stream compaction counters do not
+  establish transcript Read coverage. Existing optional display helpers now
+  keep missing counters unknown; source telemetry and Host authority stay intact.
+  Isolated red reproduction confirms the fault; final Textual/HTTP, monitor,
+  context-observation and Web regression passes 94 tests. Existing diagnostics already
+  capture TUI exceptions; no new log store, production operation or paid call.
+  [Evidence and limits](../qualification.md#current-repair--partial-context-telemetry-in-tui-2026-09-29),
+  `.local/qualification/tui-partial-context-20260929/`. User authorizes commit/push
+  to dev, reusing the completed 94-test validation.
+
 - September 28 cross-stage workflow skill: user authorizes implementation and
   commit/push to dev. One shared public source seeds owner-local Git plugins;
   stage-scoped native loading and read-only initial Grounding preserve selected

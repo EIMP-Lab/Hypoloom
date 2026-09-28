@@ -2,6 +2,32 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — Partial context telemetry in TUI, 2026-09-29
+
+The retained run's existing `diagnostics/host.jsonl` records two TUI crashes at
+2026-09-28 23:59:16 and 2026-09-29 01:17:55 +08, both `KeyError: 'read_calls'`.
+CLI stream observations can contain compaction counters before a readable
+transcript supplies Read counters. The renderer incorrectly treated the first
+as proof of the second. Textual then exited, closing its owned Web listener.
+The independent research Host remained active; its service had zero restarts.
+
+The fix reads optional telemetry independently through the existing display
+helpers: missing counts show `?`, observed zero remains `0`, and available
+compaction information stays visible. It does not fabricate counters, change
+context management, modify the running Host or add a diagnostic store.
+An isolated regression using the real stream/transcript projection reproduces
+the original exception before the fix. Afterward, alternating missing, measured
+zero and stream-only observations pass through the real Textual refresh loop
+while authenticated loopback HTTP requests continue returning 200 from the same
+Web server. Normal exit releases the port; research database row counts remain
+unchanged. This is bounded UI/HTTP qualification, not a long-running browser soak.
+Final focused validation passes **94 tests** across monitor, live-status,
+context-observation and Web suites. A first post-fix assertion needed whitespace
+normalization for terminal line wrapping; production code was unchanged by that
+fixture correction. The original crash reproduction is retained separately.
+Evidence stays in `.local/qualification/tui-partial-context-20260929/`; original
+production diagnostics remain in place. Production runs and Profiles are unchanged.
+
 ## Current development — Research workflow skill, 2026-09-28
 
 ACI 28 / `claude-code-bwrap/67` implements the

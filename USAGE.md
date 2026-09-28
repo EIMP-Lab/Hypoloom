@@ -104,6 +104,12 @@ For a fixed port, use `monitor --web-port 18080`, `web --port 18081`, or
 without switching ports; the TUI remains usable. `monitor --no-web` disables
 only that TUI's Web listener.
 
+The Web server opened by the TUI lives in that TUI process. Leaving or crashing
+the TUI closes its Web listener; the independent research Host keeps running.
+For an unexpected exit, inspect `<state-root>/diagnostics/host.jsonl` for
+`phase: "tui"` exceptions, then reopen the monitor for the same run. After
+reopening, obtain the current Web URL and SSH port from **Web / local access**.
+
 By default it listens on loopback only and uses a bearer link. Ordinary share
 links are read-only. `--allow-human-answers` explicitly creates an operator
 link that can submit human answers; never publish that link. `WAITING_HUMAN`

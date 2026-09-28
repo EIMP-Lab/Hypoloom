@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [TUI partial-context repair](../qualification.md#current-repair--partial-context-telemetry-in-tui-2026-09-29):
+  original Read-counter KeyError, independently available CLI/transcript evidence,
+  unknown versus zero counts, and actual Textual/HTTP refresh regression.
+  Evidence: `.local/qualification/tui-partial-context-20260929/`.
 - [Shared research workflow skill](../design/research-workflow-skill.md) /
   [中文](../design/research-workflow-skill.zh-CN.md): cross-stage methods, existing
   validation reuse, explicit initial Grounding plugin binding, owner-local

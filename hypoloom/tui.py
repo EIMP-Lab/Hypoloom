@@ -1013,11 +1013,14 @@ class AttemptsPanel(CockpitPanel):
                 if metrics.get("cli_unknown_model_pricing") is True:
                     lines.append("   CLI session pricing unknown · reported dollars are fallback estimates, not a vendor bill")
                 if "native_compaction_count" in metrics:
-                    lines.append(f"   native compactions={metrics['native_compaction_count']} · duration={metrics['native_compaction_duration_ms']} ms · unknown durations={metrics['native_compaction_duration_unknown']} · coverage={metrics['coverage']}")
+                    lines.append(f"   native compactions={_count(metrics.get('native_compaction_count'))} · duration={_count(metrics.get('native_compaction_duration_ms'))} ms · unknown durations={_count(metrics.get('native_compaction_duration_unknown'))} · coverage={_value(metrics.get('coverage', 'unavailable'))}")
                     compact = metrics.get("last_native_compaction")
                     if compact:
-                        lines.append(f"   last native compaction input={_value(compact['pre_tokens'])} → {_value(compact['post_tokens'])} · {_value(compact['duration_ms'])} ms")
-                    lines.append(f"   successful Read={metrics['read_calls']} · exact frozen-input rereads={metrics['exact_reread_calls']} (shell reads excluded)")
+                        lines.append(f"   last native compaction input={_value(compact.get('pre_tokens'))} → {_value(compact.get('post_tokens'))} · {_value(compact.get('duration_ms'))} ms")
+                if metrics:
+                    # Stream events can precede the transcript; read counts are
+                    # independently observed and must not default to zero.
+                    lines.append(f"   successful Read={_count(metrics.get('read_calls'))} · exact frozen-input rereads={_count(metrics.get('exact_reread_calls'))} (shell reads excluded)")
                 lines.append(f"   declared window={_value(context.get('declared_context_tokens'))} "
                     f"· cache read/create={_value(context.get('cache_read_input_tokens'))}/{_value(context.get('cache_creation_input_tokens'))} "
                     f"· session scope={_value(attempt.session_scope)}")

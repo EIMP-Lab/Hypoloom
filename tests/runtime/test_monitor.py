@@ -1255,6 +1255,88 @@ def test_textual_tui_tmux_copy_is_explicit_and_reports_no_ack(
     assert _row_census(state_root / "state.sqlite") == before
 
 
+def test_textual_tui_partial_context_refresh_keeps_web_available(tmp_path, monkeypatch):
+    """A readable CLI stream does not imply that its transcript exists yet."""
+    pytest.importorskip("textual")
+    from textual.widgets import Static
+    from hypoloom.context_observation import read_native_events, transcript_metrics
+    from hypoloom.tui import AttemptsPanel, HypoloomVNextMonitor
+
+    root, run_id = tmp_path / "partial-context", "partial-context"
+    _create_fresh_run(root, run_id)
+    snapshot = build_monitor_snapshot(root, run_id)
+    before = _row_census(root / "state.sqlite")
+    attempt = AttemptView(
+        attempt_id="starting-agent", kind="AGENT", state="OPEN", workflow_id=run_id,
+        command="GROUNDING", component_id=None, phase="grounding", role="scientist-a",
+        slot_ordinal=None, attempt_ordinal=1, terminal_reason=None, process_group_id=None,
+        started_at=1.0, ended_at=None, gpu_uuid=None, minimum_free_memory_mib=None,
+        latest_free_memory_mib=None, latest_utilization_percent=None,
+        resource_pressure_exceeded=None,
+    )
+    stream = root / "diagnostics/agents" / run_id / attempt.attempt_id / "stdout.log"
+    stream.parent.mkdir(parents=True)
+    stream.write_text('{"type":"system","subtype":"init"}\n')
+    observation = {attempt.attempt_id: {"request": {"role": attempt.role}}}
+    partial, = _with_live_attempt_context(root, run_id, (attempt,), observation)
+    assert partial.context_observation["native_compaction_count"] == 0
+    assert partial.context_observation["coverage"] == "unavailable"
+    assert "read_calls" not in partial.context_observation
+    stream.write_text('{"type":"system","subtype":"compact_boundary"}\n')
+    compacted, = _with_live_attempt_context(root, run_id, (attempt,), observation)
+    assert compacted.context_observation["native_compaction_count"] == 1
+    stream_only = replace(attempt, context_observation=read_native_events(stream))
+    assert "coverage" not in stream_only.context_observation
+    # A readable empty transcript has known zero reads; absence stays unknown.
+    measured = replace(attempt, context_observation=transcript_metrics(b"", "session", 1.0))
+    current = [snapshot]
+    _patch_tui_reader(monkeypatch, lambda *_: current[0])
+
+    async def exercise():
+        app = HypoloomVNextMonitor(root, run_id, interval=60,
+            initial_snapshot=snapshot, web_port=0)
+        async with app.run_test(size=(150, 50)) as pilot:
+            await pilot.pause()
+            server = app._web_server
+            assert server is not None
+            parsed = urlsplit(app.web_access_url)
+            token = parse_qs(parsed.fragment)["token"][0]
+
+            def fetch_snapshot():
+                connection = HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+                try:
+                    connection.request("GET", "/api/snapshot",
+                        headers={"Authorization": f"Bearer {token}"})
+                    response = connection.getresponse()
+                    assert response.status == 200
+                    return json.loads(response.read())
+                finally:
+                    connection.close()
+
+            for rendered, reads in ((partial, "?"), (measured, "0"), (compacted, "?"), (stream_only, "?")):
+                current[0] = replace(snapshot, attempts=(rendered,))
+                app.action_refresh()
+                for _ in range(50):
+                    await pilot.pause(0.02)
+                    if app._last_snapshot is current[0] and app._refresh_thread is None:
+                        break
+                assert app._last_snapshot is current[0]
+                assert app.return_code is None
+                panel = " ".join(_static_text(app.query_one(AttemptsPanel).query_one(Static)).split())
+                assert f"successful Read={reads}" in panel
+                assert f"exact frozen-input rereads={reads}" in panel
+                payload = await asyncio.to_thread(fetch_snapshot)
+                assert payload["attempts"][0]["context_observation"] == rendered.context_observation
+                assert app._web_server is server and app._web_thread.is_alive()
+            port = parsed.port
+        assert app._web_server is None
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", port))
+
+    asyncio.run(exercise())
+    assert _row_census(root / "state.sqlite") == before
+
+
 def test_textual_tui_owns_web_observer_and_releases_its_port(
     tmp_path: Path, monkeypatch,
 ) -> None:
