@@ -3,6 +3,9 @@
 Use the canonical `/autoresearch` skill for research operations. It targets the
 independent `hypoloom` runtime and its existing CLI. Start with `/autoresearch
 init` for a fresh topic; init is Claude orchestration, not a CLI subcommand.
+Use `/autoresearch-monitor` to choose an existing run and open its observer,
+including after restarting CC. `/autoresearch monitor` remains supported.
+After successful init, show the generated CC and full terminal monitor commands.
 
 The default control interpreter is `$PWD/.conda/envs/hypoloom/bin/python` with
 SQLite at least 3.51.3. GPU/experiment Python is a separately reviewed runtime.

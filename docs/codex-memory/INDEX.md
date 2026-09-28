@@ -1,6 +1,12 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Monitor re-entry](../qualification.md#current-development--monitor-re-entry-2026-09-28):
+  completable shortcut, read-only discovery from existing stores, exact observer
+  commands after init, ambiguity handling and retained launcher compatibility.
+  [Usage](../../USAGE.md#tui-web-and-human-decisions) /
+  [中文](../../USAGE.zh-CN.md#tuiweb-与人工决策). 114 focused passes; native CC UI
+  remains untested. Evidence: `.local/qualification/monitor-entry-20260928/`.
 - [Init-managed GPU pool lifecycle](../design/init-managed-gpu-pool-lifecycle.md):
   implemented same-interaction create/reuse/restore/upgrade/skip flow; scoped service
   actions, bootstrap/Host coordination, dependency and legacy coverage, bounded

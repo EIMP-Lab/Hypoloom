@@ -25,10 +25,10 @@ LAUNCHER = (
 )
 
 
-def _create_monitorable_run(state_root: Path) -> None:
+def _create_monitorable_run(state_root: Path, run_id: str = "run-monitor-1") -> None:
     admission = admit_profile(
         REPOSITORY / "tests" / "fixtures" / "profiles" / "component-demo",
-        run_id="run-monitor-1",
+        run_id=run_id,
     )
     assert admission.admitted and admission.create_run_payload is not None
     host = WorkflowHost(state_root)

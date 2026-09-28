@@ -2,6 +2,21 @@
 
 [English](qualification.md) · 简体中文
 
+## 当前开发：监控重新进入，2026-09-28
+
+`/autoresearch-monitor` 快捷入口与保留的 `/autoresearch monitor` 共用只读发现、
+既有来源验证器及 tmux／终端启动逻辑。init 确认启动成功后返回完整监控命令；
+不新增运行登记文件，不写入 CC 输入历史，也不修改已有研究运行。
+
+114 项针对性检查通过，覆盖真实 Host 创建的 SQLite 状态、新 helper 进程重新发现、
+重复 ID、损坏状态库、外部目录、参数引用、启动器行为、bootstrap 输出、运行代码包
+及双语文档链接。沙箱禁止 Unix socket bind，排除了两项原生 Host socket 测试，
+不计入通过；tmux 调度使用已有测试可执行文件，尚未实测 CC 原生补全界面。
+本结果不代表完整 G1/G5。一次本地只读发现耗时 0.2302 秒，发现 20 个状态库，
+无警告；Host 存活状态明确保持未检查。未调用供应商，也未实际打开监控。
+证据：`.local/qualification/monitor-entry-20260928/`；用法见
+[监控教程](../USAGE.zh-CN.md#tuiweb-与人工决策)。
+
 ## 当前开发：init 池生命周期与时延，2026-09-28
 
 [Init 生命周期方案](design/init-managed-gpu-pool-lifecycle.md)已实现聚合检查、自动生成

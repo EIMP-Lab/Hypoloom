@@ -2,6 +2,24 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — Monitor re-entry, 2026-09-28
+
+The `/autoresearch-monitor` shortcut and retained `/autoresearch monitor` share
+read-only discovery, the existing source validator and tmux/terminal launcher.
+Confirmed init starts return complete observer commands. No run registry,
+CC history injection or changes to existing research runs are introduced.
+
+114 focused checks pass, covering real Host-created SQLite state, a fresh helper
+process, duplicate IDs, corrupt stores, external roots, quoting, launcher behavior,
+bootstrap output, runtime bundles and bilingual documentation links. Two native
+Host socket tests are excluded because this sandbox denies Unix socket bind;
+they are not counted as passing. tmux dispatch uses the existing test executable,
+and native CC completion UI has not been exercised. This is not a full G1/G5 claim.
+Local read-only discovery found 20 stores without warnings in one 0.2302-second
+sample; Host liveness remains explicitly unchecked. No provider calls or real
+monitor launches were made. Evidence: `.local/qualification/monitor-entry-20260928/`.
+Usage is in the [monitoring guide](../USAGE.md#tui-web-and-human-decisions).
+
 ## Current development — Init pool lifecycle and latency, 2026-09-28
 
 The [init lifecycle design](design/init-managed-gpu-pool-lifecycle.md) is implemented

@@ -500,6 +500,8 @@ def compact_result(result: dict) -> dict:
             if name in launch:
                 item = launch[name]
                 compact["launch"][name] = {k: item[k] for k in ("status", "error", "revision") if k in item}
+    if "monitor" in result:
+        compact["monitor"] = result["monitor"]
     return compact
 
 
@@ -608,6 +610,10 @@ def main(argv=None) -> int:
                     if texts is not None:
                         raise ValueError("prepare the reviewed Profile before --start; templates cannot launch directly")
                     result["launch"] = start_fresh(result["commands"], report.create_run_payload)
+                    if result["launch"]["status"] == "started":
+                        from .monitor_launch import monitor_commands
+                        result["monitor"] = monitor_commands(python=Path(args.control_python), working_directory=repository,
+                            state_root=Path(args.state_root), run_id=args.run_id)
                     print(json.dumps(compact_result(result) if args.summary else result, ensure_ascii=False, sort_keys=True))
                     return 0 if result["launch"]["status"] == "started" else 2
             print(json.dumps(compact_result(result) if args.summary else result, ensure_ascii=False, sort_keys=True))

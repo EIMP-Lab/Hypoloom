@@ -90,6 +90,13 @@ confirms cancellation, followed by task cleanup and the managed Host's terminal
 exit. Do not treat a timed-out reply as either a successful cancellation or an
 authorization to send a new request identity.
 
+In a project CC session, `/autoresearch-monitor` offers a completable shortcut
+and reads existing run IDs from the state stores, including after CC restarts.
+Multiple matches require selection; external roots require `--state-root`.
+See [monitor entry points](../USAGE.md#tui-web-and-human-decisions) for tmux,
+terminal commands and JSON output. Confirmed init starts return both the CC
+entry and the complete terminal command without opening an observer.
+
 The TUI's `h` action and the explicitly granted Web operator link submit real
 human answers to pending Grounding decisions. Read-only share links cannot do so.
 Help, Report Issue and Web access are separate UI purposes.

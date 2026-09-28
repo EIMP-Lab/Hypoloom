@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- September 28 monitor re-entry: user authorizes implementation and subsequently
+  commit/push to dev, reusing completed focused checks. `/autoresearch-monitor`
+  is the completable shortcut;
+  `/autoresearch monitor` retains compatibility. One shared launcher reconstructs
+  choices from existing SQLite stores, requires selection for ambiguity/partial
+  scans and keeps durable state separate from unchecked Host liveness. Confirmed
+  init starts return complete CC/terminal commands; no automatic observer launch,
+  active-run registry, CC history/settings or production state changes. Bilingual
+  guides updated. 114 focused checks pass; two native Host socket cases excluded
+  under sandbox EPERM. Native CC UI/tmux are not end-to-end qualified. Read-only
+  local discovery: 20 stores, no warnings, one 0.2302 s sample. No provider calls.
+  [Results](../qualification.md#current-development--monitor-re-entry-2026-09-28),
+  [usage](../../USAGE.md#tui-web-and-human-decisions). Evidence stays in
+  `.local/qualification/monitor-entry-20260928/`.
+
 - September 28 init lifecycle/latency follow-up: user authorizes implementation
   and subsequently commit/push to dev, without production operations. Reuse the
   completed focused validation. [Design](../design/init-managed-gpu-pool-lifecycle.md)

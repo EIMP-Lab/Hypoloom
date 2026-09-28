@@ -352,6 +352,25 @@ def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(che
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
+@pytest.mark.parametrize("status", ["started", "host_start_failed", "creation_uncertain"])
+def test_only_confirmed_start_exposes_complete_monitor_commands(checkout, capsys, monkeypatch, status):
+    import shlex
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap, "start_fresh", lambda *a: {"status": status})
+    code = bootstrap.main([*arguments(repo, [], "launch", template=None), "--start", "--summary"])
+    result = json.loads(capsys.readouterr().out)
+    assert code == (0 if status == "started" else 2)
+    assert ("monitor" in result) == (status == "started")
+    if status == "started":
+        command = shlex.split(result["monitor"]["cc_command"])
+        assert command[:2] == ["/autoresearch-monitor", result["run_id"]]
+        assert command[command.index("--state-root") + 1] == str(repo / "state" / result["run_id"])
+        assert " && env " in result["monitor"]["terminal_command"]
+    assert not (repo / "state").exists(), "printing monitor commands must not create an observer or state"
+
+
 def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(checkout, tmp_path, capsys, monkeypatch):
     repo, overrides = checkout
     credentials = tmp_path / "private.env"

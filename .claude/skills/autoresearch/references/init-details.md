@@ -920,8 +920,11 @@ the existing STATUS `gpu_pool` binding and stored `grounding_web`/`literature`
 configuration with the reviewed choices. Socket readiness alone does not prove
 pool participation. Report any discrepancy without claiming readiness or
 automatically stopping an already-created run; never dump the unit environment.
-Do not print a multi-terminal handoff
-or require the TUI. If mentioning the optional later Textual view, describe the
+Do not print a multi-terminal handoff for starting research.
+Always include bootstrap's `monitor.cc_command` and complete
+`monitor.terminal_command` after confirmed creation. They are optional
+read-only observer entry points, not a multi-terminal research-start handoff.
+Do not require or automatically open the TUI. Describe the
 actual `/autoresearch monitor <run-id>` behavior precisely: it opens a new
 window when this Claude Code session is already inside tmux, and otherwise
 returns one complete command for an external interactive terminal. It never

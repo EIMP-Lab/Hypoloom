@@ -350,6 +350,13 @@ legacy.
 
 ## 3. Status, monitor, and oracle
 
+`/autoresearch-monitor` is the slash-menu shortcut. `/autoresearch monitor`
+uses the same [focused entry](../../autoresearch-monitor/SKILL.md). Missing
+root/ID choices are reconstructed by `hypoloom.monitor_launch --inspect` from
+existing project state; do not infer a root from a directory name, a stale
+environment variable or an active-run pointer. Multiple matches require selection.
+This read-only discovery does not establish Host liveness or authorize recovery.
+
 Host status is the authority for current revision and Host-only facts such as
 backup quiescence. Its `resource_waits` list gives the online reason why a
 configured GPU experiment remains in `READY`:

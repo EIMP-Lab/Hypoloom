@@ -1034,9 +1034,22 @@ def test_public_skill_checks_ignore_only_for_repository_local_state() -> None:
 
 
 
-def test_public_operator_entry_is_the_single_supported_skill() -> None:
+def test_public_operator_entry_has_only_the_focused_monitor_shortcut() -> None:
     root = REPOSITORY / ".claude/skills"
-    assert {path.name for path in root.iterdir() if path.is_dir()} == {"autoresearch"}
+    assert {path.name for path in root.iterdir() if path.is_dir()} == {"autoresearch", "autoresearch-monitor"}
+
+    import yaml
+    shortcut = _skill("autoresearch-monitor")
+    metadata = yaml.safe_load(shortcut.split("---", 2)[1])
+    assert metadata["name"] == "autoresearch-monitor"
+    assert metadata["user-invocable"] is True
+    assert metadata["disable-model-invocation"] is True
+    assert "[run-id]" in metadata["argument-hint"]
+    assert "hypoloom.monitor_launch --inspect" in shortcut
+    assert "commands.launcher_argv" in shortcut
+    assert "commands.json_argv" in shortcut
+    assert "autoresearch-monitor/SKILL.md" in _skill("autoresearch")
+    assert ".claude/skills/autoresearch-monitor *.md" in (REPOSITORY / "MANIFEST.in").read_text()
 
 
 def test_autoresearch_is_hypoloom_canonical_and_does_not_route_legacy_hg() -> None:

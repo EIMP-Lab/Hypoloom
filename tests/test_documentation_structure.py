@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_public_documents_have_no_broken_local_links():
     documents = [*ROOT.glob("*.md"), *(ROOT / "docs").rglob("*.md"),
                  ROOT / "profiles/README.md", ROOT / "config/README.md",
-                 *(ROOT / ".claude/skills/autoresearch").rglob("*.md")]
+                 *(ROOT / ".claude/skills").rglob("*.md")]
     missing = []
     for path in documents:
         for raw in re.findall(r"\[[^]]+\]\(([^)]+)\)", path.read_text()):

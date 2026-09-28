@@ -53,6 +53,13 @@ The compact skill loads detailed compatibility/operation references only when
 needed. It retains the existing validators and final pre-start checks; no saved
 init manifest or second configuration source is introduced.
 
+After a confirmed `launch --start`, both full and compact results include
+`monitor.cc_command` and `monitor.terminal_command`. Init displays these complete
+observer commands for reuse; it does not automatically open a TUI. Prepare only,
+a failed launch or uncertain creation must not claim a run was started or return
+these post-start entries. After restarting CC, use `/autoresearch-monitor` to
+select from existing stores; see [monitoring](../../USAGE.md#tui-web-and-human-decisions).
+
 ## One place for budgets
 
 Keep the six Profile files. New templates put financial and time limits in

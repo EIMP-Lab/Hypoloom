@@ -44,6 +44,12 @@ Prepare only 不创建、升级或停止池。新 Profile 仍先执行审阅过�
 简化后的技能按需读取详细兼容性和操作参考，仍复用既有验证器并保留启动前复核；
 不生成持久化 init 清单或第二份配置。
 
+`launch --start` 确认成功后，完整输出和简洁输出都会包含 `monitor.cc_command`
+与 `monitor.terminal_command`。init 展示完整命令供后续复用，不自动打开 TUI。
+Prepare only、启动失败或创建结果未确认时，不能宣称启动成功，也不会返回这些
+启动后入口。重开 CC 后可使用 `/autoresearch-monitor` 从已有状态库选择运行；
+详见[监控教程](../../USAGE.zh-CN.md#tuiweb-与人工决策)。
+
 ## 预算集中配置
 
 保留现有六份 Profile 文件。新模板将费用、时限和单次调用限制统一放在

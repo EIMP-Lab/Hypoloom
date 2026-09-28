@@ -38,6 +38,27 @@ Host 的六项调用预算来自 `create_run_payload.research_contract.budget.ag
 
 ## TUI、Web 与人工决策
 
+在本仓库目录启动的 Claude Code 中输入 `/autoresearch-monitor`，即可从斜杠命令
+补全中选择该入口；重开 CC 后也能发现已有运行。更新后若新入口尚未加载，请重启
+CC 会话。原来的 `/autoresearch monitor` 仍可使用。
+
+```text
+/autoresearch-monitor
+/autoresearch-monitor RUN_ID
+/autoresearch-monitor RUN_ID --state-root /absolute/state/run
+```
+
+无参数时，只读取 `state/*/state.sqlite` 中的直接子目录。完整扫描后只有一个有效
+匹配时可自动选中；多个匹配时由你选择。外部状态目录或重复的 run ID 需显式指定
+`--state-root`。列表显示持久化状态，不代表 Host 在线；状态库不可读或扫描不完整
+时会报告原因，不会静默选择另一个运行。
+
+在 tmux 内会打开新的 TUI 窗口；不在 tmux 内则返回可直接粘贴到交互终端的完整
+命令。加 `--json` 可改用已有 JSON observer，加 `--no-web` 可关闭 TUI 的 Web
+监听。init 确认 Start now 成功后也会给出可复用的 CC 入口和完整终端命令，不会
+自动启动监控。补全支持技能名称，不承诺动态 run ID 或灰色输入建议；不修改
+CC 的输入历史、设置，也不维护额外的“当前运行”登记文件。
+
 - **q / Leave monitor**：退出当前监控窗口，后台 Host 和任务继续。
 - **x / End run**：打开明确的取消确认；等待任务清理、最终报告和托管 Host 退出。
 - **? / Help**：窗口与可靠性指标简介。

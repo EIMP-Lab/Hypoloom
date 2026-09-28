@@ -6,6 +6,7 @@ include .github/ISSUE_TEMPLATE/bug_report.yml
 include .claude/settings.example.json
 include .claude/hooks/dispatch.py .claude/hooks/guard_paths.py
 recursive-include .claude/skills/autoresearch *.md *.py
+recursive-include .claude/skills/autoresearch-monitor *.md
 recursive-include docs *.md
 include profiles/README.md
 include config/hypoloom.env.example

@@ -1,13 +1,15 @@
 ---
 name: autoresearch
 description: Bootstrap local Hypoloom paths or operate the independent Workflow Host. Routes /autoresearch to CC-only init, read-only component-profile admission, exact run creation, status, monitor, explicitly authorized notifications, retained module debugging, oracle, cancellation, backup, or offline restore. Never falls back to the retained legacy runtime.
+argument-hint: "[init|monitor|status|oracle|cancel] [run-id]"
 ---
 
 # /autoresearch — bounded Hypoloom operations
 
 Use this skill only for the independent `hypoloom` runtime. The user
 invokes `/autoresearch <subcommand> [args]`. If the subcommand or an exact
-target is missing, show the supported operations and stop; do not infer a run
+target is missing, show the supported operations and stop, except that `monitor`
+uses the read-only chooser below; do not infer a run
 from a legacy active pointer. `init` is Claude Code bootstrap orchestration;
 all other subcommands route to the existing Hypoloom CLI.
 
@@ -171,6 +173,10 @@ service, starts the managed Host, rechecks the Profile and creates the run with
 its stable request ID. The Host repeats pool verification under admission
 coordination. Report the returned status and phase timings. `started` is the
 only successful research-start result; preparation alone is not a research run.
+After `started`, always include the returned `monitor.cc_command` and complete
+`monitor.terminal_command`. These are optional observer entry points; do not
+launch a monitor automatically. Explain that `/autoresearch-monitor` can find
+existing runs again after CC restarts. Do not promise gray input suggestions.
 
 A preparation failure stays in this init and uses returned `next_actions`.
 A healthy shared pool is retained if the subsequent Host launch fails.
@@ -185,7 +191,11 @@ not permission to omit checks or necessary user decisions.
 
 ## Supported routing
 
-For every non-init operation, read [Operations reference](references/operations.md)
+For `monitor`, including a missing run ID or state root, read the focused
+[monitor shortcut](../autoresearch-monitor/SKILL.md) and use its existing
+read-only discovery/launcher flow. `/autoresearch monitor` remains supported.
+
+For other non-init operations, read [Operations reference](references/operations.md)
 before routing the exact user request. It defines status, monitoring, controls,
 notifications, retained debugging, cancellation and backup boundaries. Never
 infer an existing run or mutate one merely because init is being performed.

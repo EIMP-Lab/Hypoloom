@@ -49,6 +49,31 @@ source.
 
 ## TUI, Web and human decisions
 
+In Claude Code opened in this repository, type `/autoresearch-monitor` and
+select the skill from slash-command completion. It finds existing runs even
+after CC restarts. Restart the CC session after updating if the new entry has
+not loaded yet. The original `/autoresearch monitor` entry remains supported.
+
+```text
+/autoresearch-monitor
+/autoresearch-monitor RUN_ID
+/autoresearch-monitor RUN_ID --state-root /absolute/state/run
+```
+
+With no arguments it reads immediate `state/*/state.sqlite` stores. One valid
+match from a complete scan can be selected automatically; multiple matches
+require your choice. Use an explicit state root for external stores or duplicate
+run IDs. The list shows durable state, not Host liveness. An unreadable store or
+incomplete scan is reported rather than silently choosing another run.
+
+Inside tmux the shortcut opens a new TUI window; outside tmux it returns the
+complete command to paste into an interactive terminal. Add `--json` for the
+existing JSON observer instead, or `--no-web` to disable the TUI's Web listener.
+Init also returns a reusable CC entry and complete terminal command after a
+confirmed Start now. Nothing starts the monitor automatically. Completion
+covers the skill name, not dynamic run IDs or gray prompt suggestions; no CC
+history/settings or separate active-run registry is modified.
+
 - **q / Leave monitor**: leaves the current monitor window; the background
   Host and tasks continue.
 - **x / End run**: opens an explicit cancellation confirmation; wait for task
