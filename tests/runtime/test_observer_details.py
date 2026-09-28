@@ -13,6 +13,36 @@ from hypoloom.monitor import MonitorError
 from hypoloom.observer_details import read_observer_detail, read_observer_pool, skill_catalog
 
 
+@pytest.mark.parametrize("damage", [None, "owner", "command", "task", "foreign-run", "expert-slot"])
+def test_initial_grounding_catalog_resolves_plugin_owner_without_changing_executor(tmp_path, damage):
+    from dataclasses import replace
+    from hypoloom.agent_aci import EmbeddedInput
+    from hypoloom.expert_plugin import ExpertPluginStore
+    from hypoloom.fake_agent import default_request
+    from hypoloom.domain import AgentCommand
+    store = ExpertPluginStore(tmp_path, owner_kind="grounding")
+    base = default_request(AgentCommand.GROUNDING)
+    plugin = store.ensure(base.run_id, "grounding", "Current commission")
+    item = EmbeddedInput.from_bytes("grounding--grounding-resources", "application/json",
+        json.dumps({"plugin": plugin.to_dict()}).encode())
+    request = replace(base, schema_version=28, owner_workflow_id=base.run_id,
+        required_output_schema="GroundingCandidate/v3", input_artifacts=(item,)).to_dict()
+    if damage == "owner": request["owner_workflow_id"] = "different-workflow"
+    elif damage == "command": request["command"] = "RESULT_ANALYSIS"
+    elif damage == "task": request["task_context"]["request_kind"] = "GROUNDING_QUERY_PLAN"
+    elif damage == "foreign-run": request["task_context"]["run_id"] = "another-run"
+    elif damage == "expert-slot": request["task_context"]["expert_slot"] = request["role"]
+    row = _attempt(base.attempt_id, run_id=base.run_id, role=base.role,
+        command="GROUNDING", observation={"request": request})
+    if damage:
+        with pytest.raises(MonitorError, match="another run or role"):
+            skill_catalog(tmp_path, base.run_id, [row])
+    else:
+        catalog = skill_catalog(tmp_path, base.run_id, [row])
+        assert any(skill["role"] == "grounding" and skill["name"] == "research-workflow" for skill in catalog["skills"])
+        assert request["role"] != "grounding"
+
+
 def _attempt(identity, *, run_id="run", role="researcher", command="SELF_EVOLVE",
              state="CLOSED", observation=None, started_at=1, experiment_id=None):
     request = {"run_id": run_id, "role": role, "command": command,

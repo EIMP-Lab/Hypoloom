@@ -189,6 +189,9 @@ def test_host_freezes_global_grounding_request_and_reuses_it_on_infrastructure_r
         assert model == request.required_model_identity
         assert provider_environment["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9"
         assert diagnostics_root == host.state_root
+        if request.command.value == "GROUNDING":
+            assert tool_workspace.plugin_update is None
+            assert (tool_workspace.plugin_root / "skills/research-workflow/SKILL.md").is_file()
         captured.append(request)
         raise AgentHostError(
             "Offline request-capture fixture; no provider process started"
@@ -231,6 +234,15 @@ def test_host_freezes_global_grounding_request_and_reuses_it_on_infrastructure_r
             time.sleep(0.002)
         assert len(captured) == 1
         first = captured[0]
+        from hypoloom.full_cc_runtime import full_cc_instruction
+        resources = [item for item in first.input_artifacts if item.ref.endswith("--grounding-resources")]
+        assert bool(resources) is (kind is AuxiliaryRequestKind.GROUNDING)
+        if resources:
+            binding = json.loads(resources[0].content_bytes())["plugin"]
+            assert binding["owner_kind"] == binding["role"] == "grounding"
+            assert "hypoloom-grounding:research-workflow" in full_cc_instruction(first)
+        else:
+            assert ":research-workflow" not in full_cc_instruction(first)
         runtime = request_node_runtime(first.input_artifacts)
         assert (first.required_model_identity, runtime["effort"]) == expected
         assert runtime["model"] == first.required_model_identity != PERSONAL_GROUNDING
@@ -400,6 +412,27 @@ def test_real_cli_global_grounding_selection_closes_cpu_oracle(tmp_path):
             for row in attempts
         )
         assert sum(row["kind"] == "PROCESS" for row in attempts) == 1
+        # This Profile disables graph evolution; ordinary research still has
+        # the shared method through its existing expert plugin binding.
+        expert_bindings = []
+        for row in attempts:
+            if row["kind"] != "AGENT":
+                continue
+            observed = json.loads(row["observation_json"])
+            request = AgentRequest.from_dict(observed["request"])
+            for item in request.input_artifacts:
+                if item.ref.endswith("--expert-resources"):
+                    binding = json.loads(item.content_bytes())["plugin"]
+                    expert_bindings.append(binding)
+        assert expert_bindings
+        from hypoloom.expert_plugin import ExpertPluginStore
+        for index, binding in enumerate({value["commit"]: value for value in expert_bindings}.values()):
+            view = ExpertPluginStore(host.state_root).read(RUN, binding["role"], commit=binding["commit"],
+                attempt_id=f"verify-workflow-{index}", max_bytes=1024 * 1024)
+            try:
+                assert (view.root / "skills/research-workflow/SKILL.md").is_file()
+            finally:
+                view.close()
         assert (
             sum(
                 item["model"] == GROUND_MODEL

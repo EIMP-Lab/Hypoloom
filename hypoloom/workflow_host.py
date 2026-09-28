@@ -113,7 +113,7 @@ def installed_run_version(configuration: Mapping[str, Any] | None = None, runtim
     for part in (sys.version, str(Path(sys.executable).resolve()), sqlite3.sqlite_version):
         raw = part.encode(); digest.update(len(raw).to_bytes(8, "big") + raw)
     files = sorted(package.glob("*.py")) + sorted((package / "migrations").glob("*.sql"))
-    files += sorted(path for seed in ("expert-seed", "grounding-seed") for path in (package / "skills" / seed).rglob("*") if path.is_file())
+    files += sorted(path for seed in ("expert-seed", "grounding-seed", "research-workflow") for path in (package / "skills" / seed).rglob("*") if path.is_file())
     environment = package.parent / "environment.yml"; files += [environment] if environment.is_file() else []
     for path in (*files, *runtime_files):
         if path == private_settings_path: name = PRIVATE_SETTINGS_NAME.encode()
@@ -1949,6 +1949,12 @@ class WorkflowHost:
         if isinstance(task, AuxiliaryTask):
             inputs.append(EmbeddedInput.from_bytes(f"{run_id}--grounding-context",
                 "application/json", build_grounding_context_bytes(config["execution"])))
+            if task.kind is AuxiliaryRequestKind.GROUNDING and int(self.store.get_run(run_id)["agent_aci_version"]) >= 14:
+                maximum = config.get("node_runtime", {}).get("memory", {}).get("max_plugin_bytes", 1024 * 1024)
+                plugin = self._plugin_binding(run_id, task, "grounding", "Ground the current commission and manage accepted research evidence.",
+                    max_bytes=maximum, owner_kind="grounding")
+                inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--grounding-resources", "application/json",
+                    _canonical({"plugin": plugin.to_dict()})))
             if task.kind is AuxiliaryRequestKind.GROUNDING and int(self.store.get_run(run_id)["agent_aci_version"]) >= 15:
                 inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--grounding-dialogue", "application/json",
                     _canonical(self.grounding_dialogue.history(run_id, task.ordinal))))

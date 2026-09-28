@@ -10,7 +10,7 @@ Use actual cycle reports, accepted experiment results and failure/repair traces 
 identify one concrete weakness in these skills. Only a SELF_EVOLVE request grants
 a writable plugin worktree. Make a focused update or add a new skill with valid
 YAML frontmatter, a matching name and a useful description. Preserve the four
-original wired entrypoints and resource-planning when present in the base plugin,
+original wired entrypoints, research-workflow and resource-planning when present in the base plugin,
 along with the native manifest's expert identity. Supporting scripts
 and references stay within their skill directory and the admitted byte budget.
 
@@ -19,6 +19,10 @@ Do not turn a provider failure into a claim that this plugin is defective. Expla
 the observed problem and proposed improvement without inventing evidence. The
 Host validates and commits candidates; a committed revision is selectable for
 the next cycle, never a retroactive change to an already bound request.
+
+The shared research-workflow skill and its stage references are editable here.
+Use its evolution guidance; no change is valid when evidence does not justify
+an improvement. Your update never replaces another owner's skill version.
 
 For a resource lesson, use this request's scoped workload estimates, attributed
 peaks/unknown observations and exact Process Attempt references. Improve the

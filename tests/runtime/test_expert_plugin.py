@@ -33,7 +33,7 @@ def test_grounding_namespace_has_its_own_seed_and_never_aliases_same_named_exper
     view = grounding.read("run", "grounding", commit=manager.commit, attempt_id="manager", max_bytes=_LIMIT)
     try:
         assert {path.parent.name for path in view.root.glob("skills/*/SKILL.md")} == {
-            "leader-trigger", "debate-trigger", "debate-judge", "graph-evolve", "final-report", "self-evolve"}
+            "leader-trigger", "debate-trigger", "debate-judge", "graph-evolve", "final-report", "self-evolve", "research-workflow"}
         assert "Global management focus" in (view.root / "skills/leader-trigger/SKILL.md").read_text()
         assert not (view.root / _SKILL).exists()
         update = grounding.prepare_update("run", "grounding", commit=manager.commit,

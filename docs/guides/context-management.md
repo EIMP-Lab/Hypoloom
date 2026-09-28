@@ -169,3 +169,7 @@ Native Stop checks web_sources against delivered retrievals and prior same-node
 retrieval evidence using the final Host validator. A URL in a paper packet or
 historical prose does not establish a web retrieval. Errors are returned within
 the invocation's existing correction/time budget; final Host acceptance remains.
+
+Research methods across Grounding and later stages are described in the
+[workflow guide](research-workflow.md); skill evolution reuses the existing Git
+plugins and does not add another memory store.

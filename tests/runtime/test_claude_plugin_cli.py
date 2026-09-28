@@ -42,10 +42,11 @@ _SCHEMA = {
 
 
 class _PluginScenario:
-    def __init__(self, role: str, nonce: str, effort: str) -> None:
+    def __init__(self, role: str, nonce: str, effort: str, skill: str = "experiment-report") -> None:
         self.role, self.nonce = role, nonce
         self.effort = effort
-        self.skill_name = f"hypoloom-{role}:experiment-report"
+        self.skill = skill
+        self.skill_name = f"hypoloom-{role}:{skill}"
         self.requests: list[Mapping[str, Any]] = []
         self.errors: list[str] = []
 
@@ -80,11 +81,12 @@ class _PluginScenario:
         if self.errors:
             return ()
         if step == 1:
-            return (("invoke_skill", "Skill", {"skill": self.skill_name}),)
+            return (("invoke_skill", "Skill", {"skill": self.skill_name,
+                **({"args": "grounding"} if self.skill == "research-workflow" else {})}),)
         if step == 2:
             script = (
                 "import errno, os\nfrom pathlib import Path\n"
-                "path = Path('/expert-plugin/skills/experiment-report/SKILL.md')\n"
+                f"path = Path('/expert-plugin/skills/{self.skill}/SKILL.md')\n"
                 f"assert {self.nonce!r} in path.read_text()\n"
                 "try:\n"
                 "    fd = os.open(path, os.O_WRONLY | os.O_APPEND)\n"
@@ -94,6 +96,9 @@ class _PluginScenario:
                 "    os.close(fd)\n"
                 "    raise AssertionError('plugin unexpectedly writable')\n"
                 "assert not Path('/other-expert-plugin').exists()\n"
+                + ("stage = path.parent / 'references/grounding.md'\n"
+                   "assert 'production isolation' in stage.read_text()\n"
+                   "print(stage.read_text())\n" if self.skill == "research-workflow" else "") +
                 f"Path('/workspace/plugin-report.txt').write_text({self.nonce!r})\n"
                 f"print({self.nonce!r})\n"
             )
@@ -120,11 +125,11 @@ class _PluginScenario:
     ),
 )
 def test_native_plugin_skill_is_invoked_by_real_sandboxed_cli(
-    tmp_path: Path, role: str, effort: str, model: str, rejected: bool
+    tmp_path: Path, role: str, effort: str, model: str, rejected: bool, skill: str = "experiment-report"
 ) -> None:
     executable = _installed_claude()
     nonce = "native-skill-body-" + secrets.token_hex(12)
-    scenario = _PluginScenario(role, nonce, effort)
+    scenario = _PluginScenario(role, nonce, effort, skill)
     store = ExpertPluginStore(tmp_path / "plugin-state")
     bindings = {
         expert: store.ensure(
@@ -134,6 +139,11 @@ def test_native_plugin_skill_is_invoked_by_real_sandboxed_cli(
         )
         for expert in ("alpha", "beta", "gamma")
     }
+    if skill == "research-workflow":
+        update = store.prepare_update("plugin-run", role, commit=bindings[role].commit, attempt_id="evolve-workflow")
+        entry = update.root / "skills/research-workflow/SKILL.md"
+        entry.write_text(entry.read_text() + "\n" + nonce + "\n")
+        bindings[role] = store.finish_update(update, max_bytes=131072)
     snapshot = store.read(
         "plugin-run",
         role,
@@ -264,3 +274,8 @@ def test_native_plugin_skill_is_invoked_by_real_sandboxed_cli(
         provider.server_close()
         thread.join(timeout=5)
         snapshot.close()
+
+
+def test_native_research_workflow_loads_evolved_entry_and_stage_reference(tmp_path):
+    test_native_plugin_skill_is_invoked_by_real_sandboxed_cli(
+        tmp_path, "alpha", "low", _MODEL, False, skill="research-workflow")

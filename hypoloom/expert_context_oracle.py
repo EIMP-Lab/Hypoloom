@@ -267,7 +267,9 @@ def _audit_plugin_selections(root, attempts, observations, facts, payloads, tran
             if not any(item["ref"].endswith(suffix) for item in request.get("input_artifacts", ())):
                 continue  # Debate reuses original expert resources, not a fresh Grounding selection.
             cycle = task["key"]["cycle"] if kind == "expert" else None
-            run, role = request["run_id"], request["role"]
+            run = request["run_id"]
+            # Step-1 uses the shared plugin while retaining its execution role.
+            role = "grounding" if kind == "grounding" else request["role"]
             key = (run, role, kind, request["component_id"], cycle) if kind == "expert" else (run, kind, request["command_id"])
             started = first.setdefault(key, _time(row["started_at"]))
             applicable = [(effect, control) for effect, control in accepted if effect["run_id"] == run

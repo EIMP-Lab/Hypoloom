@@ -21,8 +21,8 @@ operational failures as discoveries or replacing scientific assessments with
 manager scores. Preserve all already accepted batches and current requests.
 
 Return the supplied graph_evolution schema. Changes take effect only after Host
-acceptance for future cycles. If observations justify editing leader-trigger
-or debate-trigger, use self-evolve only in an explicitly writable plugin update
+acceptance for future cycles. If observations justify editing research-workflow,
+leader-trigger or debate-trigger, use self-evolve only in an explicitly writable plugin update
 request. The same Host frontmatter/path/size validation and Git commit path
 applies. This manager is not the stateless Observer and cannot directly pause,
 prune, schedule experiments, grant resources or rewrite scientific facts.

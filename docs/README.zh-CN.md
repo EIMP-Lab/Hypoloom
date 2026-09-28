@@ -7,6 +7,7 @@
 - [初始化](guides/initialization.zh-CN.md)：实际模型、集中预算及启动前本地检查。
 - [版本提醒](guides/version-check.zh-CN.md)：远端分支比较、离线模式与提醒状态。
 - [上下文与记忆](guides/context-management.zh-CN.md)：容量、短会话、检索与恢复。
+- [研究工作流](guides/research-workflow.zh-CN.md)：阶段方法、任务科学逻辑与角色各自维护的技能进化。
 - [阅读与论证](guides/reading-and-proposals.zh-CN.md)：文献引用、阅读助手、并行论证与假设上限。
 - [GPU 显存规划](guides/gpu-resource-planning.zh-CN.md)：实测余量、容量预览、独占与共享、技术修订。
 - [运行恢复](guides/runtime-recovery.zh-CN.md)：GPU 启动预检、节点阻断、资源复查和观测含义。

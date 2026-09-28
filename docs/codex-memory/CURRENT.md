@@ -1,5 +1,30 @@
 # Current Hypoloom development state
 
+- September 28 cross-stage workflow skill: user authorizes implementation and
+  commit/push to dev. One shared public source seeds owner-local Git plugins;
+  stage-scoped native loading and read-only initial Grounding preserve selected
+  role/model/budget. Existing scientific bindings already survive disabled graph
+  evolution; no extra binding format or cycle is needed. Existing validators,
+  byte bounds and future-request/cycle pin/revert rules remain authoritative.
+  No finer timing, RAG, automatic private-run import or retained-run mutation.
+  [Design](../design/research-workflow-skill.md) /
+  [中文](../design/research-workflow-skill.zh-CN.md),
+  [guide](../guides/research-workflow.md) /
+  [中文](../guides/research-workflow.zh-CN.md).
+  ACI 28 / bwrap67. Final G1 identity coverage: 6403 passed / 26 opt-in skips;
+  short-path completion resolves the retained socket-length fixture failure.
+  Initial owner-versus-execution-role monitor regression is fixed. Seven native
+  roots close 211 Agents / 18 real CPU Processes with clean Oracles and no residue.
+  Three scripted parser domains preserve task-specific semantics. One finite
+  MiMo guidance-ablation pair passes four semantic checks and CPU 0.75/0.75:
+  baseline 999.91 s / 602504 tokens; skill 609.37 s / 384627 tokens, with actual
+  Skill/reference loading. Paid roots close 22 Agents / two CPU; combined CLI
+  USD 1.5411864 has unknown pricing. No repeatable savings or G5 claim.
+  [Results and limits](../qualification.md#current-development--research-workflow-skill-2026-09-28).
+  Evidence stays in
+  `.local/qualification/research-workflow-20260928/`. Original diagnosis stays in
+  `.local/analysis/grounding-review-20260928/`.
+
 - September 28 monitor re-entry: user authorizes implementation and subsequently
   commit/push to dev, reusing completed focused checks. `/autoresearch-monitor`
   is the completable shortcut;

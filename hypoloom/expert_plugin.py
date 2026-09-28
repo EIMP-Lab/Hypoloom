@@ -26,6 +26,7 @@ from .git_authoring_workspace import _COMMIT_RE, _run_git
 
 SEED_ROOT = Path(__file__).parent / "skills" / "expert-seed"
 GROUNDING_SEED_ROOT = Path(__file__).parent / "skills" / "grounding-seed"
+WORKFLOW_SKILL_ROOT = Path(__file__).parent / "skills" / "research-workflow"
 _MANIFEST = ".claude-plugin/plugin.json"
 _REQUIRED = {
     "experiment-report",
@@ -267,6 +268,7 @@ class ExpertPluginStore:
         self.owner_kind = owner_kind
         self.state_root = _directory(Path(state_root).absolute())
         self.seed_root = (GROUNDING_SEED_ROOT if owner_kind == "grounding" else SEED_ROOT) if seed_root is None else Path(seed_root)
+        self.shared_seed = seed_root is None
         self.git = shutil.which("git")
         if self.git is None:
             raise ValueError("native expert plugins require Git")
@@ -317,6 +319,10 @@ class ExpertPluginStore:
         root = parent / "plugin"
         if not root.exists():
             files = _files(self.seed_root, max_bytes)
+            if self.shared_seed:
+                # One public source; owner-local copies use the existing Git lifecycle.
+                files.update({"skills/research-workflow/" + name: data
+                    for name, data in _files(WORKFLOW_SKILL_ROOT, max_bytes).items()})
             files[_MANIFEST] = json.dumps(
                 {**json.loads(files[_MANIFEST]), "name": _name(role)}
             ).encode()
@@ -487,11 +493,12 @@ class ExpertPluginStore:
         head = self._validate_update(prepared)
         files = _files(prepared.root, max_bytes, worktree=True)
         _validate(files, prepared.role, self.owner_kind)
-        if self.owner_kind == "expert":
-            base_files, _ = self._commit_files(prepared.repository_root, prepared.role, prepared.base_commit, max_bytes)
-            resource_skill = "skills/resource-planning/SKILL.md"
-            if resource_skill in base_files and resource_skill not in files:
-                raise ValueError("plugin update must preserve the base resource-planning entrypoint")
+        base_files, _ = self._commit_files(prepared.repository_root, prepared.role, prepared.base_commit, max_bytes)
+        wired = ("research-workflow", "resource-planning") if self.owner_kind == "expert" else ("research-workflow",)
+        for name in wired:
+            entry = f"skills/{name}/SKILL.md"
+            if entry in base_files and entry not in files:
+                raise ValueError(f"plugin update must preserve the base {name} entrypoint")
         current = (
             self._git(prepared.repository_root, "rev-parse", "HEAD").decode().strip()
         )

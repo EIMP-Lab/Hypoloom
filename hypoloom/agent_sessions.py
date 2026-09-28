@@ -1033,12 +1033,18 @@ class AgentSessions:
         grounding_inputs = [item for item in request.input_artifacts if item.ref.endswith("--grounding-resources")]
         if grounding_inputs:
             from .expert_plugin import ExpertPluginStore
-            from .expert_loop import AuxiliaryTask
-            if (len(grounding_inputs) != 1 or request.command not in {AgentCommand.GRAPH_EVOLVE, AgentCommand.OBSERVER, AgentCommand.FINAL_REPORT, AgentCommand.DEBATE_JUDGE}
-                    or request.schema_version < 14 or request.role != "grounding" or request.component_id != "grounding"
+            from .expert_loop import AuxiliaryTask, AuxiliaryRequestKind
+            initial = (request.command is AgentCommand.GROUNDING
+                and isinstance(request.task_context, AuxiliaryTask)
+                and request.task_context.kind is AuxiliaryRequestKind.GROUNDING
+                and request.owner_workflow_id == request.run_id)
+            management = (request.command in {AgentCommand.GRAPH_EVOLVE, AgentCommand.OBSERVER, AgentCommand.FINAL_REPORT, AgentCommand.DEBATE_JUDGE}
+                and request.role == "grounding" and request.component_id == "grounding")
+            if (len(grounding_inputs) != 1 or not (initial or management)
+                    or request.schema_version < 14
                     or not isinstance(request.task_context, AuxiliaryTask)
                     or request.task_context.expert_slot is not None or request.task_context.component_id is not None):
-                raise GitAuthoringIntegrityError("Grounding resources require their management or Observer owner")
+                raise GitAuthoringIntegrityError("Grounding resources require initial Grounding or their management or Observer owner")
             resources = json.loads(grounding_inputs[0].content_bytes()); plugin = resources["plugin"]
             if plugin.get("run_id") != request.run_id or plugin.get("role") != "grounding" or plugin.get("owner_kind") != "grounding":
                 raise GitAuthoringIntegrityError("Grounding plugin binding belongs to another owner")

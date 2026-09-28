@@ -140,7 +140,9 @@ def test_unpin_without_explicit_target_selects_actual_successful_candidate(selec
 
 
 @pytest.mark.parametrize("changed", [False, True])
-def test_grounding_control_applies_to_next_unfrozen_auxiliary_request(selection, changed):
+@pytest.mark.parametrize("consumer,role,component", [("OBSERVER", "grounding", "grounding"),
+    ("GROUNDING", "expert-a", "component-1")])
+def test_grounding_control_applies_to_next_unfrozen_auxiliary_request(selection, changed, consumer, role, component):
     data, control, _, command, _, _ = selection
     store = ExpertPluginStore(data["root"], owner_kind="grounding")
     base = store.ensure("run-1", "grounding", "manager")
@@ -153,7 +155,7 @@ def test_grounding_control_applies_to_next_unfrozen_auxiliary_request(selection,
     public["payload"].update(owner_kind="grounding", role="grounding", commit=base.commit)
     command["request_json"] = json.dumps(public)
     request = data["payloads"]["attempt-1"]["request"]
-    request.update(command="OBSERVER", role="grounding", component_id="grounding", task_context={"kind": "AUXILIARY"})
+    request.update(command=consumer, role=role, component_id=component, task_context={"kind": "AUXILIARY"})
     request["input_artifacts"] = [{"ref": "node-1--grounding-resources", "content_base64":
         _encode({"plugin": (candidate if changed else base).to_dict()})}]
     issues = audit(selection)

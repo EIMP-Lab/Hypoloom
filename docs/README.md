@@ -16,6 +16,7 @@ Current user entry points:
 - [Architecture](architecture.md): components, ownership and durable boundaries.
 - [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
+- [Research workflow](guides/research-workflow.md): stage-specific methods, task-specific science and owner-local skill evolution.
 - [Reading and proposals](guides/reading-and-proposals.md): references, assistants, parallel arguments and hypothesis limits.
 - [GPU memory planning](guides/gpu-resource-planning.md): measured margins, capacity previews, exclusive/shared scheduling and technical repair.
 - [Runtime recovery](guides/runtime-recovery.md): GPU preflight, blocked nodes, resource recheck and observation limits.

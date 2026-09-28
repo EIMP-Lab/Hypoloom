@@ -2,6 +2,84 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — Research workflow skill, 2026-09-28
+
+ACI 28 / `claude-code-bwrap/67` implements the
+[shared workflow design](design/research-workflow-skill.md). One public source
+seeds owner-local Grounding and expert plugins; native instructions select the
+actual bound name and current stage. Initial Grounding gains read-only access
+without changing its execution role, model or budget. Existing Git evolution,
+pin/revert/unpin, validators and scientific acceptance remain authoritative.
+No new memory service, timing instrumentation or retained-run migration is added.
+The [guide](guides/research-workflow.md) explains usage and evolution boundaries.
+
+Final G1 coverage is **6403 passed / 26 opt-in skips across all 6429 collected
+test identities**. The frozen full run stopped at 6263 passes, one failure and
+26 skips: a native permission fixture exceeded the Unix socket path limit under
+the default long pytest root. Using a short temporary root, all 142 selected
+failed/unexecuted cases pass; their union covers every collected identity.
+Original failures remain in the private evidence. An earlier full run exposed
+a real monitor regression: initial Grounding's plugin owner can differ from its
+execution role. The repaired observer recognizes only the precise initial task,
+preserves other ownership checks, and passes the final full coverage above.
+Sandbox-denied preliminary native invocations are not counted as passes.
+
+Focused qualification exercises common seed contents and byte limits, custom and
+retained plugins, stage routing, clarification/retry bindings, original model
+selection, read-only mounts, unchanged/changed evolution, interrupted updates,
+owner isolation and existing version controls. A native CLI sample actually
+loads an evolved common entry and its Grounding reference. Three task-specific
+parsers execute in isolation with three semantic cases each: classification
+maximization, constrained numerical minimization, and artifact reproduction.
+These are scripted compatibility cases, not evidence of model scientific quality.
+Final source and wheel/sdist contain the same seven common skill files.
+
+Independent final census covers seven real Host/native CLI roots: **211 Agent
+Attempts and 18 real CPU Processes**, all CLOSED. Creation, preregistration,
+canonical outcome and publication counts agree, with clean Oracles and no
+duplicate outcomes, pending effects, live owned groups or sockets. This includes
+Host restart, plugin evolution, Grounding reconstruction, same-task continuation,
+resource-skill learning and multi-expert advice. Native Agents use the local
+scripted provider; CPU execution and Host lifecycle are real. Original failure
+records and the final native roots are preserved separately.
+
+The finite real-model comparison uses the existing CC connection and selected
+`mimo-v2.6-pro` only for Grounding. It compares current code with common guidance
+disabled against the same code with the skill, not a complete old-release replay.
+Task, supplied evidence, model and budgets match: at most two Grounding calls per
+arm, 40 turns, 3000 seconds and CLI USD 2 per call, with USD 8/9300 seconds allocated
+per arm. Other Agents use the native scripted provider and one experiment per
+arm executes on CPU. Quality requires four independent parser cases and a
+0.75/0.75 CPU result through collection/publication, plus clean closure. CLI
+estimates have unknown model pricing and are not verified vendor billing.
+
+Both arms pass in one Grounding invocation each, including all four semantic
+cases and the expected CPU result. The skill arm actually invokes
+`hypoloom-grounding:research-workflow` and reads its Grounding reference.
+
+| Arm | Grounding seconds | Native tool calls | Reported tokens | CLI estimate USD |
+|---|---:|---:|---:|---:|
+| Common guidance disabled | 999.91 | 23 | 602504 | 0.8140256 |
+| Common skill enabled | 609.37 | 15 | 384627 | 0.7271608 |
+
+The skill arm has one failed directory listing of an original target path that
+is not mounted there; it proceeds using the mounted workspace and succeeds.
+Both arms have zero observed native compactions, local context refusals and
+provider context failures. Tool-error counts do not count every scientific
+correction, and exact reread counters miss Bash reads. This single pair is a
+positive observation, not a causal or repeatable speed/cost claim. Total
+Grounding usage is **987131 reported tokens / USD 1.5411864 CLI estimate**.
+Independent paid-root census closes **22 Agents and two real CPU Processes**,
+with matching publication counts, clean Oracles and no process/socket residue;
+only two Grounding Agents contact the real provider. No extra paid retries or
+model samples are added after this comparison.
+
+Evidence: `.local/qualification/research-workflow-20260928/`; original run
+diagnosis: `.local/analysis/grounding-review-20260928/`. Existing research runs,
+private Profiles and production GPU pools are unchanged. This does not establish
+CUDA, cross-provider generalization, repeatable speed/cost gains or full G5
+scientific quality.
+
 ## Current development — Monitor re-entry, 2026-09-28
 
 The `/autoresearch-monitor` shortcut and retained `/autoresearch monitor` share

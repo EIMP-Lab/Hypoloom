@@ -294,6 +294,37 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
     return tuple(argv)
 
 
+def _workflow_instruction(request: AgentRequest) -> str:
+    task = request.task_context
+    subkind = getattr(getattr(getattr(task, "key", None), "subkind", None), "value", None)
+    kind = getattr(getattr(task, "kind", None), "value", None)
+    if subkind == "QUERY_PLAN" or kind == "GROUNDING_QUERY_PLAN":
+        return ""  # Keep query planning and bounded paper readers focused.
+    stages = {
+        "GROUNDING": "grounding", "LITERATURE_REVIEW": "evidence",
+        "HYPOTHESIS_PROPOSAL": "evidence", "EXPERIMENT_DESIGN_IMPLEMENT": "implementation",
+        "EXPERIMENT_EXECUTION": "execution", "RESULT_ANALYSIS": "analysis",
+        "HYPOTHESIS_UPDATE": "analysis", "ADJUDICATE": "analysis",
+        "CYCLE_REPORT": "analysis", "FINAL_REPORT": "analysis", "OBSERVER": "analysis",
+        "LEADER": "analysis", "DEBATE": "analysis", "DEBATE_JUDGE": "analysis",
+        "SELF_EVOLVE": "evolution", "GRAPH_EVOLVE": "evolution",
+    }
+    stage = stages.get(request.command.value)
+    resource = next((item for item in request.input_artifacts
+        if item.ref.endswith(("--expert-resources", "--grounding-resources"))), None)
+    if stage is None or resource is None:
+        return ""
+    name = json.loads(resource.content_bytes())["plugin"]["name"]
+    return (
+        f"For this node load the bound Skill `{name}:research-workflow` with args `{stage}` if listed, "
+        "then read only its applicable stage reference. If not listed, read "
+        "/expert-plugin/skills/research-workflow/SKILL.md if present; retained plugins may lack it, "
+        "in which case continue with the supplied node instructions without repeated skill lookup. "
+        "Use the current request and accepted evidence after compaction or recovery; "
+        "skill guidance cannot change scientific criteria or grant tools. "
+    )
+
+
 def full_cc_instruction(request: AgentRequest) -> str:
     if request.command.value == "PAPER_READ":
         return ("Answer only the supplied paper question using native Read/Glob/Grep on /papers and /inputs. "
@@ -314,9 +345,6 @@ def full_cc_instruction(request: AgentRequest) -> str:
         + ("/papers/INDEX.md lists retained exact originals and physical-page text. Use Read/Grep for selected methods, "
            "assumptions or experimental details. Available text is not proof of understanding; cite source_ref and page. "
            if request.schema_version >= 20 else "")
-        + ("Inspect the environment and run local compilation/tests when useful; failed local tests "
-           "should be repaired in this same session before final output. "
-           if request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"} else "")
         + "Limits are this request's "
         "turn/token/wall/output budgets, not a fixed number or duration of test calls. /workspace "
         "is the Host-owned chain checkout: writable for design and execution, read-only otherwise. "
@@ -347,6 +375,7 @@ def full_cc_instruction(request: AgentRequest) -> str:
         "required scientific constraints. "
     )
     from .profile_v4 import request_node_runtime
+    common += _workflow_instruction(request)
     comments = request_node_runtime(request.input_artifacts).get("code_comment_language")
     if comments is not None:
         common += f"Write code comments in the configured language {comments!r}; report prose follows its separate output_language. "

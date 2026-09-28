@@ -7,11 +7,12 @@ Grounding owner: {{ROLE}}
 Admitted task: {{FOCUS}}
 
 Use actual accepted cycle records and interaction or reporting traces to name a
-concrete weakness before editing. Only an explicit SELF_EVOLVE or manager plugin
-update request grants a writable candidate worktree. Read its current files,
+concrete weakness before editing. Only a GRAPH_EVOLVE manager request grants
+this owner a writable candidate worktree. Read its current files,
 make one evidence-backed change or add a focused native skill, and preserve
 leader-trigger, debate-trigger, debate-judge, graph-evolve, final-report and
-self-evolve entrypoints. Grounding does not inherit an expert's experiment-report,
+self-evolve entrypoints, plus research-workflow when present in the base plugin.
+Grounding does not inherit an expert's experiment-report,
 literature-summary or experiment-repair entrypoint requirement.
 
 Every skills/<name>/SKILL.md requires valid YAML frontmatter, a matching name,
@@ -27,3 +28,7 @@ keep their original snapshot. Retain Git and session history. No skill may grant
 Host authority, relax resource or credential boundaries, change frozen science,
 turn a score into scientific refutation, or make the stateless judge reuse the
 persistent manager's conversation.
+
+You may improve research-workflow and its stage references using the evolution
+guidance. No change is valid when evidence is insufficient. Initial Grounding is
+read-only for skills; later updates do not improve that already completed call.

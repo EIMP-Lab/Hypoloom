@@ -128,6 +128,12 @@ def _request_plugin(row, run_id):
     observation = _observation(row)
     request = _object(observation.get("request"))
     role = request.get("role")
+    task = _object(request.get("task_context"))
+    initial_grounding = (request.get("command") == "GROUNDING"
+        and request.get("owner_workflow_id") == run_id
+        and task.get("kind") == "AUXILIARY" and task.get("request_kind") == "GROUNDING"
+        and task.get("run_id") == run_id
+        and task.get("expert_slot") is None and task.get("component_id") is None)
     bindings = []
     for item in request.get("input_artifacts", ()):
         if not isinstance(item, dict) or not str(item.get("ref", "")).endswith(("--expert-resources", "--grounding-resources")):
@@ -140,7 +146,8 @@ def _request_plugin(row, run_id):
     if resources:
         bindings.append(_object(resources.get("plugin")))
     for binding in bindings:
-        if (binding.get("run_id"), binding.get("role")) != (run_id, role):
+        owner_role = "grounding" if initial_grounding and binding.get("owner_kind") == "grounding" else role
+        if (binding.get("run_id"), binding.get("role")) != (run_id, owner_role):
             raise MonitorError("plugin binding belongs to another run or role")
         _identity(role, "role")
         if not isinstance(binding.get("commit"), str) or _COMMIT_RE.fullmatch(binding["commit"]) is None:

@@ -1,6 +1,16 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Shared research workflow skill](../design/research-workflow-skill.md) /
+  [中文](../design/research-workflow-skill.zh-CN.md): cross-stage methods, existing
+  validation reuse, explicit initial Grounding plugin binding, owner-local
+  evolution and finite cross-task qualification. [Guide](../guides/research-workflow.md) /
+  [中文](../guides/research-workflow.zh-CN.md). No finer timing or automatic
+  cross-run import. [Results and limits](../qualification.md#current-development--research-workflow-skill-2026-09-28):
+  complete G1 identity coverage, native/CPU closure, three scripted parser domains
+  and a finite passing MiMo comparison, without a repeatable savings claim.
+  Qualification: `.local/qualification/research-workflow-20260928/`;
+  original diagnosis: `.local/analysis/grounding-review-20260928/`.
 - [Monitor re-entry](../qualification.md#current-development--monitor-re-entry-2026-09-28):
   completable shortcut, read-only discovery from existing stores, exact observer
   commands after init, ambiguity handling and retained launcher compatibility.

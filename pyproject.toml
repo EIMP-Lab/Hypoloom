@@ -56,6 +56,7 @@ exclude = ["tests*", "profiles*", "scripts*"]
 "hypoloom" = [
     "migrations/*.sql",
     "skills/*/SKILL.md",
+    "skills/research-workflow/references/*.md",
     "skills/expert-seed/.claude-plugin/plugin.json",
     "skills/expert-seed/skills/*/SKILL.md",
     "skills/grounding-seed/.claude-plugin/plugin.json",
