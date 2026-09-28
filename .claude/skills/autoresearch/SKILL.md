@@ -331,6 +331,9 @@ scratch.
    the exact GPU allowlist/runtime or per-run `--allow-gpu` decision. Sharing
    an occupied card is not the same choice as joining a shared pool.
 
+   Refresh the device snapshot and confirm this init's UUID subset every time.
+   A prior run's selection is only a suggested default; never silently inherit it.
+
    **Detection.** Probe once per init before concluding anything about pool
    availability:
 
@@ -388,7 +391,9 @@ scratch.
    ```
 
    Record exit status and the authorized capacity response; require the approved
-   UUID subset to be present. An unavailable pool blocks `Start now`, but not
+   UUID subset to be present and the live capability `resource_replanning/1`.
+   The current Host repeats these checks before creating a GPU run.
+   An unavailable or incompatible pool blocks `Start now`, but not
    preparation; a reachable pool with insufficient headroom is a disclosed
    capacity wait. Never substitute a private allocator or silently remove the
    pool configuration.
@@ -413,7 +418,8 @@ scratch.
    ```
 
    Require exit 0 with status `ready` or `reused`; verify the returned socket
-   and devices against the review and reuse that socket as `$GPU_POOL_SOCKET`.
+   and required capability against the review. Served devices may be a superset
+   of the reviewed per-run UUID subset. Reuse that socket as `$GPU_POOL_SOCKET`.
    Any refusal (`foreign_pool_root`, `member_uid_mismatch`, `service_busy`,
    `pool_conflict`, `pool_ready_timeout`, `pool_verification_failed`) blocks
    `Start now` and is reported verbatim; never fall back to nonpooled
@@ -1775,3 +1781,15 @@ runtime hash. Without them the research backup remains usable read-only.
   cancelled, or nonterminal state as scientific success.
 - Do not equate local profile admission with real-topic scientific
   qualification; preserve its exact target, data, model, cost and GPU review.
+
+### GPU infrastructure recovery (ACI 28)
+
+A Host-observed pre-submit pool fault blocks only its source research node and
+technically closes the current Agent with normal archive/accounting. Never
+respond by submitting CPU work or `gpus: 0`, fabricating an experiment or clearing
+API cooldown. Diagnose the bound service, then use TUI `g`, Web **Recheck GPU
+resources**, or `hypoloom resource-recheck --state-root <root> --run-id <run>`.
+This does not restart/reconfigure the service and retains existing budgets.
+Managed init never automatically replaces an active/incompatible pool; inspect
+run dependencies and actual service/process ownership before separately
+reviewing any replacement. See `docs/guides/runtime-recovery.md`.

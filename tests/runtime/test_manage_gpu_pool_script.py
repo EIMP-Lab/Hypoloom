@@ -263,7 +263,8 @@ def fake_systemd(tmp_path: Path) -> Iterator[FakeSystemd]:
                         if not part:
                             raise SystemExit(4)
                         raw += part
-                    result = {{"devices": [{{"gpu_uuid": device}} for device in devices]}}
+                    result = {{"devices": [{{"gpu_uuid": device}} for device in devices],
+                               "capabilities": [] if (pool_root / "legacy-fixture").exists() else ["resource_replanning/1"]}}
                     peer.sendall(json.dumps({{"ok": True, "result": result}}).encode() + b"\\n")
                 except OSError:
                     pass
@@ -665,3 +666,26 @@ def test_ensure_validates_member_uid_uuid_and_reserve(fake_systemd: FakeSystemd)
     assert negative_reserve.returncode == 2
     assert _parsed(negative_reserve)["status"] == "reserve_invalid"
     assert fake_systemd.records() == []
+
+
+def test_ensure_reuses_selected_subset_and_refuses_legacy_without_stopping(fake_systemd):
+    fake_systemd.payload_override.write_text(str(fake_systemd.fake_pool_server))
+    both = f"{os.geteuid()}={GPU_ALPHA},{GPU_BETA}"
+    assert _run(fake_systemd, *_ensure_arguments(fake_systemd, both)).returncode == 0
+    subset = _run(fake_systemd, *_ensure_arguments(fake_systemd, f"{os.geteuid()}={GPU_BETA}"))
+    assert subset.returncode == 0 and _parsed(subset)["status"] == "reused"
+    (fake_systemd.pool_root() / "legacy-fixture").touch()
+    rejected = _run(fake_systemd, *_ensure_arguments(fake_systemd, both))
+    assert rejected.returncode != 0
+    assert _parsed(rejected)["status"] == "incompatible_pool"
+    assert len(fake_systemd.records("systemd-run")) == 1
+    assert not any("stop" in row["argv"] for row in fake_systemd.records("systemctl"))
+
+
+def test_ensure_does_not_reconfigure_a_stopped_durable_pool(fake_systemd):
+    root = fake_systemd.repository / ".local/gpu-pools/shared"
+    root.mkdir(parents=True)
+    (root / "pool.sqlite3").write_bytes(b"existing owner, not inspected as empty")
+    result = _parsed(_run(fake_systemd, *_ensure_arguments(fake_systemd, f"{os.geteuid()}={GPU_ALPHA}")))
+    assert result["status"] == "pool_recovery_required"
+    assert (root / "pool.sqlite3").read_bytes() == b"existing owner, not inspected as empty"

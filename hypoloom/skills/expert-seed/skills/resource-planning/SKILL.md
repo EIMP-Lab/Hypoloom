@@ -78,3 +78,13 @@ SELF_EVOLVE only, make a focused strategy update under `/plugin-update`; preserv
 this entrypoint and the other wired skills. Do not embed a stale live snapshot
 as policy or copy private cross-run research. The Host validates the Git update
 for a later cycle; an already bound cycle and current grant never change.
+
+
+For ACI 28, a Host-observed pre-submit pool outage is infrastructure blocking,
+not a reason to downgrade to CPU or fabricate a submitted experiment. End the
+Attempt with a concise technical explanation; Host owns failure closure and
+operator resource recheck. Existing experiment collection still continues.
+For real training, flush bounded stage/trial/seed/epoch and elapsed-time messages
+to stdout/stderr. Silent logs leave scientific progress unknown. Prefer bounded
+LOCAL screening before full GOAL evaluation when permitted by the admitted
+methodology; preserve frozen seeds, parser and acceptance obligations.

@@ -37,6 +37,8 @@ _gpu_pool_client = importlib.import_module("hypoloom.gpu_pool_client")
 _compute_resources = importlib.import_module("hypoloom.compute_resources")
 PoolError = _gpu_pool.PoolError
 PoolClient = _gpu_pool_client.PoolClient
+validate_pool_snapshot = _gpu_pool_client.validate_pool_snapshot
+CURRENT_ACI = importlib.import_module("hypoloom.agent_aci").CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
 validate_gpu_uuid = _compute_resources.validate_gpu_uuid
 
 _SUPERVISOR = "user-systemd"
@@ -346,6 +348,12 @@ def _endpoint_entry(socket_path: Path, pool_root: Path | None) -> dict[str, obje
         probe, snapshot = _probe_snapshot(socket_path, _PROBE_TIMEOUT_SECONDS)
         if probe == "live" and snapshot is not None:
             served = _snapshot_uuids(snapshot)
+            try:
+                validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI)
+            except PoolError as exc:
+                entry["compatibility"] = {"status": exc.code, "reason": str(exc)}
+            else:
+                entry["compatibility"] = {"status": "compatible"}
         elif probe == "unauthorized":
             state = "unauthorized"
     entry["state"] = "live" if served is not None else ("stale" if state == "socket" else state)
@@ -598,12 +606,33 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
             if probe == "live" and snapshot is not None:
                 served = _snapshot_uuids(snapshot)
         if unit_active:
-            if served is None or served != intended:
+            if served is None or not set(intended).issubset(served):
                 raise ManagedPoolError("pool_conflict")
+            try: validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended)
+            except PoolError as exc: raise ManagedPoolError(exc.code) from exc
             return plan, "reused", served
         if snapshot is not None:
             raise ManagedPoolError("service_busy")
 
+        # One managed allocation authority per project. Explicit external pools
+        # remain supported, but init must not create overlapping per-run pools.
+        if plan.pool_root != _pools_directory(repository) / _DEFAULT_POOL_NAME:
+            raise ManagedPoolError("managed_pool_requires_shared_root")
+        if (plan.pool_root / "pool.sqlite3").exists():
+            # A stopped service can still own durable requests or recoverable
+            # run bindings. Init does not replace/reconfigure that authority.
+            raise ManagedPoolError("pool_recovery_required")
+        candidates = set(_pools_directory(repository).glob("*/control.sock"))
+        candidates.update(path.parent / "control.sock" for path in _pools_directory(repository).glob("*/pool.sqlite3"))
+        for candidate in sorted(candidates):
+            if candidate == plan.socket_path: continue
+            probe, other = _probe_snapshot(candidate, _PROBE_TIMEOUT_SECONDS)
+            if probe == "live" and other is not None:
+                devices = _snapshot_uuids(other)
+                if devices is None or set(devices).intersection(intended):
+                    raise ManagedPoolError("pool_conflict")
+            else:
+                raise ManagedPoolError("pool_conflict")
         _prepare_pool_root(plan)
         launched = False
         ready = False
@@ -614,6 +643,8 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
             served = _snapshot_uuids(snapshot)
             if served != intended:
                 raise ManagedPoolError("pool_verification_failed")
+            try: validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended)
+            except PoolError as exc: raise ManagedPoolError(exc.code) from exc
             ready = True
             return plan, "ready", served
         finally:

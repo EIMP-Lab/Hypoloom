@@ -348,6 +348,10 @@ class NotificationTailer:
                              "\nTelegram replies do not submit an answer.")
                 else:
                     text += "\nView the recorded answer and current run state in TUI/Web."
+            if event["type"] == "resource_blocked":
+                text += "\nGPU infrastructure blocked: " + str(event.get("code", "unknown")) + ". Existing experiments continue. Repair the bound pool, then use TUI g or hypoloom resource-recheck."
+            if event["type"] == "resource_rechecked":
+                text += "\nGPU pool rechecked. Blocked nodes may retry within their existing budgets."
             if event["type"] in {"provider_auth_cooldown", "provider_waiting"}:
                 until = payload.get("next_retry_at", payload.get("cooldown_until"))
                 when = (datetime.fromtimestamp(float(until), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

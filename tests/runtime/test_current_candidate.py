@@ -6,7 +6,7 @@ from hypoloom.workflow_host import installed_run_version
 
 
 def test_fresh_host_defaults_to_resource_replanning():
-    assert installed_run_version().agent_aci_version == "27"
+    assert installed_run_version().agent_aci_version == "28"
 
 
 def test_retained_aci13_requests_remain_byte_compatible():

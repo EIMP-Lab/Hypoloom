@@ -1,6 +1,19 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Runtime readiness and context recovery, September 28](../design/runtime-readiness-and-context-recovery.md):
+  ACI 28 / bwrap66 / lifecycle v10 implementation: shared pool preflight,
+  conservative managed service reuse, pre-submit technical closure and operator
+  recheck, structural usage deltas and bounded progress/compaction/cost evidence.
+  [Guide](../guides/runtime-recovery.md) / [中文](../guides/runtime-recovery.zh-CN.md).
+  [Results and limits](../qualification.md#current-development--runtime-readiness-and-context-recovery-2026-09-28)
+  include the full G1, two resolved failures, independent final CPU closure and
+  two finite MiMo quality samples with three real native compactions. Final
+  partial-event observation/browser follow-up passes 63 checks; billing and
+  repeatable efficiency remain unqualified.
+  Qualification evidence: `.local/qualification/runtime-readiness-20260928/`;
+  original diagnosis: `.local/analysis/research-progress-20260928-0953/`.
+  Existing research runs, Profiles and production pool remain unchanged.
 - [GPU capacity feedback and resource replanning, September 27](../design/gpu-capacity-and-resource-replanning.md):
   ACI 27 / bwrap65 implementation: evidence-based 25/15/10% measured margins,
   unchanged OOM growth, capacity explanation, technical closure/handoff repair,

@@ -2,6 +2,8 @@
 
 [English](initialization.md) · 简体中文
 
+ACI 28 的启动预检、节点级 GPU 故障恢复及上下文/进度观测见[运行恢复指南](runtime-recovery.zh-CN.md)。
+
 `/autoresearch init` 用于审阅新运行。`bootstrap prepare` 在内存中填写并校验
 Profile；`bootstrap launch` 输出启动命令及 `effective_configuration` 生效说明。
 预览不启动 Host、不调用模型、不发送通知，也不修改已有 Profile 或运行。

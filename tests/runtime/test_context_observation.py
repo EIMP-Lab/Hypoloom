@@ -156,3 +156,51 @@ def test_native_session_pricing_uncertainty_does_not_rewrite_charges():
     assert "999" not in json.dumps(metrics)
     row["sessionId"] = "foreign"
     assert transcript_metrics(json.dumps(row).encode(), "own", 0)["cli_unknown_model_pricing"] is None
+
+
+def test_compaction_start_without_boundary_is_not_completed_or_provider_failure():
+    from hypoloom.context_observation import exchange_context_metrics
+    rows = [{"type": "system", "subtype": "status", "status": "compacting", "sessionId": "own",
+             "uuid": "start", "timestamp": "2026-09-28T01:00:00Z"}]
+    metrics = transcript_metrics(b"\n".join(json.dumps(row).encode() for row in rows * 2), "own", 0)
+    assert metrics["native_compaction_started_count"] == 1
+    assert metrics["native_compaction_count"] == 0 and metrics["native_compaction_completion_unobserved"]
+    observed = exchange_context_metrics([{"request_path": "/v1/messages", "failure_reason": "context_capacity", "request_bytes_forwarded": 0}])
+    assert observed["local_context_refusal_count"] == 1 and observed["provider_context_failure_count"] == 0
+    assert observed["compaction_failure_attribution"].startswith("unknown")
+    rows.append({"type": "system", "subtype": "compact_boundary", "sessionId": "own", "uuid": "done", "timestamp": "2026-09-28T01:00:05Z"})
+    metrics = transcript_metrics(b"\n".join(json.dumps(row).encode() for row in rows), "own", 0)
+    assert metrics["native_compaction_count"] == 1 and not metrics["native_compaction_completion_unobserved"]
+
+
+def test_stream_events_observe_compaction_attempt_even_when_transcript_has_no_boundary(tmp_path):
+    from hypoloom.context_observation import read_native_events
+    path = tmp_path / "stdout.log"
+    events = [{"type": "system", "subtype": "status", "status": "compacting"},
+              {"type": "system", "subtype": "status", "status": None},
+              {"type": "result", "is_error": True}]
+    path.write_text("\n".join(json.dumps(row) for row in events))
+    metrics = read_native_events(path, {"native_compaction_count": 0})
+    assert metrics["native_compaction_started_count"] == 1 and metrics["native_compaction_count"] == 0
+    assert metrics["native_compaction_completion_unobserved"]
+    assert metrics["native_compaction_start_coverage"] == "stdout_complete"
+
+
+def test_partial_stream_matches_pending_start_within_its_own_event_window(tmp_path):
+    from hypoloom.context_observation import read_native_events
+    path = tmp_path / "stdout.log"
+    earlier = {"type": "system", "subtype": "compact_boundary"}
+    pending = {"type": "system", "subtype": "status", "status": "compacting"}
+    # The original start and other events are outside the bounded stdout tail.
+    path.write_text(json.dumps({"text": "x" * (1024 * 1024)}) + "\n"
+        + json.dumps(earlier) + "\n" + json.dumps(pending) + "\n")
+    transcript = {"native_compaction_count": 3, "coverage": "complete"}
+    metrics = read_native_events(path, transcript)
+    assert metrics["native_compaction_started_count"] == 1
+    assert metrics["native_compaction_count"] == 3
+    assert metrics["native_compaction_start_coverage"] == "stdout_partial"
+    assert metrics["native_compaction_completion_unobserved"] is True
+    with path.open("a") as stream:
+        stream.write(json.dumps(earlier) + "\n")
+    metrics = read_native_events(path, transcript)
+    assert metrics["native_compaction_completion_unobserved"] is None  # Earlier coverage is unknown.

@@ -1387,12 +1387,14 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "Cache read: 40K" in title and "Cache creation: 1.2K" in title
     assert "Session scope: chain-a" in title
     assert "elapsed 12m of 45m wall budget" in title
-    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run'), {operational_status:'compacting', context:{estimated_input_tokens:180000,available_input_tokens:170000,output_reserve_tokens:8000,tool_reserve_tokens:8192,estimate_margin_tokens:12500},context_observation:{coverage:'complete',native_compaction_count:1,native_compaction_duration_ms:1200,native_compaction_duration_unknown:0,last_native_compaction:{pre_tokens:180000,post_tokens:45000,duration_ms:1200},read_calls:4,exact_reread_calls:1}})")
+    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run'), {operational_status:'compacting', context:{estimated_input_tokens:180000,available_input_tokens:170000,output_reserve_tokens:8000,tool_reserve_tokens:8192,estimate_margin_tokens:12500},context_observation:{coverage:'complete',native_compaction_start_coverage:'stdout_partial',native_compaction_completion_unobserved:null,native_compaction_count:1,native_compaction_duration_ms:1200,native_compaction_duration_unknown:0,last_native_compaction:{pre_tokens:180000,post_tokens:45000,duration_ms:1200},read_calls:4,exact_reread_calls:1}})")
     page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('Estimated input: 180K')")
     updated = page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")
     assert "last input 45.2K" in updated and "Admission input allowance: 170K" in updated
     assert "180000 → 45000" in updated and "Native CLI last reported: compacting" in updated
     assert "exact frozen-input rereads 1" in updated
+    assert "transcript coverage complete" in updated and "start-event coverage stdout_partial" in updated
+    assert "completion unobserved unknown" in updated
     page.evaluate("fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run').context_observation.cli_unknown_model_pricing = true")
     page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('unknown model pricing')")
     assert "not a vendor bill" in page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")

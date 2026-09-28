@@ -67,8 +67,10 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # ACI-21 moves bounded view scheduling into the sole-writer Host. Transfer
     # 150 lines from StateStore (361 actual); the counted files and total
     # 27,550-line authority budget remain unchanged.
+    # Resource recovery reuses transitions: transfer 200 lines from shared_gpu_host
+    # to the Host (50) and the counted resource_recovery helper (150).
     allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4700,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4750,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
@@ -77,7 +79,7 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 850, "shared_acceptance_host": 700,
-        "compute_resources": 1200, "gpu_pool": 1100, "shared_gpu_host": 700,
+        "compute_resources": 1200, "gpu_pool": 1100, "shared_gpu_host": 500, "resource_recovery": 150,
         "gpu_attribution": 800, "resource_experience": 700, "host_settings": 500}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations
         if name not in {"expert_batch", "expert_plugin", "expert_memory", "measurement_contract", "expert_interaction", "interaction_host", "debate_host", "profile_permissions"}
@@ -188,7 +190,7 @@ def test_drafted_candidate_validation_is_a_persisted_process_self_loop() -> None
         ExperimentState.DRAFTED,
     )
 
-    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v9"
+    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v10"
     assert validate.external_effect is EffectKind.PROCESS
     assert validate.effect_required
     assert observe.external_effect is None

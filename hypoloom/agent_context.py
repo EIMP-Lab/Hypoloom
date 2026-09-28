@@ -34,7 +34,7 @@ RETRYABLE_INFRASTRUCTURE_FAILURES = frozenset({
     "invalid_provider_envelope", "invalid_provider_metadata",
     "invalid_provider_type", "invalid_turn_usage", "malformed_json",
     "nonzero_exit", "provider_error", "provider_not_success", "timed_out",
-    "transport_stderr_too_large",
+    "transport_stderr_too_large", "resource_infrastructure_blocked",
 })
 RETRYABLE_AGENT_FAILURES = RETRYABLE_MODEL_FAILURES | RETRYABLE_INFRASTRUCTURE_FAILURES
 _TERMINAL_PROVIDER_SUBTYPES = frozenset({"error_max_budget_usd", "error_max_turns"})
@@ -117,6 +117,7 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
         return "provider_admission"
     if _failure_diagnostics(details).get("provider_subtype") == "error_max_structured_output_retries": return "provider_structured_output"
     if code in RETRYABLE_MODEL_FAILURES: return "provider_output"
+    if code == "resource_infrastructure_blocked": return "resource_admission"
     if code in RETRYABLE_INFRASTRUCTURE_FAILURES: return "provider_process"
     return "host_admission"
 

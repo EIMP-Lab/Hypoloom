@@ -57,6 +57,7 @@ def read_native_status(path):
 def transcript_metrics(content, session_id, started_at, input_refs=(), *, partial=False):
     tools, seen_events, seen_results = {}, set(), set()
     reads, errors, boundaries, ranges = 0, 0, [], Counter()
+    starts, pending = [], None
     unknown_pricing = None
     for row in _rows(content):
         if row is None:
@@ -71,7 +72,8 @@ def transcript_metrics(content, session_id, started_at, input_refs=(), *, partia
         message = row.get("message") or {}
         blocks = message.get("content") if isinstance(message, dict) else None
         boundary = row.get("type") == "system" and row.get("subtype") == "compact_boundary"
-        if not boundary and not any(isinstance(block, dict) and block.get("type") in {"tool_use", "tool_result"}
+        starting = row.get("type") == "system" and row.get("subtype") == "status" and row.get("status") == "compacting"
+        if not boundary and not starting and not any(isinstance(block, dict) and block.get("type") in {"tool_use", "tool_result"}
                 for block in (blocks if isinstance(blocks, list) else ())):
             continue  # CLI cost/latch records have no event time and are not reads.
         try:
@@ -86,7 +88,11 @@ def transcript_metrics(content, session_id, started_at, input_refs=(), *, partia
             continue
         if uid:
             seen_events.add(uid)
+        if starting:
+            starts.append(stamp)
+            pending = stamp
         if boundary:
+            pending = None
             metadata = row.get("compactMetadata") or {}
             boundaries.append({"timestamp": stamp, **{target: metadata.get(source)
                 if type(metadata.get(source)) is int and metadata[source] >= 0 else None
@@ -127,6 +133,9 @@ def transcript_metrics(content, session_id, started_at, input_refs=(), *, partia
         "exact_reread_calls": sum(max(0, count - 1) for count in ranges.values()),
         "immutable_read_ranges": entries[:256],
         "native_compaction_count": len(boundaries),
+        "native_compaction_started_count": len(starts),
+        "native_compaction_completion_unobserved": pending is not None,
+        "native_compaction_start_coverage": "explicit_events_only",
         "native_compaction_duration_ms": sum(item["duration_ms"] or 0 for item in boundaries),
         "native_compaction_duration_unknown": sum(item["duration_ms"] is None for item in boundaries),
         "last_native_compaction": boundaries[-1] if boundaries else None}
@@ -167,6 +176,7 @@ def recovery_metrics(records, charges):
     failed_ids, recovery_ids, ranges = set(), set(), Counter()
     coverage, reads, compactions, duration, unknown_duration = [], 0, 0, 0, 0
     unknown_pricing, unavailable_pricing = 0, 0
+    compaction_starts, unfinished = 0, 0
     material = Counter()
     wire = Counter()
     for row, observation, request in ordered:
@@ -189,6 +199,8 @@ def recovery_metrics(records, charges):
         unavailable_pricing += metrics.get("cli_unknown_model_pricing") is None
         coverage.append(metrics.get("coverage", "unavailable"))
         reads += metrics.get("read_calls", 0)
+        compaction_starts += metrics.get("native_compaction_started_count", 0)
+        unfinished += metrics.get("native_compaction_completion_unobserved") is True
         compactions += metrics.get("native_compaction_count", 0)
         duration += metrics.get("native_compaction_duration_ms", 0)
         unknown_duration += metrics.get("native_compaction_duration_unknown", 0)
@@ -201,6 +213,8 @@ def recovery_metrics(records, charges):
         "cli_unknown_pricing_attempts": unknown_pricing,
         "cli_pricing_unavailable_attempts": unavailable_pricing,
         "read_calls": reads, "exact_reread_calls": sum(max(0, count - 1) for count in ranges.values()),
+        "native_compaction_started_count": compaction_starts,
+        "native_compaction_completion_unobserved_attempts": unfinished,
         "native_compaction_count": compactions, "native_compaction_duration_ms": duration,
         "native_compaction_duration_unknown": unknown_duration}
     result["input_material"] = dict(material)
@@ -227,7 +241,63 @@ def recovery_totals(stages):
         "native_compaction_count", "native_compaction_duration_ms", "native_compaction_duration_unknown",
         "initial_failure_unknown_cost_attempts", "initial_failure_reported_tokens", "initial_failure_wall_seconds",
         "recovery_unknown_cost_attempts", "recovery_reported_tokens", "recovery_wall_seconds")}
+    for name in ("native_compaction_started_count", "native_compaction_completion_unobserved_attempts"):
+        result[name] = sum(row.get(name, 0) for row in rows)
     for name in ("initial_failure_reported_cost_usd", "recovery_reported_cost_usd"):
         result[name] = str(sum((Decimal(row[name]) for row in rows), Decimal("0")))
     result["coverage"] = "complete" if rows and all(row["coverage"] == "complete" for row in rows) else "partial" if any(row["coverage"] != "unavailable" for row in rows) else "unavailable"
+    return result
+
+
+def exchange_context_metrics(exchanges):
+    """Failures are request observations, not inferred compaction attempts."""
+    local = upstream = incomplete = 0
+    for row in exchanges:
+        if row.get("request_path") != "/v1/messages": continue
+        if row.get("failure_reason") == "context_capacity" and row.get("request_bytes_forwarded") == 0:
+            local += 1
+        elif row.get("provider_error_code") in {"input_too_long", "compaction_failed"}:
+            upstream += 1
+        if row.get("request_bytes_forwarded", 0) > 0 and not row.get("message_complete"):
+            incomplete += 1
+    return {"local_context_refusal_count": local, "provider_context_failure_count": upstream,
+            "incomplete_forwarded_request_count": incomplete,
+            "compaction_failure_attribution": "unknown_without_matching_native_events"}
+
+
+def read_native_events(path, metrics=None):
+    """Read explicit per-invocation CLI stream events, separate from prompt text."""
+    result = dict(metrics or {})
+    starts = completed = pending = 0
+    compacting = False
+    try:
+        path = Path(path)
+        if path.is_symlink(): raise ValueError("symlink stream")
+        with path.open("rb") as source:
+            size = path.stat().st_size
+            limit = 1024 * 1024
+            if size > limit:
+                source.seek(size - limit); source.readline()
+            content = source.read(limit)
+        partial = size > limit
+        for row in _rows(content):
+            if row is None: partial = True; continue
+            if row.get("type") == "system" and row.get("subtype") == "status":
+                current = row.get("status") == "compacting"
+                if current and not compacting: starts += 1; pending += 1
+                compacting = current
+            if row.get("type") == "system" and row.get("subtype") == "compact_boundary":
+                completed += 1; pending = max(0, pending - 1); compacting = False
+        completed_count = max(result.get("native_compaction_count", 0), completed)
+        extra = max(0, completed - result.get("native_compaction_count", 0))
+        result.update(native_compaction_started_count=starts,
+            native_compaction_start_coverage="stdout_partial" if partial else "stdout_complete",
+            # Match events within this stream window. Earlier transcript
+            # completions cannot settle a newly observed start in the tail.
+            native_compaction_completion_unobserved=bool(pending) if pending or not partial else None,
+            native_compaction_duration_ms=result.get("native_compaction_duration_ms", 0),
+            native_compaction_duration_unknown=result.get("native_compaction_duration_unknown", 0) + extra)
+        result["native_compaction_count"] = completed_count
+    except (OSError, ValueError):
+        result["native_compaction_start_coverage"] = "stdout_unavailable"
     return result

@@ -18,6 +18,7 @@ Current user entry points:
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
 - [Reading and proposals](guides/reading-and-proposals.md): references, assistants, parallel arguments and hypothesis limits.
 - [GPU memory planning](guides/gpu-resource-planning.md): measured margins, capacity previews, exclusive/shared scheduling and technical repair.
+- [Runtime recovery](guides/runtime-recovery.md): GPU preflight, blocked nodes, resource recheck and observation limits.
 - [Notifications](guides/notifications.md): explicit external delivery.
 - [Qualification](qualification.md): G0–G5, runnable test selections and status.
 - [Local workspace](guides/local-workspace.md): current evidence, private development history and original-path preservation.

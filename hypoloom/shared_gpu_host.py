@@ -12,7 +12,7 @@ from typing import Any
 from .compute_resources import validate_gpu_uuid
 from .domain import ResourceEstimate, ResourceGrant, ResourceIntent, ResourceKind
 from .gpu_pool import PoolError, RequestKey, assess_capacity
-from .gpu_pool_client import PoolClient
+from .gpu_pool_client import PoolClient, validate_pool_snapshot
 from .resource_experience import explain_workload_memory, resolve_workload_memory_mib, summarize_resource_measurements
 
 
@@ -104,10 +104,17 @@ class SharedGpuHost:
         floor = self.host._research_contract(request.run_id).document["budget"]["min_vram_per_experiment"]
         return replace(intent, sharing=self.budget_plan(request, arguments, floor)["sharing"])
 
+    def snapshot(self):
+        # A single bounded transport recheck is read-only and spends no Agent
+        # invocation. Capability/auth failures do not benefit from repetition.
+        try: return self.client.request("snapshot", {})
+        except PoolError as exc:
+            if exc.code != "unavailable": raise
+        return self.client.request("snapshot", {})
+
     def assess_intent(self, intent: ResourceIntent) -> dict[str, Any]:
-        snapshot = self.client.request("snapshot", {})
-        if "resource_replanning/1" not in snapshot.get("capabilities", []):
-            raise PoolError("incompatible_pool", "GPU pool lacks resource replanning; configure a compatible pool for this new run")
+        snapshot = self.snapshot()
+        validate_pool_snapshot(snapshot, aci_version=27, allowed_gpu_uuids=intent.allowed_gpu_uuids)
         return {**assess_capacity(snapshot["devices"], intent.to_dict()), "observed_at": snapshot["sampled_at"]}
 
     def resources(self, request: Any, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -130,7 +137,7 @@ class SharedGpuHost:
             response["budget_preview"] = self.budget_plan(request, arguments, document["budget"]["min_vram_per_experiment"])
             response["estimate_policy"] = "evidence_adaptive_25_15_10_percent"
         allowed = {gpu.uuid for gpu in restrict_profile_capabilities(document, self.host.compute_resources.snapshot()).gpus}
-        try: snapshot = self.client.request("snapshot", {})
+        try: snapshot = self.snapshot()
         except PoolError as error: return {**response, "status": "unavailable", "reason": error.code}
         fields = {"gpu_uuid", "total_memory_mib", "free_memory_mib", "used_memory_mib", "reserve_memory_mib",
                   "outstanding_memory_mib", "active_commitments", "unknown_attribution_commitments", "allocatable_memory_mib"}
@@ -138,8 +145,9 @@ class SharedGpuHost:
         if not isinstance(devices, list) or not all(isinstance(item, Mapping) and fields <= set(item) for item in devices):
             raise PoolError("invalid_response", "pool snapshot lacks capacity fields")
         if request.schema_version >= 27:
-            if "resource_replanning/1" not in snapshot.get("capabilities", []):
-                return {**response, "status": "incompatible_pool", "reason": "GPU pool lacks resource_replanning/1"}
+            try: validate_pool_snapshot(snapshot, aci_version=request.schema_version, allowed_gpu_uuids=allowed)
+            except PoolError as error:
+                return {**response, "status": error.code, "reason": str(error)}
             fields |= {"pool_reserve_memory_mib", "system_reserved_memory_mib", "exclusive_commitments"}
             allowed = sorted(allowed)
             if allowed:

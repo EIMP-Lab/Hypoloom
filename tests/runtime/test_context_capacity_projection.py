@@ -482,3 +482,48 @@ def test_tool_result_cache_equivalence_preserves_id_error_content_and_unknown_me
         changed = copy.deepcopy(new)
         changed["messages"][0]["content"][0][key] = value
         assert request_capacity(changed, policy, anchor=anchor)["estimate_reason"] == "history_or_configuration_changed"
+
+
+def test_aci28_projects_appended_text_and_moved_cache_markers_without_recount():
+    policy = context_policy(replace(request24(), schema_version=28))
+    old = document([{"type": "tool_result", "tool_use_id": "read", "content": "x" * 590000,
+                     "cache_control": {"type": "ephemeral"}}])
+    old["system"] = [{"type": "text", "text": "unchanged system"}]
+    old["messages"].insert(0, {"role": "assistant", "content": [
+        {"type": "thinking", "thinking": "signed reasoning", "signature": "exact signature"},
+        {"type": "tool_use", "id": "read", "name": "Read", "input": {"file_path": "/inputs/0000.txt"}}]})
+    new = copy.deepcopy(old)
+    new["system"] = "unchanged system"
+    new["messages"][0]["content"][-1]["cache_control"] = {"type": "ephemeral", "ttl": "1h"}
+    del new["messages"][-1]["content"][0]["cache_control"]
+    new["messages"][-1]["content"].append({"type": "text", "text": "summary guidance " * 400})
+    before = copy.deepcopy((old, new))
+    anchor = usage_anchor(old, {"input_tokens": 155000, "output_tokens": 10}, policy, exchange=64)
+    capacity = request_capacity(new, policy, anchor=anchor)
+    assert capacity["fits"] and 155000 < capacity["estimated_input_tokens"] < 162000
+    assert capacity["estimate_reason"] == "message_text_appended"
+    assert capacity["anchor_exchange"] == 64
+    assert (old, new) == before
+    legacy = policy25()
+    assert not request_capacity(new, legacy, anchor=usage_anchor(old,
+        {"input_tokens": 155000, "output_tokens": 10}, legacy))["fits"]
+    # Repeated projections are always relative to the original measured request.
+    assert request_capacity(new, policy, anchor=anchor) == capacity
+    new["messages"][0]["content"][0]["signature"] = "changed signature"
+    assert request_capacity(new, policy, anchor=anchor)["estimate_reason"] == "history_or_configuration_changed"
+
+
+@pytest.mark.parametrize("mutation", ["history", "system", "tools", "model", "role", "media", "cache"])
+def test_aci28_does_not_treat_arbitrary_mutation_as_append(mutation):
+    policy = context_policy(replace(request24(), schema_version=28))
+    old = document("x" * 300000)
+    anchor = usage_anchor(old, {"input_tokens": 80000, "output_tokens": 10}, policy)
+    new = copy.deepcopy(old)
+    new["messages"][0]["content"] += " extra text"
+    if mutation == "history": new["messages"][0]["content"] = "changed" + new["messages"][0]["content"][7:]
+    elif mutation in {"system", "tools", "model"}: new[mutation] = "different"
+    elif mutation == "role": new["messages"][0]["role"] = "assistant"
+    elif mutation == "media": new["messages"][0]["content"] = [{"type": "text", "text": old["messages"][0]["content"]}, {"type": "image", "source": "opaque"}]
+    elif mutation == "cache": new["messages"][0]["content"] = [{"type": "text", "text": new["messages"][0]["content"], "cache_control": {"type": "unknown"}}]
+    result = request_capacity(new, policy, anchor=anchor)
+    assert not result["fits"] and result["estimate_reason"] == "history_or_configuration_changed"

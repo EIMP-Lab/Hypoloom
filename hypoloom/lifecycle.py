@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, TypeAlias
 from .domain import EffectKind, FactId, ResearchFactType
-WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v9"
+WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v10"
 class Machine(str, Enum):
     RUN_WORKFLOW, EXPERIMENT_WORKFLOW, HUMAN_DECISION, EFFECT_ATTEMPT = (
         "RunWorkflow", "ExperimentWorkflow", "HumanDecision", "EffectAttempt",
@@ -24,6 +24,8 @@ class Command(str, Enum):
     PAUSE_PARTICIPANT = "PAUSE_PARTICIPANT"
     RESUME_PARTICIPANT = "RESUME_PARTICIPANT"
     INJECT_NOTE = "INJECT_NOTE"
+    RESOURCE_BLOCKED = "RESOURCE_BLOCKED"
+    RESOURCE_RECHECK = "RESOURCE_RECHECK"
     PROVIDER_RETRY_CLEAR = "PROVIDER_RETRY_CLEAR"
     ACCEPT_ADJUDICATION = "ACCEPT_ADJUDICATION"
     ACCEPT_GRAPH_EVOLUTION = "ACCEPT_GRAPH_EVOLUTION"
@@ -89,6 +91,9 @@ TRANSITIONS: tuple[Transition, ...] = (
     *(_t(R, state, command, state, "authorized_participant_scope_and_reason", "append_participant_control")
       for state in (RunState.CREATED, RunState.ACTIVE)
       for command in (Command.PAUSE_PARTICIPANT, Command.RESUME_PARTICIPANT, Command.INJECT_NOTE)),
+    _t(R, RunState.ACTIVE, Command.RESOURCE_BLOCKED, RunState.ACTIVE, "host_observed_pre_submit_pool_failure", "append_resource_blocked"),
+    *(_t(R, state, Command.RESOURCE_RECHECK, state, "operator_rechecked_pool_and_closed_source_attempts", "append_resource_recheck")
+      for state in (RunState.CREATED, RunState.ACTIVE)),
     *(_t(R, state, Command.PROVIDER_RETRY_CLEAR, state, "operator_confirmed_provider_recovery", "append_provider_retry_clear")
       for state in (RunState.CREATED, RunState.ACTIVE)),
     *(_t(R, state, Command.SELECT_PLUGIN, state, "aci14_owner_native_commit_and_future_cycle_valid", "append_plugin_selection")

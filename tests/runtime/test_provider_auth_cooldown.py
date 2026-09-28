@@ -206,3 +206,29 @@ def test_tui_resume_requires_a_live_host_gate_view(tmp_path, monkeypatch):
             assert notifications and "live Host" in notifications[0][0]
 
     asyncio.run(exercise())
+
+
+def test_tui_gpu_recheck_uses_distinct_command_and_keeps_uncertain_request(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from hypoloom.tui import HypoloomVNextMonitor
+    import hypoloom.resource_recheck_tui as form
+    root, snapshot = _resume_snapshot(tmp_path)
+    snapshot = replace(snapshot, status={**snapshot.status, "run_state": "ACTIVE", "resource_blocked": [{"role": "expert", "code": "incompatible_pool"}]})
+    calls = []
+    def send(path, request, **kwargs):
+        calls.append(request)
+        if len(calls) == 1: raise ConnectionError("lost reply")
+        return ControlResponse.accepted(request.request_id, 2, {})
+    monkeypatch.setattr(form, "request_over_socket", send)
+    async def exercise():
+        app = HypoloomVNextMonitor(root, "resume-ui", initial_snapshot=snapshot, interval=3600, web_enabled=False)
+        monkeypatch.setattr(app, "action_refresh", lambda: None)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause(); await pilot.press("g")
+            assert isinstance(app.screen, form.ResourceRecheckScreen)
+            await pilot.click("#resource-confirm"); await pilot.pause(0.6)
+            await pilot.click("#resource-confirm"); await pilot.pause(0.6)
+            assert len(calls) == 2 and calls[0] == calls[1]
+            assert calls[0].command == "RESOURCE_RECHECK"
+            assert calls[0].payload == {"run_id": "resume-ui", "reason": "operator"}
+    asyncio.run(exercise())

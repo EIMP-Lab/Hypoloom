@@ -478,7 +478,8 @@ class ProviderRelay:
                             self.context_estimate_source = capacity["estimate_source"]
                             relay._latest_context_capacity = capacity
                             relay._latest_context_exchange = capture.data["exchange"]
-                            if capacity.get("estimate_reason") == "history_or_configuration_changed":
+                            if (capacity.get("estimate_reason") == "history_or_configuration_changed"
+                                    and relay.context_policy.get("capacity_measurement_version", 0) < 28):
                                 relay._context_anchor = None
                         if relay.context_limit_reached or not capacity["fits"]:
                             relay.context_limit_reached = True
@@ -655,7 +656,8 @@ class ProviderRelay:
                 return
             value = response.get("input_tokens") if isinstance(response, dict) else None
             if type(value) is int and value >= 0:
-                self._context_count = {"document": counting_material(capture.request_document),
+                self._context_count = {"document": counting_material(capture.request_document,
+                    version=self.context_policy.get("capacity_measurement_version", 25)),
                     "input_tokens": value, "exchange": data["exchange"],
                     "protocol": capture.request_protocol}
         elif (data.get("request_path") == "/v1/messages" and data.get("message_complete") is True

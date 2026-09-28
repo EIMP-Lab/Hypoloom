@@ -256,6 +256,20 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         review["gpu"] = {"host_authorized_uuids": list(resources.allowed_gpu_uuids),
                          "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
                          "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
+        if args.gpu_pool_socket is not None:
+            from .agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+            from .gpu_pool_client import PoolClient, validate_pool_snapshot
+            from .gpu_pool import PoolError
+            try:
+                snapshot = PoolClient(args.gpu_pool_socket, expected_server_uid=args.gpu_pool_server_uid).request("snapshot", {})
+                validate_pool_snapshot(snapshot, aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
+                                       allowed_gpu_uuids=[gpu.uuid for gpu in selected.gpus])
+            except PoolError as exc:
+                review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
+                    "status": "blocked", "code": exc.code, "reason": str(exc), "start_ready": False}
+            else:
+                review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
+                    "status": "compatible", "capabilities": snapshot.get("capabilities", []), "start_ready": True}
     elif args.gpu_device_uuid or args.gpu_runtime_prefix or args.gpu_pool_socket:
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":

@@ -51,6 +51,10 @@ hypoloom web --state-root /absolute/state/run --run-id RUN_ID --allow-provider-c
 连接；需要切换时，在 **Host-side connection file** 中填写连接文件的绝对路径，
 点击 **Switch API and try**。即使浏览器在另一台电脑，文件也必须位于 Host 机器上。
 
+此操作者恢复链接也允许对 Host 已确认的池故障执行 **Recheck GPU resources**。
+API 重试与资源复查是两个独立操作，不会互相解除对方的等待；详见
+[运行恢复](runtime-recovery.zh-CN.md)。
+
 CLI 使用当前连接重试：
 
 ```bash

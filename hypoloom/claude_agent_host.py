@@ -75,7 +75,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/65"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/66"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -1112,6 +1112,8 @@ class ClaudeAgentHost:
                 diagnostics["served_models"] = sorted({model for exchange in exchanges
                     for model in exchange.get("served_models", []) if isinstance(model, str)})
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
+                from .context_observation import exchange_context_metrics, read_native_events
+                diagnostics["context_observation"] = {**read_native_events(recorder.root / "stdout.log", diagnostics.get("context_observation")), **exchange_context_metrics(exchanges)}
                 from .context_management import context_policy, latest_context
                 diagnostics["context"] = latest_context(exchanges, context_policy(handle.request))
                 fresh_session = (isinstance(handle.tool_workspace, PreparedSessionWorkspace)

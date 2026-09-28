@@ -44,6 +44,8 @@ Host 的六项调用预算来自 `create_run_payload.research_contract.budget.ag
 - **b / Report Issue**：预览、导出故障支持包。
 - **h**：查看并答复待处理的 Grounding 人工问题。
 - **p / API recovery**：查看 API 等待状态、重试当前连接，或通过私有连接文件选择兼容 API。
+- **g / GPU resource recheck**：修复绑定的池后，复查 Host 已确认的资源阻断；详见
+  [运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
 
 Web / local access 位于独立的连接信息区域。启动 Web observer：
 
@@ -66,6 +68,8 @@ TUI 仍可使用。`monitor --no-web` 仅关闭该 TUI 自己的 Web 监听。
 API 恢复使用独立操作权限：TUI **p → Browser**，或启动独立 Web 时添加
 `--allow-provider-control`。仅有人工回答权限不能切换 API，具体步骤见
 [API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)。
+同一操作者恢复权限也允许 GPU 资源复查；API 重试与 GPU 复查是两个独立操作，
+不会互相解除对方的等待。
 
 ## 研究闭环与完成标准
 

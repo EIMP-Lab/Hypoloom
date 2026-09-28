@@ -295,6 +295,9 @@ def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, m
     repo, overrides = checkout
     devices = ["GPU-00000000-0000-0000-0000-000000000001", "GPU-00000000-0000-0000-0000-000000000002"]
     from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
+    from hypoloom.gpu_pool_client import PoolClient
+    monkeypatch.setattr(PoolClient, "request", lambda self, operation, arguments: {
+        "devices": [{"gpu_uuid": device} for device in devices], "capabilities": ["resource_replanning/1"]})
     monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=tuple(
         GpuCapability(index=i, uuid=device, name="synthetic", total_memory_mib=24000,
             free_memory_mib=12000, driver_version="synthetic") for i, device in enumerate(devices))))

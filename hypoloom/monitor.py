@@ -283,6 +283,7 @@ def build_status_projection(
     creation = store.inspect("SELECT payload_json FROM workflow_transitions WHERE run_id=? "
                              "AND workflow_id=? AND workflow_kind='RUN' AND revision=1", (run_id, run_id))
     configuration = _json_object(creation[0]["payload_json"]) if creation else {}
+    from .resource_recovery import read_resource_blocks
     return {
         "run_id": run_id,
         "run_state": run_head["state"],
@@ -299,6 +300,8 @@ def build_status_projection(
         "quiescent_for_backup": quiescent_for_backup,
         "agent_usage": None,
         "resource_waits": None,
+        "process_activity": None,
+        "resource_blocked": list(read_resource_blocks(store, run_id).values()),
         "gpu_pool": configuration.get("gpu_pool"),
         "grounding_dialogue": dialogue,
         "shared_acceptance": _shared_acceptance_projection(run_id, selected_attempts, selected_facts),
@@ -721,11 +724,12 @@ def _with_live_attempt_context(
             continue
         observation = observations.get(attempt.attempt_id)
         if attempt.state == "OPEN" and observation is not None:
-            from .context_observation import read_transcript_metrics, read_native_status
+            from .context_observation import read_transcript_metrics, read_native_status, read_native_events
             transcript = _session_transcript_path(root, run_id, observation)
             metrics = read_transcript_metrics(transcript, attempt.session_id, attempt.started_at,
                 [item["ref"] for item in observation.get("request", {}).get("input_artifacts", [])],
                 limit=_TRANSCRIPT_TAIL_BYTES) if transcript is not None else {"coverage": "unavailable"}
+            metrics = read_native_events(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log", metrics)
             native = read_native_status(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log")
             attempt = replace(attempt, context_observation=metrics,
                 operational_status=native or attempt.operational_status)
@@ -1531,6 +1535,8 @@ _HOST_STATUS_FIELDS = (
     "quiescent_for_backup",
     "agent_usage",
     "resource_waits",
+    "resource_blocked",
+    "process_activity",
     "provider_retry",
 )
 

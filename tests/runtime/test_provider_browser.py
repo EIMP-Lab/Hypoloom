@@ -47,3 +47,30 @@ def test_operator_switch_retries_same_request_and_does_not_claim_recovered(brows
     assert page.evaluate("document.querySelector('#provider-panel').scrollWidth <= document.querySelector('#provider-panel').clientWidth")
     page.evaluate("fixture.snapshot.status.provider_retry = {state:'ready',pending:false}")
     page.wait("document.querySelector('#provider-title').textContent === 'API dispatch available'")
+
+
+@pytest.mark.parametrize("browser", ["provider"], indirect=True)
+def test_gpu_recheck_is_separate_and_retries_exact_request(browser):
+    page = browser
+    page.evaluate("Object.assign(fixture.snapshot.status, {run_state:'ACTIVE',provider_retry:{state:'ready',pending:false},resource_blocked:[{role:'expert-a',code:'incompatible_pool'}],process_activity:[{experiment_id:'cpu-active',process_alive:true,resource_grant:{kind:'CPU'},logs:[],progress:'unknown'}]})")
+    page.wait("!document.querySelector('#resource-recheck').hidden")
+    assert "incompatible_pool" in page.text("#resource-blocked")
+    page.wait("document.querySelector('#resource-wait-list').textContent.includes('scientific progress') || document.querySelector('#resource-wait-list').textContent.includes('Scientific progress')")
+    assert "CPU" in page.text("#resource-wait-list") and "no output observed" in page.text("#resource-wait-list")
+    page.evaluate("""(() => {
+      const original = window.fetch; window.resourceCalls = [];
+      window.fetch = async (path, options={}) => {
+        if (path !== '/api/resource-recheck') return original(path, options);
+        resourceCalls.push({body:JSON.parse(options.body),headers:options.headers});
+        if (resourceCalls.length === 1) throw new Error('reply lost');
+        fixture.snapshot.status.resource_blocked = [];
+        return new Response(JSON.stringify({status:'accepted',revision:9}), {status:200});
+      };
+    })()""")
+    page.click("#resource-recheck")
+    page.wait("document.querySelector('#resource-recheck').textContent.includes('Retry same')")
+    page.click("#resource-recheck")
+    page.wait("document.querySelector('#resource-operation').textContent.includes('rechecked')")
+    assert page.evaluate("resourceCalls.length === 2 && JSON.stringify(resourceCalls[0].body) === JSON.stringify(resourceCalls[1].body)")
+    assert page.evaluate("resourceCalls[0].headers['X-Hypoloom-Provider-Token'] === 'fixture-provider-token'")
+    assert page.evaluate("Object.keys(resourceCalls[0].body).join() === 'request_id'")

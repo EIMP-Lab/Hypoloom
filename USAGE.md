@@ -59,6 +59,8 @@ source.
 - **h**: view and answer pending Grounding human questions.
 - **p / API recovery**: view provider waiting, retry the current connection or
   select another compatible API using a private connection file.
+- **g / GPU resource recheck**: after repairing the bound pool, recheck
+  Host-observed resource blocks. See [runtime recovery](docs/guides/runtime-recovery.md).
 
 Web / local access sits in its own connection-information area. Start the
 Web observer:
@@ -86,6 +88,8 @@ automatically.
 API recovery uses a separate operator grant: TUI **p → Browser**, or standalone
 Web with `--allow-provider-control`. Human-answer permission alone does not
 permit API switching. See [API recovery](docs/guides/provider-recovery.md).
+The same operator recovery grant permits GPU resource recheck. API retry and
+GPU recheck are separate actions and do not clear each other's wait.
 
 ## Research loop and completion
 

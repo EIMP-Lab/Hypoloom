@@ -661,6 +661,13 @@ class SummaryPanel(CockpitPanel):
         pending = sum(item.get("state") == "OPEN" for item in status.get("grounding_dialogue", []))
         if pending:
             health.append(f"[yellow]Grounding: {pending} questions pending · w Web[/]")
+        for process in (status.get("process_activity") or [])[:5]:
+            alive = "alive" if process.get("process_alive") is True else "exited" if process.get("process_alive") is False else "liveness unknown"
+            grant = (process.get("resource_grant") or {}).get("kind", "resource unknown")
+            log_bytes = sum(row.get("bytes", 0) for row in process.get("logs", []))
+            health.append(escape(f"Process {process['experiment_id']}: {grant} · {alive} · logs {log_bytes} bytes · scientific progress unknown"))
+        blocks = status.get("resource_blocked") or []
+        if blocks: health.append("[yellow]GPU infrastructure blocked · " + escape(", ".join(str(b["code"]) for b in blocks)) + " · g GPU recheck[/]")
         provider_retry = status.get("provider_retry") or {}
         if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
             from .provider_observation import provider_status_text
@@ -1114,6 +1121,7 @@ class HypoloomVNextMonitor(App):
         Binding("b", "support_export", "Report Issue", show=False),
         Binding("h", "human_decision", "Human decision"),
         Binding("p", "provider_resume", "Provider resume"),
+        Binding("g", "resource_recheck", "GPU recheck"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
@@ -1638,6 +1646,16 @@ class HypoloomVNextMonitor(App):
             self._human_drafts.setdefault(decision["decision_id"], {}),
             [item for item in history if item["decision_id"] != decision["decision_id"]]))
 
+    def action_resource_recheck(self) -> None:
+        from .resource_recheck_tui import ResourceRecheckScreen
+        if (self._last_snapshot is None or self._last_snapshot.status.get("run_state") != "ACTIVE"
+                or not self._last_snapshot.status.get("resource_blocked")):
+            self.notify("No blocked GPU node is visible. Refresh after repairing the pool.")
+            return
+        if not hasattr(self, "_resource_recheck_draft"): self._resource_recheck_draft = {}
+        if not isinstance(self.screen, ResourceRecheckScreen):
+            self.push_screen(ResourceRecheckScreen(self._last_snapshot.status, self._resource_recheck_draft))
+
     def action_provider_resume(self) -> None:
         from .provider_resume_tui import ProviderResumeScreen
         if self._last_snapshot is None:
@@ -1656,7 +1674,7 @@ class HypoloomVNextMonitor(App):
             self.notify("Web is unavailable. Use API recovery in this TUI.")
             return
         url = server.provider_control_url()
-        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry and connection switching. Keep it private.\n\n"
+        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry, connection switching and GPU resource recheck. Keep it private.\n\n"
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 

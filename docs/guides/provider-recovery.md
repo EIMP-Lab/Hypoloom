@@ -61,6 +61,10 @@ uses the currently selected connection. To switch, enter the connection file's
 absolute path in **Host-side connection file**, then choose **Switch API and try**.
 The file must exist on the Host, even when the browser runs on another machine.
 
+This operator recovery link also permits **Recheck GPU resources** for a
+Host-observed pool fault. API retry and resource recheck are separate actions;
+neither clears the other's wait. See [runtime recovery](runtime-recovery.md).
+
 CLI retry with the current connection:
 
 ```bash

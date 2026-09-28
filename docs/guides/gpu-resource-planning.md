@@ -2,6 +2,8 @@
 
 English · [简体中文](gpu-resource-planning.zh-CN.md)
 
+See [runtime recovery](runtime-recovery.md) for ACI 28 pool preflight, node-scoped GPU recovery and context/progress observations.
+
 New ACI 27 runs use evidence-based memory margins and conservative pool sharing.
 Existing runs retain their accepted runtime and resource intent. Updating the
 checkout does not change a running Host or upgrade its shared pool.

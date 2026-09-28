@@ -285,6 +285,11 @@ def build_parser() -> argparse.ArgumentParser:
         if verb == "inject":
             participant.add_argument("text")
 
+    resources = subparsers.add_parser("resource-recheck", help="recheck the bound GPU pool and release blocked research nodes")
+    _add_client_arguments(resources)
+    resources.add_argument("--run-id", required=True)
+    resources.add_argument("--expected-revision", type=int)
+
     provider_clear = subparsers.add_parser("provider-retry-clear",
         help="allow one recovery attempt with the current or an explicitly selected API connection")
     _add_client_arguments(provider_clear)
@@ -360,7 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     web.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
-    web.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API recovery and connection selection")
+    web.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
     web.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     web.add_argument("--gpu-pool-server-uid", type=int)
 
@@ -737,6 +742,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise ValueError("operator note must be nonempty text")
                 payload["text"] = args.text
             return _submit(args, args.subcommand.upper(), payload)
+        if args.subcommand == "resource-recheck":
+            return _submit(args, "RESOURCE_RECHECK", {"run_id": args.run_id, "reason": "operator"})
         if args.subcommand == "provider-retry-clear":
             return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator",
                 **({"settings_path": args.settings} if args.settings is not None else {})})

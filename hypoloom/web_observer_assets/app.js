@@ -385,6 +385,8 @@
     parent.append(element("dt", "", name), element("dd", "", value));
   }
 
+  let resourcePending = null;
+  let resourceBusy = false;
   let providerPending = null;
   let providerBusy = false;
   function providerWritable() {
@@ -412,10 +414,37 @@
       : retry.state === "recovering" ? "One pending task may try the API. Access is not yet confirmed."
       : `${reasons[retry.reason] || "API unavailable"}. New Agent dispatch paused; submitted experiments continue. ${retry.requires_operator ? "Operator action required." : `Next attempt: ${formatTimestamp(retry.next_retry_at)}.`} Quota reset time: unknown.`);
     setText("provider-access", providerToken
-      ? "Operator API access. Switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
+      ? "Operator recovery access includes GPU resource recheck. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
       : "Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control.");
+    const blocks = snapshot.status?.resource_blocked || [];
+    setText("resource-blocked", blocks.length ? `GPU infrastructure blocked: ${blocks.map(b => `${b.role}: ${b.code}`).join(" · ")}. Submitted experiments continue; affected nodes await repair and recheck.` : "");
+    if (terminal && blocks.length) setText("resource-blocked", "Run ended; GPU fault history is retained. No resource recovery is available.");
+    const recheck = byId("resource-recheck");
+    recheck.hidden = terminal || !providerToken || (!blocks.length && !resourcePending);
+    recheck.disabled = resourceBusy || !providerWritable();
+    recheck.textContent = resourcePending ? "Retry same resource recheck" : "Recheck GPU resources";
     providerButtons();
   }
+  async function requestResources() {
+    if (resourceBusy || !providerWritable()) return;
+    resourcePending ||= {request_id: `web-resource-${crypto.randomUUID()}`};
+    resourceBusy = true; byId("resource-recheck").disabled = true;
+    setText("resource-operation", "Rechecking the bound GPU pool…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("/api/resource-recheck", {method: "POST", cache: "no-store", signal: controller.signal,
+        headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"}, body: JSON.stringify(resourcePending)});
+      const result = await response.json();
+      if (result.status === "accepted") {
+        resourcePending = null; setText("resource-operation", "GPU pool rechecked. Existing retry and task budgets remain in effect.");
+      } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
+        resourcePending = null; setText("resource-operation", `Not accepted: ${result.error?.message || result.message || "check operator access"}`);
+      } else throw new Error("unconfirmed");
+    } catch (_error) { setText("resource-operation", "Host reply not confirmed. Retry sends the same resource recheck."); }
+    finally { clearTimeout(timer); resourceBusy = false; renderProvider(state.snapshot); }
+  }
+  byId("resource-recheck").addEventListener("click", requestResources);
   async function requestProvider(switchConnection) {
     if (providerBusy || !providerWritable()) return;
     if (!providerPending) {
@@ -825,6 +854,12 @@
 
     const waitsContainer = byId("resource-wait-list");
     waitsContainer.replaceChildren();
+    for (const process of status.process_activity || []) {
+      const grant = process.resource_grant || {};
+      const bytes = (process.logs || []).reduce((sum, row) => sum + row.bytes, 0);
+      const ages = (process.logs || []).filter(row => row.bytes > 0).map(row => row.age_seconds);
+      waitsContainer.append(element("p", "panel-copy", `${process.experiment_id}: ${grant.kind || "resource unknown"} ${(grant.gpu_uuids || []).join(", ")} · process ${process.process_alive === true ? "alive" : process.process_alive === false ? "exited, collection pending" : "liveness unknown"} · logs ${bytes} bytes${ages.length ? ` · last write ${Math.round(Math.min(...ages))} s ago` : " · no output observed"}. Scientific progress unknown; OPEN records ownership.`));
+    }
     const waits = status.resource_waits;
     if (!hasHostStatus || !Array.isArray(waits)) {
       waitsContainer.append(element("p", "empty-copy", "Host STATUS unavailable; live GPU/capacity waits are unknown."));
@@ -1022,7 +1057,7 @@
       if (attempt.session_scope) lines.push(`Session scope: ${attempt.session_scope}`);
       const observation = attempt.context_observation || {};
       if (observation.cli_unknown_model_pricing === true) lines.push("CLI session has unknown model pricing; reported dollars are fallback estimates, not a vendor bill.");
-      if (Number.isInteger(observation.native_compaction_count)) lines.push(`Native compactions: ${observation.native_compaction_count} · observed duration ${observation.native_compaction_duration_ms} ms · unknown durations ${observation.native_compaction_duration_unknown} · coverage ${observation.coverage}`);
+      if (Number.isInteger(observation.native_compaction_count)) lines.push(`Native compactions completed: ${observation.native_compaction_count} · explicit starts ${observation.native_compaction_started_count ?? "unknown"} · completion unobserved ${observation.native_compaction_completion_unobserved ?? "unknown"} · observed duration ${observation.native_compaction_duration_ms} ms · unknown durations ${observation.native_compaction_duration_unknown} · transcript coverage ${observation.coverage} · start-event coverage ${observation.native_compaction_start_coverage ?? "unavailable"}`);
       const compact = observation.last_native_compaction;
       if (compact) lines.push(`Last native compaction: ${compact.pre_tokens ?? "?"} → ${compact.post_tokens ?? "?"} input tokens · ${compact.duration_ms ?? "?"} ms`);
       if (Number.isInteger(observation.read_calls)) lines.push(`Successful Read calls: ${observation.read_calls} · exact frozen-input rereads ${observation.exact_reread_calls} (shell reads excluded)`);
@@ -2207,7 +2242,7 @@
 
   function reliabilityCosts(parent, costs) {
     const value = object(costs);
-    parent.append(element("p", "reliability-costs panel-copy", `Retry overhead: ${displayValue(value.retry_attempts)} extra Attempts · observed ≥ $${displayValue(value.retry_reported_usd)} · reserve $${displayValue(value.retry_reserved_usd)} · unknown closed ${displayValue(value.retry_unknown_closed_attempts)} · elapsed ${value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds)}. Correction-only cost: ${value.correction_cost_usd == null ? "unavailable" : `$${value.correction_cost_usd}`}. Unknown does not mean zero; reserves are not measured spend.`));
+    parent.append(element("p", "reliability-costs panel-copy", `Retry overhead: ${displayValue(value.retry_attempts)} extra Attempts · CLI reported estimate $${displayValue(value.retry_reported_usd)} · reserve $${displayValue(value.retry_reserved_usd)} · unknown closed ${displayValue(value.retry_unknown_closed_attempts)} · elapsed ${value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds)}. Correction-only cost: ${value.correction_cost_usd == null ? "unavailable" : `$${value.correction_cost_usd}`}. Unknown does not mean zero; CLI estimates are not verified vendor billing and reserves are not measured spend.`));
     parent.append(element("p", "panel-copy", `unknown retry nodes ${displayValue(value.retry_unknown_nodes)} · unavailable reserves ${displayValue(value.retry_unavailable_reservations)} · unknown elapsed ${displayValue(value.retry_elapsed_unknown_attempts)} Attempts.`));
   }
 

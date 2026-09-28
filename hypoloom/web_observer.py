@@ -580,12 +580,13 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path == "/api/support":
             self._support()
             return
-        if self.path not in {"/api/human-answer", "/api/provider-retry"}:
+        if self.path not in {"/api/human-answer", "/api/provider-retry", "/api/resource-recheck"}:
             self._method_not_allowed()
             return
         if not self._require_authorization():
             return
-        provider = self.path == "/api/provider-retry"
+        resource = self.path == "/api/resource-recheck"
+        provider = resource or self.path == "/api/provider-retry"
         token = self.observer._provider_token if provider else self.observer._answer_token
         supplied = self.headers.get("X-Hypoloom-Provider-Token" if provider else "X-Hypoloom-Answer-Token", "")
         try:
@@ -618,10 +619,12 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                 from .control_protocol import ControlRequest, SCHEMA_VERSION
                 if not isinstance(values, dict) or set(values) not in ({"request_id"}, {"request_id", "settings_path"}):
                     raise ValueError("provider recovery requires request_id and optional settings_path")
+                if resource and set(values) != {"request_id"}:
+                    raise ValueError("resource recheck accepts only request_id")
                 if "settings_path" in values and (not isinstance(values["settings_path"], str) or not values["settings_path"].startswith("/")):
                     raise ValueError("settings_path must be an absolute Host-side connection file path")
                 request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION, "request_id": values["request_id"],
-                    "expected_revision": None, "command": "PROVIDER_RETRY_CLEAR", "payload": {"run_id": self.observer.run_id,
+                    "expected_revision": None, "command": "RESOURCE_RECHECK" if resource else "PROVIDER_RETRY_CLEAR", "payload": {"run_id": self.observer.run_id,
                         "reason": "operator", **({"settings_path": values["settings_path"]} if "settings_path" in values else {})}})
             else:
                 from .human_answers import answer_request
@@ -736,7 +739,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     parser.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
-    parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API recovery and connection selection")
+    parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
     parser.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     parser.add_argument("--gpu-pool-server-uid", type=int)
     return parser

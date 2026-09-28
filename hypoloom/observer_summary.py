@@ -639,7 +639,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         totals["skills"]["coverage"] = "partial" if totals["skills"]["count"] is not None else "unavailable"
     if any(row.get("state") == "OPEN" for row in attempts):
         notices.append("OPEN is durable Attempt state, not a process heartbeat; live subphases may be unknown.")
-    notices.append("Reported command costs are observed lower bounds; reservations and unknown closed accounting are not actual spend.")
+    notices.append("Reported USD values are CLI estimates, not verified vendor billing or monetary lower bounds; reservations and unknown closed accounting are not actual spend.")
     unsettled = sum(stage["accounting"]["observed_unsettled_tokens"] for stage in stages)
     if unsettled:
         notices.append(f"An additional {unsettled:,} tokens were observed in unsettled calls; they are not included in reported usage or confirmed USD cost.")

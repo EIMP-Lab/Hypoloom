@@ -25,7 +25,7 @@ PRODUCT_EVENT_TYPES = frozenset({"run_started", "run_finished", "hypothesis_adde
     "provider_auth_cooldown", "provider_auth_resumed",
     "provider_waiting", "provider_retry_requested", "provider_recovered",
     "participant_pause_requested", "participant_resumed", "operator_note_injected",
-    "grounding_question", "grounding_answered"})
+    "resource_blocked", "resource_rechecked", "grounding_question", "grounding_answered"})
 
 
 def _payload(row):
@@ -183,6 +183,10 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
             result.append(_event("run-terminal", row["workflow_id"], row["revision"], "run_finished",
                 row["created_at"], run_id, state=row["state"], command_id=row["command_id"],
                 verdict_ref=None if verdict is None else verdict["fact_id"]))
+        for field, event in (("resource_blocked", "resource_blocked"), ("resource_recheck", "resource_rechecked")):
+            if field in payload:
+                result.append(_event("resource-control", row["workflow_id"], row["revision"], event,
+                    row["created_at"], run_id, command_id=row["command_id"], **payload[field]))
         control = payload.get("participant_control")
         if control:
             kind = {"pause": "participant_pause_requested", "resume": "participant_resumed", "inject": "operator_note_injected"}[control["action"]]

@@ -2,6 +2,8 @@
 
 English · [简体中文](initialization.zh-CN.md)
 
+See [runtime recovery](runtime-recovery.md) for ACI 28 pool preflight, node-scoped GPU recovery and context/progress observations.
+
 `/autoresearch init` reviews a fresh run. `bootstrap prepare` fills and admits a
 prospective Profile in memory; `bootstrap launch` produces commands and an
 `effective_configuration` explanation. Neither preview starts a Host, contacts

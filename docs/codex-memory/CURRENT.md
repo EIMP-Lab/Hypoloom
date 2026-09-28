@@ -1,5 +1,32 @@
 # Current Hypoloom development state
 
+- September 28 runtime readiness/recovery: user authorizes implementation and
+  commit/push to dev. ACI 28 / bwrap66 / lifecycle v10 checks pool capability and
+  selected membership before Agent launch, reuses compatible subset pools and
+  refuses automatic service replacement. Host-confirmed pre-submit faults use
+  existing transitions/Attempts for technical closure, blocked-node observation
+  and scoped operator resource recheck; CPU fallback cannot bypass a block.
+  Complete usage plus structural text deltas covers six retained local refusals
+  without raising context limits. Native compaction events, provider failures,
+  actual Process grants/liveness/logs and unverified CLI costs remain distinct.
+  No new authority store. G1: 6321 pass / two failures / 26 skips; 93 final-code
+  checks resolve both. One TUI fixture needed ACTIVE; live log ages entering
+  closed scientific inputs caused a real session-reuse regression, now fixed
+  by limiting activity to OPEN Processes. Three final roots close 56 Agents /
+  four successful CPU Processes, clean Oracles and no process/socket residue.
+  Two finite MiMo samples pass four semantic cases and real CPU 0.75/0.75;
+  summary arm completes three native compactions and uses three append deltas.
+  Paid roots close 22 Agents/two CPU cleanly; 1200108 tokens / CLI USD 2.2168544
+  has unknown pricing, not verified billing or repeatable savings. A final
+  observation-only repair handles partial stdout event coverage; 63 final
+  context/browser/doc checks pass. No behavioral edits follow them. Evidence stays in
+  `.local/qualification/runtime-readiness-20260928/`. Existing research runs,
+  Profiles and production pool remain unchanged; no CUDA or migration.
+  [Design](../design/runtime-readiness-and-context-recovery.md),
+  [guide](../guides/runtime-recovery.md) / [中文](../guides/runtime-recovery.zh-CN.md).
+  [Results and limits](../qualification.md#current-development--runtime-readiness-and-context-recovery-2026-09-28).
+  Original diagnosis stays in `.local/analysis/research-progress-20260928-0953/`.
+
 - September 27 GPU capacity/replanning implementation: ACI 27 / bwrap65 reuses
   existing Attempt evidence for 25/15/10% measured margins (calibrated minimum
   512 MiB), with unchanged independent 25% OOM growth and device reserves.

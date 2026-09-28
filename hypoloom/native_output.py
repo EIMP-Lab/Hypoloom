@@ -301,15 +301,19 @@ class NativeOutputValidator:
                     # The existing Attempt-scoped queue reads on the Host thread.
                     # Never use this socket worker to read/write the state store.
                     try:
-                        submitted = _call_host(str(self.execution_tool_socket), "list_my_experiments", {},
+                        resources = _call_host(str(self.execution_tool_socket), "list_my_experiments", {},
                             max_request_bytes=self.max_request_bytes, deadline_at=self.deadline_at,
-                            cancel_event=self._closed)["experiments"]
+                            cancel_event=self._closed)
+                        submitted = resources["experiments"]
                     except (ValueError, OSError, KeyError) as exc:
                         raise _ValidationUnavailable("execution completion state is unavailable") from exc
                     latest = {} if not submitted else submitted[-1]
-                    validate_execution_completion(latest.get("state"),
-                        waiting_for=output.get("typed_candidate", {}).get("waiting_for_experiment_id"),
-                        latest_experiment_id=latest.get("exp_id"), can_handoff=latest.get("can_handoff", False))
+                    # Only Host-observed pre-submit outages permit technical exit.
+                    # The Host closes this Attempt as FAILED, never scientific success.
+                    if not (not submitted and resources.get("resource_blocked")):
+                        validate_execution_completion(latest.get("state"),
+                            waiting_for=output.get("typed_candidate", {}).get("waiting_for_experiment_id"),
+                            latest_experiment_id=latest.get("exp_id"), can_handoff=latest.get("can_handoff", False))
                 if self.acceptance_smoke or self.measurement_smoke:
                     key = "acceptance" if self.acceptance_smoke else "measurement"
                     label = "common" if self.acceptance_smoke else "local C5"

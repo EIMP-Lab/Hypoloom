@@ -275,3 +275,21 @@ def test_invalid_client_request_does_not_contact_core(tmp_path: Path, arguments:
             PoolClient(server.socket_path).request("reserve", arguments)
         assert error.value.code == "invalid_request"
     assert pool.calls == []
+
+
+def test_pool_preflight_checks_capabilities_and_membership_without_requiring_free_memory():
+    from hypoloom.gpu_pool_client import validate_pool_snapshot
+    from test_gpu_pool import A, B
+    snapshot = {"devices": [{"gpu_uuid": A, "free_memory_mib": 0}, {"gpu_uuid": B}],
+                "capabilities": ["resource_replanning/1"]}
+    assert validate_pool_snapshot(snapshot, aci_version=28, allowed_gpu_uuids=(B,)) == tuple(sorted((A, B)))
+    with pytest.raises(PoolError) as failure:
+        validate_pool_snapshot({"devices": snapshot["devices"]}, aci_version=28)
+    assert failure.value.code == "incompatible_pool"
+    assert validate_pool_snapshot({"devices": snapshot["devices"]}, aci_version=26)
+    with pytest.raises(PoolError) as failure:
+        validate_pool_snapshot({**snapshot, "devices": snapshot["devices"][:1]}, aci_version=28, allowed_gpu_uuids=(B,))
+    assert failure.value.code == "unauthorized"
+    with pytest.raises(PoolError) as failure:
+        validate_pool_snapshot({**snapshot, "devices": [snapshot["devices"][0]] * 2}, aci_version=28)
+    assert failure.value.code == "invalid_response"

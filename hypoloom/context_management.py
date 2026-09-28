@@ -41,7 +41,7 @@ def context_policy(request) -> dict[str, Any] | None:
         # Retained ACI-24 retries reduce inline text; ACI-25 keeps it stable.
         "max_inline_input_bytes": min(inline, effective // 4) // min(4, 2 ** min(request.attempt_ordinal - 1, 2))}
     if request.schema_version >= 25:
-        policy.update(capacity_measurement_version=25,
+        policy.update(capacity_measurement_version=28 if request.schema_version >= 28 else 25,
                       max_inline_input_bytes=min(inline, effective // 4))
     return policy
 
@@ -51,7 +51,7 @@ def available_input(policy: Mapping[str, Any], output_tokens: int = 0) -> int:
         - policy["tool_reserve_tokens"] - policy["estimate_margin_tokens"])
 
 
-def counting_material(document: Mapping[str, Any]) -> dict[str, Any]:
+def counting_material(document: Mapping[str, Any], *, version: int = 25) -> dict[str, Any]:
     """Narrow measurement equivalence; never rewrite provider request bytes.
 
     CLI moves known cache annotations between text/tool-result blocks and can
@@ -72,7 +72,7 @@ def counting_material(document: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(content, list):
                 blocks = []
                 for block in content:
-                    if isinstance(block, dict) and block.get("type") in ("text", "tool_result"):
+                    if isinstance(block, dict) and block.get("type") in (("text", "tool_result", "tool_use") if version >= 28 else ("text", "tool_result")):
                         cache = block.get("cache_control")
                         if (isinstance(cache, dict) and cache.get("type") == "ephemeral"
                                 and set(cache) <= {"type", "ttl"}
@@ -91,7 +91,32 @@ def counting_material(document: Mapping[str, Any]) -> dict[str, Any]:
                     message = {**message, "content": block["text"]}
             normalized.append(message)
         material["messages"] = normalized
+    if version >= 28 and isinstance(material.get("system"), list):
+        # System text uses the same narrow representation equivalence. No tool
+        # schemas, thinking blocks or provider-specific extensions are removed.
+        material["system"] = counting_material({"messages": [{"content": material["system"]}]},
+                                                version=version)["messages"][0]["content"]
     return material
+
+
+def _appended_text_bytes(before: Any, after: Any) -> int | None:
+    """Only append text to an existing message; keep its metadata exact."""
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return None
+    if {k: v for k, v in before.items() if k != "content"} != {k: v for k, v in after.items() if k != "content"}:
+        return None
+    old, new = before.get("content"), after.get("content")
+    if isinstance(old, str) and isinstance(new, str):
+        return len(json.dumps(new[len(old):], ensure_ascii=False).encode("utf-8")) + 32 if new.startswith(old) else None
+    old = [{"type": "text", "text": old}] if isinstance(old, str) else old
+    new = [{"type": "text", "text": new}] if isinstance(new, str) else new
+    if not isinstance(old, list) or not isinstance(new, list) or new[:len(old)] != old:
+        return None
+    added = new[len(old):]
+    if not added or not all(isinstance(b, dict) and set(b) == {"type", "text"}
+                            and b["type"] == "text" and isinstance(b["text"], str) for b in added):
+        return None
+    return len(json.dumps(added, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) + 32 * len(added)
 
 
 def _text_message(message: Any) -> bool:
@@ -121,7 +146,7 @@ def usage_anchor(document: Mapping[str, Any], usage: Mapping[str, Any],
     tokens = input_usage(usage, policy.get("input_usage_semantics", "separate_cache"))
     if tokens is None or type(usage.get("output_tokens")) is not int or usage["output_tokens"] < 0:
         return None
-    return {"document": counting_material(document), "input_tokens": tokens, "exchange": exchange}
+    return {"document": counting_material(document, version=policy.get("capacity_measurement_version", 25)), "input_tokens": tokens, "exchange": exchange}
 
 
 def request_capacity(document: Mapping[str, Any], policy: Mapping[str, Any], *,
@@ -133,7 +158,7 @@ def request_capacity(document: Mapping[str, Any], policy: Mapping[str, Any], *,
     estimate = len(json.dumps(material, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     details = {}
     if policy.get("capacity_measurement_version", 0) >= 25:
-        current = counting_material(document)
+        current = counting_material(document, version=policy.get("capacity_measurement_version", 25))
         details = {"request_input_bytes": estimate,
                    "estimate_source": "utf8_bytes_conservative_estimate",
                    "estimate_reason": "no_usage_anchor", "anchor_exchange": None}
@@ -147,18 +172,29 @@ def request_capacity(document: Mapping[str, Any], policy: Mapping[str, Any], *,
         elif anchor is not None:
             previous = anchor.get("document") or {}
             before, after = previous.get("messages"), current.get("messages")
+            appended = None
+            prefix_matches = isinstance(before, list) and isinstance(after, list) and after[:len(before)] == before
+            if (not prefix_matches and policy.get("capacity_measurement_version", 0) >= 28
+                    and isinstance(before, list) and before and isinstance(after, list) and len(after) >= len(before)):
+                changed = [i for i, message in enumerate(before) if after[i] != message]
+                if len(changed) == 1:
+                    index = changed[0]
+                    if (isinstance(before[index], dict) and before[index].get("role") == "user"
+                            and all(isinstance(m, dict) and m.get("role") == "system" for m in before[index+1:])):
+                        appended = _appended_text_bytes(before[index], after[index])
             if (type(anchor.get("input_tokens")) is int and anchor["input_tokens"] >= 0
                     and isinstance(before, list) and isinstance(after, list)
-                    and len(after) >= len(before) and after[:len(before)] == before
+                    and len(after) >= len(before) and (prefix_matches or appended is not None)
                     and {key: value for key, value in current.items() if key != "messages"}
                         == {key: value for key, value in previous.items() if key != "messages"}):
                 added = after[len(before):]
                 if all(_text_message(message) for message in added):
                     delta = (len(json.dumps(added, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
                              + 32 * len(added)) if added else 0
+                    delta += appended or 0
                     estimate = anchor["input_tokens"] + delta
                     details.update(estimate_source="provider_usage_plus_delta_estimate",
-                                   estimate_reason="unchanged_prefix", anchor_exchange=anchor.get("exchange"),
+                                   estimate_reason="message_text_appended" if appended is not None else "unchanged_prefix", anchor_exchange=anchor.get("exchange"),
                                    anchor_input_tokens=anchor["input_tokens"], added_input_bytes=delta)
                 else:
                     details["estimate_reason"] = "unsupported_added_content"

@@ -2,6 +2,8 @@
 
 [English](gpu-resource-planning.md) · 简体中文
 
+ACI 28 的启动预检、节点级 GPU 故障恢复及上下文/进度观测见[运行恢复指南](runtime-recovery.zh-CN.md)。
+
 新建的 ACI 27 运行根据实测证据调整显存余量，并保守处理同卡共享。既有运行
 继续使用已接纳的运行时和资源申请；更新代码不会改变正在运行的 Host 或升级共享池。
 

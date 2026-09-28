@@ -2,6 +2,114 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current development — Runtime readiness and context recovery, 2026-09-28
+
+ACI 28 / `claude-code-bwrap/66` / lifecycle v10 implements the
+[readiness and recovery design](design/runtime-readiness-and-context-recovery.md).
+Init and Host creation share pool capability/membership validation before Agent
+launch. Compatible pools may cover a selected subset. Managed creation reuses
+the existing service authority and refuses automatic replacement, including a
+stopped pool with an existing database or an unresolved named-pool conflict.
+
+Pre-submit infrastructure faults use existing command transitions and Attempt
+diagnostics. The Host closes the affected Agent technically, prevents CPU bypass
+and waits for an authenticated operator resource recheck. Stop, cleanup failures,
+remaining budgets and already submitted experiments retain their precedence.
+Restart recovery, idempotent controls, native Stop, Web/TUI and the independent
+Oracle are covered. No extra fault ledger or allocation authority is introduced.
+The [operator guide](guides/runtime-recovery.md) describes recovery and limits.
+
+Context estimates retain complete provider usage across narrowly matched text
+appends and known cache/text representation changes. Six original local refusals
+replay from **364635–668006** conservative whole-request estimates to
+**96507–173044** usage-plus-delta estimates and fit the unchanged policy. Five
+original requests were CLI summary requests; this replay establishes structural
+admission, not their unobserved provider outcome or exact token counts. Unknown
+changes still fall back conservatively. Native compaction starts/completions,
+local refusals, provider failures and incomplete responses remain distinct.
+Process observation reports actual grants, owned liveness and log activity with
+unknown scientific progress. Unknown CLI prices are unverified estimates.
+
+Evidence remains in `.local/qualification/runtime-readiness-20260928/`.
+The initial full G1 was interrupted after **6075 passes, 46 failures and 26
+skips**: source edits during that run triggered the pinned-runtime protection.
+Its incomplete report is retained. Actual fixture compatibility corrections
+update version expectations, status inputs and a pool-outage test to inject the
+fault after successful creation; **135 follow-up checks pass**. The candidate
+is frozen for the complete G1 and subsequent finite model evaluation.
+That G1 completes with **6321 passes, two failures, 26 opt-in skips and 30
+warnings in 1272.28 seconds**. One TUI fixture supplied CREATED for a control
+that correctly requires ACTIVE. The other exposed a real regression: dynamic
+log ages in completed experiment records changed frozen CYCLE_REPORT inputs and
+prevented eligible same-session retry. Live activity now applies only to OPEN
+Processes; closed records retain stable scientific inputs. The original native
+failure remains, and focused final-code validation follows rather than repeating
+the whole suite. Static identity/lifecycle checks pass **20 tests**.
+
+Independent initial census also caught a fixture that selected a CPU grant but
+still generated a CUDA script; its missing-torch execution failure was correctly
+collected. The fixture now generates an actual CPU implementation and explicitly
+requires Process and outcome success. Its original root is retained. The
+resource-recovery/doc follow-up passes **18 tests**. Native CLI recovery already
+demonstrated successful CPU collection independently of that fixture.
+Final-code native/control/context/documentation validation passes **93 tests in
+111.75 seconds**, including both G1 failures. The native report repair again
+resumes the same session and publishes canonical memory. An independent census
+of three final-code roots closes **56 Agent Attempts and four successful real
+CPU Processes**: two native CLI roots account for 40 Agents/three CPU Processes;
+the scripted-Agent root accounts for 16/one. Creation, preregistration, canonical
+outcome and publication counts agree; all three Oracles are clean, with no OPEN
+Attempts, duplicate outcomes, pending effects, live owned groups or sockets.
+The resource-fault native root records one technical Agent failure, one block,
+one recheck, one accepted CPU result and one hypothesis assessment. Synthetic
+GPU pool coverage does not execute CUDA. Original and final censuses retain
+their own root paths.
+
+The real-model protocol uses the existing CC connection and selected MiMo model
+only for Grounding: at most two invocations per arm, 40 turns, 3000 seconds and
+CLI USD 2 per invocation, USD 8/9300 seconds allocated per arm. Other Agents use
+the native local-provider fixture and the experiment executes on CPU. A normal
+arm is compared with an arm reading a synthetic reference file and requesting
+earlier native compaction through an inspected CLI-only evaluation option.
+Compaction coverage requires an actual completed native event; quality requires
+four semantic counterexamples and one candidate scoring 0.75 in both fixed
+suites through Host collection, publication and assessment. Allocations and CLI
+estimates do not establish vendor billing or repeatable savings.
+
+Both **mimo-v2.6-pro** samples pass in one Grounding invocation each, including
+all four semantic cases, the 0.75/0.75 CPU result, collection/publication and
+Oracle closure:
+
+| Arm | Grounding seconds | Completed provider messages | Native compactions | Reported tokens | CLI estimate USD |
+|---|---:|---:|---:|---:|---:|
+| Normal | 419.09 | 22 | 0 | 767520 | 0.8499168 |
+| Earlier native compaction | 742.81 | 19 | 3 | 432588 | 1.3669376 |
+
+The summary arm actually uses `message_text_appended` for three requests. Both
+arms have zero local capacity refusals and zero incomplete forwarded message
+requests. Three compactions take 332194 ms in total. Additional reference input
+and the evaluation-only earlier threshold make these different workloads;
+neither the token difference nor the higher estimate establishes a general
+efficiency result. Keep production defaults unchanged. Combined Grounding usage
+is **1200108 tokens / USD 2.2168544 CLI estimate**, with unknown model pricing.
+The paid-root census closes **22 Agents and two successful CPU Processes** with
+clean Oracles and no process/socket residue; only two Grounding Agents use the
+real provider, while the other 20 use the local scripted provider.
+
+The real sample also exposes bounded-observation limits: the complete transcript
+contains three compactions while the stdout tail retains only two start events.
+A final observation-only repair matches pending starts to completions in the
+same stream window, preserves unknown earlier coverage and shows transcript/start
+coverage separately in Web. It does not change generation, admission or recovery.
+Raw paid states remain unchanged; read-only replay and focused browser/context
+checks validate that final display/counting change: **63 tests pass in 68.34
+seconds**, including an explicit truncated-window counterexample and the shipped
+browser display. No further behavioral change follows these checks.
+
+Existing research runs, personal Profiles and the production pool remain
+unchanged. This scope does not authorize CUDA, service replacement, cross-version
+run migration, broad G4/G5 promotion or a claim of long-horizon scientific quality.
+
 ## Current development — GPU capacity and resource replanning, 2026-09-27
 
 ACI 27 / `claude-code-bwrap/65` implements the

@@ -128,3 +128,13 @@ only SELF_EVOLVE's writable native plugin permits a strategy update, selectable
 for a later cycle. Preserve unknown own usage as unknown and distinguish an
 explicit observed OOM from pressure cancellation. Never turn transient live
 capacity into a permanent skill rule.
+
+
+For ACI 28, a Host-observed pre-submit pool outage is infrastructure blocking,
+not a reason to downgrade to CPU or fabricate a submitted experiment. End the
+Attempt with a concise technical explanation; Host owns failure closure and
+operator resource recheck. Existing experiment collection still continues.
+For real training, flush bounded stage/trial/seed/epoch and elapsed-time messages
+to stdout/stderr. Silent logs leave scientific progress unknown. Prefer bounded
+LOCAL screening before full GOAL evaluation when permitted by the admitted
+methodology; preserve frozen seeds, parser and acceptance obligations.

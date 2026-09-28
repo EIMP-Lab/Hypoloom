@@ -471,6 +471,8 @@ class Oracle:
             _audit_participant_controls(version_tuple.get("workflow_definition_version"), commands, transitions,
                 attempts, attempt_payloads, issues, roles=_goal_roles_by_run(facts, parsed_payloads).get(run_id, ()), success_stop=success_stop)
 
+            _audit_resource_recovery(commands, transitions, attempts, attempt_payloads, issues)
+
             outcomes = [row for row in facts if row["fact_type"] == "CanonicalOutcomeAccepted"]
             canonical_outcome_count = len(outcomes)
             _audit_unique_outcomes(outcomes, issues)
@@ -952,6 +954,48 @@ def _audit_unique_outcomes(outcomes: Sequence[sqlite3.Row], issues: list[OracleI
                     tuple(fact_ids),
                 )
             )
+
+
+def _audit_resource_recovery(commands, transitions, attempts, payloads, issues):
+    # Inspect raw ownership and terminal effects independently of the Host fold.
+    by_command = {row["command_id"]: row for row in commands}
+    by_attempt = {row["attempt_id"]: row for row in attempts}
+    evidence = []
+    for row in transitions:
+        command = by_command.get(row["command_id"])
+        if command is None or command["command_type"] not in {"RESOURCE_BLOCKED", "RESOURCE_RECHECK"}: continue
+        try:
+            data = json.loads(row["payload_json"])
+            assert row["workflow_id"] == row["run_id"] and row["state"] == row["previous_state"] == "ACTIVE"
+            if command["command_type"] == "RESOURCE_BLOCKED":
+                block = data["resource_blocked"]
+                source = by_attempt[block["attempt_id"]]
+                request = payloads[source["attempt_id"]]["request"]
+                assert source["kind"] == "AGENT" and source["run_id"] == row["run_id"]
+                assert source["command_id"] == request["command_id"] == block["node_command_id"]
+                assert request["schema_version"] >= 28
+                assert request["command"] in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}
+                assert request["role"] == block["role"] and request["component_id"] == block["component_id"]
+                assert block["tool"] in {"get_resources", "submit_experiment"}
+                assert block["code"] in {"unavailable", "unauthorized", "unauthorized_server", "incompatible_pool", "invalid_response"}
+                assert source["terminal_reason"] != "SUCCEEDED"
+                for submitted in commands:
+                    material = json.loads(submitted["request_json"])
+                    if material.get("tool") == "submit_experiment":
+                        assert material.get("source_request", {}).get("attempt_id") != source["attempt_id"]
+                evidence.append((row, block, source))
+            else:
+                check = data["resource_recheck"]
+                request = json.loads(command["request_json"])
+                assert request["command"] == "RESOURCE_RECHECK"
+                assert request["payload"] == {"run_id": row["run_id"], "reason": "operator"}
+                assert check["reason"] == "operator" and check["node_command_ids"]
+                assert len(check["node_command_ids"]) == len(set(check["node_command_ids"]))
+                for node in check["node_command_ids"]:
+                    assert any(prior["revision"] < row["revision"] and block["node_command_id"] == node
+                               and source["state"] == "CLOSED" for prior, block, source in evidence)
+        except (AssertionError, KeyError, TypeError, ValueError):
+            issues.append(OracleIssue("resource_recovery_binding", "Resource recovery lacks valid source ownership or technical closure", (row["command_id"],)))
 
 
 def _audit_participant_controls(version: str | None, commands: Sequence[Mapping[str, Any]],

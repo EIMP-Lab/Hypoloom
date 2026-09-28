@@ -155,8 +155,8 @@ def test_shared_gpu_wait_has_no_process_attempt_and_other_root_uses_same_pool(en
 def test_unreachable_configured_pool_waits_without_cpu_fallback(environment, tmp_path):
     make, _, _, runtime = environment
     host = make("unavailable")
+    create(host, runtime)  # Readiness succeeds; the service disappears during this run.
     host.shared_gpu.client = PoolClient(tmp_path / "absent.sock")
-    create(host, runtime)
     until(host, lambda: bool(specs(host)) and bool(host.resource_waits))
     frozen = specs(host)[0]
     assert frozen["payload"]["execution_contract"]["resource_intent"]["kind"] == "GPU"

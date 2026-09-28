@@ -2,6 +2,8 @@
 
 English · [简体中文](context-management.zh-CN.md)
 
+See [runtime recovery](runtime-recovery.md) for ACI 28 pool preflight, node-scoped GPU recovery and context/progress observations.
+
 New ACI-25 runs preserve research identity, Git worktrees, accepted results and
 memory across bounded model sessions. New tasks and capacity reconstruction use
 fresh sessions. An eligible correction or transport retry of the same frozen

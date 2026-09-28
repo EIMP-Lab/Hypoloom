@@ -73,6 +73,37 @@ def _peer_uid(connection: socket.socket) -> int:
     return struct.unpack("3i", credentials)[1]
 
 
+def validate_pool_snapshot(snapshot: dict[str, Any], *, aci_version: int,
+                           allowed_gpu_uuids=()) -> tuple[str, ...]:
+    """Share running-service compatibility and membership checks across callers.
+
+    Free memory is not an authorization or readiness condition. Detailed
+    capacity validation remains with the existing capacity calculator.
+    """
+    from .compute_resources import validate_gpu_uuid
+    devices = snapshot.get("devices")
+    if not isinstance(devices, list):
+        raise PoolError("invalid_response", "GPU pool snapshot lacks devices")
+    uuids = []
+    for device in devices:
+        try:
+            if not isinstance(device, dict): raise ValueError("invalid device")
+            uuid = device.get("gpu_uuid")
+            validate_gpu_uuid(uuid)
+        except (ValueError, TypeError):
+            raise PoolError("invalid_response", "GPU pool snapshot has an invalid device identity") from None
+        uuids.append(uuid)
+    if len(set(uuids)) != len(uuids):
+        raise PoolError("invalid_response", "GPU pool snapshot repeats a device")
+    if aci_version >= 27:
+        capabilities = snapshot.get("capabilities")
+        if not isinstance(capabilities, list) or "resource_replanning/1" not in capabilities:
+            raise PoolError("incompatible_pool", "GPU pool lacks resource_replanning/1; update the pool before starting GPU research")
+    if not set(allowed_gpu_uuids).issubset(uuids):
+        raise PoolError("unauthorized", "Selected GPUs are outside this pool membership; review the GPU selection or pool configuration")
+    return tuple(sorted(uuids))
+
+
 class PoolClient:
     def __init__(self, socket_path: str | Path, timeout_seconds: float = 5,
                  expected_server_uid: int | None = None) -> None:

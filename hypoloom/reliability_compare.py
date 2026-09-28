@@ -151,7 +151,7 @@ def compare_roots(state_roots):
                 "duration_seconds": _distribution(durations), "ttft_seconds": _distribution(ttfts)}})
     return {"sources": sources, "groups": result, "notices": [*notices,
         "Served models are upstream-reported labels, not independently attested model identity; mixed-model nodes remain mixed.",
-        "Per-delivery costs include failed work and are observed lower bounds when accounting is unknown; no prices are estimated.",
+        "Per-delivery reported costs include failed work and can contain CLI price estimates; unknown accounting and unverified vendor prices preclude a monetary lower-bound claim.",
         "Old captures cannot reconstruct TTFT. Missing cache usage and exchanges remain unknown. Tool evidence is not read by this comparison."]}
 
 

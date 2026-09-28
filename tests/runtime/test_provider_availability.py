@@ -324,3 +324,33 @@ def test_cli_selects_connection_and_web_control_is_explicit(tmp_path, monkeypatc
     assert not options[-1].get("allow_provider_control")
     assert cli.main(["web", "--state-root", str(tmp_path), "--run-id", "run", "--allow-provider-control"]) == 0
     assert options[-1]["allow_provider_control"]
+
+
+def test_web_resource_recheck_keeps_auth_origin_and_run_scope(tmp_path, monkeypatch):
+    import hypoloom.control_protocol as transport
+    from hypoloom.web_observer import create_server
+    from test_web_observer import _TOKEN, _start, _stop
+    calls = []
+    def send(path, request, **kwargs):
+        calls.append(request)
+        return ControlResponse.accepted(request.request_id, 2, {})
+    monkeypatch.setattr(transport, "request_over_socket", send)
+    server = create_server(tmp_path / "absent", "selected", port=0, token=_TOKEN)
+    thread = _start(server)
+    def post(grant="", origin=None, **extra):
+        connection = http.client.HTTPConnection(*server.server_address, timeout=10)
+        try:
+            connection.request("POST", "/api/resource-recheck", json.dumps({"request_id": "recheck", **extra}),
+                {"Authorization": "Bearer " + _TOKEN, "Content-Type": "application/json", "X-Hypoloom-Provider-Token": grant,
+                 "Origin": origin or f"http://127.0.0.1:{server.server_port}"})
+            response = connection.getresponse(); response.read()
+            return response.status
+        finally: connection.close()
+    try:
+        grant = parse_qs(urlsplit(server.provider_control_url()).fragment)["provider_token"][0]
+        assert post() == 403 and post(grant, origin="http://example.invalid") == 403
+        assert post(grant, run_id="foreign") == 400 and post(grant, settings_path="/other") == 400
+        assert not calls
+        assert post(grant) == 200
+        assert calls[0].command == "RESOURCE_RECHECK" and calls[0].payload == {"run_id": "selected", "reason": "operator"}
+    finally: _stop(server, thread)

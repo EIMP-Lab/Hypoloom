@@ -49,7 +49,7 @@ def test_native_init_detects_and_deploys_project_pool_with_reviewed_binding(tmp_
                    "gpu-pool-status", "--expected-server-uid"):
         assert option in text
     assert "**Shared pool.**" in text
-    assert "unavailable pool blocks `Start now`" in normalized
+    assert "unavailable or incompatible pool blocks `Start now`" in normalized
     assert "partial own-use samples remain unknown" in normalized
     for marker in (
         "manage_gpu_pool.py",
