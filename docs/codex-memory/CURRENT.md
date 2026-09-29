@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- September 29 LOCAL metric display: a single published screening value now uses
+  a compact card; two or more observations within the same hypothesis/measurement
+  definition use a trend. GOAL charts/legend/thresholds stay unchanged. Short
+  descriptions preserve full IDs/rules and exact values on hover. Bilingual
+  usage updated; 15 focused offline checks and two Chrome interactions pass.
+  [Scope and evidence](../qualification.md#current-repair--compact-local-screening-results-2026-09-29),
+  `.local/qualification/local-metric-cards-20260929/`. Display only: no production
+  mutation, model calls or new fact authority. User subsequently authorizes
+  commit/push to dev, reusing these completed focused checks.
+
 - September 29 literature failure isolation: a retained expert's MAIN retrieval
   exhausted three Attempts before model launch because one landing domain
   resolved to a non-public address. Reuse VALIDATION_FAILED, PDF_UNAVAILABLE

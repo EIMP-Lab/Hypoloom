@@ -2,6 +2,30 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — Compact LOCAL screening results, 2026-09-29
+
+The latest retained run initially had one published LOCAL value and no GOAL
+measurements, so the observer drew a large single-point chart. LOCAL groups now
+use compact result cards for one numeric observation and trends for two or more.
+Grouping still requires the same hypothesis and recorded measurement definition;
+GOAL curves, legend toggles and target lines are unchanged. Local headings show
+the metric and a short hypothesis description, with full identity, measurement
+rule and original numeric precision available on hover and in retained records.
+This is a display change using existing accepted facts, with no new authority,
+schema, backend logic or scientific acceptance rule.
+
+Focused observation/Node/documentation checks: **15 passed**. Two actual Chrome
+interaction cases pass, covering single-to-trend refresh, separate hypotheses
+and baselines, missing versus zero/negative values, original precision, long
+labels, GOAL waiting/arrival and existing legend controls. Screenshots cover
+single cards, mixed local results and GOAL trends. The first Node-harness check
+miscounted SVG classes because its stub stores them as attributes; that test-only
+reader is corrected and the initial failure retained. Syntax, focused lint and
+whitespace checks pass. Evidence: `.local/qualification/local-metric-cards-20260929/`.
+No research run, Profile or frozen bundle was changed; no model/CPU/GPU workload
+was performed. The user subsequently authorizes commit/push to dev, reusing these
+completed checks. These focused UI checks do not claim full G1/G5.
+
 ## Current repair — Isolated literature address rejection, 2026-09-29
 
 A retained expert completed query planning but lost all three MAIN preparation

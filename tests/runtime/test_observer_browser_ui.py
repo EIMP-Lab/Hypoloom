@@ -1348,12 +1348,37 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
             "component_id": "component-a", "hypothesis_id": "hypothesis-a",
             "local_outcome": "CLEAN_REFUTATION", "local_metric_value": value,
             "local_measurement": measurement, "goal_evaluation": None, **changes}
+    # One observation is a compact result, with full identity and precision
+    # available even when the hypothesis label is long.
+    long_id = "hypothesis-" + "long-id-" * 20
+    common["outcomes"] = [local(1, "-0.021994627971751002", hypothesis_id=long_id)]
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelectorAll('.metric-local .metric-single').length === 1")
+    assert page.evaluate("document.querySelector('.metric-local svg') === null")
+    assert page.text(".metric-single-value") == "-0.02199"
+    assert "-0.021994627971751002" in page.evaluate("document.querySelector('.metric-single-value').title")
+    assert len(page.text(".metric-local-context")) < len(long_id)
+    assert long_id in page.evaluate("document.querySelector('.metric-local-context').title")
+    assert "Matched seed validation delta" in page.evaluate("document.querySelector('.metric-local-context').title")
+    assert page.text(".metric-single h5") == "validation_delta"
+    assert "1 published observation" in page.text(".metric-single")
+    page.evaluate("document.querySelector('.metric-local').scrollIntoView({block:'center'})")
+    page.screenshot(tmp_path / "local-single-result.png")
+    # A second comparable observation replaces the card with a trend.
+    common["outcomes"].append(local(2, "0", hypothesis_id=long_id))
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelectorAll('.metric-local .metric-point').length === 2")
+    assert page.evaluate("document.querySelectorAll('.metric-single').length") == 0
+    assert "2 published observations" in page.text(".metric-local")
+    assert page.text(".metric-local figcaption") == "validation_delta"
     common["outcomes"] = [local(10, "0.02"), local(2, "-0.01"), local(3, None), local(4, ""),
         local(5, False), local(6, "0.03", hypothesis_id="hypothesis-b"),
         local(7, "0.04", local_measurement={**measurement, "parse_rule": "Different baseline"})]
     page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
-    page.wait("document.querySelectorAll('.metric-local .metric-chart').length === 3")
-    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 4
+    page.wait("document.querySelectorAll('.metric-local .metric-single').length === 2")
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-chart').length") == 1
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 2
+    assert page.evaluate("Array.from(document.querySelectorAll('.metric-single-value')).map(e => e.textContent)") == ["0.03", "0.04"]
     assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 0
     titles = page.evaluate("Array.from(document.querySelectorAll('.metric-local .metric-chart:first-child circle title')).map(e => e.textContent)")
     assert titles[0].startswith("experiment-2\n") and "-0.01" in titles[0]
@@ -1364,17 +1389,19 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
     common["outcomes"].append({**local(11, None), "scope": "GOAL", "goal_evaluation": {
         "measurements": {"test_f1": "0.69", "absent": None, "check": False, "empty": ""}}})
     page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
-    page.wait("document.querySelectorAll('.metric-chart').length === 4")
+    page.wait("document.querySelectorAll('.metric-chart').length === 2")
     assert page.evaluate("document.querySelectorAll('.metric-empty').length") == 0
     assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 1
-    assert page.evaluate("document.querySelectorAll('.metric-point').length") == 5
-    page.evaluate("document.querySelector('.metric-trends').scrollIntoView()")
+    assert page.evaluate("document.querySelectorAll('.metric-point').length") == 3
+    assert page.evaluate("document.querySelectorAll('.metric-single').length") == 2
+    page.evaluate("document.querySelector('.metric-local').scrollIntoView({block:'center'})")
     page.screenshot(tmp_path / "local-and-goal-trends.png")
     common["outcomes"][-1]["goal_evaluation"] = {"measurements": {}, "checks": {"valid": True}}
     page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
     page.wait("document.querySelector('.metric-empty')?.textContent.includes('No numeric GOAL measurements')")
     assert "Waiting for published" not in page.text(".metric-trends")
-    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 4
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 2
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-single').length") == 2
 
 
 def test_browser_context_rejection_separates_last_measured_usage_from_current_estimate(browser):

@@ -126,10 +126,14 @@ GPU recheck are separate actions and do not clear each other's wait.
 Web/TUI report usage in **tokens**, separating reported usage, reservations and
 unknown records. Model-price availability is not a runtime health signal.
 The Web **Metric trends** section keeps a waiting message until published GOAL
-measurements arrive. LOCAL screening charts appear separately, grouped by one
-hypothesis and its recorded measurement definition; they never inherit GOAL
-thresholds or combine different screening baselines. Running experiments appear
-as scores only after their outcomes are published.
+measurements arrive. LOCAL screening results appear separately, grouped by one
+hypothesis and its recorded measurement definition. A single observation uses a
+compact result card; two or more comparable observations form a trend. Short
+hypothesis descriptions replace long IDs in the display; hover over the description
+for the full ID and measurement rule, or a card's value for its original precision.
+Published experiment records retain full IDs and values. LOCAL results never
+inherit GOAL thresholds or combine different screening baselines. Running
+experiments appear as scores only after their outcomes are published.
 
 **Global tasks** separates Grounding and run-wide coordination from expert cards
 in Web and TUI. Web **Details & history** shows recorded execution identities,

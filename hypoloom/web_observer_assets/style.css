@@ -224,6 +224,12 @@ main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4
 .metric-point { fill: var(--expert-accent); stroke: var(--bg); stroke-width: 1; }
 .metric-target-line { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 6 4; }
 .metric-target-label { fill: var(--amber); font-size: 10px; }
+.metric-local .metric-grid-charts { grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); align-items: start; }
+.metric-single { min-width: 0; padding: .7rem .8rem; background: var(--panel-deep); border: 1px solid var(--line); border-radius: 10px; }
+.metric-single h5 { margin: 0 0 .45rem; font-size: .78rem; overflow-wrap: anywhere; }
+.metric-single-value { display: block; color: var(--expert-accent); font: 600 1.5rem "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.metric-local-context { margin: .45rem 0 .2rem; color: var(--muted); }
+.metric-local :is(.metric-single, .metric-chart) .panel-copy { margin: .2rem 0 0; padding: 0; border: 0; }
 #shared-acceptance-panel .acceptance-records > summary { color: var(--text); font-size: .82rem; font-weight: 600; }
 .authority-note { margin: 0.75rem 0 1rem; padding: 0.65rem 0.8rem; border-left: 2px solid var(--amber); color: var(--muted); background: rgba(234, 198, 165, 0.06); font-size: 0.69rem; line-height: 1.55; }
 .authority-note strong { color: var(--amber); }

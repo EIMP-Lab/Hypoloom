@@ -214,6 +214,7 @@ def test_web_common_panel_renders_raw_values_and_reuses_its_read_only_node(tmp_p
             extract("  function element(", "  function svgElement("),
             extract("  function svgElement(", "  function setText("),
             extract("  function object(", "  function sharedGoal("),
+            extract("  function compact(", "  function fitNodeText("),
             extract("  function expertClass(", "  function appendDefinition("),
         ]
     )
@@ -238,15 +239,39 @@ const byId = (id) => registry.get(id);
 const list = (value) => Array.isArray(value) ? value : [];
 registry.set("grounding-dialogue-panel", new Node());
 const content = (node) => [node.textContent, ...node.children.map(content)].join("\n");
+const withClass = (node, name) => [
+  ...(String(node.className || node.attributes?.class || "").split(" ").includes(name) ? [node] : []),
+  ...node.children.flatMap(child => withClass(child, name))];
 """
     tail = """
+const local = snapshot.status.shared_acceptance.outcomes[0];
+local.hypothesis_id = 'long-hypothesis-' + 'abc'.repeat(70);
+snapshot.hypotheses = [{hypothesis_id: local.hypothesis_id, claim: 'A long claim '.repeat(15)}];
 renderSharedAcceptance(snapshot);
 const first = byId("shared-acceptance-panel");
 const rendered = content(first);
+const localPanel = () => withClass(first, 'metric-local')[0];
+const count = name => withClass(localPanel(), name).length;
+const context = withClass(localPanel(), 'metric-local-context')[0];
+const single = {cards: count('metric-single'), charts: count('metric-chart'),
+  value: withClass(localPanel(), 'metric-single-value')[0].textContent,
+  shortContext: context.textContent.length <= 64,
+  fullIdentity: context.title.includes(local.hypothesis_id),
+  rule: context.title.includes(local.local_measurement.parse_rule)};
+const goalTargets = withClass(first, 'metric-target-line').length;
+snapshot.status.shared_acceptance.outcomes.push(
+  {...local, experiment_id: 'repeat', outcome_id: 'repeat', local_metric_value: '-0.0123456789'},
+  {...local, experiment_id: 'peer', outcome_id: 'peer', hypothesis_id: 'another-hypothesis'},
+  {...local, experiment_id: 'new-baseline', outcome_id: 'new-baseline',
+    local_measurement: {...local.local_measurement, parse_rule: 'Another baseline'}},
+  ...[null, '', false].map((value, i) => ({...local, experiment_id: `missing-${i}`, local_metric_value: value})));
+renderSharedAcceptance(snapshot);
+const grouped = {cards: count('metric-single'), charts: count('metric-chart'), points: count('metric-point'),
+  localTargets: count('metric-target-line'), sameGoalTargets: goalTargets === withClass(first, 'metric-target-line').length};
 renderSharedAcceptance(snapshot);
 const reused = first === byId("shared-acceptance-panel");
 renderSharedAcceptance({status: {shared_acceptance: null}});
-process.stdout.write(JSON.stringify({rendered, reused, insertions, hidden: first.hidden, remaining: first.children.length}));
+process.stdout.write(JSON.stringify({rendered, single, grouped, reused, insertions, hidden: first.hidden, remaining: first.children.length}));
 """
     observed = json.loads(
         subprocess.run(
@@ -280,6 +305,10 @@ process.stdout.write(JSON.stringify({rendered, reused, insertions, hidden: first
     ):
         assert value in observed["rendered"]
     assert "GOAL_MET" not in observed["rendered"]
+    assert observed["single"] == {"cards": 1, "charts": 0, "value": "0",
+        "shortContext": True, "fullIdentity": True, "rule": True}
+    assert observed["grouped"] == {"cards": 2, "charts": 1, "points": 2,
+        "localTargets": 0, "sameGoalTargets": True}
     assert observed == {
         **observed,
         "reused": True,

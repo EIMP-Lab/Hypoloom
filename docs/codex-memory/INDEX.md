@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Compact LOCAL screening results](../qualification.md#current-repair--compact-local-screening-results-2026-09-29):
+  single observations as result cards, comparable repeats as trends, short labels
+  with retained full evidence and unchanged GOAL charts. Browser/offline evidence:
+  `.local/qualification/local-metric-cards-20260929/`.
 - [Literature address failure isolation](../qualification.md#current-repair--isolated-literature-address-rejection-2026-09-29):
   per-paper denial preserves the valid packet, strict network safety and existing
   coverage validation; Web/TUI distinguish exhausted recovery from pending work.

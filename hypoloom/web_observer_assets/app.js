@@ -719,9 +719,13 @@
       if (!metrics.has(key)) {
         const hypothesis = list(snapshot.hypotheses).find((item) => item.hypothesis_id === hypothesisId);
         const component = list(snapshot.components).find((item) => item.component_id === outcome.component_id);
-        labels.set(key, `${metric.name} · ${measurement.comparison || "local"} · ${hypothesisId || outcome.experiment_id}`);
-        series.set(key, {key, label: labels.get(key), title: measurement.parse_rule || "Local screening observation",
-          accent: expertClass(snapshot, hypothesis ? hypothesis.proposer_role : component && component.owner_role)});
+        const role = hypothesis ? hypothesis.proposer_role : component && component.owner_role;
+        labels.set(key, metric.name);
+        series.set(key, {key, label: metric.name,
+          context: [role, compact(hypothesis?.claim || hypothesisId || outcome.experiment_id, 64)].filter(Boolean).join(" · "),
+          comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? "Delta from baseline" : measurement.comparison === "VALUE" ? "Value" : "Local measurement",
+          title: [hypothesisId || outcome.experiment_id, hypothesis?.claim, measurement.comparison, measurement.parse_rule].filter(Boolean).join("\n"),
+          accent: expertClass(snapshot, role)});
         metrics.set(key, new Map([[key, []]]));
       }
       metrics.get(key).get(key).push({outcome, hypothesisId, depth: 0, value, raw: outcome.local_metric_value});
@@ -792,6 +796,23 @@
     return figure;
   }
 
+  function renderLocalMetric(metric, model) {
+    const points = model.metrics.get(metric).get(metric);
+    const series = model.series.get(metric);
+    const single = points.length === 1;
+    const card = single ? element("article", `metric-single ${series.accent}`) : renderMetricChart(metric, model);
+    card.dataset.metric = metric;
+    if (single) {
+      const value = element("strong", "metric-single-value", formatMetric(points[0].value));
+      value.title = `Recorded value: ${points[0].raw}`;
+      card.append(element("h5", "", series.label), value);
+    }
+    const context = element("p", "metric-local-context", series.context);
+    context.title = series.title;
+    card.append(context, element("p", "panel-copy", `${points.length} published observation${single ? "" : "s"} · ${series.comparison}`));
+    return card;
+  }
+
   function renderMetricTrends(panel, common, snapshot) {
     const model = metricTrendModel(common, snapshot);
     const section = element("section", "metric-trends");
@@ -824,9 +845,9 @@
     if (localCount) {
       const localSection = element("section", "metric-local");
       localSection.append(element("h4", "", "LOCAL screening"), element("p", "panel-copy",
-        "Each chart uses one hypothesis and its recorded measurement definition. Local scores are not GOAL scores and charts may use different baselines or scales."));
+        "Single observations appear as results; multiple observations form a trend only within one hypothesis and the same measurement definition. Local scores are not GOAL scores and may use different baselines or scales."));
       const localGrid = element("div", "metric-grid-charts");
-      local.metrics.forEach((bucket, metric) => localGrid.append(renderMetricChart(metric, local)));
+      local.metrics.forEach((bucket, metric) => localGrid.append(renderLocalMetric(metric, local)));
       if (!local.metrics.size) localSection.append(element("p", "metric-empty panel-copy", "Local records exist; numeric values or measurement definitions are unavailable."));
       localSection.append(localGrid);
       section.append(localSection);
