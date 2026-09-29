@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Global task ownership and Grounding sharing](../guides/reading-and-proposals.md#understanding-the-expert-card):
+  September 29 Web/TUI observations separate task scope from transport role,
+  partition usage without changing budgets, and expose accepted-input delivery.
+  Evidence: `.local/qualification/global-task-observation-20260929/`.
 - [Expert card and details](../guides/reading-and-proposals.md#understanding-the-expert-card):
   September 29 display simplification, existing drawer/history navigation and
   selected-expert live projection. Node rendering and offline checks pass;

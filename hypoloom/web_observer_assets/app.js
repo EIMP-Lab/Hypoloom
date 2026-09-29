@@ -262,8 +262,8 @@
 
   function attemptMatches(attempt, filters = selectedFilters()) {
     if (filters.search && !searchable(attempt).includes(filters.search)) return false;
-    if (filters.component && attempt.component_id !== filters.component) return false;
-    if (filters.expert && attempt.role !== filters.expert) return false;
+    if (filters.component && (attempt.task_scope !== "expert" || attempt.component_id !== filters.component)) return false;
+    if (filters.expert && (attempt.task_scope !== "expert" || attempt.owner_role !== filters.expert)) return false;
     if (filters.kind && attempt.kind !== filters.kind) return false;
     if (filters.state && attempt.state !== filters.state) return false;
     return true;
@@ -271,7 +271,7 @@
 
   function relatedAttempts(componentId, role) {
     return list(state.snapshot && state.snapshot.attempts).filter((attempt) =>
-      (!componentId || attempt.component_id === componentId) && (!role || attempt.role === role));
+      (!componentId || attempt.task_scope === "expert" && attempt.component_id === componentId) && (!role || attempt.task_scope === "expert" && attempt.owner_role === role));
   }
 
   function relatedRendezvous(componentId, role) {
@@ -1043,6 +1043,64 @@
     }));
   }
 
+  function taskScopeLabel(record) {
+    return record.task_scope === "run" ? "Global" : record.task_scope === "expert"
+      ? `Expert · ${record.owner_role || "unavailable"}` : "Ownership unknown";
+  }
+
+  function renderGlobalTasks(snapshot) {
+    const container = byId("global-task-list");
+    container.replaceChildren();
+    const overview = object(snapshot.overview);
+    [["run", "global_tasks", "Global"], ["unknown", "unknown_tasks", "Ownership unknown"]].forEach(([scope, key, title]) => {
+      const group = object(overview[key]);
+      if (!list(group.stages).length) return;
+      const row = element("article", "global-task-summary");
+      const opened = list(group.activity).filter((item) => item.state === "OPEN");
+      const stages = opened.length ? opened : list(group.stages).slice(-1);
+      stages.forEach((stage) => {
+        const button = actionButton(`${stage.node || "Task"} · ${stage.state === "OPEN" ? "OPEN" : stage.terminal_reason || stage.state} · ${compactDuration(stage.elapsed_seconds)}`,
+          () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link global-task-attempt");
+        button.title = `${title} task · OPEN is durable state, not process liveness`;
+        row.append(button);
+      });
+      const usage = object(group.accounting);
+      row.append(element("span", "panel-copy", ` ${title} · ≥${compactNumber(usage.reported_tokens)} tokens · reserved ${compactNumber(usage.reserved_tokens)} `));
+      row.append(actionButton("Details & history", () => openLocalDetail("global_tasks", {task_scope: scope, name: `${title} tasks`}), "detail-link"));
+      container.append(row);
+    });
+    const sharing = object(overview.grounding_sharing);
+    if (sharing.state === "accepted") container.append(element("p", "panel-copy grounding-sharing",
+      `Grounding accepted · supplied to ${list(sharing.experts).filter((item) => item.provided).length}/${list(sharing.experts).length} experts' task inputs`));
+    else if (sharing.state === "waiting_human") container.append(element("p", "panel-copy", "Grounding awaiting clarification · review the questions above."));
+    if (!container.children.length) container.append(element("p", "empty-copy", "No global task evidence yet."));
+  }
+
+  function renderGlobalDetails(parent, scope) {
+    const overview = object(state.snapshot?.overview);
+    const group = object(overview[scope === "run" ? "global_tasks" : "unknown_tasks"]);
+    if (scope === "run") {
+      const sharing = object(overview.grounding_sharing);
+      parent.append(element("h3", "", "Grounding sharing"), element("p", "panel-copy",
+        sharing.state === "accepted" ? "Accepted result available to subsequent tasks. Input delivery does not establish reading or understanding."
+          : sharing.state === "waiting_human" ? "Awaiting clarification; no final accepted result."
+          : "No final accepted Grounding result available."));
+      if (sharing.source_attempt_id) parent.append(actionButton("Grounding source", () => openRemoteDetail("attempt", {attempt_id: sharing.source_attempt_id}), "detail-link"));
+      list(sharing.experts).forEach((expert) => parent.append(element("p", "panel-copy",
+        `${expert.role} · ${expert.provided ? "provided in task inputs" : "delivery not yet observed"}`)));
+    }
+    parent.append(element("h3", "", "Usage & recovery"));
+    structuredDetail(parent, {tokens: group.accounting, context_recovery: Object.fromEntries(
+      Object.entries(object(group.context_recovery)).filter(([key]) => !/cost|pricing|usd/i.test(key)))});
+    compactReliability(parent, object(group.reliability).metrics, {expanded: true, taskScope: scope});
+    parent.append(element("h3", "", "Recorded tasks"));
+    list(group.stages).slice(-20).forEach((stage) => parent.append(actionButton(`${stage.node} · ${stage.terminal_reason || stage.state} · execution role ${stage.role || "unknown"}`,
+      () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link")));
+    parent.append(actionButton("Browse task history", () => {
+      closeDrawer(); openWorkbench("sessions", {task_scope: scope});
+    }));
+  }
+
   function workingTilePhase(attemptId) {
     let hash = 0;
     for (const ch of String(attemptId)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
@@ -1170,7 +1228,7 @@
       const card = element("article", `entity-card expert-preview expert-accent ${expertClass(snapshot, expert.role)}`);
       card.dataset.expertRole = expert.role;
       const identity = element("div", "expert-identity");
-      const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN").length;
+      const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN").length;
       const heading = element("h3", "", expert.role || "unnamed role");
       if (openAttempts) {
         const breath = element("span", "breath-dot");
@@ -1178,7 +1236,7 @@
         heading.prepend(breath);
       }
       identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
-      const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.role === expert.role && attempt.state === "OPEN"
+      const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (object(summary.leader).active > 0) {
         const crown = element("span", "leader-crown", "♛");
@@ -1321,14 +1379,15 @@
     }
     const groups = new Map();
     openAttempts.forEach((attempt) => {
-      const role = attempt.role || "unassigned";
+      const role = taskScopeLabel(attempt);
       if (!groups.has(role)) groups.set(role, []);
       groups.get(role).push(attempt);
     });
-    Array.from(groups.entries()).sort(([left], [right]) => left.localeCompare(right)).forEach(([role, attempts]) => {
-      const card = element("article", `activity-card expert-accent ${expertClass(snapshot, role)}`);
+    Array.from(groups.entries()).sort(([left], [right]) => left.localeCompare(right)).forEach(([label, attempts]) => {
+      const role = attempts[0].task_scope === "expert" ? attempts[0].owner_role : null;
+      const card = element("article", `activity-card${role ? ` expert-accent ${expertClass(snapshot, role)}` : ""}`);
       const heading = element("div", "activity-heading-row");
-      heading.append(element("h3", "", role), element("span", "counter", attempts.length));
+      heading.append(element("h3", "", label), element("span", "counter", attempts.length));
       card.append(heading);
       attempts.forEach((attempt) => {
         const record = element("div", "activity-record");
@@ -1907,7 +1966,8 @@
       const grid = element("dl");
       appendDefinition(grid, "state", attempt.state === "OPEN" ? "OPEN (durable; liveness unknown)" : attempt.state || "—");
       appendDefinition(grid, "kind / phase", `${attempt.kind || "—"} / ${attempt.phase || "—"}`);
-      appendDefinition(grid, "role", attempt.role || "—");
+      appendDefinition(grid, "task ownership", taskScopeLabel(attempt));
+      appendDefinition(grid, "execution role", attempt.role || "—");
       appendDefinition(grid, "ordinal", attempt.attempt_ordinal ?? "—");
       appendDefinition(grid, "workflow", attempt.workflow_id || "—");
       appendDefinition(grid, "started", formatTimestamp(attempt.started_at));
@@ -2086,7 +2146,12 @@
       renderChanged("expert-detail", [role, summary, snapshot.overview?.host_observation?.availability,
         snapshot.status_source, snapshot.status?.dispatch_error], () => renderResearchDetail());
     }
+    if (!drawer.hidden && state.detail?.kind === "global_tasks") {
+      renderChanged("global-detail", [state.detail.data.task_scope, snapshot.overview?.global_tasks,
+        snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], renderResearchDetail);
+    }
     if (state.activeView === "operations") {
+      renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], () => renderGlobalTasks(snapshot));
       renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
       renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, snapshot.attempts, filters, sharedGoal(snapshot)], () => {
@@ -2265,7 +2330,7 @@
 
   const RELIABILITY_SHORT = ["🎯 FP", "🔧 CR", "🔁 RT", "📦 DL", "🧰 RA"];
 
-  function compactReliability(parent, metrics, {role = "", expanded = false} = {}) {
+  function compactReliability(parent, metrics, {role = "", expanded = false, taskScope = ""} = {}) {
     RELIABILITY_METRICS.forEach(([key, label], index) => {
       const metric = object(object(metrics)[key]);
       const rate = typeof metric.rate === "number" ? `${(metric.rate * 100).toFixed(0)}%` : "—";
@@ -2273,7 +2338,7 @@
         .map(([name, symbol]) => `${symbol}${metric[name] ?? "?"}`).join(" ");
       const button = actionButton("", () => {
         state.reliabilityMetric = key;
-        state.reliabilityFilters = {role, node: "", model: ""};
+        state.reliabilityFilters = {role: "", owner_role: role, task_scope: taskScope || (role ? "expert" : ""), node: "", model: ""};
         openWorkbench("reliability");
       }, "reliability-mini");
       button.dataset.previewMetric = key;
@@ -2297,7 +2362,7 @@
     RELIABILITY_METRICS.forEach(([key, label]) => {
       const button = actionButton(`${label}: ${reliabilityMetricText(object(metrics)[key])}`, () => {
         state.reliabilityMetric = key;
-        if (scope) state.reliabilityFilters = {role: scope.role || "", node: scope.node || "", model: scope.model || ""};
+        if (scope) state.reliabilityFilters = {role: scope.role || "", task_scope: scope.task_scope || "", owner_role: scope.owner_role || "", node: scope.node || "", model: scope.model || ""};
         renderReliability();
       }, "reliability-metric detail-link");
       button.dataset.reliabilityMetric = key;
@@ -2318,7 +2383,7 @@
     const filters = state.reliabilityFilters;
     const container = byId("workbench-list");
     const renderedKey = JSON.stringify(["reliability", source, filters, state.reliabilityMetric]);
-    setText("workbench-scope", "All-run metrics use recorded denominators. Role, node and model filters narrow groups and evidence below; they do not recalculate rates.");
+    setText("workbench-scope", "All-run metrics use recorded denominators. Task ownership, execution role, node and model filters narrow evidence below; they do not recalculate rates.");
     setText("workbench-status", Object.keys(source).length ? "Execution reliability, not a model capability score. Read-only recorded evidence." : "Reliability unavailable for this snapshot; missing evidence is unknown.");
     setText("workbench-page", "Recorded node evidence; no event-pagination denominator");
     byId("workbench-previous").disabled = true; byId("workbench-next").disabled = true;
@@ -2333,14 +2398,14 @@
     list(source.notices).forEach((notice) => summary.append(element("p", "panel-copy", displayValue(notice))));
     container.append(summary);
     const controls = element("div", "filter-grid");
-    ["role", "node", "model"].forEach((key) => {
-      const label = element("label", "", key === "role" ? "Expert / role" : key);
+    ["task_scope", "owner_role", "role", "node", "model"].forEach((key) => {
+      const label = element("label", "", ({role: "Execution role", owner_role: "Owning expert", task_scope: "Task scope"})[key] || key);
       const select = element("select"); select.id = `reliability-${key}`;
       const all = element("option", "", `All ${key}s`); all.value = ""; select.append(all);
       const values = new Set([...groups, ...nodes].map((row) => row[key] || "unknown"));
       if (filters[key]) values.add(filters[key]);
       [...values].sort().forEach((value) => { const option = element("option", "", value); option.value = value; select.append(option); });
-      select.value = filters[key];
+      select.value = filters[key] || "";
       select.addEventListener("change", () => { state.reliabilityFilters[key] = select.value; renderReliability(); byId(`reliability-${key}`).focus({preventScroll: true}); });
       label.append(select); controls.append(label);
     });
@@ -2350,7 +2415,8 @@
     const groupList = element("section"); groupList.id = "reliability-groups";
     groups.filter(matches).forEach((group) => {
       const card = element("article", "detail-card");
-      card.append(element("h3", "", `${group.role || "unknown"} · ${group.node || "unknown"} · ${group.model || "unknown"}`));
+      card.append(element("h3", "", `${taskScopeLabel(group)} · ${group.node || "unknown"} · ${group.model || "unknown"}`));
+      card.append(element("p", "panel-copy", `Execution role: ${group.role || "unknown"}`));
       reliabilityMetrics(card, group.metrics, group); reliabilityCosts(card, group.costs);
       groupList.append(card);
     });
@@ -2366,7 +2432,7 @@
     }).forEach((node) => {
       const card = element("article", "detail-card reliability-node");
       card.append(actionButton(`${node.node || "unknown"} · ${node.command_id || "unknown command"}`, () => openLocalDetail("reliability_node", node), "record-title"));
-      card.append(element("p", "panel-copy", `${node.role || "unknown"} · ${node.model || "unknown"} · ${node.status || "unknown"} · ${list(node.attempts).length} recorded Attempts`));
+      card.append(element("p", "panel-copy", `${taskScopeLabel(node)} · execution role ${node.role || "unknown"} · ${node.model || "unknown"} · ${node.status || "unknown"} · ${list(node.attempts).length} recorded Attempts`));
       if (selectedMetric) card.append(element("p", "panel-copy", reliabilityMetricText(object(node.metrics)[selectedMetric])));
       nodeList.append(card);
     });
@@ -2406,6 +2472,10 @@
     if (state.workbenchKind === "sessions" && state.workbenchContext.session_id) {
       parameters.session_id = state.workbenchContext.session_id;
       // An explicit parent identity can belong to another component or scope.
+      delete parameters.role; delete parameters.component_id;
+    }
+    if (state.workbenchKind === "sessions" && state.workbenchContext.task_scope) {
+      parameters.task_scope = state.workbenchContext.task_scope;
       delete parameters.role; delete parameters.component_id;
     }
     return parameters;
@@ -2588,7 +2658,7 @@
       renderDownloadEvidence(card, item);
     } else if (kind === "sessions") {
       card.append(element("h3", "", item.session_id || "Session identity unavailable"));
-      field("expert", item.role); field("component", item.component_id);
+      field("task ownership", taskScopeLabel(item)); field("execution role", item.role); field("component", item.component_id);
       field("scope / chain", `${displayValue(item.scope)} / ${displayValue(item.chain)}`);
       field("cycle / branch", `${displayValue(item.cycle)} / ${displayValue(item.branch)}`);
       field("observed launch modes", list(item.launch_modes).join(" → ") || "unknown");
@@ -2637,7 +2707,8 @@
     if (kind === "reliability") { renderReliability(); return; }
     const filters = selectedFilters();
     const context = state.workbenchContext;
-    const scope = kind === "sessions" && context.session_id ? `Exact session ${context.session_id}; expert/component filters retained for other views`
+    const scope = kind === "sessions" && context.task_scope ? `${taskScopeLabel(context)} tasks; expert/component filters retained for other views`
+      : kind === "sessions" && context.session_id ? `Exact session ${context.session_id}; expert/component filters retained for other views`
       : `${filters.expert || "All experts"}${context.component_id ? ` · component ${context.component_id}` : ""}`;
     setText("workbench-scope", `${scope}. Search narrows the current page; totals count the complete run.`);
     const all = list(data[WORKBENCH_KEYS[kind]] || data.items);
@@ -2758,6 +2829,8 @@
     if (!selected.data) return;
     if (kind === "expert") {
       renderExpertDetails(content, data.role);
+    } else if (kind === "global_tasks") {
+      renderGlobalDetails(content, data.task_scope);
     } else if (kind === "reliability_node") {
       renderReliabilityNode(content, data);
     } else if (kind === "relationship") {

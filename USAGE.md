@@ -131,6 +131,13 @@ hypothesis and its recorded measurement definition; they never inherit GOAL
 thresholds or combine different screening baselines. Running experiments appear
 as scores only after their outcomes are published.
 
+**Global tasks** separates Grounding and run-wide coordination from expert cards
+in Web and TUI. Web **Details & history** shows recorded execution identities,
+usage and Grounding input delivery; TUI **d / w** opens diagnostics / Web details.
+An accepted result and its delivery to an expert are distinct observations.
+Reopen the monitor from updated code; the research Host can keep running. See
+[task ownership and sharing](docs/guides/reading-and-proposals.md#understanding-the-expert-card).
+
 ## Research loop and completion
 
 For new ACI-26 runs, the Host can run an expert's FORWARD/BACKWARD arguments

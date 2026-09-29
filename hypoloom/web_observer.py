@@ -416,7 +416,7 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         try:
             query = parse_qs(urlsplit(self.path).query, strict_parsing=True, keep_blank_values=True)
             allowed = {"kind", "role", "name", "commit", "base_commit", "attempt_id",
-                "session_id", "experiment_id", "component_id", "offset", "limit"}
+                "session_id", "experiment_id", "component_id", "offset", "limit", "task_scope", "execution_role"}
             if set(query) - allowed or any(len(items) != 1 or not items[0] for items in query.values()):
                 raise ValueError("invalid detail selection")
             kind = query.pop("kind")[0] if "kind" in query else ""

@@ -2,6 +2,38 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — Global task ownership in observers, 2026-09-29
+
+Grounding carried an expert transport role, so Web/TUI attributed its activity,
+component phase, sessions and usage to that expert. The shared observer projection
+now derives task ownership from existing task kinds and reader parent references.
+Run-wide preparation, management and judging have a compact global area; experts
+retain their research and advice. Unknown historical ownership remains explicit.
+Execution roles, selected models, admission budgets and frozen bundles are unchanged.
+
+Existing Attempt accounting partitions global, expert and unknown observations
+without changing run totals. Session and reliability filters distinguish ownership
+from execution role. Grounding sharing uses accepted output and actual subsequent
+request references; it never claims the model read, understood or adopted an input.
+No persistent authority, schema migration or new runtime task is introduced.
+
+The combined backend, HTTP, Textual, observation and documentation selection passes
+**194 tests**. A final ownership/component-phase/documentation selection passes
+**17 tests**, overlapping the first selection. Browser coverage initially passes
+**25 of 27** cases; two existing assertions expected the former direct-history
+shortcut and execution-role filter. Updated assertions exercise the expert drawer's
+history action and the owning-expert filter. All **five** affected final browser
+cases pass, including global sharing refresh, filtered history, ordinary expert
+activity and mobile reliability controls. JavaScript syntax and diff checks pass.
+Earlier sandbox socket failures and an interrupted monitor selection are not counted
+as passes; subsequent complete selections succeed.
+
+Read-only inspection of a retained run confirms global Grounding separated from
+three experts and the same accepted response actually supplied to all three. No
+production operation or model call was made. Evidence stays in
+`.local/qualification/global-task-observation-20260929/`; this is observer-focused
+validation, not a new scientific-quality or full G0–G5 promotion claim.
+
 ## Current repair — Dispatch, context retries and token observation, 2026-09-29
 
 Read-only inspection of `MERC-causal-202609282242` found a ready analysis node

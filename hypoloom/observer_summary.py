@@ -149,7 +149,7 @@ def _skill_counts(catalog, role=None):
         "coverage": coverage}
 
 
-def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=()):
+def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=(), scopes=None):
     from .agent_budget import fold_agent_attempts
     from .provider_observation import read_exchanges, summarize_exchanges
 
@@ -206,7 +206,8 @@ def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=(
         rebuilding = row.get("state") == "OPEN" and request.get("schema_version", 0) >= 24 and any(
             (value.get("diagnostics", {}).get("provider_failure") or {}).get("code") in CONTEXT_FAILURES
             for record, value, _ in records if record["attempt_id"] != row["attempt_id"])
-        stages.append({"role": role, "node": task.get("request_kind") or request.get("command"), "subkind": key.get("subkind"),
+        stages.append({"role": role, **(scopes or {}).get(row["attempt_id"], {}),
+            "node": task.get("request_kind") or request.get("command"), "subkind": key.get("subkind"),
             "chain": key.get("chain"), "component_id": key.get("component_id", request.get("component_id")),
             "cycle": key.get("cycle", task.get("cycle")), "experiment_ordinal": key.get("experiment_ordinal"),
             "state": row.get("state"), "terminal_reason": row.get("terminal_reason"),
@@ -462,7 +463,7 @@ def _chain_coverage(nodes, stages, chains):
     return "partial" if missing and chains else "unavailable" if missing else "complete"
 
 
-def _parallel_activity(role, agents, stages, nodes, commands, contract, run_active, reliability):
+def _parallel_activity(role, agents, stages, nodes, commands, contract, run_active, reliability, scopes):
     from .agent_budget import agent_attempts_exhausted
     from .paper_reading import reading_state
     from .observer_details import decode_embedded_content
@@ -477,7 +478,8 @@ def _parallel_activity(role, agents, stages, nodes, commands, contract, run_acti
     readers = []
     for command_id, value in commands:
         job = value.get("paper_reading")
-        if job is None or value.get("task_context", {}).get("expert_slot") != role: continue
+        parent_scope = scopes.get((job or {}).get("parent_attempt_id"), {})
+        if job is None or parent_scope.get("task_scope") != "expert" or parent_scope.get("owner_role") != role: continue
         rows = sorted(by_command[command_id], key=lambda row: row.get("attempt_ordinal", 0))
         parent = by_id.get(job["parent_attempt_id"])
         budget = contract.get("budget", {})
@@ -530,6 +532,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
     """Build all-run counts from complete transaction rows, never event pages."""
     from .observer_details import skill_catalog
     from .observer_reliability import build_reliability, summarize_reliability
+    from .observer_scope import attempt_scopes, grounding_sharing
 
     # Decode transaction rows once for all projections and expert subsets. These
     # are disposable local copies; no parsed value is retained across refreshes.
@@ -539,9 +542,12 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         for row in attempts]
     observed = _time(observed_at)
     agents = list(_agents(attempts))
+    scopes = attempt_scopes(attempts, reading_commands)
     final_failure_ids = {row["payload"].get("attempt_id") for row in transitions if row["payload"].get("agent_final_failure")}
-    stages = _logical_stages(agents, observed, state_root, run_id, final_failure_ids)
+    stages = _logical_stages(agents, observed, state_root, run_id, final_failure_ids, scopes)
     literature = literature_catalog(state_root, run_id, attempts)
+    expert_attempts = [row for row in attempts if scopes[row["attempt_id"]]["task_scope"] == "expert"]
+    expert_literature = literature_catalog(state_root, run_id, expert_attempts)
     skills = skill_catalog(state_root, run_id, attempts)
     leaders, debates = _interactions(transitions)
     experiments = _experiment_records(facts, transitions, agents, experts)
@@ -556,6 +562,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
     interrupted_at = min((value for value in interruptions if value is not None), default=None)
     reliability = build_reliability(state_root, run_id, attempts, run_terminal=terminal is not None,
         interrupted_at=interrupted_at)
+    reliability = summarize_reliability([{**node, **scopes[node["attempt_ids"][-1]]} for node in reliability["nodes"]])
     finish = _time(terminal["created_at"]) if terminal else observed
     created = _time(created_at)
     notices = []
@@ -577,16 +584,19 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
     remaining = max(0.0, float(hours) * 3600 - elapsed) if isinstance(hours, (int, float)) and elapsed is not None else None
     activity = [_time(row.get("created_at")) for row in (*facts, *transitions)]
     activity.extend(_time(row.get("ended_at") or row.get("started_at")) for row in attempts)
-    roles = list(dict.fromkeys([item["role"] for item in experts] + [request.get("role") for _, _, request in agents]
+    roles = list(dict.fromkeys([item["role"] for item in experts] + [value["owner_role"] for value in scopes.values() if value["task_scope"] == "expert"]
         + [node.get("proposer_role") for node in graph["nodes"]]))
     roles = [role for role in roles if role is not None]
     stages_by_role, nodes_by_role, reliability_by_role = defaultdict(list), defaultdict(list), defaultdict(list)
     for stage in stages:
-        stages_by_role[stage["role"]].append(stage)
+        if stage["task_scope"] == "expert":
+            stages_by_role[stage["owner_role"]].append(stage)
     for node in graph["nodes"]:
         nodes_by_role[node.get("proposer_role")].append(node)
     for node in reliability["nodes"]:
-        reliability_by_role[node["role"]].append(node)
+        ownership = scopes[node["attempt_ids"][-1]]
+        if ownership["task_scope"] == "expert":
+            reliability_by_role[ownership["owner_role"]].append(node)
     expert_values = []
     for role in roles:
         own_stages = stages_by_role[role]
@@ -604,6 +614,8 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             and "chain_identity" in experiments[row.get("experiment_id") or row["workflow_id"]])
         for row in (*facts, *transitions):
             payload = _payload(row)
+            if payload.get("task_context", {}).get("kind") == "AUXILIARY" and payload["task_context"].get("expert_slot") is None:
+                continue
             if (payload.get("proposer_role") == role or payload.get("role") == role
                     or payload.get("hypothesis_id") in hypothesis_ids
                     or payload.get("experiment_id") in experiment_ids
@@ -615,15 +627,15 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             "accounting": _token_accounting(own_stages),
             "context_recovery": _context_accounting(own_stages),
             "parallel_activity": _parallel_activity(role, agents, own_stages, nodes, reading_commands,
-                goal.get("research_contract", {}), bool(run_rows) and run_rows[-1]["state"] == "ACTIVE", reliability_by_role[role]),
+                goal.get("research_contract", {}), bool(run_rows) and run_rows[-1]["state"] == "ACTIVE", reliability_by_role[role], scopes),
             "activity": _current_activity(own_stages, own_processes, observed),
             "reliability": summarize_reliability(reliability_by_role[role],
                 include_nodes=False, include_groups=True),
             "stages": _visible_stages(own_stages), "hypotheses": len({item["hypothesis_id"] for item in nodes}),
             "chains": chains, "chain_coverage": _chain_coverage(nodes, own_stages, chains),
             "active_chains": len(active_chains),
-            "experiments": _experiment_counts(experiments, role), "literature": _literature_counts(literature, role),
-            "skills": _skill_counts(skills, role), "evolutions": _evolutions(agents, role),
+            "experiments": _experiment_counts(experiments, role), "literature": _literature_counts(expert_literature, role),
+            "skills": _skill_counts(skills, role), "evolutions": _evolutions(list(_agents(expert_attempts)), role),
             "leader": _interaction_counts(leaders, role), "debate": _interaction_counts(debates, role),
             "last_activity_at": max((value for value in own_activity if value is not None), default=None)})
     hypotheses = {_payload(row)["hypothesis_id"] for row in facts if row["fact_type"] == "HypothesisProposed"}
@@ -661,7 +673,15 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         notices.append("Successful self-evolution lacks retained plugin-update evidence; effective change count is unknown.")
     host_observation = _host_observation(state_root)
     host_observation["orphaned"] = terminal is None and host_observation["availability"] == "absent"
+    def auxiliary_group(scope):
+        selected = [stage for stage in stages if stage["task_scope"] == scope]
+        nodes = [node for node in reliability["nodes"] if scopes[node["attempt_ids"][-1]]["task_scope"] == scope]
+        return {"stages": selected, "activity": _current_activity(selected, [], observed),
+            "accounting": _token_accounting(selected), "context_recovery": _context_accounting(selected),
+            "reliability": summarize_reliability(nodes, include_nodes=False, include_groups=True)}
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
+        "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),
+        "grounding_sharing": grounding_sharing(attempts, roles, run_rows[-1]["state"] if run_rows else None),
         "reliability": reliability, "accounting": _token_accounting(stages),
         "context_recovery": _context_accounting(stages),
         "host_observation": host_observation, "stages": stages,

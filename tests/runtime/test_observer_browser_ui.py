@@ -29,6 +29,8 @@ _CHROME = (
 _ATTEMPT = {
     "attempt_id": "attempt-a",
     "role": "expert-a",
+    "task_scope": "expert",
+    "owner_role": "expert-a",
     "state": "CLOSED",
     "kind": "AGENT",
     "command": "SELF_EVOLVE",
@@ -85,9 +87,11 @@ def _reliability() -> dict:
     groups, nodes = [], []
     for command, role, node, model in [("command-a", "expert-a", "DESIGN", "model-a"),
                                        ("command-b", "expert-b", "GROUNDING", "model-b")]:
-        groups.append({"role": role, "node": node, "model": model,
+        scope = {"task_scope": "run" if node == "GROUNDING" else "expert",
+                 "owner_role": None if node == "GROUNDING" else role}
+        groups.append({"role": role, "node": node, "model": model, **scope,
                        "metrics": metrics, "counts": counts, "costs": costs})
-        nodes.append({"command_id": command, "workflow_id": "workflow-a", "role": role,
+        nodes.append({"command_id": command, "workflow_id": "workflow-a", "role": role, **scope,
             "node": node, "model": model, "status": "FAILED", "metrics": metrics, "costs": costs,
             "attempt_ids": ["attempt-a"], "attempts": [{"attempt_id": "attempt-a",
                 "terminal_reason": "TIMED_OUT", "failure_code": "timed_out",
@@ -225,6 +229,7 @@ def _detail(query: dict[str, list[str]]) -> dict:
                 {
                     "session_id": "session-a",
                     "role": "expert-a",
+                    "task_scope": "expert", "owner_role": "expert-a",
                     "component_id": "component-a",
                     "parent_session_id": "session-parent",
                     "scope": "chain",
@@ -562,9 +567,10 @@ def browser(tmp_path: Path, request):
         response.total = response.experiments.length;
       }
       if (query.searchParams.get('kind') === 'sessions') {
-        for (const key of ['session_id', 'role', 'component_id']) {
+        for (const key of ['session_id', 'component_id', 'task_scope']) {
           if (query.searchParams.has(key)) response.sessions = response.sessions.filter(item => item[key] === query.searchParams.get(key));
         }
+        if (query.searchParams.has('role')) response.sessions = response.sessions.filter(item => item.task_scope === 'expert' && item.owner_role === query.searchParams.get('role'));
         response.total = response.sessions.length;
       }
       return {ok: true, status: 200, json: async () => response};
@@ -821,6 +827,8 @@ def test_browser_session_corrections_literature_interactions_and_resource_detail
 ) -> None:
     page = browser
     page.click("#expert-list .detail-link")
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('Browse expert history')")
+    page.evaluate("Array.from(document.querySelectorAll('#research-detail-content button')).find(b=>b.textContent==='Browse expert history').click()")
     page.wait("document.querySelector('.session-attempt') !== null")
     lineage = page.evaluate("document.querySelector('#workbench-list').innerText")
     assert all(
@@ -1371,7 +1379,7 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
 
 def test_browser_context_rejection_separates_last_measured_usage_from_current_estimate(browser):
     page = browser
-    attempt = {"attempt_id": "context-rejected", "kind": "AGENT", "state": "OPEN", "role": "expert-a",
+    attempt = {"attempt_id": "context-rejected", "kind": "AGENT", "state": "OPEN", "role": "expert-a", "task_scope": "expert", "owner_role": "expert-a",
         "command": "EXPERIMENT_DESIGN_IMPLEMENT", "context_tokens": None, "context_source": "estimate",
         "context_window_tokens": 262144, "context_window_source": "working_limit_only",
         "cumulative_tokens": 3722840, "context": {"last_observed_exchange": 5,
@@ -1424,10 +1432,10 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "pricing" not in card and "$" not in card
     page.evaluate("fixture.snapshot.overview.host_observation = {availability:'responded'}")
     page.evaluate("fixture.snapshot.attempts.push("
-        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, context_window_tokens:200000, context_window_source:'working_limit_only', cumulative_tokens:3722840, context:{cache_read_input_tokens:40000,cache_creation_input_tokens:1200}, session_scope:'chain-a', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
-        "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, budget_max_tokens:1000000, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
-        "{attempt_id:'open-exe', kind:'PROCESS', state:'OPEN', role:'expert-a', command:'EXECUTE', gpu_uuid:'GPU-0', latest_utilization_percent:87, started_at:fixture.snapshot.observed_at-540},"
-        "{attempt_id:'open-other', kind:'AGENT', state:'OPEN', role:'expert-b', command:'RESULT_ANALYSIS', context_tokens:1200, session_id:'session-c'})")
+        "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', task_scope:'expert', owner_role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, context_window_tokens:200000, context_window_source:'working_limit_only', cumulative_tokens:3722840, context:{cache_read_input_tokens:40000,cache_creation_input_tokens:1200}, session_scope:'chain-a', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
+        "{attempt_id:'open-ana', kind:'AGENT', state:'OPEN', role:'expert-a', task_scope:'expert', owner_role:'expert-a', command:'RESULT_ANALYSIS', context_tokens:null, budget_max_tokens:1000000, session_id:'session-b', started_at:fixture.snapshot.observed_at-3000, wall_seconds:2700},"
+        "{attempt_id:'open-exe', kind:'PROCESS', state:'OPEN', role:'expert-a', task_scope:'expert', owner_role:'expert-a', command:'EXECUTE', gpu_uuid:'GPU-0', latest_utilization_percent:87, started_at:fixture.snapshot.observed_at-540},"
+        "{attempt_id:'open-other', kind:'AGENT', state:'OPEN', role:'expert-b', task_scope:'expert', owner_role:'expert-b', command:'RESULT_ANALYSIS', context_tokens:1200, session_id:'session-c'})")
     page.wait("document.querySelectorAll('.expert-preview .agent-tile').length === 3")
     assert "Working · 3" in page.text(".expert-preview .working-agents")
     tiles = ".expert-preview .agent-tile"
@@ -1477,8 +1485,8 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "admitted work may finish" in page.text(notice)
     assert "debate:agent-5e40-1" in page.evaluate(f"document.querySelector('{notice}').title")
     page.evaluate("fixture.snapshot.attempts.push("
-        "{attempt_id:'open-debate', kind:'AGENT', state:'OPEN', role:'expert-a', command:'DEBATE', context_tokens:88000, context_source:'transcript', budget_max_tokens:1000000, session_id:'session-d', started_at:fixture.snapshot.observed_at-120, wall_seconds:2700},"
-        "{attempt_id:'open-lead', kind:'AGENT', state:'OPEN', role:'expert-a', command:'LEADER', context_tokens:null, budget_max_tokens:1000000, session_id:'session-e', started_at:fixture.snapshot.observed_at-60, wall_seconds:2700})")
+        "{attempt_id:'open-debate', kind:'AGENT', state:'OPEN', role:'expert-a', task_scope:'expert', owner_role:'expert-a', command:'DEBATE', context_tokens:88000, context_source:'transcript', budget_max_tokens:1000000, session_id:'session-d', started_at:fixture.snapshot.observed_at-120, wall_seconds:2700},"
+        "{attempt_id:'open-lead', kind:'AGENT', state:'OPEN', role:'expert-a', task_scope:'expert', owner_role:'expert-a', command:'LEADER', context_tokens:null, budget_max_tokens:1000000, session_id:'session-e', started_at:fixture.snapshot.observed_at-60, wall_seconds:2700})")
     page.wait(f"document.querySelector('{notice}.in-debate') !== null")
     assert "Debate in progress" in page.text(notice)
     assert page.evaluate(f"document.querySelector('{notice} .pause-link') !== null")
@@ -1494,6 +1502,40 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'start'})")
     page.evaluate("window.scrollBy(0, -110)")
     page.screenshot(tmp_path / 'expert-working-subagents.png')
+
+
+def test_browser_global_grounding_is_separate_and_sharing_refreshes(browser, tmp_path):
+    from test_observer_scope import record
+    from test_observer_summary import _summary
+    page = browser
+    row = record("global-g", "GROUNDING", kind="GROUNDING", role="expert-a", state="OPEN")
+    summary = _summary(tmp_path, attempts=[row], experts=[{"role": "expert-a"}])
+    attempt = {**_ATTEMPT, "attempt_id": "global-g", "command": "GROUNDING", "state": "OPEN",
+        "task_scope": "run", "owner_role": None}
+    page.evaluate("fixture.snapshot.overview=" + json.dumps(summary))
+    page.evaluate("fixture.snapshot.attempts=" + json.dumps([attempt]))
+    page.wait("document.querySelector('#global-task-list').textContent.includes('GROUNDING')")
+    assert "GROUNDING" not in page.text(".expert-preview")
+    assert "Working" not in page.text(".expert-preview")
+    page.click("#global-task-list .detail-link:last-child")
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('Grounding sharing')")
+    assert "No final accepted" in page.text("#research-detail-content")
+    completed = record("global-g", "GROUNDING", kind="GROUNDING", role="expert-a", accepted=True)
+    peer = record("next", "RESULT_ANALYSIS", role="expert-a", inputs=[{"ref": "global-g--response"}])
+    summary = _summary(tmp_path, attempts=[completed, peer], experts=[{"role": "expert-a"}])
+    page.evaluate("fixture.snapshot.overview=" + json.dumps(summary))
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('provided in task inputs')")
+    assert "does not establish reading or understanding" in page.text("#research-detail-content")
+    page.evaluate("window.globalDetailsElement=document.querySelector('#research-detail-content button')")
+    page.call("Runtime.evaluate", {"expression": "new Promise(r=>setTimeout(r,1800))", "awaitPromise": True})
+    assert page.evaluate("window.globalDetailsElement===document.querySelector('#research-detail-content button')")
+    from hypoloom.observer_details import _sessions
+    page.evaluate("fixture.details['sessions:0']=" + json.dumps(_sessions([completed, peer], {})))
+    page.evaluate("Array.from(document.querySelectorAll('#research-detail-content button')).find(b=>b.textContent==='Browse task history').click()")
+    page.wait("fixtureRequests.some(r=>r[1].includes('kind=sessions') && r[1].includes('task_scope=run'))")
+    assert "Global tasks" in page.text("#workbench-scope")
+    page.wait("document.querySelector('#workbench-list').textContent.includes('GROUNDING')")
+    assert "RESULT_ANALYSIS" not in page.text("#workbench-list")
 
 
 @pytest.mark.parametrize("terminal", ["leader_round_finished", "leader_aborted", "leader_failed"])
@@ -1525,7 +1567,7 @@ def test_browser_leader_crown_follows_accepted_round_across_tasks_and_idle(brows
 
     # Current Leader work uses ordinary node commands; no LEADER Attempt exists.
     for command, label in (("HYPOTHESIS_PROPOSAL", "Hypothesis proposal"), ("CYCLE_REPORT", "Cycle report")):
-        attempt = {"attempt_id": "leader-work", "kind": "AGENT", "state": "OPEN", "role": "expert-a",
+        attempt = {"attempt_id": "leader-work", "kind": "AGENT", "state": "OPEN", "role": "expert-a", "task_scope": "expert", "owner_role": "expert-a",
             "command": command, "started_at": 100, "context_tokens": None}
         page.evaluate("fixture.snapshot.attempts=" + json.dumps([attempt]))
         tile = '.expert-preview[data-expert-role="expert-a"] .agent-tile[data-attempt="leader-work"]'
@@ -1719,10 +1761,12 @@ def test_browser_expert_previews_refresh_current_work_and_cumulative_metrics(bro
     page.evaluate("document.querySelector('#experts-panel').scrollIntoView({block:'start'})")
     page.screenshot(tmp_path / "expert-previews-mobile.png")
     page.click('[data-expert-role="expert-a"] [data-preview-metric="node_delivery"]')
-    page.wait("document.querySelector('#reliability-role')?.value === 'expert-a'")
+    page.wait("document.querySelector('#reliability-owner_role')?.value === 'expert-a'")
+    assert page.evaluate("document.querySelector('#reliability-task_scope').value") == "expert"
+    assert page.evaluate("document.querySelector('#reliability-role').value") == ""
     assert "Final delivery" in page.text("#reliability-list-label")
     page.click('#run-reliability-preview [data-preview-metric="node_delivery"]')
-    page.wait("document.querySelector('#reliability-role')?.value === ''")
+    page.wait("document.querySelector('#reliability-owner_role')?.value === ''")
 
 
 def test_browser_graph_text_fits_cards_and_keeps_full_details(browser, tmp_path):

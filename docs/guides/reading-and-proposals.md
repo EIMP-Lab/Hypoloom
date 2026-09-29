@@ -57,6 +57,25 @@ original serially or report the limitation. Readers cannot delegate recursively.
 
 ## Understanding the expert card
 
+Web **Global tasks** and the TUI's global lane show Grounding/query planning,
+Observer, graph evolution, final reports and independent Debate judging. These
+tasks serve the run even when an existing expert is their recorded execution role.
+Expert cards and their session filters show expert-owned work; readers follow the
+recorded parent commission. Unknown historical ownership stays explicit. Task
+ownership, execution role and the actual model are separate in Attempt details.
+
+**Details & history** opens global usage, recovery and task history in the existing
+drawer. Grounding sharing distinguishes preparation, clarification and an accepted
+result. Per-expert delivery is shown only when a recorded research request contains
+that accepted result reference; delivery does not establish reading or understanding.
+Completed global work stays compact. Expert filters do not hide the global overview.
+TUI **d** shows execution details; **w** opens full Web history and sharing details.
+
+Token and retry observations are partitioned into global, expert and unknown work,
+using the existing accounting fold once per Attempt. Run totals and budget controls
+are unchanged. Reopen the monitor from updated code to use this display with a
+retained run; do not restart or migrate the research Host or its frozen bundle.
+
 The overview card shows current work, Agent activity, token usage and operational
 notices. Choose **Expert details** for active-chain limits, this cycle's accepted
 candidates, FORWARD/BACKWARD/SYNTHESIS status, reading tasks and trace coverage.

@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- September 29 global-task observation: Web/TUI separate run-wide Grounding,
+  management and judging from expert work using existing task/reader ownership.
+  Preserve execution roles, models, budgets and frozen runs. Global/unknown and
+  expert token/recovery observations partition the existing fold; session filters
+  and reliability details follow the same ownership. Grounding delivery requires
+  an actual accepted-result input reference, not a claim of model understanding.
+  Compact overview, existing drawers/history and bilingual usage guides updated.
+  Backend/HTTP/TUI/documentation selection passes 194 tests; final scope/docs
+  selection passes 17 (overlapping). Browser initial 25/27; two stale navigation/
+  filter assertions updated, all five affected final cases pass. Evidence:
+  `.local/qualification/global-task-observation-20260929/`. Read-only production
+  observation confirms shared inputs across three experts. Production runs and
+  frozen bundles remain unchanged; no model calls. User authorizes commit/push
+  to dev, reusing the completed focused validation.
+
 - September 29 Web expert-card simplification: move chain limits, proposal-wing
   statuses, reader counts and trace coverage into the existing read-only drawer
   via **Expert details**. It derives the selected expert from current snapshots,

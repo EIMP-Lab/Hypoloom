@@ -114,7 +114,7 @@ class SnapshotRefreshCompleted(Message):
 _HELP_TEXT = """\
 [b #78dcff]WINDOW GUIDE[/]  Help / ? close · arrows / PgUp / PgDn scroll
 [b]Summary[/]: research activity, budget/token usage, execution reliability and run health.
-[b]Expert lanes[/]: each expert's current stages, open work and cumulative metrics.
+[b]Global tasks / Expert lanes[/]: run-wide preparation and coordination are separate from each expert's research. d shows execution identities; w opens full history and sharing details.
 [b]Workflows[/]: next commands, expert interactions and resource waits.
 [b]Hypothesis chains[/]: branches, assessments and pruning; Left/Right/Enter fold the tree.
 [b]Diagnostics (d)[/]: components, Attempts, facts and Oracle findings. The expert filter changes lanes/tree only; run totals stay cumulative.
@@ -681,9 +681,26 @@ class SummaryPanel(CockpitPanel):
 
 class ExpertsPanel(CockpitPanel):
     def update_snapshot(self, snapshot: MonitorSnapshot, role_filter: str = "") -> None:
-        lines = ["[b #78dcff]EXPERT LANES[/]  [dim]current work · ? legend[/dim]"]
+        lines = []
         cards = []
         overview = snapshot.overview or {}
+        for key, title in (("global_tasks", "GLOBAL TASKS"), ("unknown_tasks", "OWNERSHIP UNKNOWN")):
+            group = overview.get(key, {})
+            if not group.get("stages"):
+                continue
+            usage = group.get("accounting", {})
+            lines.append(f"[b #78dcff]{title}[/] · ≥{_compact(usage.get('reported_tokens'))} tok "
+                         f"· res {_compact(usage.get('reserved_tokens'))} · d details / w history")
+            for stage in group.get("activity", []):
+                lines.append(f"  {_value(stage.get('node'))} · {_stage_badge(stage, overview.get('host_observation', {}).get('availability', 'unconfirmed'))} "
+                             f"· {_duration(stage.get('elapsed_seconds'))}")
+        sharing = overview.get("grounding_sharing", {})
+        if sharing.get("state") == "accepted":
+            supplied = sum(item.get("provided", False) for item in sharing.get("experts", []))
+            lines.append(f"Grounding accepted · supplied to {supplied}/{len(sharing.get('experts', []))} experts' task inputs")
+        elif sharing.get("state") == "waiting_human":
+            lines.append("[yellow]Grounding awaiting clarification · h decisions[/]")
+        lines.append("\n[b #78dcff]EXPERT LANES[/]  [dim]current work · ? legend[/dim]")
         host = overview.get("host_observation", {}).get("availability", "unconfirmed")
         if _has_host_status(snapshot):
             host = "responded"
@@ -976,7 +993,8 @@ class AttemptsPanel(CockpitPanel):
                 f"{_value(attempt.component_id or attempt.workflow_id)}"
             )
             lines.append(
-                f"   {elapsed:.1f}s · owner={_value(attempt.role)} · "
+                f"   {elapsed:.1f}s · scope={_value(attempt.task_scope)} · "
+                f"execution role={_value(attempt.role)} · "
                 f"phase={_value(_phase_label(attempt.phase))} · "
                 f"attempt={_value(attempt.attempt_id)}#{attempt.attempt_ordinal}"
             )

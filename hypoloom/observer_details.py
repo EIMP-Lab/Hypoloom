@@ -33,7 +33,7 @@ _MAX_TEXT = 65536
 _SESSION_FIELDS = ("session_id", "parent_session_id", "scope", "chain", "cycle", "branch")
 _SELECTORS = {
     "skills": {"role"}, "skill": {"role", "name", "commit", "base_commit"},
-    "literature": {"role"}, "sessions": {"role", "component_id", "session_id"},
+    "literature": {"role"}, "sessions": {"role", "component_id", "session_id", "task_scope", "execution_role"},
     "attempt": {"attempt_id"}, "interactions": {"role"},
     "resources": {"role", "component_id", "experiment_id"},
 }
@@ -354,6 +354,8 @@ def _attempt_summary(row):
                 break
     return {**{key: row.get(key) for key in ("attempt_id", "kind", "state", "terminal_reason", "started_at", "ended_at", "attempt_ordinal")},
             "role": request.get("role"), "command": request.get("command"),
+            "model": request.get("required_model_identity"),
+            "context": diagnostics.get("context"), "context_observation": diagnostics.get("context_observation"),
             "component_id": request.get("component_id"), "task": request.get("task_context"),
             **{key: session.get(key) for key in _SESSION_FIELDS}, "launch_mode": launch_mode,
             "turns": normalization.get("turn_count", response.get("turn_count", accounting.get("turn_count"))),
@@ -362,16 +364,24 @@ def _attempt_summary(row):
 
 
 def _sessions(attempts, selectors):
+    from .observer_scope import attempt_scopes
+    scopes = attempt_scopes(attempts)
     sessions = {}
     for row in attempts:
         if row.get("kind") != "AGENT":
             continue
         view = _attempt_summary(row)
-        if any(selectors.get(key) is not None and selectors[key] != view.get(key) for key in ("role", "component_id", "session_id")):
+        view.update(scopes[row["attempt_id"]])
+        if selectors.get("role") and (view["task_scope"] != "expert" or selectors["role"] != view["owner_role"]):
             continue
-        identity = view["session_id"] or "unavailable:" + row["attempt_id"]
+        if selectors.get("execution_role") and selectors["execution_role"] != view["role"]:
+            continue
+        if any(selectors.get(key) is not None and selectors[key] != view.get(key) for key in ("component_id", "session_id", "task_scope")):
+            continue
+        identity = (view["session_id"] or "unavailable:" + row["attempt_id"], view["task_scope"], view["owner_role"])
         session = sessions.setdefault(identity, {"session_id": view["session_id"], "role": view["role"],
             "component_id": view["component_id"], "attempts": [], "launch_modes": [],
+            **scopes[row["attempt_id"]],
             **{key: view[key] for key in _SESSION_FIELDS}, "available": view["session_id"] is not None})
         session.update({key: view[key] for key in _SESSION_FIELDS if view[key] is not None})
         session["launch_mode"] = view["launch_mode"]
@@ -419,12 +429,14 @@ def _trace_events(raw, *, deduplicate=True):
 
 def _attempt_detail(root, run_id, attempts, selectors):
     from .observer_evidence import read_attempt_evidence
+    from .observer_scope import attempt_scopes
     identity = selectors["attempt_id"]
     row = next((item for item in attempts if item["attempt_id"] == identity), None)
     if row is None:
         raise MonitorError("Attempt does not belong to this run")
     observation = _observation(row)
     summary = _attempt_summary(row)
+    summary.update(attempt_scopes(attempts)[identity])
     raw, truncated = _read(root, ("diagnostics", "agents", run_id, identity, "stdout.log"), _MAX_TRACE_BYTES)
     source, scope = "runtime_diagnostics", "current_invocation"
     if raw is None:
@@ -681,6 +693,8 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         raise ValueError("skill detail requires role and native skill name")
     if kind == "attempt" and not selectors.get("attempt_id"):
         raise ValueError("Attempt detail requires its identity")
+    if selectors.get("task_scope") not in {None, "run", "expert", "unknown"}:
+        raise ValueError("unsupported task scope")
     root = Path(state_root).resolve()
     with StateStore(root).readonly_connection() as db:
         db.execute("BEGIN")
@@ -691,6 +705,10 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         if kind == "attempt":
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? AND attempt_id=?",
                 (run_id, selectors["attempt_id"]))]
+            from .observer_scope import request_of, reading_parent
+            parent = reading_parent(request_of(attempts[0])) if attempts else None
+            if parent and parent != selectors["attempt_id"]:
+                attempts.extend(dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? AND attempt_id=?", (run_id, parent)))
         else:
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
         facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions"} else []

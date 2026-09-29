@@ -103,6 +103,12 @@ Web/TUI 统一以 **token** 展示用量，区分已报告、预留与未知记�
 等待说明，LOCAL 筛选指标单独按假设与已记录的测量定义绘图，不套用 GOAL 门槛，
 不混合不同筛选基线。进行中的实验要等结果正式发布后才显示指标。
 
+Web/TUI 的 **Global tasks** 将 Grounding 和运行级协调任务与专家卡片分开。
+Web **Details & history** 查看实际执行身份、用量和 Grounding 输入提供情况；
+TUI **d / w** 打开诊断 / Web 详情。结果已接纳与已提供给专家是不同的观测状态。
+重新打开使用新版代码的监控即可，研究 Host 可以继续运行。详见
+[任务归属与共享说明](docs/guides/reading-and-proposals.zh-CN.md)。
+
 ## 研究闭环与完成标准
 
 新 ACI-26 运行允许 Host 并行执行专家的 FORWARD/BACKWARD，在两侧结果正式

@@ -108,6 +108,9 @@ class AttemptView:
     session_scope: str | None = None
     context_observation: Mapping[str, Any] | None = None
     input_material: Mapping[str, Any] | None = None
+    task_scope: str = "unknown"
+    owner_role: str | None = None
+    task_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -789,6 +792,7 @@ def _attempt_views(
     rendezvous_phases: Mapping[str, str],
     scientific_execution_identities: frozenset[tuple[str, str]],
     observations: Mapping[str, Mapping[str, Any]] | None = None,
+    scopes: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[tuple[AttemptView, ...], frozenset[str]]:
     rows = tuple(dict(row) for row in reader.execute(
         "SELECT a.*,c.command_type,t.payload_json AS transition_payload_json "
@@ -876,6 +880,8 @@ def _attempt_views(
                 request=request,
             ),
             role=role,
+            **(dict(scopes.get(attempt_id, {})) if row["kind"] == "AGENT" and scopes is not None else
+               {"task_scope": "expert", "owner_role": role} if row["kind"] == "PROCESS" and role in roles else {}),
             slot_ordinal=slot,
             attempt_ordinal=int(row["attempt_ordinal"]),
             terminal_reason=None if row["terminal_reason"] is None else str(row["terminal_reason"]),
@@ -953,7 +959,7 @@ def _expert_views(
 ) -> tuple[ExpertView, ...]:
     result: list[ExpertView] = []
     for slot, role in enumerate(contract.role_ids, 1):
-        owned = tuple(item for item in attempts if item.role == role)
+        owned = tuple(item for item in attempts if item.task_scope == "expert" and item.owner_role == role)
         result.append(ExpertView(
             role=role,
             slot_ordinal=slot,
@@ -1123,7 +1129,7 @@ def _component_views(
         state = "PENDING" if head is None else str(head["state"])
         open_attempts = tuple(
             item for item in attempts
-            if item.component_id == component_id and item.state == "OPEN"
+            if item.component_id == component_id and item.state == "OPEN" and item.task_scope == "expert"
         )
         input_dependencies = {
             str(item.produced_by_component) for item in component.required_inputs
@@ -1432,6 +1438,7 @@ def build_monitor_snapshot(
                 for row in facts_by_type.get("ExperimentPreregistered", ())
             )
             attempt_observations = {row["attempt_id"]: row["observation"] for row in raw_attempts}
+            from .observer_scope import attempt_scopes
             attempts, scientific_process_attempt_ids = _attempt_views(
                 reader,
                 run_id,
@@ -1440,6 +1447,7 @@ def build_monitor_snapshot(
                 rendezvous_phases,
                 scientific_execution_identities,
                 attempt_observations,
+                attempt_scopes(raw_attempts, reading_commands),
             )
             attempts = _with_live_attempt_context(root, run_id, attempts, attempt_observations)
             workflows = tuple(WorkflowView(

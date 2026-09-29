@@ -450,7 +450,8 @@ def test_grounding_query_auxiliary_uses_request_kind_and_needs_no_packet(tmp_pat
     row["observation_json"] = json.dumps(observation)
     summary = _summary(tmp_path, attempts=[row])
     assert summary["totals"]["literature"] == {"retrieved": 0, "pdf_available": 0, "coverage": "complete"}
-    assert summary["experts"][0]["stages"][0]["node"] == "GROUNDING_QUERY_PLAN"
+    assert summary["experts"][0]["stages"] == []
+    assert summary["global_tasks"]["stages"][0]["node"] == "GROUNDING_QUERY_PLAN"
 
 
 def test_current_batch_level_hypothesis_update_does_not_imply_missing_chain(tmp_path):

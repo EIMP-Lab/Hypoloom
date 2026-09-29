@@ -298,8 +298,12 @@ def build_product_observation(state_root: str | Path, run_id: str, *,
     charges = fold_agent_attempts(attempts)
     observations = {row["attempt_id"]: (row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}")) for row in attempts}
     by_role, by_experiment = {}, {}
+    from .observer_scope import attempt_scopes
+    scopes = attempt_scopes(attempts, commands.values())
     for row in attempts:
-        by_role.setdefault(observations[row["attempt_id"]].get("request", {}).get("role"), []).append(row)
+        scope = scopes[row["attempt_id"]]
+        if scope["task_scope"] == "expert":
+            by_role.setdefault(scope["owner_role"], []).append(row)
         by_experiment.setdefault(row["experiment_id"], []).append(row)
     outcomes = {row["experiment_id"]: json.loads(row["payload_json"]) for row in facts
                 if row["fact_type"] == "CanonicalOutcomeAccepted"}
