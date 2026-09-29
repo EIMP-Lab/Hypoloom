@@ -122,12 +122,22 @@ permit API switching. See [API recovery](docs/guides/provider-recovery.md).
 The same operator recovery grant permits GPU resource recheck. API retry and
 GPU recheck are separate actions and do not clear each other's wait.
 
+
+Web/TUI report usage in **tokens**, separating reported usage, reservations and
+unknown records. Model-price availability is not a runtime health signal.
+The Web **Metric trends** section keeps a waiting message until published GOAL
+measurements arrive. LOCAL screening charts appear separately, grouped by one
+hypothesis and its recorded measurement definition; they never inherit GOAL
+thresholds or combine different screening baselines. Running experiments appear
+as scores only after their outcomes are published.
+
 ## Research loop and completion
 
 For new ACI-26 runs, the Host can run an expert's FORWARD/BACKWARD arguments
-concurrently and joins their accepted outputs before SYNTHESIS. Expert cards
-separate these tasks from hypotheses and reading assistants, including rejected
-reading calls and incomplete observation coverage. See
+concurrently and joins their accepted outputs before SYNTHESIS. Choose **Expert details** on an expert card to distinguish proposal
+tasks, hypotheses and reading assistants, including rejected reading calls and
+incomplete observation coverage. The overview keeps current work visible; the
+details drawer also links to that expert's session history. See
 [reading and proposals](docs/guides/reading-and-proposals.md) for tool examples,
 capacity/branch limits and retry behavior.
 
@@ -166,9 +176,10 @@ scientific result. A retry's accepted result belongs to the Attempt that
 published it; earlier lost attempts are not extra successful replications.
 GPU device monitoring and permission to use a GPU do not prove this task ran
 GPU computations. Task memory observations retain unknown sampling coverage.
-Model costs distinguish reported spend from budget reservations and unknown
-charges; their frozen summary precedes the first final-report attempt and
-therefore excludes the report calls themselves.
+Model usage is reported in tokens, separating reported usage, reservations and
+unknown records. The frozen summary precedes the first final-report attempt and
+therefore excludes the report calls themselves. `reliability-compare` also uses
+tokens and tokens per delivered node in its comparison table.
 
 ## GPU scheduling
 

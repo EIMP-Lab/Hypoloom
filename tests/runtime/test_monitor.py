@@ -2334,6 +2334,9 @@ def test_textual_compact_lanes_and_colored_tree_preserve_selection(tmp_path, mon
         _attempt("design", role=role, chain="main", node="EXPERIMENT_DESIGN_IMPLEMENT", state="OPEN"),
         _attempt("execute", role=role, chain="parallel", node="EXPERIMENT_EXECUTION", state="OPEN")])
     summary["host_observation"] = {"availability": "absent"}
+    summary["experts"][0]["context_recovery"].update(context_failure_attempts=1,
+        recovery_attempts=2, recovery_reported_tokens=1234, recovery_unknown_token_attempts=1,
+        cli_unknown_pricing_attempts=3, cli_pricing_unavailable_attempts=1)
     goal = deepcopy(snapshot.goal)
     goal["research_contract"]["budget"].update(wallclock_hours=1, max_experiments=10)
     snapshot = replace(snapshot, overview=summary, goal=goal)
@@ -2346,6 +2349,8 @@ def test_textual_compact_lanes_and_colored_tree_preserve_selection(tmp_path, mon
             text = _static_text(lanes.query_one(Static))
             assert "DES" in text and "RUN" in text and "2 OPEN" in text
             assert "OPEN?" in text and "Host absent" in text and "$" not in text
+            assert "reported ≥1.23K tokens" in text and "usage unknown 1" in " ".join(text.replace("│", " ").split())
+            assert "pricing" not in text
             tree_panel = app.query_one(HypothesesPanel)
             tree = tree_panel.chain_tree
             expert_node = tree.root.children[0]

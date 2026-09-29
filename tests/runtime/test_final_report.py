@@ -261,6 +261,9 @@ def test_report_context_uses_canonical_agent_accounting_without_pricing_unknowns
 
     assert accounting == {
         "scope": "durable_attempts_before_final_report",
+        "reported_tokens": 123,
+        "reserved_tokens": 20000,
+        "unavailable_token_attempts": 0,
         "reported_cost_usd": "1.25",
         "reserved_cost_usd": "7",
         "unknown_closed_attempts": 1,

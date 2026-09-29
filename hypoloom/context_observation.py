@@ -226,6 +226,8 @@ def recovery_metrics(records, charges):
         result[prefix + "_unknown_cost_attempts"] = sum(item.source == "declared" or item.cost is None for item in selected)
         result[prefix + "_reported_tokens"] = sum(item.tokens for item in selected
             if item.source != "declared" and item.tokens is not None)
+        result[prefix + "_unknown_token_attempts"] = sum(
+            item.source == "declared" or item.tokens is None for item in selected)
         result[prefix + "_wall_seconds"] = sum(max(0, row["ended_at"] - row["started_at"])
             for row, _, _ in ordered if row["attempt_id"] in identities
             and type(row.get("started_at")) in (int, float) and type(row.get("ended_at")) in (int, float))
@@ -241,6 +243,9 @@ def recovery_totals(stages):
         "native_compaction_count", "native_compaction_duration_ms", "native_compaction_duration_unknown",
         "initial_failure_unknown_cost_attempts", "initial_failure_reported_tokens", "initial_failure_wall_seconds",
         "recovery_unknown_cost_attempts", "recovery_reported_tokens", "recovery_wall_seconds")}
+    for prefix in ("initial_failure", "recovery"):
+        name = prefix + "_unknown_token_attempts"
+        result[name] = sum(row.get(name, 0) for row in rows)
     for name in ("native_compaction_started_count", "native_compaction_completion_unobserved_attempts"):
         result[name] = sum(row.get(name, 0) for row in rows)
     for name in ("initial_failure_reported_cost_usd", "recovery_reported_cost_usd"):

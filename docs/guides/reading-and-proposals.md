@@ -57,8 +57,11 @@ original serially or report the limitation. Readers cannot delegate recursively.
 
 ## Understanding the expert card
 
-The card distinguishes active chains, this cycle's accepted candidates and request
-limit, FORWARD/BACKWARD/SYNTHESIS status, and reading tasks. Reader counts use
+The overview card shows current work, Agent activity, token usage and operational
+notices. Choose **Expert details** for active-chain limits, this cycle's accepted
+candidates, FORWARD/BACKWARD/SYNTHESIS status, reading tasks and trace coverage.
+The drawer follows the selected expert and updates with observation polling.
+**Browse expert history** opens that expert's sessions and tools. Reader counts use
 admitted command identities; retries increase Attempts, not tasks. Rejected reading
 calls do not count as assistants or incur invented child charges. Actual calls,
 including failed retries, remain in the existing token/cost fold.

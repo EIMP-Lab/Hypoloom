@@ -716,12 +716,8 @@ class ExpertsPanel(CockpitPanel):
             card.extend(("", *_reliability_lines(expert.get("reliability"))))
             accounting = expert.get("accounting", {})
             recovery = expert.get("context_recovery", {})
-            if recovery.get("cli_unknown_pricing_attempts"):
-                card.append(f"CLI pricing unknown: {recovery['cli_unknown_pricing_attempts']} attempts · reported dollars are fallback estimates")
-            if recovery.get("cli_pricing_unavailable_attempts"):
-                card.append(f"CLI pricing evidence unavailable: {recovery['cli_pricing_unavailable_attempts']} attempts")
             if recovery.get("context_failure_attempts"):
-                card.append(f"Context recovery: {recovery['recovery_attempts']} attempts · reported ${recovery['recovery_reported_cost_usd']} · cost unknown {recovery['recovery_unknown_cost_attempts']}")
+                card.append(f"Context recovery: {_count(recovery.get('recovery_attempts'))} attempts · reported ≥{_compact(recovery.get('recovery_reported_tokens'))} tokens · usage unknown {_count(recovery.get('recovery_unknown_token_attempts'))}")
             extra = accounting.get("observed_unsettled_tokens", 0)
             if extra:
                 card.append(f"+≥{_compact(extra)} observed tokens, unsettled")
@@ -1010,8 +1006,6 @@ class AttemptsPanel(CockpitPanel):
                 lines.append(f"   working limit={_value(attempt.context_window_tokens)} ({_value(attempt.context_window_source)}) "
                     f"· cumulative tokens={_value(attempt.cumulative_tokens)}")
                 metrics = attempt.context_observation or {}
-                if metrics.get("cli_unknown_model_pricing") is True:
-                    lines.append("   CLI session pricing unknown · reported dollars are fallback estimates, not a vendor bill")
                 if "native_compaction_count" in metrics:
                     lines.append(f"   native compactions={_count(metrics.get('native_compaction_count'))} · duration={_count(metrics.get('native_compaction_duration_ms'))} ms · unknown durations={_count(metrics.get('native_compaction_duration_unknown'))} · coverage={_value(metrics.get('coverage', 'unavailable'))}")
                     compact = metrics.get("last_native_compaction")

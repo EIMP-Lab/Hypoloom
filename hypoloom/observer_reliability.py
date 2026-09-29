@@ -22,8 +22,8 @@ _NOTICES = [
     "Active failed nodes can still retry: final delivery remains pending until acceptance or run termination.",
     "Tool counts are observed lower bounds when trace coverage is incomplete; tool errors can be expected tests.",
     "Required actions cover only the existing explicit resource Skill/load/query instruction, not all prose instructions.",
-    "Retry USD is reported additional-call cost, not wasted spend. Unknown reservations are not actual cost.",
-    "Same-call correction USD is unavailable; elapsed sums are invocation time, not CPU time or critical-path delay.",
+    "Retry tokens are reported additional-call usage. Reservations are not measured usage and unknown is not zero.",
+    "Same-call correction tokens are unavailable; elapsed sums are invocation time, not CPU time or critical-path delay.",
 ]
 
 

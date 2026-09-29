@@ -77,6 +77,7 @@ def _reliability() -> dict:
         "timed_out_attempts": 1, "cancelled_attempts": 0, "tool_calls": 8,
         "tool_errors": 2, "trace_unknown_attempts": 1}
     costs = {"retry_attempts": 1, "retry_reported_usd": "0.25", "retry_reserved_usd": "2",
+        "retry_reported_tokens": 250, "retry_reserved_tokens": 2000, "retry_unavailable_token_attempts": 1,
         "retry_unknown_closed_attempts": 1, "retry_elapsed_seconds": 32,
         "retry_unknown_nodes": 2, "retry_unavailable_reservations": 1,
         "retry_elapsed_unknown_attempts": 1,
@@ -701,15 +702,25 @@ def test_browser_resource_wait_explains_budget_and_does_not_invent_measurement(b
 
 def test_browser_execution_reliability_filters_metrics_and_attempt_evidence(browser, tmp_path):
     page = browser
+    page.evaluate("fixture.snapshot.overview.stages=[{command_id:'usage-example', accounting:{reported_tokens:1234,reported_cost_usd:'0.25'},context_recovery:{recovery_reported_tokens:1200,cli_unknown_pricing_attempts:3,recovery_reported_cost_usd:'0.2'}}]")
+    page.evaluate("fixture.snapshot.status.run_state='ACTIVE'")
+    page.wait("document.querySelector('#run-state').textContent === 'ACTIVE'")
+    page.click("#command-retry-costs")
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('usage-example')")
+    usage = page.text("#research-detail-content")
+    assert "reported_tokens" in usage and "1234" in usage and "1200" in usage
+    assert "cost_usd" not in usage and "pricing" not in usage
+    page.click("#close-drawer")
     page.click("#execution-reliability")
     page.wait("document.querySelector('.reliability-metric') !== null")
     summary = page.text("#reliability-summary")
     for expected in ("First output", "1/2", "unknown 1", "Correction recovery",
                      "Nodes needing retry", "Final delivery", "Required actions", "unavailable",
-                     "Retry overhead", "$0.25", "$2", "Correction-only cost: unavailable",
+                     "Retry overhead", "250 tokens", "2000 tokens", "Correction-only tokens: unavailable",
                      "unknown retry nodes 2", "unavailable reserves 1", "unknown elapsed 1",
                      "Timeouts 1", "not model failures"):
         assert expected in summary
+    assert "$" not in summary and "pricing" not in summary
     assert page.evaluate("document.querySelectorAll('.reliability-node').length") == 3
     page.screenshot(tmp_path / "execution-reliability.png")
     page.click("[data-reliability-metric=required_actions]")
@@ -725,7 +736,7 @@ def test_browser_execution_reliability_filters_metrics_and_attempt_evidence(brow
     page.click(".reliability-node button")
     detail = page.text("#research-detail-content")
     assert "timed_out" in detail and "unverified" in detail and "rejected_count" in detail
-    assert "Retry overhead" in detail and "$0.25" in detail
+    assert "Retry overhead" in detail and "250 tokens" in detail
     assert "output rejected · count 2" in page.text(".reliability-observations")
     page.click(".reliability-attempt-link")
     page.wait("document.querySelector('[data-detail-tab=corrections]') !== null")
@@ -1315,6 +1326,49 @@ def test_browser_shared_acceptance_metric_trends_per_hypothesis_chain(browser, t
     page.screenshot(tmp_path / 'metric-trends.png')
 
 
+def test_browser_local_only_trends_remain_visible_and_separate_measurements(browser, tmp_path):
+    page = browser
+    common = {"source_attempt_id": "grounding", "acceptance": {
+        "criteria": [{"name": "test_f1", "operator": "GT", "target": "0.7"}]}, "outcomes": []}
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelector('.metric-empty') !== null")
+    assert "Waiting for published GOAL measurements" in page.text(".metric-trends")
+    measurement = {"metric": {"name": "validation_delta", "direction": "MAXIMIZE", "target": "0"},
+        "comparison": "DELTA_FROM_BASELINE", "parse_rule": "Matched seed validation delta"}
+    def local(index, value, **changes):
+        return {"scope": "LOCAL", "experiment_id": f"experiment-{index}", "outcome_id": f"outcome-{index}",
+            "component_id": "component-a", "hypothesis_id": "hypothesis-a",
+            "local_outcome": "CLEAN_REFUTATION", "local_metric_value": value,
+            "local_measurement": measurement, "goal_evaluation": None, **changes}
+    common["outcomes"] = [local(10, "0.02"), local(2, "-0.01"), local(3, None), local(4, ""),
+        local(5, False), local(6, "0.03", hypothesis_id="hypothesis-b"),
+        local(7, "0.04", local_measurement={**measurement, "parse_rule": "Different baseline"})]
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelectorAll('.metric-local .metric-chart').length === 3")
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 4
+    assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 0
+    titles = page.evaluate("Array.from(document.querySelectorAll('.metric-local .metric-chart:first-child circle title')).map(e => e.textContent)")
+    assert titles[0].startswith("experiment-2\n") and "-0.01" in titles[0]
+    assert titles[1].startswith("experiment-10\n")
+    assert "not GOAL scores" in page.text(".metric-local")
+    # First published GOAL observation replaces waiting text but keeps local
+    # charts separate. Null and boolean measurements must not fabricate zeros.
+    common["outcomes"].append({**local(11, None), "scope": "GOAL", "goal_evaluation": {
+        "measurements": {"test_f1": "0.69", "absent": None, "check": False, "empty": ""}}})
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelectorAll('.metric-chart').length === 4")
+    assert page.evaluate("document.querySelectorAll('.metric-empty').length") == 0
+    assert page.evaluate("document.querySelectorAll('.metric-target-line').length") == 1
+    assert page.evaluate("document.querySelectorAll('.metric-point').length") == 5
+    page.evaluate("document.querySelector('.metric-trends').scrollIntoView()")
+    page.screenshot(tmp_path / "local-and-goal-trends.png")
+    common["outcomes"][-1]["goal_evaluation"] = {"measurements": {}, "checks": {"valid": True}}
+    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
+    page.wait("document.querySelector('.metric-empty')?.textContent.includes('No numeric GOAL measurements')")
+    assert "Waiting for published" not in page.text(".metric-trends")
+    assert page.evaluate("document.querySelectorAll('.metric-local .metric-point').length") == 4
+
+
 def test_browser_context_rejection_separates_last_measured_usage_from_current_estimate(browser):
     page = browser
     attempt = {"attempt_id": "context-rejected", "kind": "AGENT", "state": "OPEN", "role": "expert-a",
@@ -1363,6 +1417,11 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert page.evaluate("document.querySelector('.expert-preview h3 .breath-dot') === null")
     assert page.evaluate("document.querySelector('.expert-preview .agent-tile-list') === null")
     assert "scientific process attempts" not in page.text(".expert-identity")
+    page.evaluate("fixture.snapshot.overview.experts=[{role:'expert-a',accounting:{reported_tokens:1234,reserved_tokens:5000},context_recovery:{context_failure_attempts:1,recovery_attempts:2,recovery_reported_tokens:1200,recovery_unknown_token_attempts:1,cli_unknown_pricing_attempts:3,cli_pricing_unavailable_attempts:1}}]")
+    page.wait("document.querySelector('.expert-preview').textContent.includes('reported ≥1.2K tokens')")
+    card = page.text(".expert-preview")
+    assert "usage unknown 1" in card and "reserve 5K" in card
+    assert "pricing" not in card and "$" not in card
     page.evaluate("fixture.snapshot.overview.host_observation = {availability:'responded'}")
     page.evaluate("fixture.snapshot.attempts.push("
         "{attempt_id:'open-run', kind:'AGENT', state:'OPEN', role:'expert-a', command:'EXPERIMENT_EXECUTION', context_tokens:45200, context_source:'transcript', budget_max_tokens:1000000, context_window_tokens:200000, context_window_source:'working_limit_only', cumulative_tokens:3722840, context:{cache_read_input_tokens:40000,cache_creation_input_tokens:1200}, session_scope:'chain-a', session_id:'session-a', started_at:fixture.snapshot.observed_at-720, wall_seconds:2700},"
@@ -1396,8 +1455,9 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert "transcript coverage complete" in updated and "start-event coverage stdout_partial" in updated
     assert "completion unobserved unknown" in updated
     page.evaluate("fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run').context_observation.cli_unknown_model_pricing = true")
-    page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('unknown model pricing')")
-    assert "not a vendor bill" in page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")
+    page.evaluate("fixture.snapshot.attempts.find(a => a.attempt_id === 'open-run').cumulative_tokens = 7654321")
+    page.wait("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title.includes('7.65M tokens')")
+    assert "pricing" not in page.evaluate("document.querySelector('.agent-tile[data-attempt=\"open-run\"]').title")
     overdue_title = page.evaluate(f'document.querySelectorAll("{tiles}")[0].title')
     assert "no context reading yet" in overdue_title
     assert "elapsed 50m of 45m wall budget · exceeded" in overdue_title
@@ -1492,8 +1552,16 @@ def test_browser_parallel_proposals_do_not_appear_as_hypotheses_or_readers(brows
         for name in ("FORWARD", "BACKWARD")]
     summary = _summary(tmp_path, attempts=rows, experts=[{"role": "expert-a"}])
     browser.evaluate("fixture.snapshot.overview.experts=" + json.dumps(summary["experts"]))
-    selector = '.expert-preview[data-expert-role="expert-a"] .expert-parallel-work'
+    card = '.expert-preview[data-expert-role="expert-a"]'
+    browser.wait(f"document.querySelector('{card} .expert-current-work').textContent.includes('FORWARD')")
+    compact = browser.text(card)
+    for detail in ("Active research chains", "hypotheses:", "FORWARD:", "Reading assistants:", "Reading tool:"):
+        assert detail not in compact
+    assert "Hypothesis proposal" in compact  # Current work stays visible.
+    browser.click('[data-expert-details="expert-a"]')
+    selector = '#research-detail-content .expert-parallel-work'
     browser.wait(f"document.querySelector('{selector}') !== null")
+    assert "expert-a" in browser.text('#research-detail-title')
     text = browser.text(selector)
     assert "FORWARD: OPEN" in text and "BACKWARD: OPEN" in text
     assert "SYNTHESIS: not dispatched" in text
@@ -1507,6 +1575,16 @@ def test_browser_parallel_proposals_do_not_appear_as_hypotheses_or_readers(brows
     browser.wait(f"document.querySelector('{selector}').textContent.includes('SYNTHESIS: FAILED')")
     assert "hypotheses: 0 accepted" in browser.text(selector)
     assert "not submitted" not in browser.text(selector)
+    assert "SYNTHESIS: FAILED" not in browser.text(card)
+    browser.evaluate("window.retainedExpertDetails = document.querySelector('#research-detail-content .expert-parallel-work')")
+    polls = browser.evaluate("fixtureRequests.length")
+    browser.wait(f"fixtureRequests.length > {polls}")
+    assert browser.evaluate("window.retainedExpertDetails === document.querySelector('#research-detail-content .expert-parallel-work')")
+    browser.screenshot(tmp_path / 'expert-details.png')
+    browser.evaluate("Array.from(document.querySelectorAll('#research-detail-content button')).find(button => button.textContent === 'Browse expert history').click()")
+    browser.wait("document.querySelector('#evidence-drawer').hidden")
+    assert browser.evaluate("document.querySelector('#filter-expert').value") == "expert-a"
+    assert "Sessions & tools" in browser.text('#workbench-title')
 
 
 def test_browser_refresh_is_sequential_pauses_hidden_and_preserves_unchanged_dom(browser):

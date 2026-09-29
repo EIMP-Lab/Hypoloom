@@ -52,6 +52,10 @@ def test_two_served_models_remain_separate_despite_same_selector_and_sources_sta
     assert a["cache_usage"]["cache_read_input_tokens"]["unknown_attempts"] == 1
     assert main(["reliability-compare", "--state-root", str(roots[0]), "--state-root", str(roots[1]), "--json"]) == 0
     assert len(json.loads(capsys.readouterr().out)["groups"]) == 2
+    assert main(["reliability-compare", "--state-root", str(roots[0]), "--state-root", str(roots[1])]) == 0
+    rendered = capsys.readouterr().out
+    assert "Reported tokens" in rendered and "Tokens/delivery" in rendered
+    assert "USD" not in rendered
     assert before == [(root / "state.sqlite").read_bytes() for root in roots]
 
 

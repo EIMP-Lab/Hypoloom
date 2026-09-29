@@ -1,5 +1,30 @@
 # Current Hypoloom development state
 
+- September 29 Web expert-card simplification: move chain limits, proposal-wing
+  statuses, reader counts and trace coverage into the existing read-only drawer
+  via **Expert details**. It derives the selected expert from current snapshots,
+  refreshes on changed observations, and preserves the filtered session-history
+  action. Current stages, Agent tiles and operational notices stay on the card.
+  Bilingual reading/usage guides updated. Node renderer smoke and 15 offline
+  checks pass; five browser cases cannot start Chrome (Crashpad setsockopt EPERM),
+  so no browser end-to-end pass is claimed. Evidence:
+  `.local/qualification/expert-card-details-20260929/`. No run/backend changes.
+  User authorizes commit/push to dev for this and the preceding run follow-up,
+  reusing completed focused validation and retaining browser validation limits.
+
+- September 29 run follow-up: fix waiting execution visits consuming the tick's
+  dispatch allowance; count only committed Agent admission. An ACI-28 regression
+  reproduces the old starvation. Read-only replay of two oversized timeout
+  continuations selects direct reconstruction while preserving code/archives.
+  Third Observer recovery succeeded; one runnable GPU Process explains idle GPU1.
+  Web/TUI, report guidance and comparison tables use tokens; existing financial
+  controls remain. LOCAL charts and explicit GOAL empty states reuse accepted
+  facts, with no new authority. Focused validation and environment limits are in
+  [qualification](../qualification.md#current-repair--dispatch-context-retries-and-token-observation-2026-09-29).
+  Evidence: `.local/qualification/dispatch-context-ui-20260929/`. Production state
+  and bundles remain unchanged; no paid calls. Included in the authorized dev
+  submission together with the expert-card simplification.
+
 - September 29 TUI/Web disconnect: two retained `phase=tui` crashes are
   `KeyError: read_calls` in AttemptsPanel. Stream compaction counters do not
   establish transcript Read coverage. Existing optional display helpers now

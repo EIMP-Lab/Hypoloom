@@ -30,7 +30,7 @@ def _closed(workspace, *, failure=None, retry_class="MODEL"):
         "session": workspace.finish_node(), "retry_class": retry_class,
         "failure_code": "invalid_candidate" if retry_class == "MODEL" else "provider_error",
         "diagnostics": {"context": {"current_request_fits": True, "last_observed_exchange": 7,
-            "current_request_exchange": 7, "last_observed_input_tokens": 60000,
+            "current_request_exchange": 7, "last_observed_input_tokens": 60000, "request_input_bytes": 180000,
             "available_input_tokens": 205568, "output_reserve_tokens": 32768}}}
     if failure is not None:
         observed["diagnostics"]["provider_failure"] = {"code": failure}
@@ -71,7 +71,7 @@ def test_same_task_correction_resumes_published_transcript_and_retains_code(tmp_
     assert execution.binding["session_id"] != second.binding["session_id"]
 
 
-@pytest.mark.parametrize("change", ["capacity", "compaction", "unknown_usage", "last_failed_exchange", "near_limit",
+@pytest.mark.parametrize("change", ["capacity", "compaction", "unknown_usage", "last_failed_exchange", "near_limit", "oversized_relay_input",
     "incomplete_archive", "source", "model", "permission", "adapter", "archive_failure", "aci24"])
 def test_unsafe_or_changed_retry_reconstructs_without_erasing_draft(tmp_path, change):
     _, target = make_target(tmp_path)
@@ -89,6 +89,7 @@ def test_unsafe_or_changed_retry_reconstructs_without_erasing_draft(tmp_path, ch
     elif change == "unknown_usage": observed["diagnostics"]["context"].pop("last_observed_input_tokens")
     elif change == "last_failed_exchange": observed["diagnostics"]["context"]["current_request_exchange"] = 8
     elif change == "near_limit": observed["diagnostics"]["context"]["last_observed_input_tokens"] = 200000
+    elif change == "oversized_relay_input": observed["diagnostics"]["context"]["request_input_bytes"] = 300000
     elif change == "incomplete_archive": observed["session"]["transcript_complete"] = False
     elif change == "source": retry = replace(retry, input_artifacts=(EmbeddedInput.from_bytes("changed-source", "text/plain", b"new facts"),))
     elif change == "model": retry = replace(retry, required_model_identity="new-model")

@@ -194,9 +194,9 @@ class LeaderRoundAgent(SharedGoalAgent):
 def batch_host(tmp_path, monkeypatch, request):
     # Retain an explicit ACI13 case while exercising ACI14 batch semantics.
     mode = getattr(request, "param", None)
-    version = 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
+    version = 28 if mode == "dispatch-wait" else 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
     monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", version)
-    with tempfile.TemporaryDirectory(prefix="hypoloom-batch-target-", dir="/var/tmp") as directory:
+    with tempfile.TemporaryDirectory(prefix="hypoloom-batch-target-", dir=tmp_path if mode == "dispatch-wait" else "/var/tmp") as directory:
         payload = _pilot_payload(tmp_path, Path(directory), "batch-host")
         contract = payload["research_contract"]
         settings = project_profile_v4(**documents()).settings
@@ -272,6 +272,53 @@ def batch_host(tmp_path, monkeypatch, request):
             yield host
         finally:
             host.close()
+
+
+@pytest.mark.parametrize("batch_host", ["dispatch-wait"], indirect=True)
+def test_waiting_execution_does_not_starve_a_ready_peer_after_tick_deadline(batch_host, monkeypatch):
+    from hypoloom.domain import AttemptTerminalReason
+    host = batch_host
+    step = host._expert_agent_step
+    deferred = []
+
+    def hold_peer(*args):
+        task = args[2]
+        if isinstance(task, ResearchNodeTask) and task.key.chain == "chain-b":
+            deferred.append(args)
+        else:
+            step(*args)
+
+    monkeypatch.setattr(host, "_expert_agent_step", hold_peer)
+    monkeypatch.setattr(host, "_poll_local_execution_agents", lambda: False)
+    _until(host, lambda: bool(host.local_execution_agents) and bool(deferred))
+    _until(host, lambda: host._prepare_role_view(deferred[-1][0], deferred[-1][3], deferred[-1][2]))
+    request = next(iter(host.local_execution_agents.values()))
+    design = ResearchNodeTask(key=replace(request.task_context.key,
+        node_kind=ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT))
+    response = json.loads(host._expert_success(design)["observation_json"])["response"]
+    submitted = host.handle_agent_tool(request.attempt_id, "submit_experiment", {
+        "candidate": response["typed_candidate"], "workspace_files": response["proposed_workspace_artifacts"]})
+    host.local_execution_agents.clear()
+    host._agent_failure(request, AttemptTerminalReason.TIMED_OUT, "timed_out", retryable=True)
+    assert host.store.latest_transition(submitted["exp_id"])["state"] != "TERMINAL"
+    monkeypatch.setattr(host, "_expert_agent_step", step)
+
+    # Model a slow tick with a durable owned experiment still pending. No
+    # Process is launched here: admission fairness does not require a GPU.
+    host._tick_deadline = time.monotonic() - 1
+    host._agent_dispatches = 0
+    before = len(host.store.list_attempts())
+    host._resume_tool_execution_agents(request.run_id)
+    assert host._agent_dispatches == 0
+    step(*deferred[-1])
+    peer = host._expert_attempts(deferred[-1][2])
+    assert len(peer) == 1 and peer[0]["terminal_reason"] == "SUCCEEDED"
+    assert len(host.store.list_attempts()) == before + 1
+    assert len(host._expert_attempts(request.task_context)) == 1
+    assert host._agent_dispatches == 1
+    # Once real admission occurred, the deadline still yields control.
+    step(*deferred[-1])
+    assert len(host.store.list_attempts()) == before + 1
 
 
 def test_exhausted_adjudication_closes_batch_without_inventing_selection(batch_host, monkeypatch):

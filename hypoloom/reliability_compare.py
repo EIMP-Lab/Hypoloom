@@ -151,18 +151,19 @@ def compare_roots(state_roots):
                 "duration_seconds": _distribution(durations), "ttft_seconds": _distribution(ttfts)}})
     return {"sources": sources, "groups": result, "notices": [*notices,
         "Served models are upstream-reported labels, not independently attested model identity; mixed-model nodes remain mixed.",
-        "Per-delivery reported costs include failed work and can contain CLI price estimates; unknown accounting and unverified vendor prices preclude a monetary lower-bound claim.",
+        "Per-delivery reported tokens include failed work. Unknown usage is not zero; reservations are not measured consumption, and these observations do not establish savings.",
         "Old captures cannot reconstruct TTFT. Missing cache usage and exchanges remain unknown. Tool evidence is not read by this comparison."]}
 
 
 def as_markdown(comparison):
-    lines = ["Provider reliability comparison", "", "| Served model | Node | Delivery | First output | Retry | Reported USD | USD/delivery |", "|---|---|---:|---:|---:|---:|---:|"]
+    lines = ["Provider reliability comparison", "", "| Served model | Node | Delivery | First output | Retry | Reported tokens | Tokens/delivery |", "|---|---|---:|---:|---:|---:|---:|"]
     def rate(metric):
         return f"{metric['numerator']}/{metric['denominator']} (unknown {metric['unknown']})"
     for group in comparison["groups"]:
         metrics = group["metrics"]
         lines.append("| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in (
             group["model_label"], group["node"], rate(metrics["node_delivery"]), rate(metrics["output_first_pass"]),
-            rate(metrics["node_retry"]), group["reported_cost_usd"], group["per_delivered_node"]["cost_usd"] or "unknown")) + " |")
+            rate(metrics["node_retry"]), group["reported_tokens"],
+            group["per_delivered_node"]["tokens"] if group["per_delivered_node"]["tokens"] is not None else "unknown")) + " |")
     lines.extend(["", *[f"- {notice}" for notice in comparison["notices"]]])
     return "\n".join(lines) + "\n"

@@ -594,6 +594,12 @@ def resumable_task_session(request: AgentRequest, prior: Mapping[str, Any] | Non
     policy = context_policy(request)
     output = context.get("output_reserve_tokens", 0)
     if type(output) is not int or output < 0 or tokens + policy["max_inline_input_bytes"] + output > limit: return None
+    # Complete usage anchors belong to one relay invocation. A new relay
+    # cannot reuse the old token measurement to admit its restored transcript.
+    # Reconstruct directly when that history already exceeds byte admission;
+    # the existing workspace/archive path retains code and recovery notes.
+    input_bytes = context.get("request_input_bytes")
+    if type(input_bytes) is int and input_bytes > limit: return None
     return session
 
 

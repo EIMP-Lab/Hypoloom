@@ -81,6 +81,7 @@ _SAFE_METADATA_KEYS = {
     "context_recovery", "context_failure_attempts", "recovery_attempts",
     "initial_failure_reported_cost_usd", "initial_failure_unknown_cost_attempts", "initial_failure_reported_tokens", "initial_failure_wall_seconds",
     "recovery_reported_cost_usd", "recovery_unknown_cost_attempts", "recovery_reported_tokens", "recovery_wall_seconds",
+    "initial_failure_unknown_token_attempts", "recovery_unknown_token_attempts",
 }
 _SAFE_HEADERS = {"request-id", "x-request-id", "anthropic-request-id", "cf-ray",
                  "content-type", "content-encoding", "content-length", "retry-after"}

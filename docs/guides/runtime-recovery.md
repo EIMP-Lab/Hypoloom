@@ -115,7 +115,13 @@ The Web view separates transcript coverage from start-event coverage. With
 `stdout_partial`, starts are only those retained in the log tail; missing earlier
 events remain unknown, so starts and total completions cannot simply be subtracted.
 
-CLI dollar values are reported estimates. Unknown model pricing means they are
-not verified vendor bills or a monetary lower bound. Token usage, failed/recovery
-invocations, reserved budgets and unknown charges stay separate; no automatic
-cost-saving or model-quality claim follows from the repair.
+Web/TUI usage indicators use tokens throughout: reported usage, failed/recovery
+invocations, reservations and unknown usage stay separate. Missing model prices
+are not operational alerts. Historical cost evidence and configured financial
+limits remain available internally; this does not imply verified savings.
+
+A Host tick counts an Agent dispatch only after admitting its Attempt. Visiting
+an execution controller whose owned experiment is still pending does not consume
+the tick's dispatch allowance, so ready peer tasks can continue. Idle authorized
+GPUs do not by themselves prove a scheduler problem: inspect runnable requests,
+actual grants and Process liveness separately.

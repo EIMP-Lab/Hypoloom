@@ -357,6 +357,7 @@ def _shared_acceptance_projection(
             "source_attempt_id": binding.get("source_attempt_id"),
             "local_outcome": payload.get("outcome"),
             "local_metric_value": payload.get("metric_value"),
+            "local_measurement": specs.get(row["experiment_id"], {}).get("measurement"),
             "goal_evaluation": payload.get("goal_evaluation"),
         })
     # These mappings are display copies, never aliases of the supplied fact view.

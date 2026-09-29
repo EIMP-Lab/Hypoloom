@@ -50,6 +50,9 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
     reserved = [item for item in charges if item.source == "declared"]
     agent_accounting = {
         "scope": "durable_attempts_before_final_report",
+        "reported_tokens": sum(item.tokens for item in charges if item.source != "declared" and item.tokens is not None),
+        "reserved_tokens": sum(item.tokens for item in reserved if item.tokens is not None),
+        "unavailable_token_attempts": sum(item.tokens is None for item in charges),
         "reported_cost_usd": str(sum((item.cost for item in reported), Decimal("0"))),
         "reserved_cost_usd": str(sum(
             (item.cost for item in reserved if item.cost is not None), Decimal("0"))),

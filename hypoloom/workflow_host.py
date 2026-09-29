@@ -2247,7 +2247,6 @@ class WorkflowHost:
                 component_id=component_id, chain=chain, proposal_task=task): return
         if self._tick_deadline is not None and isinstance(task, ResearchNodeTask) and self._cycle_reports_enabled(run_id):
             if not self._prepare_role_view(run_id, role, task): return
-        self._agent_dispatches += 1
         contract = self._research_contract(run_id); attempts = self._expert_attempts(task)
         if any(row["state"] == "OPEN" for row in attempts) or self._agent_attempts_exhausted(contract, list(attempts)): return
         if command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
@@ -2386,6 +2385,9 @@ class WorkflowHost:
                 intent["session_binding"] = AgentSessions.binding(request, attempts[-1] if attempts else None,
                     allow_resume=session_resume_allowed(tx, request))
             tx.open_attempt({"attempt_id": attempt_id, "run_id": run_id, "workflow_id": owner_id, "command_id": task.command_id, "kind": "AGENT", "attempt_ordinal": ordinal, "host_generation": self.generation, "started_at": time.time() if attempt_started_at is None else attempt_started_at, "payload": intent})
+        # Waiting for owned Processes, retrieval or an existing Attempt is not
+        # a dispatch. Counting those visits can starve ready peers every tick.
+        self._agent_dispatches += 1
         self._diagnostic_context = {"phase": "agent_launch", "run_id": run_id, "command_id": task.command_id, "attempt_id": attempt_id}
         if rejected:
             self._agent_failure(request, AttemptTerminalReason.FAILED, "profile_budget_exhausted", retryable=False, details={"budget_rejected": True})

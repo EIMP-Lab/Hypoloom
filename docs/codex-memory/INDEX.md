@@ -1,6 +1,15 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Expert card and details](../guides/reading-and-proposals.md#understanding-the-expert-card):
+  September 29 display simplification, existing drawer/history navigation and
+  selected-expert live projection. Node rendering and offline checks pass;
+  real browser validation is blocked at Chrome startup by setsockopt EPERM.
+  Evidence: `.local/qualification/expert-card-details-20260929/`.
+- [Dispatch, context retries and token observation](../qualification.md#current-repair--dispatch-context-retries-and-token-observation-2026-09-29):
+  actual admission fairness, retained continuation replay, LOCAL/GOAL charts,
+  token usage across observer/report/comparison surfaces and validation limits.
+  Evidence: `.local/qualification/dispatch-context-ui-20260929/`.
 - [TUI partial-context repair](../qualification.md#current-repair--partial-context-telemetry-in-tui-2026-09-29):
   original Read-counter KeyError, independently available CLI/transcript evidence,
   unknown versus zero counts, and actual Textual/HTTP refresh regression.

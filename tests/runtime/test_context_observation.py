@@ -70,6 +70,10 @@ def test_context_costs_are_disjoint_and_unknown_billing_is_not_zero_spend(tmp_pa
     assert metrics["initial_failure_reported_cost_usd"] == "1"
     assert metrics["recovery_reported_cost_usd"] == "3"  # OPEN stale cost excluded.
     assert metrics["recovery_unknown_cost_attempts"] == 2
+    assert metrics["initial_failure_reported_tokens"] == 10
+    assert metrics["recovery_reported_tokens"] == 10
+    assert metrics["initial_failure_unknown_token_attempts"] == 0
+    assert metrics["recovery_unknown_token_attempts"] == 2
     assert metrics["recovery_attempts"] == 3 and metrics["context_failure_attempts"] == 2
     assert metrics["recovery_wall_seconds"] == 10
 

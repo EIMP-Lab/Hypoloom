@@ -101,7 +101,8 @@ def test_support_context_keeps_measured_and_estimated_requests_separate_without_
     context = {"input_tokens": None, "last_observed_exchange": 5, "last_observed_input_tokens": 59326,
         "current_request_exchange": 6, "current_request_estimated_input_tokens": 211464,
         "current_request_estimate_source": "provider_usage_plus_delta_estimate",
-        "current_request_estimate_reason": "unchanged_prefix", "current_request_fits": False}
+        "current_request_estimate_reason": "unchanged_prefix", "current_request_fits": False,
+        "context_recovery": {"recovery_reported_tokens": 1234, "recovery_unknown_token_attempts": 1}}
     capacity = {"capacity_measurement_version": 25, "request_input_bytes": 300000,
         "estimate_reason": "unchanged_prefix", "anchor_exchange": 5,
         "anchor_input_tokens": 59326, "added_input_bytes": 152138, "estimated_input_tokens": 211464}

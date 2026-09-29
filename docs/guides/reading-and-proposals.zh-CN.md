@@ -50,7 +50,10 @@ read_papers(action="wait", max_wait_seconds=10)
 
 ## 理解专家卡片
 
-卡片区分活跃研究链、本轮已接纳候选与请求上限、两侧论证及综合状态、阅读任务数。
+概览卡片显示当前工作、Agent 活动、token 用量与运行提醒。点击 **Expert details**
+查看活跃研究链与上限、本轮已接纳候选、FORWARD/BACKWARD/SYNTHESIS 状态、
+阅读任务和记录覆盖情况。详情跟随所选专家，随观测轮询更新；其中的
+**Browse expert history** 可进入该专家的会话与工具历史。
 阅读任务按已接纳 command ID 计数；重试增加 Attempt 数，不增加任务数。
 被拒绝的阅读调用不算助手，也不虚构子 Agent 费用；实际调用和失败重试仍进入原有
 Token 与费用汇总。

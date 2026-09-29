@@ -601,6 +601,7 @@
   const hiddenMetricSeries = new Set();
 
   function metricNumber(raw) {
+    if (!(typeof raw === "number" || typeof raw === "string" && raw.trim())) return null;
     const value = Number(raw);
     return Number.isFinite(value) ? value : null;
   }
@@ -637,7 +638,7 @@
 
   function compareMetricPoints(left, right) {
     return left.depth - right.depth
-      || String(left.outcome.experiment_id).localeCompare(String(right.outcome.experiment_id))
+      || String(left.outcome.experiment_id).localeCompare(String(right.outcome.experiment_id), undefined, {numeric: true})
       || String(left.outcome.outcome_id).localeCompare(String(right.outcome.outcome_id));
   }
 
@@ -702,9 +703,37 @@
     return {metrics: ordered, series, targets};
   }
 
+  function localMetricTrendModel(common, snapshot) {
+    const metrics = new Map(), series = new Map(), labels = new Map();
+    list(common.outcomes).forEach((outcome) => {
+      if (outcome.scope !== "LOCAL") return;
+      const value = metricNumber(outcome.local_metric_value);
+      const measurement = object(outcome.local_measurement);
+      const metric = object(measurement.metric);
+      if (value === null || !metric.name) return;
+      // Local definitions and baselines may differ even within one lineage.
+      // Group only one hypothesis and the same recorded declaration; never
+      // compare local screening scores against the common GOAL thresholds.
+      const hypothesisId = outcome.hypothesis_id || null;
+      const key = JSON.stringify(["local", hypothesisId || outcome.experiment_id, measurement]);
+      if (!metrics.has(key)) {
+        const hypothesis = list(snapshot.hypotheses).find((item) => item.hypothesis_id === hypothesisId);
+        const component = list(snapshot.components).find((item) => item.component_id === outcome.component_id);
+        labels.set(key, `${metric.name} · ${measurement.comparison || "local"} · ${hypothesisId || outcome.experiment_id}`);
+        series.set(key, {key, label: labels.get(key), title: measurement.parse_rule || "Local screening observation",
+          accent: expertClass(snapshot, hypothesis ? hypothesis.proposer_role : component && component.owner_role)});
+        metrics.set(key, new Map([[key, []]]));
+      }
+      metrics.get(key).get(key).push({outcome, hypothesisId, depth: 0, value, raw: outcome.local_metric_value});
+    });
+    metrics.forEach((bucket) => bucket.forEach((points) => points.sort(compareMetricPoints)));
+    return {metrics, series, labels, targets: new Map()};
+  }
+
   function renderMetricChart(metric, model) {
     const figure = element("figure", "metric-chart");
     figure.dataset.metric = metric;
+    const label = model.labels ? model.labels.get(metric) : metric;
     const target = model.targets.get(metric);
     const width = 640;
     const height = 240;
@@ -725,7 +754,7 @@
     const y = (value) => margin.top + innerHeight - ((value - low) / (high - low)) * innerHeight;
     const maxLength = Math.max(1, ...visible.map((item) => item.points.length));
     const x = (index) => margin.left + (maxLength === 1 ? innerWidth / 2 : (index / (maxLength - 1)) * innerWidth);
-    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "metric-svg", role: "img", "aria-label": `${metric} trend per hypothesis chain`});
+    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "metric-svg", role: "img", "aria-label": `${label} trend`});
     for (let step = 0; step <= 3; step += 1) {
       const value = low + ((high - low) * step) / 3;
       const top = y(value);
@@ -754,21 +783,24 @@
       points.forEach((point, index) => {
         const dot = svgElement("circle", {class: `metric-point ${series.accent}`, cx: x(index).toFixed(1), cy: y(point.value).toFixed(1), r: 3.4});
         const tooltip = svgElement("title");
-        tooltip.textContent = `${point.outcome.experiment_id}\n${metric} = ${point.raw}\n${point.hypothesisId ? `hypothesis ${point.hypothesisId}` : "no recorded hypothesis"}`;
+        tooltip.textContent = `${point.outcome.experiment_id}\n${label} = ${point.raw}\n${point.hypothesisId ? `hypothesis ${point.hypothesisId}` : "no recorded hypothesis"}`;
         dot.append(tooltip);
         svg.append(dot);
       });
     });
-    figure.append(element("figcaption", "", target ? `${metric} · target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}` : metric), svg);
+    figure.append(element("figcaption", "", target ? `${label} · target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}` : label), svg);
     return figure;
   }
 
   function renderMetricTrends(panel, common, snapshot) {
     const model = metricTrendModel(common, snapshot);
-    if (!model.metrics.size) return;
     const section = element("section", "metric-trends");
-    section.append(element("h3", "", "Metric trends"),
+    section.append(element("h3", "", "Metric trends"), element("h4", "", "GOAL evaluation"),
       element("p", "panel-copy", "Published observations connected per initial-hypothesis chain, in each chain's experiment order. Click a legend entry to hide or show that chain."));
+    if (!model.metrics.size) section.append(element("p", "metric-empty panel-copy",
+      list(common.outcomes).some((outcome) => outcome.goal_evaluation)
+        ? "No numeric GOAL measurements are available. See published experiment records for checks and other results."
+        : "Waiting for published GOAL measurements. Local screening and running experiments do not produce a final GOAL score."));
     const legend = element("div", "metric-legend");
     model.series.forEach((item) => {
       const hidden = hiddenMetricSeries.has(item.key);
@@ -787,6 +819,18 @@
     const grid = element("div", "metric-grid-charts");
     model.metrics.forEach((bucket, metric) => grid.append(renderMetricChart(metric, model)));
     section.append(legend, grid);
+    const local = localMetricTrendModel(common, snapshot);
+    const localCount = list(common.outcomes).filter((outcome) => outcome.scope === "LOCAL").length;
+    if (localCount) {
+      const localSection = element("section", "metric-local");
+      localSection.append(element("h4", "", "LOCAL screening"), element("p", "panel-copy",
+        "Each chart uses one hypothesis and its recorded measurement definition. Local scores are not GOAL scores and charts may use different baselines or scales."));
+      const localGrid = element("div", "metric-grid-charts");
+      local.metrics.forEach((bucket, metric) => localGrid.append(renderMetricChart(metric, local)));
+      if (!local.metrics.size) localSection.append(element("p", "metric-empty panel-copy", "Local records exist; numeric values or measurement definitions are unavailable."));
+      localSection.append(localGrid);
+      section.append(localSection);
+    }
     panel.append(section);
   }
 
@@ -819,8 +863,7 @@
       const observed = object(usage.observed_lower_bound);
       setText(
         "agent-observed",
-        `tokens ${observed.tokens ?? "?"} · turns ${observed.turns ?? "?"} · ` +
-          `cost ${observed.currency || "USD"} ${observed.cost ?? "?"}`,
+        `tokens ${observed.tokens ?? "?"} · turns ${observed.turns ?? "?"}`,
       );
       const hasCumulative = usage.profile_cumulative !== null &&
         typeof usage.profile_cumulative === "object" && !Array.isArray(usage.profile_cumulative);
@@ -953,6 +996,9 @@
     });
     if (!stages.length) activity.append(element("p", "panel-copy", "Current stage unavailable; open the expert history for retained evidence."));
     parent.append(activity);
+  }
+
+  function renderExpertParallelActivity(parent, summary) {
     const parallel = object(summary.parallel_activity);
     if (Object.keys(parallel).length) {
       const counts = element("div", "expert-parallel-work");
@@ -963,11 +1009,12 @@
         counts.append(element("p", "panel-copy", `${proposal.component_id} · cycle ${proposal.cycle} · hypotheses: ${admitted} / limit ${proposal.candidate_limit ?? "?"}`));
         if (!list(proposal.stages).length) return;
         const wings = element("p", "panel-copy proposal-wings");
-        ["FORWARD", "BACKWARD", "SYNTHESIS"].forEach((name) => {
+        ["FORWARD", "BACKWARD", "SYNTHESIS"].forEach((name, index) => {
           const stage = list(proposal.stages).find((item) => item.subkind === name);
           const value = !stage ? "not dispatched" : stage.terminal_reason === "SUCCEEDED" ? "accepted"
             : stage.operational_status === "recovery_exhausted" ? "failed · recovery ended" : stage.terminal_reason || stage.state;
-          wings.append(element("span", "", `${name}: ${value}${stage?.attempts > 1 ? ` (${stage.attempts} attempts)` : ""} · `));
+          if (index) wings.append(document.createTextNode(" · "));
+          wings.append(element("span", "", `${name}: ${value}${stage?.attempts > 1 ? ` (${stage.attempts} attempts)` : ""}`));
         });
         counts.append(wings);
       });
@@ -977,7 +1024,23 @@
       counts.append(element("p", "panel-copy reading-tool-observation", `Reading tool: ${prefix}${calls.calls ?? "?"} calls · ${prefix}${calls.rejected ?? "?"} rejected${calls.unknown_attempts ? ` · ${calls.unknown_attempts} attempt traces incomplete/unavailable` : ""}${calls.unanswered ? ` · ${calls.unanswered} results unobserved` : ""}`));
       list(calls.observed_wait_reasons).forEach((reason) => counts.append(element("p", "panel-copy", `Recorded reading wait: ${reason} · may have changed`)));
       parent.append(counts);
-    }
+    } else parent.append(element("p", "panel-copy", "Proposal and reading activity is unavailable in the current observation."));
+  }
+
+  function renderExpertDetails(parent, role) {
+    const snapshot = state.snapshot || {};
+    const summary = object(list(object(snapshot.overview || state.product?.summary).experts)
+      .find((item) => item.role === role));
+    parent.append(element("h3", "", "Current work"));
+    renderExpertActivity(parent, summary, snapshot);
+    parent.append(element("h3", "", "Research chains, proposals and reading"));
+    renderExpertParallelActivity(parent, summary);
+    parent.append(actionButton("Browse expert history", () => {
+      byId("filter-expert").value = role;
+      closeDrawer();
+      renderFilteredViews();
+      openWorkbench("sessions");
+    }));
   }
 
   function workingTilePhase(attemptId) {
@@ -1056,7 +1119,6 @@
       if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(`Cache creation: ${compactNumber(context.cache_creation_input_tokens)} input tokens`);
       if (attempt.session_scope) lines.push(`Session scope: ${attempt.session_scope}`);
       const observation = attempt.context_observation || {};
-      if (observation.cli_unknown_model_pricing === true) lines.push("CLI session has unknown model pricing; reported dollars are fallback estimates, not a vendor bill.");
       if (Number.isInteger(observation.native_compaction_count)) lines.push(`Native compactions completed: ${observation.native_compaction_count} · explicit starts ${observation.native_compaction_started_count ?? "unknown"} · completion unobserved ${observation.native_compaction_completion_unobserved ?? "unknown"} · observed duration ${observation.native_compaction_duration_ms} ms · unknown durations ${observation.native_compaction_duration_unknown} · transcript coverage ${observation.coverage} · start-event coverage ${observation.native_compaction_start_coverage ?? "unavailable"}`);
       const compact = observation.last_native_compaction;
       if (compact) lines.push(`Last native compaction: ${compact.pre_tokens ?? "?"} → ${compact.post_tokens ?? "?"} input tokens · ${compact.duration_ms ?? "?"} ms`);
@@ -1159,11 +1221,9 @@
       list(expert.pause_requested).forEach((pause) => {
         identity.append(pauseNotice(pause, working.some((attempt) => attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE")));
       });
-      const inspect = actionButton("Browse expert history", () => {
-        byId("filter-expert").value = expert.role;
-        renderFilteredViews();
-        openWorkbench("sessions");
-      });
+      const inspect = actionButton("Expert details", () =>
+        openLocalDetail("expert", {role: expert.role, name: `Expert · ${expert.role}`}));
+      inspect.dataset.expertDetails = expert.role;
       identity.append(inspect);
       const work = element("div", "expert-work");
       renderExpertActivity(work, summary, snapshot);
@@ -1175,16 +1235,12 @@
       if (accounting.observed_unsettled_tokens > 0) {
         work.append(element("p", "expert-token-usage", `+≥${compactNumber(accounting.observed_unsettled_tokens)} observed tokens · unsettled calls; included separately from reported usage and reserves`));
       }
-      work.append(element("p", "expert-token-usage", `🪙 ≥${compactNumber(accounting.reported_tokens)} tok · reserve ${compactNumber(accounting.reserved_tokens)} · unknown closed ${accounting.unknown_closed_attempts ?? "?"} · unavailable token records ${accounting.unavailable_token_attempts ?? "?"}`));
+      work.append(element("p", "expert-token-usage", `🔢 ≥${compactNumber(accounting.reported_tokens)} tok · reserve ${compactNumber(accounting.reserved_tokens)} · unknown closed ${accounting.unknown_closed_attempts ?? "?"} · unavailable token records ${accounting.unavailable_token_attempts ?? "?"}`));
       const recovery = object(summary.context_recovery);
-      if (recovery.cli_unknown_pricing_attempts > 0) work.append(element("p", "expert-token-usage", `CLI pricing unknown: ${recovery.cli_unknown_pricing_attempts} attempts · reported dollars are fallback estimates`));
-      if (recovery.cli_pricing_unavailable_attempts > 0) work.append(element("p", "expert-token-usage", `CLI pricing evidence unavailable: ${recovery.cli_pricing_unavailable_attempts} attempts`));
       if (recovery.context_failure_attempts > 0) {
-        const cost = Number(recovery.recovery_reported_cost_usd || 0);
-        const unknown = recovery.recovery_unknown_cost_attempts || 0;
         const retries = recovery.recovery_attempts || 0;
-        const detail = element("p", "expert-token-usage", `Context recovery: ${retries} attempts · reported $${cost.toFixed(4)} · cost unknown ${unknown}`);
-        detail.title = "Subsequent attempts after the first context failure, including successful recovery. Initial failures are separate in command accounting. Observed costs are not measured savings.";
+        const detail = element("p", "expert-token-usage", `Context recovery: ${retries} attempts · reported ≥${compactNumber(recovery.recovery_reported_tokens)} tokens · usage unknown ${recovery.recovery_unknown_token_attempts ?? "?"}`);
+        detail.title = "Subsequent attempts after the first context failure, including successful recovery. Initial failures are separate in command accounting. Unknown usage is not zero; observed usage is not measured savings.";
         work.append(detail);
       }
       work.append(element("p", "panel-copy", `${displayValue(object(summary.experiments).total)} experiments · ${displayValue(object(summary.literature).retrieved)} papers · ${displayValue(object(summary.skills).count)} skills · ${displayValue(object(summary.evolutions).changed)} effective evolutions`));
@@ -2024,6 +2080,12 @@
     if (!snapshot || document.hidden) return;
     const filters = selectedFilters();
     const product = object(state.product);
+    if (!drawer.hidden && state.detail?.kind === "expert") {
+      const role = state.detail.data.role;
+      const summary = list(object(snapshot.overview || product.summary).experts).find((item) => item.role === role);
+      renderChanged("expert-detail", [role, summary, snapshot.overview?.host_observation?.availability,
+        snapshot.status_source, snapshot.status?.dispatch_error], () => renderResearchDetail());
+    }
     if (state.activeView === "operations") {
       renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
@@ -2178,9 +2240,13 @@
     setText("research-summary-source", `All-run totals · elapsed ${elapsed == null ? "unavailable" : formatDuration(0, elapsed)} · human wait ${wait == null ? "unavailable" : formatDuration(0, wait)} · observed ${formatTimestamp(summary.observed_at)}. Host contact: ${host.availability || "unconfirmed"}; OPEN is not liveness. ${halt.exception_type ? `Historical Host exception: ${halt.exception_type} at ${halt.timestamp}; diagnostics/host.jsonl. ` : ""}Filters and event pagination do not change these totals.`);
     let costs = byId("command-retry-costs");
     if (!costs) {
-      costs = actionButton("Command retries / observed costs", () => {
+      costs = actionButton("Command retries / token usage", () => {
         const current = object(state.snapshot && state.snapshot.overview);
-        openLocalDetail("command_accounting", {notice: "Observed lower bounds only; reservations and unknown accounting are not actual spend.", commands: list(current.stages)});
+        const usageFields = (value) => Object.fromEntries(Object.entries(object(value))
+          .filter(([key]) => !/cost|pricing|usd/i.test(key)));
+        const commands = list(current.stages).map((stage) => ({...stage,
+          accounting: usageFields(stage.accounting), context_recovery: usageFields(stage.context_recovery)}));
+        openLocalDetail("command_accounting", {notice: "Observed token lower bounds only; reservations and unknown usage are not measured consumption.", commands});
       });
       costs.id = "command-retry-costs";
       container.append(costs);
@@ -2242,7 +2308,7 @@
 
   function reliabilityCosts(parent, costs) {
     const value = object(costs);
-    parent.append(element("p", "reliability-costs panel-copy", `Retry overhead: ${displayValue(value.retry_attempts)} extra Attempts · CLI reported estimate $${displayValue(value.retry_reported_usd)} · reserve $${displayValue(value.retry_reserved_usd)} · unknown closed ${displayValue(value.retry_unknown_closed_attempts)} · elapsed ${value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds)}. Correction-only cost: ${value.correction_cost_usd == null ? "unavailable" : `$${value.correction_cost_usd}`}. Unknown does not mean zero; CLI estimates are not verified vendor billing and reserves are not measured spend.`));
+    parent.append(element("p", "reliability-costs panel-copy", `Retry overhead: ${displayValue(value.retry_attempts)} extra Attempts · reported ≥${displayValue(value.retry_reported_tokens)} tokens · reserve ${displayValue(value.retry_reserved_tokens)} tokens · unavailable token records ${displayValue(value.retry_unavailable_token_attempts)} · unknown closed ${displayValue(value.retry_unknown_closed_attempts)} · elapsed ${value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds)}. Correction-only tokens: unavailable. Unknown does not mean zero; reserves are not measured usage.`));
     parent.append(element("p", "panel-copy", `unknown retry nodes ${displayValue(value.retry_unknown_nodes)} · unavailable reserves ${displayValue(value.retry_unavailable_reservations)} · unknown elapsed ${displayValue(value.retry_elapsed_unknown_attempts)} Attempts.`));
   }
 
@@ -2690,7 +2756,9 @@
     const top = content.scrollTop;
     content.replaceChildren();
     if (!selected.data) return;
-    if (kind === "reliability_node") {
+    if (kind === "expert") {
+      renderExpertDetails(content, data.role);
+    } else if (kind === "reliability_node") {
       renderReliabilityNode(content, data);
     } else if (kind === "relationship") {
       const grid = element("dl", "selection-grid");

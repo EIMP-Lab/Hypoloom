@@ -2,6 +2,46 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — Dispatch, context retries and token observation, 2026-09-29
+
+Read-only inspection of `MERC-causal-202609282242` found a ready analysis node
+without an Attempt, while an execution controller waited for its owned Process.
+`_expert_agent_step` counted that waiting visit before actual admission. Once the
+tick deadline passed, ready peers could be skipped on every tick. Counting only
+committed Agent admission fixes this without changing concurrency or budgets.
+An isolated ACI-28 Host regression fails with the original counter placement
+and passes after the repair; the waiting experiment is not submitted twice.
+
+Two retained timeout continuations had 268324 / 270967 request bytes despite
+measured token headroom. Their new relays lacked the previous usage anchors and
+refused the restored requests. Read-only decision replay confirms both formerly
+resumed and now reconstruct directly, retaining code and archived progress.
+A third Observer refusal followed a large new thinking block; its subsequent
+retry succeeded. Conservative admission remains in force. One active single-GPU
+Process explains the idle second GPU; no resource-placement defect was established.
+
+Web/TUI, final-report guidance and the comparison table use token usage.
+Historical monetary metadata and explicit financial budget enforcement remain
+intact. The trend panel now explains absent numeric GOAL observations and plots
+LOCAL measurements separately by hypothesis and recorded declaration. It never
+turns missing values into zero or assigns common GOAL targets to local screening.
+Boolean-only evaluations remain inspectable without suggesting a pending score.
+
+Focused selections pass: **135** session/context/projection/TUI checks, **62**
+report/comparison/support/reliability checks, **26** browser interactions, **5**
+Host tests (including four existing CPU closure/iteration/restart cases), and
+**15** documentation/projection checks. These selections overlap. Later focused
+browser checks cover token-only command details and boolean-only measurements.
+Early test assertions needed terminal-wrap normalization and asynchronous refresh
+waits. A separate CPU census rerun was blocked at fixture creation by read-only
+`/var/tmp`; no independent final CPU residue census is claimed. An isolated
+Chrome startup also failed; subsequent normal browser launches succeeded.
+This is focused repair validation, not full G1/G5, CUDA or paid model evaluation.
+Evidence stays in `.local/qualification/dispatch-context-ui-20260929/`.
+Production runs, Profiles, pool bindings and frozen bundles were not changed.
+Reopen monitoring from the updated checkout to load the new Python projection;
+Host behavior repairs apply to newly created runtime bundles.
+
 ## Current repair — Partial context telemetry in TUI, 2026-09-29
 
 The retained run's existing `diagnostics/host.jsonl` records two TUI crashes at

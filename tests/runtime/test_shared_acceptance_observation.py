@@ -62,6 +62,8 @@ def recorded_evidence():
                     "fact_type": "ExperimentPreregistered",
                     "experiment_id": experiment_id,
                     "payload": {
+                        "measurement": {"metric": {"name": "screening", "direction": "MAXIMIZE", "target": "0"},
+                            "comparison": "DELTA_FROM_BASELINE", "parse_rule": "Paired validation delta"},
                         "goal_evaluation": {
                             "scope": scope,
                             "source_attempt_id": "final-grounding",
@@ -130,6 +132,7 @@ def test_status_exposes_one_raw_source_and_each_scope_without_combining_scores(
     assert common["acceptance"] == acceptance()
     assert [row["scope"] for row in common["outcomes"]] == ["LOCAL", "GOAL", "GOAL"]
     assert common["outcomes"][0]["goal_evaluation"] is None
+    assert common["outcomes"][0]["local_measurement"]["comparison"] == "DELTA_FROM_BASELINE"
     assert common["outcomes"][1]["goal_evaluation"]["measurements"]["left"] == "0.6674"
     assert common["outcomes"][2]["goal_evaluation"]["checks"]["valid"] is False
     assert all(
@@ -141,6 +144,7 @@ def test_status_exposes_one_raw_source_and_each_scope_without_combining_scores(
     assert (attempts, facts) == before
     common["outcomes"][2]["goal_evaluation"]["checks"]["valid"] = True
     common["acceptance"]["criteria"][0]["operator"] = "GE"
+    common["outcomes"][0]["local_measurement"]["metric"]["name"] = "changed"
     assert (attempts, facts) == before
     assert (
         status(tmp_path, attempts, facts)["shared_acceptance"]["acceptance"]

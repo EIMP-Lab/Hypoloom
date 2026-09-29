@@ -65,7 +65,12 @@ equivalent single text block/string representation and movement of known
 `ephemeral` cache annotations on text/tool-result blocks. It preserves content,
 order, tool identities and signed thinking; provider requests are not rewritten. Anchors are disposable per-invocation observations;
 a resumed invocation may still need fresh reconstruction if its first request
-cannot be reliably measured. That reconstruction uses the existing infrastructure
+cannot be reliably measured. If the preceding request already exceeded the fresh
+relay byte allowance, retry directly reconstructs instead of restoring that
+conversation. Code, published archives and bounded recovery notes are retained.
+A large newly generated thinking block still receives a conservative byte estimate;
+this can refuse a request before a provider reports overflow. Reconstruction uses
+the existing infrastructure
 retry allowance; with zero retries it stops and reports the reason. Byte, request,
 time, total-token and cost limits remain independent. Do not omit constraints to make an input fit.
 
@@ -116,19 +121,15 @@ Logical-node material totals sum per-prompt observations; “unique” does not 
 global deduplication across invocations.
 
 `context_recovery` uses existing charges to separate the initial context failure
-from subsequent recovery Attempts, including successful ones. Logical-node,
-expert and run totals retain unknown billing instead of treating reservations as
-spend. Command detail includes cache/material observations; expert cards show
-reported recovery costs and unknown counts across all cycles. Cross-Attempt
-rereads compare exact frozen refs within one logical node. These costs do not
-establish savings versus a counterfactual run.
-Amounts remain runtime/CLI reports, not reconciled vendor invoices. A CLI can
-report fallback dollar estimates for an unknown model price. Compare requests,
-tokens and cache distribution directly; do not claim actual billing savings from
-those estimates. An unsettled invocation's reservation is not actual spend.
-Web/TUI and support metadata expose the CLI session's unknown-pricing flag;
-missing evidence is separately unavailable, not a verified price. This observation
-does not rewrite recorded charges or budgets.
+from subsequent recovery Attempts, including successful ones. Web/TUI compare
+**tokens**: reported usage, reservations, unsettled observations and unavailable
+usage remain distinct. Expert cards and retry details show recovery token totals
+and unknown usage counts across all cycles; unknown does not mean zero. Dollar
+estimates and unknown-pricing messages are no longer usage indicators in Web/TUI.
+Historical accounting and explicitly configured financial budget controls remain
+intact. These observations alone do not establish savings or scientific quality.
+Command detail retains cache/material observations. Cross-Attempt rereads compare
+exact frozen refs within one logical node.
 
 When a **fresh ACI-25 session's** complete initial request is locally refused and
 no generation request was forwarded, unchanged recovery ends early. New-run
@@ -156,6 +157,7 @@ still request the next experiment within budget. Archive failure or unfinished
 experiments do not qualify. Promoted source code continues into new research
 chains independently of model-session inheritance. Old runs retain their original
 bundles; cross-version migration is unsupported.
+
 
 ## Measurement and citations
 
