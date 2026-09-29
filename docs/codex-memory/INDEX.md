@@ -1,6 +1,10 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Literature address failure isolation](../qualification.md#current-repair--isolated-literature-address-rejection-2026-09-29):
+  per-paper denial preserves the valid packet, strict network safety and existing
+  coverage validation; Web/TUI distinguish exhausted recovery from pending work.
+  Evidence: `.local/qualification/literature-isolation-20260929/`.
 - [Global task ownership and Grounding sharing](../guides/reading-and-proposals.md#understanding-the-expert-card):
   September 29 Web/TUI observations separate task scope from transport role,
   partition usage without changing budgets, and expose accepted-input delivery.

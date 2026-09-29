@@ -2,6 +2,53 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — Isolated literature address rejection, 2026-09-29
+
+A retained expert completed query planning but lost all three MAIN preparation
+Attempts to `landing_uri is not globally routable`, before model invocation.
+Offline one/two-worker controls reproduce a single non-public DNS answer
+discarding the whole packet and being classified as a retryable FETCH_FAILED.
+
+The repair classifies address validation using existing VALIDATION_FAILED and
+isolates that known rejection at the paper boundary. It preserves the denied
+paper as PDF_UNAVAILABLE without full-text claims, delivers other valid papers,
+and records the identity/field/hostname/code in existing bounded download traces.
+No request, cached-PDF reuse or fallback lookup is allowed for the rejected
+candidate. Private/mixed addresses, peer matching, redirect checks, coverage and
+scientific acceptance remain strict; unknown resolver implementation failures
+still fail the operation. No new schema, ledger or acceptance authority is added.
+
+Web/TUI explain exhausted preparation using existing final-failure evidence.
+Before an experiment exists, component progress follows the failed prerequisite
+when all proposers exhausted recovery, instead of suggesting a pending proposal.
+Later work and eligible peers are not suppressed. Existing Attempt details retain
+pre-model diagnostics even without a transcript; source links to hosts with a
+recorded metadata-address rejection are withheld while metadata stays inspectable.
+
+Final bounded selection: **231 passed**, one native pool transport deselected;
+monitor dependency/phase/Textual selection: **10 passed**. Node syntax and smoke
+checks exercise the actual renderer functions, failure-detail action, later-work
+refresh, download diagnostics and rejected-host links. One scripted Host root
+reaches an accepted hypothesis through Grounding and expert review, then closes
+through ordinary CANCEL: independent census finds **8 CLOSED/SUCCEEDED Agents**,
+one hypothesis, no Processes/open effects and a clean Oracle. No paid calls,
+external literature lookup, actual CPU/GPU experiment or scientific-quality
+claim. Read-only retained-run projection confirms the corrected failed phase.
+
+Limits and initial results are retained: an early broad catch hid two unknown
+resolver errors and was narrowed; the first scripted Host test waited for a
+tool-driven experiment that its stub cannot submit, so the final bounded test
+asserts accepted proposal then cancellation. A native pool socket is denied by
+EPERM. Four Chrome cases cannot start the browser. A wider monitor selection was
+interrupted after native-environment failures; a separate native compile/Process
+case fails identically on published dev (`7e74c72`) because bwrap cannot create a
+NETLINK_ROUTE socket. These are not passing native/browser checks or full G1/G5.
+Evidence: `.local/qualification/literature-isolation-20260929/`; original diagnosis:
+`.local/analysis/affective-literature-failure-20260929/`.
+Production runs, Profiles and frozen bundles remain unchanged. Monitoring can be
+reopened from new code; runtime fixes apply to new runs and do not reopen a
+retained terminal node.
+
 ## Current repair — Global task ownership in observers, 2026-09-29
 
 Grounding carried an expert transport role, so Web/TUI attributed its activity,

@@ -57,6 +57,28 @@ original serially or report the limitation. Readers cannot delegate recursively.
 
 ## Understanding the expert card
 
+Literature preparation runs before the review model starts. If a paper's landing
+or catalog address resolves to a non-public address, that paper stays metadata-only
+(`PDF_UNAVAILABLE`), with no full-text claims. The Host retains other valid papers
+instead of retrying the whole batch. Address, redirect and connected-peer checks
+remain enforced; rejected candidates cannot use a cached PDF or fallback lookup.
+The same rule applies to initial Grounding and later expert literature reviews.
+Search coverage validation and feedback for insufficient coverage are unchanged.
+Unclassified adapter faults still surface as failures rather than being hidden.
+
+The existing download history records the paper identity, rejected address field,
+hostname and validation code without URL paths, credentials or resolved addresses.
+Web withholds source links to hosts with a recorded metadata-address rejection;
+the original metadata stays inspectable. A later request rechecks addresses.
+
+**Automatic recovery ended** means the recorded node has a final failure; it is
+not waiting for another automatic retry. The expert card shows the failed phase
+and attempt count; **Expert details → Failure details** includes diagnostics even
+when failure occurred before any model session. TUI shows the same stop state.
+Reopening monitoring updates these displays for retained runs. Runtime retrieval
+repairs apply to new runs: changing an API, refreshing Web or updating the checkout
+does not reopen a terminal node or replace an existing run's frozen runtime.
+
 Web **Global tasks** and the TUI's global lane show Grounding/query planning,
 Observer, graph evolution, final reports and independent Debate judging. These
 tasks serve the run even when an existing expert is their recorded execution role.

@@ -125,6 +125,76 @@ def test_queued_readers_count_under_parent_not_transport_role(tmp_path):
     assert result["experts"][0]["parallel_activity"]["readers"]["tasks"] == 0
 
 
+def test_component_explains_exhausted_prerequisite_without_blocking_later_or_peer_work():
+    from types import SimpleNamespace
+    from hypoloom.monitor import _component_views
+    component = SimpleNamespace(component_id="goal", dependencies=(), required_inputs=(),
+        tier=SimpleNamespace(value="primary"), owner_role="scientist", proposer_roles=("scientist",))
+    contract = SimpleNamespace(components=(component,))
+    failure = SimpleNamespace(component_id="goal", task_scope="expert", owner_role="scientist",
+        task_kind="LITERATURE_REVIEW", state="CLOSED", started_at=10, attempt_id="failed",
+        phase="literature_review", failure_code="literature_fetch_failed", operational_status="recovery_exhausted")
+
+    def view(*attempts):
+        return _component_views(contract, (), {}, {}, attempts, (), ())[0]
+
+    result = view(failure)
+    assert result.state == "PENDING" and result.phase == "literature_review" and result.blocked
+    assert "automatic recovery ended" in result.blocked_reasons[0]
+    transient = SimpleNamespace(**{**vars(failure), "operational_status": None})
+    assert not view(transient).blocked
+    global_failure = SimpleNamespace(**{**vars(failure), "task_scope": "run", "owner_role": None})
+    assert not view(global_failure).blocked
+    later = SimpleNamespace(**{**vars(failure), "started_at": 30, "attempt_id": "later",
+        "operational_status": None, "failure_code": None})
+    assert not view(failure, later).blocked
+    component.proposer_roles = ("scientist", "peer")
+    assert not view(failure).blocked  # An unstarted peer is still eligible to propose.
+
+
+def exhausted_literature_summary(tmp_path, role="scientist"):
+    rows = [record(f"failed-{i}", "LITERATURE_REVIEW", role=role, reason="FAILED",
+                   start=i * 10, end=i * 10 + 5, command_id="lit", chain=None) for i in range(1, 4)]
+    for row in rows:
+        observed = json.loads(row["observation_json"])
+        observed.update(failure_code="literature_fetch_failed", failure_stage="literature_retrieval")
+        row["observation_json"] = json.dumps(observed)
+    transition = _transition(9, payload={"agent_final_failure": True, "attempt_id": "failed-3"})
+    return _summary(tmp_path, attempts=rows, transitions=[transition], experts=[{"role": role}])
+
+
+def test_tui_exhausted_literature_is_visible_and_clears_for_a_new_cycle(tmp_path):
+    import asyncio
+    from types import SimpleNamespace
+    from textual.app import App
+    from textual.widgets import Static
+    from hypoloom.tui import ExpertsPanel
+    from test_monitor import _static_text
+
+    snapshot = SimpleNamespace(overview=exhausted_literature_summary(tmp_path), status_source="offline-state-store",
+        experts=[SimpleNamespace(role="scientist", slot_ordinal=1)], status={})
+
+    class View(App):
+        def compose(self):
+            yield ExpertsPanel()
+
+    async def exercise():
+        app = View()
+        async with app.run_test(size=(100, 38)) as pilot:
+            panel = app.query_one(ExpertsPanel)
+            panel.update_snapshot(snapshot)
+            await pilot.pause()
+            text = _static_text(panel.query_one(Static))
+            assert "Literature preparation" in text and "3 attempts" in text
+            assert "automatic recovery ended" in text and "literature_fetch_failed" in text
+            snapshot.overview = _summary(tmp_path, attempts=[record("next", "LITERATURE_REVIEW", cycle=2, state="OPEN")])
+            panel.update_snapshot(snapshot)
+            await pilot.pause()
+            text = _static_text(panel.query_one(Static))
+            assert "automatic recovery ended" not in text and "1 OPEN" in text
+    asyncio.run(exercise())
+
+
 def test_tui_global_lane_survives_expert_filter_and_completed_refresh(tmp_path):
     import asyncio
     from types import SimpleNamespace

@@ -721,15 +721,22 @@ class ExpertsPanel(CockpitPanel):
                 continue
             stages = expert.get("activity", expert.get("stages", []))
             opened = sum(stage.get("state") == "OPEN" for stage in stages)
-            label = f"{opened} OPEN" if opened else "last recorded" if stages else "not started"
+            exhausted = any(stage.get("operational_status") == "recovery_exhausted" for stage in stages)
+            label = f"{opened} OPEN" if opened else "automatic recovery ended" if exhausted else "last recorded" if stages else "not started"
             card = [f"[b]{_role(snapshot, role)}[/] · C{_count(expert.get('cycle'))} · {label}",
                 _lane_line(stages, host)]
             for stage in stages:
                 node = dict(_LANE_STAGES).get(stage.get("node"), _short_text(stage.get("node"), limit=30))
+                if stage.get("failure_stage") == "literature_retrieval":
+                    node = "Literature preparation"
                 scope = stage.get("chain") or stage.get("experiment_id") or stage.get("subkind") or "—"
                 kind = " job" if stage.get("kind") == "PROCESS" else ""
                 card.append(f"  {node}{kind} · {_short_text(scope, limit=28)} · {_stage_badge(stage, host)} "
                     f"· {_duration(stage.get('elapsed_seconds'))}")
+                if stage.get("operational_status") == "recovery_exhausted":
+                    card.append(f"  {_count(stage.get('attempts'))} attempts · automatic recovery ended · d details")
+                if stage.get("failure_code"):
+                    card.append(f"  {_value(stage['failure_code'])}")
             card.extend(("", *_reliability_lines(expert.get("reliability"))))
             accounting = expert.get("accounting", {})
             recovery = expert.get("context_recovery", {})

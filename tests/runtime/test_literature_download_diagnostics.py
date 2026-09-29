@@ -28,6 +28,57 @@ def _response(uri: str, *, status: int = 200, body: bytes = PDF_LATEST) -> Fetch
                          location=None, body=body)
 
 
+@pytest.mark.parametrize("workers", [1, 2])
+@pytest.mark.parametrize("field", ["landing_uri", "source_uri"])
+@pytest.mark.parametrize("addresses", [("10.0.0.7",), (PUBLIC_A, "::1")])
+def test_rejected_metadata_is_isolated_without_pdf_or_fallback_access(workers, field, addresses):
+    from hypoloom.literature import LiteraturePacket, literature_failure_retryable
+
+    rejected = replace(_papers()[-1], **{field: "https://rejected.example.org/private?token=secret"})
+    fetcher = FakeFetcher(papers=[*_papers()[:2], rejected],
+                          resolutions={"rejected.example.org": addresses})
+
+    class Locator:
+        def locate(self, paper):
+            pytest.fail("a rejected candidate must not reach fallback lookup")
+
+    adapter = FixedLiteratureIO(fetcher, fallback_locator=Locator(), pdf_workers=workers)
+    result = adapter.retrieve(_query())
+    packet = LiteraturePacket.from_bytes(result.packet.to_bytes())
+    assert len(packet.papers) == 3
+    assert [p.stratum for p in packet.papers] == list(LITERATURE_STRATA)
+    denied = packet.papers[0]
+    assert denied.retrieval_disposition is RetrievalDisposition.PDF_UNAVAILABLE
+    assert denied.pdf_trace is None and denied.claim_refs == ()
+    assert packet.papers[-1].retrieval_disposition is RetrievalDisposition.RETRIEVED
+    assert len(result.pdf_artifacts) == 1
+    assert [call[0] for call in fetcher.fetch_calls] == ["https://latest.example.org/paper.pdf"]
+    assert fetcher.resolve_calls.count("rejected.example.org") == 1
+    event, = _entry(adapter, rejected.bibliographic_identity)["events"]
+    assert event == {"stage": field, "outcome": "VALIDATION_FAILURE",
+                     "source_host": "rejected.example.org", "failure_code": "VALIDATION_FAILED", "http_status": None}
+    assert "secret" not in json.dumps(adapter.download_trace)
+    assert not literature_failure_retryable(LiteratureFetchError("denied", code=LiteratureFailureCode.VALIDATION_FAILED))
+
+    # A later independent request rechecks DNS; a rejection is not a permanent cache.
+    fetcher.resolutions["rejected.example.org"] = (PUBLIC_A,)
+    result = adapter.retrieve(_query())
+    assert result.packet.papers[0].retrieval_disposition is RetrievalDisposition.RETRIEVED
+    assert len(result.pdf_artifacts) == 2
+
+
+def test_metadata_rejection_also_prevents_reusing_cached_pdf():
+    fetcher = FakeFetcher()
+    adapter = FixedLiteratureIO(fetcher)
+    assert len(adapter.retrieve(_query()).pdf_artifacts) == 2
+    previous_calls = len(fetcher.fetch_calls)
+    fetcher.resolutions["catalog.example.org"] = ("127.0.0.1",)
+    result = adapter.retrieve(_query())
+    assert result.pdf_artifacts == ()
+    assert len(fetcher.fetch_calls) == previous_calls
+    assert all(p.retrieval_disposition is RetrievalDisposition.PDF_UNAVAILABLE for p in result.packet.papers)
+
+
 @pytest.mark.parametrize(("failure", "expected"), [
     (503, "HTTP_FAILURE"),
     (TimeoutError("secret-token"), "TIMEOUT"),

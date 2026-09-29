@@ -718,6 +718,61 @@ def test_grounding_output_retry_reuses_exact_packet_without_second_retrieval(tmp
         host.close()
 
 
+def test_rejected_paper_keeps_grounding_and_expert_research_advancing(tmp_path):
+    class RejectedLanding(_LiteratureFetcher):
+        def search(self, query):
+            papers = tuple(super().search(query))
+            return (replace(papers[0], landing_uri="https://rejected.example.org/paper"), *papers[1:])
+
+        def resolve(self, hostname):
+            return ("10.0.0.7",) if hostname == "rejected.example.org" else super().resolve(hostname)
+
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    run_id = "isolated-literature"
+    fetcher = RejectedLanding()
+    host = WorkflowHost(tmp_path / "state", literature_io=FixedLiteratureIO(fetcher, pdf_workers=2))
+    try:
+        host.initialize()
+        created = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", _payload(tmp_path, mount, run_id)))
+        assert created.status == "accepted", created
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not host.store.list_facts(run_id, "HypothesisProposed"):
+            host.tick()
+            time.sleep(0.005)
+        assert host.store.list_facts(run_id, "HypothesisProposed"), "literature failure must not stop the proposal"
+        # The scripted agent does not submit tool-driven experiments. Close this
+        # bounded next-action test through the real operator cancellation path.
+        revision = host.store.latest_transition(run_id)["revision"]
+        assert host.handle(ControlRequest(1, "cancel", revision, "CANCEL",
+            {"run_id": run_id, "cause": "operator"})).status == "accepted"
+        _drive(host, run_id)
+        assert host.store.latest_transition(run_id)["state"] == "CANCELLED"
+        attempts = host.store.list_attempts()
+        prepared = [row for row in attempts if row["kind"] == "AGENT"
+                    and (_request(row).command is AgentCommand.GROUNDING
+                         or _is_research_node_attempt(row, ResearchNodeSubkind.MAIN))]
+        assert len(prepared) == 2  # One Grounding and one expert literature task, no outer retries.
+        for row in prepared:
+            assert row["terminal_reason"] == "SUCCEEDED"
+            observation = json.loads(row["observation_json"])
+            packet = LiteraturePacket.from_bytes(next(item.content_bytes() for item in _request(row).input_artifacts
+                                                      if item.ref.endswith("--literature-packet")))
+            assert len(packet.papers) == 3
+            assert packet.papers[0].retrieval_disposition.value == "PDF_UNAVAILABLE"
+            assert packet.papers[0].pdf_trace is None and packet.papers[0].claim_refs == ()
+            event = observation["preflight_diagnostics"]["literature_download_trace"][0]["events"][0]
+            assert event["source_host"] == "rejected.example.org" and event["failure_code"] == "VALIDATION_FAILED"
+        assert any(row["kind"] == "AGENT" and _request(row).command is AgentCommand.HYPOTHESIS_PROPOSAL
+                   and row["terminal_reason"] == "SUCCEEDED" for row in attempts)
+        assert all(row["state"] == "CLOSED" for row in attempts)
+        assert not any(json.loads(row["observation_json"]).get("failure_stage") == "literature_retrieval" for row in attempts)
+        assert Oracle(tmp_path / "state/state.sqlite", tmp_path / "state/artifacts").audit(run_id).ok
+    finally:
+        host.close()
+    assert not any(t.name.startswith("hypoloom-literature") for t in threading.enumerate())
+
+
 def test_successful_retrieval_is_timed_inside_its_agent_attempt(
     tmp_path: Path,
     mount_root: Path,

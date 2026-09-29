@@ -3753,7 +3753,10 @@ class FixedLiteratureIO:
                 indices = [index for index, candidate in enumerate(candidates)
                            if not fallback or results[index] is None
                            and self.fallback_locator is not None
-                           and candidate.bibliographic_identity.startswith("doi:")]
+                           and candidate.bibliographic_identity.startswith("doi:")
+                           and not any(event["stage"] in {"landing_uri", "source_uri"}
+                                       and event["outcome"] == "VALIDATION_FAILURE"
+                                       for event in self._download_trace[index]["events"])]
                 pending = deque()
                 next_index = 0
                 while next_index < len(indices) or pending:
@@ -3818,6 +3821,13 @@ class FixedLiteratureIO:
                 self._approve_uri(uri, name, approved_hosts)
             except _LiteratureDnsResolutionError as exc:
                 _download_event(events, name, "TRANSPORT_FAILURE", uri=uri, error=exc)
+            except LiteratureFetchError as exc:
+                if exc.code is not LiteratureFailureCode.VALIDATION_FAILED:
+                    raise  # Unknown resolver/adapter faults still fail the operation.
+                # Deny this candidate before PDF/cache/fallback access. A bad
+                # external locator must not discard unrelated valid papers.
+                _download_event(events, name, "VALIDATION_FAILURE", uri=uri, error=exc)
+                return None
         direct_uris = candidate.pdf_uris
         allocation = batch_http_calls[0]
         fallback_eligible = (not fallback and self.fallback_locator is not None
@@ -4199,9 +4209,11 @@ def _public_address(value: object, name: str) -> str:
     try:
         address = ipaddress.ip_address(raw)
     except ValueError as exc:
-        raise LiteratureFetchError(f"{name} is not an IP address") from exc
+        raise LiteratureFetchError(f"{name} is not an IP address",
+                                   code=LiteratureFailureCode.VALIDATION_FAILED) from exc
     if not address.is_global:
-        raise LiteratureFetchError(f"{name} is not globally routable")
+        raise LiteratureFetchError(f"{name} is not globally routable",
+                                   code=LiteratureFailureCode.VALIDATION_FAILED)
     return str(address)
 
 

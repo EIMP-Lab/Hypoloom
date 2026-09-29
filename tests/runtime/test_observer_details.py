@@ -54,6 +54,23 @@ def _attempt(identity, *, run_id="run", role="researcher", command="SELF_EVOLVE"
             "observation_json": json.dumps({"request": request, **(observation or {})})}
 
 
+def test_pre_model_failure_details_remain_available_without_transcript(tmp_path):
+    trace = [{"bibliographic_identity": "openalex:W1", "events": [{"stage": "landing_uri",
+              "outcome": "VALIDATION_FAILURE", "source_host": "rejected.example.org",
+              "failure_code": "VALIDATION_FAILED", "http_status": None}]}]
+    row = _attempt("failure", command="LITERATURE_REVIEW", observation={
+        "failure_code": "literature_fetch_failed", "failure_stage": "literature_retrieval",
+        "retry_class": "INFRASTRUCTURE", "literature_diagnostic": "landing_uri is not globally routable",
+        "preflight_diagnostics": {"literature_download_trace": trace}})
+    row["terminal_reason"] = "FAILED"
+    _database(tmp_path, [row])
+    result = read_observer_detail(tmp_path, "run", "attempt", attempt_id="failure")
+    assert not result["available"] and result["events"] == []
+    assert result["attempt"]["failure_stage"] == "literature_retrieval"
+    assert result["attempt"]["diagnostic_summary"] == "landing_uri is not globally routable"
+    assert result["literature_download_trace"] == trace
+
+
 def _database(root, attempts=(), *, facts=(), transitions=(), commands=()):
     root.mkdir(exist_ok=True)
     with sqlite3.connect(root / "state.sqlite") as db:

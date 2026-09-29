@@ -1538,6 +1538,35 @@ def test_browser_global_grounding_is_separate_and_sharing_refreshes(browser, tmp
     assert "RESULT_ANALYSIS" not in page.text("#workbench-list")
 
 
+def test_browser_exhausted_literature_explains_stop_and_opens_failure_details(browser, tmp_path):
+    from test_observer_scope import exhausted_literature_summary, record
+    from test_observer_summary import _summary
+    page = browser
+    summary = exhausted_literature_summary(tmp_path, role="expert-a")
+    page.evaluate("fixture.snapshot.overview=" + json.dumps(summary))
+    page.evaluate("fixture.snapshot.attempts=[]")
+    card = '.expert-preview[data-expert-role="expert-a"]'
+    page.wait(f"document.querySelector('{card}').textContent.includes('Automatic recovery ended')")
+    assert "Literature preparation" in page.text(card)
+    assert "3 attempts" in page.text(card) and "literature_fetch_failed" in page.text(card)
+    assert "Last recorded work" not in page.text(card)
+    page.evaluate("Object.assign(fixture.details['attempt:0'],{available:false,events:[],attempt:{attempt_id:'failed-3',failure_code:'literature_fetch_failed',failure_stage:'literature_retrieval',diagnostic_summary:'landing_uri is not globally routable'}})")
+    page.click('[data-expert-details="expert-a"]')
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('API retry does not reopen it')")
+    page.evaluate("Array.from(document.querySelectorAll('#research-detail-content button')).find(b=>b.textContent==='Failure details').click()")
+    page.wait("fixtureRequests.some(r=>r[1].includes('kind=attempt') && r[1].includes('attempt_id=failed-3'))")
+    page.wait("document.querySelector('#research-detail-status').textContent.includes('Recorded failure')")
+    assert "landing_uri is not globally routable" in page.text('#research-detail-content')
+    assert "before model invocation" in page.text('#research-detail-content')
+    # A later cycle can still show current work without carrying the old alert.
+    fresh = _summary(tmp_path, attempts=[record("next", "LITERATURE_REVIEW", role="expert-a", cycle=2, state="OPEN")],
+                     experts=[{"role": "expert-a"}])
+    page.evaluate("fixture.snapshot.overview=" + json.dumps(fresh))
+    page.wait(f"document.querySelector('{card}').textContent.includes('Cycle 2')")
+    assert "Automatic recovery ended" not in page.text(card)
+    assert "1 OPEN" in page.text(card)
+
+
 @pytest.mark.parametrize("terminal", ["leader_round_finished", "leader_aborted", "leader_failed"])
 def test_browser_leader_crown_follows_accepted_round_across_tasks_and_idle(browser, tmp_path, terminal):
     from test_observer_summary import _summary, _transition
@@ -1705,6 +1734,12 @@ def test_browser_literature_download_reasons_keep_unknown_and_attempt_context(br
     page.click("#refresh-workbench")
     page.wait("document.querySelector('#workbench-list .download-evidence').textContent.includes('PDF downloaded, but evidence extraction failed')")
     assert "PDFs with extracted evidence" in page.text("#total-literature")
+    page.evaluate("Object.assign(fixture.details['literature:0'].papers[0],{landing_uri:'https://rejected.example/paper',source_uri:'https://catalog.example/paper',download_attempts:[{attempt_id:'lit-a',role:'expert-a',retrieval_disposition:'PDF_UNAVAILABLE',events:[{stage:'landing_uri',outcome:'VALIDATION_FAILURE',source_host:'rejected.example',failure_code:'VALIDATION_FAILED'}]}]})")
+    page.click("#refresh-workbench")
+    page.wait("document.querySelector('#workbench-list').textContent.includes('Source link withheld')")
+    assert not page.evaluate("Boolean(document.querySelector('#workbench-list a[href^=\"https://rejected.example\"]'))")
+    assert page.evaluate("Boolean(document.querySelector('#workbench-list a[href^=\"https://catalog.example\"]'))")
+    assert "Metadata retained" in page.text("#workbench-list .download-evidence")
 
 
 def test_browser_expert_previews_refresh_current_work_and_cumulative_metrics(browser, tmp_path):

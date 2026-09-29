@@ -1166,6 +1166,21 @@ def _component_views(
             + [f"rendezvous:{phase}" for phase in pending_phases]
         )
         phase = pending_phases[0] if pending_phases else _component_phase(state, open_attempts)
+        if head is None and not open_attempts and not pending_phases:
+            # Before an experiment exists, its pending head cannot explain a
+            # terminal proposal prerequisite. Reuse the recorded Attempt state;
+            # later work supersedes old failures and other proposers may proceed.
+            latest = {}
+            proposal_attempts = (item for item in attempts if item.component_id == component_id
+                and item.task_scope == "expert" and item.owner_role in component.proposer_roles
+                and item.task_kind in {"LITERATURE_REVIEW", "HYPOTHESIS_PROPOSAL", "PROPOSE_HYPOTHESIS"})
+            for attempt in sorted(proposal_attempts, key=lambda item: (item.started_at, item.attempt_id)):
+                latest[attempt.owner_role] = attempt
+            if latest and all(role in latest and latest[role].operational_status == "recovery_exhausted"
+                              for role in component.proposer_roles):
+                phase = "+".join(dict.fromkeys(item.phase for item in latest.values()))
+                reasons += tuple(f"automatic recovery ended: {role} · {item.failure_code or item.phase}"
+                                 for role, item in latest.items())
         current_cycle, cycle_revisions = revision_counts.get(component_id, (0, 0))
         result.append(ComponentView(
             component_id=component_id,

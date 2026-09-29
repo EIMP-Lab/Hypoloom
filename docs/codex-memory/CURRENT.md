@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- September 29 literature failure isolation: a retained expert's MAIN retrieval
+  exhausted three Attempts before model launch because one landing domain
+  resolved to a non-public address. Reuse VALIDATION_FAILED, PDF_UNAVAILABLE
+  and existing download traces to deny that candidate (including cache/fallback)
+  while retaining other papers. Unknown adapter faults still propagate. Web/TUI
+  derive exhausted prerequisite status from existing final-failure evidence;
+  details preserve pre-model diagnostics and withhold rejected-host source links.
+  No new schema, authority or retry control; no retained-run/Profile mutation.
+  231 bounded literature/Host/observer/TUI checks and 10 monitor checks pass;
+  Node renderer smoke passes. Chrome startup and native pool sockets are blocked;
+  a native candidate-validation failure also reproduces on published dev because
+  bwrap cannot create NETLINK_ROUTE sockets. No native CPU/browser pass claimed.
+  User authorizes commit/push to dev. [Scope and validation](../qualification.md#current-repair--isolated-literature-address-rejection-2026-09-29).
+  Evidence: `.local/qualification/literature-isolation-20260929/`; original
+  diagnosis: `.local/analysis/affective-literature-failure-20260929/`.
+
 - September 29 global-task observation: Web/TUI separate run-wide Grounding,
   management and judging from expert work using existing task/reader ownership.
   Preserve execution roles, models, budgets and frozen runs. Global/unknown and

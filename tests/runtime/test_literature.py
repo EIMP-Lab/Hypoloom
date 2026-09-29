@@ -988,9 +988,13 @@ def test_dns_results_and_connected_peer_must_be_exact_public_addresses() -> None
     private_dns = FakeFetcher(
         resolutions={"catalog.example.org": ("10.0.0.7",)}
     )
-    with pytest.raises(LiteratureFetchError, match="globally routable"):
-        FixedLiteratureIO(private_dns).retrieve(_query())
+    adapter = FixedLiteratureIO(private_dns)
+    result = adapter.retrieve(_query())
+    assert all(paper.retrieval_disposition is RetrievalDisposition.PDF_UNAVAILABLE
+               and paper.pdf_trace is None for paper in result.packet.papers)
     assert private_dns.fetch_calls == []
+    assert all(entry["events"][0]["failure_code"] == "VALIDATION_FAILED"
+               for entry in adapter.download_trace)
 
     bad_peer = FakeFetcher(
         responses={

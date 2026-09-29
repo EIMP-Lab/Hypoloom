@@ -339,6 +339,7 @@ def _skill(root, run_id, attempts, selectors):
 
 
 def _attempt_summary(row):
+    from .diagnostics import diagnostic_summary
     observation = _observation(row)
     request, session = _object(observation.get("request")), _object(observation.get("session"))
     diagnostics = _object(observation.get("diagnostics"))
@@ -355,6 +356,8 @@ def _attempt_summary(row):
     return {**{key: row.get(key) for key in ("attempt_id", "kind", "state", "terminal_reason", "started_at", "ended_at", "attempt_ordinal")},
             "role": request.get("role"), "command": request.get("command"),
             "model": request.get("required_model_identity"),
+            **{key: observation.get(key) for key in ("failure_code", "failure_stage", "retry_class")},
+            "diagnostic_summary": diagnostic_summary(observation),
             "context": diagnostics.get("context"), "context_observation": diagnostics.get("context_observation"),
             "component_id": request.get("component_id"), "task": request.get("task_context"),
             **{key: session.get(key) for key in _SESSION_FIELDS}, "launch_mode": launch_mode,
@@ -452,6 +455,7 @@ def _attempt_detail(root, run_id, attempts, selectors):
         source=source if raw is not None else None, scope=scope if raw is not None else "unavailable",
         corrections=summary["corrections"], turns=summary["turns"], raw_turns=summary["raw_turns"], truncated=truncated,
         trace_evidence=read_attempt_evidence(root, run_id, row))
+    result["literature_download_trace"] = _object(observation.get("preflight_diagnostics")).get("literature_download_trace")
     return result
 
 

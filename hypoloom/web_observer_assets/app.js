@@ -967,7 +967,8 @@
     const host = object(object(snapshot.overview).host_observation).availability ||
       (String(snapshot.status_source || "").endsWith("+resident-host-status") ? "responded" : "unconfirmed");
     const opened = stages.filter((stage) => stage.state === "OPEN");
-    const status = opened.length ? `${opened.length} OPEN · Host ${host}` : stages.length ? "Last recorded work" : "No recorded work";
+    const exhausted = stages.some((stage) => stage.operational_status === "recovery_exhausted");
+    const status = opened.length ? `${opened.length} OPEN · Host ${host}` : exhausted ? "Automatic recovery ended" : stages.length ? "Last recorded work" : "No recorded work";
     parent.append(element("p", `expert-work-status ${opened.length && host !== "responded" ? "stage-unconfirmed" : ""}`, `Cycle ${summary.cycle ?? "—"} · ${status}`));
     if (snapshot.status?.dispatch_error) parent.append(element("p", "blocked", "Dispatch paused · admitted work may still finish"));
     const lane = element("div", "expert-stage-lane");
@@ -985,12 +986,15 @@
     parent.append(lane);
     const activity = element("div", "expert-current-work");
     stages.forEach((stage) => {
-      const phase = EXPERT_STAGES.find(([node]) => node === stage.node)?.[2] || stage.node || "Unknown stage";
+      const phase = stage.failure_stage === "literature_retrieval" ? "Literature preparation"
+        : EXPERT_STAGES.find(([node]) => node === stage.node)?.[2] || stage.node || "Unknown stage";
       const scope = [stage.kind === "PROCESS" ? "process" : stage.subkind, stage.chain || stage.experiment_id].filter(Boolean).join(" · ");
       const status = stage.terminal_reason || stage.state || "UNKNOWN";
       const row = element("p", `expert-stage-detail stage-${stageState(stage, host)}`);
       row.append(element("strong", "", phase), document.createTextNode(` · ${scope ? `${scope} · ` : ""}${status} · ${stage.elapsed_seconds == null ? "elapsed ?" : formatDuration(0, stage.elapsed_seconds)}`));
-      if (stage.operational_status || stage.failure_code) row.append(document.createTextNode(` · ${stage.operational_status || "invocation failure"}: ${stage.failure_code || "fresh session"}`));
+      if (stage.operational_status === "recovery_exhausted") row.append(document.createTextNode(` · ${stage.attempts ?? "?"} attempts · automatic recovery ended`));
+      if (stage.failure_code) row.append(document.createTextNode(` · ${stage.failure_code}`));
+      else if (stage.operational_status && stage.operational_status !== "recovery_exhausted") row.append(document.createTextNode(` · ${stage.operational_status}`));
       if (stage.recovery_note) row.title = stage.recovery_note;
       activity.append(row);
     });
@@ -1033,6 +1037,10 @@
       .find((item) => item.role === role));
     parent.append(element("h3", "", "Current work"));
     renderExpertActivity(parent, summary, snapshot);
+    list(summary.activity).filter((stage) => stage.operational_status === "recovery_exhausted").forEach((stage) => {
+      parent.append(element("p", "panel-copy", stage.recovery_note || "Automatic recovery ended for this node."));
+      parent.append(actionButton("Failure details", () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link"));
+    });
     parent.append(element("h3", "", "Research chains, proposals and reading"));
     renderExpertParallelActivity(parent, summary);
     parent.append(actionButton("Browse expert history", () => {
@@ -2625,6 +2633,9 @@
       if (attempt.retrieval_disposition === "PDF_UNAVAILABLE" && list(attempt.events).some((event) => event.outcome === "EXTRACTION_FAILURE")) {
         row.append(element("p", "panel-copy", "PDF downloaded, but evidence extraction failed. This paper has no accepted full-text evidence."));
       }
+      if (list(attempt.events).some((event) => ["landing_uri", "source_uri"].includes(event.stage) && event.outcome === "VALIDATION_FAILURE")) {
+        row.append(element("p", "panel-copy", "Source address rejected. Metadata retained; this Attempt supplied no full-text evidence for this paper."));
+      }
       const events = element("ul", "evidence-list");
       list(attempt.events).forEach((event) => events.append(element("li", "",
         [event.stage, event.outcome, event.source_host, event.failure_code, event.http_status ? `HTTP ${event.http_status}` : null].filter(Boolean).join(" · "))));
@@ -2634,6 +2645,15 @@
       evidence.append(row);
     });
     parent.append(evidence);
+  }
+
+  function paperSourceLink(parent, label, value, paper) {
+    let host;
+    try { host = new URL(value).hostname.toLowerCase().replace(/\.$/, ""); } catch (_) { return; }
+    const rejected = list(paper.download_attempts).some((attempt) => list(attempt.events).some((event) =>
+      ["landing_uri", "source_uri"].includes(event.stage) && event.outcome === "VALIDATION_FAILURE" && event.source_host === host));
+    if (rejected) parent.append(element("p", "panel-copy", "Source link withheld: this host has a recorded address rejection. See download history."));
+    else safeExternalLink(parent, label, value);
   }
 
   function detailCard(kind, item) {
@@ -2653,8 +2673,8 @@
       field("PDF evidence", item.retrieval_disposition ?? item.pdf_available ?? item.pdf_status ?? "unavailable");
       if (item.pdf_available_roles) field("PDF available to", item.pdf_available_roles);
       field("accepted reviews", item.review_attempt_ids || item.accepted_review_attempt_ids || "unavailable");
-      safeExternalLink(card, "Paper / DOI ↗", item.landing_uri || item.url || item.doi_url || (item.doi ? `https://doi.org/${item.doi}` : null));
-      safeExternalLink(card, "PDF / retrieval source ↗", item.source_uri || item.pdf_url);
+      paperSourceLink(card, "Paper / DOI ↗", item.landing_uri || item.url || item.doi_url || (item.doi ? `https://doi.org/${item.doi}` : null), item);
+      paperSourceLink(card, "PDF / retrieval source ↗", item.source_uri || item.pdf_url, item);
       renderDownloadEvidence(card, item);
     } else if (kind === "sessions") {
       card.append(element("h3", "", item.session_id || "Session identity unavailable"));
@@ -2809,7 +2829,9 @@
     const data = object(selected.data);
     const kind = selected.kind;
     setText("research-detail-title", data.name || object(data.attempt).attempt_id || data.title || data.experiment_id || data.interaction_id || kind);
-    setText("research-detail-status", selected.data ? `${data.available === false ? "Evidence unavailable" : "Read-only evidence"}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? " · bounded response; more evidence exists" : ""}` : "Reading run-bound evidence…");
+    const evidenceStatus = data.available === false ? kind === "attempt" && data.attempt?.failure_code
+      ? "Recorded failure · session trace unavailable" : "Evidence unavailable" : "Read-only evidence";
+    setText("research-detail-status", selected.data ? `${evidenceStatus}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? " · bounded response; more evidence exists" : ""}` : "Reading run-bound evidence…");
     const names = kind === "skill" ? [["overview", "Version"], ["body", "Skill content"], ["diff", "Recent diff"], ["adoption", "Adoption"], ["files", "Supporting files"]]
       : kind === "attempt" ? [["overview", "Attempt"], ["timeline", "Session / tools"], ["corrections", "Corrections"], ["execution", "Execution evidence"]]
         : kind === "interaction" ? [["overview", "Overview"], ["timeline", "Stages / verdict"]]
@@ -2918,10 +2940,13 @@
           () => openRemoteDetail("skill", {role: data.role, name: data.name, commit: version.commit}))));
         content.append(versions);
       }
-      if (kind === "attempt") content.append(element("p", "panel-copy", "Normalized turns and raw provider counters may use different units. OPEN is durable state; current live subphase is unknown here."));
+      if (kind === "attempt") {
+        if (data.attempt?.failure_stage === "literature_retrieval") content.append(element("p", "panel-copy", "Literature preparation failed before model invocation. Missing session/tool traces do not hide the recorded failure diagnostics."));
+        content.append(element("p", "panel-copy", "Normalized turns and raw provider counters may use different units. OPEN is durable state; current live subphase is unknown here."));
+      }
       if (kind === "literature") {
-        safeExternalLink(content, "Open paper ↗", data.landing_uri || data.url || data.doi_url);
-        safeExternalLink(content, "Open PDF / retrieval source ↗", data.source_uri || data.pdf_url);
+        paperSourceLink(content, "Open paper ↗", data.landing_uri || data.url || data.doi_url, data);
+        paperSourceLink(content, "Open PDF / retrieval source ↗", data.source_uri || data.pdf_url, data);
         renderDownloadEvidence(content, data);
       }
       list(data.source_attempt_ids).forEach((attempt_id) => content.append(actionButton(`Source Attempt ${attempt_id}`, () => openRemoteDetail("attempt", {attempt_id}))));
