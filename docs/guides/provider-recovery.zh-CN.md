@@ -129,3 +129,27 @@ hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID \
 
 新的调度和连接控制用于本实现创建的新运行。旧 bundle 保持固定，不自动重启、
 重写历史失败，也不支持跨版本迁移。
+
+
+## 文献服务恢复
+
+OpenAlex 的认证、限流、超时和暂时性 HTTP 故障独立进入等待，由已有检索 Attempt
+观测和操作者命令记录推导。它影响 Grounding/专家 MAIN 的文献前置检索；不依赖
+该服务的模型调用和已提交实验继续。查询校验、年代覆盖、私有地址拒绝及 PDF
+规则不变。QUERY_PLAN 仍可把服务异常推迟到 MAIN，因此计划接受不证明服务可用。
+
+已分类的服务故障不耗尽模型/节点重试次数。最多六轮自动失败后等待人工处理，
+退避间隔为 30/60/120/240/300 秒，并遵循更长的 Retry-After；认证失败立即等待人工。
+运行总时限和取消继续生效。并发失败只算一轮，较早请求的迟到失败不会覆盖较新
+检索的成功。成功检索到文献包即确认服务恢复，不取决于后续模型任务是否成功。
+
+修复所选连接或原 Profile 中的凭据后，使用 Web **Retry literature service**、
+TUI **l**，或：
+
+```bash
+hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID --service openalex
+```
+
+搜索前重新读取原凭据来源。此操作不切换模型 API、不改变模型、不自动换文献供应商。
+“请求重试”与“实际恢复”分开显示，并可通过现有 Telegram 事件推送。
+代码更新不迁移、不重开已冻结的旧运行。

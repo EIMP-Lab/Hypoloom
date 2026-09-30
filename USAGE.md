@@ -87,6 +87,9 @@ history/settings or separate active-run registry is modified.
 - **g / GPU resource recheck**: after repairing the bound pool, recheck
   Host-observed resource blocks. See [runtime recovery](docs/guides/runtime-recovery.md).
 
+- **l / Literature retry**: retry OpenAlex after repair; this is separate from model API recovery.
+- **n / Telegram retry**: inspect and retry managed delivery. See [notifications](docs/guides/notifications.md) for access checks and explicit test messages.
+
 Web / local access sits in its own connection-information area. Start the
 Web observer:
 

@@ -132,7 +132,7 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
             unpaywall_email = credential(entries, UNPAYWALL_EMAIL_KEY)
     from .literature import build_openalex_literature_io
 
-    return build_openalex_literature_io(
+    adapter = build_openalex_literature_io(
         api_key=api_key,
         api_key_file=args.openalex_api_key_file,
         pdfinfo_path=args.literature_pdfinfo,
@@ -145,6 +145,9 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
         unpaywall_email=unpaywall_email,
         unpaywall_email_file=args.unpaywall_email_file,
     )
+    if args.credentials_file is not None:
+        adapter.fetcher.api_key_loader = lambda: credential(read_credentials_file(args.credentials_file), OPENALEX_API_KEY_KEY)
+    return adapter
 
 
 def _literature_preflight(args: argparse.Namespace) -> dict[str, object]:
@@ -296,6 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
     provider_clear.add_argument("--run-id", required=True)
     provider_clear.add_argument("--expected-revision", type=int)
     provider_clear.add_argument("--settings", help="absolute Host-side 0600 JSON connection file; env may contain only API key/auth token/base URL")
+    provider_clear.add_argument("--service", choices=("model", "openalex"), default="model", help="select the unavailable dependency; OpenAlex reloads its Profile credential")
 
     for action in ("pin", "revert", "unpin"):
         plugin = subparsers.add_parser("plugin-" + action,
@@ -372,7 +376,11 @@ def build_parser() -> argparse.ArgumentParser:
     notify = subparsers.add_parser("notify", help="explicitly deliver configured events; read-only run, separate output cursors")
     notify.add_argument("--state-root")
     notify.add_argument("--run-id", required=True)
-    notify.add_argument("--output-root", required=True)
+    notify.add_argument("--output-root")
+    notify_action = notify.add_mutually_exclusive_group()
+    notify_action.add_argument("--test", action="store_true", help="verify Telegram access without sending")
+    notify_action.add_argument("--send-test", action="store_true", help="send one explicitly requested test message")
+    notify_action.add_argument("--retry", action="store_true", help="request managed Telegram retry")
     notify.add_argument("--once", action="store_true")
     notify.add_argument("--poll-interval", type=float, default=5.0)
     notify.add_argument("--proxy-env", help="explicit environment variable for an HTTP CONNECT proxy; default: direct")
@@ -717,7 +725,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.subcommand == "notify":
             from .notification_tailer import main as notify_main
             arguments = ["--state-root", str(_state_root(args.state_root)), "--run-id", args.run_id,
-                "--output-root", args.output_root, "--poll-interval", str(args.poll_interval)]
+                "--poll-interval", str(args.poll_interval)]
+            if args.output_root is not None: arguments.extend(["--output-root", args.output_root])
+            for flag in ("test", "send_test", "retry"):
+                if getattr(args, flag): arguments.append("--" + flag.replace("_", "-"))
             if args.once:
                 arguments.append("--once")
             if args.proxy_env is not None:
@@ -745,7 +756,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.subcommand == "resource-recheck":
             return _submit(args, "RESOURCE_RECHECK", {"run_id": args.run_id, "reason": "operator"})
         if args.subcommand == "provider-retry-clear":
+            if args.service == "openalex" and args.settings is not None: raise ValueError("OpenAlex uses its Profile credential; --settings only applies to the model API")
             return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator",
+                **({"service": "openalex"} if args.service == "openalex" else {}),
                 **({"settings_path": args.settings} if args.settings is not None else {})})
         if args.subcommand in {"plugin-pin", "plugin-revert", "plugin-unpin"}:
             from .expert_plugin import _component, _full_commit

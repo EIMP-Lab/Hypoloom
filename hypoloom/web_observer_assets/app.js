@@ -389,6 +389,8 @@
   let resourceBusy = false;
   let providerPending = null;
   let providerBusy = false;
+  const dependencyPending = {};
+  let dependencyBusy = false;
   function providerWritable() {
     return Boolean(providerToken && state.snapshot?.status?.provider_retry
       && connection.dataset.state === "live"
@@ -414,7 +416,7 @@
       : retry.state === "recovering" ? "One pending task may try the API. Access is not yet confirmed."
       : `${reasons[retry.reason] || "API unavailable"}. New Agent dispatch paused; submitted experiments continue. ${retry.requires_operator ? "Operator action required." : `Next attempt: ${formatTimestamp(retry.next_retry_at)}.`} Quota reset time: unknown.`);
     setText("provider-access", providerToken
-      ? "Operator recovery access includes GPU resource recheck. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
+      ? "Operator recovery access includes GPU recheck, literature and notification retry. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
       : "Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control.");
     const blocks = snapshot.status?.resource_blocked || [];
     setText("resource-blocked", blocks.length ? `GPU infrastructure blocked: ${blocks.map(b => `${b.role}: ${b.code}`).join(" · ")}. Submitted experiments continue; affected nodes await repair and recheck.` : "");
@@ -423,8 +425,40 @@
     recheck.hidden = terminal || !providerToken || (!blocks.length && !resourcePending);
     recheck.disabled = resourceBusy || !providerWritable();
     recheck.textContent = resourcePending ? "Retry same resource recheck" : "Recheck GPU resources";
+    const literature = snapshot.status?.literature_retry;
+    setText("literature-status", !literature ? "Literature service status unknown."
+      : `OpenAlex: ${literature.state === "ready" && !literature.recovered_at ? "retrieval allowed; access unverified" : literature.state.replaceAll("_", " ")}${literature.reason ? ` · ${literature.reason}` : ""}. ${literature.requires_operator ? "Operator action required." : literature.next_retry_at ? `Next attempt: ${formatTimestamp(literature.next_retry_at)}.` : ""} ${list(literature.affected_roles).join(", ")}`);
+    const notifications = snapshot.status?.notifications;
+    const sinks = Object.entries(notifications?.sinks || {}).filter(([name]) => name !== "log");
+    setText("notification-status", !notifications || notifications.state === "unavailable" ? "Notification delivery status unknown; owning service unavailable."
+      : notifications.error ? `Notification service: ${notifications.error}`
+      : !sinks.length ? "No remote notification delivery has been observed."
+      : sinks.map(([name, h]) => `${name}: ${(h.state || "unverified").replaceAll("_", " ")} · pending ${h.pending ?? "unknown"} · last success ${formatTimestamp(h.last_success_at)}${h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : ""}${h.next_retry_at ? ` · next retry ${formatTimestamp(h.next_retry_at)}` : ""}`).join(" | "));
+    for (const kind of ["literature", "notification"]) {
+      const button = byId(`${kind}-retry`);
+      button.hidden = !providerToken || terminal || (kind === "notification" ? !notifications?.sinks?.telegram : !literature);
+      button.disabled = dependencyBusy || !providerWritable();
+      button.textContent = dependencyPending[kind] ? "Retry same request" : kind === "literature" ? "Retry literature service" : "Retry Telegram delivery";
+    }
     providerButtons();
   }
+  async function requestDependency(kind) {
+    if (dependencyBusy || !providerWritable()) return;
+    dependencyPending[kind] ||= {request_id: `web-${kind}-${crypto.randomUUID()}`};
+    dependencyBusy = true; renderProvider(state.snapshot);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(`/api/${kind}-retry`, {method: "POST", cache: "no-store", signal: controller.signal,
+        headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"}, body: JSON.stringify(dependencyPending[kind])});
+      const result = await response.json();
+      if (["accepted", "rejected", "conflict"].includes(result.status)) delete dependencyPending[kind];
+      setText("dependency-operation", result.status === "accepted" ? "Retry requested. Recovery is confirmed only after an actual successful response." : "Retry not accepted; inspect current status.");
+    } catch (_) { setText("dependency-operation", "Host reply not confirmed. Retry sends the same request."); }
+    finally { clearTimeout(timer); dependencyBusy = false; renderProvider(state.snapshot); }
+  }
+  byId("literature-retry").addEventListener("click", () => requestDependency("literature"));
+  byId("notification-retry").addEventListener("click", () => requestDependency("notification"));
   async function requestResources() {
     if (resourceBusy || !providerWritable()) return;
     resourcePending ||= {request_id: `web-resource-${crypto.randomUUID()}`};

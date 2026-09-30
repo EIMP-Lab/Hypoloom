@@ -580,13 +580,15 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path == "/api/support":
             self._support()
             return
-        if self.path not in {"/api/human-answer", "/api/provider-retry", "/api/resource-recheck"}:
+        if self.path not in {"/api/human-answer", "/api/provider-retry", "/api/resource-recheck", "/api/literature-retry", "/api/notification-retry"}:
             self._method_not_allowed()
             return
         if not self._require_authorization():
             return
         resource = self.path == "/api/resource-recheck"
-        provider = resource or self.path == "/api/provider-retry"
+        literature = self.path == "/api/literature-retry"
+        notification = self.path == "/api/notification-retry"
+        provider = resource or literature or notification or self.path == "/api/provider-retry"
         token = self.observer._provider_token if provider else self.observer._answer_token
         supplied = self.headers.get("X-Hypoloom-Provider-Token" if provider else "X-Hypoloom-Answer-Token", "")
         try:
@@ -619,13 +621,15 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                 from .control_protocol import ControlRequest, SCHEMA_VERSION
                 if not isinstance(values, dict) or set(values) not in ({"request_id"}, {"request_id", "settings_path"}):
                     raise ValueError("provider recovery requires request_id and optional settings_path")
-                if resource and set(values) != {"request_id"}:
-                    raise ValueError("resource recheck accepts only request_id")
+                if (resource or literature or notification) and set(values) != {"request_id"}:
+                    raise ValueError("dependency retry accepts only request_id")
                 if "settings_path" in values and (not isinstance(values["settings_path"], str) or not values["settings_path"].startswith("/")):
                     raise ValueError("settings_path must be an absolute Host-side connection file path")
                 request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION, "request_id": values["request_id"],
-                    "expected_revision": None, "command": "RESOURCE_RECHECK" if resource else "PROVIDER_RETRY_CLEAR", "payload": {"run_id": self.observer.run_id,
-                        "reason": "operator", **({"settings_path": values["settings_path"]} if "settings_path" in values else {})}})
+                    "expected_revision": None, "command": "NOTIFICATION_RETRY" if notification else "RESOURCE_RECHECK" if resource else "PROVIDER_RETRY_CLEAR", "payload": {"run_id": self.observer.run_id,
+                        **({"sink": "telegram"} if notification else {"reason": "operator"}),
+                        **({"service": "openalex"} if literature else {}),
+                        **({"settings_path": values["settings_path"]} if "settings_path" in values else {})}})
             else:
                 from .human_answers import answer_request
                 answer_request(self.observer.run_id, values)

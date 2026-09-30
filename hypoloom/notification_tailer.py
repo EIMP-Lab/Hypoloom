@@ -9,16 +9,20 @@ https://core.telegram.org/bots/api#sendmessage
 from __future__ import annotations
 
 import argparse
+import errno
 import http.client
 import ipaddress
 import json
 import math
 import os
 import re
+import socket
+import ssl
 import stat
 import sys
 import tempfile
 import time
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -40,10 +44,34 @@ class NotificationError(ValueError):
     """A safe-to-display configuration or delivery error; never include secrets."""
 
 
+class NotificationDeliveryError(NotificationError):
+    def __init__(self, code, *, phase, retryable=True, http_status=None, errno=None, retry_after=None):
+        self.details = {"code": code, "phase": phase, "retryable": retryable,
+                        "http_status": http_status, "errno": errno, "retry_after_seconds": retry_after}
+        super().__init__(f"{code} ({phase})" + (f" HTTP {http_status}" if http_status is not None else "")
+            + "; " + ("retry pending" if retryable else "operator action required"))
+
+
+def delivery_exception(error, phase):
+    """Only fixed labels/numeric codes cross the private transport boundary."""
+    if isinstance(error, NotificationDeliveryError): return error
+    code = ("dns_failed" if isinstance(error, socket.gaierror) else
+            "tls_certificate_failed" if isinstance(error, ssl.SSLCertVerificationError) else
+            "tls_failed" if isinstance(error, ssl.SSLError) else
+            "timeout" if isinstance(error, TimeoutError) else
+            {errno.ENETUNREACH: "network_unreachable", errno.EHOSTUNREACH: "host_unreachable",
+             errno.ECONNREFUSED: "connection_refused", errno.ECONNRESET: "connection_reset",
+             errno.EPERM: "permission_denied", errno.EACCES: "permission_denied"}.get(getattr(error, "errno", None),
+                "local_write_failed" if phase in {"log_write", "cursor_write"} else "transport_failed"))
+    return NotificationDeliveryError(code, phase=phase, errno=getattr(error, "errno", None),
+        retryable=code not in {"tls_certificate_failed", "permission_denied"})
+
+
 @dataclass(frozen=True)
 class HTTPResponse:
     status: int
     body: bytes = b""
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -51,6 +79,7 @@ class DeliveryReport:
     delivered: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    health: dict[str, Any] = field(default_factory=dict)
 
 
 def load_notification_config(state_root: str | Path, run_id: str) -> dict[str, Any]:
@@ -144,17 +173,24 @@ def post_json(url: str, document: Mapping[str, Any], *, headers: Mapping[str, st
     else:
         connection_type = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
         connection = connection_type(parts.hostname, parts.port, timeout=timeout)
+    phase = "connect"
     try:
+        connection.connect()
+        phase = "request"
         path = parts.path or "/"
         if parts.query:
             path += "?" + parts.query
         connection.request("POST", path, body=json.dumps(document, ensure_ascii=False).encode("utf-8"),
                            headers={"Content-Type": "application/json", **headers})
+        phase = "response"
         response = connection.getresponse()
         body = response.read(65537)
         if len(body) > 65536:
             raise NotificationError("notification HTTP response exceeds 64 KiB")
-        return HTTPResponse(response.status, body)
+        retry_after = response.getheader("Retry-After")
+        return HTTPResponse(response.status, body, {} if retry_after is None else {"retry-after": retry_after})
+    except (OSError, http.client.HTTPException) as exc:
+        raise delivery_exception(exc, phase) from None
     finally:
         connection.close()
 
@@ -278,14 +314,37 @@ def notification_preflight(config: Mapping[str, Any], *, state_root: Path,
     if "dashboard" in enabled:
         from .web_observer import _require_loopback_host
         _require_loopback_host(sinks["dashboard"].get("host", "127.0.0.1"))
-    return {"enabled_sinks": enabled, "output_root": str(output), "network_probe_performed": False}
+    return {"enabled_sinks": enabled, "output_root": str(output), "network_probe_performed": False,
+            "delivery_status": "unverified", "message": "Configuration valid; remote delivery has not been verified. Use notify --test to check access, --send-test to send one message."}
+
+
+def check_delivery_response(response, sink, *, now):
+    from .provider_observation import retry_after_seconds
+    retry_after = retry_after_seconds(response.headers.get("retry-after"), now=now)
+    data = None
+    if sink == "telegram":
+        try: data = json.loads(response.body)
+        except (ValueError, UnicodeError): pass
+        if isinstance(data, dict):
+            value = data.get("parameters", {}).get("retry_after") if isinstance(data.get("parameters"), dict) else None
+            if type(value) is int and value >= 0: retry_after = retry_after_seconds(str(value), now=now)
+    if 200 <= response.status < 300 and (sink != "telegram" or isinstance(data, dict) and data.get("ok") is True): return data
+    code = {401: "authentication_failed", 403: "forbidden", 404: "endpoint_not_found", 429: "rate_limited"}.get(response.status, "http_error")
+    if isinstance(data, dict):
+        description = str(data.get("description", "")).lower()
+        if "chat not found" in description: code = "chat_not_found"
+        elif "blocked" in description: code = "bot_blocked"
+        elif "kicked" in description or "not a member" in description: code = "bot_not_a_member"
+    retryable = response.status in {408, 429} or response.status >= 500 or 200 <= response.status < 300
+    raise NotificationDeliveryError(code, phase="api_response", retryable=retryable,
+        http_status=response.status, retry_after=retry_after)
 
 
 class NotificationTailer:
     def __init__(self, state_root: str | Path, run_id: str, output_root: str | Path, *,
                  environ: Mapping[str, str] | None = None, transport: Callable[..., HTTPResponse] | None = None,
                  proxy_env: str | None = None, observation_reader: Callable[[], Mapping[str, Any]] | None = None,
-                 dashboard_port: Callable[[], int | None] | None = None):
+                 dashboard_port: Callable[[], int | None] | None = None, clock=time.time):
         if not isinstance(run_id, str) or _SAFE_ID.fullmatch(run_id) is None:
             raise NotificationError("invalid notification run identity")
         self.state_root = Path(state_root).resolve()
@@ -296,6 +355,9 @@ class NotificationTailer:
         self.directory = self.output_root / run_id
         self.environ = os.environ if environ is None else environ
         self.transport = post_json if transport is None else transport
+        self.clock = clock
+        self._health_lock = threading.Lock()
+        self._health = {}
         config = load_notification_config(self.state_root, run_id)
         self.proxy_url = notification_proxy(config, self.environ, proxy_env)
         self.sinks = config.get("sinks", {})
@@ -306,6 +368,22 @@ class NotificationTailer:
         if "log" in self.sinks:
             relative = notification_log_path(self.sinks["log"])
             self.log_path = self.directory.joinpath(*relative.parts)
+
+    def health(self):
+        with self._health_lock:
+            return {name: {**value, "failure": dict(value["failure"]) if value.get("failure") else None}
+                    for name, value in self._health.items()}
+
+    def retry(self, sink="telegram"):
+        if sink not in {"telegram", "webhook"} or not self.sinks.get(sink, {}).get("enabled"):
+            raise NotificationError("notification sink is not enabled")
+        with self._health_lock:
+            self._health.setdefault(sink, {}).update(state="recovering", next_retry_at=None, failure_count=0)
+
+    def _update_health(self, sink, **values):
+        with self._health_lock:
+            self._health.setdefault(sink, {"state": "unverified", "pending": 0, "failure_count": 0,
+                "last_attempt_at": None, "last_success_at": None, "next_retry_at": None, "failure": None}).update(values)
 
     def _secret(self, config: Mapping[str, Any], field: str) -> str:
         return notification_secret(self.environ, config, field)
@@ -335,6 +413,9 @@ class NotificationTailer:
             payload = event.get("payload", {})
             summary = " · ".join(str(payload[key]) for key in ("role", "node", "experiment_id", "outcome", "verdict", "error_code") if payload.get(key) is not None)
             text = f"Hypoloom {event['type']}\nRun: {self.run_id}\nEvent: {event['event_id']}"
+            if event["type"] == "notification_backlog":
+                text += "\nEarlier routine notifications: " + ", ".join(f"{key}: {value}" for key, value in payload["counts"].items())
+                text += "\nThis summarizes earlier events; consult Web/TUI for the current state."
             if summary: text += "\n" + summary
             if event["type"] in {"grounding_question", "grounding_answered"}:
                 requested = event["type"] == "grounding_question"
@@ -364,6 +445,13 @@ class NotificationTailer:
                 text += "\nProvider retry requested by operator. Access is not yet confirmed; awaiting a successful response."
             if event["type"] == "provider_recovered":
                 text += "\n✅ API response received; provider availability recovered. Research progress remains subject to task and budget limits."
+            if event["type"].startswith("literature_"):
+                text += f"\nLiterature service: {payload.get('service', 'openalex')}; {payload.get('reason') or event['type']}."
+                if payload.get("requires_operator"):
+                    text += "\nOperator action required. Repair the literature connection, then use Literature retry in Web/TUI or provider-retry-clear --service openalex."
+                elif payload.get("next_retry_at") is not None:
+                    text += "\nNext attempt: " + datetime.fromtimestamp(payload['next_retry_at'], timezone.utc).isoformat()
+                if event["type"] == "literature_recovered": text += "\nAn actual retrieval succeeded; research remains subject to task and budget limits."
             dashboard = self.sinks.get("dashboard", {})
             if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"}:
                 # The owning service supplies its actual bound port, including
@@ -379,22 +467,20 @@ class NotificationTailer:
             document = {"chat_id": chat_id, "text": text}
         options = {"proxy_url": self.proxy_url} if self.proxy_url is not None and urlsplit(url).scheme == "https" else {}
         response = self.transport(url, document, headers=headers, timeout=10.0, **options)
-        if not 200 <= response.status < 300:
-            raise NotificationError(f"notification HTTP status {response.status}; retry pending")
-        if sink == "telegram":
-            result = json.loads(response.body)
-            if not isinstance(result, dict) or result.get("ok") is not True:
-                raise NotificationError("Telegram API rejected notification; retry pending")
+        check_delivery_response(response, sink, now=self.clock())
 
     def poll_once(self) -> DeliveryReport:
         report = DeliveryReport()
         observation = (build_product_observation(self.state_root, self.run_id)
                        if self.observation_reader is None else self.observation_reader())
         events = sorted(observation["events"], key=lambda event: (event["source"], event["source_id"], event["revision"]))
+        routine = {"run_started", "new_best_result", "expert_round_done", "stage_started", "stage_finished",
+                   "hypothesis_added", "experiment_started", "experiment_submitted", "experiment_finished"}
         for sink in ("log", "telegram", "webhook"):
             if sink not in self.sinks or (sink != "log" and not self.sinks[sink].get("enabled", False)):
                 continue
             report.delivered[sink] = 0
+            self._update_health(sink)
             selected = self.events.get(sink, sorted(_EVENT_TYPES) if sink == "log" else [])
             if not isinstance(selected, list) or any(not isinstance(name, str) for name in selected):
                 report.errors.append(f"{sink}: event selection must be a list of names")
@@ -402,50 +488,136 @@ class NotificationTailer:
             selected = list(selected)
             if "provider_auth_cooldown" in selected: selected.append("provider_waiting")
             if "provider_auth_resumed" in selected: selected.extend(("provider_retry_requested", "provider_recovered"))
+            if "error" in selected: selected.extend(("literature_waiting", "literature_retry_requested", "literature_recovered"))
             unknown = set(selected) - _EVENT_TYPES
-            if unknown:
-                report.warnings.append(f"{sink}: no implemented event source for {', '.join(sorted(unknown))}")
+            if unknown: report.warnings.append(f"{sink}: no implemented event source for {', '.join(sorted(unknown))}")
             if not selected:
                 report.warnings.append(f"{sink}: no event types explicitly selected; nothing delivered")
                 continue
+            phase = "cursor_read"
             try:
                 path = self.directory / "cursors" / (sink + ".json")
                 cursor = _read_cursor(path)
+                pending = [event for event in events if event["type"] in selected
+                    and event["revision"] > cursor.get(f"{event['source']}:{event['source_id']}", 0)]
+                if sink == "log":
+                    level = _LEVELS[self.sinks["log"].get("level", "info").lower()]
+                    pending = [event for event in pending if (40 if event["type"] in {"experiment_failed", "error"}
+                        else 30 if event["type"] == "budget_warning" else 20) >= level]
+                self._update_health(sink, pending=len(pending))
+                health = self.health()[sink]
+                if health.get("state") == "waiting_operator" or (health.get("next_retry_at") or 0) > self.clock():
+                    continue
+                if not pending: continue
+                phase = "configuration"
                 remote = self._remote(sink) if sink != "log" else None
-                for event in events:
-                    key = f"{event['source']}:{event['source_id']}"
-                    if event["type"] not in selected or event["revision"] <= cursor.get(key, 0):
-                        continue
-                    if sink == "log":
-                        level = 40 if event["type"] in {"experiment_failed", "error"} else 30 if event["type"] == "budget_warning" else 20
-                        if level < _LEVELS[self.sinks["log"].get("level", "info").lower()]:
-                            continue
+                batches = [[event] for event in pending]
+                # A summary advances the same existing source cursors only after
+                # acknowledgment. Human decisions/errors are never swallowed.
+                if sink == "telegram":
+                    batches, ordinary = [], []
+                    for event in pending:
+                        if event["type"] in routine:
+                            ordinary.append(event)
+                        else:
+                            batches.extend([ordinary] if len(ordinary) >= 5 else [[item] for item in ordinary])
+                            ordinary = []
+                            batches.append([event])
+                    batches.extend([ordinary] if len(ordinary) >= 5 else [[item] for item in ordinary])
+                if sink != "log": batches = batches[:5]
+                for batch in batches:
+                    event = batch[0]
+                    if len(batch) > 1:
+                        from collections import Counter
+                        event = {**event, "type": "notification_backlog",
+                            "payload": {"counts": dict(sorted(Counter(e["type"] for e in batch).items()))}}
+                    phase = "log_write" if sink == "log" else "transport"
+                    self._update_health(sink, last_attempt_at=self.clock())
                     self._deliver(sink, event, remote)
-                    next_cursor = {**cursor, key: event["revision"]}
+                    next_cursor = dict(cursor)
+                    for source in batch:
+                        key = f"{source['source']}:{source['source_id']}"
+                        next_cursor[key] = max(next_cursor.get(key, 0), source["revision"])
+                    phase = "cursor_write"
                     _write_cursor(path, next_cursor)
                     cursor = next_cursor
-                    report.delivered[sink] += 1
-            except NotificationError as error:
-                report.errors.append(f"{sink}: {error}")
-            except (OSError, ValueError, http.client.HTTPException) as error:
-                # Exception strings can include URLs, bearer tokens or response bodies.
-                report.errors.append(f"{sink}: {type(error).__name__}; delivery pending, retry on next poll")
+                    report.delivered[sink] += len(batch)
+                    self._update_health(sink, state="healthy", last_success_at=self.clock(), failure_count=0,
+                        next_retry_at=None, failure=None, pending=max(0, len(pending) - report.delivered[sink]))
+            except (NotificationError, OSError, ValueError, http.client.HTTPException) as error:
+                if isinstance(error, NotificationDeliveryError): failure = error
+                elif isinstance(error, NotificationError):
+                    failure = NotificationDeliveryError("configuration_invalid" if phase == "configuration" else "delivery_validation_failed",
+                        phase=phase, retryable=False)
+                else: failure = delivery_exception(error, phase)
+                count = self.health()[sink].get("failure_count", 0) + 1
+                delay = min(30.0 * 2 ** min(count - 1, 4), 300.0)
+                retry_after = failure.details.get("retry_after_seconds")
+                if retry_after is not None: delay = max(delay, retry_after)
+                self._update_health(sink, state="cooldown" if failure.details["retryable"] else "waiting_operator",
+                    failure_count=count, failure=failure.details,
+                    next_retry_at=self.clock() + delay if failure.details["retryable"] else None)
+                # Existing safe configuration errors remain useful to operators.
+                report.errors.append(f"{sink}: {error if isinstance(error, NotificationError) else failure}")
+        report.health = self.health()
         return report
+
+
+def test_notification(config, *, environ=None, proxy_env=None, send=False, transport=post_json):
+    """Explicit Telegram probe, independent of delivery cursors and research state."""
+    result = {"steps": [], "message_sent": False}
+    environment = os.environ if environ is None else environ
+    try:
+        if not config.get("sinks", {}).get("telegram", {}).get("enabled"):
+            raise NotificationError("Telegram is not enabled")
+        url, _, chat = notification_remote("telegram", config["sinks"]["telegram"], environment)
+        proxy = notification_proxy(config, environment, proxy_env)
+        plan = [("getMe", {}), ("getChat", {"chat_id": chat})]
+        if send: plan.append(("sendMessage", {"chat_id": chat, "text": "Hypoloom notification test — explicitly requested by the operator. This message does not control research."}))
+        for method, document in plan:
+            options = {"proxy_url": proxy} if proxy else {}
+            response = transport(url.rsplit("/", 1)[0] + "/" + method, document, headers={}, timeout=10, **options)
+            check_delivery_response(response, "telegram", now=time.time())
+            result["steps"].append({"method": method, "http_status": response.status, "ok": True})
+            if method == "sendMessage": result["message_sent"] = True
+        result["ok"] = True
+    except (NotificationError, OSError, ValueError, http.client.HTTPException) as exc:
+        error = exc if isinstance(exc, NotificationDeliveryError) else (
+            NotificationDeliveryError("configuration_invalid", phase="configuration", retryable=False)
+            if isinstance(exc, NotificationError) else delivery_exception(exc, "transport"))
+        result.update(ok=False, failure=error.details)
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only, at-least-once notification tailer; never resumes a run")
     parser.add_argument("--state-root", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--output-root", required=True)
+    parser.add_argument("--output-root")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--test", action="store_true", help="check Bot authentication and recipient without sending")
+    action.add_argument("--send-test", action="store_true", help="check access and send one labelled diagnostic message")
+    action.add_argument("--retry", action="store_true", help="request retry of the managed Telegram sink")
     parser.add_argument("--once", action="store_true", help="poll once; exit 1 on delivery failure")
     parser.add_argument("--poll-interval", type=float, default=5.0)
     parser.add_argument("--proxy-env", help="explicit environment variable containing an HTTP CONNECT proxy; default: direct")
     args = parser.parse_args(argv)
+    if not (args.test or args.send_test or args.retry) and not args.output_root: parser.error("delivery requires an explicit --output-root")
     if not math.isfinite(args.poll_interval) or args.poll_interval <= 0:
         parser.error("poll interval must be finite and positive")
     reader = None
     try:
+        if args.test or args.send_test:
+            result = test_notification(load_notification_config(args.state_root, args.run_id), proxy_env=args.proxy_env, send=args.send_test)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0 if result["ok"] else 1
+        if args.retry:
+            from .control_protocol import ControlRequest, request_over_socket
+            import uuid
+            reply = request_over_socket(Path(args.state_root) / "control.sock", ControlRequest(1,
+                "notification-retry-" + uuid.uuid4().hex, None, "NOTIFICATION_RETRY", {"run_id": args.run_id, "sink": "telegram"}), timeout=5)
+            print(json.dumps(reply.to_mapping(), ensure_ascii=False))
+            return 0 if reply.status == "accepted" else 1
         if not args.once:
             from .observer_refresh import ObserverRefresh
             reader = ObserverRefresh(args.state_root, args.run_id, refresh_seconds=args.poll_interval)

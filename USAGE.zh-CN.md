@@ -68,6 +68,9 @@ CC 的输入历史、设置，也不维护额外的“当前运行”登记文�
 - **g / GPU resource recheck**：修复绑定的池后，复查 Host 已确认的资源阻断；详见
   [运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
 
+- **l / Literature retry**：修复后重试 OpenAlex，与模型 API 恢复分开。
+- **n / Telegram retry**：检查并重试托管通知；认证检查和显式测试消息见[通知指南](docs/guides/notifications.md)。
+
 Web / local access 位于独立的连接信息区域。启动 Web observer：
 
 ```bash

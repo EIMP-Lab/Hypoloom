@@ -156,6 +156,7 @@ class WorkflowHost:
         if isinstance(gpu_pressure_grace_seconds, bool) or not isinstance(gpu_pressure_grace_seconds, (int, float)) or not math.isfinite(float(gpu_pressure_grace_seconds)) or gpu_pressure_grace_seconds < 0: raise ValueError("gpu_pressure_grace_seconds must be finite and non-negative")
         self._provider_environment = MappingProxyType(dict(provider_environment or {})); self.gpu_pressure_grace_seconds = float(gpu_pressure_grace_seconds)
         self._provider_connections: dict[str, tuple[str, dict[str, str] | None, str | None]] = {}
+        self.observer_services = None
         if claude_agent_host is None and self._provider_environment: raise ValueError("provider environment requires the Claude Agent Host")
         self.agent_budget = agent_budget or (DEFAULT_REAL_AGENT_BUDGET if claude_agent_host else AgentBudget(max_turns=2, max_tokens=512, max_output_bytes=16_384, wall_seconds=5, max_cost="0"))
         mode = FakeAgentMode(fake_agent_mode)
@@ -355,6 +356,14 @@ class WorkflowHost:
             if request.command in {"PAUSE", "RESUME", "INJECT"}: return self._control_participant(request)
             if request.command == "RESOURCE_RECHECK": return self.resource_recovery.recheck(request)
             if request.command == "PROVIDER_RETRY_CLEAR": return self._provider_retry_clear(request)
+            if request.command == "NOTIFICATION_RETRY":
+                if set(request.payload) != {"run_id", "sink"} or self.observer_services is None:
+                    raise ValueError("notification retry requires run_id, sink and a managed notification service")
+                if not isinstance(request.payload["run_id"], str) or request.payload["sink"] not in ("telegram", "webhook"):
+                    raise ValueError("notification retry requires a run ID and a supported sink")
+                if self.store.get_run(request.payload["run_id"]) is None: raise ValueError("unknown run")
+                return ControlResponse.accepted(request.request_id, None,
+                    self.observer_services.notification_retry(request.payload["run_id"], request.payload["sink"]))
             if request.command in {"PIN_PLUGIN", "REVERT_PLUGIN", "UNPIN_PLUGIN"}: return self._control_plugin(request)
             return ControlResponse.failure(request.request_id, "rejected", "unknown_command", request.command)
         except NonQuiescentBackup as exc: record(exc); return ControlResponse.failure(request.request_id, "rejected", "non_quiescent", str(exc))
@@ -521,6 +530,7 @@ class WorkflowHost:
         return ControlResponse.accepted(request.request_id, stored.revision, stored.result or {})
     def _provider_retry_clear(self, request: ControlRequest) -> ControlResponse:
         payload = request.payload
+        if payload.get("service") == "openalex": return self._literature_retry_clear(request)
         if set(payload) not in ({"run_id", "reason"}, {"run_id", "reason", "settings_path"}): raise ValueError("PROVIDER_RETRY_CLEAR requires run_id, reason and optional settings_path")
         run_id = payload["run_id"]
         if not isinstance(run_id, str) or payload["reason"] != "operator":
@@ -557,6 +567,26 @@ class WorkflowHost:
         # Read the gate after the commit so the reply reflects the recorded clear.
         return ControlResponse.accepted(request.request_id, stored.revision,
             {**dict(stored.result or {}), "provider_retry": self._provider_retry_status(run_id)})
+
+    def _literature_retry_clear(self, request):
+        if set(request.payload) != {"run_id", "reason", "service"} or request.payload["reason"] != "operator":
+            raise ValueError("literature retry requires run_id, operator reason and service=openalex")
+        run_id = request.payload["run_id"]
+        if self.literature_io is None: raise ValueError("literature service is not configured")
+        def operation(tx):
+            head = tx.latest_transition(run_id)
+            if head is None or head["state"] not in {"CREATED", "ACTIVE"}: raise ValueError("literature retry requires an active run")
+            row = self._transition_record(tx, run_id, run_id, "RUN", Command.PROVIDER_RETRY_CLEAR,
+                RunState(head["state"]), request.request_id, payload={"literature_retry_clear": {"cleared_at": time.time(), "reason": "operator"}})
+            tx.append_transition(row)
+            return {"status": "accepted", "revision": row["revision"], "result": {"run_id": run_id}}
+        stored = self.store.execute_command({"command_id": request.request_id, "run_id": run_id, "workflow_id": run_id,
+            "expected_revision": request.expected_revision, "command_type": Command.PROVIDER_RETRY_CLEAR.value,
+            "request": request.to_mapping()}, operation)
+        if stored.status != "accepted":
+            return ControlResponse.failure(request.request_id, "rejected", "literature_retry_rejected", "Literature retry was not accepted", stored.revision)
+        from .literature_recovery import status
+        return ControlResponse.accepted(request.request_id, stored.revision, {"literature_retry": status(self.store, run_id)})
     def _control_plugin(self, request: ControlRequest) -> ControlResponse:
         from .expert_plugin import ExpertPluginStore, _full_commit, select_plugin_commit
         from .profile_v4 import resolve_node_runtime
@@ -677,6 +707,10 @@ class WorkflowHost:
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
         result["dispatch_error"] = self.dispatch_errors.get(run_id)
         result["provider_retry"] = self._provider_retry_status(run_id)
+        from .literature_recovery import status as literature_status
+        result["literature_retry"] = literature_status(self.store, run_id) if self.literature_io is not None else None
+        result["notifications"] = ({"state": "unavailable", "sinks": {}} if self.observer_services is None
+            else self.observer_services.notification_status(run_id))
         result["participant_controls"] = self._participant_controls(run_id).to_dict()
         result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS)
         from .process_observation import process_activity
@@ -2161,6 +2195,10 @@ class WorkflowHost:
         key = (kind, identity)
         job = self._literature_jobs.get(key)
         if job is None:
+            if kind == "retrieve":
+                from .literature_recovery import status
+                if status(self.store, run_id)["pending"]: return None
+                if any(k[0] == "retrieve" and v.run_id == run_id for k, v in self._literature_jobs.items()): return None
             self._literature_jobs[key] = self.literature_io.submit_read(
                 self._literature_executor, run_id, kind, query)
             return None
@@ -2318,11 +2356,15 @@ class WorkflowHost:
                 if (diagnostic := bounded_diagnostic_text(str(exc))) is not None: details["literature_diagnostic"] = diagnostic
                 if exc.http_status is not None: details["literature_http_status"] = exc.http_status
                 details["failure_stage"] = "literature_retrieval"
-                literature_failure = (f"literature_{exc.code.value.lower()}", details, literature_failure_retryable(exc))
+                from .literature_recovery import service_failure
+                service = service_failure(exc)
+                if service is not None: details["literature_service"] = {**service, "observed_at": time.time()}
+                literature_failure = (f"literature_{exc.code.value.lower()}", details, service is not None or literature_failure_retryable(exc))
             except Exception as exc:
                 literature_failure = ("literature_adapter_failed", {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}, True)
             else:
                 preflight_diagnostics["literature_retrieval_seconds"] = read["seconds"]
+                preflight_diagnostics["literature_service"] = {"service": "openalex", "available": True, "observed_at": time.time()}
                 packet_input = EmbeddedInput.from_bytes(f"{task.command_id}--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes())
                 inputs = (*inputs, packet_input); immutable_context_refs = (*immutable_context_refs, packet_input.ref)
         self._check_agent_runtime()
@@ -2920,6 +2962,9 @@ class WorkflowHost:
             **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})}
         with self.store.transaction() as tx:
             tx.close_attempt(request.attempt_id, terminal_reason=reason, ended_at=time.time(), payload=observation)
+            from .literature_recovery import deferred_attempt
+            if deferred_attempt(observation) and tx.latest_transition(request.run_id)["state"] in {"CREATED", "ACTIVE"}:
+                return  # Shared literature availability owns recovery; no node exhaustion.
             from .provider_observation import PROVIDER_UNAVAILABLE
             if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
                     and retry_class == "INFRASTRUCTURE"
@@ -4696,7 +4741,7 @@ def serve(
         os.chmod(socket_path, 0o600)
         server.listen(16)
         server.settimeout(0.02)
-        if services_factory is not None: services.enter_context(services_factory())
+        if services_factory is not None: host.observer_services = services.enter_context(services_factory())
         def request_stop(_signum: int, _frame: object) -> None:
             host.stop_requested = True
         signal.signal(signal.SIGTERM, request_stop)

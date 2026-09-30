@@ -49,6 +49,19 @@ class ObserverServices:
     def running(self):
         return self._thread is not None and self._thread.is_alive()
 
+    def notification_status(self, run_id):
+        notifier = self._notifiers.get(run_id)
+        error = self._reported.get(f"{run_id}/notification")
+        return {"state": "unavailable" if self._closed else "error" if error else "observed" if notifier else "unverified",
+                "error": error,
+                "sinks": {} if notifier is None else notifier.health()}
+
+    def notification_retry(self, run_id, sink):
+        notifier = self._notifiers.get(run_id)
+        if notifier is None: raise NotificationError("notification service is not initialized")
+        notifier.retry(sink)
+        return self.notification_status(run_id)
+
     def _diagnostic(self, key, message):
         if self._reported.get(key) != message:
             print(f"observer services: {key}: {message}", file=self.errors, flush=True)
@@ -109,6 +122,7 @@ class ObserverServices:
                     dashboard_port=lambda: (self.dashboards[run_id].server_port
                         if run_id in self.dashboards else None))
             result = self._notifiers[run_id].poll_once()
+            self._reported.pop(f"{run_id}/notification", None)
             for message in result.errors + result.warnings:
                 self._diagnostic(f"{run_id}/notification/{message.split(':', 1)[0]}", message)
             if any(result.delivered.values()):

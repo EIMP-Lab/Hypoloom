@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 1 literature/notification recovery: user authorizes implementation and
+  subsequently commit/push to dev, reusing completed focused validation.
+  Existing Attempt/control records derive OpenAlex waiting, bounded recovery and
+  actual retrieval success; ordinary retries and scientific validation remain
+  independent. Telegram gains safe delivery diagnostics, backoff, explicit tests,
+  ordered backlog summaries and scoped Web/TUI retry. Existing cursors remain the
+  only delivery progress; no new persistent authority. Bilingual guides/templates
+  and init wording updated. 427 focused checks pass; native socket/CPU, asyncio
+  executor teardown, browser and public receipt limits are recorded in
+  [qualification](../qualification.md#current-repair--literature-recovery-and-notification-health-2026-10-01).
+  Evidence: `.local/qualification/service-notifications-20261001/`. Existing runs,
+  Profiles and bundles unchanged; no public message/model call.
+
 - September 30 research efficiency: user stopped the research run and authorized
   implementation/commit/push. ACI 29 / bwrap68 bounds Debate rounds and retries,
   preserves original-source/session/promotion validation and legacy forks, and

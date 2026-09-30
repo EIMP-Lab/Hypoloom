@@ -77,3 +77,71 @@ webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出
 `--notification-output-root` 指定。预览不会发送通知；凭据缺失会在启动前报错。
 旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
 源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。
+
+
+## Delivery health and recovery / 投递状态与恢复
+
+An enabled sink is configured, not verified. Init preflight reports
+`delivery_status: unverified`; it reads credentials but sends no message. After
+explicit notification authorization, verify access or send one labelled test:
+
+```bash
+hypoloom notify --state-root /absolute/state/run --run-id RUN_ID --test
+hypoloom notify --state-root /absolute/state/run --run-id RUN_ID --send-test
+hypoloom notify --state-root /absolute/state/run --run-id RUN_ID --retry
+```
+
+`--test` checks Telegram Bot authentication and recipient access. `--send-test`
+additionally sends one message; API acceptance does not prove the human read it.
+Neither operation replays research events or changes a delivery cursor. `--retry`
+asks the live managed Host to retry Telegram after repairing the selected private
+Profile credentials/connection. These modes need no `--output-root`. Ordinary
+standalone delivery still requires a separate explicit output directory.
+
+Web and TUI show sink state, pending event count, last successful delivery in this
+Host lifetime, safe failure class/phase and next retry time. Unknown/unavailable
+Host contact is never a healthy channel. TUI **n** opens the Telegram retry form;
+the scoped Web operator link includes **Retry Telegram delivery**. Notification
+failures stay separate from scientific acceptance and model API recovery.
+
+Temporary errors back off 30, 60, 120, 240, then at most 300 seconds. A longer
+server Retry-After is respected. Authentication, recipient/permission and TLS
+certificate errors wait for operator repair and retry. The transport never
+follows redirects, disables TLS verification or guesses an ambient proxy.
+Only fixed classifications, numeric status/errno and safe phases are reported.
+No Bot URL, token, recipient or raw response body is exposed in health details.
+
+At least five consecutive pending routine Telegram events are summarized into one message;
+human questions, failures and service-state changes retain separate messages.
+Each poll sends at most five remote messages. Existing per-source delivery
+cursors advance only after API acknowledgment and durable cursor replacement,
+including every source covered by a summary. A crash between acknowledgment and
+cursor replacement can still duplicate delivery. There is no second queue or
+persistent health store: restart reconstructs pending events from existing facts
+and cursors, and starts current-lifetime delivery health as unverified.
+
+Literature service events are `literature_waiting`, `literature_retry_requested`
+and `literature_recovered`. Existing `error` subscriptions also select these
+operational notices. Repeated failures in one wait state do not each send a new
+notice; changing cause, requiring operator intervention, requesting retry and
+observing actual retrieval success do. See [API recovery](provider-recovery.md).
+
+中文：**开启通知不代表已验证投递成功**。init 只检查配置，明确显示未验证；
+`--test` 检查 Bot 认证和接收对象，`--send-test` 另发一条标注测试用途的消息。
+这两项不补发历史通知、不改投递游标；接口接受消息也不代表用户已经阅读。
+修复原 Profile 凭据或连接后，可执行 `--retry`，或使用 TUI **n** 和 Web 的
+**Retry Telegram delivery**。以上模式无需输出目录；普通独立投递仍要求指定目录。
+
+Web/TUI 显示待投递数量、本次 Host 生命周期内最近成功时间、失败类别/阶段和
+下次重试时间。Host 不可达时状态为未知。暂时性错误按 30/60/120/240/300 秒退避，
+遵循更长的服务端 Retry-After；认证、接收对象、权限及证书错误等待人工处理。
+代理仍显式写入 Profile，保持 TLS、重定向和私密凭据边界。通知故障不暂停研究。
+
+至少五条连续积压的普通 Telegram 事件会汇总；人工问题、错误和服务状态变化单独发送，
+每轮最多五条远程消息。成功确认并写入既有游标后，才记录摘要覆盖事件的进度。
+崩溃仍可能导致重复投递，不承诺恰好一次；不新增持久队列或健康状态文件，重启后
+由事实和游标重建待投递项，当前投递状态重新从未验证开始。
+
+文献通知包含等待、操作者请求重试、实际恢复三个事件，旧 `error` 订阅同样覆盖。
+同一等待状态不会逐次失败刷屏；原因变化、转入人工处理以及实际恢复会产生提醒。
+详情见 [API 状态与恢复](provider-recovery.zh-CN.md)。

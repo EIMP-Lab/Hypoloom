@@ -166,8 +166,10 @@ def test_connect_never_disables_ca_or_hostname_verification(tls_pair, monkeypatc
         monkeypatch.delenv("SSL_CERT_DIR", raising=False)
     host = "different.example.org" if failure == "wrong-hostname" else "example.org"
     with _receiver(tls=context) as (port, received), _connect_proxy(port) as (proxy, tunnels):
-        with pytest.raises(ssl.SSLCertVerificationError):
+        with pytest.raises(notifier.NotificationDeliveryError) as failure:
             notifier.post_json(f"https://{host}/TEST", {}, headers={}, timeout=2, proxy_url=proxy)
+        assert failure.value.details["code"] == "tls_certificate_failed"
+        assert failure.value.details["retryable"] is False
     assert len(tunnels) == 1 and received == []
 
 
@@ -262,8 +264,11 @@ def test_post_default_ignores_all_ambient_proxies(monkeypatch):
         def request(self, *args, **kwargs):
             pass
 
+        def connect(self):
+            pass
+
         def getresponse(self):
-            return type("Response", (), {"status": 200, "read": lambda *_: b'{"ok":true}'})()
+            return type("Response", (), {"status": 200, "read": lambda *_: b'{"ok":true}', "getheader": lambda *_: None})()
 
         def close(self):
             pass
@@ -286,11 +291,14 @@ def test_proxy_default_port_and_origin_port_preserve_explicit_timeout(monkeypatc
         def set_tunnel(self, host, port=None, headers=None):
             calls.append(("tunnel", host, port))
 
+        def connect(self):
+            pass
+
         def request(self, method, path, **kwargs):
             calls.append((method, path))
 
         def getresponse(self):
-            return type("Response", (), {"status": 200, "read": lambda *_: b'{"ok":true}'})()
+            return type("Response", (), {"status": 200, "read": lambda *_: b'{"ok":true}', "getheader": lambda *_: None})()
 
         def close(self):
             calls.append(("close",))

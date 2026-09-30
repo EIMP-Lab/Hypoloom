@@ -945,7 +945,9 @@ def test_literature_failure_uses_same_bounded_agent_attempt_semantics(
     tmp_path: Path,
     mount_root: Path,
 ) -> None:
-    fetcher = _LiteratureFetcher(fail=True)
+    # Unknown adapter faults keep ordinary bounded retries. Known service
+    # outages have separate availability recovery (test_service_notifications).
+    fetcher = _LiteratureFetcher(fail=True, failure_code=LiteratureFailureCode.FETCH_FAILED)
     run_id = "literature-failure-host"
     host = WorkflowHost(tmp_path / "state", literature_io=FixedLiteratureIO(fetcher))
     try:
@@ -966,7 +968,7 @@ def test_literature_failure_uses_same_bounded_agent_attempt_semantics(
         assert all(row["state"] == "CLOSED" for row in attempts)
         observations = [json.loads(str(row["observation_json"])) for row in attempts]
         assert {item["failure_code"] for item in observations} == {
-            "literature_openalex_timeout"
+            "literature_fetch_failed"
         }
         assert {item["literature_diagnostic"] for item in observations} == {
             "bounded catalog failure"
@@ -982,7 +984,7 @@ def test_literature_failure_uses_same_bounded_agent_attempt_semantics(
         assert {
             monitor_attempts[str(row["attempt_id"])].failure_code
             for row in attempts
-        } == {"literature_openalex_timeout"}
+        } == {"literature_fetch_failed"}
         assert len(fetcher.queries) == 4
         assert host.operational_halt is None
         failures = host.store.inspect(
@@ -1004,7 +1006,7 @@ def test_each_failed_retrieval_retry_has_an_independent_attempt_duration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run_id = "literature-failure-timing"
-    adapter = FixedLiteratureIO(_LiteratureFetcher(fail=True))
+    adapter = FixedLiteratureIO(_LiteratureFetcher(fail=True, failure_code=LiteratureFailureCode.FETCH_FAILED))
     original_retrieve = adapter.retrieve
     clock = _RetrievalClock()
     windows: list[tuple[float, float, float]] = []
@@ -1165,7 +1167,6 @@ def test_successful_literature_transport_retries_are_durable_debug_evidence(
 @pytest.mark.parametrize(
     ("failure_code", "http_status"),
     (
-        (LiteratureFailureCode.OPENALEX_AUTH, 401),
         (LiteratureFailureCode.OPENALEX_HTTP, 404),
         (LiteratureFailureCode.OPENALEX_RESPONSE_INVALID, None),
         (LiteratureFailureCode.OPENALEX_RESPONSE_LIMIT, None),
@@ -2129,6 +2130,7 @@ def test_main_retries_only_transient_failures_with_the_same_closed_plan(
     http_status: int | None,
     main_attempts: int,
     fetch_calls: int,
+    monkeypatch,
 ) -> None:
     fetcher = _LiteratureFetcher(fail_calls=(4,), failure_code=code, http_status=http_status)
     run_id = f"literature-main-{code.value.lower()}"
@@ -2138,6 +2140,15 @@ def test_main_retries_only_transient_failures_with_the_same_closed_plan(
         created = host.handle(ControlRequest(1, f"create-{run_id}", 0, "CREATE_RUN",
             _payload(tmp_path, mount_root, run_id)))
         assert created.status == "accepted", created
+        if code is LiteratureFailureCode.OPENALEX_TIMEOUT:
+            from hypoloom import literature_recovery
+            original_status = literature_recovery.status
+            # Observe the actual wait first, then advance only its observation
+            # clock, preserving task/run wall limits and original query identity.
+            def after_cooldown(store, run_id, **kwargs):
+                current = original_status(store, run_id)
+                return original_status(store, run_id, now=max(time.time(), current.get("next_retry_at") or 0))
+            monkeypatch.setattr(literature_recovery, "status", after_cooldown)
         _drive(host, run_id)
         rows = [row for row in host.store.list_attempts() if row["run_id"] == run_id]
         plan = next(row for row in rows

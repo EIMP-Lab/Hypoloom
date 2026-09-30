@@ -142,6 +142,7 @@ class LiteratureError(ValueError):
         code: LiteratureFailureCode | None = None,
         http_status: int | None = None,
         attempt_count: int | None = None,
+        retry_after_seconds: float | None = None,
     ) -> None:
         super().__init__(message)
         self.code = self.default_code if code is None else code
@@ -159,6 +160,7 @@ class LiteratureError(ValueError):
         ):
             raise ValueError("attempt_count must be a positive integer")
         self.attempt_count = attempt_count
+        self.retry_after_seconds = retry_after_seconds
 
 
 class LiteratureQueryError(LiteratureError):
@@ -1463,6 +1465,7 @@ class OpenAlexResponse:
     media_type: str | None
     content_length: int | None
     body: bytes
+    retry_after: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -1554,6 +1557,7 @@ class StdlibOpenAlexTransport:
                 media_type=response.getheader("Content-Type"),
                 content_length=content_length,
                 body=body,
+                retry_after=response.getheader("Retry-After"),
             )
         except (TimeoutError, socket.timeout) as exc:
             raise LiteratureFetchError(
@@ -2131,6 +2135,7 @@ class OpenAlexLiteratureFetcher:
     ) -> None:
         self._api_key_source = "parameter" if api_key is not None else "file"
         self._api_key = _explicit_api_key(api_key, api_key_file)
+        self.api_key_loader = (None if api_key_file is None else lambda: _explicit_api_key(None, api_key_file))
         if transport is not None and not callable(getattr(transport, "get", None)):
             raise TypeError("transport must implement get")
         if resolver is not None and not callable(resolver):
@@ -2290,6 +2295,10 @@ class OpenAlexLiteratureFetcher:
         )
 
     def search(self, query: LiteratureQuery) -> Iterable[SearchPaper]:
+        if self.api_key_loader is not None:
+            try: self._api_key = _clean_api_key(self.api_key_loader(), allow_file_newline=False)
+            except Exception:
+                raise LiteratureFetchError("OpenAlex credential source is unavailable", code=LiteratureFailureCode.OPENALEX_AUTH) from None
         if not isinstance(query, LiteratureQuery):
             raise LiteratureQueryError("query must be LiteratureQuery")
         self._last_retry_trace = ()
@@ -2541,6 +2550,10 @@ class OpenAlexLiteratureFetcher:
                 self.retry_backoff_seconds * (2 ** (attempt_count - 1)),
                 MAX_OPENALEX_RETRY_BACKOFF_SECONDS,
             )
+            if failure.retry_after_seconds is not None:
+                # Long upstream waits belong to the Host, never sleep in the
+                # serialized literature worker past its request wall bound.
+                delay = max(delay, failure.retry_after_seconds)
             if delay > 0:
                 remaining = deadline - self._clock()
                 if remaining <= delay:
@@ -2609,6 +2622,8 @@ class OpenAlexLiteratureFetcher:
                 "OpenAlex transport returned an invalid response",
                 code=LiteratureFailureCode.OPENALEX_RESPONSE_INVALID,
             )
+        from .provider_observation import retry_after_seconds
+        retry_after = retry_after_seconds(response.retry_after, now=time.time())
         if response.status_code == 400:
             raise LiteratureFetchError(
                 "OpenAlex rejected the generated query",
@@ -2626,12 +2641,14 @@ class OpenAlexLiteratureFetcher:
                 "OpenAlex rate limit was reached",
                 code=LiteratureFailureCode.OPENALEX_RATE_LIMIT,
                 http_status=response.status_code,
+                retry_after_seconds=retry_after,
             )
         if response.status_code != 200:
             raise LiteratureFetchError(
                 f"OpenAlex returned HTTP {response.status_code}",
                 code=LiteratureFailureCode.OPENALEX_HTTP,
                 http_status=response.status_code,
+                retry_after_seconds=retry_after,
             )
         if len(response.body) > self.max_response_bytes:
             raise LiteratureFetchError(
@@ -2983,6 +3000,7 @@ def _openalex_attempt_failure(
         code=failure.code,
         http_status=failure.http_status,
         attempt_count=attempt_count,
+        retry_after_seconds=failure.retry_after_seconds,
     )
 
 

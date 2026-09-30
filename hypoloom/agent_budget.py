@@ -238,6 +238,8 @@ def agent_attempts_exhausted(
     considered = False
     for row in closed:
         observation = json.loads(row["observation_json"])
+        from .literature_recovery import deferred_attempt
+        if deferred_attempt(observation): continue
         if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
                 and observation.get("retry_class") == "INFRASTRUCTURE"
                 and observation.get("request", {}).get("command") != "FINAL_REPORT"):

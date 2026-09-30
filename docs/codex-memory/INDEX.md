@@ -1,6 +1,11 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Literature recovery and notification health](../qualification.md#current-repair--literature-recovery-and-notification-health-2026-10-01):
+  separate pre-model service waiting, operator retry and actual recovery; safe
+  managed delivery health and cursor-preserving summaries. [Notification guide](../guides/notifications.md)
+  and [recovery guide](../guides/provider-recovery.md) cover explicit actions.
+  Evidence: `.local/qualification/service-notifications-20261001/`.
 - [Bounded Debate and research efficiency](../qualification.md#current-repair--bounded-debate-and-research-efficiency-2026-09-30):
   ACI 29 short round/retry sessions, original-source and winner binding, existing
   task-specific workflow guidance, separate GOAL/LOCAL/Process observation and

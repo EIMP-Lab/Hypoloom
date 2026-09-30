@@ -2,6 +2,71 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — literature recovery and notification health (2026-10-01)
+
+The user authorizes framework implementation after an upstream OpenAlex outage
+and undelivered Telegram notices. OpenAlex service failures now share a bounded
+run-local wait derived from existing retrieval Attempts and operator transitions;
+they do not exhaust normal node/model retries. Authentication requires an
+operator immediately; transient failures use six failed waves with increasing
+waits, respecting Retry-After. An actual successful retrieval clears the wait,
+independently of the subsequent model outcome. The selected original credential
+source is reread before search. Query validity, coverage, PDF/private-address
+checks, model controls and run budgets retain their existing validators.
+
+Notification health comes from the owning delivery service, with pending counts,
+last success, safe failure phase/class and next retry. Telegram has explicit
+access/test-message commands, bounded backoff, operator retry and ordered routine
+backlog summaries. Important events remain separate. Existing per-source cursors
+advance only after acknowledgment and durable replacement. Web/TUI reuse the
+existing scoped recovery permission; retries never claim actual recovery. Health
+is disposable, unknown after restart until observed; no second event queue or
+persistent status store is added. Both language templates/guides and init wording
+are updated. Existing research runs, frozen bundles and private Profiles remain
+unchanged. No production service operation, public message, model call, commit
+or push is performed in this implementation turn. The user subsequently authorizes
+commit/push to dev; submission reuses the completed focused checks and retains
+the native/public-delivery qualification limits below.
+
+The extension of the existing dispatch wait has this bounded justification:
+
+1. Retained pre-model retrieval failures exhausted MAIN Attempts during upstream
+   500/504 responses; later successful authenticated requests could not reopen
+   the failed node. Notification OSError labels hid the delivery failure phase.
+2. The failed boundaries are remote retrieval versus scientific invocation, and
+   remote acknowledgment versus the existing local delivery cursor.
+3. Git, atomic cursor writes, command deduplication and tests already protect
+   identity/persistence; they cannot make an unavailable remote service respond
+   or distinguish its waiting policy from a model output retry at runtime.
+4. The minimum addition is a derived availability reducer over existing Attempt
+   observations, the existing retry command, and in-memory delivery health.
+   Maintenance is limited to failure classification/recovery tests; merge the
+   reducer into shared service recovery if another literature adapter needs it.
+   There is no new schema, durable gate, hash, queue or authority to migrate.
+
+Final focused validation: **427 passed** across four disjoint selections:
+206 service/notification/literature checks, 200 CLI/init/budget/documentation
+checks, 20 ordinary literature Host/Oracle regressions and one Web asset check.
+The final 26-test rerun covers the last changes and overlaps these counts. Four real WorkflowHost
+cases cover 500/401, with and without Host restart, idempotent operator requests,
+next accepted hypothesis, explicit test cancellation, closed Attempts and clean
+Oracles. These use injected literature/model responses, not public APIs or CPU
+experiments. HTTP-handler tests preserve bearer/operator grants, origin, run
+scope and exact request retry; they do not qualify a native listener. Python
+compilation, JavaScript syntax and diff whitespace checks pass.
+
+Native loopback/TLS tests are blocked by socket EPERM. Broader Process selections
+also fail before expected execution closure in this environment; no native CPU
+pass is claimed. Textual request assertions finish in a diagnostic run, but
+asyncio executor shutdown stalls; the same stall reproduces with
+`asyncio.run(asyncio.to_thread(lambda: 42))`, without Hypoloom. Native TUI teardown,
+browser interaction and real Telegram receipt remain unqualified. No assertion
+or production safeguard is weakened to bypass these limits. Full G1/G3/G5 is not
+claimed. Evidence and original failures remain in
+`.local/qualification/service-notifications-20261001/`; original diagnoses remain
+in `.local/analysis/literature-service-20260930/` and
+`.local/analysis/telegram-notification-20261001/`.
+
 ## Current repair — bounded Debate and research efficiency (2026-09-30)
 
 The user authorizes the four-part implementation and submission to dev after

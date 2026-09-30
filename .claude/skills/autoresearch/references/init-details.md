@@ -727,6 +727,11 @@ without sending notifications or binding listeners. Missing credentials or
 incompatible settings block launch; occupied fixed ports remain dynamic runtime
 availability failures. Provider URL and unsupported transport modes are likewise
 checked locally without contacting a provider. Keep the runtime checks active.
+Enabled notifications must be reviewed as configuration-valid but delivery-unverified.
+Do not describe credential preflight as a successful Telegram test. After creation,
+`hypoloom notify --state-root ROOT --run-id RUN_ID --test` checks access without
+sending; `--send-test` sends one explicitly requested message. A failed optional
+notification check is visible and does not silently cancel research launch.
 
 Present one final review containing the profile version/mode and its exact six files;
 profile, profiles, state, and interpreter paths; run/request IDs and delay; the

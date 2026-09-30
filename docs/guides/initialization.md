@@ -172,3 +172,9 @@ An occupied fixed dashboard port is still a dynamic runtime error; prefer port
 The explanation is derived output, not a saved launch manifest or a new source
 of authority. The six Profile files, ordinary Host options and existing readers
 remain the inputs. Existing runtime protections remain in place after preflight.
+
+
+Notification preflight validates local configuration only. An enabled Telegram sink
+is **delivery unverified** until an actual response is observed. See [notification
+checks and recovery](notifications.md#delivery-health-and-recovery--投递状态与恢复)
+for explicit access/message tests and live Web/TUI status.

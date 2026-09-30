@@ -1573,6 +1573,8 @@ _HOST_STATUS_FIELDS = (
     "resource_blocked",
     "process_activity",
     "provider_retry",
+    "notifications",
+    "literature_retry",
 )
 
 # The Host serializes control requests between workflow ticks. A tick that

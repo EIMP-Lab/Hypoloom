@@ -135,6 +135,7 @@ LIT literature → HYP hypothesis → DES design → RUN execution → ANA analy
 [b #70e1c1]✓ SUCCEEDED[/] effect closed · [b #ff6b7a]! FAILED / ⌛ TIMED_OUT[/] · [b #ffb86b]⊘ CANCELLED / ↻ LOST[/].
 SUPPORTED/REFUTED/PENDING are scientific assessments; PRUNED is control. COMPLETED means lifecycle settled, not scientific success.
 q leaves Host and tasks running; End run / x opens confirmation to cancel the run and finish cleanup.
+p: model API recovery · g: GPU recheck · l: literature retry · n: Telegram delivery retry.
 """
 
 
@@ -672,6 +673,19 @@ class SummaryPanel(CockpitPanel):
         if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
             from .provider_observation import provider_status_text
             health.append("[yellow]" + escape(provider_status_text(provider_retry)) + " · p API recovery[/]")
+        literature = status.get("literature_retry") or {}
+        if literature.get("state") in {"cooldown", "waiting_operator", "recovering"}:
+            health.append(escape(f"OpenAlex: {literature['state']} · {literature.get('reason')} · next retry {_service_time(literature.get('next_retry_at'))} · l Literature retry"))
+        notifications = status.get("notifications")
+        if not notifications or notifications.get("state") == "unavailable":
+            health.append("Notifications: delivery status unknown")
+        elif notifications.get("error"):
+            health.append(escape("Notifications: " + notifications["error"]))
+        else:
+            for sink, item in notifications.get("sinks", {}).items():
+                if sink == "log": continue
+                failure = item.get("failure") or {}
+                health.append(escape(f"{sink}: {item.get('state', 'unverified')} · pending {item.get('pending', '?')} · last success {_service_time(item.get('last_success_at'))} · {failure.get('code', '')} · next retry {_service_time(item.get('next_retry_at'))} · n Telegram retry"))
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1130,6 +1144,10 @@ class EvidencePanel(CockpitPanel):
         self.update("\n".join(lines))
 
 
+def _service_time(value):
+    return time.strftime("%m-%d %H:%M:%S", time.localtime(value)) if type(value) in (int, float) else "unknown"
+
+
 class HypoloomVNextMonitor(App):
     """Read-only polling plus explicit operator forms and a loopback Web observer."""
 
@@ -1153,6 +1171,8 @@ class HypoloomVNextMonitor(App):
         Binding("h", "human_decision", "Human decision"),
         Binding("p", "provider_resume", "Provider resume"),
         Binding("g", "resource_recheck", "GPU recheck"),
+        Binding("l", "literature_retry", "Literature retry", show=False),
+        Binding("n", "notification_retry", "Telegram retry", show=False),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
@@ -1699,13 +1719,29 @@ class HypoloomVNextMonitor(App):
         if not isinstance(self.screen, ProviderResumeScreen):
             self.push_screen(ProviderResumeScreen(status, self._provider_resume_draft))
 
+    def _dependency_retry(self, service):
+        from .resource_recheck_tui import ResourceRecheckScreen
+        status = {} if self._last_snapshot is None else self._last_snapshot.status
+        available = status.get("literature_retry") if service == "openalex" else (status.get("notifications") or {}).get("sinks", {}).get("telegram")
+        if not available or status.get("run_state") != "ACTIVE":
+            self.notify("A live active Host with this service is required."); return
+        if not hasattr(self, "_dependency_drafts"): self._dependency_drafts = {}
+        if not isinstance(self.screen, ResourceRecheckScreen):
+            self.push_screen(ResourceRecheckScreen(status, self._dependency_drafts.setdefault(service, {}), service=service))
+
+    def action_literature_retry(self):
+        self._dependency_retry("openalex")
+
+    def action_notification_retry(self):
+        self._dependency_retry("telegram")
+
     def action_provider_browser(self) -> None:
         server = self._web_server
         if server is None:
             self.notify("Web is unavailable. Use API recovery in this TUI.")
             return
         url = server.provider_control_url()
-        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry, connection switching and GPU resource recheck. Keep it private.\n\n"
+        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry, connection switching, GPU recheck, literature and notification retry. Keep it private.\n\n"
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 

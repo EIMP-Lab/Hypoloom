@@ -24,6 +24,7 @@ PRODUCT_EVENT_TYPES = frozenset({"run_started", "run_finished", "hypothesis_adde
     "new_best_result", "goal_verdict_recorded",
     "provider_auth_cooldown", "provider_auth_resumed",
     "provider_waiting", "provider_retry_requested", "provider_recovered",
+    "literature_waiting", "literature_retry_requested", "literature_recovered",
     "participant_pause_requested", "participant_resumed", "operator_note_injected",
     "resource_blocked", "resource_rechecked", "grounding_question", "grounding_answered"})
 
@@ -151,6 +152,8 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
     """Name only observed product events; never infer an accepted scientific fact."""
     result = _best_results(run_id, facts, commands or {})
     result.extend(_provider_auth_events(run_id, facts, transitions, attempts))
+    from .literature_recovery import events as literature_events, deferred_attempt
+    result.extend(literature_events(run_id, attempts, transitions))
     for row in facts:
         payload = _payload(row)
         kind = {"GoalDefined": "run_started", "HypothesisProposed": "hypothesis_added",
@@ -240,7 +243,7 @@ def product_events(run_id: str, facts, transitions, attempts, *, commands=None) 
                     and update.get("commit") and update.get("commit") != update.get("base_commit")):
                 result.append(_event("attempt-expert-evolved", row["attempt_id"], 2, "expert_evolved",
                     row["ended_at"], run_id, plugin_update=update, **values))
-            if row["terminal_reason"] in {"FAILED", "LOST"}: extra.append("error")
+            if row["terminal_reason"] in {"FAILED", "LOST"} and not deferred_attempt(observation): extra.append("error")
             if observation.get("failure_code") == "profile_budget_exhausted": extra.append("budget_warning")
             for kind in extra:
                 # Multiple views of one immutable source must have distinct

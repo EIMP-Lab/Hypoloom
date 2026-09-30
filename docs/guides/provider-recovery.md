@@ -150,3 +150,34 @@ the corresponding new events; retry requested never claims recovery.
 These scheduling and connection controls apply to new runs created with this
 implementation. Existing run bundles remain fixed; no cross-version migration,
 automatic restart or rewrite of historical failures is performed.
+
+
+## Literature service recovery
+
+OpenAlex authentication, rate limiting, timeouts and temporary HTTP failures have
+independent availability recovery. The Host derives it from existing retrieval
+Attempt observations and the existing operator-command journal. It affects
+Grounding/expert MAIN retrievals; model calls and submitted experiments that do
+not need this service continue. Query validation, scientific coverage, private
+address rejection and PDF rules remain unchanged. QUERY_PLAN can still defer a
+service failure to MAIN; accepting a plan does not certify provider availability.
+
+Known service failures do not exhaust model/node retry slots. There are six
+automatic failed recovery waves with 30/60/120/240/300-second delays (or a longer
+Retry-After), then an operator wait; authentication failures wait immediately.
+Run wall-clock/cancellation limits still apply. Concurrent failures count as one
+wave; an older in-flight failure cannot overwrite newer successful retrieval.
+
+Web **Retry literature service**, TUI **l**, or the command below requests a
+bounded recovery attempt after the operator repairs the connection/credential:
+
+```bash
+hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID --service openalex
+```
+
+OpenAlex reloads the selected original credential source before search. This
+command does not switch the model API, select a new provider or change the model.
+Requesting retry is not recovery; a successfully retrieved literature packet
+establishes recovery even if the subsequent model task fails. Telegram can report
+waiting, operator retry and recovery using the same product-event projection.
+Existing frozen runs are not migrated or reopened by deploying these changes.
