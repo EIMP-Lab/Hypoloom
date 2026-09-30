@@ -188,7 +188,7 @@ class DebateHost:
             if task != self._judge_task(run_id, active):
                 raise ValueError("judge task belongs to another Debate trigger")
             rounds = self._rounds(run_id, active, binding)
-            statements = read_debate_rounds(rounds, binding=binding, facts=InteractionFacts.from_rows(run_id, facts))
+            statements = read_debate_rounds(rounds, binding=binding, facts=InteractionFacts.from_rows(run_id, facts, agent_aci_version=self.interaction._version(run_id)))
             facts = select_interaction_facts(facts,
                 hypothesis_ids=[item.participant.hypothesis_id for item in binding.participants],
                 reference_ids=[ref for item in statements for ref in item.statement.evidence])
@@ -212,6 +212,11 @@ class DebateHost:
                 if previous is None:
                     raise ValueError("Debate round lacks the completed preceding opponent")
                 result.append(self._source_input(previous))
+                if self.interaction._version(run_id) >= 29:
+                    own_previous = self.host._expert_success(self._round_task(active, fork, number - 1))
+                    if own_previous is None:
+                        raise ValueError("Debate round lacks its completed preceding own statement")
+                    result.append(self._source_input(own_previous))
             original = self.store.get_attempt(fork.original_attempt_id)
             original_request = json.loads(original["observation_json"])["request"]
             resources = [item for item in original_request["input_artifacts"] if item["ref"].endswith("--expert-resources")]
@@ -221,15 +226,21 @@ class DebateHost:
             elif original_request.get("required_adapter_version") != "fake-agent/4":
                 raise ValueError("Debate original lacks its actual own-role plugin/memory/research resources")
             previous_refs = [] if previous is None else json.loads(previous["observation_json"])["response"]["typed_candidate"]["evidence"]
+            if previous is not None and self.interaction._version(run_id) >= 29:
+                previous_refs += json.loads(own_previous["observation_json"])["response"]["typed_candidate"]["evidence"]
             facts = select_interaction_facts(facts,
                 hypothesis_ids=[item.participant.hypothesis_id for item in binding.participants], reference_ids=previous_refs)
+            interaction_context = {"facts": facts}
+            if self.interaction._version(run_id) >= 29:
+                interaction_context.update(topic=active["proposal"]["debate"]["topic"],
+                    original_statement=json.loads(self._source_input(original).content_bytes()))
             # Session transfer validates the exact original Attempt, including
             # its archived binding. This fixed source does not grow each round;
-            # only the preceding opponent must lose recursive request history.
+            # previous statements and the task view avoid recursive history.
             result.extend((EmbeddedInput.from_bytes(original["attempt_id"], "application/json", canonical_json(dict(original))),
                 EmbeddedInput.from_bytes(binding.input_ref, "application/json", canonical_json(binding.round_context(fork.participant.scope.role, number,
                     None if previous is None else previous["attempt_id"]))),
-                EmbeddedInput.from_bytes(task.command_id + "--interaction-context", "application/json", canonical_json({"facts": facts})),
+                EmbeddedInput.from_bytes(task.command_id + "--interaction-context", "application/json", canonical_json(interaction_context)),
                 EmbeddedInput.from_bytes(task.command_id + "--expert-config", "application/json", canonical_json(config))))
         else:
             raise ValueError("Debate delegate accepts only DEBATE or DEBATE_JUDGE")
@@ -349,7 +360,7 @@ class DebateHost:
         if active is None:
             return
         started = self._event(run_id, active["debate_id"], "debate_started")
-        facts = InteractionFacts.from_rows(run_id, self.store.list_facts(run_id))
+        facts = InteractionFacts.from_rows(run_id, self.store.list_facts(run_id), agent_aci_version=self.interaction._version(run_id))
         if started is None:
             from .expert_interaction import admit_observer_proposal
             proposal = admit_observer_proposal(active["proposal"], facts=facts).debate
@@ -443,7 +454,8 @@ class DebateHost:
             source = self.host._expert_success(self._round_task(active, fork, 3))
             context = {"debate_id": event["debate_id"], "source_judge_attempt_id": verdict["source_attempt_id"],
                 "role": key.expert_slot, "component_id": key.component_id, "cycle": key.cycle,
-                "original_session_id": fork.original_session_id, "session_id": fork.session_id, "source_attempt_id": source["attempt_id"]}
+                "original_session_id": fork.original_session_id,
+                "session_id": json.loads(source["observation_json"])["session"]["session_id"], "source_attempt_id": source["attempt_id"]}
             return (EmbeddedInput.from_bytes(task.command_id + "--session-promotion", "application/json", canonical_json(context)),
                 EmbeddedInput.from_bytes(source["attempt_id"], "application/json", canonical_json(dict(source))))
         return ()

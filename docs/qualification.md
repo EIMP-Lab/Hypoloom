@@ -2,6 +2,60 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Current repair — bounded Debate and research efficiency (2026-09-30)
+
+The user authorizes the four-part implementation and submission to dev after
+manually stopping the research run. New ACI 29 / bwrap68 gives every Debate round
+and retry a fresh session; original expert ownership, source checkout, accepted
+statements, actual session IDs, six-output judging and winner continuation remain
+validated. Retained ACI 14–28 keep their fork semantics. Exact prior own/opponent
+statements and a source-derived topic/original-statement view avoid recursive
+conversation input. Existing attempt budgets and irreducible-refusal handling
+remain in force; no new persistent authority or threshold policy is added.
+
+The existing research-workflow references now guide task-specific small actual
+implementation/save/reload/evaluation checks before costly work, corrected-path
+verification after technical failure, meaningful LOCAL comparisons and evidence-
+based next experiments. These are agent methods, not universal execution gates
+or a guarantee of scientific superiority. Goal/LOCAL/Process observations stay
+separate: numeric criteria have waiting panels, checks are per experiment,
+LOCAL displays its declared criterion, and the exact published artifact identifies
+its producing Process. Stage token totals reuse the existing charge fold;
+failed/recovery subsets can overlap and reserves are not consumption. Web expert
+lights distinguish Host contact; stage details and the TUI share the same totals.
+Bilingual context, workflow and usage guides are updated.
+
+Validation evidence: `.local/qualification/research-efficiency-20260930/`.
+Read-only replay retains all 877510 input bytes, removes inherited native history
+and renders approximately 31 KB of prompt; this excludes CLI system/tools and
+is not a measured provider token reduction or model-quality result. Original
+private evidence stays at `.local/analysis/research-progress-20260930-0925/`.
+
+The final bounded checks pass **564 distinct tests** (560 in the closure selection
+and four additional offline cases excluded by its name filter). They cover Debate
+sessions, Host dispatch, exact-source and
+promotion oracles, interaction admission, actual Node metric rendering, observer
+accounting, workflow/plugin ownership, context continuation, CLI identity and
+documentation. An overlapping final source/UI selection passes 105 tests.
+Syntax, focused undefined-name lint and whitespace checks pass. Both wheel and
+sdist build; isolated wheel installation matches all 156 runtime files and reports
+ACI 29 / bwrap68. Packaging does not establish native execution compatibility.
+
+The broader G1 attempt stops after 20 failures with 709 passing cases. One was
+an outdated adapter-version assertion, subsequently corrected with the current
+identity checks; the remainder depend on native sockets, isolated parser execution
+or Host/CPU readiness unavailable here. Representative analysis-closure and
+candidate-publication failures reproduce on published dev (25d3c7e). The actual
+native ACI-29 Debate fixture cannot create its local provider socket (EPERM),
+Chrome exits during startup, and three domain parser probes are denied
+NETLINK_ROUTE by bwrap. These remain limitations, not passes or full G1/G3/G5
+qualification. A private launcher relocates test-only /var/tmp directories to
+writable /tmp; it does not replace sockets, parsers, CLI or validators.
+An additional asynchronous TUI selection was interrupted while waiting in the
+snapshot-reader test; that unfinished selection is not counted as passing.
+No production run, pool, Profile or paid provider call is changed by this work.
+
+
 ## Current repair — Compact LOCAL screening results, 2026-09-29
 
 The latest retained run initially had one published LOCAL value and no GOAL

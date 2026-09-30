@@ -597,6 +597,11 @@ class _InteractionAudit:
                   and all(context[name] == fork[name] for name in ("participant", "original_attempt_id", "original_session_id", "session_id"))
                   and _input(request, fork["original_attempt_id"])["observation_json"] == original["observation_json"],
                   "Debate round changed its admitted original/cycle/fork source")
+            if request["schema_version"] >= 29:
+                brief = _input(request, "--interaction-context")
+                _need(brief.get("topic") == proposed["proposal"]["debate"]["topic"]
+                      and self.debate_source_matches(brief.get("original_statement"), original),
+                      "bounded Debate changed its accepted topic or original statement")
             original_resources = [item for item in original_request["input_artifacts"] if item["ref"].endswith("--expert-resources")]
             if original_resources or original_request.get("required_adapter_version") != "fake-agent/4":
                 _need(_input(request, "--expert-resources") == _input(original_request, "--expert-resources"),
@@ -605,6 +610,11 @@ class _InteractionAudit:
                     _need(value["session"].get("expert_resources") == _input(request, "--expert-resources"),
                           "Debate session did not mount its admitted original resources")
             if row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED":
+                from uuid import UUID, uuid5
+                expected_session = str(uuid5(UUID(fork["session_id"]), identity)) if request["schema_version"] >= 29 else fork["session_id"]
+                parent = None if request["schema_version"] >= 29 else fork["original_session_id"]
+                _need((value["session"]["session_id"], value["session"]["parent_session_id"]) == (expected_session, parent),
+                      "Debate changed its actual invocation session or original fork")
                 _need((number, role) not in rounds, "Debate has duplicate successful outputs for one logical round")
                 rounds[number, role] = (row, request, value)
         for (number, role), (row, request, _) in rounds.items():
@@ -617,6 +627,10 @@ class _InteractionAudit:
                 _need(previous is not None and context["previous_opponent_attempt_id"] == previous[0]["attempt_id"]
                       and self.debate_source_matches(_input(request, previous[0]["attempt_id"]), previous[0])
                       and previous[0]["ended_at"] <= row["started_at"], "Debate omitted or changed its actual previous opponent round")
+                if request["schema_version"] >= 29:
+                    own = rounds.get((number - 1, role))
+                    _need(own is not None and self.debate_source_matches(_input(request, own[0]["attempt_id"]), own[0])
+                          and own[0]["ended_at"] <= row["started_at"], "Debate omitted or changed its preceding own statement")
         successful = [(row, request, value) for row, request, value in judges if row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED"]
         if verdict is None:
             _need(not successful, "successful Debate judge has no accepted verdict")
@@ -635,7 +649,7 @@ class _InteractionAudit:
         if "rounds" in context:
             supplied = context["rounds"]
             expected = [{"number": number, "participant": forks[role]["participant"],
-                "source_attempt_id": row["attempt_id"], "session_id": forks[role]["session_id"],
+                "source_attempt_id": row["attempt_id"], "session_id": observed["session"]["session_id"],
                 "statement": observed["response"]["typed_candidate"]}
                 for (number, role), (row, _, observed) in rounds.items()]
             _need(sorted(supplied, key=str) == sorted(expected, key=str), "judge changed a canonical statement, source or fork")
@@ -736,7 +750,7 @@ class _InteractionAudit:
                 source = rounds[3, role][0]
                 expected = {"debate_id": verdict["debate_id"], "source_judge_attempt_id": verdict["source_attempt_id"],
                     "role": role, "component_id": component, "cycle": cycle, "original_session_id": forks[role]["original_session_id"],
-                    "session_id": forks[role]["session_id"], "source_attempt_id": source["attempt_id"]}
+                    "session_id": self.observations[source["attempt_id"]]["session"]["session_id"], "source_attempt_id": source["attempt_id"]}
                 _need(_input(request, "--session-promotion") == expected
                       and _input(request, source["attempt_id"])["observation_json"] == source["observation_json"],
                       "winning SYNTHESIS/inner session has no exact accepted judge/round-three authorization")

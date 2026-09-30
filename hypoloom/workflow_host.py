@@ -2914,7 +2914,7 @@ class WorkflowHost:
         if request.command is AgentCommand.PAPER_READ: owner_transition = False
         rendezvous = None if request.command is not AgentCommand.ANSWER_RENDEZVOUS else RendezvousRequest.from_dict(json.loads(next(item for item in request.input_artifacts if item.ref.endswith("--rendezvous")).content_bytes()))
         retry_class = _agent_retry_class(code, details, retryable=retryable,
-            bounded_context=request.schema_version >= 24 and request.command is not AgentCommand.DEBATE)
+            bounded_context=request.schema_version >= 24 and (request.command is not AgentCommand.DEBATE or request.schema_version >= 29))
         observation = {**dict(details or {}), "failure_code": code, "failure_stage": _agent_failure_stage(code, details), "retry_class": retry_class,
             **self._grounding_completed_web_metadata(request),
             **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})}

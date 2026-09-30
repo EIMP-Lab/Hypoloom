@@ -51,6 +51,25 @@ accepted sources and retained work. Optional `/acceptance/WORK_NOTES.md` is draf
 material, not scientific evidence or a declared parser source. This skill does
 not change context limits, add a paid summarizer or introduce RAG storage.
 
+## Before costly experiments
+
+Use a small meaningful case through the actual implementation and evaluator,
+including saved artifacts and reload where applicable. Training tasks can use a
+tiny train/save/load/evaluate cycle; solvers and pipelines choose their equivalent.
+Exercise relevant devices, dimensions, units and invalid/boundary cases. GPU
+checks use existing Host-owned submission and resource scheduling. Record actual
+checks and gaps in existing notes, and reuse still-applicable successful checks.
+After a technical failure, test its corrected path before repeating the full run.
+This is task-specific agent guidance, not an extra universal admission gate.
+
+A LOCAL criterion should answer the hypothesis's screening question. Improvement
+claims need an appropriate comparison or an explained absolute target; a zero
+target is valid for many gains/errors. A positive raw score alone does not prove
+improvement. Preserve separate goal targets and the accepted metric definition;
+revised criteria belong to a new/revised hypothesis. After ablations, explain what
+uncertainty another full evaluation resolves. Framework code does not choose the
+scientific strategy or enforce dataset-specific thresholds.
+
 ## Evolution and version selection
 
 Experts may update their own skill through `SELF_EVOLVE`; the manager may update

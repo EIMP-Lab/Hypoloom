@@ -75,7 +75,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/67"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/68"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2972,8 +2972,13 @@ def _instruction(
         )
     if request.command.value == "DEBATE" and request.schema_version >= 14:
         return common + (
-            "You are a debater in one of exactly three rounds. Resume the supplied fork of your actual expert "
-            "session, not another expert's conversation. Read the frozen --debate-context, original source, "
+            "You are a debater in one of exactly three rounds. "
+            + ("This is a fresh bounded session for your own expert. Read both preceding accepted statements when supplied. "
+               "Read --interaction-context for the debate topic, original_statement and relevant facts. "
+               "The original full Attempt remains available for unresolved details; inspect its "
+               "observation_json response.typed_candidate without loading recursively embedded request history. "
+               if request.schema_version >= 29 else "Resume the supplied fork of your actual expert session, not another expert's conversation. ")
+            + "Read the frozen --debate-context, source evidence, "
             "accepted experiment records and preceding opponent response. Invoke the debate Skill when available. "
             "Use the Profile-selected Host literature tools when useful. Return position, arguments, evidence "
             "and concessions; evidence contains only exact supplied record IDs. Cite any retrieved public sources "

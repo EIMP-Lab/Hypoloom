@@ -15,8 +15,10 @@ when the disagreement or participant eligibility is unsupported.
 
 Use the request's typed proposal schema and exact reference domain. A Debate
 recommendation does not pause, prune or run anything. Only the Host can pause
-the named participants at safety points, fork their actual sessions and schedule
-three rounds with scoped read-only records and mediated literature tools.
+the named participants at safety points and schedule three rounds bound to their
+actual accepted source. ACI 29 uses fresh bounded sessions and explicit prior
+statements; retained versions use native session forks. Source checkouts remain
+read-only and literature tools mediated.
 Unrelated experts and already running experiments continue. Do not convert a
 score or disagreement into a scientific assessment, or rewrite accepted facts.
 

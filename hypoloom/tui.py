@@ -1092,6 +1092,15 @@ class EvidencePanel(CockpitPanel):
             f"Observation: {'Host STATUS' if _has_host_status(snapshot) else 'offline state store'}"))
         if overview:
             lines.extend(_metric_lines(overview.get("totals", {})))
+            if overview.get("stage_accounting"):
+                lines.append("[b]Stage tokens (reported lower bounds; failed/recovery subsets may overlap)[/b]")
+                for stage in overview["stage_accounting"]:
+                    usage, recovery = stage.get("accounting", {}), stage.get("context_recovery", {})
+                    label = str(stage.get("node", "unknown")) + ("/" + stage["subkind"] if stage.get("subkind") else "")
+                    lines.append(f"{_value(label)}: reported {_count(usage.get('reported_tokens'))} · failed {_count(usage.get('failed_reported_tokens'))} "
+                        f"· recovery {_count(recovery.get('recovery_reported_tokens'))} · open observed {_count(usage.get('observed_unsettled_tokens'))} "
+                        f"· reserved {_count(usage.get('reserved_tokens'))} · unknown closed {_count(usage.get('unknown_closed_attempts'))}")
+                lines.append("[dim]Open observed usage is unsettled; reserved tokens are not consumption.[/dim]")
             for name in ("leader", "debate"):
                 lines.append(_interaction_line(name.title(), overview.get("totals", {}).get(name, {})))
             for notice in overview.get("notices", []):

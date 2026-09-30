@@ -515,7 +515,7 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
   @keyframes tile-in { from { opacity: 0; transform: scale(0.92); } }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .breath-dot { animation: breath 2.4s ease-in-out infinite; }
+  .breath-dot.host-confirmed { animation: breath 2.4s ease-in-out infinite; }
   @keyframes breath {
     0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--expert-accent); }
     50% { opacity: .35; box-shadow: 0 0 .5rem .05rem var(--expert-accent); }
@@ -606,3 +606,11 @@ button:disabled { opacity: .4; cursor: default; }
 #provider-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 #provider-controls[hidden] { display: none; }
 #provider-settings { flex: 1 1 16rem; min-width: 0; max-width: 100%; }
+
+.breath-dot.host-unconfirmed { background: var(--warning, #e4ad58); animation: none; }
+.metric-goal-empty { padding: 1rem; border: 1px solid var(--line); border-radius: .6rem; }
+.metric-goal-empty h5 { margin: 0; overflow-wrap: anywhere; }
+.metric-local-criterion { font-size: .8rem; }
+.stage-token-table { width: 100%; font-size: .78rem; border-collapse: collapse; }
+.stage-token-table th, .stage-token-table td { padding: .35rem; text-align: right; }
+.stage-token-table th:first-child, .stage-token-table td:first-child { text-align: left; overflow-wrap: anywhere; }

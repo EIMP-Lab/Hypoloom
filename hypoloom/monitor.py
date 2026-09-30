@@ -343,6 +343,16 @@ def _shared_acceptance_projection(
     source_attempt_id, declaration = completed[0]
     specs = {row["experiment_id"]: row["payload"] for row in facts
              if row["fact_type"] == "ExperimentPreregistered"}
+    from .artifacts import ArtifactKey
+    producers = {}
+    for attempt in attempts:
+        if attempt.get("kind") != "PROCESS" or attempt.get("run_id") != run_id: continue
+        try:
+            key = ArtifactKey(run_id=run_id, experiment_id=attempt.get("experiment_id"),
+                execution_id=attempt.get("execution_id"), attempt_id=attempt.get("attempt_id"), artifact_kind="result")
+        except (ValueError, TypeError):
+            continue  # Legacy/partial observation: never infer a successful Process.
+        producers[key.artifact_id] = attempt
     outcomes = []
     for row in facts:
         if row["fact_type"] != "CanonicalOutcomeAccepted":
@@ -358,6 +368,7 @@ def _shared_acceptance_projection(
             "artifact_id": payload.get("artifact_id"),
             "scope": binding.get("scope"),
             "source_attempt_id": binding.get("source_attempt_id"),
+            "execution_terminal_reason": producers.get(payload.get("artifact_id"), {}).get("terminal_reason"),
             "local_outcome": payload.get("outcome"),
             "local_metric_value": payload.get("metric_value"),
             "local_measurement": specs.get(row["experiment_id"], {}).get("measurement"),

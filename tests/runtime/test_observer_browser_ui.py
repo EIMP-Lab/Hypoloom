@@ -1341,6 +1341,9 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
     page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
     page.wait("document.querySelector('.metric-empty') !== null")
     assert "Waiting for published GOAL measurements" in page.text(".metric-trends")
+    assert page.evaluate("document.querySelectorAll('.metric-goal-empty').length") == 1
+    assert "test_f1" in page.text(".metric-goal-empty")
+    assert "Target > 0.7" in page.text(".metric-goal-empty")
     measurement = {"metric": {"name": "validation_delta", "direction": "MAXIMIZE", "target": "0"},
         "comparison": "DELTA_FROM_BASELINE", "parse_rule": "Matched seed validation delta"}
     def local(index, value, **changes):
@@ -1503,6 +1506,8 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     page.evaluate("fixture.snapshot.overview.host_observation={availability:'absent'}")
     page.wait(f"document.querySelectorAll('{tiles}.host-unconfirmed').length === 3")
     assert "3 durably open attempts" in page.evaluate("document.querySelector('.expert-preview h3 .breath-dot').title")
+    assert page.evaluate("document.querySelector('.expert-preview h3 .breath-dot').classList.contains('host-unconfirmed')")
+    assert page.evaluate("getComputedStyle(document.querySelector('.expert-preview h3 .breath-dot')).animationName") == "none"
     page.evaluate("fixture.activity.experts.push({role:'expert-a', pause_requested:[{scope:{role:'expert-a', component_id:'component-a', chain:'chain-x'}, reason:'debate:agent-5e40-1', command_id:'cmd-pause'}]})")
     page.wait("document.querySelector('.expert-preview .pause-notice') !== null")
     notice = ".expert-preview .pause-notice"

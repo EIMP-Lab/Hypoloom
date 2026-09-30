@@ -458,6 +458,12 @@ class DebateRound:
             "statement": self.statement.to_dict()}
 
 
+def debate_session_id(fork_id: str, attempt_id: str, version: int) -> str:
+    """Actual invocation identity derived from the existing participant binding."""
+    from uuid import uuid5
+    return str(uuid5(UUID(fork_id), attempt_id)) if version >= 29 else fork_id
+
+
 def read_judge_rounds(context: Mapping[str, Any], *, binding: DebateBinding,
                       facts: InteractionFacts) -> tuple[DebateRound, ...]:
     """Read the existing round projection; retained requests carry full rows."""
@@ -477,7 +483,7 @@ def read_judge_rounds(context: Mapping[str, Any], *, binding: DebateBinding,
         role = item["participant"]["scope"]["role"]
         fork = forks.get(role)
         if (type(item["number"]) is not int or item["number"] not in {1, 2, 3} or fork is None
-                or item["participant"] != asdict(fork.participant) or item["session_id"] != fork.session_id):
+                or item["participant"] != asdict(fork.participant) or item["session_id"] != debate_session_id(fork.session_id, item["source_attempt_id"], facts.agent_aci_version)):
             raise ValueError("judge round changed its number, participant or fork")
         result.append(DebateRound(item["number"], fork.participant, item["source_attempt_id"], item["session_id"],
             admit_debate_statement(item["statement"], reference_ids=allowed)))
@@ -526,11 +532,29 @@ def read_debate_rounds(rows: Iterable[Mapping[str, Any]], *, binding: DebateBind
         required = {fork.original_attempt_id} | (set() if modern else {fork.participant.hypothesis_id}) | ({previous} if previous else set())
         if not required <= set(request["immutable_context_refs"]) or request["component_id"] != fork.participant.scope.component_id:
             raise ValueError("Debate input lacks its own source or preceding opponent output")
-        if _session(observation) != (fork.session_id, fork.original_session_id):
+        if request.get("schema_version", 0) >= 29 and number > 1:
+            for previous_role in (role, peer):
+                prior_row, prior_observation = selected[(number - 1, previous_role)]
+                supplied = [item for item in request["input_artifacts"] if item["ref"] == prior_row["attempt_id"]]
+                if len(supplied) != 1 or prior_row["attempt_id"] not in request["immutable_context_refs"]:
+                    raise ValueError("bounded Debate requires both preceding accepted statements")
+                projected = json.loads(base64.b64decode(supplied[0]["content_base64"], validate=True))
+                prior_request = prior_observation["request"]
+                expected = {"attempt_id": prior_row["attempt_id"], "command_id": prior_row["command_id"],
+                    "role": prior_request["role"], "command": prior_request["command"],
+                    "task_context": prior_request["task_context"],
+                    "typed_candidate": prior_observation["response"]["typed_candidate"]}
+                if projected != expected:
+                    raise ValueError("bounded Debate statement differs from its accepted source")
+        actual_session = debate_session_id(fork.session_id, row["attempt_id"], request.get("schema_version", 0))
+        parent = None if request.get("schema_version", 0) >= 29 else fork.original_session_id
+        if _session(observation) != (actual_session, parent):
             raise ValueError("Debate output belongs to another fork or original session")
         launches = [["--resume", fork.session_id]]
         if number == 1:
             launches.append(["--resume", fork.original_session_id, "--fork-session", "--session-id", fork.session_id])
+        if request.get("schema_version", 0) >= 29:
+            launches = [["--session-id", actual_session]]
         if observation["session"].get("launch_arguments") not in launches:
             raise ValueError("Debate must continue its own fork between rounds")
         known = facts.reference_ids | {item.original_attempt_id for item in binding.participants} | {item.source_attempt_id for item in results}
@@ -543,7 +567,7 @@ def read_debate_rounds(rows: Iterable[Mapping[str, Any]], *, binding: DebateBind
             frozen.hypothesis(fork.participant.hypothesis_id, fork.participant.scope)
             allowed |= frozen.reference_ids.intersection(facts.reference_ids)
         statement = admit_debate_statement(observation["response"]["typed_candidate"], reference_ids=allowed)
-        results.append(DebateRound(number, fork.participant, row["attempt_id"], fork.session_id, statement))
+        results.append(DebateRound(number, fork.participant, row["attempt_id"], actual_session, statement))
     return tuple(results)
 
 
@@ -558,6 +582,7 @@ class DebateJudgment:
     rationale: str
     supporting_refs: tuple[str, ...]
     pruned_by: tuple[Mapping[str, Any], ...]
+    promoted_session_id: str | None = None
 
     def control_payload(self) -> dict[str, Any]:
         promoted = next((item for item in self.binding.participants if item.participant.scope.role == self.winner), None)
@@ -566,7 +591,7 @@ class DebateJudgment:
             "winner": self.winner, "scores": _thaw_json(self.scores), "keep": list(self.keep), "prune": list(self.prune),
             "rationale": self.rationale, "supporting_refs": list(self.supporting_refs), "pruned_by": _thaw_json(self.pruned_by),
             "promote_session": None if promoted is None else {"role": self.winner,
-                "original_session_id": promoted.original_session_id, "session_id": promoted.session_id}}}
+                "original_session_id": promoted.original_session_id, "session_id": self.promoted_session_id or promoted.session_id}}}
 
 
 def admit_debate_judgment(value: Mapping[str, Any], *, binding: DebateBinding, rounds: Iterable[DebateRound],
@@ -579,7 +604,7 @@ def admit_debate_judgment(value: Mapping[str, Any], *, binding: DebateBinding, r
         raise ValueError("judge requires the complete exact six-round output set")
     for item in outputs:
         fork = next(participant for participant in binding.participants if participant.participant.scope.role == item.participant.scope.role)
-        if item.participant != fork.participant or item.session_id != fork.session_id:
+        if item.participant != fork.participant or item.session_id != debate_session_id(fork.session_id, item.source_attempt_id, facts.agent_aci_version):
             raise ValueError("judge round refers to another participant/fork")
     round_refs = set(_unique((item.source_attempt_id for item in outputs), "judged round Attempts"))
     refs = _references(value["supporting_refs"], facts.reference_ids | round_refs, "judge references")
@@ -620,7 +645,8 @@ def admit_debate_judgment(value: Mapping[str, Any], *, binding: DebateBinding, r
         winner_hypothesis_id=participants[winner].hypothesis_id, source_attempt_id=source_attempt_id,
         score_refs=scores[role]["round_refs"], debate_id=binding.debate_id)) for role in sorted(prune))
     return DebateJudgment(binding, source_attempt_id, winner, tuple(scores[role] for role in sorted(scores)), tuple(sorted(keep)),
-        tuple(sorted(prune)), _text(value["rationale"], "judge rationale"), refs, pruned)
+        tuple(sorted(prune)), _text(value["rationale"], "judge rationale"), refs, pruned,
+        next((item.session_id for item in outputs if item.number == 3 and item.participant.scope.role == winner), None))
 
 
 def debate_judgment_from_attempt(row: Mapping[str, Any], *, binding: DebateBinding,
@@ -636,7 +662,7 @@ def debate_judgment_from_attempt(row: Mapping[str, Any], *, binding: DebateBindi
         if len(contexts) != 1:
             raise ValueError("judge requires its exact frozen six-output context")
         context = json.loads(base64.b64decode(contexts[0]["content_base64"], validate=True))
-        frozen = InteractionFacts.from_rows(binding.run_id, context["facts"])
+        frozen = InteractionFacts.from_rows(binding.run_id, context["facts"], agent_aci_version=observation["request"]["schema_version"])
         if (context["debate_id"] != binding.debate_id or context["participants"] != [asdict(item) for item in binding.participants]
                 or read_judge_rounds(context, binding=binding, facts=frozen) != rounds):
             raise ValueError("judge input differs from the canonical six outputs")

@@ -72,11 +72,16 @@ def _transfer(request, rows, payloads):
         assert request["command"] in _INNER or request["command"] == "HYPOTHESIS_PROPOSAL" and key["subkind"] == "SYNTHESIS"
         assert (context["role"], context["component_id"], context["cycle"]) == (request["role"], request["component_id"], key["cycle"])
         assert original["command"] == "DEBATE"
-        assert (context["session_id"], context["original_session_id"]) == (session["session_id"], session["parent_session_id"])
+        assert context["session_id"] == session["session_id"]
+        assert session["parent_session_id"] == (None if original["schema_version"] >= 29 else context["original_session_id"])
         sources = [item for item in original["input_artifacts"] if item["ref"].endswith("--debate-context")]
         assert len(sources) == 1
         prior = json.loads(base64.b64decode(sources[0]["content_base64"], validate=True))
         assert prior["debate_id"] == context["debate_id"] and prior["round"] == 3
+        assert prior["original_session_id"] == context["original_session_id"]
+        assert session["session_id"] == (str(uuid.uuid5(uuid.UUID(prior["session_id"]), source_id))
+            if original["schema_version"] >= 29 else prior["session_id"])
+        _transfer(original, rows, payloads)
     return debate, context, source, original, session
 
 
@@ -135,7 +140,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             continue
         debate = transfer is not None and transfer[0]
         promotion = transfer is not None and not transfer[0]
-        bounded = request.get("schema_version", 0) >= 24 and not debate
+        bounded = request.get("schema_version", 0) >= 24 and (not debate or request["schema_version"] >= 29)
         if request.get("schema_version", 0) >= 25 and not debate:
             previous = [item for item in attempts if item["kind"] == "AGENT"
                 and (prior_request := payloads.get(str(item["attempt_id"]), {}).get("request", {})).get("command_id") == request.get("command_id")
@@ -194,7 +199,8 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             assert isinstance(scope, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", scope)
             if debate:
                 assert scope == "debate-" + transfer[1]["debate_id"]
-                assert (session_id, parent_id) == (transfer[1]["session_id"], transfer[1]["original_session_id"])
+                expected = str(uuid.uuid5(uuid.UUID(transfer[1]["session_id"]), identity)) if bounded else transfer[1]["session_id"]
+                assert (session_id, parent_id) == (expected, None if bounded else transfer[1]["original_session_id"])
             elif manager:
                 assert request.get("role") == request.get("component_id") == "grounding"
                 assert task.get("kind") == "AUXILIARY" and task.get("request_kind") == "GRAPH_EVOLVE"
@@ -256,7 +262,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
             if parent is not None else ["--session-id", binding["session_id"]])
         if request.get("schema_version", 0) < 24 and transfer is not None and not transfer[0] and request["command"] not in _INNER:
             valid_arguments = [["--resume", binding["session_id"]]]
-        if request.get("schema_version", 0) >= 24 and request["command"] != "DEBATE":
+        if request.get("schema_version", 0) >= 24 and (request["command"] != "DEBATE" or request["schema_version"] >= 29):
             valid_arguments = [["--resume" if identity in continuations else "--session-id", binding["session_id"]]]
         recovered_unknown = row["terminal_reason"] == "LOST" and closed.get("archive_after_loss") is True and arguments is None
         if arguments not in valid_arguments and not recovered_unknown:

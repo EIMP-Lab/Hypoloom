@@ -232,3 +232,15 @@ Git 提交。树外链接等不兼容问题会在研究启动前报出。准入�
 
 通知配置见 [notifications](docs/guides/notifications.md)(英文)。新的昂贵课题运行前，核对
 [资格状态与验收规则](docs/qualification.zh-CN.md)。
+
+### 阅读科研进展和 token 用量
+
+Grounding 接纳目标判据后，GOAL 会为每个数值指标显示面板，尚无结果时显示等待。
+布尔判据及有效性检查按实验单独展示；缺失值保持未知。LOCAL 卡片显示已声明的
+判据及记录中的通过状态。LOCAL 通过不等于优于基线，也不等于共享 GOAL 达成。
+
+专家指示灯仅在存在持久化 OPEN 工作且本次轮询收到 Host 回复时呼吸；未确认
+Host 联系时显示静态黄色。两种状态都不能单独证明 worker 存活或科研进展。
+**Tokens by stage** 与 **Expert details** 显示各阶段已报告 token、失败调用和
+上下文恢复子集、开放调用观察及预留额度。子集可能重叠，预留额度不是实际消耗。
+TUI 证据面板使用同一阶段汇总。

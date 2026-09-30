@@ -1,6 +1,12 @@
 # Development memory index
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Bounded Debate and research efficiency](../qualification.md#current-repair--bounded-debate-and-research-efficiency-2026-09-30):
+  ACI 29 short round/retry sessions, original-source and winner binding, existing
+  task-specific workflow guidance, separate GOAL/LOCAL/Process observation and
+  stage token accounting. Bilingual guides and native environment limitations;
+  evidence: `.local/qualification/research-efficiency-20260930/`.
+
 - [Compact LOCAL screening results](../qualification.md#current-repair--compact-local-screening-results-2026-09-29):
   single observations as result cards, comparable repeats as trends, short labels
   with retained full evidence and unchanged GOAL charts. Browser/offline evidence:

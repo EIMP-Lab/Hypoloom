@@ -194,6 +194,7 @@ def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=(
             "unknown_closed_attempts": sum(item.state == "CLOSED" for item in reserved),
             "open_attempts": sum(item.state == "OPEN" for item in charges),
             "reported_tokens": sum(item.tokens for item in charges if item.source != "declared" and item.tokens is not None),
+            "failed_reported_tokens": sum(item.tokens for item in charges if item.source != "declared" and item.tokens is not None and item.attempt_id in failed),
             "observed_unsettled_tokens": observed_unsettled,
             "reserved_tokens": sum(item.tokens for item in reserved if item.tokens is not None),
             "unavailable_token_attempts": sum(item.tokens is None for item in charges)}
@@ -229,8 +230,17 @@ def _token_accounting(stages):
     # All logical commands, including retries and earlier cycles; never just the
     # currently visible stages. The existing admission fold supplies the values.
     return {key: sum(stage["accounting"][key] for stage in stages) for key in (
-        "reported_tokens", "observed_unsettled_tokens", "reserved_tokens", "unknown_closed_attempts", "open_attempts",
+        "reported_tokens", "failed_reported_tokens", "observed_unsettled_tokens", "reserved_tokens", "unknown_closed_attempts", "open_attempts",
         "unavailable_token_attempts")}
+
+
+def _stage_accounting(stages):
+    groups = defaultdict(list)
+    for stage in stages:
+        groups[(stage["node"], stage["subkind"])].append(stage)
+    return [{"node": node, "subkind": subkind, "accounting": _token_accounting(selected),
+             "context_recovery": _context_accounting(selected)}
+            for (node, subkind), selected in sorted(groups.items(), key=lambda item: (item[0][0] or "", item[0][1] or ""))]
 
 
 def _context_accounting(stages):
@@ -625,6 +635,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             for row in attempts if row.get("experiment_id") in experiment_ids)
         expert_values.append({"role": role, "cycle": max((item["cycle"] or 0 for item in own_stages), default=0),
             "accounting": _token_accounting(own_stages),
+            "stage_accounting": _stage_accounting(own_stages),
             "context_recovery": _context_accounting(own_stages),
             "parallel_activity": _parallel_activity(role, agents, own_stages, nodes, reading_commands,
                 goal.get("research_contract", {}), bool(run_rows) and run_rows[-1]["state"] == "ACTIVE", reliability_by_role[role], scopes),
@@ -677,12 +688,14 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         selected = [stage for stage in stages if stage["task_scope"] == scope]
         nodes = [node for node in reliability["nodes"] if scopes[node["attempt_ids"][-1]]["task_scope"] == scope]
         return {"stages": selected, "activity": _current_activity(selected, [], observed),
-            "accounting": _token_accounting(selected), "context_recovery": _context_accounting(selected),
+            "accounting": _token_accounting(selected), "stage_accounting": _stage_accounting(selected),
+            "context_recovery": _context_accounting(selected),
             "reliability": summarize_reliability(nodes, include_nodes=False, include_groups=True)}
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
         "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),
         "grounding_sharing": grounding_sharing(attempts, roles, run_rows[-1]["state"] if run_rows else None),
         "reliability": reliability, "accounting": _token_accounting(stages),
+        "stage_accounting": _stage_accounting(stages),
         "context_recovery": _context_accounting(stages),
         "host_observation": host_observation, "stages": stages,
         "waiting_human_seconds": waiting, "remaining_seconds": remaining,

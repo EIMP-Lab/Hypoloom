@@ -71,7 +71,8 @@ MEASURED_CONTEXT_ACI_SCHEMA_VERSION = 25
 PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION = 26
 RESOURCE_REPLANNING_ACI_SCHEMA_VERSION = 27
 RESOURCE_RECOVERY_ACI_SCHEMA_VERSION = 28
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = RESOURCE_RECOVERY_ACI_SCHEMA_VERSION
+BOUNDED_DEBATE_ACI_SCHEMA_VERSION = 29
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = BOUNDED_DEBATE_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -96,6 +97,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION,
         RESOURCE_REPLANNING_ACI_SCHEMA_VERSION,
         RESOURCE_RECOVERY_ACI_SCHEMA_VERSION,
+        BOUNDED_DEBATE_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -129,6 +131,7 @@ _COMMANDS_BY_SCHEMA = {
     PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     RESOURCE_REPLANNING_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     RESOURCE_RECOVERY_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    BOUNDED_DEBATE_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1601,6 +1604,14 @@ def debate_reference_ids(request: AgentRequest) -> frozenset[str]:
     if context["previous_opponent_attempt_id"] is not None: refs.add(context["previous_opponent_attempt_id"])
     if not refs <= set(request.immutable_context_refs).intersection(item.ref for item in request.input_artifacts):
         raise ValueError("Debate must receive the actual original and prior opponent records")
+    if request.schema_version >= 29:
+        for item in request.input_artifacts:
+            if item.ref in refs or item.media_type != "application/json": continue
+            value = json.loads(item.content_bytes())
+            if (isinstance(value, dict) and value.get("command") == "DEBATE"
+                    and value.get("role") == request.role and value.get("attempt_id") == item.ref
+                    and value.get("task_context", {}).get("ordinal") == request.task_context.ordinal - 1):
+                refs.add(item.ref)
     return facts.reference_ids | refs
 
 

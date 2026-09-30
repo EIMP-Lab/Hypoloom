@@ -87,18 +87,18 @@ def test_debate_fork_rejects_foreign_or_unaccepted_source(tmp_path, failure):
     with pytest.raises(ValueError): manager.prepare(_request(original, source, context, 1), binding)
 
 
-@pytest.mark.parametrize("version", [14, 24])
+@pytest.mark.parametrize("version", [14, 24, 29])
 def test_winning_fork_is_the_next_synthesis_session_and_the_parent_of_new_inner_chains(tmp_path, version):
     from test_agent_aci import _pincer_request
     manager, binding, original, source, context = _setup(tmp_path, version=version)
     for number in (1, 2, 3):
         current = manager.prepare(_request(original, source, context, number), binding)
-        _transcript(current, f"Accepted debate round {number}.", append=number > 1)
+        _transcript(current, f"Accepted debate round {number}.", append=number > 1 and version < 29)
         metadata = current.finish_node(); current.cleanup()
     winner = _source_row(current, metadata)
     promotion = {"debate_id": context["debate_id"], "source_judge_attempt_id": "actual-judge",
         "role": original.request.role, "component_id": original.request.component_id, "cycle": 2,
-        "original_session_id": context["original_session_id"], "session_id": context["session_id"],
+        "original_session_id": context["original_session_id"], "session_id": metadata["session_id"],
         "source_attempt_id": winner["attempt_id"]}
     inputs = (EmbeddedInput.from_bytes("winner--session-promotion", "application/json", json.dumps(promotion).encode()),
         EmbeddedInput.from_bytes(winner["attempt_id"], "application/json", json.dumps(winner).encode()),
@@ -138,3 +138,26 @@ def test_winning_fork_is_the_next_synthesis_session_and_the_parent_of_new_inner_
                 assert b"original-debate-source" in (prepared.worktree_root / "experiment.py").read_bytes()
         finally: prepared.cleanup()
     finally: synthesis.cleanup()
+
+
+def test_bounded_debate_rounds_and_retries_preserve_source_without_restoring_history(tmp_path):
+    manager, target, original, source, context = _setup(tmp_path, version=29)
+    sessions = set()
+    for number in (1, 2, 3):
+        request = _request(original, source, context, number)
+        for ordinal in (1, 2):
+            current = replace(request, attempt_id=f"bounded-{number}-{ordinal}", attempt_ordinal=ordinal)
+            prepared = AgentSessions(manager.state_root, manager.publisher).prepare(current, target)
+            try:
+                assert prepared.binding["session_id"] not in sessions
+                sessions.add(prepared.binding["session_id"])
+                assert prepared.binding["parent_session_id"] is None
+                assert prepared.session_arguments == ("--session-id", prepared.binding["session_id"])
+                assert not list(prepared.session_root.glob(original.binding["session_id"] + ".jsonl"))
+                assert b"original-debate-source" in (prepared.worktree_root / "experiment.py").read_bytes()
+                assert not prepared.writable
+                _transcript(prepared, "Bounded round with explicit accepted evidence.")
+                prepared.finish_node()
+            finally:
+                prepared.cleanup()
+    assert len(sessions) == 6

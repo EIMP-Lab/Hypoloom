@@ -3,6 +3,7 @@
 import json
 import re
 import secrets
+import pytest
 from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
@@ -30,7 +31,7 @@ def _json_input(ref, value):
     return EmbeddedInput.from_bytes(ref, "application/json", json.dumps(value).encode())
 
 
-def _research_request(participant, stage, *, synthesis=False, cycle=1, inputs=()):
+def _research_request(participant, stage, *, synthesis=False, cycle=1, inputs=(), version=14):
     scope = participant.scope
     base = _pincer_request(ResearchNodeSubkind.SYNTHESIS) if synthesis else default_request(AgentCommand.RESULT_ANALYSIS)
     task = replace(base.task_context, key=replace(base.task_context.key, run_id="run-1",
@@ -39,10 +40,10 @@ def _research_request(participant, stage, *, synthesis=False, cycle=1, inputs=()
     if not synthesis:
         inputs = (*inputs, _json_input(stage + "--batch-context", {
             "chains": {scope.chain: participant.hypothesis_id}}))
-    request = replace(base, schema_version=14, run_id="run-1", role=scope.role, max_input_bytes=4 * 1024 * 1024,
+    request = replace(base, schema_version=version, run_id="run-1", role=scope.role, max_input_bytes=4 * 1024 * 1024,
         component_id=scope.component_id, task_context=task, command_id=task.command_id,
         input_artifacts=tuple(inputs), immutable_context_refs=tuple(item.ref for item in inputs),
-        required_output_schema=required_output_schema(base.command, task, schema_version=14))
+        required_output_schema=required_output_schema(base.command, task, schema_version=version))
     return native_request(request, stage, None)
 
 
@@ -114,11 +115,13 @@ class _DebateScenario:
         return ((self.stage + "__finish", "StructuredOutput", output),)
 
 
-def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_synthesis_and_inner(tmp_path: Path):
+@pytest.mark.parametrize("version", [14, 29])
+def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_synthesis_and_inner(tmp_path: Path, version):
     executable = _installed_claude()
     _, target = make_target(tmp_path)
     manager = _manager(tmp_path)
     facts, template, _, _ = _debate()
+    facts = replace(facts, agent_aci_version=version)
     scenario = _DebateScenario()
     key = "host-only-debate-" + secrets.token_hex(16)
     provider, thread = _start_provider(scenario, key)
@@ -150,10 +153,10 @@ def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_sy
         for item in template.participants:
             participant = item.participant
             role = participant.scope.role
-            seed = _research_request(participant, "seed-" + role, synthesis=True)
+            seed = _research_request(participant, "seed-" + role, synthesis=True, version=version)
             invoke(seed, "seed-" + role)
-            request = _research_request(participant, "original-" + role)
-            workspace, row, _ = invoke(request, "original-" + role, history=True)
+            request = _research_request(participant, "original-" + role, version=version)
+            workspace, row, _ = invoke(request, "original-" + role, history=version < 29)
             originals[role] = row
             archived = metadata[-1]
             path = manager.publisher.root / archived["transcript"]["path"] / "transcript.jsonl"
@@ -177,21 +180,27 @@ def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_sy
                     _json_input(fork.original_attempt_id, originals[role]),
                     _json_input("native--interaction-context", {"facts": _thaw_json(facts.rows)}))
                 if previous is not None:
-                    inputs += (_json_input(previous["attempt_id"], previous),)
+                    from hypoloom.debate_host import DebateHost
+                    inputs += (DebateHost._source_input(previous),) if version >= 29 else (_json_input(previous["attempt_id"], previous),)
+                    if version >= 29:
+                        inputs += (DebateHost._source_input(rounds[(number - 1, role)]),)
                 task = AuxiliaryTask(kind=AuxiliaryRequestKind.DEBATE, run_id="run-1", expert_slot=role,
                     component_id=fork.participant.scope.component_id, cycle=1, ordinal=51 + number)
                 stage = f"round-{number}-{role}"
                 base = default_request(AgentCommand.DEBATE)
-                request = native_request(replace(base, schema_version=14, run_id="run-1", role=role, max_input_bytes=4 * 1024 * 1024,
+                request = native_request(replace(base, schema_version=version, run_id="run-1", role=role, max_input_bytes=4 * 1024 * 1024,
                     component_id=task.component_id, task_context=task, command_id=task.command_id,
                     input_artifacts=inputs, immutable_context_refs=tuple(item.ref for item in inputs),
-                    required_output_schema=required_output_schema(base.command, task, schema_version=14)), stage, None)
-                workspace, row, parsed = invoke(request, stage, previous=previous, history=True)
+                    required_output_schema=required_output_schema(base.command, task, schema_version=version)), stage, None)
+                workspace, row, parsed = invoke(request, stage, previous=previous, history=version < 29)
                 assert set(parsed.candidate.evidence) == {"out-1", "out-2"}
                 expected = (["--resume", fork.original_session_id, "--fork-session", "--session-id", fork.session_id]
                     if number == 1 else ["--resume", fork.session_id])
+                from hypoloom.expert_interaction import debate_session_id
+                actual_id = debate_session_id(fork.session_id, request.attempt_id, version)
+                if version >= 29: expected = ["--session-id", actual_id]
                 assert metadata[-1]["launch_arguments"] == expected
-                assert workspace.binding["session_id"] == fork.session_id
+                assert workspace.binding["session_id"] == actual_id
                 assert all(not path.exists() for path in retired_worktrees)
                 rounds[(number, role)] = row
         assert len(read_debate_rounds(rounds.values(), binding=binding, facts=facts)) == 6
@@ -202,7 +211,7 @@ def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_sy
             "round_attempts": list(rounds.values())})
         # Match the existing production Host request bound, including all six
         # actual source rows; default_request's small unit-fixture cap is not it.
-        judge = native_request(replace(default_request(AgentCommand.DEBATE_JUDGE), run_id="run-1", max_input_bytes=4 * 1024 * 1024,
+        judge = native_request(replace(default_request(AgentCommand.DEBATE_JUDGE), schema_version=version, run_id="run-1", max_input_bytes=4 * 1024 * 1024,
             task_context=judge_task, command_id=judge_task.command_id, input_artifacts=(context,),
             immutable_context_refs=(context.ref, *(row["attempt_id"] for row in rounds.values()))), "judge", None)
         _, judge_row, judgment = invoke(judge, "judge")
@@ -210,17 +219,20 @@ def test_native_debate_three_rounds_resume_forks_and_promote_winner_into_next_sy
         source = rounds[(3, winner.participant.scope.role)]
         promotion = {"debate_id": binding.debate_id, "source_judge_attempt_id": judge_row["attempt_id"],
             "role": winner.participant.scope.role, "component_id": winner.participant.scope.component_id,
-            "cycle": 2, "original_session_id": winner.original_session_id, "session_id": winner.session_id,
+            "cycle": 2, "original_session_id": winner.original_session_id,
+            "session_id": json.loads(source["observation_json"])["session"]["session_id"],
             "source_attempt_id": source["attempt_id"]}
         inputs = (_json_input("winner--session-promotion", promotion), _json_input(source["attempt_id"], source),
             _json_input("winner--lineage-context", {"cycle": 2, "parent_hypothesis_id": winner.participant.hypothesis_id}))
-        request = _research_request(winner.participant, "winning-synthesis", synthesis=True, cycle=2, inputs=inputs)
-        synthesis, _, _ = invoke(request, "winning-synthesis", history=True)
-        assert metadata[-1]["launch_arguments"] == ["--resume", winner.session_id]
-        assert synthesis.binding["session_id"] == winner.session_id
-        request = _research_request(winner.participant, "winning-inner", cycle=2, inputs=inputs)
-        inner, _, _ = invoke(request, "winning-inner", history=True)
-        assert metadata[-1]["launch_arguments"] == ["--resume", winner.session_id, "--fork-session", "--session-id", inner.binding["session_id"]]
+        request = _research_request(winner.participant, "winning-synthesis", synthesis=True, cycle=2, inputs=inputs, version=version)
+        synthesis, _, _ = invoke(request, "winning-synthesis", history=version < 29)
+        assert metadata[-1]["launch_arguments"] == (["--session-id", synthesis.binding["session_id"]]
+            if version >= 29 else ["--resume", winner.session_id])
+        assert (synthesis.binding["session_id"] == winner.session_id) is (version < 29)
+        request = _research_request(winner.participant, "winning-inner", cycle=2, inputs=inputs, version=version)
+        inner, _, _ = invoke(request, "winning-inner", history=version < 29)
+        assert metadata[-1]["launch_arguments"] == (["--session-id", inner.binding["session_id"]] if version >= 29
+            else ["--resume", winner.session_id, "--fork-session", "--session-id", inner.binding["session_id"]])
         assert inner.binding["session_id"] != winner.session_id
         assert all(not path.exists() for path in retired_worktrees)
         assert len(rows) == len(metadata) == 13

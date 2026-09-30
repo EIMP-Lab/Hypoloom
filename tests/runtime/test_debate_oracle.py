@@ -38,13 +38,15 @@ def test_directed_restart_audit_uses_participant_parent_and_actual_closure(tmp_p
         assert data.audit()
 
 
-def fixture(tmp_path, *, judged=True, restart=True):
-    host, view, _, _ = setup(tmp_path)
+def fixture(tmp_path, *, judged=True, restart=True, version=14):
+    host, view, _, _ = setup(tmp_path, agent_version=version)
     view, active, binding, completed = debate_rounds(host, view)
     if judged:
         judge(host, view, active, completed)
         if restart:
             view.drive("run-1")
+            if version >= 23:
+                host.record(node("HYPOTHESIS_PROPOSAL", cycle=2, subkind=ResearchNodeSubkind.FORWARD))
             task = node("HYPOTHESIS_PROPOSAL", cycle=2, subkind=ResearchNodeSubkind.SYNTHESIS)
             host.record(task, inputs=view.debate.promotion_inputs("run-1", task))
     data = RawRecords(host)
@@ -53,8 +55,9 @@ def fixture(tmp_path, *, judged=True, restart=True):
 
 
 @pytest.mark.parametrize("judged,restart", [(False, False), (True, False), (True, True)])
-def test_independent_oracle_reads_actual_six_round_records_and_accepted_promotion(tmp_path, judged, restart):
-    data = fixture(tmp_path, judged=judged, restart=restart)
+@pytest.mark.parametrize("version", [14, 29])
+def test_independent_oracle_reads_actual_six_round_records_and_accepted_promotion(tmp_path, judged, restart, version):
+    data = fixture(tmp_path, judged=judged, restart=restart, version=version)
     before = copy.deepcopy(vars(data))
     assert data.audit() == []
     assert vars(data) == before
@@ -233,3 +236,29 @@ def test_repeated_debate_literature_requires_exact_accepted_restart_ancestry(tmp
         with pytest.raises(ValueError): _debate_literature_source(*arguments)
     else:
         _debate_literature_source(*arguments)
+
+
+@pytest.mark.parametrize("damage", ["own_statement", "actual_session", "original_statement", "topic"])
+def test_bounded_debate_audit_rejects_changed_projection(tmp_path, damage):
+    import json
+    from hypoloom.agent_aci import EmbeddedInput
+    data = fixture(tmp_path, version=29)
+    identity = next(identity for identity, value in reversed(data.observations.items())
+        if value.get("request", {}).get("command") == "DEBATE")
+    request = data.observations[identity]["request"]
+    if damage == "actual_session":
+        judge_id = next(identity for identity, value in data.observations.items() if value.get("request", {}).get("command") == "DEBATE_JUDGE")
+        data.edit_input(judge_id, "--debate-judge-context", lambda value: value["rounds"][0].update(session_id="invented"))
+    elif damage in {"original_statement", "topic"}:
+        def change(value):
+            if damage == "topic": value["topic"] = "Different question"
+            else: value["original_statement"]["typed_candidate"]["summary"] = "Different source claim"
+        data.edit_input(identity, "--interaction-context", change)
+    else:
+        for item in request["input_artifacts"]:
+            value = json.loads(EmbeddedInput.from_dict(item).content_bytes())
+            if isinstance(value, dict) and value.get("role") == request["role"] and value.get("command") == "DEBATE":
+                data.edit_input(identity, item["ref"], lambda value: value["typed_candidate"].update(position="Changed claim"))
+                break
+        else: raise AssertionError("missing own statement fixture")
+    assert data.audit()

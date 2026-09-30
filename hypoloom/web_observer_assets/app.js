@@ -580,7 +580,9 @@
         element("p", "", `Component: ${item.component_id} · candidate: ${item.method_family_id}`),
         element("p", "", `Outcome: ${item.outcome_id} · artifact: ${item.artifact_id}`),
         element("p", "", `Preregistered source Attempt: ${item.source_attempt_id}`),
-        element("p", "", `Local outcome: ${item.local_outcome} · local metric: ${item.local_metric_value ?? "none"}`));
+        element("p", "", `Execution: ${item.execution_terminal_reason || "unknown"} · source Process only`),
+        element("p", "", `Recorded outcome: ${item.local_outcome} · local metric: ${item.local_metric_value ?? "none"}`),
+        element("p", "", `LOCAL criterion: ${!item.local_measurement ? "not declared" : item.local_outcome === "SUCCESS" ? "passed" : item.local_outcome === "CLEAN_REFUTATION" ? "not met" : `unavailable (${item.local_outcome || "unknown outcome"})`}. Shared GOAL verdict: ${status.goal_verdict || "PENDING"} (run-wide).`));
       if (item.goal_evaluation) {
         card.append(element("h4", "", "Published observations"));
         const observations = element("dl", "acceptance-observations");
@@ -686,6 +688,10 @@
     });
     metrics.forEach((bucket) => bucket.forEach((points) => points.sort(compareMetricPoints)));
     const criteria = list(common.acceptance && common.acceptance.criteria);
+    criteria.forEach((criterion) => {
+      if (criterion && METRIC_OPERATORS[criterion.operator] && metricNumber(criterion.target) !== null
+          && !metrics.has(criterion.name)) metrics.set(criterion.name, new Map());
+    });
     const criteriaNames = criteria.map((criterion) => criterion && criterion.name)
       .filter((name) => typeof name === "string");
     const ordered = new Map();
@@ -723,7 +729,9 @@
         labels.set(key, metric.name);
         series.set(key, {key, label: metric.name,
           context: [role, compact(hypothesis?.claim || hypothesisId || outcome.experiment_id, 64)].filter(Boolean).join(" · "),
-          comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? "Delta from baseline" : measurement.comparison === "VALUE" ? "Value" : "Local measurement",
+          comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? "Delta from baseline" : measurement.comparison === "RELATIVE_DELTA_FROM_BASELINE" ? "Relative delta from baseline" : measurement.comparison === "VALUE" ? "Value" : "Local measurement",
+          criterion: `${metric.direction === 'MAXIMIZE' ? '≥' : metric.direction === 'MINIMIZE' ? '≤' : metric.direction} ${metric.target ?? '?'}`,
+
           title: [hypothesisId || outcome.experiment_id, hypothesis?.claim, measurement.comparison, measurement.parse_rule].filter(Boolean).join("\n"),
           accent: expertClass(snapshot, role)});
         metrics.set(key, new Map([[key, []]]));
@@ -809,7 +817,10 @@
     }
     const context = element("p", "metric-local-context", series.context);
     context.title = series.title;
-    card.append(context, element("p", "panel-copy", `${points.length} published observation${single ? "" : "s"} · ${series.comparison}`));
+    const latest = points[points.length - 1].outcome;
+    const localStatus = latest.local_outcome === "SUCCESS" ? "passed" : latest.local_outcome === "CLEAN_REFUTATION" ? "not met" : "unavailable";
+    card.append(context, element("p", "panel-copy", `${points.length} published observation${single ? "" : "s"} · ${series.comparison}`),
+      element("p", "metric-local-criterion", `Declared LOCAL criterion: ${series.criterion} · last recorded ${localStatus}`));
     return card;
   }
 
@@ -818,7 +829,7 @@
     const section = element("section", "metric-trends");
     section.append(element("h3", "", "Metric trends"), element("h4", "", "GOAL evaluation"),
       element("p", "panel-copy", "Published observations connected per initial-hypothesis chain, in each chain's experiment order. Click a legend entry to hide or show that chain."));
-    if (!model.metrics.size) section.append(element("p", "metric-empty panel-copy",
+    if (!model.series.size) section.append(element("p", "metric-empty panel-copy",
       list(common.outcomes).some((outcome) => outcome.goal_evaluation)
         ? "No numeric GOAL measurements are available. See published experiment records for checks and other results."
         : "Waiting for published GOAL measurements. Local screening and running experiments do not produce a final GOAL score."));
@@ -838,8 +849,33 @@
       legend.append(chip);
     });
     const grid = element("div", "metric-grid-charts");
-    model.metrics.forEach((bucket, metric) => grid.append(renderMetricChart(metric, model)));
+    model.metrics.forEach((bucket, metric) => {
+      if (bucket.size) grid.append(renderMetricChart(metric, model));
+      else {
+        const card = element("article", "metric-goal-empty");
+        card.dataset.metric = metric;
+        const target = model.targets.get(metric);
+        card.append(element("h5", "", metric),
+          element("p", "", `Target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}`),
+          element("p", "panel-copy", "No published measurement"));
+        grid.append(card);
+      }
+    });
     section.append(legend, grid);
+    const checkNames = Array.from(new Set([...list(common.acceptance?.validity_checks),
+      ...list(common.acceptance?.criteria).filter((c) => c.operator === "IS_TRUE").map((c) => c.name)]));
+    if (checkNames.length) {
+      const checks = element("details", "metric-checks");
+      checks.append(element("summary", "", "GOAL checks · per experiment"));
+      const evaluated = list(common.outcomes).filter((item) => item.goal_evaluation);
+      if (!evaluated.length) checks.append(element("p", "panel-copy", checkNames.map((name) => `${name}: unknown`).join(" · ")));
+      evaluated.forEach((item) => {
+        const observed = object(item.goal_evaluation.checks);
+        checks.append(element("p", "panel-copy", `${item.experiment_id}: ${checkNames.map((name) =>
+          `${name}: ${observed[name] === true ? 'true' : observed[name] === false ? 'false' : 'unknown'}`).join(' · ')}`));
+      });
+      section.append(checks);
+    }
     const local = localMetricTrendModel(common, snapshot);
     const localCount = list(common.outcomes).filter((outcome) => outcome.scope === "LOCAL").length;
     if (localCount) {
@@ -1052,6 +1088,26 @@
     } else parent.append(element("p", "panel-copy", "Proposal and reading activity is unavailable in the current observation."));
   }
 
+  function renderStageTokens(parent, values) {
+    const table = element("table", "stage-token-table");
+    const heading = element("tr", "");
+    ["Stage", "Reported", "Failed calls", "Recovery calls", "Open observed", "Reserved"].forEach((name) => heading.append(element("th", "", name)));
+    table.append(heading);
+    list(values).forEach((stage) => {
+      const row = element("tr", "");
+      const usage = object(stage.accounting), recovery = object(stage.context_recovery);
+      [stage.subkind ? `${stage.node} / ${stage.subkind}` : stage.node,
+        usage.reported_tokens, usage.failed_reported_tokens, recovery.recovery_reported_tokens,
+        usage.observed_unsettled_tokens, usage.reserved_tokens].forEach((value, index) =>
+          row.append(element("td", "", index ? (Number.isInteger(value) ? compactNumber(value) : "unknown") : value)));
+      row.title = `Usage lower bounds; unknown closed calls: ${usage.unknown_closed_attempts ?? '?'}; unavailable token records: ${usage.unavailable_token_attempts ?? '?'}`;
+      table.append(row);
+    });
+    if (list(values).length) parent.append(table);
+    else parent.append(element("p", "panel-copy", "Stage token accounting unavailable."));
+    parent.append(element("p", "panel-copy", "Failed and recovery calls are subsets of reported usage and may overlap. Open observations and reserves are separate; reserves are not consumption. Missing usage is unknown."));
+  }
+
   function renderExpertDetails(parent, role) {
     const snapshot = state.snapshot || {};
     const summary = object(list(object(snapshot.overview || state.product?.summary).experts)
@@ -1062,6 +1118,8 @@
       parent.append(element("p", "panel-copy", stage.recovery_note || "Automatic recovery ended for this node."));
       parent.append(actionButton("Failure details", () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link"));
     });
+    parent.append(element("h3", "", "Tokens by stage"));
+    renderStageTokens(parent, summary.stage_accounting);
     parent.append(element("h3", "", "Research chains, proposals and reading"));
     renderExpertParallelActivity(parent, summary);
     parent.append(actionButton("Browse expert history", () => {
@@ -1260,8 +1318,10 @@
       const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN").length;
       const heading = element("h3", "", expert.role || "unnamed role");
       if (openAttempts) {
-        const breath = element("span", "breath-dot");
-        breath.title = `${openAttempts} durably open attempt${openAttempts === 1 ? "" : "s"} · OPEN is durable state, not process liveness`;
+        const confirmed = object(snapshot.overview).host_observation?.availability === "responded";
+        const breath = element("span", `breath-dot${confirmed ? " host-confirmed" : " host-unconfirmed"}`);
+        breath.title = `${openAttempts} durably open attempt${openAttempts === 1 ? "" : "s"} · ${confirmed ? "Host responded this poll" : "Host contact unconfirmed"} · OPEN is durable state, not process liveness`;
+        breath.setAttribute("aria-label", confirmed ? "Open work; Host responded" : "Open work; activity unknown");
         heading.prepend(breath);
       }
       identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
@@ -2175,13 +2235,16 @@
       renderChanged("expert-detail", [role, summary, snapshot.overview?.host_observation?.availability,
         snapshot.status_source, snapshot.status?.dispatch_error], () => renderResearchDetail());
     }
+    if (!drawer.hidden && state.detail?.kind === "stage_accounting") {
+      renderChanged("stage-tokens", snapshot.overview?.stage_accounting, renderResearchDetail);
+    }
     if (!drawer.hidden && state.detail?.kind === "global_tasks") {
       renderChanged("global-detail", [state.detail.data.task_scope, snapshot.overview?.global_tasks,
         snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], renderResearchDetail);
     }
     if (state.activeView === "operations") {
       renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], () => renderGlobalTasks(snapshot));
-      renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.hypotheses], () => renderMission(snapshot));
+      renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.status?.goal_verdict, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
       renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, snapshot.attempts, filters, sharedGoal(snapshot)], () => {
         const byRole = new Map(list(product.experts).map((item) => [item.role, item]));
@@ -2344,6 +2407,13 @@
       });
       costs.id = "command-retry-costs";
       container.append(costs);
+    }
+    if (!byId("stage-token-usage")) {
+      const button = actionButton("Tokens by stage", () => {
+        const current = object(state.snapshot?.overview || state.product?.summary);
+        openLocalDetail("stage_accounting", {stages: current.stage_accounting});
+      });
+      button.id = "stage-token-usage"; container.append(button);
     }
     if (!byId("execution-reliability")) {
       const button = actionButton("Execution reliability", () => openWorkbench("reliability"));
@@ -2872,6 +2942,8 @@
     if (!selected.data) return;
     if (kind === "expert") {
       renderExpertDetails(content, data.role);
+    } else if (kind === "stage_accounting") {
+      renderStageTokens(content, object(state.snapshot?.overview || state.product?.summary).stage_accounting);
     } else if (kind === "global_tasks") {
       renderGlobalDetails(content, data.task_scope);
     } else if (kind === "reliability_node") {

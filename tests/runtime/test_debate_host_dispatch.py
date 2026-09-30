@@ -55,3 +55,29 @@ def test_authorized_debate_restart_starts_forward_without_a_synthetic_literature
     task = dispatched[0][2]
     assert task.key.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL
     assert task.key.subkind is ResearchNodeSubkind.FORWARD
+
+
+@pytest.mark.parametrize("version,irreducible,expected", [(28, False, None), (29, False, "INFRASTRUCTURE"), (29, True, None)])
+def test_debate_context_failure_uses_existing_bounded_attempt_budget(batch_host, monkeypatch, version, irreducible, expected):
+    import json
+    from dataclasses import replace
+    from hypoloom.domain import AttemptTerminalReason
+    from hypoloom.agent_aci import AgentRequest
+    host = batch_host
+    host._activate("batch-host")
+    task = AuxiliaryTask(kind=AuxiliaryRequestKind.DEBATE, run_id="batch-host", cycle=1,
+        ordinal=22, component_id="primary.validation_accuracy", expert_slot="ml-researcher")
+    monkeypatch.setattr(host.interaction.debate, "inputs", lambda *args: ())
+    monkeypatch.setattr(host.agent, "invoke", lambda request: b"")
+    monkeypatch.setattr(host, "_finish_fake_agent", lambda *args: None)
+    host._expert_agent_step("batch-host", "batch-host", task, task.expert_slot, task.component_id)
+    row = host._expert_attempts(task)[0]
+    request = replace(AgentRequest.from_dict(json.loads(row["observation_json"])["request"]), schema_version=version)
+    failure = {"code": "context_capacity", "source": "local_context_limit"}
+    if irreducible: failure["recovery_action"] = "input_reconfiguration_required"
+    host._agent_failure(request, AttemptTerminalReason.FAILED, "nonzero_exit", retryable=True,
+        details={"diagnostics": {"provider_failure": failure}})
+    observed = json.loads(host.store.get_attempt(request.attempt_id)["observation_json"])
+    assert observed["retry_class"] == expected
+    assert observed["failure_stage"] == "context_reconstruction"
+    assert host._expert_task_exhausted("batch-host", task) is (expected is None)

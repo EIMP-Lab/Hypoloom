@@ -13,3 +13,14 @@ accepted goal and declared local/GOAL measurement choices.
 This stage does not require an evaluator, code changes or test fixtures merely
 to satisfy a shared workflow. Hand off precise assumptions, evidence references
 and discriminating tests using the current node's supplied response schema.
+
+When choosing a local measurement, state which uncertainty the screening result
+will resolve and how it informs the next experiment. If the claim is improvement,
+use an appropriate matched baseline or justify an absolute target. A raw positive
+score can demonstrate feasibility without demonstrating an improvement. A zero
+target is valid for many gains and errors; do not infer meaning from its sign or
+metric name. Preserve goal constraints, dataset/split boundaries and aggregation:
+an average must not conceal regressions where the goal requires separate targets.
+Use existing VALUE/delta/relative-delta declarations when appropriate. No local
+measurement (GOAL-only) remains valid. Change a frozen measurement through a new
+or revised hypothesis, never by silently editing an accepted one.

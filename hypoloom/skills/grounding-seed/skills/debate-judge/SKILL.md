@@ -17,6 +17,8 @@ references, then return the request's typed keep/prune/winner recommendation.
 The Host independently validates the round and source identities. A loser can
 be control-pruned with a winner/debate/score relationship; judging does not
 create HypothesisAssessed, scientific refutes edges, or delete past artifacts.
-Only the Host promotes an accepted winning fork, records its parent, resumes
+Only the Host binds the accepted winning final round and its original expert
+source to the next proposal, resumes
 the appropriate participants and starts their next proposal cycles. Preserve
-original sessions and history. Do not mutate graph, memory, queue or facts.
+original sessions and history. ACI 29 rounds have distinct actual session IDs;
+older rounds share a native fork. Do not substitute one identity for another. Do not mutate graph, memory, queue or facts.

@@ -225,12 +225,19 @@ def _session_transfer(request: AgentRequest):
         validate_original_debate_scope(original.to_dict(), DebateParticipant(ParticipantScope.from_dict(context["participant"]["scope"]), context["participant"]["hypothesis_id"]))
         if session["session_id"] != context["original_session_id"]: raise ValueError("Debate source has another original session")
     else:
-        if original.command is not AgentCommand.DEBATE or (session["session_id"], session["parent_session_id"]) != (context["session_id"], context["original_session_id"]):
-            raise ValueError("promotion requires the actual winning Debate fork")
+        if original.command is not AgentCommand.DEBATE or session["session_id"] != context["session_id"]:
+            raise ValueError("promotion requires the actual winning Debate session")
         prior = [item for item in original.input_artifacts if item.ref.endswith("--debate-context")]
         if len(prior) != 1: raise ValueError("promoted Debate lacks its source round")
         prior = json.loads(prior[0].content_bytes())
         if (prior["debate_id"], prior["round"]) != (context["debate_id"], 3): raise ValueError("only a final Debate round can be promoted")
+        from .expert_interaction import debate_session_id
+        if (session["session_id"] != debate_session_id(prior["session_id"], source_id, original.schema_version)
+                or session["parent_session_id"] != (None if original.schema_version >= 29 else context["original_session_id"])
+                or prior["original_session_id"] != context["original_session_id"]):
+            raise ValueError("promotion changed the actual final round or original expert session")
+        # Validate the original expert source as well as the winning round.
+        _session_transfer(original)
     return debate, context, original, session
 
 
@@ -722,8 +729,10 @@ class AgentSessions:
         if transfer is not None and transfer[0]:
             context = transfer[1]
             scope = "debate-" + _component(context["debate_id"])
-            return {"version": SESSION_VERSION, "session_id": context["session_id"],
-                "parent_session_id": context["original_session_id"], "scope": scope,
+            from .expert_interaction import debate_session_id
+            return {"version": SESSION_VERSION,
+                "session_id": debate_session_id(context["session_id"], request.attempt_id, request.schema_version),
+                "parent_session_id": None if request.schema_version >= 29 else context["original_session_id"], "scope": scope,
                 "chain": context["participant"]["scope"]["chain"], "cycle": task.cycle,
                 "branch": f"prom/{request.role}/r{task.cycle}/{scope}"}
         if request.command is AgentCommand.GRAPH_EVOLVE:

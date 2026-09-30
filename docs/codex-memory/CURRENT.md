@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- September 30 research efficiency: user stopped the research run and authorized
+  implementation/commit/push. ACI 29 / bwrap68 bounds Debate rounds and retries,
+  preserves original-source/session/promotion validation and legacy forks, and
+  supplies exact prior statements. Existing workflow guidance adds task-specific
+  integration checks and meaningful LOCAL decisions. Web/TUI separate Process,
+  LOCAL and GOAL evidence, declared-target waiting panels, Host contact and stage
+  token subsets/reserves. No new authority or production mutation. Bilingual
+  guides updated. Native sockets/parser/Chrome qualification is environment-blocked;
+  [validation and limits](../qualification.md#current-repair--bounded-debate-and-research-efficiency-2026-09-30).
+  Evidence: `.local/qualification/research-efficiency-20260930/`.
+
 - September 29 LOCAL metric display: a single published screening value now uses
   a compact card; two or more observations within the same hypothesis/measurement
   definition use a trend. GOAL charts/legend/thresholds stay unchanged. Short

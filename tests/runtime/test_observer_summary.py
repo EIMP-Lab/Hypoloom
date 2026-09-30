@@ -108,7 +108,7 @@ def test_logical_retry_cost_reuses_closed_accounting_and_separates_reservations(
     assert stage["failed_attempts"] == 2
     assert stage["accounting"] == {"reported_cost_usd": "3.75", "failed_reported_cost_usd": "2.5",
         "reserved_cost_usd": "15.0", "unknown_closed_attempts": 1, "open_attempts": 1,
-        "reported_tokens": 20, "observed_unsettled_tokens": 0,
+        "reported_tokens": 20, "failed_reported_tokens": 10, "observed_unsettled_tokens": 0,
         "reserved_tokens": 200, "unavailable_token_attempts": 0}
     # Stale live diagnostics/raw streams must never be promoted to accepted cost.
     assert "999" not in json.dumps(stage["accounting"])
@@ -188,9 +188,9 @@ def test_cumulative_tokens_include_earlier_cycles_retries_and_unknown_reserves(t
     summary = _summary(tmp_path, attempts=attempts)
     own = next(expert for expert in summary["experts"] if expert["role"] == "scientist")
     assert [stage["attempt_id"] for stage in own["activity"]] == ["latest"]
-    assert own["accounting"] == {"reported_tokens": 20, "reserved_tokens": 100,
+    assert own["accounting"] == {"reported_tokens": 20, "failed_reported_tokens": 10, "reserved_tokens": 100,
         "observed_unsettled_tokens": 0, "unknown_closed_attempts": 0, "open_attempts": 1, "unavailable_token_attempts": 0}
-    assert summary["accounting"] == {"reported_tokens": 20, "reserved_tokens": 200,
+    assert summary["accounting"] == {"reported_tokens": 20, "failed_reported_tokens": 10, "reserved_tokens": 200,
         "observed_unsettled_tokens": 0, "unknown_closed_attempts": 2, "open_attempts": 1, "unavailable_token_attempts": 1}
     # Current lane changes neither all-run nor per-expert accounting denominators.
     assert own["reliability"]["costs"]["retry_reported_tokens"] == 10
@@ -462,3 +462,19 @@ def test_current_batch_level_hypothesis_update_does_not_imply_missing_chain(tmp_
     summary = _summary(tmp_path, graph=graph, attempts=[_attempt("update", node="HYPOTHESIS_UPDATE", chain=None)])
     assert summary["totals"]["chain_coverage"] == "complete"
     assert summary["totals"]["chains"] == 2
+
+
+def test_stage_token_totals_partition_cycles_retries_and_roles(tmp_path):
+    from test_observer_reliability import row
+    attempts = [row("failed", command="old", reason="FAILED", cycle=1),
+        row("retried", command="old", ordinal=2, cycle=1, start=30),
+        row("later", command="new", cycle=2, state="OPEN", start=50),
+        row("peer", command="peer", role="peer", cost=None)]
+    summary = _summary(tmp_path, attempts=attempts)
+    for aggregate in [summary, *summary["experts"]]:
+        for name, value in aggregate["accounting"].items():
+            assert sum(stage["accounting"][name] for stage in aggregate["stage_accounting"]) == value
+    assert summary["accounting"]["reported_tokens"] == 20
+    assert summary["accounting"]["failed_reported_tokens"] == 10
+    assert summary["accounting"]["reserved_tokens"] == 200
+    assert summary["accounting"]["unknown_closed_attempts"] == 1

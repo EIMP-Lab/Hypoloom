@@ -270,8 +270,15 @@ const grouped = {cards: count('metric-single'), charts: count('metric-chart'), p
   localTargets: count('metric-target-line'), sameGoalTargets: goalTargets === withClass(first, 'metric-target-line').length};
 renderSharedAcceptance(snapshot);
 const reused = first === byId("shared-acceptance-panel");
+snapshot.status.shared_acceptance.outcomes = [];
+renderSharedAcceptance(snapshot);
+const waiting = {panels: withClass(first, 'metric-goal-empty').length, points: withClass(first, 'metric-point').length,
+  checks: content(first).includes('valid: unknown')};
+snapshot.status.shared_acceptance.acceptance.criteria = [{name:'latency',operator:'LE',target:'10'}, {name:'causal',operator:'IS_TRUE'}];
+renderSharedAcceptance(snapshot);
+const singleGoal = {panels: withClass(first, 'metric-goal-empty').length, text:content(first)};
 renderSharedAcceptance({status: {shared_acceptance: null}});
-process.stdout.write(JSON.stringify({rendered, single, grouped, reused, insertions, hidden: first.hidden, remaining: first.children.length}));
+process.stdout.write(JSON.stringify({rendered, single, grouped, waiting, singleGoal, reused, insertions, hidden: first.hidden, remaining: first.children.length}));
 """
     observed = json.loads(
         subprocess.run(
@@ -299,12 +306,17 @@ process.stdout.write(JSON.stringify({rendered, single, grouped, reused, insertio
         '"valid": false',
         '"operator": "GT"',
         "LOCAL: not a common-goal evaluation",
-        "Local outcome: SUCCESS · local metric: 0",
+        "Recorded outcome: SUCCESS · local metric: 0",
         "candidate-3",
         "artifact-3",
     ):
         assert value in observed["rendered"]
     assert "GOAL_MET" not in observed["rendered"]
+    assert "Declared LOCAL criterion: ≥ 0 · last recorded passed" in observed["rendered"]
+    assert observed["waiting"] == {"panels": 2, "points": 0, "checks": True}
+    assert observed["singleGoal"]["panels"] == 1
+    assert "Target ≤ 10" in observed["singleGoal"]["text"]
+    assert "causal: unknown" in observed["singleGoal"]["text"]
     assert observed["single"] == {"cards": 1, "charts": 0, "value": "0",
         "shortContext": True, "fullIdentity": True, "rule": True}
     assert observed["grouped"] == {"cards": 2, "charts": 1, "points": 2,
@@ -317,3 +329,19 @@ process.stdout.write(JSON.stringify({rendered, single, grouped, reused, insertio
         "remaining": 0,
     }
     assert "innerHTML" not in renderer and "fetch(" not in renderer
+
+
+def test_execution_status_uses_only_the_actual_outcome_producer(tmp_path):
+    from hypoloom.artifacts import ArtifactKey
+    attempts, facts = recorded_evidence()
+    def process(identity, reason):
+        return {"run_id": "run", "kind": "PROCESS", "experiment_id": "experiment-1", "execution_id": "execution-1",
+                "attempt_id": identity, "state": "CLOSED", "terminal_reason": reason}
+    attempts.extend([process("old-failure", "FAILED"), process("published", "SUCCEEDED"), process("other", "LOST")])
+    fact = next(item for item in facts if item["fact_type"] == "CanonicalOutcomeAccepted")
+    fact["payload"]["artifact_id"] = ArtifactKey(run_id="run", experiment_id="experiment-1", execution_id="execution-1", attempt_id="published", artifact_kind="result").artifact_id
+    outcomes = status(tmp_path, attempts, facts)["shared_acceptance"]["outcomes"]
+    assert outcomes[0]["execution_terminal_reason"] == "SUCCEEDED"
+    assert outcomes[0]["local_outcome"] == "SUCCESS"
+    assert outcomes[0]["goal_evaluation"] is None
+    assert outcomes[1]["execution_terminal_reason"] is None

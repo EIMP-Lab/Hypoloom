@@ -310,3 +310,18 @@ parameters.
 Notification configuration is in [notifications](docs/guides/notifications.md).
 Before a new expensive topic run, check the [qualification status and
 acceptance rules](docs/qualification.md).
+
+### Reading research progress and tokens
+
+After Grounding accepts the goal criteria, GOAL displays one panel per numeric
+criterion even before measurements arrive. Boolean criteria and validity checks
+are shown separately per experiment; missing values remain unknown. LOCAL cards
+show the declared criterion and its recorded pass/fail meaning. Passing LOCAL
+does not establish superiority to a baseline or the shared GOAL verdict.
+
+The expert indicator pulses only when there is durable OPEN work and the Host
+responded to this poll. Without confirmed Host contact it is static amber; neither
+state proves worker liveness or scientific progress. **Tokens by stage** and
+**Expert details** show reported tokens, failed-call and context-recovery subsets,
+open observations and reserves. Subsets may overlap; reserves are not consumed
+tokens. The TUI evidence panel uses the same stage totals.

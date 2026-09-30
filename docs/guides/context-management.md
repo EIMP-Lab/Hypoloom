@@ -10,9 +10,14 @@ fresh sessions. An eligible correction or transport retry of the same frozen
 task can resume its complete archived session when observed capacity leaves
 room for the retry. Missing evidence uses a fresh session. ACI-24 runs retain
 their original per-Attempt reconstruction behavior.
-Native compaction is optional; no extra paid summarizer is required. Three-round
-Debate retains its existing bounded fork protocol; a capacity failure there
-ends the auxiliary task instead of replaying the oversized conversation.
+Native compaction is optional; no extra paid summarizer is required. New ACI-29
+Debate rounds use fresh sessions with the original expert's accepted source,
+relevant facts and both preceding accepted statements. Each retry also gets a
+fresh session under existing attempt/budget limits. Judges read all six outputs;
+winner continuation binds the actual final round and original source. Retained
+ACI 14–28 Debates preserve their native-fork protocol and failure behavior.
+A fresh request that still exceeds minimum local admission ends with an explicit
+input-reconfiguration diagnostic; increasing attempts alone cannot repair it.
 
 ## Inputs and memory
 

@@ -116,8 +116,12 @@ def debate_rounds(host, view):
                 assert context["previous_opponent_attempt_id"] in {row["attempt_id"] for row in completed}
             candidate = {"position": "Compare the existing evidence.", "arguments": ["The scoped criterion matters."],
                 "evidence": ["out-1", "out-2"], "concessions": [], "web_sources": []}
+            from hypoloom.expert_interaction import debate_session_id
+            version = int(host.store.get_run("run-1")["agent_aci_version"])
+            identity = f"attempt-{len(host.store.list_attempts()) + 1}"
+            actual = debate_session_id(fork.session_id, identity, version)
             row = host.record(task, candidate=candidate, inputs=inputs,
-                extra_observation=session(fork.session_id, fork.original_session_id, first=number == 1))
+                extra_observation=session(actual, None if version >= 29 else fork.original_session_id, first=number == 1))
             completed.append(row)
             view = InteractionHost(host)  # no in-memory Debate progress or round queue
     return view, active, binding, completed
@@ -139,8 +143,9 @@ def judge(host, view, active, completed):
     return row
 
 
-def test_three_rounds_two_participants_are_six_real_attempt_rows_with_one_judge(tmp_path):
-    host, view, observer, originals = setup(tmp_path)
+@pytest.mark.parametrize("version", [14, 29])
+def test_three_rounds_two_participants_are_six_real_attempt_rows_with_one_judge(tmp_path, version):
+    host, view, observer, originals = setup(tmp_path, agent_version=version)
     before = host.store.list_facts("run-1")
     assert reasons(host, "researcher", "primary.score") == ()  # pause is exact chain, not whole component
     assert view.debate.pending("run-1")
@@ -157,8 +162,9 @@ def test_three_rounds_two_participants_are_six_real_attempt_rows_with_one_judge(
     host.store.close()
 
 
-def test_judge_releases_only_debate_and_restarts_both_at_hypothesis_stage(tmp_path):
-    host, view, _, _ = setup(tmp_path)
+@pytest.mark.parametrize("version", [14, 29])
+def test_judge_releases_only_debate_and_restarts_both_at_hypothesis_stage(tmp_path, version):
+    host, view, _, _ = setup(tmp_path, agent_version=version)
     host.control(Command.PAUSE_PARTICIPANT, {"participant_control": {"action": "pause",
         "scope": {"role": "researcher", "component_id": "primary.score", "chain": "chain-a"}, "reason": "operator"}})
     view, active, binding, completed = debate_rounds(host, view)
@@ -444,3 +450,25 @@ def test_second_debate_inherits_actual_literature_through_accepted_hp_restart(tm
         assert plan["source_literature_attempt_id"] == previous[plan["role"]]["source_literature_attempt_id"]
         assert plan["source_literature_command_id"] == previous[plan["role"]]["source_literature_command_id"]
     host.store.close()
+
+
+def test_bounded_debate_has_exact_previous_own_and_peer_statements(tmp_path):
+    host, view, _, _ = setup(tmp_path, agent_version=29, history_bytes=650_000)
+    try:
+        view, active, binding, rows = debate_rounds(host, view)
+        for row in rows[2:]:
+            request = json.loads(row["observation_json"])["request"]
+            artifacts = {item["ref"]: EmbeddedInput.from_dict(item).content_bytes() for item in request["input_artifacts"]}
+            context = json.loads(next(value for ref, value in artifacts.items() if ref.endswith("--debate-context")))
+            number = context["round"]
+            bounded = json.loads(next(value for ref, value in artifacts.items() if ref.endswith("--interaction-context")))
+            assert bounded["topic"] == active["proposal"]["debate"]["topic"]
+            assert "input_artifacts" not in bounded["original_statement"]
+            for previous in rows[2 * (number - 2):2 * (number - 1)]:
+                supplied = json.loads(artifacts[previous["attempt_id"]])
+                assert supplied["typed_candidate"] == json.loads(previous["observation_json"])["response"]["typed_candidate"]
+                assert "observation_json" not in supplied
+                assert len(artifacts[previous["attempt_id"]]) < 3000
+        judge(host, view, active, rows)
+    finally:
+        host.store.close()

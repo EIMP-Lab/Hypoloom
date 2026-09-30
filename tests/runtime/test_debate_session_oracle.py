@@ -15,9 +15,10 @@ from test_agent_sessions import _chain_request, _transcript
 from test_debate_sessions import _setup, _request, _source_row
 
 
-@pytest.fixture
-def history(tmp_path):
-    manager, target, original, source, context, seed = _setup(tmp_path, with_seed=True)
+@pytest.fixture(params=[14, 29])
+def history(tmp_path, request):
+    version = request.param
+    manager, target, original, source, context, seed = _setup(tmp_path, with_seed=True, version=version)
     rows, payloads = [], {}
     def record(workspace):
         workspace.request = replace(workspace.request, required_adapter_version="claude-code-bwrap/36")
@@ -29,23 +30,23 @@ def history(tmp_path):
     for number in (1, 2, 3):
         request = replace(_request(original, source, context, number), required_adapter_version="claude-code-bwrap/36")
         workspace = manager.prepare(request, target)
-        _transcript(workspace, f"Accepted round {number}.", append=number > 1)
+        _transcript(workspace, f"Accepted round {number}.", append=number > 1 and version < 29)
         winner = record(workspace); workspace.cleanup()
     promotion = {"debate_id": context["debate_id"], "source_judge_attempt_id": "actual-judge", "role": original.request.role,
         "component_id": original.request.component_id, "cycle": 2, "original_session_id": context["original_session_id"],
-        "session_id": context["session_id"], "source_attempt_id": winner["attempt_id"]}
+        "session_id": json.loads(winner["observation_json"])["session"]["session_id"], "source_attempt_id": winner["attempt_id"]}
     request = _pincer_request(ResearchNodeSubkind.SYNTHESIS, cycle=2, parent_hypothesis_id="source-hypothesis")
     inputs = (*request.input_artifacts,
         EmbeddedInput.from_bytes("winner--session-promotion", "application/json", json.dumps(promotion).encode()),
         EmbeddedInput.from_bytes(winner["attempt_id"], "application/json", json.dumps(winner).encode()))
-    request = replace(request, schema_version=14, required_adapter_version="claude-code-bwrap/36", attempt_id="promoted-synthesis",
+    request = replace(request, schema_version=version, required_adapter_version="claude-code-bwrap/36", attempt_id="promoted-synthesis",
         input_artifacts=inputs, immutable_context_refs=tuple(item.ref for item in inputs),
         required_output_schema=required_output_schema(request.command, request.task_context, schema_version=14))
-    workspace = manager.prepare(request, target); _transcript(workspace, "Promoted winning context.", append=True)
+    workspace = manager.prepare(request, target); _transcript(workspace, "Promoted winning context.", append=version < 24)
     record(workspace); workspace.cleanup()
     request = _chain_request(AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, "next-inner", "new-chain")
     task = replace(request.task_context, key=replace(request.task_context.key, cycle=2))
-    request = replace(request, schema_version=14, required_adapter_version="claude-code-bwrap/36", task_context=task, command_id=task.command_id,
+    request = replace(request, schema_version=version, required_adapter_version="claude-code-bwrap/36", task_context=task, command_id=task.command_id,
         input_artifacts=inputs, immutable_context_refs=tuple(item.ref for item in inputs))
     workspace = manager.prepare(request, target); _transcript(workspace, "New scientific inner chain.")
     record(workspace); workspace.cleanup()
