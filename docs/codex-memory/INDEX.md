@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Institutional preparation and bounded recovery design](../design/institutional-access-preparation.md):
+  proposed run-independent publisher preparation, browser-owned sessions,
+  finite background/manual acquisition, durable skip/mode controls in the
+  existing journal, shared DOI fallback and four implementation/qualification
+  batches. Design only; current behavior remains in the institutional guide.
+
 - [Real institutional subscription and IEEE viewer repair](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01):
   actual Windows Edge/SSH institution login, article/DOI acquisition and valid
   session reuse; article-bound HTML viewer and delayed controls, 118 focused

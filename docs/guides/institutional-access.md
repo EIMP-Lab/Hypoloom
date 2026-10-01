@@ -258,6 +258,10 @@ and synthetic pages, not institutional subscriptions.
 
 ## Coverage and limits
 
+Publisher preparation, durable skip/preferences and bounded authentication waits
+are specified in the [follow-up design](../design/institutional-access-preparation.md).
+They are not implemented yet; the following describes current behavior.
+
 Recognized routes include common Nature, Springer, IEEE, ScienceDirect, ACM,
 Wiley, SAGE, Oxford and Taylor & Francis article domains and DOI prefixes.
 These routes use common PDF metadata and positive full-text structure; they

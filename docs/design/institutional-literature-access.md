@@ -1,5 +1,12 @@
 # Institutional literature access
 
+The [follow-up preparation and bounded recovery design](institutional-access-preparation.md)
+specifies publisher preparation before a run, durable operator skip/preferences
+through existing controls, finite acquisition windows and shared OA fallback.
+It is a proposal dated October 1, 2026, not implemented behavior. The architecture
+below describes the current integration; [qualification](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01)
+records the completed one-paper real subscription check.
+
 The public PDF downloader cannot use a researcher's institutional browser
 session. Returning another publisher URL to the same anonymous downloader does
 not repair this failure. Login pages must not become scientific source text.

@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 1 institutional preparation follow-up is design only. Proposed default:
+  public/OA first, reuse the existing browser session, and finish background
+  requests that need human authentication; explicit operator login opens a finite
+  window. Proposed 120-second acquisition / 600-second manual defaults remain
+  unimplemented. Publisher preparation needs no run or pending paper. Persistent
+  per-run skip/mode choices reuse ordinary command transactions; browser sessions,
+  transient checks and source admission retain their existing owners. No new
+  credential/entitlement store, SQL table or assurance mechanism. Four delivery
+  batches and bounded Host/CPU/browser qualification are specified in the
+  [design](../design/institutional-access-preparation.md). Original runtime,
+  research runs, Profiles and browser state are unchanged by this design task.
+
 - October 1 real institutional subscription: user-completed Xidian login over
   dedicated Windows Edge/loopback SSH yields the expected 16-page IEEE PDF in
   two independent adapter/queue connections without relogin; an additional DOI
