@@ -30,6 +30,33 @@ Evidence: `.local/qualification/runtime-literature-20261001/`.
 
 English · [简体中文](qualification.zh-CN.md)
 
+
+Batch 2 merges PR #3 with corrected recovery/accounting. Real pre-model Grounding
+Attempts carry the failed retrieval and exact consumed query; later query plans
+receive this evidence. Existing model/retrieval budgets bound replanning across
+Host restart. Exhaustion records the actual failed Grounding node; no synthetic
+plan Attempt or copied response is created. The existing accounting fold derives
+zero model consumption from the Host's literature-retrieval failure stage.
+
+Final-report input now separates all unsuccessful Agent attempts from exhausted
+nodes, requires their available failure references, and delivers bounded declared
+raw text measurements through the same publication verifier as logical summaries.
+Included/omitted files remain tied to their canonical outcomes and preregistration;
+raw data does not establish a new verdict. PR #3's implementation-lineage checks
+and exact query-plan causation are retained.
+
+331 distinct focused checks pass: 259 report/Oracle/literature/Host-tool cases,
+68 budget/measurement/native report cases and four documentation checks. Four
+replanning paths cover recovery, persistent gaps and Host restart with independently
+checked nonzero plan charges and zero pre-model charges. Real CPU publication
+passes task-defined CSV bytes to final reports with exact artifact/outcome identity.
+Native retry closure independently checks one CPU Process, recovered Agent failure
+citations, cumulative session charging, Oracle and absent process residue. The
+scripted report fixture initially omitted the newly required recovered-failure
+citations and correctly failed; its generated narrative was updated to read the
+new source fields. Persistent-gap tests use the fixture's configured six-attempt
+limit, not an assumed three. No production run mutation or paid-model call.
+
 ## Current repair — literature recovery and notification health (2026-10-01)
 
 The user authorizes framework implementation after an upstream OpenAlex outage

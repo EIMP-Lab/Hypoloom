@@ -138,6 +138,10 @@ def fold_agent_attempts(rows: Iterable[Mapping[str, Any]]) -> tuple[AgentAttempt
             source, charge = "rejected_response", reported
         elif state == "CLOSED" and (reported := _reported(observation.get("discarded_response"))) is not None:
             source, charge = "discarded_response", reported
+        elif state == "CLOSED" and observation.get("failure_stage") == "literature_retrieval":
+            # Host retrieval finishes before provider launch. Its durable stage
+            # establishes zero model use without a synthetic provider response.
+            source, charge = "pre_model", (0, 0, Decimal("0"))
         elif state == "CLOSED":
             diagnostics = observation.get("diagnostics")
             accounting = diagnostics.get("provider_accounting") if isinstance(diagnostics, Mapping) else None

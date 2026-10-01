@@ -527,6 +527,12 @@ def _valid_response(request: AgentRequest) -> AgentResponse:
         if request.command is AgentCommand.FINAL_REPORT:
             from .final_report import report_sources
             verdict, outcomes, reason = report_sources(request)
+            failures = []
+            for item in request.input_artifacts:
+                if item.ref.endswith("--final-report-context"):
+                    outcome = json.loads(item.content_bytes()).get("run_outcome", {})
+                    failures.extend(outcome.get("unsuccessful_agent_attempts", []))
+            reason += "\nAgent attempt history: " + json.dumps(failures)
             report = "# Final report\n\n" + reason + "\n\n" + "\n".join(
                 f"{identity}: {value or 'No scientific verdict was accepted.'}" for identity, value in (verdict, *outcomes)) + "\n"
             artifacts = (WorkspaceArtifact.from_bytes("FINAL_REPORT.md", report.encode()),)

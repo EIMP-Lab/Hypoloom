@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- October 1 integration, batch 2: corrected PR #3 joins dev. Actual pre-model
+  Grounding failures drive bounded query replanning across restart, without
+  synthetic calls/copied charges. Existing artifact verification supplies bounded
+  raw measurements and accepted summaries; reports cite recovered and final
+  failures separately. 331 focused checks pass, including native Host/CPU and
+  persistent-gap closure. PR #2 and real subscription verification remain pending.
+  [Design](../design/runtime-and-literature-integration.md) and
+  [validation](../qualification.md#current-integration--runtime-and-literature-2026-10-01).
+
+
 - October 1 integration, batch 1: user authorizes phased commits/PR merges and
   pushes to dev. bwrap69 accepts identical same-session background completions
   only with consistent cumulative accounting, revalidates repeated native Stop,

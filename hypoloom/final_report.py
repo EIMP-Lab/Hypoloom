@@ -4,6 +4,105 @@ from __future__ import annotations
 import json
 from collections import Counter
 from decimal import Decimal
+from pathlib import Path
+
+
+_COMPARABLE_OUTCOMES = frozenset({"SUCCESS", "CLEAN_REFUTATION"})
+
+
+def declared_measurement_inputs(facts, resolve_raw, *, max_bytes):
+    """Deliver bounded published text, without interpreting task-specific metrics."""
+    from .agent_aci import EmbeddedInput
+
+    inputs, included, omitted = [], [], []
+    remaining = max_bytes
+    for row in facts:
+        if row.get("fact_type") != "CanonicalOutcomeAccepted":
+            continue
+        payload = row.get("payload") or json.loads(row["payload_json"])
+        outcome_id, artifact_id = payload["outcome_id"], payload["artifact_id"]
+        for ordinal, (relative, path) in enumerate(resolve_raw(outcome_id, artifact_id), 1):
+            ref = f"{outcome_id}--declared-raw-measurement-{ordinal}"
+            entry = {"outcome_id": outcome_id, "artifact_id": artifact_id,
+                "canonical_outcome": payload["outcome"], "path": relative, "ref": ref}
+            if Path(relative).suffix.lower() not in {".json", ".jsonl", ".csv", ".tsv", ".txt"}:
+                omitted.append({**entry, "reason": "non_text_artifact"})
+                continue
+            try:
+                with Path(path).open("rb") as stream:
+                    content = stream.read(remaining + 1)
+                if len(content) > remaining:
+                    omitted.append({**entry, "reason": "raw_byte_budget_exceeded"})
+                    continue
+                content.decode("utf-8")
+            except (OSError, UnicodeError):
+                omitted.append({**entry, "reason": "source_unavailable_or_not_utf8"})
+                continue
+            inputs.append(EmbeddedInput.from_bytes(ref, "text/plain", content))
+            included.append(entry)
+            remaining -= len(content)
+    return tuple(inputs), {"evidence_scope": "declared_raw_observations_not_new_verdicts",
+        "byte_limit": max_bytes, "bytes_included": max_bytes - remaining,
+        "included": included, "omitted": omitted}
+
+
+def accepted_evaluation_summary_inputs(facts, resolve_logical, *, max_bytes):
+    """Materialize bounded accepted summaries through the Host's artifact resolver."""
+    from .agent_aci import EmbeddedInput
+
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+        raise ValueError("evaluation summary byte limit must be a positive integer")
+    inputs = []
+    included = []
+    omitted = []
+    remaining = max_bytes
+    for row in facts:
+        if row.get("fact_type") != "CanonicalOutcomeAccepted":
+            continue
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            try:
+                payload = json.loads(row["payload_json"])
+            except (KeyError, TypeError, json.JSONDecodeError):
+                continue
+        if payload.get("outcome") not in _COMPARABLE_OUTCOMES:
+            continue
+        logical = payload.get("logical_artifacts")
+        if not isinstance(logical, (list, tuple)) or not any(
+            isinstance(item, dict) and item.get("logical_artifact") == "evaluation_summary"
+            for item in logical
+        ):
+            continue
+        outcome_id = payload.get("outcome_id")
+        artifact_id = payload.get("artifact_id")
+        if not isinstance(outcome_id, str) or not isinstance(artifact_id, str):
+            continue
+        paths = tuple(resolve_logical(outcome_id, artifact_id, "evaluation_summary"))
+        refs = []
+        for index, raw_path in enumerate(paths, 1):
+            path = Path(raw_path)
+            ref = f"{outcome_id}--accepted-evaluation-summary"
+            if len(paths) > 1:
+                ref += f"-{index}"
+            try:
+                with path.open("rb") as stream:
+                    content = stream.read(remaining + 1)
+            except OSError:
+                omitted.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                    "ref": ref, "reason": "source_unavailable"})
+                continue
+            if len(content) > remaining:
+                omitted.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                    "ref": ref, "reason": "summary_byte_budget_exceeded"})
+                continue
+            inputs.append(EmbeddedInput.from_bytes(ref, "application/json", content))
+            refs.append(ref)
+            remaining -= len(content)
+        if refs:
+            included.append({"outcome_id": outcome_id, "artifact_id": artifact_id,
+                "refs": refs})
+    return tuple(inputs), {"byte_limit": max_bytes, "bytes_included": max_bytes - remaining,
+        "included": included, "omitted": omitted}
 
 
 def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
@@ -28,10 +127,21 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
         if owner is not None:
             outcomes_by_attempt[owner] = payload
     nodes = set()
+    agent_states = Counter()
+    unsuccessful = []
+    successful_commands = {row.get("command_id") for row in attempts
+        if row.get("kind") == "AGENT" and row.get("terminal_reason") == "SUCCEEDED"}
     for row in attempts:
         if row["kind"] != "AGENT":
             continue
-        request = (row["observation"] if "observation" in row else json.loads(row["observation_json"])).get("request", {})
+        observation = row["observation"] if "observation" in row else json.loads(row["observation_json"])
+        request = observation.get("request", {})
+        agent_states[row.get("terminal_reason") or row.get("state") or "UNKNOWN"] += 1
+        if row.get("state") == "CLOSED" and row.get("terminal_reason") != "SUCCEEDED":
+            unsuccessful.append({"attempt_id": row["attempt_id"], "command": request.get("command"),
+                "terminal_reason": row.get("terminal_reason"), "failure_code": observation.get("failure_code"),
+                "failure_stage": observation.get("failure_stage"),
+                "command_has_successful_attempt": row.get("command_id") in successful_commands})
         context = request.get("task_context")
         if isinstance(context, dict) and "key" in context:
             nodes.add(request.get("command_id", row["command_id"]))
@@ -108,6 +218,9 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
         "process_attempts": sum(row["kind"] == "PROCESS" for row in attempts),
         "process_attempt_details": process_details,
         "agent_accounting": agent_accounting,
+        "agent_attempts_by_status": dict(agent_states),
+        "unsuccessful_agent_attempts": unsuccessful,
+        "final_failures_scope": "nodes_with_exhausted_or_nonretryable_failure",
         "final_failures": failures}
 
 
@@ -149,9 +262,11 @@ def validate_final_report(files, request):
         raise ValueError("final report omits the actual accepted verdict")
     for item in request.input_artifacts:
         if item.ref.endswith("--final-report-context"):
-            for failure in json.loads(item.content_bytes()).get("run_outcome", {}).get("final_failures", []):
-                if any(failure[key] not in report for key in ("attempt_id", "failure_code")):
-                    missing = [failure[key] for key in ("attempt_id", "failure_code") if failure[key] not in report]
+            outcome = json.loads(item.content_bytes()).get("run_outcome", {})
+            for failure in (*outcome.get("final_failures", []), *outcome.get("unsuccessful_agent_attempts", [])):
+                references = [failure[key] for key in ("attempt_id", "failure_code") if failure.get(key)]
+                if any(ref not in report for ref in references):
+                    missing = [ref for ref in references if ref not in report]
                     raise ValueError("final report omits its actual terminal Agent failure; "
                                      f"missing_reference_ids={json.dumps(missing)}")
         if item.ref.endswith("--final-failure"):

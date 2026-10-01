@@ -122,6 +122,95 @@ def test_report_counts_research_nodes_once_and_accepts_contextless_reviews():
     assert result["process_attempt_details"] == []
 
 
+def test_report_preserves_recovered_failures_and_requires_their_citations():
+    from hypoloom.final_report import run_outcome_context, validate_final_report
+    attempts = [{"attempt_id": identity, "command_id": "same-command", "kind": "AGENT",
+        "state": "CLOSED", "terminal_reason": terminal,
+        "observation_json": json.dumps({"request": {"command": "GROUNDING"},
+            **({"failure_code": "timed_out"} if terminal == "TIMED_OUT" else {})})}
+        for identity, terminal in (("failed-call", "TIMED_OUT"), ("recovered-call", "SUCCEEDED"))]
+    outcome = run_outcome_context([], attempts, [])
+    assert outcome["final_failures"] == []
+    assert outcome["agent_attempts_by_status"] == {"TIMED_OUT": 1, "SUCCEEDED": 1}
+    assert outcome["unsuccessful_agent_attempts"][0]["command_has_successful_attempt"]
+    request = report_request()
+    payload = json.loads(request.input_artifacts[0].content_bytes())
+    payload["run_outcome"] = outcome
+    context = EmbeddedInput.from_bytes(request.input_artifacts[0].ref, "application/json", json.dumps(payload).encode())
+    request = replace(request, input_artifacts=(context,))
+    with pytest.raises(ValueError, match="failed-call"):
+        validate_final_report({"FINAL_REPORT.md": b"verdict-fact GOAL_MET outcome-accepted"}, request)
+    validate_postflight(request, FakeAgent().invoke(request))
+
+
+def test_declared_raw_report_inputs_preserve_scope_and_omissions(tmp_path):
+    from hypoloom.final_report import declared_measurement_inputs
+    raw = tmp_path / "metrics.json"
+    raw.write_text('{"validation": 0.7, "test": 0.6}')
+    oversized = tmp_path / "large.json"
+    oversized.write_bytes(b" " * 100)
+    facts = [{"fact_type": "CanonicalOutcomeAccepted", "payload": {
+        "outcome_id": "outcome-local", "artifact_id": "artifact-local", "outcome": "EXECUTION_FAILURE"}}]
+    def resolve(outcome, artifact):
+        assert (outcome, artifact) == ("outcome-local", "artifact-local")
+        return (("raw/metrics.json", raw), ("raw/large.json", oversized),
+            ("raw/checkpoint.bin", tmp_path / "checkpoint.bin"), ("raw/missing.csv", tmp_path / "missing.csv"))
+    inputs, index = declared_measurement_inputs(facts, resolve, max_bytes=40)
+    assert len(inputs) == 1 and inputs[0].content_bytes() == raw.read_bytes()
+    assert index["included"][0]["canonical_outcome"] == "EXECUTION_FAILURE"
+    assert {item["reason"] for item in index["omitted"]} == {
+        "raw_byte_budget_exceeded", "non_text_artifact", "source_unavailable_or_not_utf8"}
+
+
+def test_accepted_evaluation_summaries_are_comparable_and_bounded(tmp_path):
+    from hypoloom.final_report import accepted_evaluation_summary_inputs
+
+    first = tmp_path / "first.json"
+    first.write_bytes(b'{"cells":["qwen","llama"]}')
+    second = tmp_path / "second.json"
+    second.write_bytes(b'{"cells":["too-large"]}')
+    calls = []
+
+    def resolve(outcome_id, artifact_id, logical_id):
+        calls.append((outcome_id, artifact_id, logical_id))
+        return (first if outcome_id == "outcome-one" else second,)
+
+    def outcome(identity, status):
+        return {"fact_type": "CanonicalOutcomeAccepted", "payload": {
+            "outcome_id": identity,
+            "artifact_id": f"artifact-{identity}",
+            "outcome": status,
+            "logical_artifacts": [{"logical_artifact": "evaluation_summary",
+                "paths": ["evaluation_summary.json"]}],
+        }}
+
+    inputs, index = accepted_evaluation_summary_inputs([
+        outcome("outcome-one", "SUCCESS"),
+        outcome("outcome-rejected", "INTEGRITY_REJECTED"),
+        outcome("outcome-two", "CLEAN_REFUTATION"),
+    ], resolve, max_bytes=len(first.read_bytes()))
+
+    assert [item.ref for item in inputs] == [
+        "outcome-one--accepted-evaluation-summary"
+    ]
+    assert inputs[0].content_bytes() == first.read_bytes()
+    assert calls == [
+        ("outcome-one", "artifact-outcome-one", "evaluation_summary"),
+        ("outcome-two", "artifact-outcome-two", "evaluation_summary"),
+    ]
+    assert index == {
+        "byte_limit": len(first.read_bytes()),
+        "bytes_included": len(first.read_bytes()),
+        "included": [{"outcome_id": "outcome-one",
+            "artifact_id": "artifact-outcome-one",
+            "refs": ["outcome-one--accepted-evaluation-summary"]}],
+        "omitted": [{"outcome_id": "outcome-two",
+            "artifact_id": "artifact-outcome-two",
+            "ref": "outcome-two--accepted-evaluation-summary",
+            "reason": "summary_byte_budget_exceeded"}],
+    }
+
+
 def _report_gpu_usage(uuid="GPU-11111111-1111-1111-1111-111111111111", *, free=50_901,
                       owned_bytes=4096, incomplete=False):
     from hypoloom.compute_resources import GpuPressureTracker, GpuRuntimeObservation

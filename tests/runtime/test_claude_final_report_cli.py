@@ -39,6 +39,8 @@ class _FinalReportScenario:
             + "\n\n" + "\n".join(outcomes) + "\n\n## Stop reason and limitations\n\n"
             + self.context["stop_reason"] + "\nThis report adds no experiment or scientific verdict. "
             "The compatibility provider was scripted; no paid model or GPU was used.\n")
+        self.report += "\n## Agent attempt history\n\n" + json.dumps(
+            self.context.get("run_outcome", {}).get("unsuccessful_agent_attempts", []))
 
     def record(self, document):
         self.requests.append(document)

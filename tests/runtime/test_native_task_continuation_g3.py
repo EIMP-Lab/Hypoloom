@@ -171,6 +171,11 @@ def test_native_same_task_model_retry_resumes_archive_and_cost_then_starts_fresh
             other_sessions = [observation["session"]["session_id"] for _, observation in agents if observation["request"]["command"] != "GROUNDING"]
             assert session not in other_sessions
             assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 1
+            report_row = next(observation for _, observation in agents
+                if observation["request"]["command"] == "FINAL_REPORT")
+            report_path = host.publisher.root / report_row["session"]["transcript"]["path"] / "FINAL_REPORT.md"
+            assert failed[0]["attempt_id"] in report_path.read_text()
+            assert failed[1]["failure_code"] in report_path.read_text()
             assert len(host.store.list_facts(_RUN, "CanonicalOutcomeAccepted")) == 1
             assert host.store.list_facts(_RUN, "GoalVerdictRecorded")[0]["payload"]["verdict"] == "GOAL_MET"
             effects = dict((row["command_type"], row["count"]) for row in host.store.inspect(

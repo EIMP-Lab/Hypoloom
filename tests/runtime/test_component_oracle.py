@@ -2964,6 +2964,45 @@ def test_primary_lineage_ignores_empty_comparable_result_set() -> None:
     assert issues == []
 
 
+def test_primary_lineage_requires_implementation_but_allows_omitted_core_config() -> None:
+    component = replace(
+        _metric_component(component_id="primary.final", metric="score"),
+        required_artifacts=("implementation_patch",),
+        artifact_counts={"implementation_patch": 1},
+    )
+    contract = _GoalComponentContract(
+        fact_id="fact-goal",
+        goal_id="goal-1",
+        roles=("researcher",),
+        components=(component,),
+    )
+    outcome = {"fact_id": "fact-outcome-primary"}
+    payloads = {"fact-outcome-primary": {"outcome": "SUCCESS"}}
+
+    issues: list[OracleIssue] = []
+    _audit_primary_implementation_lineage(
+        contract,
+        {"primary.final": _ComponentResult(
+            "SUCCESS", True, "1", "a" * 64, None)},
+        {"primary.final": outcome},  # type: ignore[arg-type]
+        payloads,
+        issues,
+    )
+    assert issues == []
+
+    _audit_primary_implementation_lineage(
+        contract,
+        {"primary.final": _ComponentResult(
+            "SUCCESS", True, "1", None, None)},
+        {"primary.final": outcome},  # type: ignore[arg-type]
+        payloads,
+        issues,
+    )
+    assert [issue.code for issue in issues] == [
+        "primary_implementation_lineage_mismatch"
+    ]
+
+
 def _successor_fact_rows() -> tuple[
     list[dict[str, object]], dict[str, dict[str, object]]
 ]:

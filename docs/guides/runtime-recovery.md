@@ -2,8 +2,30 @@
 
 English · [简体中文](runtime-recovery.zh-CN.md)
 
-New runs use ACI 28. Existing runs keep their pinned runtime; updating the
+New runs use ACI 29. Existing runs keep their pinned runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
+
+## Completion and final-report evidence
+
+New runs accept identical native completion replies caused by same-session
+background-task notifications only after identity, current-output validation and
+cumulative accounting checks. The final cumulative ledger is charged once.
+Changed or unaccounted extra completions remain failures.
+
+Final reports receive Agent attempt status counts and unsuccessful-attempt
+references separately from exhausted/nonretryable nodes. Recovered failures and
+operator cancellations still belong in the history. Bounded accepted summaries
+and declared raw text measurements come from verified publications; the report
+index identifies omitted files. Missing GOAL acceptance is not evidence that no
+raw test observations exist. LOCAL or failed-work observations cannot become a
+new accepted verdict through the report.
+
+When Grounding retrieval loses required literature strata after a valid query
+probe, the Host records the actual pre-model retrieval failure and replans that
+exact query within the existing retry limits. It neither invents an Agent call
+nor copies earlier model charges. Host restart reconstructs the same decision
+from durable Attempts. No existing run is migrated by updating this checkout.
+
 
 ## Initialize GPU research
 

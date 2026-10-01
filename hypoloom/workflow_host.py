@@ -19,7 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
-from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
+from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, request_digest, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot, with_output_digest)
 from .agent_capabilities import capabilities_for
 from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
 from .context_management import continuation_observation
@@ -48,7 +48,7 @@ from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batche
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
 from .grounding_context import build_grounding_context_bytes
 from .lifecycle import Command, ExperimentState, Machine, RunState, WORKFLOW_DEFINITION_VERSION, validate_transition
-from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
+from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureCoverageError, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
 from .monitor import build_status_projection
 from .outcome_adapter import (OUTCOME_ADAPTER_VERSION, ComponentResultValidationError, repairable_component_result_error, validate_component_result, validate_measurement_result)
 from .oracle import audit_all_runs
@@ -1085,16 +1085,27 @@ class WorkflowHost:
                 + _canonical(list(controls)).decode() if stopping else
                 f"As of the first report request, Research Policy recorded {verdicts[0]['payload']['verdict']}. Lifecycle closure alone does not establish completed research."),
             **({"stop_controls": list(controls)} if stopping else {})}
-        from .final_report import run_outcome_context
+        from .final_report import accepted_evaluation_summary_inputs, declared_measurement_inputs, run_outcome_context
         context["run_outcome"] = outcome = run_outcome_context(facts,
             [row for row in self.store.list_attempts() if row["run_id"] == run_id], self._expert_final_failures(run_id),
             artifacts=self.store.inspect("SELECT artifact_id,execution_id,attempt_id FROM execution_artifacts WHERE run_id=?", (run_id,)))
+        summary_inputs, summary_index = accepted_evaluation_summary_inputs(
+            facts,
+            lambda outcome_id, artifact_id, logical_id: self._logical_sources(
+                run_id, outcome_id, artifact_id, logical_id),
+            max_bytes=maximum,
+        )
+        context["accepted_evaluation_summaries"] = summary_index
+        raw_inputs, raw_index = declared_measurement_inputs(facts,
+            lambda outcome_id, artifact_id: self._declared_measurement_sources(run_id, outcome_id, artifact_id),
+            max_bytes=maximum - summary_index["bytes_included"])
+        context["declared_raw_measurements"] = raw_index
         context["stop_reason"] += (f" Actual progress: {outcome['expert_nodes_started']} expert nodes started, "
             f"{outcome['fact_counts']['HypothesisProposed']} hypotheses, "
             f"{outcome['fact_counts']['ExperimentPreregistered']} experiments, "
             f"{outcome['fact_counts']['CanonicalOutcomeAccepted']} accepted outcomes.")
         if outcome["final_failures"]:
-            context["stop_reason"] += " Terminal Agent failures: " + _canonical(outcome["final_failures"]).decode()
+            context["stop_reason"] += " Exhausted/nonretryable Agent nodes: " + _canonical(outcome["final_failures"]).decode()
         failed_reports = []
         for failure in self._expert_final_failures(run_id):
             failed = self.store.get_attempt(failure["attempt_id"])
@@ -1106,6 +1117,7 @@ class WorkflowHost:
         inputs = [EmbeddedInput.from_bytes(f"{task.command_id}--grounding-config", "application/json", _canonical(config)),
             EmbeddedInput.from_bytes(f"{task.command_id}--grounding-resources", "application/json", _canonical({"plugin": plugin.to_dict()})),
             EmbeddedInput.from_bytes(f"{task.command_id}--final-report-context", "application/json", _canonical(context))]
+        inputs.extend((*summary_inputs, *raw_inputs))
         inputs.extend(failed_reports)
         for row in self.store.list_attempts():
             if row["run_id"] == run_id and row["kind"] == "AGENT" and row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED":
@@ -1540,11 +1552,44 @@ class WorkflowHost:
         from .agent_aci import execution_handoff
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING and task.ordinal == 1:
             task = self._grounding_task(task.run_id)
-        return next((row for row in reversed(self._expert_attempts(task))
+        attempts = self._expert_attempts(task)
+        query_plan = (
+            isinstance(task, ResearchNodeTask)
+            and task.key.subkind is ResearchNodeSubkind.QUERY_PLAN
+        ) or (
+            isinstance(task, AuxiliaryTask)
+            and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+        )
+        candidates = attempts[-1:] if query_plan else tuple(reversed(attempts))
+        accepted = next((row for row in candidates
                      if row["state"] == "CLOSED" and row["terminal_reason"] == AttemptTerminalReason.SUCCEEDED.value
                      and not execution_handoff(json.loads(row["observation_json"]))
                      and not (isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING
                          and json.loads(row["observation_json"]).get("response", {}).get("typed_candidate", {}).get("clarification") is not None)), None)
+
+        if (accepted is not None and isinstance(task, AuxiliaryTask)
+                and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+                and self._grounding_query_gap(task.run_id, accepted) is not None):
+            return None
+        return accepted
+
+    def _grounding_query_gap(self, run_id: str, plan: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        """An actual retrieval failure invalidates only the exact consumed plan."""
+        attempts = self._expert_attempts(self._grounding_task(run_id))
+        if not attempts:
+            return None
+        row = attempts[-1]
+        observation = json.loads(row["observation_json"])
+        if (row["state"] != "CLOSED" or row["terminal_reason"] != "FAILED"
+                or observation.get("failure_stage") != "literature_retrieval"
+                or observation.get("literature_failure_class") != "LiteratureCoverageError"):
+            return None
+        request = AgentRequest.from_dict(observation["request"])
+        ref = f"{plan['attempt_id']}--literature-query"
+        if not any(item.ref == ref for item in request.input_artifacts):
+            return None
+        return row
+
     def _grounding_task(self, run_id: str) -> AuxiliaryTask:
         run = self.store.get_run(run_id)
         return (self.grounding_dialogue.current_task(run_id) if run is not None and int(run["agent_aci_version"]) >= 15
@@ -2108,6 +2153,22 @@ class WorkflowHost:
                 ref = f"{plan['attempt_id']}--literature-query"
             else: raise OperationalHalt("unsupported auxiliary task entered Grounding inputs")
             inputs.append(EmbeddedInput.from_bytes(ref, LITERATURE_PACKET_MEDIA_TYPE, _canonical(query.to_dict())))
+            if task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN:
+                prior_plan = next((row for row in reversed(self._expert_attempts(task))
+                    if row["terminal_reason"] == "SUCCEEDED"), None)
+                gap = None if prior_plan is None else self._grounding_query_gap(run_id, prior_plan)
+                if gap is not None:
+                    observation = json.loads(gap["observation_json"])
+                    prior_request = AgentRequest.from_dict(observation["request"])
+                    query_input = next(item for item in prior_request.input_artifacts
+                        if item.ref == f"{prior_plan['attempt_id']}--literature-query")
+                    inputs.append(EmbeddedInput.from_bytes(f"{gap['attempt_id']}--grounding-query-coverage-error",
+                        "application/json", _canonical({"source_attempt_id": gap["attempt_id"],
+                            "query_plan_attempt_id": prior_plan["attempt_id"],
+                            "rejected_query": json.loads(query_input.content_bytes()),
+                            "failure_code": observation["failure_code"],
+                            "diagnostic": observation.get("literature_diagnostic"),
+                            "instruction": "Revise this query to cover the missing strata before Grounding retrieval."})))
         elif task.key.node_kind is ResearchNodeKind.LITERATURE_REVIEW:
             if task.key.subkind is ResearchNodeSubkind.QUERY_PLAN:
                 run = self.store.get_run(run_id)
@@ -2323,7 +2384,7 @@ class WorkflowHost:
             correction_inputs = agent_retry_inputs(self.store, owner_id, task.command_id); inputs += correction_inputs; correction_refs = frozenset(item.ref for item in (*repair_inputs, *correction_inputs)); immutable_context_refs = tuple(item.ref for item in inputs if item.ref not in correction_refs)
         retrieval = None
         lifecycle_command = Command.REQUEST_AUXILIARY if isinstance(task, AuxiliaryTask) else Command.REQUEST_RESEARCH_NODE
-        literature_failure: tuple[str, dict[str, object], bool] | None = None; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
+        literature_failure: tuple[str, dict[str, object], bool] | None = None; coverage_failure = False; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
         retrieve = command is AgentCommand.GROUNDING or (command is AgentCommand.LITERATURE_REVIEW and isinstance(task, ResearchNodeTask) and task.key.subkind is ResearchNodeSubkind.MAIN)
         if repeat_retrieval and (not retrieve or self.literature_io is None): raise OperationalHalt("infrastructure retry requires its literature adapter")
         if replay_request is None and retrieve and self.literature_io is not None:
@@ -2359,6 +2420,7 @@ class WorkflowHost:
                 from .literature_recovery import service_failure
                 service = service_failure(exc)
                 if service is not None: details["literature_service"] = {**service, "observed_at": time.time()}
+                coverage_failure = isinstance(exc, LiteratureCoverageError)
                 literature_failure = (f"literature_{exc.code.value.lower()}", details, service is not None or literature_failure_retryable(exc))
             except Exception as exc:
                 literature_failure = ("literature_adapter_failed", {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}, True)
@@ -2367,6 +2429,12 @@ class WorkflowHost:
                 preflight_diagnostics["literature_service"] = {"service": "openalex", "available": True, "observed_at": time.time()}
                 packet_input = EmbeddedInput.from_bytes(f"{task.command_id}--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes())
                 inputs = (*inputs, packet_input); immutable_context_refs = (*immutable_context_refs, packet_input.ref)
+        if coverage_failure and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING:
+            # Record the real pre-model Grounding failure. The next plan reads
+            # this exact request/diagnostic; no copied model response or charge.
+            plan_task = AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)
+            can_replan = not self._agent_attempts_exhausted(contract, self._expert_attempts(plan_task))
+            literature_failure = ("invalid_candidate", literature_failure[1], can_replan)
         self._check_agent_runtime()
         self._crash("before_agent_intent_commit"); request: AgentRequest
         with self.store.transaction() as tx:
@@ -4180,7 +4248,7 @@ class WorkflowHost:
             attempt_ordinal=raw.attempt_ordinal, execution_id=str(spec["execution_id"]), cwd=prepared.log_dir,
             timeout_seconds=float(spec["payload"]["execution_contract"]["timeout_seconds"]))
         return replace(prepared, process_request=outer), parser
-    def _logical_sources(self, run_id: str, outcome_id: str, artifact_id: str, logical_id: str) -> tuple[Path, ...]:
+    def _outcome_publication(self, run_id: str, outcome_id: str, artifact_id: str):
         if self.publisher is None: raise OperationalHalt("Workflow Host is not initialized")
         outcome = self.store.find_fact(run_id, "CanonicalOutcomeAccepted", outcome_id)
         rows = self.store.inspect("SELECT * FROM execution_artifacts WHERE artifact_id=?", (artifact_id,))
@@ -4192,6 +4260,28 @@ class WorkflowHost:
         if outcome["payload"].get("artifact_set_digest") != publication.digest: raise OperationalHalt("upstream outcome and publication digest differ")
         try: self.publisher.verify(publication)
         except ArtifactError as exc: raise OperationalHalt(f"upstream publication failed verification: {exc}") from exc
+        if any(row[name] != outcome[name] for name in ("run_id", "experiment_id", "execution_id")):
+            raise OperationalHalt("outcome and publication ownership differ")
+        return outcome, root, paths
+
+    def _declared_measurement_sources(self, run_id: str, outcome_id: str, artifact_id: str):
+        from .artifacts import normalize_relative_paths
+        outcome = self.store.find_fact(run_id, "CanonicalOutcomeAccepted", outcome_id)
+        spec = None if outcome is None else self.store.find_fact(run_id, "ExperimentPreregistered", outcome["experiment_id"])
+        if spec is None or spec["execution_id"] != outcome["execution_id"]:
+            raise OperationalHalt("report measurement lacks its exact preregistration")
+        declaration = spec["payload"].get("measurement")
+        binding = spec["payload"].get("goal_evaluation")
+        if binding is not None and binding["scope"] == "GOAL":
+            declaration = binding["acceptance"]
+        if declaration is None:
+            return ()
+        relative = normalize_relative_paths("raw/" + name for name in declaration["raw_artifacts"])
+        _, root, _ = self._outcome_publication(run_id, outcome_id, artifact_id)
+        return tuple((name, root.joinpath(*name.split("/"))) for name in relative)
+
+    def _logical_sources(self, run_id: str, outcome_id: str, artifact_id: str, logical_id: str) -> tuple[Path, ...]:
+        outcome, root, paths = self._outcome_publication(run_id, outcome_id, artifact_id)
         logical = next((item for item in outcome["payload"].get("logical_artifacts", ()) if item.get("logical_artifact") == logical_id), None)
         if not isinstance(logical, Mapping): raise OperationalHalt(f"upstream logical artifact {logical_id!r} is absent")
         selected = tuple(root.joinpath(*str(value).split("/")) for value in logical.get("paths", ()))

@@ -159,6 +159,18 @@ def test_null_profile_metric_custom_shell_and_parser_reach_real_outcome_and_orac
     processes = [row for row in host.store.list_attempts() if row["run_id"] == "c5-host" and row["kind"] == "PROCESS"]
     assert len(processes) == 1
     assert processes[0]["terminal_reason"] == "SUCCEEDED"
+    report = next(json.loads(row["observation_json"])["request"] for row in host.store.list_attempts()
+        if row["kind"] == "AGENT" and json.loads(row["observation_json"])["request"]["command"] == "FINAL_REPORT")
+    from hypoloom.agent_aci import AgentRequest
+    report = AgentRequest.from_dict(report)
+    raw = [item for item in report.input_artifacts if "--declared-raw-measurement-" in item.ref]
+    assert len(raw) == 1 and raw[0].content_bytes() == b"10,8\n10,9\n10,100\n"
+    context = json.loads(next(item.content_bytes() for item in report.input_artifacts
+        if item.ref.endswith("--final-report-context")))
+    included = context["declared_raw_measurements"]["included"]
+    assert included[0]["artifact_id"] == outcomes[0]["payload"]["artifact_id"]
+    assert included[0]["outcome_id"] == outcomes[0]["payload"]["outcome_id"]
+    assert included[0]["path"] == "raw/timings.csv"
     audit = Oracle(host.store.database_path, host.publisher.root).audit("c5-host")
     assert audit.ok, audit.to_dict()
 

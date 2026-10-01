@@ -51,6 +51,17 @@ def _dollar_budget():
     return AgentBudget(max_turns=3, max_tokens=100, max_output_bytes=4096, wall_seconds=30, max_cost="1")
 
 
+def test_closed_host_retrieval_uses_no_provider_budget_and_model_validation_still_charges():
+    rows = [_row("pre-model", role="ml", terminal={"failure_stage": "literature_retrieval"}),
+        _row("open", role="ml", state="OPEN", terminal={"failure_stage": "literature_retrieval"}),
+        _row("model", role="ml", terminal={"failure_stage": "host_candidate_validation",
+            "rejected_response": {"token_usage": {"total_tokens": 20}, "turn_count": 1, "cost": "0.1"}})]
+    charges = fold_agent_attempts(rows)
+    assert (charges[0].source, charges[0].tokens, charges[0].turns, charges[0].cost) == ("pre_model", 0, 0, 0)
+    assert charges[1].source == "declared" and charges[1].tokens == 100
+    assert charges[2].source == "rejected_response" and charges[2].tokens == 20
+
+
 def test_compact_charge_cache_tracks_closure_and_does_not_cache_rolled_back_closes():
     from hypoloom.agent_budget import AgentChargeCache
     rows = [_row("closed", role="ml"), _row("open", role="critic", state="OPEN")]

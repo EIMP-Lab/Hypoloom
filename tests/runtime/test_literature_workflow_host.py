@@ -1435,6 +1435,169 @@ def test_non_english_grounding_query_plan_broadens_before_grounding(
         host.close()
 
 
+@pytest.mark.parametrize("restart", [False, True])
+@pytest.mark.parametrize("permanent_gap", [False, True])
+def test_grounding_retrieval_coverage_gap_replans_query_before_grounding(
+    tmp_path: Path,
+    mount_root: Path,
+    restart: bool,
+    permanent_gap: bool,
+) -> None:
+    narrow_query = '"KV cache" AND compression AND "long context"'
+    broad_query = '"KV cache" OR "key-value cache" OR transformer'
+
+    class SparseGroundingRetrievalFetcher(_LiteratureFetcher):
+        def search(self, query: LiteratureQuery) -> Iterable[SearchPaper]:
+            papers = tuple(super().search(query))
+            # The first coverage probe succeeds, while the subsequent
+            # Grounding retrieval observes a sparse OpenAlex result set.
+            if (
+                query.query == narrow_query
+                and sum(item.query == narrow_query for item in self.queries) == 2
+            ):
+                return tuple(
+                    paper
+                    for paper in papers
+                    if paper.stratum is LITERATURE_STRATA[-1]
+                )
+            return papers
+
+    class BroadenAfterGroundingGap:
+        def invoke(self, request: AgentRequest) -> AgentResponse | bytes:
+            response = FakeAgent().invoke(request)
+            assert isinstance(response, AgentResponse)
+            task = request.task_context
+            if (
+                isinstance(task, AuxiliaryTask)
+                and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+            ):
+                template = next(
+                    item
+                    for item in request.input_artifacts
+                    if item.ref.endswith("--literature-query-template")
+                )
+                candidate = json.loads(template.content_bytes())
+                retry = any(
+                    item.ref.endswith("--grounding-query-coverage-error")
+                    for item in request.input_artifacts
+                )
+                candidate["query"] = broad_query if retry else narrow_query
+                return _redigest(replace(response, typed_candidate=candidate,
+                    token_usage={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+                    turn_count=1, cost="0.001"))
+            return response
+
+    class PersistentGapIO(FixedLiteratureIO):
+        def retrieve(self, query):
+            from hypoloom.literature import LiteratureCoverageError
+            raise LiteratureCoverageError("missing FOUNDATIONAL, INTERMEDIATE", missing_strata=LITERATURE_STRATA[:2])
+
+    fetcher = SparseGroundingRetrievalFetcher()
+    adapter_type = PersistentGapIO if permanent_gap else FixedLiteratureIO
+    run_id = "grounding-retrieval-coverage-replan"
+    state_root = tmp_path / "state"
+    host = WorkflowHost(state_root, literature_io=adapter_type(fetcher))
+    host.agent = BroadenAfterGroundingGap()  # type: ignore[assignment]
+    try:
+        host.initialize()
+        created = host.handle(ControlRequest(
+            1,
+            f"create-{run_id}",
+            0,
+            "CREATE_RUN",
+            _payload(tmp_path, mount_root, run_id),
+        ))
+        assert created.status == "accepted", created
+
+        if restart:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                host.tick()
+                if any(json.loads(row["observation_json"]).get("literature_failure_class") == "LiteratureCoverageError"
+                       for row in host.store.list_attempts()):
+                    break
+                time.sleep(.005)
+            else:
+                raise AssertionError("no durable coverage failure before restart")
+            host.close()
+            host = WorkflowHost(state_root, literature_io=adapter_type(fetcher))
+            host.agent = BroadenAfterGroundingGap()
+            host.initialize()
+        _drive(host, run_id)
+
+        attempts = [
+            row
+            for row in host.store.list_attempts()
+            if row["run_id"] == run_id and _has_request(row)
+        ]
+        plans = sorted(
+            (
+                row
+                for row in attempts
+                if isinstance(_request(row).task_context, AuxiliaryTask)
+                and cast(AuxiliaryTask, _request(row).task_context).kind
+                is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+            ),
+            key=lambda row: int(row["attempt_ordinal"]),
+        )
+        groundings = [
+            row for row in attempts
+            if _request(row).command is AgentCommand.GROUNDING
+        ]
+        if permanent_gap:
+            from hypoloom.agent_budget import fold_agent_attempts
+            limit = host._research_contract(run_id).document["budget"]["max_retries"] + 1
+            assert len(plans) == len(groundings) == limit
+            assert all(row["terminal_reason"] == "SUCCEEDED" for row in plans)
+            assert all(row["terminal_reason"] == "FAILED" for row in groundings)
+            assert all(charge.tokens == charge.turns == charge.cost == 0 for charge in fold_agent_attempts(groundings))
+            assert host._expert_final_failures(run_id)
+            assert host.store.latest_transition(run_id)["state"] in {"COMPLETED", "FAILED", "CANCELLED"}
+            assert all(row["state"] == "CLOSED" for row in host.store.list_attempts())
+            assert Oracle(state_root / "state.sqlite", state_root / "artifacts").audit(run_id).ok
+            return
+        assert [row["terminal_reason"] for row in plans] == [
+            "SUCCEEDED",
+            "SUCCEEDED",
+        ]
+        assert [row["terminal_reason"] for row in groundings] == ["FAILED", "SUCCEEDED"]
+        failure = json.loads(str(groundings[0]["observation_json"]))
+        assert failure["failure_code"] == "invalid_candidate"
+        assert "missing FOUNDATIONAL, INTERMEDIATE" in failure["literature_diagnostic"]
+        assert "rejected_response" not in failure
+        from hypoloom.agent_budget import fold_agent_attempts
+        charges = fold_agent_attempts([*plans, groundings[0]])
+        assert sum(charge.tokens for charge in charges) == 240
+        assert sum(charge.turns for charge in charges) == 2
+        assert float(sum(charge.cost for charge in charges)) == .002
+        assert charges[-1].source == "pre_model"
+        assert charges[-1].tokens == charges[-1].turns == charges[-1].cost == 0
+        correction = next(
+            item
+            for item in _request(plans[1]).input_artifacts
+            if item.ref.endswith("--grounding-query-coverage-error")
+        )
+        correction_payload = json.loads(correction.content_bytes())
+        assert correction_payload["source_attempt_id"] == groundings[0]["attempt_id"]
+        grounding_query = next(
+            item
+            for item in _request(groundings[1]).input_artifacts
+            if item.ref.endswith("--literature-query")
+        )
+        assert json.loads(grounding_query.content_bytes())["query"] == broad_query
+        assert [query.query for query in fetcher.queries[:4]] == [
+            narrow_query,
+            narrow_query,
+            broad_query,
+            broad_query,
+        ]
+        assert Oracle(state_root / "state.sqlite", state_root / "artifacts").audit(
+            run_id
+        ).ok
+    finally:
+        host.close()
+
+
 def test_exact_rejected_query_fails_before_probe_but_distinct_text_is_probed(
     tmp_path: Path,
     mount_root: Path,
