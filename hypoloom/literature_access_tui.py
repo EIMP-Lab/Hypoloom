@@ -16,7 +16,8 @@ LABELS = {"queued": "等待获取", "checking": "检查中", "login_required": "
     "available": "全文已就绪", "access_denied": "当前机构无权限", "no_full_text": "未找到全文",
     "identity_unconfirmed": "论文对应关系未确认", "failed": "文件获取或解析失败"}
 LABELS.update(skipped="已跳过此篇", public_only="仅公开途径", queue_timeout="排队超时",
-              acquisition_timeout="获取超时", manual_timeout="主动登录等待已结束")
+              acquisition_timeout="获取超时", manual_timeout="主动登录等待已结束", sample_verified="样本全文已验证",
+              opened="准备页已打开，请在浏览器完成登录", unchecked="未检查", tab_limit="标签页已满，请分批准备")
 REASON_LABELS = {"network_changed": "网络发生变化", "network_error": "网络错误",
     "dns_failed": "域名解析失败", "connection_failed": "连接失败", "navigation_timeout": "加载超时",
     "redirect_unresolved": "重定向未完成", "http_server_error": "网站服务暂时异常",
@@ -39,18 +40,17 @@ def browser_connect_guide(endpoint, ui_url=None):
         port = urlsplit(endpoint or "").port
     except ValueError:
         port = None
+    from .institutional_browser import windows_browser_command
     if port:
-        start = (f'& "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port={port} '
-                 '--user-data-dir="$env:LOCALAPPDATA\\Hypoloom\\InstitutionalChrome"')
+        start = windows_browser_command(port)
         tunnel = f"ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:{port}:127.0.0.1:{port} <ssh-user>@<research-server>"
-        note = "浏览器接上后「浏览器未连接」会自动消失，队列自动重试。"
+        note = "连接并登录后点击「检查并重试」；已结束的请求不会自动重开。"
     else:
-        start = ('& "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=<端口> '
-                 '--user-data-dir="$env:LOCALAPPDATA\\Hypoloom\\InstitutionalChrome"')
+        start = windows_browser_command("<端口>")
         tunnel = "ssh -N -R 127.0.0.1:<端口>:127.0.0.1:<端口> <ssh-user>@<research-server>"
         note = "端口以 Host 启动参数 --institutional-browser-url 为准；替换上面命令中的 <端口>。"
     return ("连接浏览器后才能登录（在学校网络的电脑上本地执行）：\n"
-        f"1) 启动调试模式 Chrome：\n   {start}\n"
+        f"1) 启动专用 Chrome/Edge：\n   {start}\n"
         f"2) 在同一台电脑建立 SSH 反向隧道（把 <ssh-user>@<research-server> 换成你的服务器）：\n   {tunnel}\n"
         "3) 回到本界面：选平台 →「打开登录」→ 在浏览器弹出的页面完成学校 SSO/MFA。\n"
         "账号密码与验证码只在浏览器页面里填写；本面板不收集凭据。\n" + note)
@@ -84,6 +84,7 @@ class LiteratureAccessScreen(ModalScreen):
                 yield Static("", markup=False, id="literature-pending")
                 yield Select([], prompt="选择论文（导入PDF时必选）", id="literature-paper")
                 yield Static("", markup=False, id="literature-selected-url")
+                yield Input(placeholder="可选：验证样本 DOI 或规范论文 URL", id="literature-sample")
                 yield Input(placeholder="可选：已传到服务器的PDF绝对路径", id="literature-import-path")
                 yield Static("", markup=False, id="literature-access-message")
             with Horizontal(id="literature-access-actions"):
@@ -93,6 +94,7 @@ class LiteratureAccessScreen(ModalScreen):
                 yield Button("Web面板链接", id="literature-web")
                 yield Button("稍后处理", id="literature-close")
             with Horizontal():
+                yield Button("验证样本", id="literature-verify")
                 yield Button("跳过此篇", id="literature-skip")
                 yield Button("恢复此篇", id="literature-restore")
                 yield Button("仅公开途径", id="literature-public-only")
@@ -117,7 +119,7 @@ class LiteratureAccessScreen(ModalScreen):
                 selector.value = prior if prior in providers else providers[0]
         self._details()
         writable = bool(access.get("enabled")) and status.get("run_state") not in {"STOPPING", "COMPLETED", "FAILED", "CANCELLED"}
-        for button in ("login", "retry", "import", "skip", "restore", "public-only", "auto"):
+        for button in ("login", "retry", "import", "skip", "restore", "public-only", "auto", "verify"):
             self.query_one("#literature-" + button, Button).disabled = self.busy or not writable or not providers
         if not access.get("enabled"):
             self._message("Host未启用机构访问。启动新任务时配置--institutional-browser-url；此处不填写登录凭据。")
@@ -133,7 +135,9 @@ class LiteratureAccessScreen(ModalScreen):
         selected = self.query_one("#literature-provider", Select).value
         group = next((g for g in (self.status.get("literature_access") or {}).get("groups", [])
                       if g["provider"] == selected), {"papers": []})
+        prep = group.get("preparation", {"state": "unchecked"})
         self.query_one("#literature-pending", Static).update(
+            f"{LABELS.get(prep['state'], prep['state'])} · {prep.get('last_checked_at') or ''}\n" +
             f"{'仅公开途径' if group.get('mode') == 'public_only' else '使用现有机构会话'} · 主动等待剩余 {group.get('manual_remaining_seconds', 0)} 秒\n" + "\n".join(
             f"{LABELS.get(p['state'], p['state'])} · {p['title']}"
             + (f" · {REASON_LABELS.get(p['reason_code'], p['reason_code'])}（{p['reason_code']}）"
@@ -160,6 +164,11 @@ class LiteratureAccessScreen(ModalScreen):
         if provider is Select.BLANK:
             return
         payload = {"run_id": self.app.run_id, "provider": provider, "action": action}
+        if action == "verify":
+            from .institutional_prepare import sample_url
+            try: payload["url"] = sample_url(self.query_one("#literature-sample", Input).value)
+            except ValueError as exc:
+                self._message(str(exc)); return
         if action in {"auto", "public_only"}:
             payload.update(action="mode", mode=action)
         if action in {"import", "skip", "restore"}:
@@ -181,7 +190,7 @@ class LiteratureAccessScreen(ModalScreen):
             if durable: self._unconfirmed = None
             if response.status == "accepted":
                 self._message("设置已保存到本次运行。" if durable else "已请求打开连接的浏览器。请在那里完成登录；系统会检查并重试，其他研究继续。"
-                    if action == "open" else "已安排检查。全文通过验证后，研究Agent可通过原文工具读取。")
+                    if action == "open" else "已安排样本验证，不进入科研归档。" if action == "verify" else "已安排检查。全文通过验证后，研究Agent可通过原文工具读取。")
             else:
                 self._message(str((response.error or {}).get("message", "Host未接受请求")))
         except (OSError, ProtocolError):
@@ -199,7 +208,7 @@ class LiteratureAccessScreen(ModalScreen):
             self.app.action_literature_browser()
         else:
             action = {"literature-login": "open", "literature-retry": "retry", "literature-import": "import",
-                "literature-skip": "skip", "literature-restore": "restore",
+                "literature-verify": "verify", "literature-skip": "skip", "literature-restore": "restore",
                 "literature-public-only": "public_only", "literature-auto": "auto"}.get(event.button.id)
             if action:
                 await self._send(action)

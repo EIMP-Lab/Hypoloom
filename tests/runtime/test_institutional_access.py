@@ -73,7 +73,7 @@ def test_wait_deduplicates_provider_and_recovers_without_reprompting_every_paper
         for _ in range(5):
             access.tick({"run"})
         assert len(backend.calls) == 1
-        assert len(access.status("run")["groups"]) == 1
+        assert sum(bool(g["papers"]) for g in access.status("run")["groups"]) == 1
         assert access.status("run")["pending"] == 2
         backend.state = "available"
         clock[0] = 31
@@ -105,7 +105,7 @@ def test_late_result_after_run_stop_is_discarded_and_host_poll_is_nonblocking():
         assert time.monotonic() - start < .2
         release.set()
         pump(access, lambda: access._flight is None, runs=())
-        assert access.status("run")["groups"] == []
+        assert all(not g["papers"] for g in access.status("run")["groups"])
     finally:
         release.set()
         access.close()
@@ -390,7 +390,7 @@ def test_real_host_control_status_and_stop_preserve_research_revision(reading_ho
     assert rejected.status == "rejected"
     host.running_agents.clear()
     host.tick()
-    assert access.status(parent.run_id)["groups"] == []
+    assert all(not g["papers"] for g in access.status(parent.run_id)["groups"])
 
 
 def test_document_tool_admits_recovered_fulltext_and_archives_exact_bytes(tmp_path):
@@ -443,7 +443,7 @@ def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp
         public.bad = True
         failure = web_tool(host, request, "web_fetch", {"mode": "document", "url": SECOND})
         assert failure["error"]["code"] == "unsafe_url"
-        assert not backend.calls and not access.status(request.run_id)["groups"]
+        assert not backend.calls and all(not g["papers"] for g in access.status(request.run_id)["groups"])
     finally:
         papers.close(); access.close()
 
@@ -451,8 +451,8 @@ def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp
 def test_browser_connect_guide_and_status_expose_endpoint_without_secrets():
     from hypoloom.literature_access_tui import browser_connect_guide
     text = browser_connect_guide("http://127.0.0.1:52929")
-    assert 'chrome.exe" --remote-debugging-port=52929' in text
-    assert '--user-data-dir="$env:LOCALAPPDATA\\Hypoloom\\InstitutionalChrome"' in text
+    assert '--remote-debugging-port=52929' in text and 'msedge.exe' in text and 'Test-Path' in text
+    assert '"--user-data-dir=$researchProfile"' in text and "GetFileNameWithoutExtension" in text
     assert "ssh -N " in text and "-R 127.0.0.1:52929:127.0.0.1:52929" in text
     assert "<ssh-user>@<research-server>" in text
     assert "浏览器页面" in text
@@ -516,14 +516,14 @@ def test_tui_only_sends_open_retry_and_selected_pdf_not_credentials(tmp_path, mo
         async with app.run_test(size=(100, 34)) as pilot:
             app.push_screen(LiteratureAccessScreen(status))
             await pilot.pause()
-            assert len(list(app.screen.query(Input))) == 1
+            assert len(list(app.screen.query(Input))) == 2
             assert app.screen.query_one("#literature-guide") is not None
             details = str(app.screen.query_one("#literature-pending").render())
             assert "重定向未完成（redirect_unresolved）" in details
             assert "下次检查约120秒后" in details
             await pilot.click("#literature-login")
             await pilot.click("#literature-retry")
-            app.screen.query_one(Input).value = "/home/user/paper.pdf"
+            app.screen.query_one("#literature-import-path", Input).value = "/home/user/paper.pdf"
             await pilot.click("#literature-import")
             assert [r.payload["action"] for r in calls] == ["open", "retry", "import"]
             assert calls[-1].payload["url"] == URL
@@ -625,4 +625,4 @@ def test_web_literature_cli_opt_in_and_panel_renders_from_snapshot(tmp_path, mon
     # The panel is a snapshot-backed workbench category; it must not fetch detail pages.
     assert 'state.workbenchKind === "reliability" || state.workbenchKind === "institutional"' in script
     assert "renderInstitutional" in script
-    assert "remote-debugging-port" in script
+    assert "windows_setup_command" in script

@@ -12,9 +12,12 @@ DURABLE_ACTIONS = {"skip", "restore", "mode"}
 
 def choices(store, run_id):
     modes, skipped = {}, {}
-    for row in store.inspect("SELECT t.payload_json FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? "
-            "AND t.workflow_kind='RUN' AND c.command_type=? ORDER BY t.revision",
-            (run_id, Command.LITERATURE_ACCESS.value)):
+    # Document workers also consult choices. Do not touch the writer's read cache
+    # or SQLite connection from those threads.
+    with store.readonly_connection() as db:
+        rows = db.execute("SELECT t.payload_json FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? "
+            "AND t.workflow_kind='RUN' AND c.command_type=? ORDER BY t.revision", (run_id, Command.LITERATURE_ACCESS.value)).fetchall()
+    for row in rows:
         control = json.loads(row["payload_json"])["literature_access"]
         if control["action"] == "mode":
             modes[control["provider"]] = control["mode"]

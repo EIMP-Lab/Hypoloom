@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- October 1 follow-up batch C implements run-independent platform preparation,
+  full empty-state catalogs and disposable sample verification. Bootstrap review
+  exposes an explicit preparation command; Windows guidance detects Chrome/Edge.
+  The shared worker owns at most eight tabs and never closes user-owned tabs.
+  63 queue/control/preparation checks plus five real Web interactions and a real
+  browser tab-ownership check pass. Final OA/native qualification is in progress.
+
 - October 1 follow-up batch B adds lifecycle v11 institutional skip/restore/mode
   self-transitions in the existing command journal, revision checks and stable
   client retry IDs. Launch/bootstrap share validated deadlines and provider modes;

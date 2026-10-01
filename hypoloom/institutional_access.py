@@ -33,6 +33,7 @@ MAX_REQUESTS = 32
 AUTH_WAIT_STATES = {"login_required", "verification_required", "access_required"}
 WAIT_STATES = AUTH_WAIT_STATES | {"browser_unavailable", "fetch_unavailable", "access_required"}
 _STATES = WAIT_STATES | {"available", "access_denied", "no_full_text", "identity_unconfirmed", "failed"}
+_STATES |= {"opened", "tab_limit"}
 TRANSIENT_FETCH_REASONS = {"network_changed", "dns_failed", "connection_failed",
     "navigation_timeout", "network_error", "redirect_unresolved", "http_server_error", "http_rate_limited", "pdf_response_not_pdf"}
 _REASONS = TRANSIENT_FETCH_REASONS | {"request_blocked", "http_error"}
@@ -187,6 +188,7 @@ class Acquisition:
     deadline: float = 0
     started: bool = False
     manual: bool = False
+    preparation: str | None = None
 
 
 class InstitutionalAccess:
@@ -237,10 +239,16 @@ class InstitutionalAccess:
         return None
 
     def _apply_choices(self, run_id):
+        modes, skipped = self.read_choices(run_id)
+        for provider in PROVIDERS.values():
+            if modes.get(provider, self.provider_modes.get(provider, "auto")) == "public_only":
+                self._manual_until.pop((run_id, provider), None)
         for key, item in list(self._items.items()):
             if item.scope[0] != run_id or item.document is not None or item.import_path:
                 continue
-            reason = self.automatic_reason(item.scope, item.url, item.identity, institution=True)
+            identity = "doi:" + _doi(item.identity) if item.identity.startswith("doi:") else item.url
+            reason = ("skipped" if not item.preparation and (identity in skipped or item.url in skipped.values()) else
+                "public_only" if modes.get(item.provider, self.provider_modes.get(item.provider, "auto")) == "public_only" else None)
             if reason:
                 if item.state != reason: self._transition(item, reason, "operator_" + reason)
             elif item.state in {"skipped", "public_only"}:
@@ -322,14 +330,20 @@ class InstitutionalAccess:
         with self._lock:
             self._apply_choices(run_id)
             self._expire()
-            groups = {}
+            modes, skipped = self.read_choices(run_id)
+            groups = {name: {"provider": name, "entry_url": "https://" + domain + "/", "papers": [],
+                "mode": modes.get(name, self.provider_modes.get(name, "auto")),
+                "manual_remaining_seconds": max(0, ceil(self._manual_until.get((run_id, name), 0) - self.clock())),
+                "preparation": {"state": "unchecked"}}
+                for domain, name in PROVIDERS.items()}
             for item in self._items.values():
                 if item.scope[0] != run_id:
                     continue
-                modes, _ = self.read_choices(run_id)
-                group = groups.setdefault(item.provider, {"provider": item.provider, "papers": [],
-                    "mode": modes.get(item.provider, self.provider_modes.get(item.provider, "auto")),
-                    "manual_remaining_seconds": max(0, ceil(self._manual_until.get((run_id, item.provider), 0) - self.clock()))})
+                group = groups[item.provider]
+                if item.preparation:
+                    group["preparation"] = {"state": item.state, "last_checked_at": item.last_checked_at,
+                        "sample_url": item.url if item.preparation == "verify" else None}
+                    continue
                 # Different experts may request the same source. Show it once to the operator.
                 if any(p["url"] == item.url for p in group["papers"]):
                     continue
@@ -339,8 +353,18 @@ class InstitutionalAccess:
                     "reason_code": item.reason_code, "last_checked_at": item.last_checked_at,
                     "retry_in_seconds": max(0, ceil(item.next_check - self.clock())) if self._pending(item) else None,
                     "remaining_seconds": max(0, ceil(item.deadline - self.clock())) if self._pending(item) else None})
+            # Eviction/restart must not make the operator's restore button disappear.
+            for identity, url in skipped.items():
+                group = groups.get(publisher(url))
+                if group is not None and not any(p["url"] == url for p in group["papers"]):
+                    group["papers"].append({"url": url, "title": url, "identity": identity, "state": "skipped",
+                        "skipped": True, "reason_code": "operator_skipped", "last_checked_at": None,
+                        "retry_in_seconds": None, "remaining_seconds": None})
             config = getattr(self.backend, "configuration", None) or {}
+            from .institutional_browser import windows_browser_command
+            endpoint_port = urlsplit(config.get("browser_endpoint") or "").port
             return {"enabled": True, "groups": list(groups.values()),
+                    "windows_setup_command": windows_browser_command(endpoint_port or "<端口>"),
                     "browser_endpoint": config.get("browser_endpoint"),
                     "browser_ui_url": config.get("browser_ui_url"),
                     "library_url": config.get("library_url"),
@@ -349,14 +373,19 @@ class InstitutionalAccess:
                     "available": sum(p["state"] == "available" for g in groups.values() for p in g["papers"])}
 
     def control(self, run_id, provider, action, *, url=None, path=None):
-        if not isinstance(action, str) or action not in {"open", "retry", "import"}:
-            raise ValueError("institutional action must be open, retry or import")
+        if not isinstance(action, str) or action not in {"open", "retry", "import", "verify"}:
+            raise ValueError("unsupported institutional action")
+        if provider not in PROVIDERS.values(): raise ValueError("unsupported institutional provider")
         with self._lock:
             self._apply_choices(run_id)
             items = [p for p in self._items.values() if p.scope[0] == run_id
-                     and p.provider == provider and (url is None or p.url == url)]
-            if not items:
-                raise ValueError("no selected institutional request in this run")
+                     and p.provider == provider and not p.preparation and (url is None or p.url == url)]
+            modes, _ = self.read_choices(run_id)
+            if action != "import" and modes.get(provider, self.provider_modes.get(provider, "auto")) == "public_only":
+                raise ValueError("enable institutional access before opening or checking this platform")
+            if action == "verify" or not items and action in {"open", "retry"}:
+                return self._prepare(run_id, provider, action, url)
+            if not items: raise ValueError("no selected institutional request in this run")
             if action == "import":
                 if url is None or not isinstance(path, str) or not Path(path).is_absolute():
                     raise ValueError("import requires selected URL and an absolute Host-side PDF path")
@@ -380,10 +409,35 @@ class InstitutionalAccess:
                 replacements[0].focus = action == "open"
         return self.status(run_id)
 
+    def _prepare(self, run_id, provider, action, url):
+        entry = next("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider)
+        if action == "verify":
+            if article_url(url) != url or publisher(url) != provider:
+                raise ValueError("sample must be a canonical article URL for this platform")
+        else: url = entry
+        for key, item in list(self._items.items()):
+            if item.scope[0] == run_id and item.provider == provider and item.preparation:
+                del self._items[key]
+        if len(self._items) >= MAX_REQUESTS:
+            key = next((key for key, item in self._items.items() if not self._pending(item)), None)
+            if key is None: raise ValueError("institutional request limit; retry after active requests finish")
+            del self._items[key]
+        scope = (run_id, "operator", "preparation:" + provider)
+        self._manual_until[(run_id, provider)] = self.clock() + self.manual_seconds
+        self._auth_needed.pop((run_id, provider), None)
+        self._connection_retry = 0
+        item = Acquisition(scope, url, provider, identity=identity_from_url(url),
+            deadline=self.clock() + self.acquisition_seconds, focus=action == "open", force=True, preparation=action)
+        self._items[(*scope, url)] = item
+        self._transition(item, "queued", "operator_" + action, initial=True)
+        return self.status(run_id)
+
     def _acquire(self, item, force, focus, import_path):
         try:
             remaining = max(.001, item.deadline - self.clock())
-            result = (self.backend.import_pdf(import_path, item.url, item.title, timeout_seconds=remaining) if import_path
+            result = (self.backend.prepare(item.provider, focus=focus, timeout_seconds=remaining)
+                      if item.preparation in {"open", "retry"} else
+                      self.backend.import_pdf(import_path, item.url, item.title, timeout_seconds=remaining) if import_path
                       else self.backend.fetch(item.url, force=force, focus=focus, timeout_seconds=remaining))
             if result.get("state") != "available":
                 state = result.get("state", "failed")
@@ -434,6 +488,8 @@ class InstitutionalAccess:
                     size = 0 if document is None else len(document["content"]) + sum(len(t.encode()) for t in document["pages"])
                     if cache_size + size > MAX_CACHE_BYTES:
                         state, document, reason = "failed", None, "cache_limit"
+                    if item.preparation and state == "available":
+                        state, document = "sample_verified", None
                     item.document = document
                     item.last_checked_at = datetime.now(timezone.utc).isoformat()
                     self._transition(item, state, reason)

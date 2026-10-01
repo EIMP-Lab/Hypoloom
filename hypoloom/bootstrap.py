@@ -300,6 +300,9 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     access = build_institutional(args)
     if access is not None:
         review["institutional_access"] = access.configuration
+        from .institutional_options import launch_arguments as institutional_arguments
+        review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
+            *institutional_arguments(args)]
         access.close()
     real = args.auth_transport != "none"
     if real:

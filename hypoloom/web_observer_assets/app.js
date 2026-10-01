@@ -2868,7 +2868,8 @@
     fetch_unavailable: "加载失败，等待自动重试", access_required: "页面提示需订阅或机构访问",
     available: "全文已就绪", access_denied: "当前机构无权限", no_full_text: "未找到全文",
     identity_unconfirmed: "论文对应关系未确认", failed: "文件获取或解析失败",
-    skipped: "已跳过此篇", public_only: "仅公开途径", queue_timeout: "排队超时",
+    sample_verified: "样本全文已验证", opened: "准备页已打开，请在浏览器完成登录",
+    unchecked: "未检查", tab_limit: "标签页已满，请分批准备", skipped: "已跳过此篇", public_only: "仅公开途径", queue_timeout: "排队超时",
     acquisition_timeout: "获取超时", manual_timeout: "主动登录等待已结束",
   };
   const LITERATURE_REASON_LABELS = {
@@ -2909,7 +2910,7 @@
       }
     }
     state.literatureBusy = true;
-    state.literatureMessage = action === "open" ? "正在请求打开登录标签页…" : action === "retry" ? "正在安排检查重试…" : "正在导入 PDF…";
+    state.literatureMessage = action === "open" ? "正在请求打开登录标签页…" : action === "retry" ? "正在安排检查重试…" : action === "verify" ? "正在验证样本…" : "正在提交操作…";
     renderInstitutional();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -2923,7 +2924,7 @@
         state.literatureMessage = durable ? "设置已保存到本次运行；公开来源与已接纳原文仍可使用。" : action === "open"
           ? "已请求打开连接的浏览器标签页。请在那里完成登录；系统会检查并重试，其他研究继续。"
           : action === "retry" ? "已安排检查。全文通过验证后，研究 Agent 可通过原文工具读取。"
-          : "已安排导入PDF。通过文件和论文身份校验后可供研究Agent读取。";
+          : action === "verify" ? "已安排样本验证；它只证明此篇当时可读，不进入科研归档。" : "已安排导入PDF。通过文件和论文身份校验后可供研究Agent读取。";
       } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
         if (durable) state.literatureUnconfirmed = null;
         state.literatureMessage = `未被接受：${result.error?.message || result.message || "检查操作员权限与运行状态"}`;
@@ -2978,7 +2979,7 @@
       guide.append(openBrowser, element("p", "", "完成后可断开SSH、关闭笔记本，服务器继续下载。账号密码只在远程浏览器页面输入，本面板不收集凭据。"));
     } else {
     guide.append(element("h3", "", "连接浏览器后才能登录（在学校网络的电脑上本地执行）"));
-    guide.append(element("p", "panel-copy", `1) Windows PowerShell启动专用Chrome：& "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${endpointPort || "<端口>"} --user-data-dir="$env:LOCALAPPDATA\\Hypoloom\\InstitutionalChrome"`));
+    guide.append(element("pre", "panel-copy", access.windows_setup_command || "启动专用 Chrome/Edge，使用实际安装路径与独立 --user-data-dir；见机构访问指南。"));
     guide.append(element("p", "panel-copy", `2) 同一台电脑建立SSH反向隧道：ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:${endpointPort || "<端口>"}:127.0.0.1:${endpointPort || "<端口>"} <ssh-user>@<research-server>`));
     guide.append(element("p", "panel-copy", "3) 然后点「打开登录」，在浏览器弹出的页面完成学校 SSO/MFA。账号密码与验证码只在浏览器页面填写，本面板不收集凭据。"));
     if (!endpointPort) guide.append(element("p", "panel-copy", "端口以 Host 启动参数 --institutional-browser-url 为准；替换上面命令中的 <端口>。"));
@@ -3004,6 +3005,20 @@
       heading.append(open, retry, modeButton);
       section.append(element("p", "panel-copy", `${group.mode === "public_only" ? "仅公开途径" : "使用现有机构会话"} · 主动等待剩余 ${group.manual_remaining_seconds || 0} 秒`));
       section.append(heading);
+      const prep = object(group.preparation);
+      section.append(element("p", "panel-copy", `${LITERATURE_STATE_LABELS[prep.state] || prep.state || "未检查"}${prep.last_checked_at ? " · " + prep.last_checked_at : ""}`));
+      const sample = element("input", "institutional-sample");
+      sample.placeholder = "样本 DOI 或规范论文 URL";
+      const sampleKey = `sample ${providerName}`;
+      sample.value = state.literatureDraft.get(sampleKey) || "";
+      sample.addEventListener("input", () => state.literatureDraft.set(sampleKey, sample.value));
+      const verify = actionButton("验证样本", () => {
+        let url = (state.literatureDraft.get(sampleKey) || "").trim().replace(/^doi:/i, "");
+        if (url.startsWith("10.")) url = "https://doi.org/" + url;
+        requestLiterature(providerName, "verify", url);
+      }, "detail-link");
+      verify.disabled = !writable || group.mode === "public_only";
+      section.append(sample, verify);
       list(group.papers).forEach((paper) => {
         const row = element("div", "institutional-paper");
         const title = element("div", "institutional-paper-title");

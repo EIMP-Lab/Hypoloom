@@ -109,6 +109,19 @@ disable a Hook, expand permissions or loop through equivalent shell forms.
 
 ### 2. Fill only missing choices and review
 
+**Optional institutional preparation.** With a selected `--institutional-browser-url`,
+the preview exposes `institutional_preparation_argv`. Offer the optional standalone
+`python -m hypoloom institutional prepare` before research launch, adding the user's
+selected `--provider` values and optional sample DOI/URL `--sample` values. Ordinary
+inspection remains read-only. Only an explicit choice to prepare authorizes opening
+the dedicated browser; it does not authorize creating a Host/run, changing Profiles,
+or calling a model. The user enters SSO/MFA in the browser, never in chat. Preparation
+does not need pending papers and can be skipped without blocking launch. Validate
+sample full text separately from login; one sample never proves platform-wide access.
+Review `auto`/`public_only` provider choices and finite 120-second acquisition /
+600-second manual defaults with the launch configuration. During research use the
+Host's TUI/Web controls, rather than a second standalone browser manager.
+
 Ask only about returned missing fields or explicit changes the user requested;
 group related choices. Proposed model/auth values must be shown as defaults,
 not claimed to be inherited from the interactive `/model`. Explain any actual

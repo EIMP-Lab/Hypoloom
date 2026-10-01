@@ -55,6 +55,23 @@ def article(text, *, pdf=""):
         f'<meta name="citation_pdf_url" content="{pdf}">' if pdf else "") + text
 
 
+def test_preparation_is_bounded_to_owned_tabs_and_preserves_the_users_tab(browser):
+    from hypoloom.institutional_access import PROVIDERS
+    adapter, context = browser
+    user_page = context.pages[0]
+    context.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body="Institutional preparation"))
+    providers = list(PROVIDERS.values())
+    for name in providers[:8]:
+        assert adapter.prepare(name)["state"] == "opened"
+    assert len(adapter._tabs) == 8
+    assert adapter.prepare(providers[8])["state"] == "tab_limit"
+    original = adapter._tabs[providers[0]][0]
+    assert adapter.prepare(providers[0])["state"] == "opened"
+    assert adapter._tabs[providers[0]][0] is original
+    adapter.close()
+    assert not user_page.is_closed()
+
+
 def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser):
     adapter, context = browser
     wrong_doi = "10.1038/s41586-026-99999-9"

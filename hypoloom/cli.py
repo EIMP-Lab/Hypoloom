@@ -187,6 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hypoloom")
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
+    from .institutional_prepare import add_parser as add_institutional_parser
+    add_institutional_parser(subparsers)
     versions = subparsers.add_parser("version-check", help="advisory comparison with the remote Git branch; never updates code")
     versions.add_argument("--repository", help="checkout to inspect; default: the current Hypoloom installation")
     versions.add_argument("--remote", help="configured Git remote name; default: branch upstream, then origin")
@@ -490,6 +492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.subcommand == "institutional":
+            from .institutional_prepare import run as prepare_institutional
+            return prepare_institutional(args)
         if args.subcommand == "version-check":
             from .version_check import check_updates
             checked = check_updates(args.repository, offline=args.offline, remote=args.remote,

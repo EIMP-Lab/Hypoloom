@@ -96,3 +96,35 @@ def test_server_browser_guide_uses_temporary_local_forwarding(browser):
     assert '关闭笔记本' in guide and '-L 127.0.0.1:5800:127.0.0.1:5800' in guide
     assert 'chrome.exe' not in guide and ' -R ' not in guide
     assert page.evaluate("document.querySelector('.institutional-guide a').href === 'http://127.0.0.1:5800/'")
+
+
+@pytest.mark.parametrize("browser", ["literature"], indirect=True)
+def test_preference_retry_keeps_identity_after_lost_reply_and_empty_catalog_can_verify(browser):
+    page = browser
+    pending(page)
+    page.evaluate("""(() => {
+      fixture.snapshot.status.run_revision = 42;
+      fixture.snapshot.status.literature_access.groups[0].papers = [];
+      window.choiceCalls = [];
+      const original = window.fetch;
+      window.fetch = async (path, options={}) => {
+        if (path !== '/api/literature-access') return original(path, options);
+        choiceCalls.push(JSON.parse(options.body));
+        if (choiceCalls.length === 1) throw new Error('reply lost');
+        return new Response(JSON.stringify({status:'accepted',revision:43}), {status:200});
+      };
+    })()""")
+    page.wait("document.querySelectorAll('.institutional-paper').length === 0")
+    page.evaluate("[...document.querySelectorAll('.institutional-heading button')].find(b => b.textContent === '仅公开途径').click()")
+    page.wait("document.querySelector('#workbench-status').textContent.includes('Host 响应未确认')")
+    page.evaluate("[...document.querySelectorAll('.institutional-heading button')].find(b => b.textContent === '仅公开途径').click()")
+    page.wait("choiceCalls.length === 2")
+    assert page.evaluate("JSON.stringify(choiceCalls[0]) === JSON.stringify(choiceCalls[1])")
+    assert page.evaluate("choiceCalls[0].expected_revision === 42 && !!choiceCalls[0].request_id")
+    page.evaluate("""(() => {
+      const input = document.querySelector('.institutional-sample');
+      input.value = '10.1038/s41586-026-00001-1'; input.dispatchEvent(new Event('input'));
+      [...document.querySelectorAll('#workbench-list button')].find(b => b.textContent === '验证样本').click();
+    })()""")
+    page.wait("choiceCalls.length === 3")
+    assert page.evaluate("choiceCalls[2].action === 'verify' && choiceCalls[2].url.startsWith('https://doi.org/')")

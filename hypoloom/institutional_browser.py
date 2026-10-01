@@ -11,9 +11,22 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
-from .institutional_access import (MAX_DOCUMENT_BYTES, TRANSIENT_FETCH_REASONS, publisher,
+from .institutional_access import (MAX_DOCUMENT_BYTES, PROVIDERS, TRANSIENT_FETCH_REASONS, publisher,
     pdf_identity, identity_from_url, validate_document)
 from .literature import PopplerPdfExtractor
+
+
+def windows_browser_command(port):
+    paths = (r"$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
+             r"$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+             r"${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+             r"${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+             r"$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
+    return ('$researchBrowser = @(\n' + '\n'.join('  "' + path + '"' for path in paths)
+        + '\n) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1\n'
+        + "if (-not $researchBrowser) { throw 'Chrome/Edge not found; set the actual executable path.' }\n"
+        + r'$researchProfile = Join-Path $env:LOCALAPPDATA ("Hypoloom\Institutional-" + [IO.Path]::GetFileNameWithoutExtension($researchBrowser))'
+        + f'\n& $researchBrowser --remote-debugging-address=127.0.0.1 --remote-debugging-port={port} "--user-data-dir=$researchProfile" about:blank')
 
 
 _INSPECT = r"""() => {
@@ -174,8 +187,9 @@ class PlaywrightInstitutionalBrowser:
             raise ValueError("institutional browser endpoint must be an HTTP loopback CDP port")
         if library_url:
             library = urlsplit(library_url)
-            if library.scheme != "https" or not library.hostname or library.username or library.password or library.fragment:
-                raise ValueError("institutional library entry must be an HTTPS URL without credentials")
+            if (library.scheme != "https" or not library.hostname or library.username or library.password
+                    or library.fragment or library.query or library.path.rstrip('/').endswith('/idp/shibboleth')):
+                raise ValueError("institutional library entry must be a stable HTTPS interactive URL without query/credentials, not SAML metadata")
         if ui_url is not None:
             ui = urlsplit(ui_url)
             if (ui.scheme not in {"http", "https"} or ui.hostname not in {"localhost", "127.0.0.1", "::1"}
@@ -231,6 +245,41 @@ class PlaywrightInstitutionalBrowser:
         except ValueError:
             return {"state": "identity_unconfirmed"}
         return {"state": "available", "document": document}
+
+    def _room_for_tab(self):
+        for provider, (page, _, _) in list(self._tabs.items()):
+            if page.is_closed():
+                self._tabs.pop(provider)
+                self._pdf_pending.pop(provider, None)
+        if len(self._tabs) < 8: return True
+        finished = next((name for name, (_, _, waiting) in self._tabs.items() if not waiting), None)
+        if finished is None: return False
+        page, _, _ = self._tabs.pop(finished)
+        self._pdf_pending.pop(finished, None)
+        page.close(run_before_unload=False)
+        return True
+
+    def prepare(self, provider, *, focus=True, timeout_seconds=120):
+        """Open a public platform entry without treating its homepage as a paper."""
+        entry = next(("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider), None)
+        if entry is None: raise ValueError("unsupported institutional provider")
+        self._deadline = monotonic() + timeout_seconds
+        try:
+            context = self._connect()
+            prior = self._tabs.get(provider)
+            if prior is None or prior[0].is_closed():
+                if not self._room_for_tab(): return {"state": "tab_limit"}
+                page = context.new_page()
+                page.set_default_timeout(self._remaining(5) * 1000)
+                self._tabs[provider] = (page, None, True)
+                reason = self._navigate(page, self.library_url or entry)
+                if reason: return {"state": "fetch_unavailable", "reason": reason}
+            else:
+                page = prior[0]
+            if focus: page.bring_to_front()
+            return {"state": "opened"}
+        finally:
+            self._deadline = None
 
     def import_pdf(self, path, url, title, *, timeout_seconds=120):
         self._deadline = monotonic() + timeout_seconds
@@ -326,8 +375,8 @@ class PlaywrightInstitutionalBrowser:
         context = self._connect()
         prior = self._tabs.get(provider)
         if prior is None or prior[0].is_closed():
-            if len(self._tabs) >= 8:
-                return {"state": "failed"}
+            if not self._room_for_tab():
+                return {"state": "tab_limit"}
             page = context.new_page()
             page.set_default_timeout(self._remaining(5) * 1000)
             prior = (page, None, False)
@@ -443,6 +492,7 @@ class PlaywrightInstitutionalBrowser:
         authentication = auth_state(info)
         if authentication:
             return authentication
+        self._tabs[provider] = (page, url, False)
         if publisher(current) != provider or _transit_page(current, info):
             return unavailable("redirect_unresolved")
         doi_request = urlsplit(url).path.lstrip("/").lower() if urlsplit(url).hostname == "doi.org" else None
