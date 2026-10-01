@@ -166,47 +166,8 @@ class LeaderSelection:
 
 def select_interaction_facts(rows: Iterable[Mapping[str, Any]], *, hypothesis_ids: Iterable[str],
                              reference_ids: Iterable[str] = ()) -> list[Mapping[str, Any]]:
-    """Keep exact current/cited facts and their dependencies, not old payloads.
-
-    Keep the immediate parents' evidence for baseline comparisons. Older
-    hypotheses retain lineage definitions and explicitly cited evidence; existing
-    cycle reports supply the historical narrative.
-    This disposable view never changes, summarizes or accepts a scientific fact.
-    """
-    rows = list(rows)
-    payloads = {row["fact_id"]: json.loads(row["payload_json"]) if "payload_json" in row
-        else row.get("payload", row) for row in rows}
-    index = {identity: {identity} for identity in payloads}
-    for identity, payload in payloads.items():
-        for field in _FACT_ENTITY_FIELDS.get(payload["fact_type"], ()):
-            if isinstance(payload.get(field), str):
-                index.setdefault(payload[field], set()).add(identity)
-    current = set(hypothesis_ids)
-    hypotheses = set(current)
-    hypotheses.update(p["parent_hypothesis_id"] for p in payloads.values()
-        if p["fact_type"] == "HypothesisProposed" and p.get("hypothesis_id") in current
-        and p.get("parent_hypothesis_id"))
-    experiments = {p["experiment_id"] for p in payloads.values()
-        if p["fact_type"] == "ExperimentPreregistered" and p.get("hypothesis_id") in hypotheses}
-    selected = {identity for identity, payload in payloads.items()
-        if payload["fact_type"] == "GoalDefined" or payload.get("hypothesis_id") in hypotheses
-        or payload.get("experiment_id") in experiments}
-    for ref in reference_ids:
-        selected.update(index.get(ref, ()))
-    pending = list(selected)
-    while pending:
-        payload = payloads[pending.pop()]
-        if payload["fact_type"] == "GoalDefined":
-            continue
-        refs = [payload.get(field) for field in ("hypothesis_id", "parent_hypothesis_id", "experiment_id", "outcome_id", "artifact_id")]
-        refs.extend(payload.get("evidence_ids", ()))
-        refs.extend(payload.get("supporting_refs", ()))
-        for ref in refs:
-            if not isinstance(ref, str): continue
-            for identity in index.get(ref, set()) - selected:
-                selected.add(identity)
-                pending.append(identity)
-    return [row for row in rows if row["fact_id"] in selected]
+    from .agent_context import select_interaction_facts as select_context
+    return select_context(rows, hypothesis_ids=hypothesis_ids, reference_ids=reference_ids)
 
 
 @dataclass(frozen=True)

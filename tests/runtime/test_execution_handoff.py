@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from hypoloom.agent_aci import AgentACIError, with_output_digest
+from hypoloom.agent_aci import AgentACIError, CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, with_output_digest
 from hypoloom.agent_budget import agent_attempts_exhausted
 from hypoloom.fake_agent import FakeAgent
 from hypoloom.oracle import Oracle
@@ -27,7 +27,7 @@ def handoff(request, experiment_id):
 
 def test_handoff_releases_agent_waits_then_collects_without_duplicate_work(execution):
     host, request, arguments = execution
-    assert request.schema_version == 28
+    assert request.schema_version == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
     submitted = host.handle_agent_tool(request.attempt_id, 'submit_experiment', arguments)
     host._finish_fake_agent(request, handoff(request, submitted['exp_id']))
     attempt = host.store.get_attempt(request.attempt_id)

@@ -61,7 +61,8 @@ def test_tui_execution_reliability_preserves_unknowns_and_per_expert_scope(tmp_p
                 assert expected in summary and expected in lanes
             assert "FP ?" in lanes  # expert-b has no evidence
             assert "$" not in summary and "$" not in lanes
-            assert "Retry ≥? tok" in summary
+            assert "Retry ≥250 tok" in summary
+            assert "res 2K" in summary and "closed ?1" in summary
             app._render(replace(snapshot, overview=_overview()))
             assert "FP ?" in str(app.query_one("#summary", SummaryPanel).query_one(Static).render())
     asyncio.run(exercise())

@@ -22,6 +22,7 @@ from .agent_aci import AgentACIError, AgentRequest, WorkspaceArtifact
 from .artifacts import AgentArtifactKey, ArtifactPublisher, ArtifactPublication
 from .domain import AgentCommand
 from .context_management import continuation_observation
+from .provider_observation import session_cost_state as _session_cost_state
 from .execution_workspace import GitTargetBinding
 from .expert_batch import BatchHistory
 from .expert_loop import ResearchNodeSubkind, ResearchNodeTask, chain_session_scope
@@ -147,29 +148,6 @@ def _validate_transcript(content: bytes, binding: dict[str, Any]) -> bool:
                 "CC transcript contains another chain identity"
             )
     return complete
-
-
-def _session_cost_state(content: bytes) -> dict[str, Any] | None:
-    """Newest saved session totals in a transcript, or None.
-
-    Since CC 2.1.277 a headless session appends a cumulative "cost-state"
-    record at exit, and a --resume/--fork-session launch seeds its reported
-    modelUsage/total_cost_usd from it instead of starting at zero. The record
-    current at preparation time is exactly the carry the next invocation
-    reports back, so the Host deducts it to keep per-Attempt accounting
-    invocation-exact. Older CC transcripts have no such record.
-    """
-    complete = content.endswith(b"\n")
-    records = content.splitlines()
-    state = None
-    for raw in records if complete else records[:-1]:
-        try:
-            record = json.loads(raw)
-        except (ValueError, UnicodeError):
-            continue
-        if isinstance(record, dict) and record.get("type") == "cost-state":
-            state = record
-    return state
 
 
 def _git(prepared: PreparedGitAuthoringWorkspace, *args: str) -> bytes:

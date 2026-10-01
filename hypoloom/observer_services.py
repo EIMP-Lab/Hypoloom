@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from queue import Empty, Full, Queue
 
 from .notification_tailer import NotificationError, NotificationTailer, post_json
 from .observer_refresh import ObserverRefresh
@@ -44,6 +45,37 @@ class ObserverServices:
         self._closed = False
         self._shutdown_deadline = None
         self._excluded_runs = None
+        self._literature_events = Queue(maxsize=256)
+        self._literature_dropped = 0
+
+    def record_literature_event(self, event):
+        """Nonblocking handoff from the Host; never deliver on its writer thread."""
+        if self._closed:
+            return
+        try:
+            self._literature_events.put_nowait(event)
+        except Full:
+            self._literature_dropped += 1
+
+    def _flush_literature_events(self, log_runs):
+        if self._literature_dropped:
+            self._diagnostic("literature/log", f"{self._literature_dropped} live events dropped; log queue full")
+        for _ in range(self._literature_events.qsize()):
+            try:
+                event = self._literature_events.get_nowait()
+            except Empty:
+                break
+            if event["run_id"] not in log_runs:
+                continue
+            try:
+                notifier = self._notifiers.get(event["run_id"])
+                if notifier is None:
+                    raise NotificationError("notification log not ready")
+                notifier.log_literature_event(event)
+            except Exception as error:
+                # Best-effort diagnostics are not replayable research events.
+                # Report loss without echoing browser URLs or exception text.
+                self._diagnostic("literature/log", f"{type(error).__name__}; live literature event not logged")
 
     @property
     def running(self):
@@ -140,6 +172,7 @@ class ObserverServices:
                 self._initial_scope()
                 rows = StateStore(self.state_root).inspect(
                     "SELECT run_id,payload_json FROM research_facts WHERE fact_type='GoalDefined' ORDER BY run_id")
+                log_runs = set()
                 for row in rows:
                     if row["run_id"] in self._excluded_runs:
                         continue
@@ -149,8 +182,11 @@ class ObserverServices:
                     contract = json.loads(row["payload_json"])["research_contract"]
                     notify = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("notify", {})
                     sinks = notify.get("sinks", {})
+                    if "log" in sinks:
+                        log_runs.add(row["run_id"])
                     self._dashboard(row["run_id"], sinks.get("dashboard", {}))
                     self._notify(row["run_id"], sinks)
+                self._flush_literature_events(log_runs)
             except Exception as error:
                 self._diagnostic("observation", f"{type(error).__name__}; read-only retry pending")
 

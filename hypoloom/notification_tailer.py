@@ -388,6 +388,15 @@ class NotificationTailer:
     def _secret(self, config: Mapping[str, Any], field: str) -> str:
         return notification_secret(self.environ, config, field)
 
+    def log_literature_event(self, event: Mapping[str, Any]) -> None:
+        """Live operational diagnostics, local log only; no research cursor/fact."""
+        if event.get("run_id") != self.run_id or event.get("type") != "literature_access":
+            raise NotificationError("invalid literature log scope")
+        if self.log_path is not None:
+            level = 30 if event["payload"]["to"] in {"fetch_unavailable", "browser_unavailable", "failed"} else 20
+            if level >= _LEVELS[self.sinks["log"].get("level", "info").lower()]:
+                self._deliver("log", event, None)
+
     def _remote(self, sink: str) -> tuple[str, dict[str, str], str | None]:
         return notification_remote(sink, self.sinks[sink], self.environ)
 

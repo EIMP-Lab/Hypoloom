@@ -53,6 +53,9 @@ MAX_PDF_HTTP_CALLS_PER_BATCH = 64
 MAX_PDF_DOWNLOAD_EVENTS_PER_PAPER = 32
 MAX_PDF_CACHE_ENTRIES = 32
 MAX_PDF_CACHE_BYTES = 64 * 1024 * 1024
+# CDN front ends (CloudFront, Akamai) routinely answer with more than eight
+# public A/AAAA records; the bound only limits the pinned address list size.
+MAX_ADDRESSES_PER_HOST = 32
 
 
 def bounded_context_refs(refs: tuple[str, ...], fact_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -1070,11 +1073,13 @@ class PdfExtraction:
             or self.page_count <= 0
         ):
             raise LiteratureValidationError("PDF page_count must be positive")
-        _text(self.abstract_summary, "PDF abstract_summary", maximum=MAX_SUMMARY_CHARS)
-        _text(self.conclusions, "PDF conclusions", maximum=MAX_SUMMARY_CHARS)
+        for name in ("abstract_summary", "conclusions"):
+            value = getattr(self, name)
+            if value != "":
+                _text(value, f"PDF {name}", maximum=MAX_SUMMARY_CHARS)
         if (
             not isinstance(self.claim_support, tuple)
-            or not self.claim_support
+            or bool(self.claim_support) != bool(self.abstract_summary or self.conclusions)
             or len(self.claim_support) > MAX_CLAIM_REFS
             or not all(isinstance(item, ClaimPageRef) for item in self.claim_support)
         ):
@@ -1206,9 +1211,9 @@ class LiteraturePaper:
                     "PDF_UNAVAILABLE paper cannot carry a PDF trace or support a claim"
                 )
         else:
-            if not isinstance(self.pdf_trace, PdfTrace) or not claims:
+            if not isinstance(self.pdf_trace, PdfTrace):
                 raise LiteratureValidationError(
-                    "RETRIEVED paper requires a PDF trace and claim refs"
+                    "RETRIEVED paper requires a PDF trace"
                 )
             trace_refs = tuple(item.claim_ref for item in self.pdf_trace.claim_support)
             if claims != trace_refs:
@@ -2015,35 +2020,39 @@ class PopplerPdfExtractor:
     def extract_pdf(self, content: bytes, *, max_pages: int) -> PdfExtraction:
         document = self.extract_document(content, max_pages=max_pages)
         pages, page_count = document.pages, document.page_count
+        if not any(page.strip() for page in pages):
+            raise LiteratureValidationError("PDF contains no readable text", code=LiteratureFailureCode.POPPLER_INVALID)
         abstract, abstract_page = _extract_named_pdf_section(
             pages,
             section="abstract",
             maximum=self.max_summary_chars,
+            required=False,
         )
         conclusions, conclusion_page = _extract_named_pdf_section(
             pages,
             section="conclusions",
             maximum=self.max_summary_chars,
+            required=False,
         )
         return PdfExtraction(
             page_count=page_count,
             pages=pages,
             abstract_summary=abstract,
             conclusions=conclusions,
-            claim_support=(
+            claim_support=tuple(item for item in (
                 ClaimPageRef(
                     claim_ref="abstract-excerpt",
                     section="Abstract",
                     page_start=abstract_page,
                     page_end=abstract_page,
-                ),
+                ) if abstract else None,
                 ClaimPageRef(
                     claim_ref="conclusions-excerpt",
                     section="Conclusions",
                     page_start=conclusion_page,
                     page_end=conclusion_page,
-                ),
-            ),
+                ) if conclusions else None,
+            ) if item is not None),
         )
 
     def _run(
@@ -2866,6 +2875,7 @@ def _extract_named_pdf_section(
     *,
     section: str,
     maximum: int,
+    required: bool = True,
 ) -> tuple[str, int]:
     pattern = _PDF_SECTION_PATTERNS[section]
     for page_index, page in enumerate(pages):
@@ -2904,6 +2914,8 @@ def _extract_named_pdf_section(
                     f"PDF {section} excerpt is invalid",
                     code=LiteratureFailureCode.POPPLER_INVALID,
                 ) from exc
+    if not required:
+        return "", 0
     raise LiteratureValidationError(
         f"PDF omitted a bounded {section} section",
         code=LiteratureFailureCode.POPPLER_INVALID,
@@ -4020,13 +4032,13 @@ class FixedLiteratureIO:
             hostname in _FORBIDDEN_HOSTS
             or hostname.endswith(_FORBIDDEN_HOST_SUFFIXES)
         ):
-            raise LiteratureFetchError(f"{name} hostname is not public")
+            raise LiteratureFetchError(f"{name} hostname {hostname} is not public")
         try:
             literal = ipaddress.ip_address(hostname)
         except ValueError:
             literal = None
         if literal is not None:
-            addresses = (_public_address(str(literal), name),)
+            addresses = (_public_address(str(literal), f"{name} address for {hostname}"),)
         elif hostname in cache and not refresh:
             addresses = cache[hostname]
         else:
@@ -4040,21 +4052,21 @@ class FixedLiteratureIO:
                 raise _LiteratureDnsResolutionError(name, hostname) from exc
             except Exception as exc:
                 raise LiteratureFetchError(
-                    f"{name} DNS resolution failed with {type(exc).__name__}"
+                    f"{name} DNS resolution for {hostname} failed with {type(exc).__name__}"
                 ) from exc
             if isinstance(resolved, (str, bytes)):
-                raise LiteratureFetchError(f"{name} DNS result must be an address array")
+                raise LiteratureFetchError(f"{name} DNS result for {hostname} must be an address array")
             try:
                 addresses = tuple(
-                    sorted({_public_address(item, name) for item in resolved})
+                    sorted({_public_address(item, f"{name} DNS address for {hostname}") for item in resolved})
                 )
             except TypeError as exc:
-                raise LiteratureFetchError(f"{name} DNS result is invalid") from exc
+                raise LiteratureFetchError(f"{name} DNS result for {hostname} is invalid") from exc
             if not addresses:
                 raise _LiteratureDnsResolutionError(name, hostname)
-            if len(addresses) > 8:
+            if len(addresses) > MAX_ADDRESSES_PER_HOST:
                 raise LiteratureFetchError(
-                    f"{name} DNS result must contain 1..8 public addresses"
+                    f"{name} DNS result for {hostname} must contain 1..{MAX_ADDRESSES_PER_HOST} public addresses"
                 )
             cache[hostname] = addresses
         return uri, addresses

@@ -29,6 +29,31 @@ def configured(tmp_path, *, dashboard=True, webhook=False, telegram=False, port=
     return _create_profile_run(tmp_path, config)
 
 
+def test_live_literature_transitions_reuse_local_log_without_research_writes_or_remote_delivery(tmp_path):
+    from hypoloom.institutional_access import InstitutionalAccess
+    from test_institutional_access import Backend, URL, pump
+    root = configured(tmp_path, dashboard=False)
+    before = _row_census(root / "state.sqlite")
+    service = ObserverServices(root, output=io.StringIO(), errors=io.StringIO())
+    access = InstitutionalAccess(Backend(), event_sink=service.record_literature_event)
+    try:
+        access.request(("notifications", "expert", "component"), URL)
+        pump(access, lambda: access.peek(("notifications", "expert", "component"), URL)["reason"] == "login_required",
+             runs=("notifications",))
+        service.poll_once()
+        log = service.output_root / "notifications/events.jsonl"
+        records = [json.loads(line) for line in log.read_text().splitlines()]
+        events = [e for e in records if e["type"] == "literature_access"]
+        assert [e["payload"]["to"] for e in events] == ["queued", "checking", "login_required"]
+        assert all(e["payload"]["provider"] == "Nature" and e["payload"]["url"] == URL for e in events)
+        service.poll_once()
+        assert log.read_text().count('"type": "literature_access"') == 3
+        assert _row_census(root / "state.sqlite") == before
+    finally:
+        access.close()
+        service.close()
+
+
 def test_notifier_reuses_background_audit_without_blocking_delivery(tmp_path, monkeypatch):
     from hypoloom.oracle import Oracle
     root = configured(tmp_path, dashboard=False)
@@ -363,6 +388,10 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
                 assert any(event["type"] == "run_finished" for event in json.loads(response.read())["events"])
             finally:
                 connection.close()
+            # Remote failures now back off for at least 30 seconds. Keep the
+            # owner alive until the failed start event and terminal event have
+            # actually been acknowledged; shutdown must not bypass cooldown.
+            wait_for(lambda: len(received) >= 3, timeout=45)
             # No --exit-when-terminal: the dashboard stays usable at the terminal
             # state. Its owner now exits normally and performs the final poll.
             process.terminate()

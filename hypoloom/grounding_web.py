@@ -17,7 +17,7 @@ from html.parser import HTMLParser
 from typing import Any, Callable, Protocol, Sequence
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 
-from .literature import FetchResponse, LiteratureError, PdfExtraction, PopplerPdfExtractor, _public_address, _uri_parts
+from .literature import FetchResponse, LiteratureError, PdfDocument, PopplerPdfExtractor, _public_address, _uri_parts
 
 
 class GroundingWebError(ValueError):
@@ -364,11 +364,11 @@ class GroundingWeb:
             if not response.body.startswith(b"%PDF-") or not response.body.rstrip().endswith(b"%%EOF"):
                 raise GroundingWebError("invalid_pdf", "PDF header or final EOF is missing")
             try:
-                extracted = self.pdf_extractor.extract_pdf(response.body, max_pages=100)
-                if not isinstance(extracted, PdfExtraction) or extracted.page_count > 100:
+                extracted = self.pdf_extractor.extract_document(response.body, max_pages=100)
+                if not isinstance(extracted, PdfDocument) or extracted.page_count > 100:
                     raise ValueError("invalid PDF extraction")
-                text = extracted.abstract_summary + "\n\n" + extracted.conclusions
-                scope = "pdf_abstract_and_conclusions"
+                text = "\n\n".join(f"--- Physical page {number} ---\n{page}" for number, page in enumerate(extracted.pages, 1))
+                scope = "pdf_physical_pages"
             except (LiteratureError, ValueError, OSError) as exc:
                 raise GroundingWebError("pdf_extraction_failed", "bounded PDF extraction failed") from exc
         else:

@@ -122,9 +122,10 @@ class _MemoryScenario(_HostScenario):
                         result
                     )
                 if step == 2:
-                    assert "Write an evidence-grounded cycle report" in json.dumps(
-                        document
-                    )
+                    # Native Skill delivers the body, without frontmatter metadata.
+                    delivered = json.dumps(document)
+                    assert "Read this request's accepted outcomes, exact assessments, experiment logs" in delivered
+                    assert "as a compact index and rounds/<cycle>.md as the detailed report" in delivered
             elif (
                 request.command is AgentCommand.LITERATURE_REVIEW
                 and _cycle(request) == 2

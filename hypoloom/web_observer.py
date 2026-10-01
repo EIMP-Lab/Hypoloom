@@ -128,6 +128,7 @@ class WebObserverServer(ThreadingHTTPServer):
         self._support_lock = threading.Lock()
         self._answer_token: str | None = None
         self._provider_token: str | None = None
+        self._literature_token: str | None = None
         super().__init__((host, port), WebObserverRequestHandler)
 
     @property
@@ -243,6 +244,13 @@ class WebObserverServer(ThreadingHTTPServer):
             if self._provider_token is None:
                 self._provider_token = secrets.token_urlsafe(24)
             return self.startup_url() + "&provider_token=" + quote(self._provider_token, safe="")
+
+    def literature_access_url(self) -> str:
+        """Separate operator grant for institutional acquisition actions only."""
+        with self._active_request_lock:
+            if self._literature_token is None:
+                self._literature_token = secrets.token_urlsafe(24)
+            return self.startup_url() + "&literature_token=" + quote(self._literature_token, safe="")
 
 
 class WebObserverRequestHandler(BaseHTTPRequestHandler):
@@ -580,7 +588,16 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path == "/api/support":
             self._support()
             return
-        if self.path not in {"/api/human-answer", "/api/provider-retry", "/api/resource-recheck", "/api/literature-retry", "/api/notification-retry"}:
+        scopes = {
+            "/api/human-answer": ("answer", "X-Hypoloom-Answer-Token"),
+            "/api/provider-retry": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/resource-recheck": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/literature-retry": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/notification-retry": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/literature-access": ("literature", "X-Hypoloom-Literature-Token"),
+        }
+        scope = scopes.get(self.path)
+        if scope is None:
             self._method_not_allowed()
             return
         if not self._require_authorization():
@@ -588,9 +605,9 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         resource = self.path == "/api/resource-recheck"
         literature = self.path == "/api/literature-retry"
         notification = self.path == "/api/notification-retry"
-        provider = resource or literature or notification or self.path == "/api/provider-retry"
-        token = self.observer._provider_token if provider else self.observer._answer_token
-        supplied = self.headers.get("X-Hypoloom-Provider-Token" if provider else "X-Hypoloom-Answer-Token", "")
+        scope_name, header_name = scope
+        token = getattr(self.observer, f"_{scope_name}_token")
+        supplied = self.headers.get(header_name, "")
         try:
             origin = urlsplit(self.headers.get("Origin", ""))
         except ValueError:
@@ -608,6 +625,7 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             return
         from .control_protocol import MAX_FRAME_BYTES, ProtocolError
         from .human_answers import submit_answer
+        request = None
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_FRAME_BYTES:
@@ -617,7 +635,7 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             if len(raw) != length:
                 raise ValueError("incomplete answer body")
             values = json.loads(raw)
-            if provider:
+            if scope_name == "provider":
                 from .control_protocol import ControlRequest, SCHEMA_VERSION
                 if not isinstance(values, dict) or set(values) not in ({"request_id"}, {"request_id", "settings_path"}):
                     raise ValueError("provider recovery requires request_id and optional settings_path")
@@ -630,6 +648,30 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                         **({"sink": "telegram"} if notification else {"reason": "operator"}),
                         **({"service": "openalex"} if literature else {}),
                         **({"settings_path": values["settings_path"]} if "settings_path" in values else {})}})
+            elif scope_name == "literature":
+                import uuid as uuid_module
+                from .control_protocol import ControlRequest, SCHEMA_VERSION
+                if not isinstance(values, dict) or not {"provider", "action"} <= set(values) or set(values) - {"provider", "action", "url", "path"}:
+                    raise ValueError("institutional access requires provider, action and optional url/path")
+                provider_name, action = values["provider"], values["action"]
+                if not isinstance(provider_name, str) or not provider_name:
+                    raise ValueError("provider must be non-empty text")
+                if not isinstance(action, str) or action not in {"open", "retry", "import"}:
+                    raise ValueError("action must be open, retry or import")
+                payload = {"run_id": self.observer.run_id, "provider": provider_name, "action": action}
+                if "url" in values:
+                    if not isinstance(values["url"], str) or not values["url"]:
+                        raise ValueError("url must be non-empty text")
+                    payload["url"] = values["url"]
+                if "path" in values:
+                    if not isinstance(values["path"], str) or not values["path"].startswith("/"):
+                        raise ValueError("path must be an absolute Host-side PDF path")
+                    payload["path"] = values["path"]
+                if action == "import" and not {"url", "path"} <= set(payload):
+                    raise ValueError("import requires url and an absolute Host-side PDF path")
+                request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION,
+                    "request_id": "web-literature-" + str(uuid_module.uuid4()),
+                    "expected_revision": None, "command": "LITERATURE_ACCESS", "payload": payload})
             else:
                 from .human_answers import answer_request
                 answer_request(self.observer.run_id, values)
@@ -637,11 +679,11 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, json.dumps({"error": "invalid_answer", "message": str(exc)}).encode(), "application/json")
             return
         try:
-            if provider:
+            if scope_name == "answer":
+                response = submit_answer(self.observer.state_root, self.observer.run_id, values)
+            else:
                 from .control_protocol import request_over_socket
                 response = request_over_socket(self.observer.state_root / "control.sock", request, timeout=5)
-            else:
-                response = submit_answer(self.observer.state_root, self.observer.run_id, values)
         except (OSError, ProtocolError):
             self._send(HTTPStatus.SERVICE_UNAVAILABLE,
                 b'{"error":"delivery_unknown","message":"Host reply not confirmed. Check current state or retry the same request."}', "application/json")
@@ -699,6 +741,7 @@ def run_web_observer(
     gpu_pool_server_uid: int | None = None,
     allow_human_answers: bool = False,
     allow_provider_control: bool = False,
+    allow_literature_control: bool = False,
 ) -> int:
     """Run the observer in the foreground until interrupted."""
 
@@ -725,6 +768,8 @@ def run_web_observer(
         url = server.human_answer_url() if allow_human_answers else server.startup_url()
         if allow_provider_control:
             url += "&provider_token=" + quote(parse_qs(urlsplit(server.provider_control_url()).fragment)["provider_token"][0], safe="")
+        if allow_literature_control:
+            url += "&literature_token=" + quote(parse_qs(urlsplit(server.literature_access_url()).fragment)["literature_token"][0], safe="")
         print(f"web observer: {url}", file=output, flush=True)
         try:
             server.serve_forever()
@@ -744,6 +789,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="loopback Web port (default: 0, OS-selected free port)")
     parser.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
     parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
+    parser.add_argument("--allow-literature-control", action="store_true", help="grant an operator link for institutional full-text actions")
     parser.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     parser.add_argument("--gpu-pool-server-uid", type=int)
     return parser
@@ -760,6 +806,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         gpu_pool_server_uid=args.gpu_pool_server_uid,
         allow_human_answers=args.allow_human_answers,
         allow_provider_control=args.allow_provider_control,
+        allow_literature_control=args.allow_literature_control,
     )
 
 

@@ -3326,12 +3326,18 @@ def _instruction(
         )
     if _is_literature_main(request):
         return common + (
-            "Complete only LITERATURE_REVIEW MAIN. Read only the Host-supplied validated "
-            f"LiteraturePacket input whose ref ends with {_LITERATURE_PACKET_SUFFIX!r}; "
+            "Complete only LITERATURE_REVIEW MAIN. "
+            + ("Start from the Host-supplied validated " if full_cc and request.schema_version >= 20
+               else "Read only the Host-supplied validated ")
+            + f"LiteraturePacket input whose ref ends with {_LITERATURE_PACKET_SUFFIX!r}; "
             "do not plan, generate, or rewrite a literature query and do not treat a query "
             "or query-planning instruction as evidence. Produce one concise auditable "
             "ExpertLoopCandidate summary and set supporting_refs only to the exact "
             "Host-supplied LiteraturePacket input ref. "
+            + ("Read admitted /papers sources and use permitted web tools for selected full texts. "
+               "Empty packet excerpts/claim_refs mean those sections were not identified, not that the PDF lacks methods. "
+               "Distinguish packet claims from additional sources and cite actual source_ref/page locations in the summary. "
+               if full_cc and request.schema_version >= 20 else "")
             + ("Do not emit control instructions." if full_cc else
                "Do not use tools, network retrieval, files, slash commands, MCP, plugins, or emit control instructions.")
         )

@@ -1,25 +1,28 @@
 # Current Hypoloom development state
 
-- October 1 integration, batch 2: corrected PR #3 joins dev. Actual pre-model
-  Grounding failures drive bounded query replanning across restart, without
-  synthetic calls/copied charges. Existing artifact verification supplies bounded
-  raw measurements and accepted summaries; reports cite recovered and final
-  failures separately. 331 focused checks pass, including native Host/CPU and
-  persistent-gap closure. PR #2 and real subscription verification remain pending.
-  [Design](../design/runtime-and-literature-integration.md) and
+- October 1 runtime/literature integration: three user-authorized batches on dev
+  fix native completion/accounting (bwrap69), merge corrected PR #3 query recovery
+  and report evidence, and merge corrected PR #2 institutional access. Exact
+  retrieval rejections survive browser/cache fallback; PDF identity comes from
+  actual downloaded content. Existing Attempts, publication validators and retry
+  budgets remain authoritative. Full G1 plus 389 focused repairs covers 6,595
+  passing identities / 55 skips; 29 browser opt-ins were separately exercised.
+  Independent 13-root audit closes 410 Agents / 34 CPU Processes, with clean
+  Oracles and no residue. Native Skill/legacy/UI fixtures and context placement
+  are corrected without relaxing workflow size limits. Real subscription check
+  is still pending the user's library URL, entitled DOI and dedicated browser
+  connection; server Docker pull is blocked by its configured proxy. No real
+  entitlement or G4/G5 claim. Existing runs, Profiles, frozen bundles and pool
+  remain unchanged. [Design](../design/runtime-and-literature-integration.md),
   [validation](../qualification.md#current-integration--runtime-and-literature-2026-10-01).
 
-
-- October 1 integration, batch 1: user authorizes phased commits/PR merges and
-  pushes to dev. bwrap69 accepts identical same-session background completions
-  only with consistent cumulative accounting, revalidates repeated native Stop,
-  and preserves transport failure classification. Existing workflow guidance
-  covers actual selected-arm dispatch before costly work. 335 distinct focused
-  checks pass, including real native Host/CPU closure. PR #3/#2 integration is
-  pending. [Design](../design/runtime-and-literature-integration.md);
-  [evidence and limits](../qualification.md#current-integration--runtime-and-literature-2026-10-01).
-  Existing runs, Profiles and pool unchanged.
-
+- October 1 institutional-access PR follow-up: adapt the native notification
+  lifetime test to the existing 30-second delivery cooldown; verify literature
+  concurrency by completing a real tool reply and cancellation while I/O stays
+  blocked, rather than treating total tick time as I/O latency. Production
+  behavior and retained runs are unchanged. All 84 related regressions and four
+  documentation checks pass, including the original four failures. See the
+  [validation record](../qualification.md#institutional-access-pr-regressions-2026-10-01).
 
 - October 1 literature/notification recovery: user authorizes implementation and
   subsequently commit/push to dev, reusing completed focused validation.

@@ -1,8 +1,8 @@
-"""Read-only construction of bounded Agent repair and rendezvous context."""
+"""Read-only construction of bounded Agent task, repair and rendezvous context."""
 from __future__ import annotations
 from dataclasses import replace
 import json
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 from .agent_aci import AgentACIError, AgentRequest, AgentResponse, EmbeddedInput, ValidatedSubmission, canonical_json, validate_submission_snapshot
 from .collaboration import ExpertSignal, ExpertSignalKind, RendezvousOrigin, RendezvousReply
 from .diagnostics import (
@@ -1093,3 +1093,345 @@ __all__ = [
     "unresolved_query_plan_validation",
     "validated_draft_source",
 ]
+
+
+def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
+                   component_id: str, role: str, method_family_id: str | None) -> tuple[EmbeddedInput, ...]:
+    """Build expert inputs from the Host's existing accepted facts and bindings."""
+    import uuid
+    from .candidate_validation import component_result_contract
+    from .compute_resources import ComputeCapabilities
+    from .component_contract import component_is_production
+    from .domain import ResourcePreference
+    from .execution_workspace import execution_environment_contract, execution_read_root_projection
+    from .expert_loop import ResearchNodeKey
+    from .expert_batch import batch_limits
+    from .grounding_context import build_grounding_context_bytes
+    from .literature import LITERATURE_PACKET_MEDIA_TYPE, bounded_context_refs, expert_literature_query, grounding_literature_query
+    from .outcome_adapter import OUTCOME_ADAPTER_VERSION
+    from .profile_language import apply_profile_language
+    from .profile_v4 import restrict_profile_capabilities
+    from .workflow_host import OperationalHalt, _CPU_SANDBOX_PROFILE, _GPU_SANDBOX_PROFILE
+
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.PAPER_READ: return host.paper_reading.inputs(task)
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GRAPH_EVOLVE: return host._manager_inputs(run_id, task)
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT: return host._final_report_inputs(run_id, task)
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.OBSERVER: return host.interaction.inputs(run_id, task)
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.LEADER: return host.interaction.guidance_task_inputs(run_id, task)
+    if isinstance(task, AuxiliaryTask) and task.kind in {AuxiliaryRequestKind.DEBATE, AuxiliaryRequestKind.DEBATE_JUDGE}: return host.interaction.debate.inputs(run_id, task)
+    contract = host._research_contract(run_id); component = contract.component(component_id)
+    if component is None: raise OperationalHalt(f"Agent action names unknown component {component_id!r}")
+    goal = host.store.list_facts(run_id, "GoalDefined")[0]
+    contract_document = contract.to_dict(); raw_component = next(
+        item for item in contract_document["components"] if item["id"] == component_id)
+    protocol = ({"result_kind": component.result_kind.value, "requirements": {}}
+                if component.protocol is None else contract_document["protocols"][component.protocol])
+    if isinstance(task, AuxiliaryTask):
+        config: dict[str, Any] = {"execution": dict(host._run_config(run_id))["execution"],
+            "components": contract_document["components"],
+            "protocol_catalog": contract_document["protocols"],
+            "delivery_contracts": contract_document.get("delivery_contracts", {}),
+            "goal": contract_document["goal"], "grounding_scope": "role-neutral"}
+        config_ref = f"{run_id}--grounding-config"
+    else:
+        config = {"execution": dict(host._run_config(run_id))["execution"],
+            "component": raw_component, "protocol": protocol,
+            "protocol_catalog": contract_document["protocols"],
+            "delivery_contracts": contract_document.get("delivery_contracts", {}),
+            "goal": contract_document["goal"], "expert_slot": role,
+            "expert": next({"id": item["id"], "focus": item["focus"]}
+                for item in contract_document["roles"] if item["id"] == role)}
+        if component.required_inputs:
+            required_family = host._required_input_method_family(run_id, component_id)
+            if required_family is None: raise OperationalHalt("expert component lacks one ready required-input family")
+            config["required_method_family_id"] = required_family
+        config_ref = f"{run_id}--{component_id}--expert-config"
+        if host._batch_enabled(run_id):
+            config["inner_loop_limits"] = batch_limits(contract_document, role)
+            config["effective_max_forks"] = host._effective_batch_forks(run_id, role)
+    context_plan = {"production": component_is_production(contract_document, component_id)}
+    _, root_environment = execution_read_root_projection(config["execution"], context_plan,
+        generic=bool(raw_component.get("result", {}).get("deferred")) or host.shared_acceptance.enabled(run_id))
+    if "HYPOLOOM_READ_ROOT_MAP" in root_environment:
+        config["execution"] = {**config["execution"],
+            "read_root_map": json.loads(root_environment["HYPOLOOM_READ_ROOT_MAP"]),
+            "sandbox_read_roots": json.loads(root_environment["HYPOLOOM_READ_ROOTS"])}
+    leader_inputs = (host.interaction.leader_inputs(run_id, task)
+        if isinstance(task, ResearchNodeTask) and host._batch_enabled(run_id) else ())
+    apply_profile_language(config, contract_document, task, designated_leader=bool(leader_inputs)); inputs = [EmbeddedInput.from_bytes(str(goal["fact_id"]), "application/json",
+        canonical_json({"fact_id": goal["fact_id"], "fact_type": goal["fact_type"], "payload": goal["payload"]})),
+        EmbeddedInput.from_bytes(config_ref, "application/json", canonical_json(config))]
+    if isinstance(task, AuxiliaryTask):
+        inputs.append(EmbeddedInput.from_bytes(f"{run_id}--grounding-context",
+            "application/json", build_grounding_context_bytes(config["execution"])))
+        if task.kind is AuxiliaryRequestKind.GROUNDING and int(host.store.get_run(run_id)["agent_aci_version"]) >= 14:
+            maximum = config.get("node_runtime", {}).get("memory", {}).get("max_plugin_bytes", 1024 * 1024)
+            plugin = host._plugin_binding(run_id, task, "grounding", "Ground the current commission and manage accepted research evidence.",
+                max_bytes=maximum, owner_kind="grounding")
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--grounding-resources", "application/json",
+                canonical_json({"plugin": plugin.to_dict()})))
+        if task.kind is AuxiliaryRequestKind.GROUNDING and int(host.store.get_run(run_id)["agent_aci_version"]) >= 15:
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--grounding-dialogue", "application/json",
+                canonical_json(host.grounding_dialogue.history(run_id, task.ordinal))))
+    grounding = AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING, run_id=run_id)
+    if not isinstance(task, AuxiliaryTask):
+        inputs.append(host._expert_response_input(grounding))
+        if host.shared_acceptance.enabled(run_id): inputs.append(host.shared_acceptance.input(run_id))
+        if int(host.store.get_run(run_id)["agent_aci_version"]) >= 15:
+            inputs.append(EmbeddedInput.from_bytes(f"{run_id}--grounding-dialogue", "application/json",
+                canonical_json(host.grounding_dialogue.history(run_id, host._grounding_task(run_id).ordinal))))
+        inputs.extend(host._expert_dependency_update_inputs(run_id, component_id))
+        lineage = task.key
+        if lineage.cycle > 1:
+            if host._batch_enabled(run_id) and int(host.store.get_run(run_id)["agent_aci_version"]) >= 17:
+                history = host._batch_history(run_id, component_id, role)
+                if len(history.batches) < lineage.cycle - 1: raise OperationalHalt("successor node lacks its prior batch")
+                prior = history.batches[lineage.cycle - 2]
+                if prior.selection is None: raise OperationalHalt("successor node lacks accepted prior adjudication")
+                selected = prior.selection.get("selected_tip")
+                parent_hypothesis_id = None if selected is None else selected["node_id"]
+                directed = host.interaction.directed_round(run_id, role, component_id, lineage.cycle)
+                if directed is not None:
+                    parent_hypothesis_id = directed["parent_hypothesis_id"]
+                if lineage.chain is not None:
+                    parent_hypothesis_id = history.hypothesis(lineage.cycle, lineage.chain)["payload"]["parent_hypothesis_id"]
+                elif len(history.batches) < lineage.cycle and selected is None and directed is None:
+                    if not host._unselected_batch_revision_ready(run_id, component_id, role): raise OperationalHalt("unselected revision controls are not closed")
+                    context, _, _ = host._batch_context(run_id, component_id, role, lineage.cycle - 1)
+                    inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--batch-context", "application/json", canonical_json(context)))
+            else:
+                chain = host._expert_hypothesis_chain(run_id, component_id, role)
+                if len(chain) < lineage.cycle - 1: raise OperationalHalt("successor node lacks its parent hypothesis")
+                parent_hypothesis_id = str(chain[lineage.cycle - 2]["hypothesis_id"])
+            inputs.extend((
+                EmbeddedInput.from_bytes(
+                    f"{run_id}--{component_id}--{role}--cycle-{lineage.cycle}--lineage-context",
+                    "application/json",
+                    canonical_json({"cycle": lineage.cycle,
+                        "parent_hypothesis_id": parent_hypothesis_id}),
+                ),
+                host._expert_response_input(ResearchNodeTask(key=ResearchNodeKey(
+                    run_id=run_id, component_id=component_id,
+                    expert_slot=role, cycle=lineage.cycle - 1,
+                    node_kind=ResearchNodeKind.HYPOTHESIS_UPDATE,
+                ))),
+            ))
+        prior_keys: list[ResearchNodeKey] = []
+        if lineage.node_kind is ResearchNodeKind.SELF_EVOLVE:
+            report = ResearchNodeTask(key=replace(lineage, node_kind=ResearchNodeKind.CYCLE_REPORT))
+            failure_input = host._expert_failure_input(run_id, report)
+            if failure_input is None: prior_keys.append(report.key)
+            else: inputs.append(failure_input)
+        elif lineage.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL:
+            if lineage.subkind is ResearchNodeSubkind.FORWARD:
+                restart = host.interaction.debate.designated_round(run_id, component_id) if host._batch_enabled(run_id) else None
+                if restart is not None and restart["cycle"] == lineage.cycle and restart.get("restart_from_hypothesis"):
+                    source = host.interaction.debate.literature_source(run_id, role, component_id, restart["source_cycle"])
+                    if source is None: raise OperationalHalt("Debate restart lacks its actual literature Attempt")
+                    observation = json.loads(source["observation_json"]); original = AgentRequest.from_dict(observation["request"])
+                    expected = ResearchNodeTask(key=replace(lineage, cycle=original.task_context.key.cycle, node_kind=ResearchNodeKind.LITERATURE_REVIEW, subkind=ResearchNodeSubkind.MAIN))
+                    if (source["run_id"], source["attempt_id"], source["command_id"], source["state"], source["terminal_reason"], original.task_context) != (run_id, restart["source_literature_attempt_id"], restart["source_literature_command_id"], "CLOSED", "SUCCEEDED", expected):
+                        raise OperationalHalt("Debate restart literature source differs from its authorized original cycle")
+                    inputs.append(EmbeddedInput.from_bytes(source["attempt_id"] + "--response", "application/json", canonical_json(observation["response"])))
+                else:
+                    prior_keys.append(ResearchNodeKey(run_id=run_id, component_id=component_id,
+                        expert_slot=role, cycle=lineage.cycle,
+                        node_kind=ResearchNodeKind.LITERATURE_REVIEW))
+            elif lineage.subkind is ResearchNodeSubkind.SYNTHESIS:
+                prior_keys.extend((ResearchNodeKey(run_id=run_id, component_id=component_id,
+                    expert_slot=role, cycle=lineage.cycle, node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL,
+                    subkind=ResearchNodeSubkind.FORWARD), ResearchNodeKey(run_id=run_id,
+                    component_id=component_id, expert_slot=role, cycle=lineage.cycle,
+                    node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.BACKWARD)))
+        elif lineage.node_kind in {ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT, ResearchNodeKind.EXPERIMENT_EXECUTION, ResearchNodeKind.RESULT_ANALYSIS, ResearchNodeKind.HYPOTHESIS_UPDATE}:
+            prior_keys.append(ResearchNodeKey(run_id=run_id, component_id=component_id,
+                expert_slot=role, cycle=lineage.cycle, node_kind=ResearchNodeKind.HYPOTHESIS_PROPOSAL, subkind=ResearchNodeSubkind.SYNTHESIS))
+            if lineage.node_kind is ResearchNodeKind.EXPERIMENT_EXECUTION:
+                prior_keys.append(ResearchNodeKey(run_id=run_id, component_id=component_id,
+                    expert_slot=role, cycle=lineage.cycle, node_kind=ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT,
+                    experiment_ordinal=lineage.experiment_ordinal, chain=lineage.chain))
+            if lineage.node_kind is ResearchNodeKind.HYPOTHESIS_UPDATE:
+                if host._batch_enabled(run_id): prior_keys.append(ResearchNodeKey(run_id=run_id, component_id=component_id,
+                    expert_slot=role, cycle=lineage.cycle, node_kind=ResearchNodeKind.ADJUDICATE))
+                else: prior_keys.append(ResearchNodeKey(run_id=run_id, component_id=component_id,
+                    expert_slot=role, cycle=lineage.cycle, node_kind=ResearchNodeKind.RESULT_ANALYSIS,
+                    experiment_ordinal=host._expert_experiment_ordinal(run_id, component_id, role, lineage.cycle)))
+        inputs.extend(host._expert_response_input(ResearchNodeTask(key=key)) for key in prior_keys)
+        if host._batch_enabled(run_id) and (history := host._batch_history(run_id, component_id, role)).latest is not None and len(history.batches) >= lineage.cycle:
+            context, _, _ = host._batch_context(run_id, component_id, role, lineage.cycle)
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--batch-context", "application/json", canonical_json(context)))
+            if lineage.chain is not None and lineage.experiment_ordinal > 1 and lineage.node_kind in {ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT, ResearchNodeKind.EXPERIMENT_EXECUTION}:
+                prior = ResearchNodeTask(key=replace(lineage, node_kind=ResearchNodeKind.RESULT_ANALYSIS, experiment_ordinal=lineage.experiment_ordinal - 1))
+                accepted = host._expert_success(prior)
+                if accepted is None: raise OperationalHalt("scientific iteration lacks accepted prior analysis")
+                prior_request = AgentRequest.from_dict(json.loads(accepted["observation_json"])["request"])
+                outcome_input = next(item for item in prior_request.input_artifacts if item.ref.endswith("--current-outcome"))
+                outcome = json.loads(outcome_input.content_bytes())
+                inputs.extend((host._expert_response_input(prior), EmbeddedInput.from_bytes(f"{task.command_id}--iteration-context", "application/json",
+                    canonical_json({"iteration_of_experiment_id": outcome["experiment_id"], "analysis_attempt_id": accepted["attempt_id"]}))))
+    result_analysis = isinstance(task, ResearchNodeTask) and task.key.node_kind is ResearchNodeKind.RESULT_ANALYSIS
+    if result_analysis:
+        try: inputs.extend(result_analysis_inputs(host.store, host.publisher, run_id, task))
+        except ValueError as exc: raise OperationalHalt(str(exc)) from exc
+    relevant = ({component_id} if result_analysis else {component_id, *(str(value) for value in component.dependencies)}); fact_inputs = [EmbeddedInput.from_bytes(str(row["fact_id"]), "application/json",
+        canonical_json({"fact_id": row["fact_id"], "fact_type": row["fact_type"], "payload": row["payload"]}))
+        for row in host.store.list_facts(run_id)
+        if row["fact_type"] != "GoalDefined" and row["payload"].get("component_id") in relevant
+        and not (result_analysis and row["payload"].get("component_id") == component_id and row["fact_type"] in {"ExperimentPreregistered", "CanonicalOutcomeAccepted"})]; inputs.extend(fact_inputs); fact_refs = tuple(item.ref for item in fact_inputs)
+    if isinstance(task, AuxiliaryTask):
+        run = host.store.get_run(run_id)
+        if run is None: raise OperationalHalt("grounding literature query lacks its run record")
+        if task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN:
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--openalex-query-planning-skill", "text/markdown", host.query_skill)); query = grounding_literature_query(contract.document, latest_as_of=str(run["created_at"]).partition("T")[0], immutable_context_refs=bounded_context_refs(tuple(item.ref for item in inputs), fact_refs))
+            ref = f"{task.command_id}--literature-query-template"
+        elif task.kind is AuxiliaryRequestKind.GROUNDING:
+            plan, query = host._expert_literature_query(AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id), "Grounding lacks a successful role-neutral query plan", "stored Grounding literature query plan is invalid")
+            ref = f"{plan['attempt_id']}--literature-query"
+        else: raise OperationalHalt("unsupported auxiliary task entered Grounding inputs")
+        inputs.append(EmbeddedInput.from_bytes(ref, LITERATURE_PACKET_MEDIA_TYPE, canonical_json(query.to_dict())))
+        if task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN:
+            prior_plan = next((row for row in reversed(host._expert_attempts(task))
+                if row["terminal_reason"] == "SUCCEEDED"), None)
+            gap = None if prior_plan is None else host._grounding_query_gap(run_id, prior_plan)
+            if gap is not None:
+                observation = json.loads(gap["observation_json"])
+                prior_request = AgentRequest.from_dict(observation["request"])
+                query_input = next(item for item in prior_request.input_artifacts
+                    if item.ref == f"{prior_plan['attempt_id']}--literature-query")
+                inputs.append(EmbeddedInput.from_bytes(f"{gap['attempt_id']}--grounding-query-coverage-error",
+                    "application/json", canonical_json({"source_attempt_id": gap["attempt_id"],
+                        "query_plan_attempt_id": prior_plan["attempt_id"],
+                        "rejected_query": json.loads(query_input.content_bytes()),
+                        "failure_code": observation["failure_code"],
+                        "diagnostic": observation.get("literature_diagnostic"),
+                        "instruction": "Revise this query to cover the missing strata before Grounding retrieval."})))
+    elif task.key.node_kind is ResearchNodeKind.LITERATURE_REVIEW:
+        if task.key.subkind is ResearchNodeSubkind.QUERY_PLAN:
+            run = host.store.get_run(run_id)
+            if run is None: raise OperationalHalt("literature query plan lacks its run record")
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--openalex-query-planning-skill", "text/markdown", host.query_skill))
+            query = expert_literature_query(contract.document, component_id=component_id,
+                role=role, latest_as_of=str(run["created_at"]).partition("T")[0],
+                immutable_context_refs=bounded_context_refs(tuple(item.ref for item in inputs), fact_refs))
+            ref = f"{task.command_id}--literature-query-template"
+        else:
+            plan_task = ResearchNodeTask(key=ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role, cycle=task.key.cycle, node_kind=ResearchNodeKind.LITERATURE_REVIEW, subkind=ResearchNodeSubkind.QUERY_PLAN))
+            plan, query = host._expert_literature_query(plan_task, "literature MAIN lacks a successful query plan", "stored literature query plan is invalid")
+            ref = f"{plan['attempt_id']}--literature-query"
+        inputs.append(EmbeddedInput.from_bytes(ref, LITERATURE_PACKET_MEDIA_TYPE, canonical_json(query.to_dict())))
+    if isinstance(task, ResearchNodeTask) and task.key.node_kind in {ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT, ResearchNodeKind.EXPERIMENT_EXECUTION}:
+        if method_family_id is None: raise OperationalHalt("design node lacks a selected method family")
+        config["required_experiment_spec"] = {"evaluator_version": OUTCOME_ADAPTER_VERSION,
+            "workspace_artifacts": ["experiment.py", "implementation.patch"],
+            "result_envelope": "result.json", "artifact_requirements": ["result.json"],
+            "required_artifacts": list(component.required_artifacts),
+            "result_contract": component_result_contract(raw_component, protocol), "execution_environment": {"cpu": execution_environment_contract(_CPU_SANDBOX_PROFILE), "gpu": execution_environment_contract(_GPU_SANDBOX_PROFILE)},
+            "result_kind": component.result_kind.value, "component": raw_component, "protocol": protocol,
+            "metric": None if component.metric is None else {"name": component.metric.name,
+                "direction": component.metric.direction.value, "target": component.metric.target},
+            "trial_plan": {"seeds": list(contract.trial_plan_for(component_id).seeds),
+                "arms": list(contract.trial_plan_for(component_id).arms),
+                "trial_ids": list(contract.trial_plan_for(component_id).trial_ids)},
+            "resource_preferences": [item.value for item in ResourcePreference],
+            "hypothesis_id": (host._batch_history(run_id, component_id, role).hypothesis(task.key.cycle, task.key.chain)["hypothesis_id"] if host._batch_enabled(run_id)
+                else next(row["hypothesis_id"] for row in reversed(host.store.list_facts(run_id, "HypothesisProposed")) if row["payload"].get("component_id") == component_id and row["payload"].get("proposer_role") == role)),
+            "method_family_id": method_family_id}
+        if component.deferred_measurement:
+            measure = host._hypothesis_measurement(run_id, component_id, role, task.key.cycle, chain=task.key.chain)
+            config["required_experiment_spec"].update({"measurement": None if measure is None else measure.to_dict(),
+                "metric": None if measure is None else measure.to_dict()["metric"], "workspace_artifacts": ["implementation.patch", *(() if measure is None else measure.parser_files)],
+                "deferred_measurement": True})
+        inputs[1] = EmbeddedInput.from_bytes(f"{run_id}--{component_id}--expert-config",
+            "application/json", canonical_json(config))
+        operational = dict(host._run_config(run_id)); capabilities = (
+            host.compute_resources.snapshot() if operational["execution"]["allow_gpu"] else ComputeCapabilities(gpus=()))
+        capabilities = restrict_profile_capabilities(contract.document, capabilities) if operational["execution"]["allow_gpu"] else capabilities
+        busy = set(capabilities.busy_gpu_uuids) | set(host._busy_gpu_uuids())
+        capabilities = ComputeCapabilities(gpus=capabilities.gpus,
+            busy_gpu_uuids=tuple(sorted(gpu.uuid for gpu in capabilities.gpus if gpu.uuid in busy)))
+        inputs.extend((EmbeddedInput.from_bytes(f"{run_id}--{component_id}--compute-capabilities",
+            "application/json", capabilities.to_bytes()),
+            EmbeddedInput.from_bytes(f"{run_id}--{component_id}--resource-planning-skill",
+            "text/markdown", host.resource_skill),
+            EmbeddedInput.from_bytes(f"{run_id}--{component_id}--resource-experience",
+            "application/json", canonical_json(host._resource_experience(run_id, role, component_id, method_family_id)))))
+    if host.shared_gpu is not None and isinstance(task, ResearchNodeTask) and task.key.node_kind in {ResearchNodeKind.CYCLE_REPORT, ResearchNodeKind.SELF_EVOLVE}:
+        if method_family_id is not None:
+            inputs.append(EmbeddedInput.from_bytes(f"{run_id}--{component_id}--resource-experience", "application/json", canonical_json(host._resource_experience(run_id, role, component_id, method_family_id))))
+    if host._cycle_reports_enabled(run_id) and isinstance(task, ResearchNodeTask):
+        from .expert_memory import ExpertMemory, report_path
+        memory = ExpertMemory(host.state_root); memory_commit = memory.ensure(run_id, role)
+        focus = next(item["focus"] for item in contract.document["roles"] if item["id"] == role)
+        plugin_limit = config.get("node_runtime", {}).get("memory", {}).get("max_plugin_bytes", 1024 * 1024)
+        plugin = host._plugin_binding(run_id, task, role, focus, max_bytes=plugin_limit)
+        from .research_projection import freeze_role_view
+        view_id = str(uuid.uuid5(uuid.NAMESPACE_URL, task.command_id))
+        freeze_role_view(host.state_root, run_id, role, view_id)
+        resources = {"plugin": plugin.to_dict(), "memory_commit": memory_commit, "research_view_id": view_id}
+        report_component = component_id if host._batch_enabled(run_id) and sum(item.owner_role == role for item in contract.components) > 1 else None
+        if report_component is not None: resources["report_component_id"] = report_component
+        inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--expert-resources", "application/json", canonical_json(resources)))
+        if task.key.node_kind in {ResearchNodeKind.CYCLE_REPORT, ResearchNodeKind.SELF_EVOLVE}:
+            hypothesis_ids = (set(host._batch_history(run_id, component_id, role).batches[task.key.cycle - 1].members.values()) if host._batch_enabled(run_id)
+                else {str(host._expert_hypothesis_chain(run_id, component_id, role)[task.key.cycle - 1]["hypothesis_id"])})
+            facts = [row for row in host.store.list_facts(run_id, "HypothesisAssessed") if str(row["hypothesis_id"]) in hypothesis_ids]
+            creations = [row for row in host.store.inspect(
+                "SELECT workflow_id,payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (run_id,))
+                if (identity := json.loads(row["payload_json"])).get("component_id") == component_id and identity.get("role") == role]
+            records = [host._experiment_tool_view(run_id, row["workflow_id"], include_log=False) for row in creations
+                if json.loads(row["payload_json"]).get("expert_cycle", 1) == task.key.cycle]
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--cycle-assessments", "application/json", canonical_json({"cycle": task.key.cycle, "assessments": facts,
+                "report_path": report_path(task.key.cycle, report_component), "experiment_records": records,
+                "counts": {"cycle_experiments": len(records), "component_experiments_total": len(creations)}})))
+            update = ResearchNodeTask(key=replace(task.key, node_kind=ResearchNodeKind.HYPOTHESIS_UPDATE))
+            failure_input = host._expert_failure_input(run_id, update) if host._batch_enabled(run_id) else None
+            inputs.append(host._expert_response_input(update) if failure_input is None else failure_input)
+    return tuple(inputs) + (leader_inputs + host.interaction.guidance_inputs(run_id, task) + host.interaction.debate.promotion_inputs(run_id, task) + host.interaction.debate.planning_inputs(run_id, task)
+        if isinstance(task, ResearchNodeTask) and host._batch_enabled(run_id) else ())
+
+
+def select_interaction_facts(rows: Iterable[Mapping[str, Any]], *, hypothesis_ids: Iterable[str],
+                             reference_ids: Iterable[str] = ()) -> list[Mapping[str, Any]]:
+    """Keep exact current/cited facts and their dependencies, not old payloads.
+
+    Keep the immediate parents' evidence for baseline comparisons. Older
+    hypotheses retain lineage definitions and explicitly cited evidence; existing
+    cycle reports supply the historical narrative.
+    This disposable view never changes, summarizes or accepts a scientific fact.
+    """
+    from .expert_interaction import _FACT_ENTITY_FIELDS
+
+    rows = list(rows)
+    payloads = {row["fact_id"]: json.loads(row["payload_json"]) if "payload_json" in row
+        else row.get("payload", row) for row in rows}
+    index = {identity: {identity} for identity in payloads}
+    for identity, payload in payloads.items():
+        for field in _FACT_ENTITY_FIELDS.get(payload["fact_type"], ()):
+            if isinstance(payload.get(field), str):
+                index.setdefault(payload[field], set()).add(identity)
+    current = set(hypothesis_ids)
+    hypotheses = set(current)
+    hypotheses.update(p["parent_hypothesis_id"] for p in payloads.values()
+        if p["fact_type"] == "HypothesisProposed" and p.get("hypothesis_id") in current
+        and p.get("parent_hypothesis_id"))
+    experiments = {p["experiment_id"] for p in payloads.values()
+        if p["fact_type"] == "ExperimentPreregistered" and p.get("hypothesis_id") in hypotheses}
+    selected = {identity for identity, payload in payloads.items()
+        if payload["fact_type"] == "GoalDefined" or payload.get("hypothesis_id") in hypotheses
+        or payload.get("experiment_id") in experiments}
+    for ref in reference_ids:
+        selected.update(index.get(ref, ()))
+    pending = list(selected)
+    while pending:
+        payload = payloads[pending.pop()]
+        if payload["fact_type"] == "GoalDefined":
+            continue
+        refs = [payload.get(field) for field in ("hypothesis_id", "parent_hypothesis_id", "experiment_id", "outcome_id", "artifact_id")]
+        refs.extend(payload.get("evidence_ids", ()))
+        refs.extend(payload.get("supporting_refs", ()))
+        for ref in refs:
+            if not isinstance(ref, str): continue
+            for identity in index.get(ref, set()) - selected:
+                selected.add(identity)
+                pending.append(identity)
+    return [row for row in rows if row["fact_id"] in selected]

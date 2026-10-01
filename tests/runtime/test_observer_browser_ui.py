@@ -7,6 +7,7 @@ a browser, contact model providers, or open a retained research state root.
 from __future__ import annotations
 
 import json
+import os
 import base64
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ import pytest
 
 _ASSETS = Path(__file__).resolve().parents[2] / "hypoloom/web_observer_assets"
 _TOKEN = "browser-fixture-token"
-_CHROME = (
+_CHROME = os.environ.get("HYPOLOOM_TEST_CHROME") or (
     str(Path("/opt/google/chrome/chrome"))
     if Path("/opt/google/chrome/chrome").is_file()
     else shutil.which("google-chrome") or shutil.which("chromium")
@@ -644,6 +645,7 @@ def browser(tmp_path: Path, request):
                 "url": "data:text/html;base64,"
                 + base64.b64encode(markup.encode()).decode()
                 + f"#token={_TOKEN}" + ("&provider_token=fixture-provider-token" if operator == "provider"
+                    else "&literature_token=fixture-literature-token" if operator == "literature"
                     else "&answer_token=fixture-answer-token" if operator else "")
             },
         )

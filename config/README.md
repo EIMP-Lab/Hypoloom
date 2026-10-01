@@ -1,5 +1,11 @@
 # Personal configuration / 个人配置入口
 
+Optional server Chromium: [institutional-browser.compose.yaml](institutional-browser.compose.yaml).
+Deployment and first login: [English guide](../docs/guides/institutional-access.md#independent-server-browser-recommended) /
+[服务器浏览器指南](../docs/guides/institutional-access.zh-CN.md#服务器独立运行推荐)。
+Browser sessions live in a private Docker volume, not in this configuration directory.
+机构登录状态保存在服务器浏览器的独立Docker卷，不写入此目录或Profile。
+
 Literature and notification credentials live directly in your local Profile.
 No separate `.env` is required. Start from the existing six-file
 [Profile templates](../profiles/templates/), then fill only the ignored local copy.

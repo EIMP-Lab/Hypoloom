@@ -1,0 +1,27 @@
+# Server-owned Chromium; GUI and CDP are reachable only on the server loopback.
+# See docs/guides/institutional-access.zh-CN.md before first login.
+name: hypoloom-institutional-browser
+services:
+  browser:
+    image: jlesage/chromium:v26.09.1
+    restart: unless-stopped
+    shm_size: 1gb
+    stop_grace_period: 30s
+    environment:
+      UMASK: "0077"
+      KEEP_APP_RUNNING: "1"
+      CHROMIUM_REMOTE_DEBUGGING: "1"
+      CHROMIUM_REMOTE_DEBUGGING_PORT: "9222"
+      ENABLE_CJK_FONT: "1"
+      VNC_LISTENING_PORT: "-1"
+      WEB_HOST_CLIPBOARD_SYNC: "0"
+      WEB_FILE_MANAGER: "0"
+      WEB_TERMINAL: "0"
+      WEB_AUDIO: "0"
+    ports:
+      - "127.0.0.1:5800:5800"
+      - "127.0.0.1:9222:9222"
+    volumes:
+      - browser-profile:/config
+volumes:
+  browser-profile:

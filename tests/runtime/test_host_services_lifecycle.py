@@ -13,6 +13,7 @@ def test_queued_control_clients_share_one_scheduler_tick(tmp_path, monkeypatch):
     class Host:
         stop_requested = False
         operational_halt = None
+        institutional_access = None
         def __init__(self, *args, **kwargs): pass
         def initialize(self): pass
         def close(self): pass
@@ -51,6 +52,7 @@ def test_services_enter_only_after_single_writer_and_socket_and_close_before_hos
     class Host:
         stop_requested = True
         operational_halt = None
+        institutional_access = None
         def __init__(self, *args, **kwargs): pass
         def initialize(self): events.append("initialize")
         def close(self): events.append("host-close")

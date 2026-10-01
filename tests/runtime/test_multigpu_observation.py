@@ -192,6 +192,7 @@ def test_actual_web_renderer_lists_every_gpu_with_singular_fallback(plural):
         pytest.skip("node is unavailable for the actual web renderer")
     source = (Path(__file__).resolve().parents[2] / "hypoloom/web_observer_assets/app.js").read_text()
     renderer = source[source.index("  function renderAttempts(selection) {"):source.index("  function renderFactCounts(container) {")]
+    scope_label = source[source.index("  function taskScopeLabel(record) {"):source.index("  function renderGlobalTasks(snapshot) {")]
     device = {**_device("GPU-first"), "owned_memory": _owned(unknown=1)}
     view = asdict(_view([device, _device("GPU-second", pressure=True)] if plural else device))
     if not plural:
@@ -206,7 +207,7 @@ const setText = () => {}, attemptMatches = () => true;
 const formatTimestamp = () => '', formatDuration = () => '';
 const appendDefinition = (_grid, name, value) => entries.push([name, value]);
 """
-    command = harness + "\nconst state = " + json.dumps({"snapshot": {"attempts": [view]}}) + ";\n" + renderer
+    command = harness + "\nconst state = " + json.dumps({"snapshot": {"attempts": [view]}}) + ";\n" + scope_label + renderer
     command += "\nrenderAttempts(null); process.stdout.write(JSON.stringify({entries, classes}));"
     result = subprocess.run([executable, "-e", command], capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, result.stderr

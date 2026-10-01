@@ -108,6 +108,15 @@ Shutdown drains the worker; backups are unavailable while a read is in flight.
 Pending reads are disposable and use existing task/Attempt identities. Recovery
 uses the existing abandoned-Attempt/retry path, without another persistence format.
 
+Optional [institutional access](guides/institutional-access.md) uses one separate
+Playwright worker for an operator-authenticated browser. Its bounded queue/cache
+are disposable, scoped by existing run/role/component identity. Grouped TUI
+controls never receive credentials or pause research. Only the existing web
+document tool admits verified bytes into `/papers` and ordinary publication;
+background availability is not reading evidence and cannot revise finished
+results. Stopping drops pending/late results. See the
+[design and lifecycle limits](design/institutional-literature-access.md).
+
 Observer, Leader, Debate/Judge, adjudication and manager actions use explicit
 roles and accepted events. Context projection selects bounded current evidence;
 interaction cadence observes elapsed time and new-outcome thresholds. Skill and

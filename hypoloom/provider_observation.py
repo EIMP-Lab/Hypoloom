@@ -5,6 +5,7 @@ import json
 import math
 import re
 import time
+from typing import Any
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
@@ -360,3 +361,26 @@ def read_exchanges(directory, *, latest_generation_only=False, latest_context_on
         except (OSError, ValueError, UnicodeError, RecursionError):
             continue
     return list(reversed(result)) if latest_context_only else result
+
+
+def session_cost_state(content: bytes) -> dict[str, Any] | None:
+    """Newest saved session totals in a transcript, or None.
+
+    Since CC 2.1.277 a headless session appends a cumulative "cost-state"
+    record at exit, and a --resume/--fork-session launch seeds its reported
+    modelUsage/total_cost_usd from it instead of starting at zero. The record
+    current at preparation time is exactly the carry the next invocation
+    reports back, so the Host deducts it to keep per-Attempt accounting
+    invocation-exact. Older CC transcripts have no such record.
+    """
+    complete = content.endswith(b"\n")
+    records = content.splitlines()
+    state = None
+    for raw in records if complete else records[:-1]:
+        try:
+            record = json.loads(raw)
+        except (ValueError, UnicodeError):
+            continue
+        if isinstance(record, dict) and record.get("type") == "cost-state":
+            state = record
+    return state

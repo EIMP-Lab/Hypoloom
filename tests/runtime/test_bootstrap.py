@@ -335,9 +335,15 @@ def test_managed_bootstrap_prepares_pool_before_any_host_or_run(monkeypatch, pre
         assert result["next_actions"] == ["recheck", "revise_selection", "prepare_only", "cancel"]
 
 
-def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(checkout, capsys):
+@pytest.mark.parametrize("institutional", [False, True])
+def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(checkout, capsys, institutional):
     repo, overrides = checkout
-    assert bootstrap.main(arguments(repo, overrides, "launch")) == 0
+    argv = arguments(repo, overrides, "launch")
+    if institutional:
+        argv += ["--institutional-browser-url", "http://127.0.0.1:9222",
+                 "--institutional-browser-ui-url", "http://127.0.0.1:5800",
+                 "--institutional-library-url", "https://library.example.edu/"]
+    assert bootstrap.main(argv) == 0
     result = json.loads(capsys.readouterr().out)
     commands = result["commands"]
     assert commands["working_directory"] == str(repo)
@@ -349,6 +355,9 @@ def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(che
     assert start.request_id == "topic-202609221010-create-1"
     assert checks.literature_adapter == start.literature_adapter == serve.literature_adapter == "offline"
     assert serve.exit_when_terminal and serve.agent_adapter == "fake"
+    assert serve.institutional_browser_url == ("http://127.0.0.1:9222" if institutional else None)
+    assert serve.institutional_browser_ui_url == ("http://127.0.0.1:5800" if institutional else None)
+    assert serve.institutional_library_url == ("https://library.example.edu/" if institutional else None)
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
@@ -369,6 +378,14 @@ def test_only_confirmed_start_exposes_complete_monitor_commands(checkout, capsys
         assert command[command.index("--state-root") + 1] == str(repo / "state" / result["run_id"])
         assert " && env " in result["monitor"]["terminal_command"]
     assert not (repo / "state").exists(), "printing monitor commands must not create an observer or state"
+
+
+def test_server_browser_ui_requires_a_cdp_endpoint(checkout, capsys):
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides, "launch"),
+        "--institutional-browser-ui-url", "http://127.0.0.1:5800"]) == 2
+    assert "browser endpoint" in capsys.readouterr().err
+    assert not (repo / "state").exists()
 
 
 def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(checkout, tmp_path, capsys, monkeypatch):

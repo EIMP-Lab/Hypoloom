@@ -85,6 +85,12 @@ Grounding 可以请求人工澄清,而不必保持一个模型调用打开。公
 进行中备份不可用。待处理读取是一次性的,使用现有任务/Attempt 标识。恢复
 复用现有的被放弃 Attempt/重试路径,不引入另一种持久化格式。
 
+可选的[机构全文访问](guides/institutional-access.zh-CN.md)通过一个独立Playwright
+worker连接操作者已登录的浏览器。队列和缓存有界、可丢弃，复用run/role/component
+身份。TUI按出版社合并待办，不接收登录凭据，也不暂停其他研究。只有现有文档工具
+能把经校验的原文纳入`/papers`和普通发布；后台就绪不等于已经阅读，也不改写已完成
+结论。停止运行丢弃待处理和迟到结果，详见[设计](design/institutional-literature-access.md)。
+
 Observer、Leader、Debate/Judge、裁决与管理动作使用显式角色和已接受事件。
 上下文投影选择有界的当前证据;交互节奏遵循已耗时间与新结果门槛。技能与
 记忆变更通过已接受的修订进入后续轮次,而不是不受控地修改另一位专家的

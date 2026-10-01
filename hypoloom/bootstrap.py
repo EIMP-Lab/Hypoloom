@@ -296,6 +296,14 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":
         raise ValueError("web fallback requires the reviewed OpenAlex adapter")
+    if args.institutional_library_url and not args.institutional_browser_url:
+        raise ValueError("institutional library URL requires a browser endpoint")
+    if args.institutional_browser_ui_url and not args.institutional_browser_url:
+        raise ValueError("institutional browser UI requires a browser endpoint")
+    if args.institutional_browser_url:
+        from .institutional_browser import PlaywrightInstitutionalBrowser
+        review["institutional_access"] = PlaywrightInstitutionalBrowser(args.institutional_browser_url,
+            library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url).configuration
     real = args.auth_transport != "none"
     if real:
         if not args.claude_model or not args.claude_executable or args.literature_adapter != "openalex":
@@ -375,7 +383,7 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             serve += [flag, "null" if budget[key] is None else str(budget[key])]
     for name in ("claude_settings", "gpu_runtime_prefix", "gpu_pool_socket", "gpu_pool_namespace",
                  "gpu_pool_server_uid", "web_search_fallback", "notification_output_root", "notification_proxy_env",
-                 "notification_credentials_file"):
+                 "notification_credentials_file", "institutional_browser_url", "institutional_library_url", "institutional_browser_ui_url"):
         if getattr(args, name) is not None:
             serve += ["--" + name.replace("_", "-"), str(getattr(args, name))]
     for uuid in args.gpu_device_uuid or ():
@@ -540,6 +548,9 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--gpu-device-uuid", action="append")
             command.add_argument("--gpu-pool-server-uid", type=int)
             command.add_argument("--web-search-fallback", choices=("openalex",))
+            command.add_argument("--institutional-browser-url")
+            command.add_argument("--institutional-browser-ui-url")
+            command.add_argument("--institutional-library-url")
             scheduling = command.add_mutually_exclusive_group()
             scheduling.add_argument("--managed-pool", action="store_true", help="plan management of this project's canonical shared pool")
             scheduling.add_argument("--nonpooled", action="store_true", help="explicitly select GPU scheduling without a pool")

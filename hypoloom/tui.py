@@ -629,6 +629,12 @@ class SummaryPanel(CockpitPanel):
             f"Goal: {_goal_objective(snapshot)}",
             f"Verdict {_assessment_badge(str(status.get('goal_verdict') or 'PENDING'))} · "
             f"{sum(item.assessment is not None for item in snapshot.hypotheses)}/{len(snapshot.hypotheses)} assessed"]
+        failures = [item for item in snapshot.attempts if item.operational_status == "recovery_exhausted"]
+        if failures:
+            codes = list(dict.fromkeys(item.operational_reason or "agent_final_failure" for item in failures))
+            label = "BUDGET LIMIT" if "error_max_budget_usd" in codes else "AGENT FINAL FAILURE"
+            lines.insert(2, f"[b #ff6b7a]⚠ {label} · {len(failures)}次调用终止 · "
+                + escape(", ".join(codes[-3:])) + " · d 查看调用[/]")
         activity, budget_lines, reliability = [], [], []
         if overview:
             totals = overview.get("totals", {})
@@ -686,6 +692,10 @@ class SummaryPanel(CockpitPanel):
                 if sink == "log": continue
                 failure = item.get("failure") or {}
                 health.append(escape(f"{sink}: {item.get('state', 'unverified')} · pending {item.get('pending', '?')} · last success {_service_time(item.get('last_success_at'))} · {failure.get('code', '')} · next retry {_service_time(item.get('next_retry_at'))} · n Telegram retry"))
+        literature_access = status.get("literature_access") or {}
+        if literature_access.get("pending") or literature_access.get("available"):
+            health.append(f"[yellow]机构全文：{literature_access.get('pending', 0)}篇待处理 · "
+                f"{literature_access.get('available', 0)}篇已就绪 · i 查看（其他研究继续）[/]")
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1173,6 +1183,7 @@ class HypoloomVNextMonitor(App):
         Binding("g", "resource_recheck", "GPU recheck"),
         Binding("l", "literature_retry", "Literature retry", show=False),
         Binding("n", "notification_retry", "Telegram retry", show=False),
+        Binding("i", "literature_access", "机构全文访问"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
@@ -1422,8 +1433,9 @@ class HypoloomVNextMonitor(App):
         from .human_decision_tui import HumanDecisionScreen
         from .end_run_tui import EndRunScreen
         from .provider_resume_tui import ProviderResumeScreen
+        from .literature_access_tui import LiteratureAccessScreen
         for screen in self.screen_stack:
-            if isinstance(screen, (HumanDecisionScreen, EndRunScreen, ProviderResumeScreen)) and screen.is_mounted:
+            if isinstance(screen, (HumanDecisionScreen, EndRunScreen, ProviderResumeScreen, LiteratureAccessScreen)) and screen.is_mounted:
                 screen.update_status(snapshot.status)
         selector = self.query_one("#expert-filter", Select)
         roles = tuple(item["role"] for item in snapshot.overview.get("experts", []))
@@ -1707,6 +1719,14 @@ class HypoloomVNextMonitor(App):
         if not isinstance(self.screen, ResourceRecheckScreen):
             self.push_screen(ResourceRecheckScreen(self._last_snapshot.status, self._resource_recheck_draft))
 
+    def action_literature_access(self) -> None:
+        from .literature_access_tui import LiteratureAccessScreen
+        if self._last_snapshot is None:
+            self.notify("等待当前Host状态后再按i。")
+            return
+        if not isinstance(self.screen, LiteratureAccessScreen):
+            self.push_screen(LiteratureAccessScreen(self._last_snapshot.status))
+
     def action_provider_resume(self) -> None:
         from .provider_resume_tui import ProviderResumeScreen
         if self._last_snapshot is None:
@@ -1752,6 +1772,16 @@ class HypoloomVNextMonitor(App):
             return
         url = server.human_answer_url()
         content = ("[b #ffb86b]OPERATOR ANSWER LINK[/]\nThis link permits reviewed Grounding answers for this run. Keep it private.\n\n"
+            + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
+        self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
+
+    def action_literature_browser(self) -> None:
+        server = self._web_server
+        if server is None:
+            self.notify("Web is unavailable. Use institutional access in this TUI.")
+            return
+        url = server.literature_access_url()
+        content = ("[b #ffb86b]OPERATOR LITERATURE LINK[/]\nThis link permits institutional full-text actions (open login, retry, import PDF). Keep it private.\n\n"
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 

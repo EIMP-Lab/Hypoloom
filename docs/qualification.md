@@ -1,11 +1,26 @@
 # Qualification: G0–G5
 
+English · [简体中文](qualification.zh-CN.md)
+
 ## Current integration — runtime and literature (2026-10-01)
 
 The user authorizes topic-independent framework fixes, corrected integration of
 PR #3/#2, and phased commits/merges pushed to dev.
 [Design](design/runtime-and-literature-integration.md). Existing research state,
 Profiles, frozen runtimes and the production pool remain read-only.
+
+Read-only stopped-run analysis: research ran for about 12 h 4 min, followed by
+7 min 37 s of report closure. All 83 Agent Attempts (77 successful, four failed,
+one timed out, one cancelled) and nine Process Attempts (six successful, one
+failed, two cancelled) are closed. Recorded process groups and the Host exited;
+the control socket/lock closed, and all nine pool requests were released.
+Six hypotheses yielded nine LOCAL outcomes: five CLEAN_REFUTATION, one SUCCESS,
+three EXECUTION_FAILURE, including two operator cancellations. No GOAL verdict
+was accepted. Reported tokens total 162,692,126 including cache; four closed
+calls have incomplete usage. These numbers are not a provider bill. Independent
+read-only Oracle passes; its structural checks do not validate every narrative
+claim in the old final report. Original evidence remains under
+`.local/analysis/stopped-run-and-prs-20261001/`.
 
 Batch 1 uses bwrap69 and the existing native validator/accounting. Same-session
 identical task-notification completions use the last consistent cumulative ledger
@@ -27,8 +42,6 @@ legacy-shape limits; those inputs were corrected without weakening production
 checks. This batch is focused qualification, not full G1 or paid-model quality.
 Evidence: `.local/qualification/runtime-literature-20261001/`.
 
-
-English · [简体中文](qualification.zh-CN.md)
 
 
 Batch 2 merges PR #3 with corrected recovery/accounting. Real pre-model Grounding
@@ -56,6 +69,82 @@ scripted report fixture initially omitted the newly required recovered-failure
 citations and correctly failed; its generated narrative was updated to read the
 new source fields. Persistent-gap tests use the fixture's configured six-attempt
 limit, not an assumed three. No production run mutation or paid-model call.
+
+Batch 3 integrates PR #2's optional institutional browser, grouped operator
+queue, reusable browser sessions and PDF import. Exact-packet retrieval traces
+now prevent rejected sources from reentering the browser/cache route. PDF identity
+comes from the first physical page; a conflicting DOI or unconfirmed identity is
+rejected even when the landing page names the expected article. The title fallback
+requires a sufficiently specific title on that page, not a later reference list.
+
+401 distinct focused checks pass before the full suite: 108 institutional/access
+UI cases and 293 literature/Host/observer/notification/CLI/documentation cases.
+The browser selection uses actual local Chrome and Poppler, including a wrong
+PDF behind a correct article landing page. Synthetic login/session reuse,
+operator authorization, cancellation, source rejection and exact-byte archive
+publication are covered. This does not establish real institutional entitlement.
+
+Initial full G1: 6,579 passed, 16 failed, 55 skipped in 1,022 seconds. Six native
+failures were caused by editing a runtime hint during qualification: the existing
+runtime pin correctly rejected changed source. Further repairs preserve legacy
+packet-only instructions and update stale ACI/token/UI/service fixtures. A native
+Skill assertion now checks delivered body instructions instead of stripped
+frontmatter. Request/fact-context construction and transcript usage observation
+move to existing modules; workflow size limits and validators are unchanged.
+The final repair selection passes all **389** cases against unchanged runtime
+source, including every original failure. Final G1 test-identity coverage is
+**6,595 passed / 55 skipped**; this combines the full invocation with its focused
+repairs, not a claim that the initial invocation passed. The skips include 29
+institutional browser cases already exercised separately with local Chrome, and
+26 opt-in lanes. Four final documentation checks, compilation, undefined-name
+checks and whitespace validation pass.
+
+Independent closure inspection covers 13 completed native/CPU roots: **410 Agent
+Attempts and 34 CPU Process Attempts**, all closed. There are 34 experiment-create
+and 34 outcome-accept effects, clean Oracles, no open Attempts, live recorded
+process groups or control sockets. Injected failure/restart cases retain their
+failed/lost Attempts rather than hiding recovery. The stopped research run's
+absolute-path read-only Oracle also passes. Evidence: `g1.xml`, `g1-repairs.xml`,
+`g1-identity-coverage.json`, `g1-closure.json`, `repair-closure.json` and
+`retained-oracle.json` in the integration evidence directory. No G4/G5 promotion
+or paid-model quality claim follows from these scripted native checks.
+
+Real subscription validation is requested but pending the user's stable library
+entry URL, entitled DOI and browser connection. Docker image startup was blocked
+by the server daemon's unreachable configured proxy; direct registry
+TLS also failed. No institutional browser container started and no shared proxy
+configuration was changed. A dedicated laptop Chrome with loopback SSH forwarding
+or restored server image access can complete this check. The private two-session
+probe is prepared, but no real login, publisher entitlement, cross-session access
+or paid-model quality result is claimed. Existing research runs remain unchanged.
+
+## Institutional-access PR regressions (2026-10-01)
+
+The initial PR selections recorded 567 passes and four failures. A focused
+rerun reproduced the same four failures. Three native notification cases
+terminated the Host before the existing 30-second cooldown expired, then
+incorrectly expected an immediate HTTP retry. They now wait for the actual
+retry and terminal delivery before shutdown, retaining the exact event replay,
+credential-isolation, cursor and listener-cleanup assertions. Production
+backoff and shutdown behavior are unchanged.
+
+The literature test treated a roughly 0.4-second total Host tick on WSL's
+mounted checkout as proof that background retrieval blocked the writer.
+It now keeps retrieval blocked until the real socket tool reply and accepted
+cancellation complete, asserts independent worker ownership, then releases
+the worker and checks terminal Attempts, Oracle and worker cleanup. A watchdog
+bounds failures; this tests concurrency, not a filesystem-dependent 250ms SLA.
+
+Final validation: **84 passed** across `test_observer_services.py`,
+`test_literature_workflow_host.py` and `test_service_notifications.py`, including
+all four original failures. Documentation checks: **4 passed**; focused Ruff
+undefined-name checks and `git diff --check` pass. The complete offline suite,
+paid-model lanes and real subscriptions were not rerun for this test-only fix.
+
+Evidence: `.local/qualification/institutional-pr-20261001/reproduce.xml`,
+`repair.xml` and `repair-docs.xml`. This follow-up changes tests and documentation only. Existing
+research runs, deployed browser sessions and frozen bundles are untouched;
+no public notification, publisher request or paid model call is made.
 
 ## Current repair — literature recovery and notification health (2026-10-01)
 

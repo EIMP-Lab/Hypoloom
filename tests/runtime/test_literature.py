@@ -1304,7 +1304,7 @@ def test_pdf_trace_requires_bounded_pages_abstract_conclusion_and_claims() -> No
     with pytest.raises(LiteratureValidationError, match="abstract_summary"):
         PdfExtraction(
             page_count=2,
-            abstract_summary="",
+            abstract_summary=None,
             conclusions="conclusion",
             claim_support=(
                 ClaimPageRef(
@@ -1641,6 +1641,105 @@ def test_public_candidate_dns_failure_has_safe_locating_diagnostic() -> None:
 
     assert rejected.value.code is LiteratureFailureCode.FETCH_FAILED
     assert secret not in str(rejected.value)
+
+
+def test_cdn_host_with_many_public_addresses_is_retrieved() -> None:
+    # CloudFront/Akamai front ends routinely answer with more than eight public
+    # A/AAAA records (ieeexplore.ieee.org resolves to twelve); the bounded
+    # approval list must accept them instead of failing the whole retrieval.
+    wide_host = "wide-cdn.example.org"
+    wide_addresses = tuple(f"8.8.8.{index}" for index in range(1, 7)) + tuple(
+        f"1.1.1.{index}" for index in range(1, 7)
+    )
+    pdf_uri = f"https://{wide_host}/W100.pdf"
+    work = _openalex_work(100, 1998, pdf_url=pdf_uri, is_oa=True)
+    work["primary_location"] = {
+        "landing_page_url": f"https://{wide_host}/W100",
+        "pdf_url": pdf_uri,
+        "is_oa": True,
+        "source": {"type": "journal"},
+    }
+    transport = RecordingOpenAlexTransport(
+        works_by_request=(
+            (work, _openalex_work(101, 1999)),
+            (_openalex_work(102, 2010),),
+            (_openalex_work(103, 2024),),
+        )
+    )
+
+    def resolve(hostname: str) -> Sequence[str]:
+        return wide_addresses if hostname == wide_host else (PUBLIC_A,)
+
+    def fetch_pdf(
+        uri: str,
+        *,
+        approved_addresses: tuple[str, ...],
+        max_bytes: int,
+    ) -> FetchResponse:
+        assert uri == pdf_uri
+        assert approved_addresses == tuple(sorted(set(wide_addresses)))
+        assert max_bytes > len(PDF_FOUNDATIONAL)
+        return FetchResponse(
+            requested_uri=uri,
+            status_code=200,
+            peer_address="8.8.8.1",
+            media_type="application/pdf",
+            content_length=len(PDF_FOUNDATIONAL),
+            location=None,
+            body=PDF_FOUNDATIONAL,
+        )
+
+    class Extractor:
+        def extract_pdf(self, content: bytes, *, max_pages: int) -> PdfExtraction:
+            return _extraction("wide-cdn")
+
+    retrieval = FixedLiteratureIO(
+        OpenAlexLiteratureFetcher(
+            api_key="must-not-be-diagnostic",
+            transport=transport,
+            resolver=resolve,
+            pdf_fetcher=fetch_pdf,
+            pdf_extractor=Extractor(),  # type: ignore[arg-type]
+        )
+    ).retrieve(_malformed_work_query())
+    packet = LiteraturePacket.from_bytes(retrieval.packet.to_bytes())
+    assert packet.papers[0].retrieval_disposition is RetrievalDisposition.RETRIEVED
+    assert packet.papers[0].pdf_trace is not None
+
+
+def test_host_address_bound_still_rejects_oversized_dns_answers() -> None:
+    crowded_host = "crowded.example.org"
+    # Globally routable literals; one more address than the pinned-list bound.
+    crowded_addresses = tuple(f"93.184.0.{index + 1}" for index in range(33))
+    work = _openalex_work(100, 1998, pdf_url=f"https://{crowded_host}/W100.pdf", is_oa=True)
+    work["primary_location"] = {
+        "landing_page_url": f"https://{crowded_host}/W100",
+        "pdf_url": None,
+        "is_oa": False,
+        "source": {"type": "journal"},
+    }
+    transport = RecordingOpenAlexTransport(
+        works_by_request=(
+            (work, _openalex_work(101, 1999)),
+            (_openalex_work(102, 2010),),
+            (_openalex_work(103, 2024),),
+        )
+    )
+
+    def resolve(hostname: str) -> Sequence[str]:
+        return crowded_addresses if hostname == crowded_host else (PUBLIC_A,)
+
+    with pytest.raises(
+        LiteratureFetchError,
+        match=r"landing_uri DNS result for crowded\.example\.org must contain 1\.\.32 public addresses",
+    ):
+        FixedLiteratureIO(
+            OpenAlexLiteratureFetcher(
+                api_key="must-not-be-diagnostic",
+                transport=transport,
+                resolver=resolve,
+            )
+        ).retrieve(_malformed_work_query())
 
 
 def test_metadata_resolver_safety_rejection_is_not_isolated() -> None:
@@ -2888,12 +2987,12 @@ def test_poppler_does_not_treat_title_case_prose_as_roman_section_prefix() -> No
         output = b"Pages: 1\n" if calls == 1 else text
         return subprocess.CompletedProcess(command, 0, output, b"")
 
-    with pytest.raises(LiteratureValidationError) as rejected:
-        PopplerPdfExtractor(runner=runner).extract_pdf(
-            PDF_FOUNDATIONAL,
-            max_pages=1,
-        )
-    assert rejected.value.code is LiteratureFailureCode.POPPLER_INVALID
+    extracted = PopplerPdfExtractor(runner=runner).extract_pdf(PDF_FOUNDATIONAL, max_pages=1)
+    assert extracted.conclusions == ""
+    assert extracted.abstract_summary
+    assert len(extracted.claim_support) == 1
+    assert extracted.claim_support[0].section == "Abstract"
+    assert "Civil conclusions" in extracted.pages[0]
 
 
 def test_poppler_timeout_page_and_output_failures_are_stably_classified() -> None:

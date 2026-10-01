@@ -6,6 +6,8 @@
   evidence `.local/qualification/runtime-literature-20261001/`.
 
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
+- [Institutional-access PR regressions](../qualification.md#institutional-access-pr-regressions-2026-10-01):
+  notification cooldown-aware native delivery and blocked-I/O tool/cancel checks.
 - [Literature recovery and notification health](../qualification.md#current-repair--literature-recovery-and-notification-health-2026-10-01):
   separate pre-model service waiting, operator retry and actual recovery; safe
   managed delivery health and cursor-preserving summaries. [Notification guide](../guides/notifications.md)
