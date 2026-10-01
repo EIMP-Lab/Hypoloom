@@ -71,7 +71,10 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
     from hypoloom.host_tools_server import AgentToolServer, WebToolOperation, _call_host
 
     entered, release = threading.Event(), threading.Event()
-    timer = threading.Timer(0.6, release.set)
+    # Keep I/O blocked until both a tool reply and cancellation complete. The
+    # watchdog only bounds a regressed synchronous implementation; elapsed tick
+    # time also includes Git/filesystem work and is not evidence of I/O blocking.
+    timer = threading.Timer(10, release.set)
     owner = threading.get_ident()
     read_threads = []
 
@@ -81,7 +84,7 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
                 read_threads.append(threading.get_ident())
                 entered.set()
                 timer.start()
-                assert release.wait(2)
+                assert release.wait(15)
 
         def retrieve(self, query):
             self.hold("retrieve")
@@ -106,11 +109,10 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
             _payload(tmp_path, mount_root, run_id))).status == "accepted"
         deadline = time.monotonic() + 5
         while not entered.is_set() and time.monotonic() < deadline:
-            started = time.monotonic()
             host.tick()
-            assert time.monotonic() - started < 0.25, "literature I/O blocked the Host tick"
             time.sleep(0.002)
         assert entered.is_set() and read_threads[0] != owner
+        assert not release.is_set(), "Host tick waited for literature I/O"
         with ThreadPoolExecutor(max_workers=1) as client:
             future = client.submit(_call_host, str(endpoint.socket_path), "web_fetch",
                 {"url": "https://example.org/source"}, deadline_at=time.monotonic() + 0.3)
@@ -118,11 +120,11 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
                 host.tick()
                 time.sleep(0.002)
             assert future.result()["text"] == "immediate response"
-        started = time.monotonic()
+        assert not release.is_set(), "tool reply waited for literature I/O"
         revision = host.store.latest_transition(run_id)["revision"]
         assert host.handle(ControlRequest(1, "cancel", revision, "CANCEL",
             {"run_id": run_id, "cause": "operator"})).status == "accepted"
-        assert time.monotonic() - started < 0.2
+        assert not release.is_set(), "cancellation waited for literature I/O"
         host.tick()
         release.set()
         _drive(host, run_id)

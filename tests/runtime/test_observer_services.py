@@ -388,6 +388,10 @@ def test_actual_cli_lifetime_loopback_retry_terminal_dashboard_and_final_deliver
                 assert any(event["type"] == "run_finished" for event in json.loads(response.read())["events"])
             finally:
                 connection.close()
+            # Remote failures now back off for at least 30 seconds. Keep the
+            # owner alive until the failed start event and terminal event have
+            # actually been acknowledged; shutdown must not bypass cooldown.
+            wait_for(lambda: len(received) >= 3, timeout=45)
             # No --exit-when-terminal: the dashboard stays usable at the terminal
             # state. Its owner now exits normally and performs the final poll.
             process.terminate()

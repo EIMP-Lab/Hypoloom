@@ -1,5 +1,13 @@
 # Current Hypoloom development state
 
+- October 1 institutional-access PR follow-up: adapt the native notification
+  lifetime test to the existing 30-second delivery cooldown; verify literature
+  concurrency by completing a real tool reply and cancellation while I/O stays
+  blocked, rather than treating total tick time as I/O latency. Production
+  behavior and retained runs are unchanged. All 84 related regressions and four
+  documentation checks pass, including the original four failures. See the
+  [validation record](../qualification.md#institutional-access-pr-regressions-2026-10-01).
+
 - October 1 literature/notification recovery: user authorizes implementation and
   subsequently commit/push to dev, reusing completed focused validation.
   Existing Attempt/control records derive OpenAlex waiting, bounded recovery and

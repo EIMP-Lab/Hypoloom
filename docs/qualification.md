@@ -2,6 +2,34 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Institutional-access PR regressions (2026-10-01)
+
+The initial PR selections recorded 567 passes and four failures. A focused
+rerun reproduced the same four failures. Three native notification cases
+terminated the Host before the existing 30-second cooldown expired, then
+incorrectly expected an immediate HTTP retry. They now wait for the actual
+retry and terminal delivery before shutdown, retaining the exact event replay,
+credential-isolation, cursor and listener-cleanup assertions. Production
+backoff and shutdown behavior are unchanged.
+
+The literature test treated a roughly 0.4-second total Host tick on WSL's
+mounted checkout as proof that background retrieval blocked the writer.
+It now keeps retrieval blocked until the real socket tool reply and accepted
+cancellation complete, asserts independent worker ownership, then releases
+the worker and checks terminal Attempts, Oracle and worker cleanup. A watchdog
+bounds failures; this tests concurrency, not a filesystem-dependent 250ms SLA.
+
+Final validation: **84 passed** across `test_observer_services.py`,
+`test_literature_workflow_host.py` and `test_service_notifications.py`, including
+all four original failures. Documentation checks: **4 passed**; focused Ruff
+undefined-name checks and `git diff --check` pass. The complete offline suite,
+paid-model lanes and real subscriptions were not rerun for this test-only fix.
+
+Evidence: `.local/qualification/institutional-pr-20261001/reproduce.xml`,
+`repair.xml` and `repair-docs.xml`. This follow-up changes tests and documentation only. Existing
+research runs, deployed browser sessions and frozen bundles are untouched;
+no public notification, publisher request or paid model call is made.
+
 ## Current repair — literature recovery and notification health (2026-10-01)
 
 The user authorizes framework implementation after an upstream OpenAlex outage
