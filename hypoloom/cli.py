@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_literature_arguments(serve)
     from .institutional_options import add_arguments as add_institutional_arguments
-    add_institutional_arguments(serve)
+    add_institutional_arguments(serve, connection=True)
     serve.add_argument("--web-search-fallback", choices=("openalex",),
         help="explicit academic-metadata fallback when DuckDuckGo fails; requires OpenAlex literature configuration")
     serve.add_argument("--claude-bwrap")

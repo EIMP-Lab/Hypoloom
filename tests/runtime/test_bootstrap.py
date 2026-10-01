@@ -416,15 +416,14 @@ def test_connection_preview_roundtrips_without_starting_browser(checkout, capsys
     assert bootstrap.main(argv) == 0
     result = json.loads(capsys.readouterr().out)
     review = result["effective_configuration"]
-    command = result["commands"]["institutional_connect"]
-    assert command == review["institutional_connection_argv"]
+    assert "institutional_connect" not in result["commands"]
+    command = review["institutional_connection_argv"]
     parsed = cli_parser().parse_args(command[4:])
-    assert parsed.institutional_browser_mode == mode and parsed.connection_action == "start"
-    assert parsed.institutional_browser_url == "http://127.0.0.1:9222"
+    assert parsed.institutional_action == "connections"
     host = result["commands"]["host_start"]
     serve = cli_parser().parse_args(host[host.index("--") + 4:])
-    assert serve.institutional_browser_url == parsed.institutional_browser_url
-    assert not hasattr(serve, "institutional_browser_mode"), "Host must not manage browser/tunnel lifecycle"
+    assert serve.institutional_browser_mode == mode
+    assert serve.institutional_port == 0
     selected = bootstrap.build_parser().parse_args(argv)
     forwarded = bootstrap_inspect._launch_argv(selected, repo)
     assert bootstrap.build_parser().parse_args(forwarded[4:]).institutional_browser_mode == mode
@@ -460,13 +459,13 @@ def test_relative_browser_path_survives_launch_working_directory_change(checkout
     review = result["effective_configuration"]
     assert review["institutional_connection"]["executable"] == str(executable)
     assert result["commands"]["working_directory"] != str(Path.cwd())
-    for name in ("institutional_connection_argv", "institutional_preparation_argv"):
+    for name in ("institutional_preparation_argv",):
         command = review[name]
         assert command[command.index("--institutional-browser-executable") + 1] == str(executable)
     assert not (repo / "state").exists()
 
 
-def test_real_connect_failure_never_creates_managed_host_or_run(checkout, capsys):
+def test_real_missing_external_browser_does_not_prevent_host_owned_launch(checkout, capsys):
     import socket
     repo, overrides = checkout
     assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
@@ -478,9 +477,11 @@ def test_real_connect_failure_never_creates_managed_host_or_run(checkout, capsys
         code = bootstrap.main([*arguments(repo, [], "launch", template=None), "--start",
             "--institutional-browser-mode", "existing", "--institutional-browser-url", f"http://127.0.0.1:{port}"])
     result = json.loads(capsys.readouterr().out)
-    assert code == 2 and result["launch"]["status"] == "institutional_connection_failed", result
-    assert [p["phase"] for p in result["launch"]["phases"]] == ["profile_check", "institutional_connect"]
-    assert not (repo / "state").exists()
+    try:
+        assert code == 0 and result["launch"]["status"] == "started", result
+        assert "institutional_connect" not in [p["phase"] for p in result["launch"]["phases"]]
+    finally:
+        subprocess.run(result["commands"]["host_stop"], cwd=repo, capture_output=True, timeout=30)
 
 
 def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(checkout, tmp_path, capsys, monkeypatch):

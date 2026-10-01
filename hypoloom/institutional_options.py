@@ -33,6 +33,10 @@ def build(args):
     from .institutional_connection import configure
     configure(args)
     settings = options(args)
+    if getattr(args, "institutional_browser_mode", None):
+        from .institutional_connection import runtime_plan
+        from .institutional_runtime import RunAccess
+        return RunAccess(runtime_plan(args), **settings)
     if not args.institutional_browser_url:
         if args.institutional_browser_ui_url:
             raise ValueError("institutional browser UI requires a browser endpoint")
@@ -46,7 +50,7 @@ def build(args):
 
 def launch_arguments(args, *, include_connection=False):
     result = []
-    if args.institutional_browser_url:
+    if args.institutional_browser_url or getattr(args, "institutional_browser_mode", None):
         for name in ("browser_url", "browser_ui_url", "library_url", "acquisition_seconds", "manual_seconds"):
             value = getattr(args, "institutional_" + name)
             if value is not None: result += ["--institutional-" + name.replace("_", "-"), str(value)]

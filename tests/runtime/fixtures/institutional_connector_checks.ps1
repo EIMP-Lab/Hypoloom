@@ -25,4 +25,34 @@ $child = Start-Captured (Get-Process -Id $PID).Path @('-NoProfile', '-Command', 
 $childId = $child.Process.Id
 Stop-Child $child
 Assert (-not (Get-Process -Id $childId -ErrorAction SilentlyContinue)) 'SSH-shaped child leaked'
-Write-Output 'connector parser, argument handling, browser identity and child cleanup passed'
+if (Test-Path '/bin/bash') {
+    $literal = 'space $HOME `literal $(printf altered) '' quote'
+    $quoted = Start-Captured '/bin/bash' @('-c', ('exec /usr/bin/printf %s ' + (Quote-Remote $literal)))
+    try {
+        Assert ($quoted.Process.WaitForExit(5000)) 'remote quote check hung'
+        Assert ($quoted.Out.GetAwaiter().GetResult() -ceq $literal) 'remote argument was executed or altered'
+    } finally { Stop-Child $quoted }
+}
+# Exercise discovery changes through the real loop; Windows APIs are substituted.
+$Repository = '/repo'; $PythonExecutable = '/python'; $RunsRoot = '/state'; $Server = 'fixture'
+$script:ssh = 'ssh-fixture'; $script:Step = 0; $script:Browsers = 0; $script:Forwards = @(); $script:Stopped = @()
+$a = [pscustomobject]@{socket_path='/tmp/run-a/browser.sock';state_root='/state/a';run_id='a'}
+$b = [pscustomobject]@{socket_path='/tmp/run-b/browser.sock';state_root='/state/b';run_id='b'}
+function Get-RunConnections {
+    if ($script:Step -eq 0) { @($a, $b) } elseif ($script:Step -eq 1) { @($b) } else { @() }
+}
+function Ensure-Browser { $script:Browsers++; @{webSocketDebuggerUrl='ws://127.0.0.1:9222/devtools/browser/fixture'} }
+function Start-Captured([string]$Executable, [string[]]$Values) {
+    $forward = $Values -contains '-R'
+    $label = if ($forward) { $Values[$Values.IndexOf('-R') + 1] } else { 'readiness' }
+    if ($forward) { $script:Forwards += $label }
+    $process = [pscustomobject]@{HasExited=$false;ExitCode=0}
+    $process | Add-Member ScriptMethod WaitForExit { param($Timeout) $true }
+    @{Process=$process;Label=$label}
+}
+function Stop-Child($Child) { if ($Child.Label -ne 'readiness') { $script:Stopped += $Child.Label }; $Child.Process.HasExited=$true }
+function Start-Sleep { param($Seconds) $script:Step++; if ($script:Step -eq 4) { throw 'fixture_complete' } }
+try { Watch-Runs } catch { Assert ($_.Exception.Message -eq 'fixture_complete') 'unexpected connector error' }
+Assert ($script:Browsers -eq 2 -and $script:Forwards.Count -eq 2) 'ended runs were reconnected or idle discovery opened a browser'
+Assert ($script:Stopped.Count -eq 2 -and $script:Stopped[0] -like '/tmp/run-a/*' -and $script:Stopped[1] -like '/tmp/run-b/*') 'one run retirement disturbed another forward'
+Write-Output 'connector parser, literal arguments, browser identity, child cleanup and per-run retirement passed'

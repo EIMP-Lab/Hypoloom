@@ -356,6 +356,13 @@ class WorkflowHost:
                 run_id=request.payload.get("run_id"), command=request.command)
         try:
             if request.command == "STATUS": return self._status_response(request)
+            if request.command == "INSTITUTIONAL_CONNECTIONS":
+                if request.payload: raise ValueError("INSTITUTIONAL_CONNECTIONS takes no payload")
+                from .institutional_runtime import RunAccess
+                entries = self.institutional_access.connections() if isinstance(self.institutional_access, RunAccess) else []
+                entries = [entry for entry in entries if (head := self.store.latest_transition(entry["run_id"]))
+                    and head["state"] not in _TERMINAL_RUNS | {RunState.STOPPING.value}]
+                return ControlResponse.accepted(request.request_id, None, {"connections": entries})
             if request.command == "LITERATURE_ACCESS": return self._literature_access_control(request)
             if request.command == "BACKUP": return self._backup(request)
             if request.command == "CREATE_RUN": return self._create_run(request)
@@ -825,7 +832,13 @@ class WorkflowHost:
             with self.store.cache_reads(): return self._tick()
         except Exception as exc:
             self._record_exception(exc, **self._diagnostic_context); raise
-        finally: self._diagnostic_context = {}; self._tick_deadline = None
+        finally:
+            from .institutional_runtime import RunAccess
+            if isinstance(self.institutional_access, RunAccess):
+                live = {row["run_id"] for row in self.store.inspect("SELECT t.run_id,t.state FROM workflow_transitions t WHERE t.workflow_kind='RUN' AND NOT EXISTS(SELECT 1 FROM workflow_transitions n WHERE n.workflow_id=t.workflow_id AND n.revision>t.revision)")
+                    if row["state"] not in _TERMINAL_RUNS | {RunState.STOPPING.value}}
+                self.institutional_access.sync(live, create=False)
+            self._diagnostic_context = {}; self._tick_deadline = None
     def _tick(self) -> bool:
         self._collect_role_views()
         self._agent_dispatches = 0

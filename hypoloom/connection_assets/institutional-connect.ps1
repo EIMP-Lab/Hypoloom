@@ -8,8 +8,10 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')][string]$Server,
     [string]$BrowserExecutable,
     [string]$BrowserProfile,
-    [ValidateRange(1024, 65535)][int]$LocalPort = 9222,
-    [ValidateRange(1024, 65535)][int]$RemotePort = 9222
+    [ValidateRange(0, 65535)][int]$LocalPort = 0,
+    [Parameter(Mandatory)][string]$Repository,
+    [Parameter(Mandatory)][string]$PythonExecutable,
+    [Parameter(Mandatory)][string]$RunsRoot
 )
 $ErrorActionPreference = 'Stop'
 
@@ -41,19 +43,6 @@ function Get-LocalCDP {
     catch { $null }
 }
 
-function Get-RemoteCDP {
-    # The only remote command is fixed curl text plus a validated integer port.
-    $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
-        '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
-        "curl --noproxy '*' --silent --fail --max-time 3 http://127.0.0.1:$RemotePort/json/version")
-    try {
-        if ($child.Process.WaitForExit(10000) -and $child.Process.ExitCode -eq 0) {
-            try { return ($child.Out.GetAwaiter().GetResult() | ConvertFrom-Json) } catch { return $null }
-        }
-        return $null
-    } finally { Stop-Child $child }
-}
-
 function Same-Browser($Local, $Remote) {
     if (-not $Local -or -not $Remote -or -not $Local.webSocketDebuggerUrl -or -not $Remote.webSocketDebuggerUrl) { return $false }
     # CDP's existing browser identity verifies the forward; never print its URL.
@@ -63,7 +52,8 @@ function Same-Browser($Local, $Remote) {
 function Test-ProfileCommand([string]$Command) {
     $profile = [regex]::Escape($BrowserProfile)
     $data = '(?:^|\s)(?:"--user-data-dir=' + $profile + '"|--user-data-dir="' + $profile + '"|--user-data-dir=' + $profile + ')(?=\s|$)'
-    $port = '(?:^|\s)"?--remote-debugging-port=' + $LocalPort + '"?(?=\s|$)'
+    $selectedPort = if ($null -ne $script:BrowserCommandPort) { $script:BrowserCommandPort } else { $LocalPort }
+    $port = '(?:^|\s)"?--remote-debugging-port=' + $selectedPort + '"?(?=\s|$)'
     $Command -match $data -and $Command -match $port
 }
 
@@ -92,6 +82,22 @@ function Assert-ProfilePrivacy {
 
 function Ensure-Browser {
     if (Test-Path -LiteralPath $BrowserProfile) { Assert-ProfilePrivacy }
+    if ($script:RequestedPort -eq 0) {
+        # Discover only this user's exact executable/profile. Chrome's own
+        # DevToolsActivePort supplies a dynamic port; no connector PID registry.
+        foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "Name='$([IO.Path]::GetFileName($BrowserExecutable))'")) {
+            if ($candidate.ExecutablePath -ne $BrowserExecutable) { continue }
+            $matched = [regex]::Match($candidate.CommandLine, '(?:^|\s)"?--remote-debugging-port=(\d+)"?(?=\s|$)')
+            if (-not $matched.Success) { continue }
+            $script:BrowserCommandPort = [int]$matched.Groups[1].Value
+            if (-not (Test-ProfileCommand $candidate.CommandLine)) { continue }
+            $owner = Invoke-CimMethod -InputObject $candidate -MethodName GetOwnerSid
+            if ($owner.Sid -ne $script:userSid) { throw 'browser_profile_owner_mismatch' }
+            $script:LocalPort = $script:BrowserCommandPort
+            if ($LocalPort -eq 0) { Read-BrowserPort }
+            break
+        }
+    }
     if (Assert-LocalOwner) {
         $observed = Get-LocalCDP
         if (-not $observed.webSocketDebuggerUrl) { throw 'existing_browser_cdp_unavailable' }
@@ -99,12 +105,14 @@ function Ensure-Browser {
     }
     $null = New-Item -ItemType Directory -Path $BrowserProfile -Force
     Assert-ProfilePrivacy
+    $script:BrowserCommandPort = $script:RequestedPort
     $values = @('--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1',
-        "--remote-debugging-port=$LocalPort", "--user-data-dir=$BrowserProfile", 'about:blank')
+        "--remote-debugging-port=$script:RequestedPort", "--user-data-dir=$BrowserProfile", 'about:blank')
     # Leave browser/profile cleanup to the operator; never delete stored sessions.
     Start-Process -FilePath $BrowserExecutable -ArgumentList (($values | ForEach-Object { Quote-Native $_ }) -join ' ')
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 1
+        if ($script:RequestedPort -eq 0) { Read-BrowserPort }
         if (Assert-LocalOwner) {
             $observed = Get-LocalCDP
             if ($observed.webSocketDebuggerUrl) { return $observed }
@@ -113,10 +121,95 @@ function Ensure-Browser {
     throw 'browser_start_failed_check_profile_and_desktop'
 }
 
+function Read-BrowserPort {
+    $path = Join-Path $BrowserProfile 'DevToolsActivePort'
+    if (Test-Path -LiteralPath $path) {
+        $first = @(Get-Content -LiteralPath $path -TotalCount 1)[0]
+        $number = 0
+        if ([int]::TryParse($first, [ref]$number) -and $number -gt 0 -and $number -le 65535) { $script:LocalPort = $number }
+    }
+}
+
+function Quote-Remote([string]$Value) {
+    if ($Value.Contains([char]0) -or $Value.Contains("`n") -or $Value.Contains("`r")) { throw 'invalid_remote_argument' }
+    $quote = [string][char]39
+    $quote + $Value.Replace($quote, $quote + [char]34 + $quote + [char]34 + $quote) + $quote
+}
+
+function Remote-Command([string[]]$Values) {
+    'cd ' + (Quote-Remote $Repository) + ' && ' + ((@($PythonExecutable, '-B', '-m', 'hypoloom', 'institutional') + $Values |
+        ForEach-Object { Quote-Remote $_ }) -join ' ')
+}
+
+function Get-RunConnections {
+    $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
+        '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
+        (Remote-Command @('connections', '--runs-root', $RunsRoot)))
+    try {
+        if (-not $child.Process.WaitForExit(15000) -or $child.Process.ExitCode -ne 0) { throw 'run_discovery_unavailable' }
+        @((($child.Out.GetAwaiter().GetResult() | ConvertFrom-Json).connections) | Where-Object { $_.mode -eq 'client' })
+    } finally { Stop-Child $child }
+}
+
+function Watch-Runs {
+    $children = @{}; $failures = @{}; $retryAt = @{}; $discoveryFailures = 0
+    try {
+        while ($true) {
+            try { $entries = @(Get-RunConnections); $discoveryFailures = 0 }
+            catch {
+                $discoveryFailures++
+                if ($discoveryFailures -ge 3) { throw 'run_discovery_unavailable' }
+                # Existing forwards retain their independent remote watch. A
+                # failed listing never authorizes creating a stale connection.
+                Start-Sleep -Seconds 5
+                continue
+            }
+            $paths = @($entries | ForEach-Object { $_.socket_path })
+            foreach ($path in @($children.Keys)) {
+                if ($path -notin $paths) { Stop-Child $children[$path]; $children.Remove($path); $failures.Remove($path); $retryAt.Remove($path) }
+            }
+            foreach ($entry in $entries) {
+                $path = [string]$entry.socket_path
+                if ($children.ContainsKey($path) -and -not $children[$path].Process.HasExited) { continue }
+                if ($children.ContainsKey($path)) {
+                    Stop-Child $children[$path]; $children.Remove($path)
+                    $failures[$path] = 1 + [int]$failures[$path]
+                    $retryAt[$path] = [DateTime]::UtcNow.AddSeconds(30)
+                }
+                if ([int]$failures[$path] -ge 3 -or ($retryAt.ContainsKey($path) -and [DateTime]::UtcNow -lt $retryAt[$path])) { continue }
+                if ($path -notmatch '^/[^\r\n:]+/browser\.sock$') { throw 'invalid_run_socket' }
+                $ready = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
+                    '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
+                    (Remote-Command @('forward-ready', '--state-root', $entry.state_root, '--run-id', $entry.run_id, '--socket-path', $path)))
+                try { $available = $ready.Process.WaitForExit(15000) -and $ready.Process.ExitCode -eq 0 }
+                finally { Stop-Child $ready }
+                if (-not $available) {
+                    $failures[$path] = 1 + [int]$failures[$path]
+                    $retryAt[$path] = [DateTime]::UtcNow.AddSeconds(30)
+                    continue
+                }
+                $local = Ensure-Browser
+                $identity = ([uri]$local.webSocketDebuggerUrl).AbsolutePath
+                $watch = Remote-Command @('watch', '--state-root', $entry.state_root, '--run-id', $entry.run_id,
+                    '--socket-path', $path, '--browser-path', $identity)
+                $children[$path] = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
+                    '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
+                    '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-R', "${path}:127.0.0.1:$LocalPort", $Server, $watch)
+                Write-Output 'run_connection_started; server verifies browser identity'
+            }
+            Start-Sleep -Seconds 5
+        }
+    } finally { foreach ($child in $children.Values) { Stop-Child $child } }
+}
+
 function Connector-Main {
     if (-not $IsWindows) { throw 'windows_desktop_required' }
     $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $script:ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
+    $script:RequestedPort = $LocalPort
+    foreach ($value in @($Repository, $PythonExecutable, $RunsRoot)) {
+        if (-not $value.StartsWith('/')) { throw 'absolute_server_paths_required' }
+    }
     if (-not $script:BrowserExecutable) {
         $candidates = @(
             "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -139,9 +232,10 @@ function Connector-Main {
         if ($BrowserProfile -eq $env:USERPROFILE -or $BrowserProfile -eq $path -or $BrowserProfile.StartsWith($path + '\', [StringComparison]::OrdinalIgnoreCase) -or
             $path.StartsWith($BrowserProfile + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'personal_browser_profile_forbidden' }
     }
-    $taskName = "Hypoloom-Institutional-$Server-$RemotePort"
+    $taskName = "Hypoloom-Institutional-$Server-$script:userSid"
     $taskValues = @('-NoProfile', '-NonInteractive', '-File', $PSCommandPath, '-Action', 'Run', '-Server', $Server,
-        '-BrowserExecutable', $BrowserExecutable, '-BrowserProfile', $BrowserProfile, '-LocalPort', "$LocalPort", '-RemotePort', "$RemotePort")
+        '-BrowserExecutable', $BrowserExecutable, '-BrowserProfile', $BrowserProfile, '-LocalPort', "$LocalPort",
+        '-Repository', $Repository, '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot)
     $taskArguments = ($taskValues | ForEach-Object { Quote-Native $_ }) -join ' '
     $powershell = (Get-Process -Id $PID).Path
     if ($Action -in @('Install', 'Stop', 'Uninstall')) {
@@ -169,50 +263,12 @@ function Connector-Main {
         return
     }
     if ($Action -eq 'Status') {
-        $owned = Assert-LocalOwner
-        $local = Get-LocalCDP
-        $remote = Get-RemoteCDP
-        if ($owned -and (Same-Browser $local $remote)) { Write-Output 'ready'; return }
-        throw 'connection_unavailable_check_browser_ssh_and_remote_curl'
+        $entries = @(Get-RunConnections)
+        Write-Output ("active_run_connections=" + $entries.Count)
+        return
     }
-    $local = Ensure-Browser
-    # Check unattended SSH authentication/host trust before any retry loop.
-    $check = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
-        '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server, 'command -v curl >/dev/null')
-    try {
-        if (-not $check.Process.WaitForExit(10000) -or $check.Process.ExitCode -ne 0) { throw 'ssh_preflight_failed_check_key_known_hosts_and_remote_curl' }
-    } finally { Stop-Child $check }
-    $tunnel = $null
-    $failures = 0
-    try {
-        while ($true) {
-          try {
-            $remote = Get-RemoteCDP
-            if ($remote -and -not (Same-Browser $local $remote)) { throw 'remote_endpoint_occupied' }
-            if (-not (Same-Browser $local $remote)) {
-                Stop-Child $tunnel; $tunnel = $null
-                $tunnel = Start-Captured $script:ssh @('-N', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-                    '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
-                    '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-R', "127.0.0.1:${RemotePort}:127.0.0.1:$LocalPort", $Server)
-                Start-Sleep -Seconds 2
-                if ($tunnel.Process.HasExited) { throw 'ssh_forward_failed_check_remote_port_and_authorization' }
-                $remote = Get-RemoteCDP
-                if (-not (Same-Browser $local $remote)) { throw 'forward_health_failed' }
-                Write-Output 'ready; keep this connector running; Ctrl+C stops its SSH child'
-            }
-            $failures = 0
-            Start-Sleep -Seconds 15
-            if (-not (Assert-LocalOwner)) { throw 'browser_closed_restart_connector_after_opening_it' }
-            $local = Get-LocalCDP
-            if (-not $local) { throw 'browser_cdp_unavailable' }
-          } catch {
-            if ($_.Exception.Message -notin @('ssh_forward_failed_check_remote_port_and_authorization', 'forward_health_failed') -or ++$failures -ge 3) { throw }
-            Stop-Child $tunnel; $tunnel = $null
-            Write-Output 'connection_retry_in_30_seconds'
-            Start-Sleep -Seconds 30
-          }
-        }
-    } finally { Stop-Child $tunnel }
+    Watch-Runs
+
 }
 
 try { Connector-Main } catch {

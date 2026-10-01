@@ -278,6 +278,18 @@ def _minimal_environment(*, include_api_key: bool) -> dict[str, str]:
     return environment
 
 
+def _desktop_environment(host_argv: Sequence[str]) -> dict[str, str]:
+    selected = list(host_argv)
+    if "--institutional-browser-mode" not in selected:
+        return {}
+    index = selected.index("--institutional-browser-mode")
+    if selected[index + 1:index + 2] != ["local"]:
+        return {}
+    return {name: os.environ[name] for name in (
+        "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_SESSION_TYPE")
+        if os.environ.get(name)}
+
+
 def _find_tools() -> Tools:
     if not sys.platform.startswith("linux"):
         raise ManagedHostError("linux_user_systemd_required")
@@ -446,6 +458,7 @@ def _launch_service(
             "--setenv=PYTHONNOUSERSITE=1",
             "--setenv=PYTHONSAFEPATH=1",
             f"--setenv=PYTHONPATH={context.state_root / 'bundle'}{os.pathsep}{working_directory}",
+            *("--setenv=" + name + "=" + value for name, value in _desktop_environment(host_argv).items()),
             "--property=Restart=on-failure",
             "--property=RestartPreventExitStatus=2 78",
             "--property=RestartSec=1s",
@@ -509,7 +522,7 @@ def _launch_scope(
                 "--",
                 *host_argv,
             ),
-            env={**environment, "PYTHONNOUSERSITE": "1", "PYTHONSAFEPATH": "1",
+            env={**environment, **_desktop_environment(host_argv), "PYTHONNOUSERSITE": "1", "PYTHONSAFEPATH": "1",
                 "PYTHONPATH": f"{context.state_root / 'bundle'}{os.pathsep}{working_directory}"},
             stdin=subprocess.DEVNULL,
             stdout=descriptor,

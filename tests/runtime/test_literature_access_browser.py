@@ -98,6 +98,20 @@ def test_server_browser_guide_uses_temporary_local_forwarding(browser):
     assert page.evaluate("document.querySelector('.institutional-guide a').href === 'http://127.0.0.1:5800/'")
 
 
+def test_run_owned_connection_guide_never_suggests_fixed_remote_port(browser):
+    page = browser
+    pending(page)
+    page.evaluate("fixture.snapshot.status.literature_access.connection = {mode:'client',state:'waiting_for_client'}")
+    page.wait("document.querySelector('.institutional-guide').textContent.includes('Windows 专用连接脚本')")
+    guide = page.text('.institutional-guide')
+    assert '运行结束后释放' in guide and ' -R ' not in guide and '9222' not in guide
+    page.evaluate("fixture.snapshot.status.literature_access.connection = {mode:'local',state:'allocated'}")
+    page.wait("document.querySelector('.institutional-guide').textContent.includes('Linux 桌面')")
+    page.evaluate("fixture.snapshot.status.literature_access.connection = {mode:'server',state:'allocated'}")
+    page.wait("document.querySelector('.institutional-guide').textContent.includes('--include-ui-credentials')")
+    assert page.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
+
+
 @pytest.mark.parametrize("browser", ["literature"], indirect=True)
 def test_preference_retry_keeps_identity_after_lost_reply_and_empty_catalog_can_verify(browser):
     page = browser

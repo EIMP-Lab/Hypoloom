@@ -527,11 +527,11 @@ class InstitutionalAccess:
                 # Backend remembers the waiting tab. Polling never restarts its login flow.
                 break
 
-    def close(self):
+    def close(self, *, wait=True):
         with self._lock:
             if self._closed:
                 return
             self._closed = True
             self._items.clear()
         self._executor.submit(self.backend.close)
-        self._executor.shutdown(wait=True, cancel_futures=False)
+        self._executor.shutdown(wait=wait, cancel_futures=False)

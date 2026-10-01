@@ -1,5 +1,14 @@
 # Current Hypoloom development state
 
+- October 2 follow-up implementation, final qualification in progress: institutional ports
+  and tunnels belong to each run and are released on completion/termination,
+  startup failure or Host shutdown/crash. Pausing or closing a monitor is not run
+  termination. Preserve browser login profiles; close only owned resources and
+  never disrupt another run or an external browser. Reuse actual listeners,
+  existing run state and OS service ownership; no port registry or terminal marker.
+  Recovery must preserve runtime pinning and prevent stale-address reuse.
+  [Run-scoped design](../design/institutional-access-preparation.md#运行级自动端口与清理2026-10-02).
+
 - October 2 connection startup implements explicit existing/local/server modes,
   native Linux user-systemd browser management, Windows standalone connector and
   optional user-logon task, and init/prepare coordination before Host creation.

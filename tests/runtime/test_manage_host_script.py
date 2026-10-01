@@ -18,6 +18,25 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 MANAGE_HOST = (
     REPOSITORY / ".claude" / "skills" / "autoresearch" / "scripts" / "manage_host.py"
 )
+
+
+@pytest.mark.parametrize("mode", ["local", "client", "server", "existing", None])
+def test_desktop_environment_only_follows_explicit_local_browser(monkeypatch, mode):
+    name = "hypoloom_test_desktop_environment"
+    spec = importlib.util.spec_from_file_location(name, MANAGE_HOST)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+        monkeypatch.setenv("DISPLAY", ":fixture")
+        monkeypatch.setenv("XAUTHORITY", "/private/desktop auth")
+        monkeypatch.setenv("UNRELATED_SENTINEL_SECRET", "must-not-pass")
+        selected = module._desktop_environment(["--institutional-browser-mode", mode] if mode else [])
+        assert "UNRELATED_SENTINEL_SECRET" not in selected
+        if mode == "local":
+            assert selected["DISPLAY"] == ":fixture" and selected["XAUTHORITY"] == "/private/desktop auth"
+        else: assert selected == {}
+    finally: sys.modules.pop(name, None)
 RESULT_KEYS = {"status", "supervisor", "unit", "state_root", "control_socket"}
 
 

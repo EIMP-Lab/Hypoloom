@@ -226,7 +226,8 @@ class PlaywrightInstitutionalBrowser:
         self.close()
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint, timeout=self._remaining(5) * 1000)
+        self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint, timeout=self._remaining(5) * 1000,
+            **({"headers": self._headers} if getattr(self, "_headers", None) else {}))
         if not self._browser.contexts:
             raise ValueError("authenticated browser context is unavailable")
         return self._browser.contexts[0]

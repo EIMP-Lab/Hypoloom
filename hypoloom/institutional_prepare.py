@@ -23,6 +23,17 @@ def add_parser(subparsers):
     connect.add_argument("connection_action", choices=("status", "start", "stop"))
     connect.add_argument("--repository")
     add_arguments(connect, connection=True)
+    listing = commands.add_parser("connections", help="read current run endpoints through private Host control sockets")
+    scope = listing.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--state-root")
+    scope.add_argument("--runs-root")
+    listing.add_argument("--include-ui-credentials", action="store_true", help="show private container GUI access credentials locally")
+    for name in ("forward-ready", "watch"):
+        watch = commands.add_parser(name, help="check or hold the private run-owned SSH forwarding session")
+        watch.add_argument("--state-root", required=True)
+        watch.add_argument("--run-id", required=True)
+        watch.add_argument("--socket-path", required=True)
+    watch.add_argument("--browser-path", required=True)
 
 
 def sample_url(value):
@@ -45,6 +56,9 @@ def _observe(access, provider):
 
 
 def run(args, *, input_fn=input, output=print):
+    if getattr(args, "institutional_action", None) in {"connections", "forward-ready", "watch"}:
+        from .institutional_client import run as client
+        return client(args, output=output)
     if getattr(args, "institutional_action", None) == "connect":
         from .institutional_connection import run as connect
         return connect(args, output=output)
@@ -60,17 +74,27 @@ def run(args, *, input_fn=input, output=print):
     access = build(args)
     if access is None: raise ValueError("preparation requires --institutional-browser-url")
     failures = 0
+    control = directory = None
     try:
         if args.institutional_browser_mode:
-            from .institutional_connection import operate
-            connected = operate(args, "start", args.repository)
-            output(json.dumps(connected, ensure_ascii=False))
-            if connected["status"] not in {"ready", "reused", "started"}: return 2
+            from pathlib import Path
+            import tempfile
+            from .institutional_client import PreparationControl
+            access.sync({"preparation"})
+            root = Path(args.repository or Path.cwd()) / "state"
+            root.mkdir(parents=True, exist_ok=True)
+            directory = tempfile.TemporaryDirectory(prefix="institutional-prepare-", dir=root)
+            control = PreparationControl(directory.name, access)
+            output(json.dumps({"state_root": directory.name, "connections": access.connections()}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         for provider in selected:
             if not args.non_interactive:
                 access.control("preparation", provider, "open")
-                output(json.dumps({"provider": provider, **_observe(access, provider)}, ensure_ascii=False))
+                opened = _observe(access, provider)
+                output(json.dumps({"provider": provider, **opened}, ensure_ascii=False))
+                if opened["state"] != "opened":
+                    failures += 1
+                    continue
                 answer = input_fn(f"{provider}: complete login, then Enter to continue; or enter a sample DOI/URL (q to finish): ").strip()
                 if answer.lower() == "q": break
                 if answer:
@@ -84,4 +108,8 @@ def run(args, *, input_fn=input, output=print):
                 failures += result["state"] != "sample_verified"
         return 1 if failures else 0
     finally:
-        access.close()
+        try:
+            if control is not None: control.close()
+            access.close()
+        finally:
+            if directory is not None: directory.cleanup()

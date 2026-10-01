@@ -122,26 +122,28 @@ Review `auto`/`public_only` provider choices and finite 120-second acquisition /
 600-second manual defaults with the launch configuration. During research use the
 Host's TUI/Web controls, rather than a second standalone browser manager.
 
-The optional `--institutional-browser-mode local|existing|server` also selects
-connection preparation (default CDP `http://127.0.0.1:9222`). `local` means a native
-Linux user desktop with a dedicated Chrome/Chromium profile and user systemd;
-it requires neither SSH nor Docker. Check current X11/Wayland access, not merely
-the installed OS. `existing` checks the selected endpoint, including a remote
-client's tunnel. The shipped `connection_assets/institutional-connect.ps1` runs
-on Windows to discover Edge/Chrome, use existing SSH keys and optionally install
-a current-user logon task; server init cannot launch an unconfigured client PC.
-`server` explicitly uses the repository Compose service and a locally available
-image. Do not silently install dependencies, pull images, switch placements or
-reuse a personal browser profile. See the institutional guide for setup.
+The optional `--institutional-browser-mode client|local|existing|server` selects
+run-owned connections. Windows `client` uses the standalone PowerShell helper
+with existing SSH keys and three explicit server paths (repository, Python, run
+parent). Install on the client once; init cannot wake an unconfigured PC.
+`local` uses the actual Linux user's visible browser over a process pipe, without
+SSH or Docker. Check the current X11/Wayland session. `existing` wraps an explicitly
+managed external endpoint. `server` uses the repository image/environment with
+private per-run container relays, not Compose's fixed published ports.
 
-Preview exposes `institutional_connection` and, for an explicit placement,
-`institutional_connection_argv`. It starts no resources. After the user's selected
-preparation or Start now action, the helper starts/reuses the connection before
-creating a Host. On `institutional_connection_failed`, report the reason and offer
-retry, revised connection or an explicit public-only launch (remove institutional
-connection options). Do not silently change that choice. The Host never owns the
-browser/tunnel lifetime. Browser connectivity does not prove visible GUI, school
-login or subscription rights; ask the operator to confirm the visible window.
+Preview exposes policy, a read-only `institutional_connection_argv` and separate
+preparation command. It starts no resources. Host allocates ports using port 0 after
+run creation and releases owned connections on run termination or Host exit;
+pausing or closing a monitor does not end the run. Profiles stay browser-owned.
+The helper discovers active runs and cannot reconnect terminated runs. Same-version
+recovery rebuilds ephemeral addresses without changing frozen configuration.
+Local/server profiles cannot be shared by simultaneous browser instances. Do not
+install dependencies, pull images, replace external browsers or change placements
+silently. Missing connections use existing bounded acquisition/OA fallback.
+Browser connectivity does not prove GUI visibility, school login or subscription.
+Endpoint-only and explicit manual `institutional connect` commands retain their
+old operator-owned behavior; never invoke detached manual startup for a new managed
+run. See the institutional guide for commands and machine-specific checks.
 
 Ask only about returned missing fields or explicit changes the user requested;
 group related choices. Proposed model/auth values must be shown as defaults,

@@ -195,10 +195,11 @@ def test_missing_container_bindings_do_not_pass_empty_all(tmp_path, monkeypatch)
 def test_prepare_connection_failure_does_not_open_login_or_create_run(monkeypatch, tmp_path):
     from hypoloom.institutional_prepare import run
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(connection, "operate", lambda *a: {"status": "unavailable", "reason": "fixture"})
+    monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *a: {"state": "acquisition_timeout"})
     parsed = build_parser().parse_args(["institutional", "prepare", "--institutional-browser-mode", "existing", "--provider", "IEEE"])
-    assert run(parsed, input_fn=lambda *a: pytest.fail("requested login"), output=lambda *a: None) == 2
-    assert not list(tmp_path.iterdir())
+    assert run(parsed, input_fn=lambda *a: pytest.fail("requested login"), output=lambda *a: None) == 1
+    assert list(tmp_path.iterdir()) == [tmp_path / "state"]
+    assert not list((tmp_path / "state").iterdir())
 
 
 def test_catalog_ignores_startup_without_effects(monkeypatch):

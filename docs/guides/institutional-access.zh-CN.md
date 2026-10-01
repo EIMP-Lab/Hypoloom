@@ -3,7 +3,7 @@
 [English](institutional-access.md) · 简体中文
 
 公开检索和PDF下载照常运行。需要学校订阅时，Host复用独立Chromium浏览器中的有效登录。
-推荐让浏览器常驻服务器：你远程登录一次，后续论文和新run继续复用，笔记本可关机。
+连接与端口随本次运行结束释放；专用浏览器目录保留，后续运行复用仍有效的登录。
 学校要求重新认证或MFA时仍需人工操作；全文就绪也不代表Agent已经读过它。
 
 ## 集中准备与研究期间的处理
@@ -61,58 +61,83 @@ OA 作者稿保留实际来源和版本限制，不声称为出版社定稿。�
 
 ## init 自动准备连接
 
-先选择浏览器所在位置，再进行出版社登录。`bootstrap inspect/launch` 和独立
-`institutional prepare` 共用以下可选参数；不传 mode 时保留原来的仅连接行为。
+新运行的 `bootstrap inspect/launch`、`serve` 和独立 `institutional prepare`
+通过 `--institutional-browser-mode` 选择浏览器位置：
 
-| mode | 使用场景 | 自动准备 |
+| mode | 浏览器位置 | 生命周期 |
 | --- | --- | --- |
-| `local` | 项目就在原生 Linux 桌面上 | 当前用户的 systemd 启动专用可见 Chrome/Chromium，直连回环 CDP；无需 SSH 或 Docker |
-| `existing` | Windows／另一台 Linux 的浏览器，或自行管理的本机浏览器 | 检查现有 CDP，客户端自行维护隧道；不接管外部浏览器 |
-| `server` | 没有桌面的服务器 | 启动仓库现有 Compose 服务，浏览器界面在回环 5800、CDP 在 9222；要求镜像已安装 |
+| `client` | Windows Edge/Chrome | Windows 脚本发现活跃运行，每个运行建立独立的私有 SSH 转发。 |
+| `local` | 原生 Linux 桌面 | 专用可见 Chrome/Chromium 通过进程管道控制，不开放 CDP TCP 端口。 |
+| `server` | 无桌面的 Linux 服务器 | 每次运行使用独立容器、私有 CDP 和 GUI 转发，要求镜像已安装。 |
+| `existing` | 明确指定的外部回环 CDP | 项目建立受保护的运行连接；外部浏览器仍由原管理者负责。 |
+
+受管监听默认绑定 **端口 0**，读取 OS 实际分配结果，与 Web 转发采用同一原则。
+client/server/existing 可用 `--institutional-port N` 明确固定运行端口；冲突时拒绝接管。
+只有 existing 接受 `--institutional-browser-url` 和 `--institutional-browser-ui-url`。
+只传旧 URL、不选 mode 时保留原来的非受管连接行为。
+
+预览没有副作用。`institutional_connection` 展示策略，`institutional_connection_argv`
+查询活跃连接，`institutional_preparation_argv` 用于独立集中准备。
+运行创建后由 Host 分配其资源；浏览器暂未连接时沿用有限获取期限和回退策略，
+不阻止其他科研工作，也不自动改选其他浏览器位置。
+
+完成、失败、取消或停止 Host 时释放所属监听、隧道、浏览器／容器资源。
+暂停参与者、等待人工和关闭 TUI/Web 不等于终止。不同运行的端点独立；同版本恢复
+按原冻结策略创建新临时地址，终态运行不重建。实际端口、临时令牌不写入冻结配置。
+现有研究运行不迁移。
+
+客户端 socket 目录及容器使用以管道 EOF 为退出条件的用户级 systemd 服务；
+Host 被 SIGKILL 后仍会收尾。原生浏览器随所属进程管道关闭。SSH watch 轮询私有
+Host 控制接口，并核验实际 CDP 浏览器身份。在线终止按轮询间隔收尾；网络分区使用
+SSH 存活检测（15 秒、连续三次），不能承诺瞬时释放。原生浏览器已在执行的操作在
+原有有限期限内结束后正常关闭。Docker 收尾需要 daemon 可响应，失败会明确报告。
+
+登录目录由浏览器保存，运行清理不删除它。local/server 同一目录同时只允许一个运行
+使用；并发时选择不同的专用目录。Windows 的同一专用浏览器可以经独立隧道服务多个
+运行，结束服务器运行不关闭这个用户浏览器。
 
 ```bash
-python -m hypoloom institutional connect status --institutional-browser-mode local
-python -m hypoloom institutional connect start --institutional-browser-mode local
 python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
+# 服务器上使用 Windows 连接脚本时：
+python -m hypoloom institutional prepare --institutional-browser-mode client --provider Springer
+python -m hypoloom institutional connections --runs-root /path/to/Hypoloom/state
 ```
 
-在 `/autoresearch init` 中明确选择上述位置，或给 `bootstrap inspect/launch` 增加
-`--institutional-browser-mode local`（按实际情况改为 existing/server）。默认端点为
-`http://127.0.0.1:9222`，可用 `--institutional-browser-url` 改写 local/existing 端口。
-预览展示 `institutional_connection`、`institutional_connection_argv` 和
-`institutional_preparation_argv`，不会启动浏览器、创建目录、登录或创建研究任务。
-已选启动方式在 `launch --start` 创建 Host 前执行；连接失败返回
-`institutional_connection_failed`。可重试、修改位置，或明确去掉机构连接参数后仅使用
-公开/OA 来源；不会自动替你改变选择。只传旧 `--institutional-browser-url` 的行为兼容。
+集中准备在 `<repository>/state` 下创建临时私有控制目录，结束后清理连接；
+Windows 的 `-RunsRoot` 要指向该父目录。它不创建科研运行或归档。
+在其他工作目录执行时显式传 `--repository`。
 
-Linux 需在实际桌面用户的终端内执行，已有 Chrome/Chromium、用户级 systemd/busctl 和
-项目的 Playwright 可选依赖。X11 使用当前 DISPLAY/XAUTHORITY；Wayland 检查当前用户的
-会话 socket。SSH 中缺少桌面环境时不会借用其他用户权限。检查成功后请确认可见窗口；
-CDP 可用不等于窗口可见。程序缺失、端口冲突、目录占用分别报错，不安装浏览器、不删锁。
-专用目录默认在 `$XDG_DATA_HOME/hypoloom/Institutional-<浏览器程序名>`，XDG 未配置则位于
-`~/.local/share/hypoloom/`。可指定绝对路径 `--institutional-browser-profile` 和程序
-`--institutional-browser-executable`；目录须由当前用户拥有且为 0700，禁止日常默认目录。
-重复启动复用所选 systemd 单元；退出研究不会关闭它。同目录换端口须先停止原连接。
+local 需要实际 Linux 桌面用户的 Chrome/Chromium 和 Playwright；init 只把所选的
+X11/Wayland 会话变量传给受管 Host。可见窗口须在对应机器确认。
+默认目录为 `$XDG_DATA_HOME/hypoloom/Institutional-<程序名>`，未设 XDG 时在
+`~/.local/share` 下。可用绝对路径 `--institutional-browser-profile` 和
+`--institutional-browser-executable` 指定。目录须属当前用户且权限为 0700；
+禁止日常默认目录，不删除浏览器锁，不强占忙碌目录。
+
+client/server 的清理服务要求 Linux 用户级 systemd。server 仅从
+`--institutional-compose-file`（默认 `<repository>/config/institutional-browser.compose.yaml`）
+读取镜像及支持的环境变量，使用用户私有登录目录，不采用静态发布端口和卷。
+不自动拉镜像、安装依赖或修改 Docker 代理；镜像需提供 `nc`。容器内部服务仅绑定回环，
+不发布 Docker 端口。GUI 使用本次运行的临时认证，在服务器终端读取：
 
 ```bash
-# 使用与 start 相同的程序、目录及端点参数；正常关闭并保存浏览器会话
-python -m hypoloom institutional connect stop --institutional-browser-mode local
-# 服务器模式只启动已存在的本地镜像，不自动拉取或修改系统代理
-python -m hypoloom institutional connect start --institutional-browser-mode server --repository /path/to/Hypoloom
+python -m hypoloom institutional connections --state-root /path/to/run --include-ui-credentials
 ```
 
-`--institutional-connect-timeout` 默认 30 秒，允许 3–120 秒，控制启动就绪等待；依赖检查、
-CDP 握手和停止检查也各有时限。server 的 Compose 来源是所选仓库，安装 wheel 后仍需
-提供此仓库路径。Docker 失败应修复其部署或改选 existing，不会静默换成其他方式。
-`stop` 只操作匹配的受管资源；existing 不关闭外部浏览器，任何模式均不删除会话目录。
+将返回的 GUI 端口通过 SSH `-L` 转发到本机，输入本次 GUI 访问凭据；学校账号只在
+浏览器内部输入。只读 Web 面板不提供 GUI 密码。
+`--institutional-connect-timeout` 默认 30 秒，允许 3–120 秒。连通不等于学校有订阅。
+
+旧的 `institutional connect status|start|stop` 保留为 local/existing/server 的手动诊断命令，
+资源由操作员管理。新运行不再自动调用它，也不把它的常驻资源算作运行级连接。
 
 ### Windows 客户端一键连接
 
-项目附带 `hypoloom/connection_assets/institutional-connect.ps1`，可单独复制到 Windows；
-Windows 不需要安装项目或 Python。使用 PowerShell 7.2+，将脚本放在固定位置。SSH 目标
-是你已有的 `user@host` 或 SSH 配置别名，不能把账户密码填入目标。先在普通终端完成
-`ssh research-server` 的首次主机信任，并配置本机 SSH 密钥／ssh-agent；无人值守连接
-使用 BatchMode，不保存密码，服务端需有 curl。学校 SSO/MFA 仍只在浏览器内操作。
+将 `hypoloom/connection_assets/institutional-connect.ps1` 复制到 Windows 固定位置。
+要求 PowerShell 7.2+，Windows 不需要安装项目或 Python。SSH 目标为已有 `user@host`
+或 SSH 别名，先确认主机密钥并配置 SSH key／ssh-agent。脚本使用 BatchMode，
+不保存密码。Linux SSH 服务须允许远程 Unix socket 转发；脚本通过下方三个明确的
+服务器绝对路径调用项目 CLI。
 
 如果现在 SSH 仍要求服务器密码，请先在 **Windows** 配置一次密钥。在管理员 PowerShell 中
 启用 Windows 的 ssh-agent：
@@ -141,43 +166,44 @@ $LASTEXITCODE # 自动重连前应输出 0
 这一步只准备 SSH 认证，出版社登录仍在专用浏览器里完成。
 
 ```powershell
-$researchServer = 'research-server' # 替换为自己的 SSH 目标或配置别名
+$researchServer = 'research-server' # user@host or SSH alias
 $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
 New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
 scp "${researchServer}:/path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
-& $researchConnector -Server $researchServer -Action Run
+$researchConnection = @{
+    Server = $researchServer
+    Repository = '/path/to/Hypoloom'
+    PythonExecutable = '/path/to/Hypoloom/.conda/envs/hypoloom/bin/python'
+    RunsRoot = '/path/to/Hypoloom/state'
+}
+& $researchConnector @researchConnection -Action Run
+# Optional current-user logon task; repeat these same paths and options:
+& $researchConnector @researchConnection -Action Install
+& $researchConnector @researchConnection -Action Status
+& $researchConnector @researchConnection -Action Stop
+& $researchConnector @researchConnection -Action Uninstall
 ```
 
-脚本优先查找 Edge，再查找 Chrome，使用
-`%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome` 专用目录；原有
-同目录登录可复用。程序路径和目录可用 `-BrowserExecutable`／`-BrowserProfile` 明确指定，
-目录权限须限于当前用户、SYSTEM 和管理员。默认两端端口均为 9222，可用
-`-LocalPort`／`-RemotePort` 改写。脚本验证本机监听进程、回环绑定及服务端 CDP 的同一
-浏览器身份后报告 ready；服务器 `init` 再执行实际 CDP 握手。
+脚本优先查找 Edge，再查找 Chrome；默认本机端口为 0，由浏览器分配。
+使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，
+可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。
+不导出 Cookie，不复制登录凭据；目录权限限于当前用户、SYSTEM 和管理员。
+已有相同程序、目录及用户的专用浏览器可复用，包括手动启动的 9222 端点。
 
-Run 保持前台，Ctrl+C 清理该次创建的 SSH 子进程；已有可用隧道仅监测，不被终止。
-断线后尝试重新连接，失败最多三次、间隔 30 秒；账号/主机信任预检失败直接返回。
-电脑关机、睡眠、浏览器关闭或需要重新认证时，远端 init 无法自行唤醒或代替真人登录。
-可选安装当前用户登录启动任务，不需要保存 Windows 密码：
+脚本仅对活跃运行建立 SSH 转发，没有运行时不启动浏览器、不占服务器研究端口。
+服务端目标为每次运行的私有 Unix socket，无需 `-RemotePort`。
+断线后先核验运行仍活跃，并清理确认没有监听者的旧 socket 路径；不接管现有监听。
+每条转发最多重试三次，间隔 30 秒；发现连接失败也有有限重试。
+Run 保持前台，Ctrl+C 只清理自身 SSH 子进程。运行终结或 Host 失联时远程 watch
+退出，转发随 SSH 关闭；终态运行不会因自动重连而重新出现。
 
-```powershell
-& $researchConnector -Server $researchServer -Action Install
-& $researchConnector -Server $researchServer -Action Status
-# 停止计划任务，或卸载；使用与安装时相同的路径及参数
-& $researchConnector -Server $researchServer -Action Stop
-& $researchConnector -Server $researchServer -Action Uninstall
-```
+Install 从下次该用户登录开始生效，当前会话可直接 Run。计划任务不覆盖归属不匹配的
+同名任务；更新安装参数前，用原参数 Uninstall。旧版固定端口任务也应由操作员停止，
+本脚本不会接管它们。保留登录目录；出版社或学校使会话过期、要求 MFA 时仍需本人登录。
+电脑必须保持开机联网，服务器不能远程唤醒或代替登录。
 
-Install 从下一次该用户登录开始生效；本次可另行 Run。任务拒绝覆盖不匹配的同名任务，
-禁止多实例，失败按系统任务配置最多重启三次、间隔一分钟。Stop 不删除专用配置目录，
-但系统结束任务时可能关闭它启动的子进程；需要持续连接时不要停止任务。前台 Run
-仍通过自己的 Ctrl+C 停止。另一台 Linux 客户端可先 `connect start --institutional-browser-mode local`，
-再保持原有 `ssh -N -o ExitOnForwardFailure=yes -R 127.0.0.1:9222:127.0.0.1:9222 research-server`
-运行；本批未添加 Linux 隧道常驻安装器。
-
-会话由浏览器保存，出版社/学校决定有效期和订阅范围。本批已用隔离无头 Chrome 验证
-进程与会话生命周期，原生可见桌面、Windows 登录任务和容器部署的验收范围以
-[验证记录](../qualification.md#institutional-connection-startup-2026-10-02)为准。
+原生可见桌面、Windows 原生计划任务与实际镜像部署仍需对应机器验收；
+自动化范围见[验证记录](../qualification.md#run-scoped-institutional-connections-2026-10-02)。
 
 ## 配置新运行
 
@@ -189,7 +215,7 @@ command -v pdftotext
 command -v pdfinfo
 ```
 
-## 服务器独立运行（推荐）
+## 手动常驻服务器浏览器（兼容模式）
 
 复用[jlesage/docker-chromium](https://github.com/jlesage/docker-chromium/tree/v26.09.1)：
 它提供网页远程桌面、CDP接口和持久配置目录。Hypoloom继续使用现有文献下载和校验链路。
@@ -242,7 +268,7 @@ SSH连接不会关闭服务器浏览器。无需笔记本Chrome调试模式，�
 部署验收：登录后读论文A；断开查看连接，再由新Host读取同平台论文B；只有会话失效时才
 重新打开5800登录。代码回归覆盖合成会话复用，不能替代这一步真实机构验收。
 
-## 笔记本浏览器模式（可选）
+## 手动笔记本浏览器（兼容模式）
 
 Windows笔记本用独立配置目录启动一个可见浏览器，再在其中完成学校登录。
 以下命令查找常见的Chrome安装位置，找不到则使用Edge；两者分别使用自己的专用目录。
@@ -304,9 +330,10 @@ Literature MAIN要读取补回的全文，其冻结的`methodology.literature.to
 
 Web面板与TUI等价：在TUI的`i`面板点“Web面板链接”得到带操作员授权的观察链接（只读链接本身不能触发动作），或以`python -m hypoloom.web_observer --allow-literature-control`独立启动。在Workbench的“机构全文”子页按出版社查看待处理论文，触发同样的“打开登录/检查并重试/导入PDF”动作；登录和验证码仍然只在你自己的浏览器页面完成，面板不收集账号信息。
 
-## 笔记本模式的固定端口与常驻连接
+## 旧的固定端口与常驻连接（仅兼容模式）
 
-浏览器和SSH隧道按用户会话复用，不需要每个run重建。约定使用9222；每次新Host都传
+本节仅适用于不传 mode 的旧 URL 接口；新运行请优先使用上面的 client 模式。
+此手动模式的浏览器和SSH隧道按用户会话复用，不需要每个run重建。约定使用9222；每次新Host都传
 `--institutional-browser-url http://127.0.0.1:9222`。代码不会为这个参数重新分配端口。
 Web面板的HTTP端口可以随机分配，与Chrome的CDP端口无关。若9222被占用，统一修改
 Chrome、隧道远端和Host配置；不要跟随Web面板地址修改浏览器端口。

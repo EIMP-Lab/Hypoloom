@@ -21,18 +21,20 @@ class ConnectionFailure(RuntimeError):
 
 
 def add_arguments(parser):
-    parser.add_argument("--institutional-browser-mode", choices=("existing", "local", "server"),
+    parser.add_argument("--institutional-browser-mode", choices=("existing", "local", "server", "client"),
                         help="explicit connection placement; local starts a Linux desktop browser, server uses Compose")
     parser.add_argument("--institutional-browser-executable", help="local Chrome/Chromium executable")
     parser.add_argument("--institutional-browser-profile", help="absolute dedicated local browser data directory")
     parser.add_argument("--institutional-connect-timeout", type=float, default=30)
+    parser.add_argument("--institutional-port", type=int, default=0, help="run-owned CDP listener; 0 allocates atomically")
+    parser.add_argument("--institutional-compose-file", help="server browser Compose source")
 
 
 def arguments(args):
     result = []
-    for key in ("browser_mode", "browser_executable", "browser_profile", "connect_timeout"):
+    for key in ("browser_mode", "browser_executable", "browser_profile", "connect_timeout", "port", "compose_file"):
         value = getattr(args, "institutional_" + key, None)
-        if value is not None and (key != "connect_timeout" or value != 30):
+        if value is not None and (key != "connect_timeout" or value != 30) and (key != "port" or value != 0):
             result += ["--institutional-" + key.replace("_", "-"), str(value)]
     return result
 
@@ -40,24 +42,70 @@ def arguments(args):
 def configure(args):
     mode = getattr(args, "institutional_browser_mode", None)
     timeout = getattr(args, "institutional_connect_timeout", 30)
+    port = getattr(args, "institutional_port", 0)
+    if isinstance(port, bool) or not 0 <= port <= 65535:
+        raise ValueError("institutional port must be between 0 and 65535")
+    if port and mode not in {"existing", "client", "server"}:
+        raise ValueError("institutional port requires existing, client or server mode")
     if not math.isfinite(timeout) or not 3 <= timeout <= 120:
         raise ValueError("institutional connection timeout must be finite and between 3 and 120 seconds")
     local = any(getattr(args, "institutional_" + key, None) for key in ("browser_executable", "browser_profile"))
-    if local and mode != "local":
+    if local and mode not in {"local", "server"}:
         raise ValueError("local browser executable/profile requires --institutional-browser-mode local")
     selected = getattr(args, "institutional_browser_executable", None)
+    if selected and mode != "local": raise ValueError("browser executable requires local mode")
     if mode == "local" and selected and os.sep in selected:
         args.institutional_browser_executable = os.path.abspath(selected)
-    if mode and not args.institutional_browser_url:
+    if mode == "existing" and not args.institutional_browser_url:
         args.institutional_browser_url = "http://127.0.0.1:9222"
-    if mode == "server":
-        if args.institutional_browser_url.rstrip("/") != "http://127.0.0.1:9222":
-            raise ValueError("the supplied Compose service requires http://127.0.0.1:9222")
-        if args.institutional_browser_ui_url not in (None, "http://127.0.0.1:5800"):
-            raise ValueError("the supplied Compose service requires browser UI http://127.0.0.1:5800")
-        args.institutional_browser_ui_url = "http://127.0.0.1:5800"
+    compose = getattr(args, "institutional_compose_file", None)
+    if compose:
+        if mode != "server": raise ValueError("Compose source requires server mode")
+        args.institutional_compose_file = str(Path(compose).resolve())
     if not mode and timeout != 30:
         raise ValueError("connection timeout requires an explicit institutional browser mode")
+
+
+def runtime_plan(args):
+    """Stable launch policy; no listener, directory, browser or Docker operation."""
+    configure(args)
+    mode = args.institutional_browser_mode
+    if mode != "existing" and (args.institutional_browser_url or args.institutional_browser_ui_url):
+        raise ValueError("managed run connections discover their addresses; use --institutional-port for a fixed listener")
+    from .institutional_browser import PlaywrightInstitutionalBrowser
+    PlaywrightInstitutionalBrowser(args.institutional_browser_url or "http://127.0.0.1:1",
+        library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url)
+    value = {"mode": mode, "port": getattr(args, "institutional_port", 0),
+             "library_url": args.institutional_library_url, "ready_timeout": args.institutional_connect_timeout}
+    if mode == "existing":
+        value.update(endpoint=args.institutional_browser_url, browser_ui_url=args.institutional_browser_ui_url)
+    elif mode == "local":
+        selected = args.institutional_browser_executable
+        executable = shutil.which(selected) if selected else next((p for n in (
+            "google-chrome", "google-chrome-stable", "chromium", "chromium-browser") if (p := shutil.which(n))), None)
+        value.update(executable=executable, profile=str(_profile(args.institutional_browser_profile, executable)), desktop=desktop())
+        args.institutional_browser_executable = executable
+        args.institutional_browser_profile = value["profile"]
+    elif mode == "server":
+        source = args.institutional_compose_file or str(Path(getattr(args, "repository", None) or Path.cwd()) / "config/institutional-browser.compose.yaml")
+        value.update(compose_file=str(Path(source).resolve()),
+            profile=str(_profile(args.institutional_browser_profile, "server-chromium")))
+        import yaml
+        try:
+            service = yaml.safe_load(Path(value["compose_file"]).read_text())["services"]["browser"]
+            if not isinstance(service, dict) or not isinstance(service.get("environment", {}), dict): raise ValueError
+            if not isinstance(service.get("image"), str) or not service["image"] or service["image"].startswith("-"): raise ValueError
+        except (OSError, yaml.YAMLError, ValueError, KeyError, TypeError):
+            raise ValueError("invalid browser Compose source") from None
+        if service.get("privileged") or service.get("network_mode"):
+            raise ValueError("unsafe browser Compose configuration")
+        allowed = {"UMASK", "KEEP_APP_RUNNING", "CHROMIUM_REMOTE_DEBUGGING", "CHROMIUM_REMOTE_DEBUGGING_PORT",
+            "ENABLE_CJK_FONT", "VNC_LISTENING_PORT", "WEB_HOST_CLIPBOARD_SYNC", "WEB_FILE_MANAGER", "WEB_TERMINAL", "WEB_AUDIO"}
+        if set(service.get("environment", {})) - allowed: raise ValueError("unsupported browser Compose environment")
+        value["service"] = {"image": service["image"], "environment": dict(service.get("environment", {}))}
+        args.institutional_compose_file = value["compose_file"]
+        args.institutional_browser_profile = value["profile"]
+    return value
 
 
 def _run(argv, *, timeout=5):
@@ -101,6 +149,18 @@ def _profile(value, executable):
 
 def plan(args, repository=None):
     configure(args)
+    # Explicit manual connect commands retain their operator-owned semantics.
+    # Run-owned init/serve/prepare use runtime_plan instead.
+    mode = getattr(args, "institutional_browser_mode", None)
+    if mode == "client": raise ValueError("client connections are created by a run or institutional prepare")
+    if mode and not args.institutional_browser_url:
+        args.institutional_browser_url = "http://127.0.0.1:9222"
+    if mode == "server":
+        if args.institutional_browser_url.rstrip("/") != "http://127.0.0.1:9222":
+            raise ValueError("the manual Compose service requires http://127.0.0.1:9222")
+        if args.institutional_browser_ui_url not in (None, "http://127.0.0.1:5800"):
+            raise ValueError("the manual Compose service requires browser UI http://127.0.0.1:5800")
+        args.institutional_browser_ui_url = "http://127.0.0.1:5800"
     if not args.institutional_browser_url:
         return {"enabled": False}
     # Reuse the actual endpoint/library validator; construction never connects.

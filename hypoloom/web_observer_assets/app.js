@@ -2970,7 +2970,18 @@
           && candidate.port && !candidate.username && !candidate.password && !candidate.search && !candidate.hash
           && candidate.pathname === "/") serverUi = candidate;
     } catch (_error) { /* laptop browser or invalid GUI origin */ }
-    if (serverUi) {
+    if (access.connection) {
+      const connection = access.connection;
+      guide.append(element("p", "", "连接随本次运行分配，运行结束后释放；专用浏览器登录目录保留。"));
+      const instructions = {
+        client: "保持 Windows 专用连接脚本运行，它会发现本次运行并自动建立隧道，无需填写服务器端口。连接后选平台 → 打开登录，在浏览器完成学校登录。",
+        local: "在运行项目的 Linux 桌面上选平台 → 打开登录，使用弹出的专用浏览器。相同登录目录同时只允许一个运行使用。",
+        server: "在服务器终端运行 institutional connections --state-root <运行目录> --include-ui-credentials 获取本次 GUI 入口及访问凭据，再转发显示的 GUI 端口。学校账号只在浏览器中输入。",
+        existing: "在已配置的外部浏览器中完成登录；项目只释放自己的运行连接，外部浏览器仍由你管理。"
+      };
+      guide.append(element("p", "", instructions[connection.mode] || "请查看机构访问指南。"));
+      guide.append(element("p", "", `连接状态：${displayValue(connection.state)}。此状态不代表学校订阅权限已验证。`));
+    } else if (serverUi) {
       guide.append(element("p", "", "服务器浏览器：登录状态保存在服务器，同平台后续论文和新run复用仍有效的登录。"));
       guide.append(element("p", "", `仅首次登录或会话过期时，在你的电脑执行：ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${serverUi.port}:${serverUi.hostname}:${serverUi.port} <ssh-user>@<research-server>`));
       const openBrowser = element("a", "detail-link", "打开服务器浏览器，完成学校登录");

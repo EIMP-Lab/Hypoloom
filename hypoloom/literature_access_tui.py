@@ -25,8 +25,18 @@ REASON_LABELS = {"network_changed": "网络发生变化", "network_error": "网�
     "pdf_response_not_pdf": "PDF入口返回非PDF内容"}
 
 
-def browser_connect_guide(endpoint, ui_url=None):
+def browser_connect_guide(endpoint, ui_url=None, connection=None):
     """The GUI URL selects a server-owned browser; CDP never needs a laptop tunnel."""
+    if connection:
+        common = "连接随本次运行分配，运行结束后释放；专用浏览器登录目录保留。\n"
+        mode = connection.get("mode")
+        if mode == "client":
+            return common + "请保持 Windows 专用连接脚本运行；脚本会发现本次运行并自动建立隧道，无需填写服务器端口。\n连接状态：" + str(connection.get("state")) + "。连接后选平台 → 打开登录，在浏览器完成学校登录。"
+        if mode == "local":
+            return common + "在运行项目的 Linux 桌面上选平台 → 打开登录，使用弹出的专用浏览器。相同登录目录同时只允许一个运行使用。"
+        if mode == "server":
+            return common + "在服务器终端运行 institutional connections --state-root <运行目录> --include-ui-credentials 获取本次浏览器入口和访问凭据，再转发显示的 GUI 端口。学校账号只在浏览器中输入。"
+        return common + "使用已配置的外部浏览器完成登录；项目只释放自己的运行连接，外部浏览器仍由你管理。"
     if ui_url:
         parts = urlsplit(ui_url)
         target = "[::1]" if parts.hostname == "::1" else parts.hostname
@@ -78,7 +88,7 @@ class LiteratureAccessScreen(ModalScreen):
             with VerticalScroll(id="literature-access-scroll"):
                 yield Static("机构全文访问 · 其他研究工作继续\n账号、密码和验证码只在学校或出版社浏览器页面填写。", markup=False)
                 access = self.status.get("literature_access") or {}
-                yield Static(browser_connect_guide(access.get("browser_endpoint"), access.get("browser_ui_url")),
+                yield Static(browser_connect_guide(access.get("browser_endpoint"), access.get("browser_ui_url"), access.get("connection")),
                     markup=False, id="literature-guide")
                 yield Select([], prompt="选择平台", id="literature-provider")
                 yield Static("", markup=False, id="literature-pending")
@@ -107,7 +117,7 @@ class LiteratureAccessScreen(ModalScreen):
         self.status = status
         access = status.get("literature_access") or {}
         self.query_one("#literature-guide", Static).update(
-            browser_connect_guide(access.get("browser_endpoint"), access.get("browser_ui_url")))
+            browser_connect_guide(access.get("browser_endpoint"), access.get("browser_ui_url"), access.get("connection")))
         groups = access.get("groups", [])
         providers = tuple(g["provider"] for g in groups)
         selector = self.query_one("#literature-provider", Select)

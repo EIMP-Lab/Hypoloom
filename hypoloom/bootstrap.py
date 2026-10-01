@@ -297,17 +297,19 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":
         raise ValueError("web fallback requires the reviewed OpenAlex adapter")
     from .institutional_options import build as build_institutional
+    if args.institutional_browser_mode == "server" and not args.institutional_compose_file:
+        args.institutional_compose_file = str(repository / "config/institutional-browser.compose.yaml")
     access = build_institutional(args)
     if access is not None:
         review["institutional_access"] = access.configuration
         from .institutional_options import launch_arguments as institutional_arguments
         review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
             "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
-        from .institutional_connection import plan
-        review["institutional_connection"] = plan(args, repository)
+        from .institutional_connection import plan, runtime_plan
+        review["institutional_connection"] = runtime_plan(args) if args.institutional_browser_mode else plan(args, repository)
         if args.institutional_browser_mode:
-            review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connect", "start",
-                "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
+            review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
+                "--state-root", str(state)]
         access.close()
     real = args.auth_transport != "none"
     if real:
@@ -392,7 +394,7 @@ def _launch_commands(args, repository, report, review, python, state, request_id
                  "notification_credentials_file"):
         if getattr(args, name) is not None:
             serve += ["--" + name.replace("_", "-"), str(getattr(args, name))]
-    serve += institutional_arguments(args)
+    serve += institutional_arguments(args, include_connection=True)
     for uuid in args.gpu_device_uuid or ():
         serve += ["--gpu-device-uuid", uuid]
     common = [args.profile, "--profiles-root", str(repository / "profiles/local"), "--run-id", args.run_id,
@@ -406,8 +408,7 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             "start": [*cli, "start", *common, "--state-root", str(state), "--request-id", request_id],
             "status": [*cli, "status", "--state-root", str(state), "--run-id", args.run_id],
             "host_stop": [*helper, "stop", "--state-root", str(state), "--auth-transport", args.auth_transport]}
-    if "institutional_connection_argv" in review:
-        commands["institutional_connect"] = review["institutional_connection_argv"]
+    # Run resources are created inside the sole Host, not detached before it.
     if args.gpu_pool_socket:
         commands["pool_status"] = [*cli, "gpu-pool-status", "--socket-path", args.gpu_pool_socket,
             *(["--expected-server-uid", str(args.gpu_pool_server_uid)] if args.gpu_pool_server_uid is not None else [])]
