@@ -449,6 +449,40 @@ def test_connection_failure_precedes_host_and_success_is_reported(monkeypatch, c
     assert bootstrap.compact_result({"launch": result})["launch"]["institutional_connection"] == result["institutional_connection"]
 
 
+def test_relative_browser_path_survives_launch_working_directory_change(checkout, capsys, monkeypatch):
+    repo, overrides = checkout
+    monkeypatch.chdir(repo.parent)
+    executable = repo.parent / "desktop-browser"
+    executable.write_text("#!/bin/sh\nexit 0\n"); executable.chmod(0o700)
+    assert bootstrap.main([*arguments(repo, overrides, "launch"), "--institutional-browser-mode", "local",
+                           "--institutional-browser-executable", "./desktop-browser"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    review = result["effective_configuration"]
+    assert review["institutional_connection"]["executable"] == str(executable)
+    assert result["commands"]["working_directory"] != str(Path.cwd())
+    for name in ("institutional_connection_argv", "institutional_preparation_argv"):
+        command = review[name]
+        assert command[command.index("--institutional-browser-executable") + 1] == str(executable)
+    assert not (repo / "state").exists()
+
+
+def test_real_connect_failure_never_creates_managed_host_or_run(checkout, capsys):
+    import socket
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    with socket.socket() as occupied:
+        # A bound, non-listening fixture reserves a local port without serving CDP.
+        occupied.bind(("127.0.0.1", 0))
+        port = occupied.getsockname()[1]
+        code = bootstrap.main([*arguments(repo, [], "launch", template=None), "--start",
+            "--institutional-browser-mode", "existing", "--institutional-browser-url", f"http://127.0.0.1:{port}"])
+    result = json.loads(capsys.readouterr().out)
+    assert code == 2 and result["launch"]["status"] == "institutional_connection_failed", result
+    assert [p["phase"] for p in result["launch"]["phases"]] == ["profile_check", "institutional_connect"]
+    assert not (repo / "state").exists()
+
+
 def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(checkout, tmp_path, capsys, monkeypatch):
     repo, overrides = checkout
     credentials = tmp_path / "private.env"

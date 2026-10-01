@@ -133,6 +133,29 @@ def test_simultaneous_start_reuses_winner_and_does_not_stop_it(manager, tmp_path
     assert len(manager["calls"]) == 1
 
 
+@pytest.mark.parametrize("boundary", ["probe", "_occupied", "_profile_busy"])
+def test_concurrent_start_during_preflight_reuses_owned_winner(manager, tmp_path, monkeypatch, boundary):
+    def winner(*a):
+        manager.update(live=True, owned=True, connected=True)
+        return {"connected": True} if boundary == "probe" else True
+    monkeypatch.setattr(connection, boundary, winner)
+    assert connection._local(spec(tmp_path), "start")["status"] == "reused"
+    assert manager["calls"] == []
+
+
+def test_concurrent_start_waits_for_activating_unit_pid(manager, tmp_path, monkeypatch):
+    states = iter([
+        {"ActiveState": "activating", "MainPID": "0"},
+        {"ActiveState": "activating", "MainPID": "0"},
+        {"ActiveState": "active", "MainPID": "123"},
+    ])
+    monkeypatch.setattr(connection, "_unit_state", lambda u: next(states))
+    monkeypatch.setattr(connection, "_owned", lambda s, p: p["MainPID"] == "123")
+    manager["connected"] = True
+    assert connection._local(spec(tmp_path), "start")["status"] == "reused"
+    assert manager["calls"] == []
+
+
 @pytest.mark.parametrize("bad", ["missing", "public", "extra", "valid"])
 def test_compose_checks_expanded_ports_before_start(tmp_path, monkeypatch, bad):
     path = tmp_path / "compose.yaml"; path.touch()
@@ -216,7 +239,7 @@ def test_real_systemd_cdp_reuse_restart_and_session_persistence(tmp_path, monkey
     try:
         with ThreadPoolExecutor(max_workers=2) as workers:
             starts = list(workers.map(lambda _: connection.operate(selected, "start"), range(2)))
-        assert sorted(item["status"] for item in starts) == ["reused", "started"], starts
+        assert sorted(item["status"] for item in starts) == ["reused", "started"], json.dumps(starts, indent=2)
         first = starts[0]
         unit = first["unit"]
         pid = connection._unit_state(unit)["MainPID"]

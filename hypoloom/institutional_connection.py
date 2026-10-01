@@ -45,6 +45,9 @@ def configure(args):
     local = any(getattr(args, "institutional_" + key, None) for key in ("browser_executable", "browser_profile"))
     if local and mode != "local":
         raise ValueError("local browser executable/profile requires --institutional-browser-mode local")
+    selected = getattr(args, "institutional_browser_executable", None)
+    if mode == "local" and selected and os.sep in selected:
+        args.institutional_browser_executable = os.path.abspath(selected)
     if mode and not args.institutional_browser_url:
         args.institutional_browser_url = "http://127.0.0.1:9222"
     if mode == "server":
@@ -217,6 +220,24 @@ def _close_browser(endpoint):
         browser.close()
 
 
+def _reuse_local(spec, unit, deadline):
+    """Refresh OS ownership after preflight; another caller may have started it."""
+    while time.monotonic() < deadline:
+        properties = _unit_state(unit)
+        if properties.get("ActiveState") not in {"active", "activating", "reloading"}:
+            return None
+        if _owned(spec, properties):
+            observed = probe(spec["endpoint"], min(2, max(.1, deadline - time.monotonic())))
+            if observed["connected"]:
+                return {"status": "reused", "unit": unit, **observed}
+        elif properties.get("ActiveState") != "activating" or properties.get("MainPID") != "0":
+            raise ConnectionFailure("browser_unit_ownership_mismatch")
+        # Type=exec can be activating before MainPID is available. Never adopt
+        # its endpoint until the existing ownership validator succeeds.
+        time.sleep(.1)
+    raise ConnectionFailure("managed_browser_not_ready")
+
+
 def _local(spec, action):
     deadline = time.monotonic() + spec["ready_timeout"]
     unit = _unit(spec)
@@ -236,21 +257,16 @@ def _local(spec, action):
             if time.monotonic() >= until: raise ConnectionFailure("browser_close_not_confirmed")
             time.sleep(.1)
         return {"status": "stopped", "unit": unit, "profile_preserved": True}
-    if owned and observed["connected"]:
-        return {"status": "reused", "unit": unit, **observed}
-    if live:
-        if not owned: raise ConnectionFailure("browser_unit_ownership_mismatch")
-        while time.monotonic() < deadline and _owned(spec, _unit_state(unit)):
-            observed = probe(spec["endpoint"], min(2, max(.1, deadline - time.monotonic())))
-            if observed["connected"]: return {"status": "reused", "unit": unit, **observed}
-            time.sleep(.1)
-        raise ConnectionFailure("managed_browser_not_ready")
-    if _occupied(spec["endpoint"]): raise ConnectionFailure("browser_endpoint_occupied")
+    if reused := _reuse_local(spec, unit, deadline): return reused
+    if _occupied(spec["endpoint"]):
+        if reused := _reuse_local(spec, unit, deadline): return reused
+        raise ConnectionFailure("browser_endpoint_occupied")
     if observed.get("reason") == "playwright_not_installed": raise ConnectionFailure(observed["reason"])
     if not spec["executable"]: raise ConnectionFailure("browser_executable_missing")
     if not spec["desktop"]["kind"]: raise ConnectionFailure(spec["desktop"]["reason"])
     profile = Path(spec["profile"])
     if _profile_busy(profile):
+        if reused := _reuse_local(spec, unit, deadline): return reused
         raise ConnectionFailure("browser_profile_in_use")
     profile.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = profile.stat()
