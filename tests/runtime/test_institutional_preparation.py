@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -57,3 +59,11 @@ def test_list_is_read_only_and_browser_options_reject_saml_metadata(monkeypatch)
     with pytest.raises(ValueError, match="SAML metadata"):
         PlaywrightInstitutionalBrowser("http://127.0.0.1:9222", library_url="https://idp.xidian.edu.cn/idp/shibboleth")
     assert "msedge.exe" in windows_browser_command(9222) and "Test-Path" in windows_browser_command(9222)
+
+
+def test_documented_module_entrypoint_lists_platforms_outside_repository(tmp_path):
+    result = subprocess.run([sys.executable, "-I", "-B", "-m", "hypoloom", "institutional", "prepare", "--list"],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert {item["provider"] for item in json.loads(result.stdout)} == set(PROVIDERS.values())
+    assert not list(tmp_path.iterdir())

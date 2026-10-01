@@ -116,7 +116,12 @@ def _request(
 ) -> tuple[int, bytes]:
     connection = _connection(relay)
     try:
-        connection.request(method, path, body=body, headers=headers or {})
+        try:
+            connection.request(method, path, body=body, headers=headers or {})
+        except BrokenPipeError:
+            # A header-level rejection may close the socket before the client's
+            # separate body write. Still require the actual HTTP error response.
+            pass
         response = connection.getresponse()
         return response.status, response.read()
     finally:

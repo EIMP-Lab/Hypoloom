@@ -361,6 +361,24 @@ def test_launch_preview_generates_cli_compatible_cpu_vectors_without_effects(che
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
+def test_compact_review_preserves_executable_institutional_preparation(checkout, capsys):
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides, "launch"), "--summary",
+        "--institutional-browser-url", "http://127.0.0.1:9222",
+        "--institutional-provider-mode", "IEEE=public_only",
+        "--institutional-acquisition-seconds", "90",
+        "--institutional-manual-seconds", "300"]) == 0
+    review = json.loads(capsys.readouterr().out)["effective_configuration"]
+    settings = review["institutional_access"]
+    assert settings["provider_modes"]["IEEE"] == "public_only"
+    assert settings["acquisition_seconds"] == 90 and settings["manual_seconds"] == 300
+    argv = review["institutional_preparation_argv"]
+    assert argv[1:5] == ["-m", "hypoloom", "institutional", "prepare"]
+    parsed = cli_parser().parse_args([*argv[3:], "--provider", "IEEE"])
+    assert parsed.institutional_provider_mode == ["IEEE=public_only"]
+    assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
+
+
 @pytest.mark.parametrize("status", ["started", "host_start_failed", "creation_uncertain"])
 def test_only_confirmed_start_exposes_complete_monitor_commands(checkout, capsys, monkeypatch, status):
     import shlex

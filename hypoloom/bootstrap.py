@@ -501,7 +501,8 @@ def compact_result(result: dict) -> dict:
         "models": {"host_default_model": models.get("host_default_model"),
             "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
             "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
-        **{key: review[key] for key in ("gpu", "notifications") if key in review},
+        **{key: review[key] for key in ("gpu", "notifications", "institutional_access",
+                                      "institutional_preparation_argv") if key in review},
     }
     if "launch" in result:
         launch = result["launch"]
