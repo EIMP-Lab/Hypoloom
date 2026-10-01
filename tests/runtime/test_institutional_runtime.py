@@ -279,6 +279,21 @@ def test_fixed_port_conflict_cannot_adopt_another_runs_endpoint():
         a.close()
 
 
+def test_preparation_does_not_print_private_gui_credentials(tmp_path, monkeypatch):
+    from hypoloom.cli import build_parser
+    from hypoloom.institutional_prepare import run
+    config = tmp_path / "browser.yaml"
+    config.write_text("services:\n  browser:\n    image: fixture:1\n")
+    monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *args: {"state": "opened"})
+    args = build_parser().parse_args(["institutional", "prepare", "--repository", str(tmp_path),
+        "--institutional-browser-mode", "server", "--institutional-compose-file", str(config),
+        "--institutional-browser-profile", str(tmp_path / "profile"), "--provider", "IEEE"])
+    output = []
+    assert run(args, input_fn=lambda *args: "q", output=output.append) == 0
+    assert "browser_ui_password" not in json.loads(output[0])["connection"]
+    assert not list((tmp_path / "state").iterdir())
+
+
 def test_host_cancel_and_same_version_recovery_follow_durable_state(tmp_path):
     from hypoloom.control_protocol import ControlRequest
     from hypoloom.workflow_host import WorkflowHost

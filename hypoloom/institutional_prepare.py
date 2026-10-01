@@ -85,7 +85,8 @@ def run(args, *, input_fn=input, output=print):
             root.mkdir(parents=True, exist_ok=True)
             directory = tempfile.TemporaryDirectory(prefix="institutional-prepare-", dir=root)
             control = PreparationControl(directory.name, access)
-            output(json.dumps({"state_root": directory.name, "connections": access.connections()}, ensure_ascii=False))
+            output(json.dumps({"state_root": directory.name,
+                "connection": access.status("preparation")["connection"]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         for provider in selected:
             if not args.non_interactive:
