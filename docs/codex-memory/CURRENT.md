@@ -1,20 +1,19 @@
 # Current Hypoloom development state
 
 - October 1 institutional follow-up A–D is implemented for new lifecycle v11
-  runs: finite 120-second acquisitions / explicit 600-second manual windows,
-  run-level skip/restore/platform modes through the existing command journal,
-  standalone preparation/full catalogs/sample verification, and dynamic exact-DOI
-  OA fallback with original security/identity validation and shared PDF limits.
-  Browser credentials remain browser-owned. No new SQL table or authority; new
-  control helper stays in the existing total core LOC allocation. 210 focused
-  offline checks pass; native OA → three readers → CPU → archive/Oracle closure
-  passes. Five Web interactions and real browser tab ownership also pass. Final
-  full candidate qualification is in progress. The real Springer sample was
-  supplied, but the operator CDP tunnel currently disconnects; no new real
-  subscription result is claimed. Existing runs/Profiles/pool remain untouched.
-  User authorizes committing and pushing these batches to dev.
+  runs: finite acquisition/manual windows, durable run-scoped skips/platform modes,
+  standalone preparation/catalogs/sample verification and shared exact-DOI OA
+  fallback. Browser credentials remain browser-owned; no new SQL table/authority.
+  Full G1 plus final repairs/browser opt-ins covers 6,659 passing identities and
+  26 skips. Eight native roots close 171 Agents / 11 CPU Processes with clean
+  Oracles and no residue. All 25 retained-store audits match baseline exactly,
+  preserving two existing findings. Wheel/CLI/MCP/fresh-bundle checks pass.
+  The supplied Springer sample awaits restoration of the operator CDP tunnel;
+  no new real subscription claim. Existing runs/Profiles/pool remain unchanged.
+  User authorizes phased commit/push to dev.
   [Design](../design/institutional-access-preparation.md),
-  [guide](../guides/institutional-access.md).
+  [guide](../guides/institutional-access.md),
+  [results and limits](../qualification.md#institutional-preparation-and-bounded-access-2026-10-01).
 
 - October 1 real institutional subscription: user-completed Xidian login over
   dedicated Windows Edge/loopback SSH yields the expected 16-page IEEE PDF in

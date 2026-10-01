@@ -2,6 +2,82 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Institutional preparation and bounded access (2026-10-01)
+
+The four [design batches](design/institutional-access-preparation.md) are implemented
+for new lifecycle v11 runs. Background acquisition ends after a finite window
+(default 120 seconds); authentication ends background waiting immediately unless
+the operator explicitly opens a manual window (default 600 seconds). New papers
+do not extend it. Late results cannot replace a retry or a skipped request.
+Run-scoped skips, restores and platform modes use the existing transactional command
+journal and survive same-version Host restart. No new table or credential store.
+
+The standalone `python -m hypoloom institutional prepare` command and full Web/TUI
+platform catalogs allow preparation before any paper request. Sample verification
+uses the normal PDF identity validator, then releases its bytes without admitting
+research evidence. Bootstrap's full and compact review preserve the preparation
+command and selected options. Public-only platforms still use exact-DOI open-access
+fallback; dynamic tools share the existing locators, rate limits, PDF slots and
+archive validators. The actual retrieved version/origin remains visible. Cookies
+and storage stay in the dedicated browser; no indefinite session validity is claimed.
+
+Qualification used frozen candidate `74492c5` for the full offline invocation:
+**6,620 passed, one failed, 62 skipped** in 2,976.92 seconds. The failure was an
+existing relay test client writing a body after a header-level rejection had
+already closed its Unix socket. The fixture now reads the real error response
+when that write raises BrokenPipe; the expected HTTP status and zero upstream
+calls are still required. Installation checks separately found the missing
+`python -m hypoloom` entry point and omitted institutional fields in compact init
+review. Both are fixed through the existing CLI/projection, with regressions.
+
+Final-source results:
+
+- 108 relay, bootstrap, preparation and frozen-runtime checks pass, including the
+  original failure and the new installed-command/compact-review cases.
+- 214 institutional, real Chrome/Poppler, Web interaction, dynamic document,
+  open-access, reading and documentation checks pass in 122.76 seconds.
+- The native institutional/OA case passes again in 58.40 seconds: a real Host,
+  broker and native CC readers obtain the validated OA source under public-only
+  mode, three readers inspect it, and one actual CPU experiment is accepted.
+  There is one durable platform-choice command and no institutional browser fetch.
+- Combined test-identity coverage is **6,659 passed / 26 opt-in skips**, with no
+  unresolved failure. This combines the initial full invocation and focused
+  repairs/opt-ins; it is not a claim that the initial invocation passed.
+- Wheel and sdist build; an isolated wheel installation outside the checkout
+  matches all 165 packaged files, lists nine platforms through the documented
+  module entry, exposes both MCP tools, and creates a fresh runtime bundle with
+  the same installed runtime identity. Compilation, undefined-name and whitespace
+  checks pass.
+
+Independent closure inspection covers seven completed native roots from full G1
+and the final OA rerun: **171 Agent Attempts / 11 CPU Process Attempts**, all
+closed, with 11 experiment-create and 11 outcome-accept effects. All eight Oracles
+pass; there are no open Attempts, live recorded process groups or control sockets.
+The separate control regression restarts an actual Host and preserves preferences
+without replaying the manual login window. Scripted local providers exercise the
+native topology without paid model calls; these are not scientific-quality G5 results.
+
+G2 retained cohort: all **25** top-level existing research stores, ACI 19–29 and
+lifecycle v9/v10, were read by isolated baseline (`8ec9dd5`) and candidate wheels.
+All complete Oracle outputs match exactly. One larger archive timed out at 90
+seconds in both readers; a bounded 300-second retry completed in about 87 seconds
+per reader and matched. Two roots retain identical pre-existing Oracle findings;
+no historical repair is implied. Logical database dumps and artifact metadata are
+unchanged. No OPEN Attempts or live recorded process groups remain; an independent
+Host process scan also found no retained Host. No old run was resumed or migrated.
+
+Evidence stays in `.local/qualification/institutional-preparation-20261001/`:
+`g1.xml`, `g1-repairs.xml`, `final-focused.xml`, `native-final.xml`,
+`g1-identity-coverage.json`, `native-closure-summary.json`,
+`retained-summary.json`, per-root audits and `installation-final.json`.
+The supplied Springer DOI `10.1007/s10489-023-04932-7` is a second-platform sample,
+not a second IEEE paper. At submission the operator CDP tunnel disconnects; the
+user plans to restore it, so no new Springer subscription result is claimed.
+Earlier real IEEE evidence remains valid only within its stated scope below.
+Server Docker deployment, browser restart/session expiry, another entitled IEEE
+paper, real denied entitlement and paid/GPU G4/G5 remain unqualified. Existing
+research runs, Profiles, frozen bundles and the production pool are unchanged.
+
 ## Real institutional subscription and IEEE viewer repair (2026-10-01)
 
 The user completed Xidian University sign-in in a dedicated Windows Edge

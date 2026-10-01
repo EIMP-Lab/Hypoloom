@@ -4,7 +4,10 @@
   implemented run-independent publisher preparation, browser-owned sessions,
   finite background/manual acquisition, durable skip/mode controls in the
   existing journal, shared DOI fallback and four implementation/qualification
-  batches. Current commands and limits are in the institutional guide.
+  batches. [Qualification](../qualification.md#institutional-preparation-and-bounded-access-2026-10-01)
+  records full/focused identity coverage, eight native closures, 25 retained-store
+  comparisons, wheel/CLI checks and the pending real Springer connection.
+  Current commands and limits are in the institutional guide.
 
 - [Real institutional subscription and IEEE viewer repair](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01):
   actual Windows Edge/SSH institution login, article/DOI acquisition and valid
