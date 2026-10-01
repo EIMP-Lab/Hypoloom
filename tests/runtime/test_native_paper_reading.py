@@ -33,6 +33,7 @@ class ReadingScenario(_FinalReportHostScenario):
         self.correct_errors = correct_errors
         self.nonce = "method-page-" + secrets.token_hex(12)
         self.sources = {}; self.results = {}; self.readers = set()
+        self.source_retries = set()
         # The local provider can finish a reader before bounded Host dispatch
         # starts the third one. Hold its first response until the test observes
         # all three real reader processes; cancellation still uses the Host.
@@ -52,12 +53,23 @@ class ReadingScenario(_FinalReportHostScenario):
                     assert not result.get("is_error"), result
                     source = json.loads(_result_text(result))
                     self.sources[request.attempt_id] = source["documents"] if self.batch_documents else [source]
-                if self.correct_errors and step in {3, 4}:
-                    suffix = "__bad_fields" if step == 3 else "__bad_reference"
+                    if self.batch_documents and any("source_ref" not in item for item in source["documents"]):
+                        assert all("source_ref" in item or item.get("error", {}).get("code") == "paper_io_busy"
+                            for item in source["documents"]), source
+                        self.source_retries.add(request.attempt_id)
+                if step == 3 and request.attempt_id in self.source_retries:
+                    result = next(value for key, value in results.items() if key.endswith("__prepare_retry"))
+                    assert not result.get("is_error"), result
+                    source = json.loads(_result_text(result))
+                    assert len(source["documents"]) == 2 and all("source_ref" in item for item in source["documents"]), source
+                    self.sources[request.attempt_id] = source["documents"]
+                logical_step = step - int(request.attempt_id in self.source_retries and step >= 3)
+                if self.correct_errors and logical_step in {3, 4}:
+                    suffix = "__bad_fields" if logical_step == 3 else "__bad_reference"
                     result = next(value for key, value in results.items() if key.endswith(suffix))
                     assert result.get("is_error"), result
-                    assert ("wait_for_completion" if step == 3 else "web_fetch") in _result_text(result)
-                if step >= (6 if self.correct_errors else 4):
+                    assert ("wait_for_completion" if logical_step == 3 else "web_fetch") in _result_text(result)
+                if logical_step >= (6 if self.correct_errors else 4):
                     result = next(value for key, value in results.items() if key.endswith(f"__reading_wait_{step - 1}_call"))
                     assert not result.get("is_error"), result
                     self.results[request.attempt_id] = json.loads(_result_text(result))
@@ -93,13 +105,19 @@ class ReadingScenario(_FinalReportHostScenario):
             if step == 1:
                 arguments = {"mode": "document", "sources": [{"url": DOC}, {"url": DOC + "/second"}]} if self.batch_documents else {"mode": "document", "url": DOC}
                 return (("prepare_source", "mcp__host-tools__web_fetch", arguments),)
-            if step == 2:
+            if step == 2 and request.attempt_id in self.source_retries:
+                # Keep the real one-worker policy. Reuse the first accepted
+                # source and retry the bounded batch once after transient busy.
+                return (("prepare_retry", "mcp__host-tools__web_fetch",
+                    {"mode": "document", "sources": [{"url": DOC}, {"url": DOC + "/second"}]}),)
+            logical_step = step - int(request.attempt_id in self.source_retries and step >= 3)
+            if logical_step == 2:
                 if self.correct_errors:
                     return (("bad_fields", "mcp__host-tools__read_papers", {"action": "submit", "readings": [], "wait_for_completion": True}),)
-            if step == 3 and self.correct_errors:
+            if logical_step == 3 and self.correct_errors:
                 return (("bad_reference", "mcp__host-tools__read_papers", {"action": "submit", "readings": [
                     {"reading_id": "url-mistake", "paper_ref": DOC, "question": "Check the method."}]}),)
-            if step == (4 if self.correct_errors else 2):
+            if logical_step == (4 if self.correct_errors else 2):
                 return (("submit_readers", "mcp__host-tools__read_papers", {"action": "submit", "readings": [
                     {"reading_id": f"question-{i}", "paper_ref": self.sources[request.attempt_id][i % len(self.sources[request.attempt_id])]["source_ref"],
                      "question": f"Independent method question {i}: quote the exact coefficient label and state the limitation."} for i in range(3)]}),)
