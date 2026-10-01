@@ -406,6 +406,49 @@ def test_server_browser_ui_requires_a_cdp_endpoint(checkout, capsys):
     assert not (repo / "state").exists()
 
 
+@pytest.mark.parametrize("mode", ["local", "server", "existing"])
+def test_connection_preview_roundtrips_without_starting_browser(checkout, capsys, monkeypatch, mode):
+    from hypoloom import institutional_connection, bootstrap_inspect
+    repo, overrides = checkout
+    monkeypatch.setattr(institutional_connection, "_run", lambda *a, **k: pytest.fail("preview started a resource"))
+    monkeypatch.setattr(institutional_connection, "probe", lambda *a, **k: pytest.fail("preview contacted browser"))
+    argv = [*arguments(repo, overrides, "launch"), "--institutional-browser-mode", mode]
+    assert bootstrap.main(argv) == 0
+    result = json.loads(capsys.readouterr().out)
+    review = result["effective_configuration"]
+    command = result["commands"]["institutional_connect"]
+    assert command == review["institutional_connection_argv"]
+    parsed = cli_parser().parse_args(command[4:])
+    assert parsed.institutional_browser_mode == mode and parsed.connection_action == "start"
+    assert parsed.institutional_browser_url == "http://127.0.0.1:9222"
+    host = result["commands"]["host_start"]
+    serve = cli_parser().parse_args(host[host.index("--") + 4:])
+    assert serve.institutional_browser_url == parsed.institutional_browser_url
+    assert not hasattr(serve, "institutional_browser_mode"), "Host must not manage browser/tunnel lifecycle"
+    selected = bootstrap.build_parser().parse_args(argv)
+    forwarded = bootstrap_inspect._launch_argv(selected, repo)
+    assert bootstrap.build_parser().parse_args(forwarded[4:]).institutional_browser_mode == mode
+    assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
+
+
+@pytest.mark.parametrize("connected", [False, True])
+def test_connection_failure_precedes_host_and_success_is_reported(monkeypatch, connected):
+    calls = []
+    def invoke(argv, *a, **k):
+        name = argv[0]; calls.append(name)
+        if name == "profile_check": return 0, {"admitted": True, "create_run_payload": {}}
+        if name == "institutional_connect": return (0, {"status": "reused"}) if connected else (2, {"status": "unavailable"})
+        if name == "host_start": return 0, {"status": "ready"}
+        return 0, {"status": "accepted"}
+    monkeypatch.setattr(bootstrap, "_invoke", invoke)
+    commands = {k: [k] for k in ("profile_check", "institutional_connect", "host_start", "start", "status")}
+    result = bootstrap.start_fresh({**commands, "environment": {}, "working_directory": "/tmp"}, {})
+    assert result["status"] == ("started" if connected else "institutional_connection_failed")
+    assert ("host_start" in calls) == connected
+    if not connected: assert calls == ["profile_check", "institutional_connect"]
+    assert bootstrap.compact_result({"launch": result})["launch"]["institutional_connection"] == result["institutional_connection"]
+
+
 def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(checkout, tmp_path, capsys, monkeypatch):
     repo, overrides = checkout
     credentials = tmp_path / "private.env"

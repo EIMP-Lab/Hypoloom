@@ -59,6 +59,100 @@ python -m hypoloom institutional prepare \
 当前选择的 Semantic Scholar 或 Unpaywall；不会因进入机构队列重复整批检索。
 OA 作者稿保留实际来源和版本限制，不声称为出版社定稿。另一篇替代论文必须使用自己的引用。
 
+## init 自动准备连接
+
+先选择浏览器所在位置，再进行出版社登录。`bootstrap inspect/launch` 和独立
+`institutional prepare` 共用以下可选参数；不传 mode 时保留原来的仅连接行为。
+
+| mode | 使用场景 | 自动准备 |
+| --- | --- | --- |
+| `local` | 项目就在原生 Linux 桌面上 | 当前用户的 systemd 启动专用可见 Chrome/Chromium，直连回环 CDP；无需 SSH 或 Docker |
+| `existing` | Windows／另一台 Linux 的浏览器，或自行管理的本机浏览器 | 检查现有 CDP，客户端自行维护隧道；不接管外部浏览器 |
+| `server` | 没有桌面的服务器 | 启动仓库现有 Compose 服务，浏览器界面在回环 5800、CDP 在 9222；要求镜像已安装 |
+
+```bash
+python -m hypoloom institutional connect status --institutional-browser-mode local
+python -m hypoloom institutional connect start --institutional-browser-mode local
+python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
+```
+
+在 `/autoresearch init` 中明确选择上述位置，或给 `bootstrap inspect/launch` 增加
+`--institutional-browser-mode local`（按实际情况改为 existing/server）。默认端点为
+`http://127.0.0.1:9222`，可用 `--institutional-browser-url` 改写 local/existing 端口。
+预览展示 `institutional_connection`、`institutional_connection_argv` 和
+`institutional_preparation_argv`，不会启动浏览器、创建目录、登录或创建研究任务。
+已选启动方式在 `launch --start` 创建 Host 前执行；连接失败返回
+`institutional_connection_failed`。可重试、修改位置，或明确去掉机构连接参数后仅使用
+公开/OA 来源；不会自动替你改变选择。只传旧 `--institutional-browser-url` 的行为兼容。
+
+Linux 需在实际桌面用户的终端内执行，已有 Chrome/Chromium、用户级 systemd/busctl 和
+项目的 Playwright 可选依赖。X11 使用当前 DISPLAY/XAUTHORITY；Wayland 检查当前用户的
+会话 socket。SSH 中缺少桌面环境时不会借用其他用户权限。检查成功后请确认可见窗口；
+CDP 可用不等于窗口可见。程序缺失、端口冲突、目录占用分别报错，不安装浏览器、不删锁。
+专用目录默认在 `$XDG_DATA_HOME/hypoloom/Institutional-<浏览器程序名>`，XDG 未配置则位于
+`~/.local/share/hypoloom/`。可指定绝对路径 `--institutional-browser-profile` 和程序
+`--institutional-browser-executable`；目录须由当前用户拥有且为 0700，禁止日常默认目录。
+重复启动复用所选 systemd 单元；退出研究不会关闭它。同目录换端口须先停止原连接。
+
+```bash
+# 使用与 start 相同的程序、目录及端点参数；正常关闭并保存浏览器会话
+python -m hypoloom institutional connect stop --institutional-browser-mode local
+# 服务器模式只启动已存在的本地镜像，不自动拉取或修改系统代理
+python -m hypoloom institutional connect start --institutional-browser-mode server --repository /path/to/Hypoloom
+```
+
+`--institutional-connect-timeout` 默认 30 秒，允许 3–120 秒，控制启动就绪等待；依赖检查、
+CDP 握手和停止检查也各有时限。server 的 Compose 来源是所选仓库，安装 wheel 后仍需
+提供此仓库路径。Docker 失败应修复其部署或改选 existing，不会静默换成其他方式。
+`stop` 只操作匹配的受管资源；existing 不关闭外部浏览器，任何模式均不删除会话目录。
+
+### Windows 客户端一键连接
+
+项目附带 `hypoloom/connection_assets/institutional-connect.ps1`，可单独复制到 Windows；
+Windows 不需要安装项目或 Python。使用 PowerShell 7.2+，将脚本放在固定位置。SSH 目标
+是你已有的 `user@host` 或 SSH 配置别名，不能把账户密码填入目标。先在普通终端完成
+`ssh research-server` 的首次主机信任，并配置本机 SSH 密钥／ssh-agent；无人值守连接
+使用 BatchMode，不保存密码，服务端需有 curl。学校 SSO/MFA 仍只在浏览器内操作。
+
+```powershell
+$researchServer = 'research-server' # 替换为自己的 SSH 目标或配置别名
+$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
+scp "${researchServer}:/path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
+& $researchConnector -Server $researchServer -Action Run
+```
+
+脚本优先查找 Edge，再查找 Chrome，使用
+`%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome` 专用目录；原有
+同目录登录可复用。程序路径和目录可用 `-BrowserExecutable`／`-BrowserProfile` 明确指定，
+目录权限须限于当前用户、SYSTEM 和管理员。默认两端端口均为 9222，可用
+`-LocalPort`／`-RemotePort` 改写。脚本验证本机监听进程、回环绑定及服务端 CDP 的同一
+浏览器身份后报告 ready；服务器 `init` 再执行实际 CDP 握手。
+
+Run 保持前台，Ctrl+C 清理该次创建的 SSH 子进程；已有可用隧道仅监测，不被终止。
+断线后尝试重新连接，失败最多三次、间隔 30 秒；账号/主机信任预检失败直接返回。
+电脑关机、睡眠、浏览器关闭或需要重新认证时，远端 init 无法自行唤醒或代替真人登录。
+可选安装当前用户登录启动任务，不需要保存 Windows 密码：
+
+```powershell
+& $researchConnector -Server $researchServer -Action Install
+& $researchConnector -Server $researchServer -Action Status
+# 停止计划任务，或卸载；使用与安装时相同的路径及参数
+& $researchConnector -Server $researchServer -Action Stop
+& $researchConnector -Server $researchServer -Action Uninstall
+```
+
+Install 从下一次该用户登录开始生效；本次可另行 Run。任务拒绝覆盖不匹配的同名任务，
+禁止多实例，失败按系统任务配置最多重启三次、间隔一分钟。Stop 不删除专用配置目录，
+但系统结束任务时可能关闭它启动的子进程；需要持续连接时不要停止任务。前台 Run
+仍通过自己的 Ctrl+C 停止。另一台 Linux 客户端可先 `connect start --institutional-browser-mode local`，
+再保持原有 `ssh -N -o ExitOnForwardFailure=yes -R 127.0.0.1:9222:127.0.0.1:9222 research-server`
+运行；本批未添加 Linux 隧道常驻安装器。
+
+会话由浏览器保存，出版社/学校决定有效期和订阅范围。本批已用隔离无头 Chrome 验证
+进程与会话生命周期，原生可见桌面、Windows 登录任务和容器部署的验收范围以
+[验证记录](../qualification.md#institutional-connection-startup-2026-10-02)为准。
+
 ## 配置新运行
 
 在Linux Host所用的Python环境、Hypoloom仓库根目录安装可选依赖；PDF解析仍需要项目原有的Poppler：

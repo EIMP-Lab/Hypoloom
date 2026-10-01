@@ -2,6 +2,41 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Institutional connection startup (2026-10-02)
+
+The user authorized implementation and phased commits/push to dev from `158b792`.
+The candidate adds explicit existing/local/server connection startup, native Linux
+user-systemd browser management, a standalone Windows PowerShell connector with an
+optional user-logon task, and read-only init review followed by connection readiness
+before Host creation. It reuses CDP validation, browser profiles, systemd ExecStart,
+Task Scheduler and Compose metadata. No credential database or parallel run state is
+introduced. Endpoint-only usage and public/OA research remain compatible.
+
+The first real Chrome/systemd lifecycle check reproduced Chrome rewriting its
+process argv; subsequent reuse/stop incorrectly rejected the owned process. Ownership
+now uses systemd's structured ExecStart argv plus actual current-user process liveness.
+The restart check then reproduced both a stale browser lock and a recently set cookie
+lost by signal-based shutdown. Chrome handles its own demonstrably stale local lock;
+the launcher never removes it. Explicit local stop sends Chromium `Browser.close`
+and confirms service termination, letting Chromium flush sessions normally.
+
+Final focused validation: **107 passed in 23.43 s**, including real concurrent
+systemd startup, CDP reuse, graceful stop/restart and persistence of a synthetic cookie
+in a disposable profile. The test uses a headless fixture wrapper; production adds
+neither headless, no-sandbox nor basic password-storage flags. An isolated PowerShell
+7.6.6 runtime parses the Windows script and exercises literal argument handling,
+browser-identity comparison and actual child-process cleanup. Other tests cover
+unknown ports/profiles/units, private/default profile restrictions, Compose expanded
+port validation, init ordering and unchanged preparation/deadline behavior.
+
+Full frozen-candidate G1, installation and retained-reader checks are in progress.
+Private evidence: `.local/qualification/institutional-connection-20261002/`.
+No retained run, Profile or production pool is started or changed. User browser/tunnel
+port 9222 is untouched; no subscription sample, paid model or GPU run is launched.
+Visible X11/Wayland windows, Windows CIM/Task Scheduler/real SSH reconnect, and Docker
+deployment are **not yet qualified**. Prior IEEE/Springer subscriptions do not establish
+these new platform-specific behaviors. No G4/G5 or all-publisher entitlement claim.
+
 ## Real Springer subscription and paywall classification (2026-10-01)
 
 The operator restored the Windows Edge 154.0.4258.48 loopback CDP tunnel and

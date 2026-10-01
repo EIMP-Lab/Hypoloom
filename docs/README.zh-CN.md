@@ -22,7 +22,7 @@
 - [架构](architecture.zh-CN.md):组件、所有权与持久边界。
 - [通知](guides/notifications.md)(英文):显式的外部投递。
 - [API 状态与恢复](guides/provider-recovery.zh-CN.md):等待、操作者重试与连接切换。
-- [机构全文访问](guides/institutional-access.zh-CN.md)：浏览器登录、TUI合并待办与PDF导入。
+- [机构全文访问](guides/institutional-access.zh-CN.md)：init 自动连接、Linux 桌面与 Windows 客户端、集中登录、有界等待及 PDF 导入。
 - [资格](qualification.zh-CN.md):G0–G5、可运行的测试选择与状态
   (框架与摘要;完整台账为[英文版](qualification.md))。
 - [贡献](../CONTRIBUTING.zh-CN.md):本地开发与验证。

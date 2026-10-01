@@ -60,6 +60,17 @@ a failed launch or uncertain creation must not claim a run was started or return
 these post-start entries. After restarting CC, use `/autoresearch-monitor` to
 select from existing stores; see [monitoring](../../USAGE.md#tui-web-and-human-decisions).
 
+Institutional access can select `--institutional-browser-mode local|existing|server`
+during init. Local starts/reuses a dedicated browser on the native Linux desktop
+without a tunnel. Existing reuses a client browser/SSH forward; server uses the
+existing Compose image. Inspection only presents preparation commands. Start now
+checks an explicitly selected connection before creating a Host; failure creates
+no research. Optional standalone preparation can handle publisher logins beforehand.
+Windows has a standalone PowerShell connector and optional current-user logon task;
+server init cannot launch an unconfigured remote PC. See the
+[institutional guide](institutional-access.md#prepare-the-connection-during-init)
+for commands, stopping and qualification limits. SSO/MFA remains human-operated.
+
 ## One place for budgets
 
 Keep the six Profile files. New templates put financial and time limits in

@@ -50,6 +50,14 @@ Prepare only、启动失败或创建结果未确认时，不能宣称启动成�
 启动后入口。重开 CC 后可使用 `/autoresearch-monitor` 从已有状态库选择运行；
 详见[监控教程](../../USAGE.zh-CN.md#tuiweb-与人工决策)。
 
+机构全文可在 init 选择 `--institutional-browser-mode local|existing|server`。local 适用于
+项目所在的原生 Linux 桌面，直接启动／复用专用浏览器，无需隧道；existing 复用客户端
+浏览器及 SSH 转发；server 使用已有 Compose 镜像。普通检查只展示准备命令，实际
+Start now 先验证连接，失败不创建 Host。可以提前执行独立 prepare 集中登录多个平台。
+Windows 提供独立 PowerShell 连接脚本和可选的当前用户登录任务；服务器不能凭 init
+启动未配置的另一台电脑。命令、停止方式及真人验收限制见
+[机构全文指南](institutional-access.zh-CN.md#init-自动准备连接)。学校 SSO/MFA 仍需真人完成。
+
 ## 预算集中配置
 
 保留现有六份 Profile 文件。新模板将费用、时限和单次调用限制统一放在

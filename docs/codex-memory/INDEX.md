@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Init browser-connection startup](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02):
+  October 2 native Linux GUI, remote-client tunnel and server-browser placement;
+  implemented session/ownership boundaries, graceful close and required real
+  desktop checks. See the bilingual institutional guide for current commands.
+
 - [Institutional preparation and bounded recovery design](../design/institutional-access-preparation.md):
   implemented run-independent publisher preparation, browser-owned sessions,
   finite background/manual acquisition, durable skip/mode controls in the

@@ -2,6 +2,30 @@
 
 [English](qualification.md) · 简体中文
 
+## init 机构连接自动准备（2026-10-02）
+
+用户授权从 `158b792` 实施并分批提交、推送 dev。新增 existing/local/server 明确选择、
+原生 Linux 用户级 systemd 浏览器、Windows 独立 PowerShell 连接脚本及可选登录任务，
+以及创建 Host 前的 init 连接准备。预览只读，复用现有 CDP、浏览器配置目录与系统
+服务元数据，不增加凭据库或另一份运行状态。仅端点参数和公开/OA 研究保持兼容。
+
+真实 Chrome/systemd 测试先复现浏览器改写进程参数导致复用／停止误判，改为使用
+systemd 结构化 ExecStart 与真实进程存活核验。随后复现停止后遗留锁及直接终止进程
+导致刚设置的 Cookie 未落盘。确认原本机进程已退出后由 Chrome 自行恢复旧锁，启动器
+不删锁；显式停止使用 Chromium 正常关闭命令，再确认单元退出，使浏览器保存会话。
+
+最终定向 **107 项通过，23.43 秒**，包括真实并发启动、CDP 复用、正常停止／重启和
+合成 Cookie 保留。隔离无头包装器只用于测试，生产参数不添加 headless、no-sandbox
+或 basic 密钥存储。便携 PowerShell 7.6.6 检查脚本语法、参数转义、浏览器身份比较及
+真实子进程清理。另覆盖未知端口／目录／进程、权限、Compose 回环端口、init 顺序及
+现有集中准备、有界等待。本机没有可见桌面，不能以这些测试宣称真人 GUI 已验收。
+
+冻结候选后的全量 G1、安装与只读历史队列验证正在进行。私有证据位于
+`.local/qualification/institutional-connection-20261002/`。现有研究运行、Profile 与
+生产池保持只读；未操作用户 9222 浏览器／隧道，未调用订阅样本、付费模型或 GPU。
+X11/Wayland 可见窗口、Windows 原生 CIM／任务计划／真实 SSH 重连及 Docker 部署
+**待真人环境验收**。历史 IEEE/Springer 样本不能替代本次平台验证，也不代表全平台版权。
+
 ## 真实 Springer 订阅与付费墙判断（2026-10-01）
 
 用户恢复 Windows Edge 154.0.4258.48 的回环 CDP 隧道，并为 DOI

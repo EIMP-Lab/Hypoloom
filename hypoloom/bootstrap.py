@@ -302,7 +302,12 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         review["institutional_access"] = access.configuration
         from .institutional_options import launch_arguments as institutional_arguments
         review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
-            *institutional_arguments(args)]
+            "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
+        from .institutional_connection import plan
+        review["institutional_connection"] = plan(args, repository)
+        if args.institutional_browser_mode:
+            review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connect", "start",
+                "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
         access.close()
     real = args.auth_transport != "none"
     if real:
@@ -401,6 +406,8 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             "start": [*cli, "start", *common, "--state-root", str(state), "--request-id", request_id],
             "status": [*cli, "status", "--state-root", str(state), "--run-id", args.run_id],
             "host_stop": [*helper, "stop", "--state-root", str(state), "--auth-transport", args.auth_transport]}
+    if "institutional_connection_argv" in review:
+        commands["institutional_connect"] = review["institutional_connection_argv"]
     if args.gpu_pool_socket:
         commands["pool_status"] = [*cli, "gpu-pool-status", "--socket-path", args.gpu_pool_socket,
             *(["--expected-server-uid", str(args.gpu_pool_server_uid)] if args.gpu_pool_server_uid is not None else [])]
@@ -437,13 +444,15 @@ def start_fresh(commands: dict, payload: dict) -> dict:
     An automatic transport retry is deliberately unnecessary here.
     """
     timings = []
+    connection = None
     def call(name):
         before = time.monotonic()
         value = _invoke(commands[name], commands["environment"], cwd=commands["working_directory"])
         timings.append({"phase": name, "seconds": round(time.monotonic() - before, 3), "exit_code": value[0]})
         return value
     def finish(status, **values):
-        return {"status": status, **values, "phases": timings}
+        return {"status": status, **values, "phases": timings,
+                **({"institutional_connection": connection} if connection is not None else {})}
 
     def checked():
         code, result = call("profile_check")
@@ -453,6 +462,11 @@ def start_fresh(commands: dict, payload: dict) -> dict:
         return finish("profile_changed_before_host")
     if commands.get("pool_preflight_available") is False:
         return finish("pool_review_required", next_actions=["recheck", "revise_selection", "prepare_only", "cancel"])
+    if "institutional_connect" in commands:
+        code, connection = call("institutional_connect")
+        if code or connection.get("status") not in {"ready", "reused", "started"}:
+            return finish("institutional_connection_failed",
+                next_actions=["retry_connection", "revise_connection", "select_public_only", "cancel"])
     prepared_pool = None
     if "pool_prepare" in commands:
         if not commands.get("pool_action_reviewed") or not commands.get("pool_prepare_available"):
@@ -502,11 +516,12 @@ def compact_result(result: dict) -> dict:
             "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
             "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
         **{key: review[key] for key in ("gpu", "notifications", "institutional_access",
-                                      "institutional_preparation_argv") if key in review},
+                                      "institutional_preparation_argv", "institutional_connection",
+                                      "institutional_connection_argv") if key in review},
     }
     if "launch" in result:
         launch = result["launch"]
-        compact["launch"] = {k: launch[k] for k in ("status", "phases", "pool", "host", "cleanup", "next_actions", "creation_reconciled") if k in launch}
+        compact["launch"] = {k: launch[k] for k in ("status", "phases", "pool", "host", "cleanup", "next_actions", "creation_reconciled", "institutional_connection") if k in launch}
         for name in ("creation", "observation"):
             if name in launch:
                 item = launch[name]
@@ -552,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--gpu-pool-server-uid", type=int)
             command.add_argument("--web-search-fallback", choices=("openalex",))
             from .institutional_options import add_arguments as add_institutional_arguments
-            add_institutional_arguments(command)
+            add_institutional_arguments(command, connection=True)
             scheduling = command.add_mutually_exclusive_group()
             scheduling.add_argument("--managed-pool", action="store_true", help="plan management of this project's canonical shared pool")
             scheduling.add_argument("--nonpooled", action="store_true", help="explicitly select GPU scheduling without a pool")

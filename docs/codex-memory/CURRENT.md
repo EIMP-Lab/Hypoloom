@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 2 connection startup implements explicit existing/local/server modes,
+  native Linux user-systemd browser management, Windows standalone connector and
+  optional user-logon task, and init/prepare coordination before Host creation.
+  Preview is read-only; endpoint-only usage stays compatible. Credentials remain
+  browser-owned. Real headless Chrome reproduced mutable argv and unflushed-cookie
+  shutdown failures; fixes reuse systemd ExecStart and Chromium graceful close.
+  Final qualification is in progress. Visible Linux GUI, Windows native task APIs
+  and server-container deployment remain separate unverified operator checks.
+  Existing runs/Profiles/pool remain read-only; user authorizes commit/push dev.
+  [Design](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02).
+
 - October 1 institutional follow-up A–D is implemented for new lifecycle v11
   runs: finite acquisition/manual windows, durable run-scoped skips/platform modes,
   standalone preparation/catalogs/sample verification and shared exact-DOI OA

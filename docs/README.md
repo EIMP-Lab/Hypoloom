@@ -15,7 +15,7 @@ Current user entry points:
 - [Operator guide](operator-guide.md): English operational reference.
 - [Architecture](architecture.md): components, ownership and durable boundaries.
 - [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
-- [Institutional full text](guides/institutional-access.md): platform preparation, bounded waits, run preferences, OA fallback and PDF import.
+- [Institutional full text](guides/institutional-access.md): init connection startup, Linux desktop/Windows client, platform preparation, bounded waits, OA fallback and PDF import.
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
 - [Research workflow](guides/research-workflow.md): stage-specific methods, task-specific science and owner-local skill evolution.
 - [Reading and proposals](guides/reading-and-proposals.md): references, assistants, parallel arguments and hypothesis limits.

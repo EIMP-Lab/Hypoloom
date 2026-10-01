@@ -8,6 +8,112 @@ browser so a laptop can disconnect after login. The TUI groups unresolved
 papers by publisher without opening repeated prompts. Other research continues;
 available bytes do not establish that an Agent read a paper.
 
+## Prepare the connection during init
+
+Choose the browser location explicitly with `--institutional-browser-mode` on
+`bootstrap inspect/launch` or `institutional prepare`:
+
+| Mode | Placement | Preparation |
+| --- | --- | --- |
+| `local` | Native Linux desktop running the project | Start/reuse the user's visible Chrome/Chromium through user systemd; no SSH or Docker required. |
+| `existing` | External browser or client tunnel | Check existing loopback CDP; leave browser and tunnel ownership with their operator. |
+| `server` | Server without a desktop | Use the repository Compose service and an already installed image, with loopback GUI 5800 and CDP 9222. |
+
+```bash
+python -m hypoloom institutional connect status --institutional-browser-mode local
+python -m hypoloom institutional connect start --institutional-browser-mode local
+python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
+```
+
+The default endpoint is `http://127.0.0.1:9222`. Local/existing can use another
+`--institutional-browser-url`. Preview reports `institutional_connection`,
+`institutional_connection_argv` and `institutional_preparation_argv` without
+launching, connecting, creating a directory or creating research. An explicit mode
+prepares the connection before `launch --start` creates a Host. Failure returns
+`institutional_connection_failed`: retry, revise placement, or explicitly remove
+institutional options to use public/OA sources only. No silent fallback is selected.
+The old endpoint-only option remains compatible and does not manage startup.
+
+Run local mode from the actual Linux desktop user's terminal with Chrome/Chromium,
+user systemd/busctl and the project's optional Playwright dependency installed.
+X11 uses DISPLAY/XAUTHORITY; Wayland checks the current user's session socket.
+An SSH shell without a desktop cannot borrow another user's GUI permissions.
+Confirm that the window is visible: successful CDP alone cannot establish this.
+Missing dependencies, occupied ports and busy profiles return separate diagnostics;
+the launcher never installs a browser or removes browser locks.
+
+The default dedicated profile is `$XDG_DATA_HOME/hypoloom/Institutional-<executable>`,
+or `~/.local/share/hypoloom/` when XDG is unset. Override it with an absolute
+`--institutional-browser-profile`, and optionally select
+`--institutional-browser-executable`. The directory must belong to the current user
+with mode 0700; personal default profiles are rejected. Repeated startup reuses the
+selected unit. Changing its port requires stopping the old connection first.
+Ending a research Host does not close the browser.
+
+```bash
+# Repeat the same profile, executable and endpoint options used for start.
+python -m hypoloom institutional connect stop --institutional-browser-mode local
+python -m hypoloom institutional connect start --institutional-browser-mode server --repository /path/to/Hypoloom
+```
+
+Local stop asks Chromium to close normally and flush its session, then confirms
+termination. Managed stop preserves profiles; existing mode never closes an external
+browser. Readiness waits default to 30 seconds (`--institutional-connect-timeout`,
+3–120); dependency, handshake and stop checks have separate finite limits. Server
+mode validates the expanded Compose loopback ports, uses no implicit image pull, and
+requires the selected checkout even when running an installed wheel. Docker/proxy
+failures remain explicit and do not switch browser placement.
+
+### Windows connector
+
+Copy the standalone `hypoloom/connection_assets/institutional-connect.ps1` to a stable
+Windows path. It requires PowerShell 7.2+, not Python or the project runtime. First
+use normal SSH to establish host trust and configure your existing key/ssh-agent;
+the helper uses BatchMode and stores no password. The server needs curl. A target is
+`user@host` or an SSH config alias, never an account password.
+
+```powershell
+$researchServer = 'research-server' # Your SSH target or config alias
+$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
+scp "${researchServer}:/path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
+& $researchConnector -Server $researchServer -Action Run
+```
+
+The helper discovers Edge before Chrome, using the persistent
+`%LOCALAPPDATA%\Hypoloom\Institutional-msedge` or `Institutional-chrome` profile.
+Override with `-BrowserExecutable` and `-BrowserProfile`; permissions must restrict
+the profile to its user, SYSTEM and administrators. Both ports default to 9222;
+`-LocalPort` and `-RemotePort` can override them. Readiness checks the local owning
+process, loopback listener and the same CDP browser identity through the server.
+Server init additionally performs a real CDP handshake.
+
+Keep Run open; Ctrl+C cleans up its own SSH child. An existing healthy tunnel is
+monitored without being terminated. Forwarding failures retry at most three times,
+30 seconds apart; authentication/host-trust preflight failure returns immediately.
+An optional current-user interactive logon task requires no stored Windows password:
+
+```powershell
+& $researchConnector -Server $researchServer -Action Install
+& $researchConnector -Server $researchServer -Action Status
+& $researchConnector -Server $researchServer -Action Stop
+& $researchConnector -Server $researchServer -Action Uninstall
+```
+
+Install applies at next user logon; use Run for the current session. Repeat the same
+script path and options for task management. A conflicting task is never overwritten;
+duplicate task instances are suppressed, with up to three task restarts one minute
+apart after failure. Stop preserves the profile, although Task Scheduler may terminate
+children it launched. Foreground Run is stopped with its own Ctrl+C. A Linux remote
+client can start local mode and keep the existing `ssh -N -o ExitOnForwardFailure=yes
+-R 127.0.0.1:9222:127.0.0.1:9222 research-server` running; this batch adds no Linux
+tunnel service installer.
+
+Server init cannot wake a client PC or complete SSO/MFA. Browser profiles retain
+sessions, while schools/publishers control expiry and access rights. Isolated
+headless lifecycle tests do not prove visible desktop, Windows logon-task or
+container deployment behavior; see [qualification](../qualification.md#institutional-connection-startup-2026-10-02).
+
 ## Prepare platforms before research
 
 After connecting the dedicated browser, run these commands in the project's server environment:

@@ -122,6 +122,27 @@ Review `auto`/`public_only` provider choices and finite 120-second acquisition /
 600-second manual defaults with the launch configuration. During research use the
 Host's TUI/Web controls, rather than a second standalone browser manager.
 
+The optional `--institutional-browser-mode local|existing|server` also selects
+connection preparation (default CDP `http://127.0.0.1:9222`). `local` means a native
+Linux user desktop with a dedicated Chrome/Chromium profile and user systemd;
+it requires neither SSH nor Docker. Check current X11/Wayland access, not merely
+the installed OS. `existing` checks the selected endpoint, including a remote
+client's tunnel. The shipped `connection_assets/institutional-connect.ps1` runs
+on Windows to discover Edge/Chrome, use existing SSH keys and optionally install
+a current-user logon task; server init cannot launch an unconfigured client PC.
+`server` explicitly uses the repository Compose service and a locally available
+image. Do not silently install dependencies, pull images, switch placements or
+reuse a personal browser profile. See the institutional guide for setup.
+
+Preview exposes `institutional_connection` and, for an explicit placement,
+`institutional_connection_argv`. It starts no resources. After the user's selected
+preparation or Start now action, the helper starts/reuses the connection before
+creating a Host. On `institutional_connection_failed`, report the reason and offer
+retry, revised connection or an explicit public-only launch (remove institutional
+connection options). Do not silently change that choice. The Host never owns the
+browser/tunnel lifetime. Browser connectivity does not prove visible GUI, school
+login or subscription rights; ask the operator to confirm the visible window.
+
 Ask only about returned missing fields or explicit changes the user requested;
 group related choices. Proposed model/auth values must be shown as defaults,
 not claimed to be inherited from the interactive `/model`. Explain any actual

@@ -93,7 +93,7 @@ def _launch_argv(args, repository: Path) -> list[str]:
     if args.managed_pool: values += ["--managed-pool"]
     if args.nonpooled: values += ["--nonpooled"]
     from .institutional_options import launch_arguments as institutional_arguments
-    return [*values, *bootstrap._literature_arguments(args), *institutional_arguments(args)]
+    return [*values, *bootstrap._literature_arguments(args), *institutional_arguments(args, include_connection=True)]
 
 
 def inspect(args, repository: Path) -> dict:
@@ -112,6 +112,9 @@ def inspect(args, repository: Path) -> dict:
     if args.allow_gpu is not False:
         tasks["gpu_inventory"] = lambda: _gpu_inventory(repository)
         tasks["project_pool"] = lambda: _pools(repository)
+    if args.institutional_browser_mode or args.institutional_browser_url:
+        from .institutional_connection import plan
+        tasks["institutional_connection"] = lambda: plan(args, repository)
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {name: pool.submit(timed, name, function) for name, function in tasks.items()}
         checks = {}
