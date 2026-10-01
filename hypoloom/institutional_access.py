@@ -6,11 +6,11 @@ only documents consumed by the ordinary web tool enter the existing archive.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from html.parser import HTMLParser
-from math import ceil
+from math import ceil, isfinite
 from threading import RLock
 from time import monotonic
 from urllib.parse import urlsplit, urlunsplit
@@ -30,7 +30,7 @@ DOI_PROVIDERS = {"10.1038": "Nature", "10.1007": "Springer", "10.1109": "IEEE",
 MAX_DOCUMENT_BYTES = 24 * 1024 * 1024
 MAX_CACHE_BYTES = 64 * 1024 * 1024
 MAX_REQUESTS = 32
-AUTH_WAIT_STATES = {"login_required", "verification_required"}
+AUTH_WAIT_STATES = {"login_required", "verification_required", "access_required"}
 WAIT_STATES = AUTH_WAIT_STATES | {"browser_unavailable", "fetch_unavailable", "access_required"}
 _STATES = WAIT_STATES | {"available", "access_denied", "no_full_text", "identity_unconfirmed", "failed"}
 TRANSIENT_FETCH_REASONS = {"network_changed", "dns_failed", "connection_failed",
@@ -184,10 +184,19 @@ class Acquisition:
     reason_code: str | None = None
     last_checked_at: str | None = None
     transient_failures: int = 0
+    deadline: float = 0
+    started: bool = False
+    manual: bool = False
 
 
 class InstitutionalAccess:
-    def __init__(self, backend, *, clock=monotonic, poll_seconds: float = 30, event_sink=None):
+    def __init__(self, backend, *, clock=monotonic, poll_seconds: float = 30, event_sink=None,
+                 acquisition_seconds=120, manual_seconds=600):
+        for name, value, low, high in (("acquisition_seconds", acquisition_seconds, 30, 600),
+                                       ("manual_seconds", manual_seconds, 60, 1800)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not low <= value <= high:
+                raise ValueError(f"{name} must be finite and between {low} and {high}")
+        self.acquisition_seconds, self.manual_seconds = acquisition_seconds, manual_seconds
         self.backend, self.clock, self.poll_seconds = backend, clock, poll_seconds
         self.event_sink = event_sink
         self._items: dict[tuple, Acquisition] = {}
@@ -195,10 +204,31 @@ class InstitutionalAccess:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hypoloom-institution")
         self._flight = None
         self._closed = False
+        self._manual_until = {}
+        self._auth_needed = {}
+        self._connection_retry = 0
 
     @property
     def configuration(self):
-        return self.backend.configuration
+        return {**self.backend.configuration, "acquisition_seconds": self.acquisition_seconds,
+                "manual_seconds": self.manual_seconds}
+
+    def _pending(self, item):
+        return item.state in {"queued", "checking", "browser_unavailable", "fetch_unavailable"} or (
+            item.state in AUTH_WAIT_STATES and self._manual_until.get((item.scope[0], item.provider), 0) > self.clock())
+
+    def _expire(self):
+        now = self.clock()
+        for item in self._items.values():
+            if item.state in AUTH_WAIT_STATES and (item.scope[0], item.provider) not in self._manual_until:
+                continue
+            if item.document is None and item.deadline <= now and item.state in WAIT_STATES | {"queued", "checking"}:
+                state = "manual_timeout" if item.manual else "acquisition_timeout" if item.started else "queue_timeout"
+                self._transition(item, state, state)
+        for key, end in list(self._manual_until.items()):
+            if end <= now:
+                del self._manual_until[key]
+                self._auth_needed[key] = "login_required"
 
     def _transition(self, item, state, reason=None, *, initial=False):
         previous = None if initial else item.state
@@ -217,35 +247,43 @@ class InstitutionalAccess:
         except ValueError:
             return {"status": "unavailable", "reason": "unsupported_institutional_url"}
         with self._lock:
+            self._expire()
             key = (*scope, url)
             if self._closed:
                 return {"status": "unavailable", "reason": "institutional_access_closed"}
             if key not in self._items:
                 if len(self._items) >= MAX_REQUESTS:
-                    evict = next((k for k, p in self._items.items() if p.state in _STATES - WAIT_STATES), None)
+                    evict = next((k for k, p in self._items.items() if not self._pending(p)), None)
                     if evict is None:
                         return {"status": "unavailable", "reason": "institutional_request_limit"}
                     del self._items[evict]
-                self._items[key] = Acquisition(tuple(scope), url, publisher(url), title[:512], identity or identity_from_url(url))
-                self._transition(self._items[key], "queued", "requested", initial=True)
+                provider = publisher(url)
+                end = self._manual_until.get((scope[0], provider), 0)
+                deadline = self.clock() + self.acquisition_seconds
+                self._items[key] = Acquisition(tuple(scope), url, provider, title[:512], identity or identity_from_url(url),
+                    deadline=min(deadline, end) if end else deadline)
+                state = self._auth_needed.get((scope[0], provider), "queued") if not end else "queued"
+                self._transition(self._items[key], state, "requested" if state == "queued" else state, initial=True)
             item = self._items[key]
             return self._reply(item)
 
     def _reply(self, item):
         if item.document is not None:
             return dict(item.document)
-        return {"status": "pending" if item.state in WAIT_STATES | {"queued", "checking"} else "unavailable",
+        return {"status": "pending" if self._pending(item) else "unavailable",
                 "reason": item.state, "reason_code": item.reason_code, "provider": item.provider, "requested_url": item.url,
                 "next_action": "Continue other papers. The operator can use i in the TUI. "
                     "Later repeat web_fetch with mode=document and this URL; do not repeatedly poll or infer full-text claims."}
 
     def peek(self, scope, url):
         with self._lock:
+            self._expire()
             item = self._items.get((*scope, url))
             return None if item is None else self._reply(item)
 
     def status(self, run_id):
         with self._lock:
+            self._expire()
             groups = {}
             for item in self._items.values():
                 if item.scope[0] != run_id:
@@ -256,13 +294,14 @@ class InstitutionalAccess:
                     continue
                 group["papers"].append({"url": item.url, "title": item.title or item.url, "state": item.state,
                     "reason_code": item.reason_code, "last_checked_at": item.last_checked_at,
-                    "retry_in_seconds": max(0, ceil(item.next_check - self.clock())) if item.state in WAIT_STATES else None})
+                    "retry_in_seconds": max(0, ceil(item.next_check - self.clock())) if self._pending(item) else None,
+                    "remaining_seconds": max(0, ceil(item.deadline - self.clock())) if self._pending(item) else None})
             config = getattr(self.backend, "configuration", None) or {}
             return {"enabled": True, "groups": list(groups.values()),
                     "browser_endpoint": config.get("browser_endpoint"),
                     "browser_ui_url": config.get("browser_ui_url"),
                     "library_url": config.get("library_url"),
-                    "pending": sum(p["state"] in WAIT_STATES | {"queued", "checking"}
+                    "pending": sum(p["remaining_seconds"] is not None
                                    for g in groups.values() for p in g["papers"]),
                     "available": sum(p["state"] == "available" for g in groups.values() for p in g["papers"])}
 
@@ -277,23 +316,29 @@ class InstitutionalAccess:
             if action == "import":
                 if url is None or not isinstance(path, str) or not Path(path).is_absolute():
                     raise ValueError("import requires selected URL and an absolute Host-side PDF path")
-                for item in items:
-                    item.import_path = path
+            end = self.clock() + (self.acquisition_seconds if action == "import" else self.manual_seconds)
+            if action != "import":
+                self._manual_until[(run_id, provider)] = end
+                self._auth_needed.pop((run_id, provider), None)
+                self._connection_retry = 0
+            replacements = []
             for item in items:
                 if item.document is None:
-                    item.force, item.next_check = False, 0
-                    item.transient_failures = 0
-                    self._transition(item, "queued", "operator_" + action)
-            first = next((p for p in items if p.document is None), items[0])
-            first.force = True
-            if action == "open":
-                first.focus = True
+                    fresh = replace(item, next_check=0, transient_failures=0, deadline=end, started=False,
+                        force=False, focus=False, import_path=path if action == "import" else None, manual=action != "import")
+                    self._items[(*item.scope, item.url)] = fresh
+                    self._transition(fresh, "queued", "operator_" + action)
+                    replacements.append(fresh)
+            if replacements:
+                replacements[0].force = True
+                replacements[0].focus = action == "open"
         return self.status(run_id)
 
     def _acquire(self, item, force, focus, import_path):
         try:
-            result = (self.backend.import_pdf(import_path, item.url, item.title) if import_path
-                      else self.backend.fetch(item.url, force=force, focus=focus))
+            remaining = max(.001, item.deadline - self.clock())
+            result = (self.backend.import_pdf(import_path, item.url, item.title, timeout_seconds=remaining) if import_path
+                      else self.backend.fetch(item.url, force=force, focus=focus, timeout_seconds=remaining))
             if result.get("state") != "available":
                 state = result.get("state", "failed")
                 state = state if state in _STATES else "failed"
@@ -322,6 +367,9 @@ class InstitutionalAccess:
                 if item.scope[0] not in active_runs:
                     self._transition(item, "cancelled", "run_inactive")
             self._items = {key: item for key, item in self._items.items() if item.scope[0] in active_runs}
+            self._manual_until = {k: v for k, v in self._manual_until.items() if k[0] in active_runs}
+            self._auth_needed = {k: v for k, v in self._auth_needed.items() if k[0] in active_runs}
+            self._expire()
             if had_items and not self._items:
                 # Runs have stopped. Serialize owned-tab cleanup after any in-flight call.
                 self._executor.submit(self.backend.close)
@@ -341,6 +389,17 @@ class InstitutionalAccess:
                     item.document = document
                     item.last_checked_at = datetime.now(timezone.utc).isoformat()
                     self._transition(item, state, reason)
+                    group = (item.scope[0], item.provider)
+                    if state in AUTH_WAIT_STATES:
+                        self._auth_needed[group] = state
+                        if self._manual_until.get(group, 0) <= self.clock():
+                            for other in self._items.values():
+                                if (other.scope[0], other.provider) == group and self._pending(other):
+                                    self._transition(other, state, state)
+                    elif state == "available":
+                        self._auth_needed.pop(group, None)
+                    elif state == "browser_unavailable":
+                        self._connection_retry = self.clock() + self.poll_seconds
                     delay = self.poll_seconds
                     if state == "fetch_unavailable" and reason in TRANSIENT_FETCH_REASONS:
                         item.transient_failures = min(item.transient_failures + 1, 4)
@@ -349,13 +408,16 @@ class InstitutionalAccess:
                         item.transient_failures = 0
                     item.next_check = self.clock() + delay
             # One waiting publisher tab at a time; never navigate away from an unfinished login.
-            waiting = {p.provider: p for p in self._items.values() if p.state in AUTH_WAIT_STATES}
-            for key, item in self._items.items():
-                if item.state not in WAIT_STATES | {"queued"} or item.next_check > self.clock():
+            waiting = {p.provider: p for p in self._items.values() if p.state in AUTH_WAIT_STATES and self._pending(p)}
+            for key, item in sorted(self._items.items(), key=lambda pair: (pair[1].next_check, pair[1].deadline)):
+                if not self._pending(item) or item.state == "checking" or item.next_check > self.clock():
+                    continue
+                if not item.import_path and self._connection_retry > self.clock():
                     continue
                 if item.provider in waiting and waiting[item.provider] is not item and not (item.force or item.import_path):
                     continue
                 self._transition(item, "checking", "import" if item.import_path else "browser_check")
+                item.started = True
                 self._flight = key, item, self._executor.submit(self._acquire, item, item.force, item.focus, item.import_path)
                 item.force = item.focus = False
                 item.import_path = None

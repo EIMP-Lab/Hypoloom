@@ -42,7 +42,7 @@ class Backend:
         self.calls.append((url, kwargs))
         return {"state": self.state, "document": document(url)}
 
-    def import_pdf(self, path, url, title):
+    def import_pdf(self, path, url, title, **kwargs):
         self.calls.append((path, url))
         return {"state": "available", "document": document(url)}
 
@@ -68,6 +68,7 @@ def test_wait_deduplicates_provider_and_recovers_without_reprompting_every_paper
         access.request(SCOPE, URL)
         access.request(SCOPE, URL)
         access.request(SCOPE, SECOND)
+        access.control("run", "Nature", "open")
         pump(access, lambda: access.peek(SCOPE, URL)["reason"] == "login_required")
         for _ in range(5):
             access.tick({"run"})
@@ -171,9 +172,10 @@ def test_adapter_reason_is_allowlisted_before_status_and_logging():
 def test_transient_backoff_caps_and_resets_after_recovery(reason):
     backend, clock = Backend(), [0.]
     backend.fetch = lambda *args, **kwargs: {"state": "fetch_unavailable", "reason": reason}
-    access = InstitutionalAccess(backend, clock=lambda: clock[0])
+    access = InstitutionalAccess(backend, clock=lambda: clock[0], manual_seconds=1800)
     try:
         access.request(SCOPE, URL)
+        access.control("run", "Nature", "retry")
         item = access._items[(*SCOPE, URL)]
         for delay in (30, 60, 120, 300, 300):
             pump(access, lambda: item.state == "fetch_unavailable")
@@ -210,6 +212,7 @@ def test_auth_poll_and_operator_retry_reset_transient_backoff():
         pump(access, lambda: item.state == "fetch_unavailable")
         assert item.next_check == 90
         access.control("run", "Nature", "retry", url=URL)
+        item = access._items[(*SCOPE, URL)]
         pump(access, lambda: item.state == "fetch_unavailable")
         assert item.next_check == 60, "operator retry starts a fresh backoff"
         result[0] = {"state": "login_required"}

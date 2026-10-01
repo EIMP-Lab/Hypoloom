@@ -1,5 +1,11 @@
 # Current Hypoloom development state
 
+- October 1 institutional follow-up batch A implements finite queue deadlines,
+  background authentication completion, explicit manual windows and stale-result
+  rejection. Navigation/download/extraction inherit the remaining budget. 119
+  queue/navigation/browser checks pass, including real local Chrome fixtures.
+  Remaining design batches are in progress; no retained run or Profile changes.
+
 - October 1 institutional preparation follow-up is design only. Proposed default:
   public/OA first, reuse the existing browser session, and finish background
   requests that need human authentication; explicit operator login opens a finite

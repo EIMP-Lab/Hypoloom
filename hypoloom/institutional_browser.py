@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
+from time import monotonic
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 from .institutional_access import (MAX_DOCUMENT_BYTES, TRANSIENT_FETCH_REASONS, publisher,
@@ -45,9 +46,9 @@ _INSPECT = r"""() => {
     redirecting, text: full ? mainText : ''};
 }"""
 
-_FETCH = r"""async ({url, limit}) => {
+_FETCH = r"""async ({url, limit, timeout = 15000}) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), timeout);
   try {
     const r = await fetch(url, {credentials: 'include', signal: controller.signal});
     if (!r.ok) return {error: r.status === 429 ? 'http_rate_limited' : r.status >= 500 ? 'http_server_error' : 'http_error'};
@@ -125,13 +126,13 @@ def _ieee_pdf_url(article, target, *, viewer=False):
         return False
 
 
-def _navigate(page, target):
+def _navigate(page, target, *, timeout=25000):
     # CDP can point at another machine: cancel download paths, fetch bytes in-page.
     def cancel_download(download):
         download.cancel()
     page.on("download", cancel_download)
     try:
-        response = page.goto(target, wait_until="domcontentloaded", timeout=25000)
+        response = page.goto(target, wait_until="domcontentloaded", timeout=timeout)
         status = response.status if response is not None else 200
         return ("http_rate_limited" if status == 429 else "http_server_error" if status >= 500
                 else "http_error" if status >= 400 else None)
@@ -187,10 +188,23 @@ class PlaywrightInstitutionalBrowser:
         self._playwright = self._browser = None
         self._tabs = {}
         self._pdf_pending = {}
+        self._deadline = None
 
     @property
     def configuration(self):
         return {"browser_endpoint": self.endpoint, "library_url": self.library_url, "browser_ui_url": self.ui_url}
+
+    def _remaining(self, cap):
+        remaining = cap if self._deadline is None else min(cap, self._deadline - monotonic())
+        if remaining <= 0:
+            raise TimeoutError("institutional acquisition deadline")
+        return remaining
+
+    def _navigate(self, page, target):
+        return _navigate(page, target, timeout=max(1, self._remaining(25) * 1000))
+
+    def _wait(self, page):
+        page.wait_for_timeout(self._remaining(.5) * 1000)
 
     def _connect(self):
         if self._browser is not None and self._browser.is_connected():
@@ -198,7 +212,7 @@ class PlaywrightInstitutionalBrowser:
         self.close()
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint, timeout=5000)
+        self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint, timeout=self._remaining(5) * 1000)
         if not self._browser.contexts:
             raise ValueError("authenticated browser context is unavailable")
         return self._browser.contexts[0]
@@ -207,7 +221,7 @@ class PlaywrightInstitutionalBrowser:
         if (len(content) > MAX_DOCUMENT_BYTES or not content.startswith(b"%PDF-")
                 or not content.rstrip().endswith(b"%%EOF")):
             return {"state": "failed"}
-        pages = self.extractor.extract_document(content, max_pages=2000, timeout_seconds=15).pages
+        pages = self.extractor.extract_document(content, max_pages=2000, timeout_seconds=self._remaining(15)).pages
         document = {"requested_url": requested,
             "url": _public_reference(final), "title": title[:512], "identity": pdf_identity(pages),
             "content": content, "media_type": "application/pdf", "pages": pages}
@@ -218,7 +232,14 @@ class PlaywrightInstitutionalBrowser:
             return {"state": "identity_unconfirmed"}
         return {"state": "available", "document": document}
 
-    def import_pdf(self, path, url, title):
+    def import_pdf(self, path, url, title, *, timeout_seconds=120):
+        self._deadline = monotonic() + timeout_seconds
+        try:
+            return self._import_pdf(path, url, title)
+        finally:
+            self._deadline = None
+
+    def _import_pdf(self, path, url, title):
         source = Path(path)
         if source.is_symlink() or not source.is_file() or source.stat().st_size > MAX_DOCUMENT_BYTES:
             raise ValueError("import requires a bounded regular PDF file")
@@ -246,7 +267,7 @@ class PlaywrightInstitutionalBrowser:
         def read_pdf(target):
             if not matching_pdf(target):
                 return {'state': 'identity_unconfirmed'}
-            data = page.evaluate(_FETCH, {'url': target, 'limit': MAX_DOCUMENT_BYTES})
+            data = page.evaluate(_FETCH, {'url': target, 'limit': MAX_DOCUMENT_BYTES, 'timeout': self._remaining(15) * 1000})
             if data and data.get('data'):
                 if not matching_pdf(data['url']):
                     return {'state': 'identity_unconfirmed'}
@@ -261,9 +282,10 @@ class PlaywrightInstitutionalBrowser:
                 self._pdf_pending.pop(provider, None)
             return result
 
-        reason = _navigate(page, navigate) if navigate else None
+        reason = self._navigate(page, navigate) if navigate else None
         for attempt in range(51):
             try:
+                self._remaining(5)
                 info = page.evaluate(_INSPECT)
                 if info.get('network_error') or page.url.startswith('chrome-error:'):
                     reason = _navigation_reason(info.get('network_error') or 'network_error')
@@ -285,10 +307,19 @@ class PlaywrightInstitutionalBrowser:
                 if reason != 'redirect_unresolved':
                     break
             if attempt < 50:
-                page.wait_for_timeout(500)
+                self._wait(page)
         return finish({'state': 'fetch_unavailable', 'reason': reason or 'pdf_response_not_pdf'})
 
-    def fetch(self, url, *, force=False, focus=False):
+    def fetch(self, url, *, force=False, focus=False, timeout_seconds=120):
+        self._deadline = monotonic() + timeout_seconds
+        try:
+            return self._fetch(url, force=force, focus=focus)
+        except TimeoutError:
+            return {"state": "fetch_unavailable", "reason": "navigation_timeout"}
+        finally:
+            self._deadline = None
+
+    def _fetch(self, url, *, force=False, focus=False):
         provider = publisher(url)
         if provider is None:
             return {"state": "failed"}
@@ -298,7 +329,7 @@ class PlaywrightInstitutionalBrowser:
             if len(self._tabs) >= 8:
                 return {"state": "failed"}
             page = context.new_page()
-            page.set_default_timeout(5000)
+            page.set_default_timeout(self._remaining(5) * 1000)
             prior = (page, None, False)
         page, selected, waiting = prior
         if provider in self._pdf_pending:
@@ -318,6 +349,7 @@ class PlaywrightInstitutionalBrowser:
             if page.url.startswith("chrome-error:"):
                 return None, "network_error"
             try:
+                self._remaining(5)
                 info = page.evaluate(_INSPECT)
             except Exception as exc:
                 return None, _navigation_reason(exc)
@@ -349,7 +381,7 @@ class PlaywrightInstitutionalBrowser:
                     direct = _elsevier_article_url(page.url) if provider == "ScienceDirect" and not bridge_used else None
                     if direct:
                         bridge_used = True
-                        error = _navigate(page, direct)
+                        error = self._navigate(page, direct)
                         if error and error != "redirect_unresolved":
                             # A slow destination can itself have arrived at SSO/MFA.
                             arrived, inspect_error = inspect()
@@ -364,7 +396,7 @@ class PlaywrightInstitutionalBrowser:
                                 or any(info[key] for key in ("pdf", "full", "denied", "paywall"))):
                             return info, None
                 if attempt < 16:
-                    page.wait_for_timeout(500)
+                    self._wait(page)
             reason = "navigation_timeout" if info and info.get("loading") else "redirect_unresolved"
             return None, reason
 
@@ -383,7 +415,7 @@ class PlaywrightInstitutionalBrowser:
             self._tabs[provider] = (page, url, False)
             target = self.library_url if focus and self.library_url else _landing_url(url)
             for attempt in range(2):
-                reason = _navigate(page, target)
+                reason = self._navigate(page, target)
                 if reason is None:
                     break
                 # A timed-out navigation may already have reached SSO/MFA.
@@ -395,7 +427,7 @@ class PlaywrightInstitutionalBrowser:
                         return authentication
                 if attempt or reason not in TRANSIENT_FETCH_REASONS or reason == "http_rate_limited":
                     return unavailable(reason)
-                page.wait_for_timeout(500)
+                self._wait(page)
                 inspected, error = inspect()
                 if not error:
                     authentication = auth_state(inspected)
@@ -422,7 +454,7 @@ class PlaywrightInstitutionalBrowser:
         pdf_error = None
         if pdf_url and urlsplit(pdf_url).scheme == "https":
             try:
-                data = page.evaluate(_FETCH, {"url": pdf_url, "limit": MAX_DOCUMENT_BYTES})
+                data = page.evaluate(_FETCH, {"url": pdf_url, "limit": MAX_DOCUMENT_BYTES, "timeout": self._remaining(15) * 1000})
             except Exception as exc:
                 data = {"error": _navigation_reason(exc)}
             pdf_error = (data or {}).get("error")
