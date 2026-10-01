@@ -15,6 +15,8 @@ LABELS = {"queued": "等待获取", "checking": "检查中", "login_required": "
     "fetch_unavailable": "加载失败，等待自动重试", "access_required": "页面提示需订阅或机构访问",
     "available": "全文已就绪", "access_denied": "当前机构无权限", "no_full_text": "未找到全文",
     "identity_unconfirmed": "论文对应关系未确认", "failed": "文件获取或解析失败"}
+LABELS.update(skipped="已跳过此篇", public_only="仅公开途径", queue_timeout="排队超时",
+              acquisition_timeout="获取超时", manual_timeout="主动登录等待已结束")
 REASON_LABELS = {"network_changed": "网络发生变化", "network_error": "网络错误",
     "dns_failed": "域名解析失败", "connection_failed": "连接失败", "navigation_timeout": "加载超时",
     "redirect_unresolved": "重定向未完成", "http_server_error": "网站服务暂时异常",
@@ -69,6 +71,7 @@ class LiteratureAccessScreen(ModalScreen):
         super().__init__()
         self.status, self.busy = status, False
         self._providers, self._urls = (), ()
+        self._unconfirmed = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="literature-access-form"):
@@ -89,6 +92,11 @@ class LiteratureAccessScreen(ModalScreen):
                 yield Button("导入PDF", id="literature-import")
                 yield Button("Web面板链接", id="literature-web")
                 yield Button("稍后处理", id="literature-close")
+            with Horizontal():
+                yield Button("跳过此篇", id="literature-skip")
+                yield Button("恢复此篇", id="literature-restore")
+                yield Button("仅公开途径", id="literature-public-only")
+                yield Button("启用机构访问", id="literature-auto")
 
     def on_mount(self):
         self.update_status(self.status)
@@ -109,7 +117,7 @@ class LiteratureAccessScreen(ModalScreen):
                 selector.value = prior if prior in providers else providers[0]
         self._details()
         writable = bool(access.get("enabled")) and status.get("run_state") not in {"STOPPING", "COMPLETED", "FAILED", "CANCELLED"}
-        for button in ("login", "retry", "import"):
+        for button in ("login", "retry", "import", "skip", "restore", "public-only", "auto"):
             self.query_one("#literature-" + button, Button).disabled = self.busy or not writable or not providers
         if not access.get("enabled"):
             self._message("Host未启用机构访问。启动新任务时配置--institutional-browser-url；此处不填写登录凭据。")
@@ -125,7 +133,8 @@ class LiteratureAccessScreen(ModalScreen):
         selected = self.query_one("#literature-provider", Select).value
         group = next((g for g in (self.status.get("literature_access") or {}).get("groups", [])
                       if g["provider"] == selected), {"papers": []})
-        self.query_one("#literature-pending", Static).update("\n".join(
+        self.query_one("#literature-pending", Static).update(
+            f"{'仅公开途径' if group.get('mode') == 'public_only' else '使用现有机构会话'} · 主动等待剩余 {group.get('manual_remaining_seconds', 0)} 秒\n" + "\n".join(
             f"{LABELS.get(p['state'], p['state'])} · {p['title']}"
             + (f" · {REASON_LABELS.get(p['reason_code'], p['reason_code'])}（{p['reason_code']}）"
                if p.get("reason_code") in REASON_LABELS else f" · {p['reason_code']}" if p.get("reason_code") else "")
@@ -151,18 +160,27 @@ class LiteratureAccessScreen(ModalScreen):
         if provider is Select.BLANK:
             return
         payload = {"run_id": self.app.run_id, "provider": provider, "action": action}
-        if action == "import":
+        if action in {"auto", "public_only"}:
+            payload.update(action="mode", mode=action)
+        if action in {"import", "skip", "restore"}:
             url = self.query_one("#literature-paper", Select).value
             if url is Select.BLANK:
                 return
-            payload.update(url=url, path=self.query_one("#literature-import-path", Input).value.strip())
+            payload.update(url=url)
+            if action == "import": payload["path"] = self.query_one("#literature-import-path", Input).value.strip()
+        durable = payload["action"] in {"skip", "restore", "mode"}
+        command = (self._unconfirmed if durable and self._unconfirmed is not None and self._unconfirmed.payload == payload else
+            ControlRequest(SCHEMA_VERSION, "literature-access-" + str(uuid.uuid4()),
+                self.status.get("run_revision") if durable else None, "LITERATURE_ACCESS", payload))
+        if durable: self._unconfirmed = command
         self.busy = True
         self.update_status(self.status)
         try:
             response = await asyncio.to_thread(request_over_socket, self.app.state_root / "control.sock",
-                ControlRequest(SCHEMA_VERSION, "literature-access-" + str(uuid.uuid4()), None, "LITERATURE_ACCESS", payload), timeout=5)
+                command, timeout=5)
+            if durable: self._unconfirmed = None
             if response.status == "accepted":
-                self._message("已请求打开连接的浏览器。请在那里完成登录；系统会检查并重试，其他研究继续。"
+                self._message("设置已保存到本次运行。" if durable else "已请求打开连接的浏览器。请在那里完成登录；系统会检查并重试，其他研究继续。"
                     if action == "open" else "已安排检查。全文通过验证后，研究Agent可通过原文工具读取。")
             else:
                 self._message(str((response.error or {}).get("message", "Host未接受请求")))
@@ -180,7 +198,9 @@ class LiteratureAccessScreen(ModalScreen):
         elif event.button.id == "literature-web":
             self.app.action_literature_browser()
         else:
-            action = {"literature-login": "open", "literature-retry": "retry", "literature-import": "import"}.get(event.button.id)
+            action = {"literature-login": "open", "literature-retry": "retry", "literature-import": "import",
+                "literature-skip": "skip", "literature-restore": "restore",
+                "literature-public-only": "public_only", "literature-auto": "auto"}.get(event.button.id)
             if action:
                 await self._send(action)
 

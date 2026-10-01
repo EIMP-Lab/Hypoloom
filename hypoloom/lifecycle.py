@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, TypeAlias
 from .domain import EffectKind, FactId, ResearchFactType
-WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v10"
+WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v11"
 class Machine(str, Enum):
     RUN_WORKFLOW, EXPERIMENT_WORKFLOW, HUMAN_DECISION, EFFECT_ATTEMPT = (
         "RunWorkflow", "ExperimentWorkflow", "HumanDecision", "EffectAttempt",
@@ -20,6 +20,7 @@ class HumanDecisionState(str, Enum):
 class EffectAttemptState(str, Enum):
     OPEN, CLOSED = "OPEN", "CLOSED"
 class Command(str, Enum):
+    LITERATURE_ACCESS = "LITERATURE_ACCESS"
     SELECT_PLUGIN = "SELECT_PLUGIN"
     PAUSE_PARTICIPANT = "PAUSE_PARTICIPANT"
     RESUME_PARTICIPANT = "RESUME_PARTICIPANT"
@@ -93,6 +94,8 @@ TRANSITIONS: tuple[Transition, ...] = (
       for command in (Command.PAUSE_PARTICIPANT, Command.RESUME_PARTICIPANT, Command.INJECT_NOTE)),
     _t(R, RunState.ACTIVE, Command.RESOURCE_BLOCKED, RunState.ACTIVE, "host_observed_pre_submit_pool_failure", "append_resource_blocked"),
     *(_t(R, state, Command.RESOURCE_RECHECK, state, "operator_rechecked_pool_and_closed_source_attempts", "append_resource_recheck")
+      for state in (RunState.CREATED, RunState.ACTIVE)),
+    *(_t(R, state, Command.LITERATURE_ACCESS, state, "operator_institutional_preference", "append_literature_access_control")
       for state in (RunState.CREATED, RunState.ACTIVE)),
     *(_t(R, state, Command.PROVIDER_RETRY_CLEAR, state, "operator_confirmed_provider_recovery", "append_provider_retry_clear")
       for state in (RunState.CREATED, RunState.ACTIVE)),

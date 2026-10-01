@@ -191,12 +191,17 @@ class Acquisition:
 
 class InstitutionalAccess:
     def __init__(self, backend, *, clock=monotonic, poll_seconds: float = 30, event_sink=None,
-                 acquisition_seconds=120, manual_seconds=600):
+                 acquisition_seconds=120, manual_seconds=600, provider_modes=None):
         for name, value, low, high in (("acquisition_seconds", acquisition_seconds, 30, 600),
                                        ("manual_seconds", manual_seconds, 60, 1800)):
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not low <= value <= high:
                 raise ValueError(f"{name} must be finite and between {low} and {high}")
         self.acquisition_seconds, self.manual_seconds = acquisition_seconds, manual_seconds
+        self.provider_modes = dict(provider_modes or {})
+        if any(provider not in PROVIDERS.values() or mode not in {"auto", "public_only"}
+               for provider, mode in self.provider_modes.items()):
+            raise ValueError("unknown institutional provider or mode")
+        self.read_choices = lambda run_id: ({}, {})
         self.backend, self.clock, self.poll_seconds = backend, clock, poll_seconds
         self.event_sink = event_sink
         self._items: dict[tuple, Acquisition] = {}
@@ -211,7 +216,36 @@ class InstitutionalAccess:
     @property
     def configuration(self):
         return {**self.backend.configuration, "acquisition_seconds": self.acquisition_seconds,
-                "manual_seconds": self.manual_seconds}
+                "manual_seconds": self.manual_seconds, "provider_modes": dict(self.provider_modes)}
+
+    def paper_identity(self, run_id, url):
+        with self._lock:
+            known = next((p.identity for p in self._items.values()
+                          if p.scope[0] == run_id and p.url == url and p.identity.startswith("doi:")), "")
+            if known: return "doi:" + _doi(known)
+            _, skipped = self.read_choices(run_id)
+            return next((key for key, saved_url in skipped.items() if saved_url == url),
+                        identity_from_url(url).lower() or url)
+
+    def automatic_reason(self, scope, url, identity="", *, institution=False):
+        """Durable operator choices are independent of the disposable request cache."""
+        modes, skipped = self.read_choices(scope[0])
+        key = "doi:" + _doi(identity) if identity.startswith("doi:") else self.paper_identity(scope[0], url)
+        if key in skipped or url in skipped.values(): return "skipped"
+        if institution and modes.get(publisher(url), self.provider_modes.get(publisher(url), "auto")) == "public_only":
+            return "public_only"
+        return None
+
+    def _apply_choices(self, run_id):
+        for key, item in list(self._items.items()):
+            if item.scope[0] != run_id or item.document is not None or item.import_path:
+                continue
+            reason = self.automatic_reason(item.scope, item.url, item.identity, institution=True)
+            if reason:
+                if item.state != reason: self._transition(item, reason, "operator_" + reason)
+            elif item.state in {"skipped", "public_only"}:
+                # Restore permits a fresh request, not unsolicited replay of an old fetch.
+                del self._items[key]
 
     def _pending(self, item):
         return item.state in {"queued", "checking", "browser_unavailable", "fetch_unavailable"} or (
@@ -247,6 +281,7 @@ class InstitutionalAccess:
         except ValueError:
             return {"status": "unavailable", "reason": "unsupported_institutional_url"}
         with self._lock:
+            self._apply_choices(scope[0])
             self._expire()
             key = (*scope, url)
             if self._closed:
@@ -262,7 +297,8 @@ class InstitutionalAccess:
                 deadline = self.clock() + self.acquisition_seconds
                 self._items[key] = Acquisition(tuple(scope), url, provider, title[:512], identity or identity_from_url(url),
                     deadline=min(deadline, end) if end else deadline)
-                state = self._auth_needed.get((scope[0], provider), "queued") if not end else "queued"
+                state = self.automatic_reason(scope, url, identity, institution=True) or (
+                    self._auth_needed.get((scope[0], provider), "queued") if not end else "queued")
                 self._transition(self._items[key], state, "requested" if state == "queued" else state, initial=True)
             item = self._items[key]
             return self._reply(item)
@@ -277,22 +313,29 @@ class InstitutionalAccess:
 
     def peek(self, scope, url):
         with self._lock:
+            self._apply_choices(scope[0])
             self._expire()
             item = self._items.get((*scope, url))
             return None if item is None else self._reply(item)
 
     def status(self, run_id):
         with self._lock:
+            self._apply_choices(run_id)
             self._expire()
             groups = {}
             for item in self._items.values():
                 if item.scope[0] != run_id:
                     continue
-                group = groups.setdefault(item.provider, {"provider": item.provider, "papers": []})
+                modes, _ = self.read_choices(run_id)
+                group = groups.setdefault(item.provider, {"provider": item.provider, "papers": [],
+                    "mode": modes.get(item.provider, self.provider_modes.get(item.provider, "auto")),
+                    "manual_remaining_seconds": max(0, ceil(self._manual_until.get((run_id, item.provider), 0) - self.clock()))})
                 # Different experts may request the same source. Show it once to the operator.
                 if any(p["url"] == item.url for p in group["papers"]):
                     continue
                 group["papers"].append({"url": item.url, "title": item.title or item.url, "state": item.state,
+                    "identity": item.identity or item.url,
+                    "skipped": self.automatic_reason(item.scope, item.url, item.identity) == "skipped",
                     "reason_code": item.reason_code, "last_checked_at": item.last_checked_at,
                     "retry_in_seconds": max(0, ceil(item.next_check - self.clock())) if self._pending(item) else None,
                     "remaining_seconds": max(0, ceil(item.deadline - self.clock())) if self._pending(item) else None})
@@ -309,6 +352,7 @@ class InstitutionalAccess:
         if not isinstance(action, str) or action not in {"open", "retry", "import"}:
             raise ValueError("institutional action must be open, retry or import")
         with self._lock:
+            self._apply_choices(run_id)
             items = [p for p in self._items.values() if p.scope[0] == run_id
                      and p.provider == provider and (url is None or p.url == url)]
             if not items:
@@ -323,6 +367,8 @@ class InstitutionalAccess:
                 self._connection_retry = 0
             replacements = []
             for item in items:
+                if action != "import" and self.automatic_reason(item.scope, item.url, item.identity, institution=True):
+                    continue
                 if item.document is None:
                     fresh = replace(item, next_check=0, transient_failures=0, deadline=end, started=False,
                         force=False, focus=False, import_path=path if action == "import" else None, manual=action != "import")
@@ -369,6 +415,8 @@ class InstitutionalAccess:
             self._items = {key: item for key, item in self._items.items() if item.scope[0] in active_runs}
             self._manual_until = {k: v for k, v in self._manual_until.items() if k[0] in active_runs}
             self._auth_needed = {k: v for k, v in self._auth_needed.items() if k[0] in active_runs}
+            for run_id in active_runs:
+                self._apply_choices(run_id)
             self._expire()
             if had_items and not self._items:
                 # Runs have stopped. Serialize owned-tab cleanup after any in-flight call.
@@ -420,7 +468,6 @@ class InstitutionalAccess:
                 item.started = True
                 self._flight = key, item, self._executor.submit(self._acquire, item, item.force, item.focus, item.import_path)
                 item.force = item.focus = False
-                item.import_path = None
                 # Backend remembers the waiting tab. Polling never restarts its login flow.
                 break
 

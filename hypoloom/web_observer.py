@@ -651,14 +651,18 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             elif scope_name == "literature":
                 import uuid as uuid_module
                 from .control_protocol import ControlRequest, SCHEMA_VERSION
-                if not isinstance(values, dict) or not {"provider", "action"} <= set(values) or set(values) - {"provider", "action", "url", "path"}:
+                if not isinstance(values, dict) or not {"provider", "action"} <= set(values) or set(values) - {"provider", "action", "url", "path", "mode", "request_id", "expected_revision"}:
                     raise ValueError("institutional access requires provider, action and optional url/path")
                 provider_name, action = values["provider"], values["action"]
                 if not isinstance(provider_name, str) or not provider_name:
                     raise ValueError("provider must be non-empty text")
-                if not isinstance(action, str) or action not in {"open", "retry", "import"}:
-                    raise ValueError("action must be open, retry or import")
+                if not isinstance(action, str) or action not in {"open", "retry", "import", "skip", "restore", "mode", "verify"}:
+                    raise ValueError("unsupported institutional action")
+                if action in {"skip", "restore", "mode"} and (not values.get("request_id") or type(values.get("expected_revision")) is not int):
+                    raise ValueError("preference controls require request_id and expected_revision")
                 payload = {"run_id": self.observer.run_id, "provider": provider_name, "action": action}
+                if "mode" in values:
+                    payload["mode"] = values["mode"]
                 if "url" in values:
                     if not isinstance(values["url"], str) or not values["url"]:
                         raise ValueError("url must be non-empty text")
@@ -670,8 +674,8 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                 if action == "import" and not {"url", "path"} <= set(payload):
                     raise ValueError("import requires url and an absolute Host-side PDF path")
                 request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION,
-                    "request_id": "web-literature-" + str(uuid_module.uuid4()),
-                    "expected_revision": None, "command": "LITERATURE_ACCESS", "payload": payload})
+                    "request_id": values.get("request_id", "web-literature-" + str(uuid_module.uuid4())),
+                    "expected_revision": values.get("expected_revision"), "command": "LITERATURE_ACCESS", "payload": payload})
             else:
                 from .human_answers import answer_request
                 answer_request(self.observer.run_id, values)

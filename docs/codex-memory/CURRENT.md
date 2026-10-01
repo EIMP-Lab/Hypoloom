@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- October 1 follow-up batch B adds lifecycle v11 institutional skip/restore/mode
+  self-transitions in the existing command journal, revision checks and stable
+  client retry IDs. Launch/bootstrap share validated deadlines and provider modes;
+  frozen configuration stays unchanged. 140 relevant test identities pass. New
+  control helper is counted within the unchanged core LOC budget. Preparation/OA
+  integration and final candidate qualification remain in progress.
+
 - October 1 institutional follow-up batch A implements finite queue deadlines,
   background authentication completion, explicit manual windows and stale-result
   rejection. Navigation/download/extraction inherit the remaining budget. 119

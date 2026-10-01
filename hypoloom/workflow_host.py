@@ -230,6 +230,8 @@ class WorkflowHost:
         if self.literature_io is not None: self.literature_io.preflight()
         if self.claude_agent_host is not None: self.claude_agent_host.preflight(model=str(self.claude_model), provider_environment=self._provider_environment)
         self.compute_resources.snapshot(); self.store.initialize(); self.publisher = ArtifactPublisher(self.state_root / "artifacts")
+        from .institutional_controls import bind
+        bind(self)
         self._verify_versions(); self._recover_abandoned_attempts(); self._reconcile_terminal_attempt_residue()
         self.paper_reading.tick()
         from .paper_sources import reconcile_sources
@@ -699,18 +701,8 @@ class WorkflowHost:
                 "component_id": note.scope.component_id, "chain": note.scope.chain}, "operator_instruction": note.text}))
             for note in controls.pending_notes(participant, consumed))
     def _literature_access_control(self, request: ControlRequest) -> ControlResponse:
-        payload = request.payload
-        if not {"run_id", "provider", "action"} <= set(payload) or set(payload) - {"run_id", "provider", "action", "url", "path"}:
-            raise ValueError("LITERATURE_ACCESS requires run_id, provider, action and optional url/path")
-        run_id = str(payload["run_id"])
-        head = self.store.latest_transition(run_id)
-        if head is None or head["state"] in _TERMINAL_RUNS | {RunState.STOPPING.value}:
-            raise ValueError("institutional acquisition requires a live non-stopping run")
-        if self.institutional_access is None:
-            raise ValueError("institutional browser access is not configured")
-        result = self.institutional_access.control(run_id, payload["provider"], payload["action"],
-            url=payload.get("url"), path=payload.get("path"))
-        return ControlResponse.accepted(request.request_id, head["revision"], {"literature_access": result})
+        from .institutional_controls import control
+        return control(self, request)
 
     def _status_response(self, request: ControlRequest) -> ControlResponse:
         if set(request.payload) != {"run_id"}: raise ValueError("STATUS requires only run_id")

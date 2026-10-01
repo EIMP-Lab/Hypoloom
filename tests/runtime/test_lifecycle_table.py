@@ -69,8 +69,10 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # 27,550-line authority budget remain unchanged.
     # Resource recovery reuses transitions: transfer 200 lines from shared_gpu_host
     # to the Host (50) and the counted resource_recovery helper (150).
+    # Institutional controls reuse the journal; count the extracted helper by
+    # transferring 100 lines from workflow_host, preserving the same total.
     allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4750,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4650, "institutional_controls": 100,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
@@ -190,7 +192,7 @@ def test_drafted_candidate_validation_is_a_persisted_process_self_loop() -> None
         ExperimentState.DRAFTED,
     )
 
-    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v10"
+    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v11"
     assert validate.external_effect is EffectKind.PROCESS
     assert validate.effect_required
     assert observe.external_effect is None

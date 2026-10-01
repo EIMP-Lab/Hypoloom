@@ -2868,6 +2868,8 @@
     fetch_unavailable: "加载失败，等待自动重试", access_required: "页面提示需订阅或机构访问",
     available: "全文已就绪", access_denied: "当前机构无权限", no_full_text: "未找到全文",
     identity_unconfirmed: "论文对应关系未确认", failed: "文件获取或解析失败",
+    skipped: "已跳过此篇", public_only: "仅公开途径", queue_timeout: "排队超时",
+    acquisition_timeout: "获取超时", manual_timeout: "主动登录等待已结束",
   };
   const LITERATURE_REASON_LABELS = {
     network_changed: "网络发生变化", network_error: "网络错误", dns_failed: "域名解析失败",
@@ -2884,7 +2886,7 @@
       && !state.literatureBusy;
   }
 
-  async function requestLiterature(providerName, action, url, path) {
+  async function requestLiterature(providerName, action, url, path, mode) {
     const access = object(object(state.snapshot && state.snapshot.status).literature_access);
     if (!literatureWritable(access)) return;
     if (action === "import" && !String(path || "").startsWith("/")) {
@@ -2892,25 +2894,38 @@
       renderInstitutional();
       return;
     }
+    const body = {provider: providerName, action};
+    if (url) body.url = url;
+    if (path) body.path = path;
+    if (mode) body.mode = mode;
+    const choiceKey = JSON.stringify(body);
+    const durable = ["skip", "restore", "mode"].includes(action);
+    if (durable) {
+      if (state.literatureUnconfirmed?.key === choiceKey) Object.assign(body, state.literatureUnconfirmed.body);
+      else {
+        body.request_id = `web-literature-${crypto.randomUUID()}`;
+        body.expected_revision = object(state.snapshot && state.snapshot.status).run_revision;
+        state.literatureUnconfirmed = {key: choiceKey, body: {...body}};
+      }
+    }
     state.literatureBusy = true;
     state.literatureMessage = action === "open" ? "正在请求打开登录标签页…" : action === "retry" ? "正在安排检查重试…" : "正在导入 PDF…";
     renderInstitutional();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const body = {provider: providerName, action};
-      if (url) body.url = url;
-      if (path) body.path = path;
       const response = await fetch("/api/literature-access", {method: "POST", cache: "no-store", signal: controller.signal,
         headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Literature-Token": literatureToken, "Content-Type": "application/json"},
         body: JSON.stringify(body)});
       const result = await response.json();
       if (result.status === "accepted") {
-        state.literatureMessage = action === "open"
+        if (durable) state.literatureUnconfirmed = null;
+        state.literatureMessage = durable ? "设置已保存到本次运行；公开来源与已接纳原文仍可使用。" : action === "open"
           ? "已请求打开连接的浏览器标签页。请在那里完成登录；系统会检查并重试，其他研究继续。"
           : action === "retry" ? "已安排检查。全文通过验证后，研究 Agent 可通过原文工具读取。"
           : "已安排导入PDF。通过文件和论文身份校验后可供研究Agent读取。";
       } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
+        if (durable) state.literatureUnconfirmed = null;
         state.literatureMessage = `未被接受：${result.error?.message || result.message || "检查操作员权限与运行状态"}`;
       } else throw new Error("unconfirmed");
     } catch (_error) {
@@ -2982,7 +2997,12 @@
       const open = actionButton("打开登录", () => requestLiterature(providerName, "open", "", ""), "detail-link");
       const retry = actionButton("检查并重试", () => requestLiterature(providerName, "retry", "", ""), "detail-link");
       open.disabled = !writable; retry.disabled = !writable;
-      heading.append(open, retry);
+      const modeButton = actionButton(group.mode === "public_only" ? "启用机构访问" : "仅公开途径",
+        () => requestLiterature(providerName, "mode", "", "", group.mode === "public_only" ? "auto" : "public_only"), "detail-link");
+      modeButton.disabled = !writable;
+      open.disabled ||= group.mode === "public_only"; retry.disabled ||= group.mode === "public_only";
+      heading.append(open, retry, modeButton);
+      section.append(element("p", "panel-copy", `${group.mode === "public_only" ? "仅公开途径" : "使用现有机构会话"} · 主动等待剩余 ${group.manual_remaining_seconds || 0} 秒`));
       section.append(heading);
       list(group.papers).forEach((paper) => {
         const row = element("div", "institutional-paper");
@@ -3018,7 +3038,10 @@
           requestLiterature(providerName, "import", paper.url || "", (state.literatureDraft.get(draftKey) || "").trim());
         }, "detail-link");
         importButton.disabled = !writable;
-        importRow.append(input, importButton);
+        const skipButton = actionButton(paper.skipped ? "恢复此篇" : "跳过此篇",
+          () => requestLiterature(providerName, paper.skipped ? "restore" : "skip", paper.url), "detail-link");
+        skipButton.disabled = !writable;
+        importRow.append(input, importButton, skipButton);
         row.append(importRow);
         section.append(row);
       });

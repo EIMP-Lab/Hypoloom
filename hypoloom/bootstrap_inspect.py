@@ -92,7 +92,8 @@ def _launch_argv(args, repository: Path) -> list[str]:
         for value in getattr(args, name) or (): values += [flag, value]
     if args.managed_pool: values += ["--managed-pool"]
     if args.nonpooled: values += ["--nonpooled"]
-    return [*values, *bootstrap._literature_arguments(args)]
+    from .institutional_options import launch_arguments as institutional_arguments
+    return [*values, *bootstrap._literature_arguments(args), *institutional_arguments(args)]
 
 
 def inspect(args, repository: Path) -> dict:

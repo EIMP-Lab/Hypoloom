@@ -229,9 +229,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="pinned non-alias Claude selector; a trailing [1m] is preserved for CC",
     )
     _add_literature_arguments(serve)
-    serve.add_argument("--institutional-browser-url", help="opt-in loopback Chromium CDP endpoint; operator signs in in that browser")
-    serve.add_argument("--institutional-browser-ui-url", help="loopback server-browser GUI origin; use SSH local forwarding only when login is needed")
-    serve.add_argument("--institutional-library-url", help="HTTPS library entry opened by the TUI; requires --institutional-browser-url")
+    from .institutional_options import add_arguments as add_institutional_arguments
+    add_institutional_arguments(serve)
     serve.add_argument("--web-search-fallback", choices=("openalex",),
         help="explicit academic-metadata fallback when DuckDuckGo fails; requires OpenAlex literature configuration")
     serve.add_argument("--claude-bwrap")
@@ -620,16 +619,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             literature_io = _literature_adapter(args)
             web_options = {}
-            if args.institutional_library_url and not args.institutional_browser_url:
-                parser.error("--institutional-library-url requires --institutional-browser-url")
-            if args.institutional_browser_ui_url and not args.institutional_browser_url:
-                parser.error("--institutional-browser-ui-url requires --institutional-browser-url")
-            if args.institutional_browser_url:
-                from .institutional_access import InstitutionalAccess
-                from .institutional_browser import PlaywrightInstitutionalBrowser
-                web_options["institutional_access"] = InstitutionalAccess(PlaywrightInstitutionalBrowser(
-                    args.institutional_browser_url, library_url=args.institutional_library_url,
-                    ui_url=args.institutional_browser_ui_url))
+            from .institutional_options import build as build_institutional
+            access = build_institutional(args)
+            if access is not None: web_options["institutional_access"] = access
             if args.web_search_fallback is not None and literature_io is None:
                 parser.error("--web-search-fallback openalex requires --literature-adapter openalex")
             if literature_io is not None:
