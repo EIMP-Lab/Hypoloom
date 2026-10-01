@@ -87,9 +87,11 @@ def test_document_extraction_retains_methods_without_summary_headings():
     assert document.page_count == 2
     assert "0.83" in document.pages[1] and "causal prefix" in document.pages[0]
     assert all(content == original for _, content in calls)
-    # The old packet path still requires its claimed abstract/conclusion sections.
-    with pytest.raises(LiteratureValidationError):
-        extractor.extract_pdf(original, max_pages=2)
+    # Readable pages survive absent headings without fabricated summary claims.
+    packet_text = extractor.extract_pdf(original, max_pages=2)
+    assert packet_text.pages == document.pages
+    assert packet_text.abstract_summary == packet_text.conclusions == ""
+    assert packet_text.claim_support == ()
     with pytest.raises(LiteratureValidationError, match="page_count"):
         extractor.extract_document(original, max_pages=1)
 
@@ -269,13 +271,13 @@ def test_plain_text_truncation_is_explicit_and_pdf_scope_is_honest():
     result = GroundingWeb(Transport({DOC: response})).web_fetch(DOC, max_chars=8)
     assert result["text"] == "complete" and result["truncated"] is True
     pdf = b"%PDF-1.4\nfixture\n%%EOF"
-    extraction = PdfExtraction(page_count=2, abstract_summary="Observed abstract", conclusions="Observed conclusion",
-        claim_support=(ClaimPageRef(claim_ref="page-1", section="abstract", page_start=1, page_end=1),))
-    extractor = SimpleNamespace(extract_pdf=lambda content, max_pages: extraction)
+    from hypoloom.literature import PdfDocument
+    extraction = PdfDocument(page_count=2, pages=("Observed abstract", "Methods: exact coefficient 0.83\nObserved conclusion"))
+    extractor = SimpleNamespace(extract_document=lambda content, max_pages: extraction)
     result = GroundingWeb(Transport({DOC: _response(DOC, pdf, media_type="application/pdf")}),
                           pdf_extractor=extractor).web_fetch(DOC)
-    assert result["text"] == "Observed abstract\n\nObserved conclusion"
-    assert result["text_scope"] == "pdf_abstract_and_conclusions"
+    assert "Physical page 2" in result["text"] and "exact coefficient 0.83" in result["text"]
+    assert result["text_scope"] == "pdf_physical_pages"
 
 
 def test_default_https_transport_never_forwards_ambient_credentials(monkeypatch):
@@ -349,4 +351,4 @@ def test_web_pdf_uses_real_poppler_processes_over_exact_downloaded_bytes():
     result = GroundingWeb(Transport({DOC: _response(DOC, pdf, media_type="application/pdf")})).web_fetch(DOC)
     assert "Observed CPU integration abstract" in result["text"]
     assert "Observed CPU integration conclusion" in result["text"]
-    assert result["text_scope"] == "pdf_abstract_and_conclusions"
+    assert result["text_scope"] == "pdf_physical_pages"

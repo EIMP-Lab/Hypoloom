@@ -21,6 +21,9 @@ hypoloom = "hypoloom.cli:main"
 hypoloom-mcp = "hypoloom.mcp_server:main"
 
 [project.optional-dependencies]
+institutional = [
+    "playwright>=1.51,<2",
+]
 notify = [
     # Notification transports use the standard library.
 ]

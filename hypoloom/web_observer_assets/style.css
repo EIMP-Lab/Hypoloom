@@ -128,6 +128,8 @@ h3 { margin-bottom: 0.6rem; font-size: 0.84rem; font-weight: 560; }
 .hud div { min-width: 0; padding: 0.55rem 0.65rem; background: var(--panel-deep); }
 .hud dt { color: var(--muted); font-size: 0.55rem; letter-spacing: 0.1em; }
 .hud dd { overflow: hidden; margin: 0.22rem 0 0; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+.hud > div:has(#run-state.blocked) { grid-column: span 2; }
+.hud #run-state.blocked { color: var(--red); font-size: 0.85rem; font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
 
 main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4rem); }
 .panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
@@ -614,3 +616,10 @@ button:disabled { opacity: .4; cursor: default; }
 .stage-token-table { width: 100%; font-size: .78rem; border-collapse: collapse; }
 .stage-token-table th, .stage-token-table td { padding: .35rem; text-align: right; }
 .stage-token-table th:first-child, .stage-token-table td:first-child { text-align: left; overflow-wrap: anywhere; }
+.institutional-heading { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.institutional-heading h3 { margin: 0; flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.institutional-paper { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem .8rem; align-items: center; padding: .55rem 0; border-top: 1px solid var(--line); }
+.institutional-paper-title { min-width: 0; overflow-wrap: anywhere; }
+.institutional-ready { color: var(--green); }
+.institutional-import { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.institutional-import-path { flex: 1 1 18rem; min-width: 0; background: var(--panel-deep); color: var(--text); border: 1px solid var(--line); border-radius: .4rem; padding: .35rem .55rem; font-size: .72rem; }

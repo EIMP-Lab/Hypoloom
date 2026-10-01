@@ -51,6 +51,44 @@ from hypoloom.workflow_host import WorkflowHost
 _REPOSITORY = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.parametrize("diagnostics,expected", [
+    ({"provider_subtype": "error_max_budget_usd"}, "error_max_budget_usd"),
+    ({"provider_diagnostic": "Reached maximum budget ($2); token=SECRET"}, "error_max_budget_usd"),
+    ({}, "provider_not_success"),
+])
+def test_final_agent_failure_projects_a_safe_code_and_remains_visible_after_completion(tmp_path, diagnostics, expected):
+    from hypoloom.monitor import _attempt_views
+    from hypoloom.tui import SummaryPanel
+    from textual.app import App
+    from textual.widgets import Static
+    row = {"attempt_id": "failed-call", "kind": "AGENT", "state": "CLOSED", "workflow_id": "expert",
+        "command_type": "LITERATURE", "transition_payload_json": "{}",
+        "observation_json": json.dumps({"diagnostics": diagnostics}),
+        "attempt_ordinal": 1, "terminal_reason": "FAILED", "process_group_id": None,
+        "started_at": 1., "ended_at": 2.}
+    reader = SimpleNamespace(execute=lambda sql, *_: SimpleNamespace(fetchall=lambda:
+        [("failed-call", "provider_not_success")] if "agent_final_failure" in sql else [row]))
+    attempts, _ = _attempt_views(reader, "run", (), {}, {}, frozenset())
+    assert attempts[0].operational_reason == expected
+    root = tmp_path / "budget-hud"
+    _create_fresh_run(root, "budget-hud")
+    snapshot = build_monitor_snapshot(root, "budget-hud")
+    snapshot = replace(snapshot, attempts=attempts, status={**snapshot.status, "run_state": "COMPLETED"})
+    class TestApp(App):
+        def compose(self):
+            yield SummaryPanel()
+    async def exercise():
+        app = TestApp()
+        async with app.run_test() as pilot:
+            panel = app.query_one(SummaryPanel)
+            panel.update_snapshot(snapshot)
+            await pilot.pause()
+            text = _static_text(panel.query_one(Static))
+            assert expected in text and "SECRET" not in text
+            assert ("BUDGET LIMIT" if expected == "error_max_budget_usd" else "AGENT FINAL FAILURE") in text
+    asyncio.run(exercise())
+
+
 def test_monitor_mounts_before_initial_full_snapshot(tmp_path, monkeypatch):
     from hypoloom import tui
     root = tmp_path / "initial-audit"
@@ -2378,4 +2416,30 @@ def test_textual_compact_lanes_and_colored_tree_preserve_selection(tmp_path, mon
             await pilot.press("?")
             await pilot.pause()
             assert "FP first output pass" in _static_text(app.query_one("#help-legend").query_one(Static))
+    asyncio.run(exercise())
+
+
+def test_institutional_panel_does_not_shadow_existing_service_retry_keys(tmp_path, monkeypatch):
+    from hypoloom.literature_access_tui import LiteratureAccessScreen
+    from hypoloom.tui import HypoloomVNextMonitor
+
+    root, run_id = tmp_path / "institutional-keys", "institutional-keys"
+    _create_fresh_run(root, run_id)
+    snapshot = build_monitor_snapshot(root, run_id)
+    _patch_tui_reader(monkeypatch, lambda *_: snapshot)
+    retries = []
+    monkeypatch.setattr(HypoloomVNextMonitor, "_dependency_retry", lambda self, service: retries.append(service))
+
+    async def exercise():
+        app = HypoloomVNextMonitor(root, run_id, initial_snapshot=snapshot, interval=60, web_port=0)
+        async with app.run_test(size=(150, 50)) as pilot:
+            await pilot.pause()
+            await pilot.press("i")
+            await pilot.pause()
+            assert isinstance(app.screen, LiteratureAccessScreen)
+            assert not retries
+            await pilot.press("escape")
+            await pilot.press("l", "n")
+            assert retries == ["openalex", "telegram"]
+
     asyncio.run(exercise())

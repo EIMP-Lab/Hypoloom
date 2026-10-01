@@ -344,6 +344,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
         "is your complete request-private role view, not a live or cross-expert run mount. "
         + ("/papers/INDEX.md lists retained exact originals and physical-page text. Use Read/Grep for selected methods, "
            "assumptions or experimental details. Available text is not proof of understanding; cite source_ref and page. "
+           "Institutional full texts may be pending operator browser login. Continue independent papers, then use "
+           "web_fetch(mode='document', url=...) to check selected pending sources before synthesis; never busy-poll. "
+           "Record unresolved evidence gaps explicitly; do not ask for passwords or assume a pending source was read. "
            if request.schema_version >= 20 else "")
         + "Limits are this request's "
         "turn/token/wall/output budgets, not a fixed number or duration of test calls. /workspace "

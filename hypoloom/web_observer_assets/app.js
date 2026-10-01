@@ -66,6 +66,17 @@
       providerToken = saved.accessToken === accessToken ? saved.providerToken || "" : "";
     }
   } catch (_error) { if (providerToken) fragmentStored = false; }
+  const literatureStorageKey = `${SESSION_TOKEN_KEY}.literature`;
+  let literatureToken = fragment.get("literature_token") || "";
+  try {
+    if (fragmentToken) {
+      if (literatureToken) window.sessionStorage.setItem(literatureStorageKey, JSON.stringify({accessToken, literatureToken}));
+      else window.sessionStorage.removeItem(literatureStorageKey);
+    } else {
+      const saved = JSON.parse(window.sessionStorage.getItem(literatureStorageKey) || "{}");
+      literatureToken = saved.accessToken === accessToken ? saved.literatureToken || "" : "";
+    }
+  } catch (_error) { if (literatureToken) fragmentStored = false; }
   // Clear a credential-bearing fragment only after the reload-safe session copy succeeds.
   if (fragmentToken && fragmentStored) {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -104,6 +115,9 @@
     pollController: null,
     pollFailures: 0,
     workbenchPending: null,
+    literatureBusy: false,
+    literatureMessage: "",
+    literatureDraft: new Map(),
     history: {events: null, experiments: null},
     historyRequests: {events: 0, experiments: 0},
   };
@@ -521,7 +535,12 @@
     const hostObservation = object(object(state.snapshot && state.snapshot.overview).host_observation);
     const active = !["COMPLETED", "CANCELLED", "FAILED"].includes(status.run_state);
     const hostAbsent = active && hostObservation.availability === "absent";
-    setText("run-state", `${status.run_state}${hostAbsent ? " · HOST ABSENT (orphaned)" : ""}${active && status.dispatch_error ? " · DISPATCH PAUSED (Host error)" : ""}`);
+    const literaturePending = object(status.literature_access).pending;
+    const failures = list(snapshot.attempts).filter(item => item.operational_status === "recovery_exhausted");
+    const codes = [...new Set(failures.map(item => item.operational_reason || "agent_final_failure"))];
+    const warning = failures.length ? ` · ⚠ ${codes.includes("error_max_budget_usd") ? "BUDGET LIMIT" : "AGENT FINAL FAILURE"} (${failures.length}): ${codes.slice(-3).join(", ")}` : "";
+    setText("run-state", `${status.run_state}${hostAbsent ? " · HOST ABSENT (orphaned)" : ""}${active && status.dispatch_error ? " · DISPATCH PAUSED (Host error)" : ""}${warning}${literaturePending ? ` · 机构全文 ${literaturePending} 篇待处理` : ""}`);
+    byId("run-state").classList.toggle("blocked", failures.length > 0 || Boolean(active && status.dispatch_error));
     setText("goal-verdict", status.goal_verdict || "PENDING");
     setText(
       "required-assessed",
@@ -2379,7 +2398,7 @@
   const WORKBENCH_TITLES = {
     skills: "Skills & evolution", literature: "Literature", sessions: "Sessions & tools",
     interactions: "Leader & Debate", resources: "Experiments & resources",
-    reliability: "Execution reliability",
+    reliability: "Execution reliability", institutional: "机构全文 / Institutional access",
   };
   const WORKBENCH_KEYS = {skills: "skills", literature: "papers", sessions: "sessions", interactions: "interactions", resources: "experiments"};
   const DETAIL_PAGE_SIZE = 50;
@@ -2640,7 +2659,7 @@
 
   async function loadWorkbench() {
     if (!accessToken) return;
-    if (state.workbenchKind === "reliability") { renderWorkbench(); return; }
+    if (state.workbenchKind === "reliability" || state.workbenchKind === "institutional") { renderWorkbench(); return; }
     const parameters = workbenchQuery();
     const key = JSON.stringify(parameters);
     if (state.workbenchPending?.key === key) return state.workbenchPending.promise;
@@ -2843,6 +2862,170 @@
     return card;
   }
 
+  const LITERATURE_STATE_LABELS = {
+    queued: "等待获取", checking: "检查中", login_required: "需要浏览器登录",
+    verification_required: "需要浏览器验证", browser_unavailable: "浏览器未连接",
+    fetch_unavailable: "加载失败，等待自动重试", access_required: "页面提示需订阅或机构访问",
+    available: "全文已就绪", access_denied: "当前机构无权限", no_full_text: "未找到全文",
+    identity_unconfirmed: "论文对应关系未确认", failed: "文件获取或解析失败",
+  };
+  const LITERATURE_REASON_LABELS = {
+    network_changed: "网络发生变化", network_error: "网络错误", dns_failed: "域名解析失败",
+    connection_failed: "连接失败", navigation_timeout: "加载超时", redirect_unresolved: "重定向未完成",
+    http_server_error: "网站服务暂时异常", http_rate_limited: "网站限制请求频率",
+    request_blocked: "请求被拦截", http_error: "HTTP请求失败",
+    pdf_response_not_pdf: "PDF入口返回非PDF内容",
+  };
+
+  function literatureWritable(access) {
+    const status = object(state.snapshot && state.snapshot.status);
+    return Boolean(literatureToken) && Boolean(object(access).enabled)
+      && !["STOPPING", "COMPLETED", "FAILED", "CANCELLED"].includes(status.run_state)
+      && !state.literatureBusy;
+  }
+
+  async function requestLiterature(providerName, action, url, path) {
+    const access = object(object(state.snapshot && state.snapshot.status).literature_access);
+    if (!literatureWritable(access)) return;
+    if (action === "import" && !String(path || "").startsWith("/")) {
+      state.literatureMessage = "导入需要服务器上的 PDF 绝对路径。";
+      renderInstitutional();
+      return;
+    }
+    state.literatureBusy = true;
+    state.literatureMessage = action === "open" ? "正在请求打开登录标签页…" : action === "retry" ? "正在安排检查重试…" : "正在导入 PDF…";
+    renderInstitutional();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const body = {provider: providerName, action};
+      if (url) body.url = url;
+      if (path) body.path = path;
+      const response = await fetch("/api/literature-access", {method: "POST", cache: "no-store", signal: controller.signal,
+        headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Literature-Token": literatureToken, "Content-Type": "application/json"},
+        body: JSON.stringify(body)});
+      const result = await response.json();
+      if (result.status === "accepted") {
+        state.literatureMessage = action === "open"
+          ? "已请求打开连接的浏览器标签页。请在那里完成登录；系统会检查并重试，其他研究继续。"
+          : action === "retry" ? "已安排检查。全文通过验证后，研究 Agent 可通过原文工具读取。"
+          : "已安排导入PDF。通过文件和论文身份校验后可供研究Agent读取。";
+      } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
+        state.literatureMessage = `未被接受：${result.error?.message || result.message || "检查操作员权限与运行状态"}`;
+      } else throw new Error("unconfirmed");
+    } catch (_error) {
+      state.literatureMessage = "Host 响应未确认。刷新后可重试；这不会修改已经完成的研究结果。";
+    } finally {
+      clearTimeout(timer);
+      state.literatureBusy = false;
+      renderInstitutional();
+    }
+  }
+
+  function renderInstitutional() {
+    const status = object(state.snapshot && state.snapshot.status);
+    const access = object(status.literature_access);
+    const groups = list(access.groups);
+    const container = byId("workbench-list");
+    setText("workbench-scope", "按出版商分组的机构全文请求。登录永远在你自己的浏览器里完成；这里只触发打开标签页或导入。");
+    setText("workbench-status", state.literatureMessage || (access.enabled
+      ? `待处理 ${displayValue(access.pending)} · 已就绪 ${displayValue(access.available)}。`
+      : "Host 未启用机构访问。启动新任务时配置 --institutional-browser-url；此处不填写登录凭据。"));
+    setText("workbench-page", "机构全文请求 · 无分页");
+    byId("workbench-previous").disabled = true; byId("workbench-next").disabled = true;
+    const renderedKey = JSON.stringify(["institutional", access, state.literatureMessage, state.literatureBusy]);
+    if (container.dataset.renderedKey === renderedKey) return;
+    container.dataset.renderedKey = renderedKey;
+    container.replaceChildren();
+    if (!access.enabled) {
+      container.append(element("p", "empty-copy", "Host 未启用机构访问。启动新任务时配置 --institutional-browser-url；此处不填写登录凭据。"));
+      return;
+    }
+    if (!literatureToken) {
+      container.append(element("p", "empty-copy", "只读列表。触发动作需要操作员链接：在TUI的i面板点「Web面板链接」，或以--allow-literature-control启动web。"));
+    }
+    let endpointPort = "";
+    try { endpointPort = String(new URL(String(access.browser_endpoint || "")).port || ""); } catch (_error) { /* endpoint unavailable */ }
+    const guide = element("section", "detail-card institutional-guide");
+    let serverUi = null;
+    try {
+      const candidate = new URL(access.browser_ui_url);
+      if (["http:", "https:"].includes(candidate.protocol) && ["localhost", "127.0.0.1", "[::1]"].includes(candidate.hostname)
+          && candidate.port && !candidate.username && !candidate.password && !candidate.search && !candidate.hash
+          && candidate.pathname === "/") serverUi = candidate;
+    } catch (_error) { /* laptop browser or invalid GUI origin */ }
+    if (serverUi) {
+      guide.append(element("p", "", "服务器浏览器：登录状态保存在服务器，同平台后续论文和新run复用仍有效的登录。"));
+      guide.append(element("p", "", `仅首次登录或会话过期时，在你的电脑执行：ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${serverUi.port}:${serverUi.hostname}:${serverUi.port} <ssh-user>@<research-server>`));
+      const openBrowser = element("a", "detail-link", "打开服务器浏览器，完成学校登录");
+      openBrowser.href = `${serverUi.protocol}//127.0.0.1:${serverUi.port}/`;
+      openBrowser.target = "_blank"; openBrowser.rel = "noopener noreferrer";
+      guide.append(openBrowser, element("p", "", "完成后可断开SSH、关闭笔记本，服务器继续下载。账号密码只在远程浏览器页面输入，本面板不收集凭据。"));
+    } else {
+    guide.append(element("h3", "", "连接浏览器后才能登录（在学校网络的电脑上本地执行）"));
+    guide.append(element("p", "panel-copy", `1) Windows PowerShell启动专用Chrome：& "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${endpointPort || "<端口>"} --user-data-dir="$env:LOCALAPPDATA\\Hypoloom\\InstitutionalChrome"`));
+    guide.append(element("p", "panel-copy", `2) 同一台电脑建立SSH反向隧道：ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:${endpointPort || "<端口>"}:127.0.0.1:${endpointPort || "<端口>"} <ssh-user>@<research-server>`));
+    guide.append(element("p", "panel-copy", "3) 然后点「打开登录」，在浏览器弹出的页面完成学校 SSO/MFA。账号密码与验证码只在浏览器页面填写，本面板不收集凭据。"));
+    if (!endpointPort) guide.append(element("p", "panel-copy", "端口以 Host 启动参数 --institutional-browser-url 为准；替换上面命令中的 <端口>。"));
+    }
+    container.append(guide);
+    if (!groups.length) {
+      container.append(element("p", "empty-copy", "目前没有待处理的机构全文请求。"));
+      return;
+    }
+    const writable = literatureWritable(access);
+    groups.forEach((group) => {
+      const providerName = group.provider;
+      const section = element("section", "detail-card institutional-group");
+      const heading = element("div", "institutional-heading");
+      heading.append(element("h3", "", displayValue(providerName)));
+      const open = actionButton("打开登录", () => requestLiterature(providerName, "open", "", ""), "detail-link");
+      const retry = actionButton("检查并重试", () => requestLiterature(providerName, "retry", "", ""), "detail-link");
+      open.disabled = !writable; retry.disabled = !writable;
+      heading.append(open, retry);
+      section.append(heading);
+      list(group.papers).forEach((paper) => {
+        const row = element("div", "institutional-paper");
+        const title = element("div", "institutional-paper-title");
+        const label = paper.title || paper.url || "论文 unavailable";
+        let linked = false;
+        try {
+          const parsed = new URL(String(paper.url));
+          if (["https:", "http:"].includes(parsed.protocol)) {
+            const link = element("a", "detail-link", label);
+            link.href = parsed.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+            title.append(link);
+            linked = true;
+          }
+        } catch (_error) { /* fall back to plain text */ }
+        if (!linked) title.append(element("span", "", label));
+        const stateLabel = LITERATURE_STATE_LABELS[paper.state] || paper.state || "未知";
+        row.append(title, element("span", `counter${paper.state === "available" ? " institutional-ready" : ""}`, stateLabel));
+        if (paper.reason_code) {
+          const reason = LITERATURE_REASON_LABELS[paper.reason_code];
+          row.append(element("span", "", `原因：${reason ? `${reason}（${paper.reason_code}）` : paper.reason_code}`));
+        }
+        if (Number.isFinite(paper.retry_in_seconds)) row.append(element("span", "", `下次检查约${paper.retry_in_seconds}秒后`));
+        if (paper.last_checked_at) row.append(element("span", "", `上次检查：${formatTimestamp(Date.parse(paper.last_checked_at) / 1000)}`));
+        const draftKey = `${providerName} ${paper.url}`;
+        const importRow = element("div", "institutional-import");
+        const input = element("input", "institutional-import-path");
+        input.type = "text";
+        input.placeholder = "已传到服务器的 PDF 绝对路径（导入时填写）";
+        input.value = state.literatureDraft.get(draftKey) || "";
+        input.addEventListener("input", () => state.literatureDraft.set(draftKey, input.value));
+        const importButton = actionButton("导入PDF", () => {
+          requestLiterature(providerName, "import", paper.url || "", (state.literatureDraft.get(draftKey) || "").trim());
+        }, "detail-link");
+        importButton.disabled = !writable;
+        importRow.append(input, importButton);
+        row.append(importRow);
+        section.append(row);
+      });
+      container.append(section);
+    });
+  }
+
   function renderWorkbench() {
     const kind = state.workbenchKind;
     const data = object(state.workbenchData);
@@ -2850,6 +3033,7 @@
     setText("workbench-title", WORKBENCH_TITLES[kind]);
     document.querySelectorAll("[data-workbench]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.workbench === kind)));
     if (kind === "reliability") { renderReliability(); return; }
+    if (kind === "institutional") { renderInstitutional(); return; }
     const filters = selectedFilters();
     const context = state.workbenchContext;
     const scope = kind === "sessions" && context.task_scope ? `${taskScopeLabel(context)} tasks; expert/component filters retained for other views`

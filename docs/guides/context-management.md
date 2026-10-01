@@ -94,6 +94,12 @@ A `[1m]` model suffix and invocation token budget do not establish capacity.
 A missing count endpoint does not disable local checks. Configuration is frozen
 for the run; switching API connections does not change it.
 
+Custom compatible-provider selectors such as `mimo-v2.6-pro[1m]` may produce
+`[claude-code:unrecognized_model]` on stderr. Hypoloom passes the pinned selector
+unchanged, preserving `[1m]`. This warning alone establishes neither request
+failure nor a 1M window; inspect provider results, usage and failure codes.
+Do not silently strip the suffix or replace the frozen model to hide the warning.
+
 Web/TUI separate the current request estimate, last successful measured input
 and their exchange numbers, working ceiling and cumulative usage. A refused
 request cannot borrow the preceding request's usage for its occupancy bar.

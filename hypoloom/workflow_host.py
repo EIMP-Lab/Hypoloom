@@ -143,7 +143,7 @@ class WorkflowHost:
                  claude_agent_host: ClaudeAgentHost | None = None, claude_model: str | None = None, agent_budget: AgentBudget | None = None,
                  compute_resources: LocalComputeResources | None = None, provider_environment: Mapping[str, str] | None = None, gpu_pressure_grace_seconds: float = 5.0,
                  literature_io: FixedLiteratureIO | None = None, local_agent: FakeAgent | None = None,
-                 grounding_web: Any = None, gpu_pool_socket: Path | None = None,
+                 grounding_web: Any = None, institutional_access: Any = None, gpu_pool_socket: Path | None = None,
                  gpu_pool_namespace: str | None = None, gpu_pool_server_uid: int | None = None,
                  private_settings_path: Path | None = None) -> None:
         self.state_root = state_root; self.generation = str(uuid.uuid4())
@@ -172,6 +172,7 @@ class WorkflowHost:
         self.shared_gpu = None if gpu_pool_socket is None else SharedGpuHost(self, gpu_pool_socket, gpu_pool_namespace, gpu_pool_server_uid)
         if literature_io is not None and not isinstance(literature_io, FixedLiteratureIO): raise TypeError("literature_io must be FixedLiteratureIO")
         self.literature_io = literature_io
+        self.institutional_access = institutional_access
         self._literature_executor = None if literature_io is None else ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="hypoloom-literature")
         from .paper_reading import PaperReadingHost
@@ -181,6 +182,8 @@ class WorkflowHost:
         if any(path.is_symlink() or not path.is_file() for path in (_RESOURCE_SKILL, _QUERY_SKILL)): raise ValueError("packaged Agent skill is unavailable")
         self.resource_skill = _RESOURCE_SKILL.read_bytes(); self.query_skill = _QUERY_SKILL.read_bytes()
         self.configuration = {**self.agent_configuration, "compute_resources": self.compute_resources.configuration, "resource_planning_skill": _RESOURCE_SKILL_VERSION, "openalex_query_planning_skill": _QUERY_SKILL_VERSION, "resource_experience": RESOURCE_EXPERIENCE_VERSION, "gpu_pressure_grace_seconds": self.gpu_pressure_grace_seconds, "literature": None if literature_io is None else literature_io.configuration}
+        if institutional_access is not None:
+            self.configuration["institutional_access"] = institutional_access.configuration
         if self.shared_gpu is not None: self.configuration["gpu_pool"] = self.shared_gpu.configuration
         if grounding_web is not None and hasattr(grounding_web, "configuration"):
             self.configuration["grounding_web"] = grounding_web.configuration
@@ -237,6 +240,8 @@ class WorkflowHost:
         except Exception as exc:
             self._record_exception(exc, phase="close"); raise
     def _close(self) -> None:
+        if self.institutional_access is not None:
+            self.institutional_access.close()
         self._projection_executor.shutdown(wait=True)
         self._collect_role_views()
         for run_id in tuple(self._projection_jobs):
@@ -349,6 +354,7 @@ class WorkflowHost:
                 run_id=request.payload.get("run_id"), command=request.command)
         try:
             if request.command == "STATUS": return self._status_response(request)
+            if request.command == "LITERATURE_ACCESS": return self._literature_access_control(request)
             if request.command == "BACKUP": return self._backup(request)
             if request.command == "CREATE_RUN": return self._create_run(request)
             if request.command == "CANCEL": return self._cancel_run(request)
@@ -692,6 +698,20 @@ class WorkflowHost:
             "source_command_id": note.command_id, "scope": {"role": note.scope.role,
                 "component_id": note.scope.component_id, "chain": note.scope.chain}, "operator_instruction": note.text}))
             for note in controls.pending_notes(participant, consumed))
+    def _literature_access_control(self, request: ControlRequest) -> ControlResponse:
+        payload = request.payload
+        if not {"run_id", "provider", "action"} <= set(payload) or set(payload) - {"run_id", "provider", "action", "url", "path"}:
+            raise ValueError("LITERATURE_ACCESS requires run_id, provider, action and optional url/path")
+        run_id = str(payload["run_id"])
+        head = self.store.latest_transition(run_id)
+        if head is None or head["state"] in _TERMINAL_RUNS | {RunState.STOPPING.value}:
+            raise ValueError("institutional acquisition requires a live non-stopping run")
+        if self.institutional_access is None:
+            raise ValueError("institutional browser access is not configured")
+        result = self.institutional_access.control(run_id, payload["provider"], payload["action"],
+            url=payload.get("url"), path=payload.get("path"))
+        return ControlResponse.accepted(request.request_id, head["revision"], {"literature_access": result})
+
     def _status_response(self, request: ControlRequest) -> ControlResponse:
         if set(request.payload) != {"run_id"}: raise ValueError("STATUS requires only run_id")
         run_id = str(request.payload["run_id"])
@@ -711,6 +731,8 @@ class WorkflowHost:
         result["literature_retry"] = literature_status(self.store, run_id) if self.literature_io is not None else None
         result["notifications"] = ({"state": "unavailable", "sinks": {}} if self.observer_services is None
             else self.observer_services.notification_status(run_id))
+        result["literature_access"] = ({"enabled": False, "pending": 0, "available": 0, "groups": []}
+            if self.institutional_access is None else self.institutional_access.status(run_id))
         result["participant_controls"] = self._participant_controls(run_id).to_dict()
         result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS)
         from .process_observation import process_activity
@@ -816,6 +838,9 @@ class WorkflowHost:
         self._collect_role_views()
         self._agent_dispatches = 0
         active_at_start = {row["run_id"] for row in self.store.inspect("SELECT t.run_id,t.state FROM workflow_transitions t WHERE t.workflow_kind='RUN' AND NOT EXISTS(SELECT 1 FROM workflow_transitions n WHERE n.workflow_id=t.workflow_id AND n.revision>t.revision)") if row["state"] not in _TERMINAL_RUNS}
+        if self.institutional_access is not None:
+            self.institutional_access.tick({run_id for run_id in active_at_start
+                if self.store.latest_transition(run_id)["state"] != RunState.STOPPING.value})
         if self.claude_agent_host is not None and hasattr(self.claude_agent_host, "service_tools"):
             self.claude_agent_host.service_tools()
         self._cancel_wallclock_expired_effects()
@@ -4697,6 +4722,7 @@ def serve(
     compute_resources: LocalComputeResources | None = None, provider_environment: Mapping[str, str] | None = None, exit_when_terminal: bool = False,
     literature_io: FixedLiteratureIO | None = None,
     grounding_web: Any = None,
+    institutional_access: Any = None,
     services_factory: Callable[[], ContextManager[object]] | None = None,
     gpu_pool_socket: Path | None = None, gpu_pool_namespace: str | None = None,
     gpu_pool_server_uid: int | None = None,
@@ -4721,7 +4747,7 @@ def serve(
             state_root, fault_point=fault_point, fake_agent_mode=FakeAgentMode(fake_agent_mode),
             claude_agent_host=claude_agent_host, claude_model=claude_model, agent_budget=agent_budget,
             compute_resources=compute_resources, provider_environment=provider_environment,
-            literature_io=literature_io, grounding_web=grounding_web, private_settings_path=private_settings_path,
+            literature_io=literature_io, grounding_web=grounding_web, institutional_access=institutional_access, private_settings_path=private_settings_path,
             gpu_pool_socket=gpu_pool_socket, gpu_pool_namespace=gpu_pool_namespace, gpu_pool_server_uid=gpu_pool_server_uid,
         )
     except BaseException:
@@ -4741,7 +4767,10 @@ def serve(
         os.chmod(socket_path, 0o600)
         server.listen(16)
         server.settimeout(0.02)
-        if services_factory is not None: host.observer_services = services.enter_context(services_factory())
+        if services_factory is not None:
+            observers = host.observer_services = services.enter_context(services_factory())
+            if host.institutional_access is not None:
+                host.institutional_access.event_sink = getattr(observers, "record_literature_event", None)
         def request_stop(_signum: int, _frame: object) -> None:
             host.stop_requested = True
         signal.signal(signal.SIGTERM, request_stop)

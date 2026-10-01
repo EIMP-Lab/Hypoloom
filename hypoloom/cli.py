@@ -229,6 +229,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="pinned non-alias Claude selector; a trailing [1m] is preserved for CC",
     )
     _add_literature_arguments(serve)
+    serve.add_argument("--institutional-browser-url", help="opt-in loopback Chromium CDP endpoint; operator signs in in that browser")
+    serve.add_argument("--institutional-browser-ui-url", help="loopback server-browser GUI origin; use SSH local forwarding only when login is needed")
+    serve.add_argument("--institutional-library-url", help="HTTPS library entry opened by the TUI; requires --institutional-browser-url")
     serve.add_argument("--web-search-fallback", choices=("openalex",),
         help="explicit academic-metadata fallback when DuckDuckGo fails; requires OpenAlex literature configuration")
     serve.add_argument("--claude-bwrap")
@@ -370,6 +373,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="loopback Web port (default: 0, OS-selected free port)")
     web.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
     web.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
+    web.add_argument("--allow-literature-control", action="store_true", help="grant an operator link for institutional full-text actions")
     web.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     web.add_argument("--gpu-pool-server-uid", type=int)
 
@@ -616,6 +620,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             literature_io = _literature_adapter(args)
             web_options = {}
+            if args.institutional_library_url and not args.institutional_browser_url:
+                parser.error("--institutional-library-url requires --institutional-browser-url")
+            if args.institutional_browser_ui_url and not args.institutional_browser_url:
+                parser.error("--institutional-browser-ui-url requires --institutional-browser-url")
+            if args.institutional_browser_url:
+                from .institutional_access import InstitutionalAccess
+                from .institutional_browser import PlaywrightInstitutionalBrowser
+                web_options["institutional_access"] = InstitutionalAccess(PlaywrightInstitutionalBrowser(
+                    args.institutional_browser_url, library_url=args.institutional_library_url,
+                    ui_url=args.institutional_browser_ui_url))
             if args.web_search_fallback is not None and literature_io is None:
                 parser.error("--web-search-fallback openalex requires --literature-adapter openalex")
             if literature_io is not None:
@@ -719,6 +733,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 port=args.port,
                 **({"allow_human_answers": True} if args.allow_human_answers else {}),
                 **({"allow_provider_control": True} if args.allow_provider_control else {}),
+                **({"allow_literature_control": True} if args.allow_literature_control else {}),
                 **({"gpu_pool_socket": args.gpu_pool_socket, "gpu_pool_server_uid": args.gpu_pool_server_uid}
                    if args.gpu_pool_socket is not None or args.gpu_pool_server_uid is not None else {}),
             )

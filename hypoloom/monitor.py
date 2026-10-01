@@ -816,8 +816,9 @@ def _attempt_views(
     ).fetchall())
     rendered: list[AttemptView] = []
     scientific_process_attempt_ids: set[str] = set()
-    final_failure_ids = {row[0] for row in reader.execute(
-        "SELECT json_extract(payload_json,'$.attempt_id') FROM workflow_transitions WHERE run_id=? "
+    final_failures = {row[0]: row[1] for row in reader.execute(
+        "SELECT json_extract(payload_json,'$.attempt_id'), json_extract(payload_json,'$.failure_code') "
+        "FROM workflow_transitions WHERE run_id=? "
         "AND json_extract(payload_json,'$.agent_final_failure')=1", (run_id,)).fetchall()}
     session_context: dict[str, int] = {}
     for row in rows:
@@ -951,8 +952,8 @@ def _attempt_views(
             context_window_tokens=_optional_int(context.get("effective_context_tokens")),
             context_window_source=context.get("window_source"),
             cumulative_tokens=_attempt_reported_tokens(observation),
-            operational_reason=((observation.get("diagnostics") or {}).get("provider_failure") or {}).get("code"),
-            operational_status="recovery_exhausted" if attempt_id in final_failure_ids else None,
+            operational_reason=_operational_failure_reason(observation, final_failures.get(attempt_id)),
+            operational_status="recovery_exhausted" if attempt_id in final_failures else None,
             context=context or None,
             context_observation=(observation.get("diagnostics") or {}).get("context_observation"),
             input_material=(observation.get("diagnostics") or {}).get("input_material"),
@@ -961,6 +962,18 @@ def _attempt_views(
             budget_max_tokens=budget_max_tokens,
         ))
     return tuple(rendered), frozenset(scientific_process_attempt_ids)
+
+
+def _operational_failure_reason(observation, final_code=None):
+    diagnostics = observation.get("diagnostics") or {}
+    subtype = diagnostics.get("provider_subtype")
+    if subtype in {"error_max_budget_usd", "error_max_turns"}:
+        return subtype
+    # Some compatible providers send only a diagnostic, without a typed subtype.
+    # Derive a fixed display code; never show provider text in the HUD.
+    if "reached maximum budget" in str(diagnostics.get("provider_diagnostic", "")).lower():
+        return "error_max_budget_usd"
+    return (diagnostics.get("provider_failure") or {}).get("code") or final_code
 
 
 def _expert_views(
@@ -1575,6 +1588,7 @@ _HOST_STATUS_FIELDS = (
     "provider_retry",
     "notifications",
     "literature_retry",
+    "literature_access",
 )
 
 # The Host serializes control requests between workflow ticks. A tick that
