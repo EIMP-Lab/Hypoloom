@@ -1435,6 +1435,126 @@ def test_non_english_grounding_query_plan_broadens_before_grounding(
         host.close()
 
 
+def test_grounding_retrieval_coverage_gap_replans_query_before_grounding(
+    tmp_path: Path,
+    mount_root: Path,
+) -> None:
+    narrow_query = '"KV cache" AND compression AND "long context"'
+    broad_query = '"KV cache" OR "key-value cache" OR transformer'
+
+    class SparseGroundingRetrievalFetcher(_LiteratureFetcher):
+        def search(self, query: LiteratureQuery) -> Iterable[SearchPaper]:
+            papers = tuple(super().search(query))
+            # The first coverage probe succeeds, while the subsequent
+            # Grounding retrieval observes a sparse OpenAlex result set.
+            if (
+                query.query == narrow_query
+                and sum(item.query == narrow_query for item in self.queries) == 2
+            ):
+                return tuple(
+                    paper
+                    for paper in papers
+                    if paper.stratum is LITERATURE_STRATA[-1]
+                )
+            return papers
+
+    class BroadenAfterGroundingGap:
+        def invoke(self, request: AgentRequest) -> AgentResponse | bytes:
+            response = FakeAgent().invoke(request)
+            assert isinstance(response, AgentResponse)
+            task = request.task_context
+            if (
+                isinstance(task, AuxiliaryTask)
+                and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+            ):
+                template = next(
+                    item
+                    for item in request.input_artifacts
+                    if item.ref.endswith("--literature-query-template")
+                )
+                candidate = json.loads(template.content_bytes())
+                retry = any(
+                    item.ref.endswith("--candidate-validation-error")
+                    for item in request.input_artifacts
+                )
+                candidate["query"] = broad_query if retry else narrow_query
+                return _redigest(replace(response, typed_candidate=candidate))
+            return response
+
+    fetcher = SparseGroundingRetrievalFetcher()
+    run_id = "grounding-retrieval-coverage-replan"
+    state_root = tmp_path / "state"
+    host = WorkflowHost(state_root, literature_io=FixedLiteratureIO(fetcher))
+    host.agent = BroadenAfterGroundingGap()  # type: ignore[assignment]
+    try:
+        host.initialize()
+        created = host.handle(ControlRequest(
+            1,
+            f"create-{run_id}",
+            0,
+            "CREATE_RUN",
+            _payload(tmp_path, mount_root, run_id),
+        ))
+        assert created.status == "accepted", created
+
+        _drive(host, run_id)
+
+        attempts = [
+            row
+            for row in host.store.list_attempts()
+            if row["run_id"] == run_id and _has_request(row)
+        ]
+        plans = sorted(
+            (
+                row
+                for row in attempts
+                if isinstance(_request(row).task_context, AuxiliaryTask)
+                and cast(AuxiliaryTask, _request(row).task_context).kind
+                is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+            ),
+            key=lambda row: int(row["attempt_ordinal"]),
+        )
+        groundings = [
+            row for row in attempts
+            if _request(row).command is AgentCommand.GROUNDING
+        ]
+        assert [row["terminal_reason"] for row in plans] == [
+            "SUCCEEDED",
+            "FAILED",
+            "SUCCEEDED",
+        ]
+        assert len(groundings) == 1
+        assert groundings[0]["terminal_reason"] == "SUCCEEDED"
+        failure = json.loads(str(plans[1]["observation_json"]))
+        assert failure["failure_code"] == "invalid_candidate"
+        validation = failure["diagnostics"]["validation_error"]
+        assert "missing FOUNDATIONAL, INTERMEDIATE" in validation["message"]
+        correction = next(
+            item
+            for item in _request(plans[2]).input_artifacts
+            if item.ref.endswith("--candidate-validation-error")
+        )
+        correction_payload = json.loads(correction.content_bytes())
+        assert correction_payload["source_attempt_id"] == plans[1]["attempt_id"]
+        grounding_query = next(
+            item
+            for item in _request(groundings[0]).input_artifacts
+            if item.ref.endswith("--literature-query")
+        )
+        assert json.loads(grounding_query.content_bytes())["query"] == broad_query
+        assert [query.query for query in fetcher.queries[:4]] == [
+            narrow_query,
+            narrow_query,
+            broad_query,
+            broad_query,
+        ]
+        assert Oracle(state_root / "state.sqlite", state_root / "artifacts").audit(
+            run_id
+        ).ok
+    finally:
+        host.close()
+
+
 def test_exact_rejected_query_fails_before_probe_but_distinct_text_is_probed(
     tmp_path: Path,
     mount_root: Path,

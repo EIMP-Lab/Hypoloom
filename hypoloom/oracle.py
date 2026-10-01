@@ -1868,14 +1868,20 @@ def _audit_literature_query_plan_causation(
                 item for item in request.input_artifacts
                 if item.ref.endswith("--literature-query")
             )
-            if len(matches) != 1 or len(query_inputs) != 1:
+            plan_id = (
+                None
+                if len(query_inputs) != 1
+                else query_inputs[0].ref.removesuffix("--literature-query")
+            )
+            selected = tuple(item for item in matches if item[0] == plan_id)
+            if len(selected) != 1 or len(query_inputs) != 1:
                 issues.append(OracleIssue(
                     "literature_query_plan_causation_mismatch",
-                    "Grounding must bind one successful role-neutral plan and one exact query",
+                    "Grounding must bind one exact successful role-neutral plan and query",
                     (attempt_id,),
                 ))
                 continue
-            plan_id, candidate, ended = matches[0]
+            plan_id, candidate, ended = selected[0]
             query_input = query_inputs[0]
             try:
                 query = json.loads(query_input.content_bytes())

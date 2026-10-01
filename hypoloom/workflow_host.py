@@ -19,7 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
-from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot)
+from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, request_digest, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot, with_output_digest)
 from .agent_capabilities import capabilities_for
 from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
 from .context_management import continuation_observation
@@ -48,7 +48,7 @@ from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batche
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
 from .grounding_context import build_grounding_context_bytes
 from .lifecycle import Command, ExperimentState, Machine, RunState, WORKFLOW_DEFINITION_VERSION, validate_transition
-from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
+from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureCoverageError, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
 from .monitor import build_status_projection
 from .outcome_adapter import (OUTCOME_ADAPTER_VERSION, ComponentResultValidationError, repairable_component_result_error, validate_component_result, validate_measurement_result)
 from .oracle import audit_all_runs
@@ -1548,11 +1548,98 @@ class WorkflowHost:
         from .agent_aci import execution_handoff
         if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING and task.ordinal == 1:
             task = self._grounding_task(task.run_id)
-        return next((row for row in reversed(self._expert_attempts(task))
+        attempts = self._expert_attempts(task)
+        query_plan = (
+            isinstance(task, ResearchNodeTask)
+            and task.key.subkind is ResearchNodeSubkind.QUERY_PLAN
+        ) or (
+            isinstance(task, AuxiliaryTask)
+            and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
+        )
+        candidates = attempts[-1:] if query_plan else tuple(reversed(attempts))
+        return next((row for row in candidates
                      if row["state"] == "CLOSED" and row["terminal_reason"] == AttemptTerminalReason.SUCCEEDED.value
                      and not execution_handoff(json.loads(row["observation_json"]))
                      and not (isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING
                          and json.loads(row["observation_json"]).get("response", {}).get("typed_candidate", {}).get("clarification") is not None)), None)
+
+    def _invalidate_grounding_query_plan(
+        self,
+        run_id: str,
+        details: Mapping[str, Any],
+    ) -> None:
+        """Project a Grounding coverage gap into the existing plan retry."""
+        plan_task = AuxiliaryTask(
+            kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN,
+            run_id=run_id,
+        )
+        plan = self._expert_success(plan_task)
+        if plan is None:
+            raise OperationalHalt(
+                "Grounding coverage failure lacks its accepted query plan"
+            )
+        try:
+            original_observation = json.loads(plan["observation_json"])
+            original_request = AgentRequest.from_dict(
+                original_observation["request"]
+            )
+            original_response = AgentResponse.from_dict(
+                original_observation["response"]
+            )
+        except (AgentACIError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise OperationalHalt(
+                "Grounding coverage failure has an invalid query-plan Attempt"
+            ) from exc
+        attempts = self._expert_attempts(plan_task)
+        ordinal = len(attempts) + 1
+        attempt_id = f"{run_id}--grounding-query-plan-correction-{ordinal}"
+        request = replace(
+            original_request,
+            attempt_id=attempt_id,
+            attempt_ordinal=ordinal,
+        )
+        response = replace(
+            original_response,
+            attempt_id=attempt_id,
+            attempt_ordinal=ordinal,
+            declared_effects=tuple(
+                replace(effect, attempt_id=attempt_id)
+                for effect in original_response.declared_effects
+            ),
+            input_digest=request_digest(request),
+        )
+        response = with_output_digest(response)
+        message = bounded_diagnostic_text(
+            details.get("literature_diagnostic")
+        ) or "Grounding literature retrieval did not cover every requested stratum"
+        validation = {"code": "invalid_candidate", "message": message}
+        observation = {
+            "request": request.to_dict(),
+            "failure_code": "invalid_candidate",
+            "failure_stage": "host_candidate_validation",
+            "retry_class": "MODEL",
+            "diagnostics": {"validation_error": validation, **dict(details)},
+            "rejected_response": response.to_dict(),
+        }
+        now = time.time()
+        with self.store.transaction() as tx:
+            tx.open_attempt({
+                "attempt_id": attempt_id,
+                "run_id": run_id,
+                "workflow_id": run_id,
+                "command_id": plan_task.command_id,
+                "kind": "AGENT",
+                "attempt_ordinal": ordinal,
+                "host_generation": self.generation,
+                "started_at": now,
+                "payload": {"request": request.to_dict()},
+            })
+            tx.close_attempt(
+                attempt_id,
+                terminal_reason=AttemptTerminalReason.FAILED,
+                ended_at=now,
+                payload=observation,
+            )
     def _grounding_task(self, run_id: str) -> AuxiliaryTask:
         run = self.store.get_run(run_id)
         return (self.grounding_dialogue.current_task(run_id) if run is not None and int(run["agent_aci_version"]) >= 15
@@ -2331,7 +2418,7 @@ class WorkflowHost:
             correction_inputs = agent_retry_inputs(self.store, owner_id, task.command_id); inputs += correction_inputs; correction_refs = frozenset(item.ref for item in (*repair_inputs, *correction_inputs)); immutable_context_refs = tuple(item.ref for item in inputs if item.ref not in correction_refs)
         retrieval = None
         lifecycle_command = Command.REQUEST_AUXILIARY if isinstance(task, AuxiliaryTask) else Command.REQUEST_RESEARCH_NODE
-        literature_failure: tuple[str, dict[str, object], bool] | None = None; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
+        literature_failure: tuple[str, dict[str, object], bool] | None = None; coverage_failure = False; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
         retrieve = command is AgentCommand.GROUNDING or (command is AgentCommand.LITERATURE_REVIEW and isinstance(task, ResearchNodeTask) and task.key.subkind is ResearchNodeSubkind.MAIN)
         if repeat_retrieval and (not retrieve or self.literature_io is None): raise OperationalHalt("infrastructure retry requires its literature adapter")
         if replay_request is None and retrieve and self.literature_io is not None:
@@ -2367,6 +2454,7 @@ class WorkflowHost:
                 from .literature_recovery import service_failure
                 service = service_failure(exc)
                 if service is not None: details["literature_service"] = {**service, "observed_at": time.time()}
+                coverage_failure = isinstance(exc, LiteratureCoverageError)
                 literature_failure = (f"literature_{exc.code.value.lower()}", details, service is not None or literature_failure_retryable(exc))
             except Exception as exc:
                 literature_failure = ("literature_adapter_failed", {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}, True)
@@ -2375,6 +2463,9 @@ class WorkflowHost:
                 preflight_diagnostics["literature_service"] = {"service": "openalex", "available": True, "observed_at": time.time()}
                 packet_input = EmbeddedInput.from_bytes(f"{task.command_id}--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes())
                 inputs = (*inputs, packet_input); immutable_context_refs = (*immutable_context_refs, packet_input.ref)
+        if coverage_failure and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING:
+            self._invalidate_grounding_query_plan(run_id, literature_failure[1] if literature_failure is not None else {})
+            return
         self._check_agent_runtime()
         self._crash("before_agent_intent_commit"); request: AgentRequest
         with self.store.transaction() as tx:
