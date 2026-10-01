@@ -237,7 +237,8 @@ def test_document_fetch_reuse_and_shared_io_wait(reading_host):
     slots = host.grounding_web.document_slots
     slots.acquire(); slots.acquire()
     try:
-        busy = host.handle_agent_tool(parent.attempt_id, "web_fetch", {"mode": "document", "url": DOC})
+        assert host.handle_agent_tool(parent.attempt_id, "web_fetch", {"mode": "document", "url": DOC}) == result
+        busy = host.handle_agent_tool(parent.attempt_id, "web_fetch", {"mode": "document", "url": DOC + "/uncached"})
         assert busy["status"] == "unavailable" and busy["error"]["code"] == "paper_io_busy"
         assert transport.calls == calls
     finally: slots.release(); slots.release()

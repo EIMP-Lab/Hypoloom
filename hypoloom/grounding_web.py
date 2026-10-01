@@ -224,7 +224,7 @@ class GroundingWeb:
                 "academic_provider": None if self.academic_search is None else "openalex",
                 "search_fallback": None if self.search_fallback is None else "openalex"}
 
-    def _read(self, url: str, *, max_seconds: float | None = None) -> tuple[str, FetchResponse]:
+    def _read(self, url: str, *, max_seconds: float | None = None, http_calls: list[int] | None = None) -> tuple[str, FetchResponse]:
         visited = set()
         deadline = self.clock() + (self.max_seconds if max_seconds is None else min(max_seconds, self.max_seconds))
         try:
@@ -246,6 +246,9 @@ class GroundingWeb:
                 if self.clock() >= deadline:
                     raise GroundingWebError("timed_out", "web work window expired")
                 bounds = {"timeout_seconds": deadline - self.clock()} if isinstance(self.transport, PublicHttpsTransport) else {}
+                if http_calls is not None:
+                    if http_calls[0] <= 0: raise GroundingWebError("request_limit", "document HTTP work budget exhausted")
+                    http_calls[0] -= 1
                 response = self.transport.fetch(uri, approved_addresses=addresses, max_bytes=self.max_response_bytes, **bounds)
                 if not isinstance(response, FetchResponse) or response.requested_uri != uri:
                     raise GroundingWebError("transport_failed", "web response does not bind its requested URL")
@@ -377,10 +380,12 @@ class GroundingWeb:
                 "text": text[:max_chars], "text_scope": scope, "links": links,
                 "truncated": len(text) > max_chars, "source_is_untrusted": True}
 
-    def document(self, url: str) -> dict[str, Any]:
+    def document(self, url: str, *, max_seconds: float | None = None, http_calls: list[int] | None = None) -> dict[str, Any]:
         """Prepare exact bytes off the Host thread; raw fields never enter a tool reply."""
-        deadline = self.clock() + self.max_seconds
-        uri, response = self._read(url)
+        budget = self.max_seconds if max_seconds is None else min(self.max_seconds, max_seconds)
+        if budget <= 0: raise GroundingWebError("timed_out", "document work window expired")
+        deadline = self.clock() + budget
+        uri, response = self._read(url, max_seconds=budget, http_calls=http_calls)
         media = (response.media_type or "").split(";", 1)[0].strip().lower()
         title = ""
         if media == "application/pdf":

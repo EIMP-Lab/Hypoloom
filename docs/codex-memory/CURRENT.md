@@ -1,36 +1,20 @@
 # Current Hypoloom development state
 
-- October 1 follow-up batch C implements run-independent platform preparation,
-  full empty-state catalogs and disposable sample verification. Bootstrap review
-  exposes an explicit preparation command; Windows guidance detects Chrome/Edge.
-  The shared worker owns at most eight tabs and never closes user-owned tabs.
-  63 queue/control/preparation checks plus five real Web interactions and a real
-  browser tab-ownership check pass. Final OA/native qualification is in progress.
-
-- October 1 follow-up batch B adds lifecycle v11 institutional skip/restore/mode
-  self-transitions in the existing command journal, revision checks and stable
-  client retry IDs. Launch/bootstrap share validated deadlines and provider modes;
-  frozen configuration stays unchanged. 140 relevant test identities pass. New
-  control helper is counted within the unchanged core LOC budget. Preparation/OA
-  integration and final candidate qualification remain in progress.
-
-- October 1 institutional follow-up batch A implements finite queue deadlines,
-  background authentication completion, explicit manual windows and stale-result
-  rejection. Navigation/download/extraction inherit the remaining budget. 119
-  queue/navigation/browser checks pass, including real local Chrome fixtures.
-  Remaining design batches are in progress; no retained run or Profile changes.
-
-- October 1 institutional preparation follow-up is design only. Proposed default:
-  public/OA first, reuse the existing browser session, and finish background
-  requests that need human authentication; explicit operator login opens a finite
-  window. Proposed 120-second acquisition / 600-second manual defaults remain
-  unimplemented. Publisher preparation needs no run or pending paper. Persistent
-  per-run skip/mode choices reuse ordinary command transactions; browser sessions,
-  transient checks and source admission retain their existing owners. No new
-  credential/entitlement store, SQL table or assurance mechanism. Four delivery
-  batches and bounded Host/CPU/browser qualification are specified in the
-  [design](../design/institutional-access-preparation.md). Original runtime,
-  research runs, Profiles and browser state are unchanged by this design task.
+- October 1 institutional follow-up A–D is implemented for new lifecycle v11
+  runs: finite 120-second acquisitions / explicit 600-second manual windows,
+  run-level skip/restore/platform modes through the existing command journal,
+  standalone preparation/full catalogs/sample verification, and dynamic exact-DOI
+  OA fallback with original security/identity validation and shared PDF limits.
+  Browser credentials remain browser-owned. No new SQL table or authority; new
+  control helper stays in the existing total core LOC allocation. 210 focused
+  offline checks pass; native OA → three readers → CPU → archive/Oracle closure
+  passes. Five Web interactions and real browser tab ownership also pass. Final
+  full candidate qualification is in progress. The real Springer sample was
+  supplied, but the operator CDP tunnel currently disconnects; no new real
+  subscription result is claimed. Existing runs/Profiles/pool remain untouched.
+  User authorizes committing and pushing these batches to dev.
+  [Design](../design/institutional-access-preparation.md),
+  [guide](../guides/institutional-access.md).
 
 - October 1 real institutional subscription: user-completed Xidian login over
   dedicated Windows Edge/loopback SSH yields the expected 16-page IEEE PDF in

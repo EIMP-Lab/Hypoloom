@@ -8,6 +8,65 @@ browser so a laptop can disconnect after login. The TUI groups unresolved
 papers by publisher without opening repeated prompts. Other research continues;
 available bytes do not establish that an Agent read a paper.
 
+## Prepare platforms before research
+
+After connecting the dedicated browser, run these commands in the project's server environment:
+
+```bash
+python -m hypoloom institutional prepare --list
+python -m hypoloom institutional prepare \
+  --institutional-browser-url http://127.0.0.1:9222 \
+  --provider IEEE --provider Springer
+```
+
+Complete SSO/MFA only in the browser and follow the terminal prompt. Supply a sample
+DOI/canonical article URL interactively or using repeatable `--sample`. With
+`--non-interactive --sample <DOI-or-URL>`, check the existing session without waiting
+for terminal input. `--list` does not connect. Prepare at most eight platforms per
+batch; close the command and start another batch as needed. No research Host/run,
+Attempt, Profile, model call or source archive is created. Bootstrap review provides
+`institutional_preparation_argv`; ordinary preview never opens the browser.
+
+During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
+the complete catalog even without pending papers. Open login, verify a sample, or
+check/retry. Avoid running a second standalone manager against the same browser.
+A timestamped verified sample proves that paper was readable at that time; its bytes
+are released, not archived as research evidence. Reconnecting the same browser can
+reuse a valid session, but institutional/publisher expiry can require another login.
+
+Public documents and the configured exact-DOI OA locator run before institutional
+access. Background requests that need login, verification or access intervention
+finish unavailable so research can continue. Automatic acquisition has a **120-second**
+deadline from enqueue, including queue time and retries. Explicit login/check opens a
+**600-second** platform window. New papers never extend it. Timeouts need an operator
+retry; denial of one paper never disables the entire platform automatically.
+
+| Control | Scope |
+| --- | --- |
+| Skip / restore paper | Across experts in this run, keyed by known DOI or canonical link; existing admitted originals remain available. |
+| `public_only` platform | Suppresses automatic institutional browsing; public/OA retrieval and validated manual PDF import remain available. |
+| `auto` platform | Permits existing-session access; explicitly open login/check if authentication is needed. |
+| Import PDF | Requires a selected paper and an absolute Host-side path; normal identity/source validation remains mandatory. |
+
+Skip/restore and platform choices use the existing run command journal and survive
+same-version Host restart. Manual login windows are not replayed. These controls apply
+to new lifecycle v11 runs; retained frozen runs are not migrated. Repeat reviewed
+launch arguments for future runs without adding preferences to research Profiles:
+
+```text
+--institutional-provider-mode IEEE=auto
+--institutional-provider-mode Springer=public_only
+--institutional-acquisition-seconds 120
+--institutional-manual-seconds 600
+```
+
+Modes may repeat for different platforms; conflicting values fail validation. Deadlines
+must be finite, respectively 30–600 and 60–1800 seconds. Public/OA work retains existing
+HTTP, shared PDF-worker and time limits. Dynamic document tools reuse the selected
+Semantic Scholar or Unpaywall DOI locator without replaying a whole literature batch.
+OA copies retain their actual source and version limitation; they are not automatically
+claimed to be the publisher's version of record. A replacement paper needs its own citation.
+
 ## Configure a new run
 
 In the Linux Host's Python environment, from the repository root:
@@ -133,7 +192,7 @@ Sign In** on the publisher page; select your institution there to start SSO.
 Press `i` in the TUI, select a publisher and choose the login button. Complete
 school selection, SSO or MFA in the browser. If the library leaves you on its
 home page, navigate to the listed article in that same tab. The Host checks
-waiting tabs approximately every 30 seconds without restarting login. Retry
+waiting tabs approximately every 30 seconds within an explicit manual window, without restarting login. Retry
 is also available explicitly. A valid browser session serves later papers;
 expired sessions or required verification still need the operator.
 
@@ -194,9 +253,9 @@ redirects (including DOI/Elsevier linkinghub). These transit pages are never acc
 as articles. A transient navigation error gets at most one in-check retry; an already
 visible login/MFA page is preserved. Repeated network/timeout/unresolved-redirect,
 HTTP 5xx (`http_server_error`) or 429 (`http_rate_limited`) failures back off per paper
-at 30, 60, 120, then 300 seconds between checks. A 429 does not trigger an immediate
+at 30, 60, 120, then 300 seconds within the remaining deadline; expiry ends the request. A 429 does not trigger an immediate
 retry. Success, leaving the transient state, or operator retry resets the backoff.
-Auth checks retain their original cadence without restarting the login flow;
+Auth checks run only in an explicit manual window without restarting the login flow;
 identity mismatch and denied access remain terminal. PDF streaming retains its
 15-second abort timer. Unsupported mirror domains still need an adapter or PDF import.
 New Hosts use this repair; existing frozen runs are not migrated or hot-patched.
@@ -259,8 +318,7 @@ and synthetic pages, not institutional subscriptions.
 ## Coverage and limits
 
 Publisher preparation, durable skip/preferences and bounded authentication waits
-are specified in the [follow-up design](../design/institutional-access-preparation.md).
-They are not implemented yet; the following describes current behavior.
+follow the [framework design](../design/institutional-access-preparation.md).
 
 Recognized routes include common Nature, Springer, IEEE, ScienceDirect, ACM,
 Wiley, SAGE, Oxford and Taylor & Francis article domains and DOI prefixes.

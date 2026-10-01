@@ -12,6 +12,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import BoundedSemaphore
+from time import monotonic
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -22,14 +23,12 @@ MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_SOURCES = 32
 
 
-def rejected_packet_sources(host, request):
-    """Project the exact packet's existing retrieval rejection on the Host thread."""
-    from .literature import LiteraturePacket
+def packet_download_trace(host, request):
+    """Find diagnostics for this exact packet, including a same-task retry."""
     packets = {item.ref: item for item in request.input_artifacts
         if item.ref.endswith("--literature-packet")}
-    urls, hosts = set(), set()
     if not packets or getattr(host, "store", None) is None:
-        return urls, hosts
+        return ()
     rows = host.store.list_attempts(workflow_id=request.owner_workflow_id, command_id=request.command_id)
     for row in reversed(rows):
         observation = json.loads(row["observation_json"])
@@ -41,21 +40,26 @@ def rejected_packet_sources(host, request):
             and item.content_bytes() == packets[item.ref].content_bytes()]
         if not matching:
             continue
-        rejected = set()
-        for paper in trace:
-            for event in paper.get("events", ()):
-                if (event.get("outcome") == "VALIDATION_FAILURE"
-                        and event.get("failure_code") == "VALIDATION_FAILED"):
-                    rejected.add(paper["bibliographic_identity"])
-                    if event.get("source_host"):
-                        hosts.add(event["source_host"].lower())
-        for item in matching:
-            for paper in LiteraturePacket.from_bytes(item.content_bytes()).papers:
-                if paper.bibliographic_identity in rejected:
-                    urls.update(url for url in (paper.landing_uri, paper.source_uri) if url)
-                    if paper.bibliographic_identity.startswith("doi:"):
-                        urls.add("https://doi.org/" + paper.bibliographic_identity[4:])
-        break  # A fresh retrieval's diagnostics supersede earlier observations.
+        return tuple(trace)
+    return ()
+
+
+def rejected_packet_sources(host, request):
+    """Project the exact packet's existing retrieval rejection on the Host thread."""
+    from .literature import LiteraturePacket
+    urls, hosts, rejected = set(), set(), set()
+    for paper in packet_download_trace(host, request):
+        for event in paper.get("events", ()):
+            if event.get("outcome") == "VALIDATION_FAILURE" and event.get("failure_code") == "VALIDATION_FAILED":
+                rejected.add(paper["bibliographic_identity"])
+                if event.get("source_host"): hosts.add(event["source_host"].lower())
+    for item in request.input_artifacts:
+        if not item.ref.endswith("--literature-packet"): continue
+        for paper in LiteraturePacket.from_bytes(item.content_bytes()).papers:
+            if paper.bibliographic_identity in rejected:
+                urls.update(url for url in (paper.landing_uri, paper.source_uri) if url)
+                if paper.bibliographic_identity.startswith("doi:"):
+                    urls.add("https://doi.org/" + paper.bibliographic_identity[4:])
     return urls, hosts
 
 
@@ -141,7 +145,7 @@ class PaperWorkspace:
         size = sum(map(len, files))
         if len(self.sources) >= MAX_SOURCES or self.total_bytes + size > MAX_SOURCE_BYTES:
             raise AgentACIError("paper_source_limit", "Attempt paper preparation exceeded 32 sources or 64 MiB; use existing sources")
-        source = {name: document[name] for name in ("url", "requested_url", "title", "media_type") if name in document}
+        source = {name: document[name] for name in ("url", "requested_url", "title", "media_type", "version_note") if name in document}
         source.update(source_ref=source_ref, acquisition_attempt_id=acquisition,
                       directory=f"source-{len(self.sources) + 1:04d}", page_count=len(pages),
                       empty_text_pages=[i for i, page in enumerate(pages, 1) if not page.strip()])
@@ -434,10 +438,23 @@ def web_tool(host, request, tool, arguments, *, defer=False):
     if host.grounding_web is None: host.grounding_web = GroundingWeb()
     web = host.grounding_web
     access = getattr(host, "institutional_access", None)
-    from .institutional_access import scope_for, publisher, public_full_text
+    from .institutional_access import scope_for, publisher, public_full_text, identity_from_url
+    from .literature import LiteraturePacket
     access_scope = scope_for(request)
     rejected = rejected_packet_sources(host, request)
-    slots = getattr(getattr(host, "literature_io", None), "pdf_slots", None)
+    io = getattr(host, "literature_io", None)
+    slots = getattr(io, "pdf_slots", None)
+    known = {}
+    for artifact in request.input_artifacts:
+        if not artifact.ref.endswith("--literature-packet"): continue
+        for paper in LiteraturePacket.from_bytes(artifact.content_bytes()).papers:
+            for url in (paper.landing_uri, paper.source_uri, "https://doi.org/" + paper.bibliographic_identity[4:]
+                        if paper.bibliographic_identity.startswith("doi:") else None):
+                if url: known[url] = paper
+    prior_tools = tuple(host.web_tool_results.get(request.attempt_id, ()))
+    traces = [*packet_download_trace(host, request), *(trace for call in prior_tools for trace in call.get("literature_download_trace", ()))]
+    located = {trace["bibliographic_identity"] for trace in traces
+               if any(e.get("stage") == "fallback_lookup" and e.get("outcome") != "RATE_LIMITED" for e in trace.get("events", ()))}
     if slots is None:
         if not hasattr(web, "document_slots"): web.document_slots = BoundedSemaphore(2)
         slots = web.document_slots
@@ -458,30 +475,51 @@ def web_tool(host, request, tool, arguments, *, defer=False):
     elif ("query" if tool == "web_search" else "url") not in arguments:
         raise AgentACIError("tool_arguments", "required query/url missing")
     record = {"tool": tool, "arguments": dict(arguments)}
+    observations = []
     def read_one(item):
         if "source" in item: return {"existing": item["source"]}
         if _source_rejected(item["url"], rejected):
             return {"error": {"code": "unsafe_url", "message": "This packet source failed public retrieval validation."}}
+        if document and papers is not None:
+            prior = next((s for s in papers.sources if item["url"] in {s.get("url"), s.get("requested_url")}), None)
+            if prior is not None: return {"existing": prior}
+        paper = known.get(item["url"])
+        identity = paper.bibliographic_identity if paper else identity_from_url(item["url"])
+        title = paper.title if paper else ""
+        pending = None
         if access is not None:
             pending = access.peek(access_scope, item["url"])
-            if pending is not None:
+            if pending is not None and "content" in pending: return pending
+            reason = access.automatic_reason(access_scope, item["url"], identity)
+            if reason: return {"status": "unavailable", "reason": reason, "requested_url": item["url"]}
+            attempted = any(call.get("tool") == "web_fetch" and call.get("status") == "success"
+                and any(selection.get("url") == item["url"] for selection in call.get("arguments", {}).get("sources", [call.get("arguments", {})]))
+                for call in prior_tools)
+            if pending is not None and ("content" in pending or attempted):
                 return pending
         if not slots.acquire(blocking=False): return {"error": {"code": "paper_io_busy", "message": "Existing PDF workers are occupied; reuse local sources or retry later."}}
         try:
+            from .document_fallback import read_document, open_copy
+            deadline = monotonic() + min(getattr(web, "max_seconds", 120), getattr(io, "pdf_work_window_seconds", 120))
+            http_calls = [getattr(io, "max_pdf_http_calls_per_paper", 2 * (getattr(web, "max_redirects", 5) + 1))]
             try:
-                result = web.document(item["url"])
+                result = read_document(web, item["url"], deadline, http_calls)
                 if publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"} and not public_full_text(result):
-                    # A publisher landing page is not proof of full-text access.
-                    # Let the browser adapter positively identify article text.
-                    if access is not None:
-                        return access.request(access_scope, item["url"])
-                    return {"error": {"code": "full_text_unconfirmed", "message": "Publisher HTML is not confirmed full text; use its PDF or enable institutional access."}}
+                    raise GroundingWebError("full_text_unconfirmed", "Publisher HTML is not confirmed full text")
                 return result
             except GroundingWebError as exc:
-                if access is not None and publisher(item["url"]) and exc.code in {
-                        "http_error", "transport_failed", "timed_out", "challenge", "redirect_error"}:
-                    return access.request(access_scope, item["url"])
-                return {"error": {"code": exc.code, "message": str(exc)[:1024]}}
+                if exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
+                    return {"error": {"code": exc.code, "message": str(exc)[:1024]}}
+                error = {"code": exc.code, "message": str(exc)[:1024]}
+            if identity not in located:
+                events = []
+                result = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls)
+                if events: observations.append({"bibliographic_identity": identity, "events": events})
+                if result is not None: return result
+            if access is not None and publisher(item["url"]):
+                return access.request(access_scope, item["url"], title=title, identity=identity)
+            return {"status": "unavailable", "error": error, "requested_url": item["url"],
+                "next_action": "Continue other sources or permitted academic search. Do not infer full-text evidence or repeatedly poll for login."}
         finally: slots.release()
     def read():
         if selections is not None:
@@ -503,6 +541,7 @@ def web_tool(host, request, tool, arguments, *, defer=False):
             if tool == "web_search" else web.web_fetch(arguments["url"], max_chars=arguments.get("max_chars", 20000)))
     def finish(result, error):
         host._agent_tool_request(request.attempt_id, grounding=True)
+        if observations: record["literature_download_trace"] = observations
         if error is not None:
             if not isinstance(error, GroundingWebError): raise error
             record.update(status="error", error={"code": error.code, "message": str(error)[:1024]})

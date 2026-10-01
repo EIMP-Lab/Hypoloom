@@ -3,8 +3,8 @@
 The [follow-up preparation and bounded recovery design](institutional-access-preparation.md)
 specifies publisher preparation before a run, durable operator skip/preferences
 through existing controls, finite acquisition windows and shared OA fallback.
-It is a proposal dated October 1, 2026, not implemented behavior. The architecture
-below describes the current integration; [qualification](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01)
+It is implemented for new lifecycle v11 runs. The architecture below includes
+the original integration; the follow-up design specifies its bounded lifecycle changes; [qualification](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01)
 records the completed one-paper real subscription check.
 
 The public PDF downloader cannot use a researcher's institutional browser
@@ -30,15 +30,16 @@ Browser state validity remains subject to institutional policy and network acces
 
 The existing Host owns acquisition and the existing web document tool owns
 source admission. A bounded, disposable queue/cache holds pending acquisition
-work; no new SQL table, workflow state, schema version, receipt or paper registry
+work; no new SQL table, workflow state, SQL schema version, receipt or paper registry
 is needed. Requests derive from frozen LiteraturePackets and actual web tool
 requests. Complete bytes enter the existing PaperWorkspace and Agent archive
 only through a successful document tool call, with ordinary source references.
 Available bytes are not evidence of reading. Finished requests/reports are not
 rewritten when a login later succeeds.
 
-One browser worker serializes access. Login/verification waits are coalesced by
-publisher, polled without repeated navigation, and never block the Host or
+One browser worker serializes access. Background authentication requests finish
+unavailable; explicit operator login/check opens a finite publisher window, polled
+without repeated navigation. These requests never block the Host or
 ordinary research dispatch. A TUI screen shows the whole pending group and can
 focus its browser tab or request another bounded attempt. The Web observer
 shows the same group in its Workbench and permits the same open/retry/import
@@ -65,8 +66,9 @@ pages, not admitted article origins. Retry transient navigation at most once in
 the same check, preserving any arrived login/verification page. Per-acquisition
 consecutive transient failures reuse the existing in-memory `next_check` scheduling
 with 30/60/120/300-second delays; success, non-transient outcomes and operator retry
-reset the count. Authentication cadence, terminal outcomes, source identity and
-public-downloader safety rules remain unchanged. Status derives a retry countdown
+reset the count. Authentication polling now requires an explicit manual window; the finite queue
+deadline includes all retries. Terminal outcomes, source identity and public-downloader
+safety rules remain unchanged. Status derives a retry countdown
 from `next_check`; existing reason codes/events remain the sole diagnostic path.
 The browser-side PDF fetch retains its existing 15-second abort timer.
 

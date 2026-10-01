@@ -78,6 +78,46 @@ def test_skip_during_download_discards_result_but_allows_explicit_import(reading
         release.set()
 
 
+def test_real_host_restart_recovers_choices_without_replaying_manual_window(tmp_path):
+    from pathlib import Path
+    import tempfile
+    from hypoloom.workflow_host import WorkflowHost
+    from hypoloom.oracle import Oracle
+    from tests.runtime.test_expert_loop_host import _pilot_payload
+    with tempfile.TemporaryDirectory(prefix="hl-inst-restart-", dir="/var/tmp") as target:
+        access = InstitutionalAccess(Backend())
+        host = WorkflowHost(tmp_path / "state", institutional_access=access)
+        host.initialize()
+        run_id = "institutional-restart"
+        try:
+            reply = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", _pilot_payload(tmp_path, Path(target), run_id)))
+            assert reply.status == "accepted", reply
+            reply = host.handle(ControlRequest(1, "skip", reply.revision, "LITERATURE_ACCESS",
+                {"run_id": run_id, "provider": "Nature", "action": "skip", "url": URL}))
+            assert reply.status == "accepted", reply
+            reply = host.handle(ControlRequest(1, "mode", reply.revision, "LITERATURE_ACCESS",
+                {"run_id": run_id, "provider": "IEEE", "action": "mode", "mode": "public_only"}))
+            assert reply.status == "accepted", reply
+            host.institutional_access._manual_until[(run_id, "Springer")] = host.institutional_access.clock() + 600
+        finally:
+            host.close()
+        restarted = WorkflowHost(tmp_path / "state", institutional_access=InstitutionalAccess(Backend()))
+        restarted.initialize()
+        try:
+            restored = restarted.institutional_access
+            assert not restored._manual_until
+            assert restored.request((run_id, "reader", "a"), URL)["reason"] == "skipped"
+            assert restored.request((run_id, "reader", "a"), "https://ieeexplore.ieee.org/document/11006507")["reason"] == "public_only"
+            assert len(restarted.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 2
+            result = restarted.handle(ControlRequest(1, "cleanup", None, "CANCEL", {"run_id": run_id, "cause": "isolated test cleanup"}))
+            assert result.status == "accepted"
+            for _ in range(10): restarted.tick()
+            assert restarted.store.latest_transition(run_id)["state"] == "CANCELLED"
+            assert Oracle(restarted.store.database_path, restarted.publisher.root).audit(run_id).ok
+        finally:
+            restarted.close()
+
+
 @pytest.mark.parametrize("args", [["--institutional-provider-mode", "IEEE=no"],
     ["--institutional-provider-mode", "IEEE=auto", "--institutional-provider-mode", "IEEE=public_only"],
     ["--institutional-acquisition-seconds", "nan"], ["--institutional-manual-seconds", "1801"]])

@@ -108,9 +108,14 @@ class ReadingScenario(_FinalReportHostScenario):
         return super()._unscoped_tool_calls(number)
 
 
-@pytest.mark.parametrize("end_run,batch_documents,correct_errors", [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
-                         ids=["cpu-completion", "end-run", "batch-documents", "correct-errors"])
-def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, end_run, batch_documents, correct_errors):
+@pytest.mark.parametrize("end_run,batch_documents,correct_errors,institutional_oa", [
+    (False, False, False, False), (True, False, False, False), (False, True, False, False),
+    (False, False, True, False), (False, False, False, True)],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa"])
+def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
+    if institutional_oa:
+        import sys
+        monkeypatch.setattr(sys.modules[__name__], "DOC", "https://www.nature.com/articles/s41586-026-00001-1")
     scenario = ReadingScenario(tmp_path, batch_documents=batch_documents, correct_errors=correct_errors)
     secret = "isolated-script-only-" + secrets.token_hex(12)
     provider, thread = _start_provider(scenario, secret)
@@ -120,6 +125,21 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
     host.grounding_web = GroundingWeb(Transport({url: _response(url,
         ("<title>Selected method</title><p>Coefficient label " + scenario.nonce + "</p>").encode())
         for url in (DOC, DOC + "/second")}))
+    if institutional_oa:
+        from hypoloom.institutional_access import InstitutionalAccess
+        from hypoloom.literature import UnpaywallPdfLocator
+        from test_document_fallback import Metadata, OA, DOI
+        from test_institutional_access import Backend
+        from test_institutional_browser import _pdf
+        backend, metadata = Backend(), Metadata()
+        host.institutional_access = InstitutionalAccess(backend)
+        host.configuration["institutional_access"] = host.institutional_access.configuration
+        host.literature_io.fallback_locator = UnpaywallPdfLocator(email="reader@example.org", transport=metadata)
+        host.configuration["literature"] = host.literature_io.configuration
+        # Finish isolated launch configuration before the first run/version is persisted.
+        host.version = host._runtime_version()
+        host.grounding_web = GroundingWeb(Transport({DOC: _response(DOC, b"Denied", status_code=403),
+            OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf")}))
     run_id = "native-paper-reading"
     max_readers = 0; stopped = False
     try:
@@ -134,6 +154,10 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         created = host.handle(ControlRequest(schema_version=1, request_id="create-reading", expected_revision=0,
             command="CREATE_RUN", payload=payload))
         assert created.status == "accepted", created
+        if institutional_oa:
+            choice = host.handle(ControlRequest(1, "native-public-only", created.revision, "LITERATURE_ACCESS",
+                {"run_id": run_id, "provider": "Nature", "action": "mode", "mode": "public_only"}))
+            assert choice.status == "accepted", choice
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             host.tick()
@@ -152,6 +176,12 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         assert host.store.latest_transition(run_id)["state"] == ("CANCELLED" if end_run else "COMPLETED")
         assert max_readers == 3
         if not end_run: assert len(scenario.readers) == 3
+        if institutional_oa:
+            assert not backend.calls
+            assert len(metadata.calls) == 1
+            assert all(source["url"] == OA for sources in scenario.sources.values() for source in sources)
+            assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
+            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 1
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
         if not end_run: assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts)

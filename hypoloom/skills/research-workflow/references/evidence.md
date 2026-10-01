@@ -6,6 +6,12 @@ search abstract alone is not full-paper evidence. Resolve relevant gaps rather
 than repeating discovery already supported by accessible, current material.
 
 Use the existing literature skill and bounded reader tools for selected sources.
+Document tools try public/OA copies and existing institutional sessions. Pending
+work has a deadline; continue other papers instead of repeatedly polling or waiting
+for login. Unavailable, skipped, denied or timed-out sources remain explicit evidence
+gaps. Use permitted academic search for alternatives, preserve the actual source
+and version, and never substitute another paper under the missing paper's citation.
+An OA copy does not establish that it is the publisher's final version.
 Separate source claims, your interpretation and uncertainty. Design hypotheses
 that distinguish plausible explanations with feasible experiments; preserve the
 accepted goal and declared local/GOAL measurement choices.

@@ -1682,10 +1682,10 @@ class SemanticScholarPdfLocator:
         return {**self.configuration, "credential_source": "none", "network_probe_performed": False}
 
     def locate(self, paper: SearchPaper) -> Sequence[str]:
-        prefix = "doi:"
-        if not paper.bibliographic_identity.startswith(prefix):
-            return ()
-        doi = paper.bibliographic_identity[len(prefix) :]
+        return self.locate_doi(paper.bibliographic_identity[4:]) if paper.bibliographic_identity.startswith("doi:") else ()
+
+    def locate_doi(self, doi: str, *, timeout_seconds=None) -> Sequence[str]:
+        doi = _identity("doi:" + doi)[4:]
         target = (
             "/graph/v1/paper/"
             + quote(f"DOI:{doi}", safe="")
@@ -1699,7 +1699,7 @@ class SemanticScholarPdfLocator:
                     "Accept": "application/json",
                     "User-Agent": "Hypoloom-Hypoloom-literature/2",
                 },
-                timeout_seconds=self.timeout_seconds,
+                timeout_seconds=self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds),
                 max_bytes=self.max_response_bytes,
             )
         except LiteratureError:
@@ -1817,14 +1817,15 @@ class UnpaywallPdfLocator:
                 "credential_source": "none", "network_probe_performed": False}
 
     def locate(self, paper: SearchPaper) -> Sequence[str]:
-        if not paper.bibliographic_identity.startswith("doi:"):
-            return ()
-        doi = paper.bibliographic_identity[4:]
+        return self.locate_doi(paper.bibliographic_identity[4:]) if paper.bibliographic_identity.startswith("doi:") else ()
+
+    def locate_doi(self, doi: str, *, timeout_seconds=None) -> Sequence[str]:
+        doi = _identity("doi:" + doi)[4:]
         target = "/v2/" + quote(doi, safe="/") + "?" + urlencode({"email": self._email})
         try:
             response = self._transport.get(host=UNPAYWALL_API_HOST, target=target,
                 headers={"Accept": "application/json", "User-Agent": "Hypoloom-Literature/2"},
-                timeout_seconds=self.timeout_seconds, max_bytes=self.max_response_bytes)
+                timeout_seconds=self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds), max_bytes=self.max_response_bytes)
         except LiteratureError:
             raise
         except TimeoutError as exc:
@@ -1847,7 +1848,7 @@ class UnpaywallPdfLocator:
             raise LiteratureFetchError("Unpaywall response is not JSON") from exc
         returned = payload.get("doi") if isinstance(payload, Mapping) else None
         try:
-            if not isinstance(returned, str) or _identity("doi:" + returned) != paper.bibliographic_identity:
+            if not isinstance(returned, str) or _identity("doi:" + returned) != "doi:" + doi:
                 return ()
         except LiteratureError:
             return ()
@@ -3448,6 +3449,27 @@ class FixedLiteratureIO:
         self._download_trace: list[dict[str, Any]] = []
         self._cancel_event: Event | None = None
         self._fallback_retry_at = 0.0
+
+    def locate_doi(self, identity: str, events: list, *, timeout_seconds: float):
+        """Dynamic document lookup shares the existing locator/cooldown, not batch state."""
+        if not identity.startswith("doi:") or not callable(getattr(self.fallback_locator, "locate_doi", None)):
+            return ()
+        with self._pdf_lock:
+            if self._clock() < self._fallback_retry_at:
+                _download_event(events, "fallback_lookup", "RATE_LIMITED")
+                return ()
+        try:
+            located = self.fallback_locator.locate_doi(identity[4:], timeout_seconds=timeout_seconds)
+        except LiteratureError as exc:
+            if exc.http_status == 429:
+                with self._pdf_lock:
+                    self._fallback_retry_at = max(self._fallback_retry_at, self._clock() + PDF_FALLBACK_COOLDOWN_SECONDS)
+            _download_event(events, "fallback_lookup", "VALIDATION_FAILURE", error=exc)
+            return ()
+        if not isinstance(located, (tuple, list)) or len(located) > 4 or any(not isinstance(url, str) for url in located):
+            raise LiteratureValidationError("PDF fallback locator must return at most four URI strings")
+        _download_event(events, "fallback_lookup", "FALLBACK_FOUND" if located else "FALLBACK_EMPTY")
+        return tuple(located)
 
     def submit_read(self, executor: ThreadPoolExecutor, run_id: str,
                     kind: str, query: LiteratureQuery) -> LiteratureRead:
