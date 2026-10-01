@@ -72,24 +72,40 @@ article B from a new Host; synthetic session tests are not a subscription check.
 
 ## Laptop browser (optional)
 
-Start a visible Chrome browser on the Windows laptop, using a dedicated profile:
+Start a visible browser on the Windows laptop, using a dedicated profile. This
+finds common Chrome installations, falling back to Edge:
 
 ```powershell
-$researchChrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-$researchProfile = Join-Path $env:LOCALAPPDATA 'Hypoloom\InstitutionalChrome'
-& $researchChrome '--remote-debugging-address=127.0.0.1' '--remote-debugging-port=9222' "--user-data-dir=$researchProfile" 'about:blank'
+$researchBrowser = @(
+    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
+    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+    "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $researchBrowser) { throw 'Chrome/Edge not found; set the actual executable path.' }
+$researchProfile = Join-Path $env:LOCALAPPDATA ("Hypoloom\Institutional-" + [IO.Path]::GetFileNameWithoutExtension($researchBrowser))
+& $researchBrowser '--remote-debugging-address=127.0.0.1' '--remote-debugging-port=9222' "--user-data-dir=$researchProfile" 'about:blank'
+Start-Sleep -Seconds 3
+(Invoke-RestMethod 'http://127.0.0.1:9222/json/version').Browser
 ```
 
-Adjust the executable path if necessary. Sign in yourself in this browser.
+The last line should print the browser version before you start the SSH tunnel.
+For a custom installation, set `$researchBrowser` to its actual executable path.
+Sign in yourself in this browser.
 [Chrome requires a non-default data directory for remote debugging](https://developer.chrome.com/blog/remote-debugging-port).
+[Edge supports the same CDP interface](https://learn.microsoft.com/en-us/microsoft-edge/devtools/protocol/).
 The browser keeps its own session; Hypoloom does not export cookies or storage.
 
 For a Linux server with a Windows browser, leave this SSH tunnel running on the
-laptop (replace the SSH destination):
+laptop (replace `user@SERVER` with your existing SSH destination or alias):
 
 ```powershell
 ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:9222:127.0.0.1:9222 user@SERVER
 ```
+
+The destination is the server address/alias, not a password. If SSH asks for
+authentication, enter it in the SSH terminal. Keep that terminal open.
 
 CDP grants browser control. Bind it only to loopback, never a public interface.
 No tunnel is needed when Host and browser share a machine. Add this option to
@@ -106,6 +122,11 @@ it, the TUI opens the publisher article. Do not change an existing run's frozen
 configuration. Literature MAIN needs `web_fetch` in its frozen
 `methodology.literature.tools` to consume recovered documents; the separate
 `read_papers` model capability is optional.
+
+A SAML entity/metadata URL such as `https://institution.example/idp/shibboleth`
+may return XML rather than an interactive login page. Do not use it as the
+library entry. Omit `--institutional-library-url` and choose **Institutional
+Sign In** on the publisher page; select your institution there to start SSO.
 
 ## During research
 
@@ -143,8 +164,9 @@ The Web observer's dynamically assigned HTTP port is independent of CDP.
 If 9222 is occupied, change the browser, tunnel and Host configuration together.
 
 For Windows logon startup, create two Task Scheduler tasks triggered at user
-logon. Run Chrome with the absolute executable path and the same dedicated
-profile/9222 arguments above. Select "Run only when user is logged on" so SSO
+logon. Use the actual values of `$researchBrowser` and `$researchProfile` from
+the successful manual setup, with the same port 9222 arguments. Select
+"Run only when user is logged on" so SSO
 and MFA stay visible. Use an absolute profile path in Task Scheduler arguments.
 For the tunnel, use `C:\Windows\System32\OpenSSH\ssh.exe` with arguments:
 
@@ -187,7 +209,7 @@ Navigation now allows 25 seconds per attempt; PDF streaming still allows 15 seco
 A page explicitly saying `Redirecting` remains retryable even on an article URL;
 it must not become terminal `no_full_text`. This does not guarantee that an actual
 article page exposes a readable PDF or that its institutional entitlement is valid.
-ScienceDirect PDF controls may appear after the DOM is complete. An article without
+ScienceDirect and IEEE PDF controls may appear after the DOM is complete. An article without
 PDF/full text or an explicit access outcome is inspected for up to about eight
 seconds before returning `no_full_text`. If the bridge's own JS races the direct
 hop (`ERR_ABORTED`), follow the resulting navigation within that bound instead of
@@ -200,6 +222,11 @@ tab for the operator; subsequent checks observe it without restarting the naviga
 Only the same article's PDF endpoint or matching PII on `pdf.sciencedirectassets.com`
 is accepted; bytes still pass the normal bounds, PDF extraction and admission checks.
 Signed query parameters are stripped from recorded source URLs and diagnostics.
+IEEE's HTML PDF viewer is also followed when its article number matches the
+identified article. Its iframe must resolve to the same IEEE article's HTTPS
+PDF endpoint; the downloaded PDF still needs a matching content identity.
+Article-page and DOI entries, plus reuse of a valid institutional session, have
+been [verified with one real IEEE paper](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01).
 Other proprietary viewers/native downloads may still require manual PDF import.
 HTML bytes are never admitted as a PDF or evidence of missing access.
 
@@ -253,8 +280,9 @@ tabs, preserving the operator browser/profile.
 
 The adapter uses [Playwright CDP](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)
 and supports Chromium browsers. Tests use real Chromium with synthetic
-publisher responses. A school's real entitlement and Windows-to-Linux tunnel
-require an environment-specific check. See the [design](../design/institutional-literature-access.md)
+publisher responses. One actual IEEE subscription and Windows-to-Linux tunnel
+have been verified; other institutions/publishers still require an
+environment-specific check. See the [design](../design/institutional-literature-access.md)
 and [qualification](../qualification.md).
 
 ## Retrieval rejection and document identity

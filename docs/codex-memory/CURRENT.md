@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 1 real institutional subscription: user-completed Xidian login over
+  dedicated Windows Edge/loopback SSH yields the expected 16-page IEEE PDF in
+  two independent adapter/queue connections without relogin; an additional DOI
+  entry also passes. Each archive preserves its own downloaded bytes. Reproduced
+  delayed controls/HTML viewer now reuse bounded settling, public DOI metadata,
+  article-number binding and the existing PDF content validator. Six red/green
+  regressions and 118 final focused checks pass. Windows setup and SAML entry
+  guidance are corrected. One institution/paper/current-session result, not a
+  server container, browser-restart or full Host/model qualification. Private
+  PDFs/evidence stay ignored; retained research state is unchanged. User has
+  authorized follow-up commit/push to dev. [Evidence and limits](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01).
+
 - October 1 runtime/literature integration: three user-authorized batches on dev
   fix native completion/accounting (bwrap69), merge corrected PR #3 query recovery
   and report evidence, and merge corrected PR #2 institutional access. Exact
@@ -9,10 +21,9 @@
   passing identities / 55 skips; 29 browser opt-ins were separately exercised.
   Independent 13-root audit closes 410 Agents / 34 CPU Processes, with clean
   Oracles and no residue. Native Skill/legacy/UI fixtures and context placement
-  are corrected without relaxing workflow size limits. Real subscription check
-  is still pending the user's library URL, entitled DOI and dedicated browser
-  connection; server Docker pull is blocked by its configured proxy. No real
-  entitlement or G4/G5 claim. Existing runs, Profiles, frozen bundles and pool
+  are corrected without relaxing workflow size limits. The real subscription
+  follow-up is recorded above; server Docker pull remains blocked by its
+  configured proxy. No G4/G5 claim. Existing runs, Profiles, frozen bundles and pool
   remain unchanged. [Design](../design/runtime-and-literature-integration.md),
   [validation](../qualification.md#current-integration--runtime-and-literature-2026-10-01).
 

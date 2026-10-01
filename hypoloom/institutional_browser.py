@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 from .institutional_access import (MAX_DOCUMENT_BYTES, TRANSIENT_FETCH_REASONS, publisher,
     pdf_identity, identity_from_url, validate_document)
@@ -17,6 +17,7 @@ from .literature import PopplerPdfExtractor
 
 _INSPECT = r"""() => {
   const meta = name => document.querySelector(`meta[name="${name}"]`)?.content || '';
+  const ieeeDoi = location.hostname === 'ieeexplore.ieee.org' ? window.xplGlobal?.document?.metadata?.doi : '';
   const body = (document.body?.innerText || '').slice(0, 120000);
   const network_error = document.querySelector('#main-frame-error .error-code')?.textContent?.trim() || '';
   const main = document.querySelector('.c-article-body, .article-sections, .article-body, #body, #bodymatter, article');
@@ -25,7 +26,7 @@ _INSPECT = r"""() => {
   const pdf = meta('citation_pdf_url') ||
     [...document.querySelectorAll('a[href], iframe[src]')].map(x => ({
       url: x.href || x.src, text: x.innerText || '',
-    })).find(x => /\.pdf(?:[?#]|$)|\/doi\/pdf\/|\/pdfft(?:[?#]|$)|\/stamp\/stamp\.jsp/i.test(x.url))?.url || '';
+    })).find(x => /\.pdf(?:[?#]|$)|\/doi\/pdf\/|\/pdfft(?:[?#]|$)|\/stamp\/stamp\.jsp|\/stampPDF\/getPDF\.jsp/i.test(x.url))?.url || '';
   const login = [...document.querySelectorAll('input[type="password"], input[autocomplete="one-time-code"]')]
       .some(x => x.getClientRects().length > 0) ||
       [...document.querySelectorAll('form')].some(x => x.getClientRects().length > 0 &&
@@ -38,7 +39,7 @@ _INSPECT = r"""() => {
       && /references|bibliography/i.test(headings);
   const redirecting = /^\s*redirecting[.\s…]*$/i.test(document.title)
       || /^\s*redirecting[.\s…]*$/i.test(body);
-  return {title: meta('citation_title') || document.title, doi: meta('citation_doi') || meta('dc.Identifier'),
+  return {title: meta('citation_title') || document.title, doi: meta('citation_doi') || meta('dc.Identifier') || (typeof ieeeDoi === 'string' ? ieeeDoi : ''),
     pdf, login, verification, denied, paywall, full, network_error,
     loading: document.readyState === 'loading', content_type: document.contentType,
     redirecting, text: full ? mainText : ''};
@@ -108,6 +109,20 @@ def _elsevier_article_url(url):
 def _transit_page(url, info):
     return (urlsplit(url).hostname in {"doi.org", "linkinghub.elsevier.com"}
             or info.get("redirecting", False))
+
+
+def _ieee_pdf_url(article, target, *, viewer=False):
+    """Bind IEEE's viewer/PDF representation to the arrived article number."""
+    source, destination = urlsplit(article), urlsplit(target)
+    number = re.fullmatch(r"/document/([0-9]+)", source.path.rstrip('/'))
+    try:
+        return bool(number and source.hostname == destination.hostname == 'ieeexplore.ieee.org'
+            and destination.scheme == 'https' and destination.port in (None, 443)
+            and not destination.username and not destination.password
+            and destination.path == ('/stamp/stamp.jsp' if viewer else '/stampPDF/getPDF.jsp')
+            and parse_qs(destination.query).get('arnumber') == [number[1]])
+    except ValueError:
+        return False
 
 
 def _navigate(page, target):
@@ -218,6 +233,8 @@ class PlaywrightInstitutionalBrowser:
         pii = urlsplit(article).path.rsplit('/', 1)[-1]
 
         def matching_pdf(target):
+            if provider == 'IEEE':
+                return _ieee_pdf_url(article, target)
             parts = urlsplit(target)
             if (parts.scheme != 'https' or parts.username or parts.password
                     or parts.port not in (None, 443)):
@@ -225,6 +242,17 @@ class PlaywrightInstitutionalBrowser:
             return ((publisher(target) == provider and parts.path == urlsplit(article).path + '/pdfft')
                     or (parts.hostname == 'pdf.sciencedirectassets.com'
                         and f'/1-s2.0-{pii}/' in parts.path and parts.path.endswith('/main.pdf')))
+
+        def read_pdf(target):
+            if not matching_pdf(target):
+                return {'state': 'identity_unconfirmed'}
+            data = page.evaluate(_FETCH, {'url': target, 'limit': MAX_DOCUMENT_BYTES})
+            if data and data.get('data'):
+                if not matching_pdf(data['url']):
+                    return {'state': 'identity_unconfirmed'}
+                return self._pdf(base64.b64decode(data['data'], validate=True),
+                    requested, data['url'], title, identity)
+            return {'state': 'fetch_unavailable', 'reason': (data or {}).get('error') or 'pdf_response_not_pdf'}
 
         def finish(result):
             waiting = result['state'] in {'login_required', 'verification_required'}
@@ -241,16 +269,7 @@ class PlaywrightInstitutionalBrowser:
                     reason = _navigation_reason(info.get('network_error') or 'network_error')
                     break
                 if info.get('content_type') == 'application/pdf':
-                    if not matching_pdf(page.url):
-                        return finish({'state': 'identity_unconfirmed'})
-                    data = page.evaluate(_FETCH, {'url': page.url, 'limit': MAX_DOCUMENT_BYTES})
-                    if data and data.get('data'):
-                        if not matching_pdf(data['url']):
-                            return finish({'state': 'identity_unconfirmed'})
-                        return finish(self._pdf(base64.b64decode(data['data'], validate=True),
-                            requested, data['url'], title, identity))
-                    reason = (data or {}).get('error') or 'pdf_response_not_pdf'
-                    break
+                    return finish(read_pdf(page.url))
                 if info['verification']:
                     return finish({'state': 'verification_required'})
                 if info['login'] or _login_url(page.url):
@@ -259,6 +278,8 @@ class PlaywrightInstitutionalBrowser:
                     return finish({'state': 'access_denied'})
                 if reason and reason not in {'redirect_unresolved', 'navigation_timeout'}:
                     break
+                if provider == 'IEEE' and info['pdf']:
+                    return finish(read_pdf(urljoin(page.url, info['pdf'])))
             except Exception as exc:
                 reason = _navigation_reason(exc)
                 if reason != 'redirect_unresolved':
@@ -337,9 +358,9 @@ class PlaywrightInstitutionalBrowser:
                             return None, error
                         continue
                     if publisher(page.url) == provider and not _transit_page(page.url, info) and not info.get("loading"):
-                        # ScienceDirect renders PDF controls after DOMContentLoaded.
+                        # These publishers render PDF controls after DOMContentLoaded.
                         # An initial abstract with DOI metadata is not yet a missing-PDF verdict.
-                        if (provider != "ScienceDirect" or attempt == 16
+                        if (provider not in {"ScienceDirect", "IEEE"} or attempt == 16
                                 or any(info[key] for key in ("pdf", "full", "denied", "paywall"))):
                             return info, None
                 if attempt < 16:
@@ -414,10 +435,12 @@ class PlaywrightInstitutionalBrowser:
                 "identity": info["doi"], "media_type": "text/plain", "content": content,
                 "pages": (info["text"],)}}
         if pdf_error:
-            if (pdf_error == 'pdf_response_not_pdf' and provider == 'ScienceDirect'
+            ieee_viewer = provider == 'IEEE' and _ieee_pdf_url(current, pdf_url, viewer=True)
+            sciencedirect_viewer = (provider == 'ScienceDirect'
                     and publisher(pdf_url) == provider
                     and re.fullmatch(r'/science/article/pii/S[0-9X]{16}', urlsplit(current).path)
-                    and urlsplit(pdf_url).path == urlsplit(current).path + '/pdfft'):
+                    and urlsplit(pdf_url).path == urlsplit(current).path + '/pdfft')
+            if pdf_error == 'pdf_response_not_pdf' and (ieee_viewer or sciencedirect_viewer):
                 self._pdf_pending[provider] = (current, info['title'], info['doi'] or '')
                 return self._follow_pdf_page(provider, page, url, navigate=pdf_url)
             return unavailable(pdf_error)

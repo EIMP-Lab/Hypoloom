@@ -71,21 +71,38 @@ SSH连接不会关闭服务器浏览器。无需笔记本Chrome调试模式，�
 
 ## 笔记本浏览器模式（可选）
 
-Windows笔记本用独立Chrome配置目录启动一个可见浏览器，然后在这个浏览器中完成学校登录。不要使用平时的默认Chrome目录；[Chrome的远程调试要求独立数据目录](https://developer.chrome.com/blog/remote-debugging-port)。PowerShell示例：
+Windows笔记本用独立配置目录启动一个可见浏览器，再在其中完成学校登录。
+以下命令查找常见的Chrome安装位置，找不到则使用Edge；两者分别使用自己的专用目录。
+[Chrome的远程调试要求独立数据目录](https://developer.chrome.com/blog/remote-debugging-port)，
+[Edge也支持同样的CDP接口](https://learn.microsoft.com/en-us/microsoft-edge/devtools/protocol/)。PowerShell示例：
 
 ```powershell
-$researchChrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-$researchProfile = Join-Path $env:LOCALAPPDATA 'Hypoloom\InstitutionalChrome'
-& $researchChrome '--remote-debugging-address=127.0.0.1' '--remote-debugging-port=9222' "--user-data-dir=$researchProfile" 'about:blank'
+$researchBrowser = @(
+    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
+    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+    "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $researchBrowser) { throw 'Chrome/Edge not found; set the actual executable path.' }
+$researchProfile = Join-Path $env:LOCALAPPDATA ("Hypoloom\Institutional-" + [IO.Path]::GetFileNameWithoutExtension($researchBrowser))
+& $researchBrowser '--remote-debugging-address=127.0.0.1' '--remote-debugging-port=9222' "--user-data-dir=$researchProfile" 'about:blank'
+Start-Sleep -Seconds 3
+(Invoke-RestMethod 'http://127.0.0.1:9222/json/version').Browser
 ```
 
-若Chrome安装位置不同，修改第一行。浏览器配置目录由你保管，重开相同目录可复用仍有效的登录。Hypoloom不导出Cookie或storage文件。
+最后一行应显示浏览器版本，再继续启动SSH隧道。若采用自定义安装位置，将
+`$researchBrowser`设为实际可执行文件路径。浏览器配置目录由你保管，重开相同目录
+可复用仍有效的登录。Hypoloom不导出Cookie或storage文件。
 
 如果研究在Linux服务器、浏览器在Windows，在笔记本另开PowerShell，替换SSH目标后保持以下连接运行：
 
 ```powershell
 ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:9222:127.0.0.1:9222 user@SERVER
 ```
+
+`user@SERVER`填写平时使用的服务器地址或SSH别名，不是密码。SSH若要求认证，在
+SSH终端内输入即可；保持该终端运行。
 
 服务器通过SSH回环端口连接笔记本浏览器。CDP端口具有浏览器控制权限，只绑定回环地址；不要把它开放到公网。同机使用则不需要隧道。
 
@@ -96,6 +113,10 @@ ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:9222:1
 ```
 
 可选添加`--institutional-library-url https://你的图书馆入口/`。这是稳定的公开登录入口，不是登录后的临时回调链接。未设置时直接打开所选出版社论文页。不要修改旧运行的冻结配置；为新运行配置此功能。
+
+`https://学校域名/idp/shibboleth`一类SAML实体／元数据地址可能返回XML，并非可操作的
+登录页，不应填作图书馆入口。此时省略`--institutional-library-url`，从出版社论文页的
+**Institutional Sign In**选择学校，由出版社发起SSO登录。
 
 Literature MAIN要读取补回的全文，其冻结的`methodology.literature.tools`须允许`web_fetch`。`read_papers`是额外模型阅读能力，不是浏览器登录的前提。
 
@@ -119,9 +140,9 @@ Chrome、隧道远端和Host配置；不要跟随Web面板地址修改浏览器�
 
 需要Windows登录后常驻时，可在“任务计划程序”创建两个任务，触发器均为“用户登录时”：
 
-- Chrome任务：程序为上文Chrome绝对路径，参数为
-  `--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="C:\Users\你的用户名\AppData\Local\Hypoloom\InstitutionalChrome" about:blank`。
-  使用与你手动登录时相同的目录，选择“仅当用户登录时运行”，让登录窗口可见。
+- 浏览器任务：程序使用上文`$researchBrowser`的实际值，目录使用`$researchProfile`的实际值；Chrome示例参数为
+  `--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="C:\Users\你的用户名\AppData\Local\Hypoloom\Institutional-chrome" about:blank`。
+  Edge使用`Institutional-msedge`目录。保持与你手动登录时相同的程序和目录，选择“仅当用户登录时运行”，让登录窗口可见。
 - 隧道任务：程序为`C:\Windows\System32\OpenSSH\ssh.exe`，参数为
   `-N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:9222:127.0.0.1:9222 user@SERVER`。
   先手动确认SSH主机密钥，并验证该用户通过SSH密钥/ssh-agent能免交互连接。
@@ -129,7 +150,7 @@ Chrome、隧道远端和Host配置；不要跟随Web面板地址修改浏览器�
 
 笔记本需保持开机联网，睡眠、断网或退出登录会中断连接；恢复后队列自动检查。
 学校使会话过期、要求MFA时仍需本人登录。常驻连接不保证永久免登录。
-在笔记本模式中，Cookie和浏览器storage只在笔记本的Chrome配置目录，不复制到服务器。
+在笔记本模式中，Cookie和浏览器storage只在笔记本的专用浏览器配置目录，不复制到服务器。
 
 ## 状态和排障日志
 
@@ -153,7 +174,7 @@ ScienceDirect文章页一次，不再依赖中转页的JS。改写丢弃查询�
 身份校验；登录/验证页优先保留，不被这次跳转抢走。每次导航等待上限改为25秒，PDF获取仍为15秒。
 明确显示`Redirecting`的页面，即使已到文章URL，也保持可重试，不能判成终态`no_full_text`。
 真实文章页是否提供可读PDF、机构是否有权限，仍需分别验证。
-ScienceDirect可能在DOM完成后才插入PDF控件；没有全文/PDF或明确访问结果时，继续检查约8秒
+ScienceDirect和IEEE可能在DOM完成后才插入PDF控件；没有全文/PDF或明确访问结果时，继续检查约8秒
 再判`no_full_text`。中转页JS与直达操作竞争导致`ERR_ABORTED`时，在这个时间窗口内跟随落定，
 不立即误报断网；最终仍校验来源和DOI。
 PDF入口返回HTML或其他非PDF字节时，显示可重试的`pdf_response_not_pdf`，不再判为缺少全文。
@@ -161,6 +182,9 @@ PDF入口返回HTML或其他非PDF字节时，显示可重试的`pdf_response_no
 导航后最多继续观察25秒。登录或验证页会保留给用户，后续检查不反复刷新。
 仅接收同篇文章的PDF入口或`pdf.sciencedirectassets.com`上PII一致的PDF，继续使用既有大小、
 PDF解析和来源准入检查；签名参数不写入来源URL或诊断日志。
+IEEE的HTML PDF阅读器在文章编号一致时也会继续解析；iframe必须指向IEEE同篇文章的
+HTTPS PDF入口，下载内容仍须通过身份核对。文章页、DOI入口和有效机构会话复用已用
+[一篇真实IEEE论文验证](../qualification.zh-CN.md#真实机构订阅与-ieee-阅读器修复2026-10-01)。
 其他专用阅读器或原生下载仍可能需要手动导入。HTML不会被当成PDF，也不能据此推断机构无权限。
 
 `i`面板和Web机构全文列表显示中文原因、原始原因码、上次检查时间及距下次检查的估计秒数；
@@ -195,7 +219,7 @@ HYPOLOOM_INSTITUTIONAL_BROWSER_TEST=1 python -m pytest tests/runtime/test_instit
 - 每个Host最多32个待获取/缓存条目、64MiB缓存、8个出版社标签，单文件最多24MiB/2000页。等待队列和缓存仅在内存中；Host重启后由原有输入或工具请求重新建立。停止运行后丢弃待处理项和迟到结果；所有项清空或Host关闭时关闭Hypoloom创建的标签，保留你的浏览器和登录目录。
 - 缺少标准“Abstract/Conclusions”章节标题不再导致可读PDF被舍弃；缺失的章节摘录保持空值。仅摘要、登录页、人机验证页不作为全文。
 
-本实现复用[Playwright的CDP连接](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)，只支持Chromium系列。回归使用真实Chromium和合成出版社页面；实际学校入口、订阅权限及Windows↔Linux链路需要在你的环境联调。参见[设计](../design/institutional-literature-access.md)和[验证记录](../qualification.md)。
+本实现复用[Playwright的CDP连接](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)，只支持Chromium系列。回归使用真实Chromium和合成出版社页面；已有一次真实IEEE订阅及Windows↔Linux链路验证，其他学校与出版社仍需在你的环境联调。参见[设计](../design/institutional-literature-access.md)和[验证记录](../qualification.zh-CN.md)。
 
 ## 检索拒绝与文档身份
 

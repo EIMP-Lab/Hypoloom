@@ -2,6 +2,51 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Real institutional subscription and IEEE viewer repair (2026-10-01)
+
+The user completed Xidian University sign-in in a dedicated Windows Edge
+154.0.4258.48 profile, reached over a loopback reverse SSH/CDP connection.
+The supplied Shibboleth entity URL serves SAML metadata; interactive sign-in
+starts from IEEE's institutional selector. The Windows guide now discovers
+installed Chrome/Edge and checks local CDP before opening the tunnel.
+
+Real access reproduced two publisher compatibility faults: IEEE inserts its PDF
+control after the initial DOM, and `stamp.jsp` serves an HTML viewer containing
+the PDF iframe. The adapter now uses the existing bounded settling interval,
+reads the publisher's public DOI metadata when standard metadata is absent, and
+follows the viewer through the existing PDF-navigation lifecycle. The requested
+and final PDF endpoints must use IEEE HTTPS and the arrived article's number;
+actual PDF content still passes the existing first-page identity validator.
+Login and verification retain the operator's tab. No new persistent authority,
+authentication automation or topic-specific behavior was added.
+
+All six new Chrome/Poppler regressions first failed and then passed: late controls
+from article/DOI requests, wrong article number, foreign iframe origin, conflicting
+PDF DOI and operator verification without repeated navigation. The complete
+institutional access, navigation, browser/UI and documentation selection passes
+**118 tests**, including 35 browser-adapter cases, in 97.73 seconds. This is
+focused follow-up qualification; the full G1 coverage below predates this repair.
+
+Real retrieval used DOI `10.1109/TBC.2025.3565888`, IEEE article `11006507`.
+Two independent adapter/queue connections obtained a **16-page PDF** each,
+3,678,651 and 3,678,649 bytes, with the expected content DOI and exact original
+bytes preserved by each archive. The second connection required no further
+login. A third single-phase check starting at the DOI resolver also passed
+(16 pages, 3,678,658 bytes). Each archive matches its own download; the separate
+downloads are not byte-identical. The probe uses the actual browser, queue,
+Poppler and paper archive without starting a research Host or calling a model.
+It closes its owned tabs and disconnects, leaving the user's browser alive.
+
+Evidence stays in `.local/qualification/runtime-literature-20261001/`:
+`ieee-red.log`, `ieee-fix.xml`, `ieee-final.xml`,
+`subscription-ieee-20261001-170234/result.json` and
+`subscription-doi-entry/result.json`. Entitled PDFs remain private and ignored;
+no cookies, storage, credentials or SSO callback URLs were exported. This proves
+one institution's access to one paper and reuse of the currently valid browser
+session. It does not qualify another paper, publisher, browser restart, expiry,
+server Docker deployment or full Host/model integration. Existing research
+runs, Profiles, frozen bundles and the production pool remain unchanged.
+
 ## Current integration — runtime and literature (2026-10-01)
 
 The user authorizes topic-independent framework fixes, corrected integration of
@@ -109,14 +154,13 @@ absolute-path read-only Oracle also passes. Evidence: `g1.xml`, `g1-repairs.xml`
 `retained-oracle.json` in the integration evidence directory. No G4/G5 promotion
 or paid-model quality claim follows from these scripted native checks.
 
-Real subscription validation is requested but pending the user's stable library
+At this integration point, real subscription validation awaited the user's
 entry URL, entitled DOI and browser connection. Docker image startup was blocked
 by the server daemon's unreachable configured proxy; direct registry
 TLS also failed. No institutional browser container started and no shared proxy
-configuration was changed. A dedicated laptop Chrome with loopback SSH forwarding
-or restored server image access can complete this check. The private two-session
-probe is prepared, but no real login, publisher entitlement, cross-session access
-or paid-model quality result is claimed. Existing research runs remain unchanged.
+configuration was changed. The subsequent Windows Edge/SSH check and publisher
+repair are recorded [above](#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01).
+The server container remains unqualified. Existing research runs remain unchanged.
 
 ## Institutional-access PR regressions (2026-10-01)
 

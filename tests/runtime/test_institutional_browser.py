@@ -425,3 +425,78 @@ def test_server_profile_retains_persistent_login_after_browser_restart(tmp_path)
             assert any('fixture_auth=entitled' in header for header in observed)
         finally:
             second.close()
+
+
+@pytest.mark.parametrize('entry', ['article', 'doi'])
+def test_ieee_late_controls_and_pdf_viewer_deliver_exact_document(browser, entry):
+    import json
+    adapter, context = browser
+    doi = '10.1109/TBC.2025.3565888'
+    article_url = 'https://ieeexplore.ieee.org/document/11006507'
+    viewer = 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11006507'
+    pdf = 'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=11006507&ref=PRIVATE'
+    original = _pdf(doi)
+    def respond(route):
+        url = route.request.url
+        if url == pdf:
+            route.fulfill(status=200, content_type='application/pdf', body=original)
+        elif url == viewer:
+            route.fulfill(status=200, content_type='text/html', body=f'<title>IEEE Xplore Full-Text PDF:</title><iframe src="{pdf}"></iframe>')
+        else:
+            # IEEE renders controls/metadata after the initial abstract shell.
+            script = ('window.xplGlobal={document:{metadata:{doi:' + json.dumps(doi) + '}}};'
+                'const a=document.createElement("a");a.href=' + json.dumps(viewer) + ';document.body.append(a);')
+            route.fulfill(status=200, content_type='text/html', body=
+                '<title>Controlled article</title><p>Abstract</p><script>setTimeout(()=>{' + script + '},800)</script>')
+    context.route('**/*', respond)
+    if entry == 'doi':
+        # Keep the DOI request while observing its arrived publisher tab.
+        page = context.new_page()
+        page.goto(article_url)
+        adapter._tabs['IEEE'] = (page, 'https://doi.org/' + doi, False)
+    result = adapter.fetch(article_url if entry == 'article' else 'https://doi.org/' + doi)
+    assert result['state'] == 'available'
+    assert result['document']['content'] == original
+    assert result['document']['identity'] == doi.lower()
+    assert 'PRIVATE' not in str(result)
+
+
+@pytest.mark.parametrize('mode', ['wrong_article', 'foreign_origin', 'wrong_doi', 'verification'])
+def test_ieee_pdf_viewer_preserves_identity_and_operator_verification(browser, mode):
+    adapter, context = browser
+    doi = '10.1109/TBC.2025.3565888'
+    article_url = 'https://ieeexplore.ieee.org/document/11006507'
+    viewer = 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11006507'
+    origin = 'https://unrelated.example' if mode == 'foreign_origin' else 'https://ieeexplore.ieee.org'
+    number = '99999999' if mode == 'wrong_article' else '11006507'
+    pdf = origin + '/stampPDF/getPDF.jsp?arnumber=' + number
+    original = _pdf('10.1109/TBC.2025.9999999' if mode == 'wrong_doi' else doi)
+    verified, navigations = [mode != 'verification'], []
+    def respond(route):
+        url = route.request.url
+        if route.request.is_navigation_request() and route.request.frame.parent_frame is None:
+            navigations.append(url)
+        if url == article_url:
+            body = article('<p>Article</p>', pdf=viewer).replace(DOI, doi)
+        elif url == viewer:
+            body = f'<iframe src="{pdf}"></iframe>' if verified[0] else '<p>Verify you are human</p>'
+        elif url == pdf:
+            route.fulfill(status=200, content_type='application/pdf', body=original)
+            return
+        else:
+            route.abort()
+            return
+        route.fulfill(status=200, content_type='text/html', body=body)
+    context.route('**/*', respond)
+    result = adapter.fetch(article_url)
+    if mode == 'verification':
+        assert result == {'state': 'verification_required'}
+        before = list(navigations)
+        assert adapter.fetch(article_url) == result
+        assert navigations == before
+        verified[0] = True
+        adapter._tabs['IEEE'][0].reload()
+        result = adapter.fetch(article_url)
+        assert result['state'] == 'available' and result['document']['content'] == original
+    else:
+        assert result == {'state': 'identity_unconfirmed'}

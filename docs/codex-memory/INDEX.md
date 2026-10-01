@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Real institutional subscription and IEEE viewer repair](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01):
+  actual Windows Edge/SSH institution login, article/DOI acquisition and valid
+  session reuse; article-bound HTML viewer and delayed controls, 118 focused
+  passes. [Setup guide](../guides/institutional-access.md) /
+  [中文](../guides/institutional-access.zh-CN.md). Private evidence remains in
+  `.local/qualification/runtime-literature-20261001/`.
+
 - [Runtime and literature integration](../design/runtime-and-literature-integration.md):
   topic-independent native completion, reporting, query replanning and corrected
   PR #3/#2 merge plan. [Validation](../qualification.md#current-integration--runtime-and-literature-2026-10-01);
