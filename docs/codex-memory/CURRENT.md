@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 1 integration, batch 1: user authorizes phased commits/PR merges and
+  pushes to dev. bwrap69 accepts identical same-session background completions
+  only with consistent cumulative accounting, revalidates repeated native Stop,
+  and preserves transport failure classification. Existing workflow guidance
+  covers actual selected-arm dispatch before costly work. 335 distinct focused
+  checks pass, including real native Host/CPU closure. PR #3/#2 integration is
+  pending. [Design](../design/runtime-and-literature-integration.md);
+  [evidence and limits](../qualification.md#current-integration--runtime-and-literature-2026-10-01).
+  Existing runs, Profiles and pool unchanged.
+
+
 - October 1 literature/notification recovery: user authorizes implementation and
   subsequently commit/push to dev, reusing completed focused validation.
   Existing Attempt/control records derive OpenAlex waiting, bounded recovery and

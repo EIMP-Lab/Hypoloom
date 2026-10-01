@@ -22,3 +22,10 @@ a full run. After technical failure, isolate and test the failing path rather
 than repeating all training unchanged. Reuse published artifacts only through
 the existing ownership and submission rules; never relabel a failed Process as
 a successful experiment. Report any unchecked path in existing notes.
+
+Separate a candidate configuration's observed effect from a claimed mechanism.
+When budgets, schedules, data selection or other factors differ across arms,
+name those differences and bound the attribution; use controlled follow-up
+comparisons when the scientific question requires isolating one mechanism.
+Raw measurements from incomplete/failed work are observations, not accepted
+scientific outcomes. Missing GOAL acceptance does not imply no raw test data.

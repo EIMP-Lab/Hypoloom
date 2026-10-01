@@ -200,6 +200,7 @@ class NativeOutputValidator:
         self._connections: set[socket.socket] = set()
         self._status = "not_observed"
         self._accepted = False
+        self._accepted_message: str | None = None
         self._error: str | None = None
         self._rounds: list[dict[str, Any]] = []
         self._rejected = 0
@@ -280,7 +281,10 @@ class NativeOutputValidator:
                 raise ValueError("native output session mismatch")
             if not isinstance(document["last_assistant_message"], str):
                 raise ValueError("native output last_assistant_message must be text")
-            if self._accepted or self._rejected >= self.max_failed_validations:
+            repeated = self._accepted
+            if repeated and document["last_assistant_message"] != self._accepted_message:
+                raise ValueError("native output changed after acceptance")
+            if self._rejected >= self.max_failed_validations:
                 raise ValueError("native output validation already completed")
             error = None
             hint = ""
@@ -342,11 +346,17 @@ class NativeOutputValidator:
             _remaining(self.deadline_at)
             if self._closed.is_set():
                 raise ValueError("native output validator is closed")
+            # CC can repeat Stop after a background-task notification. Reuse
+            # the same validator, including current files and Host state: prior
+            # acceptance alone must not bless changed source or report content.
+            if repeated and error is not None:
+                raise ValueError(error)
             ordinal = len(self._rounds) + 1
             self._rounds.append({"ordinal": ordinal, "status": "accepted" if error is None else "rejected",
                                  "validation_error": error})
             self._accepted = error is None
             if error is None:
+                self._accepted_message = document["last_assistant_message"]
                 self._status = "recovered" if self._rejected else "first_pass"
             else:
                 self._rejected += 1

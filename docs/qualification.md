@@ -1,5 +1,33 @@
 # Qualification: G0–G5
 
+## Current integration — runtime and literature (2026-10-01)
+
+The user authorizes topic-independent framework fixes, corrected integration of
+PR #3/#2, and phased commits/merges pushed to dev.
+[Design](design/runtime-and-literature-integration.md). Existing research state,
+Profiles, frozen runtimes and the production pool remain read-only.
+
+Batch 1 uses bwrap69 and the existing native validator/accounting. Same-session
+identical task-notification completions use the last consistent cumulative ledger
+once; ordinary duplicate or changed results still fail. Repeated Stop rechecks
+current sources/report/Host state. Invalid stream classification survives before
+workspace capture. Existing workflow guidance prioritizes actual selected-arm
+dispatch/lineage paths and bounds configuration-versus-mechanism attribution.
+No additional persistent authority or scientific gate is introduced.
+
+335 distinct focused checks pass: 267 native-output/adapter/accounting cases
+(including the final corrected-budget fixture rerun) and 68 CLI/workflow/native
+Host cases. The real native same-task retry test closes one CPU experiment,
+checks resumed accounting, accepted effects, Oracle and process residue. The
+retained stream now parses with two completion results and charges the final
+ledger once: 6,936,435 tokens; CLI cost 3.594386399999999 USD with unknown model
+pricing. This is read-only replay, not retroactive repair or settlement of the
+old Attempt. The first new fixture failed due to its own default turn/cost and
+legacy-shape limits; those inputs were corrected without weakening production
+checks. This batch is focused qualification, not full G1 or paid-model quality.
+Evidence: `.local/qualification/runtime-literature-20261001/`.
+
+
 English · [简体中文](qualification.zh-CN.md)
 
 ## Current repair — literature recovery and notification health (2026-10-01)

@@ -171,7 +171,7 @@ def test_claude_cli_builds_one_explicit_bounded_adapter(
     assert adapter is not None
     assert adapter.__class__.__module__ == "hypoloom.claude_agent_host"
     assert adapter.settings_path == settings
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/68"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/69"
     assert observed["claude_model"] == "exact-model-v1[1m]"
     assert observed["provider_environment"] == {}
     assert observed["exit_when_terminal"] is True
@@ -221,7 +221,7 @@ def test_current_new_write_identity_tracks_resource_replanning() -> None:
 
     assert version.research_contract_version == "hypoloom-research-v10"
     assert version.agent_aci_version == "29"
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/68"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/69"
 
 
 @pytest.mark.parametrize("base_url", [None, "https://approved-gateway.invalid"])

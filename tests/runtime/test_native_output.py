@@ -40,6 +40,36 @@ def _call(server, text=VALID, session_id="session-owned"):
         last_assistant_message=text, max_request_bytes=4096, timeout_seconds=2)
 
 
+def test_repeated_stop_revalidates_current_candidate(tmp_path):
+    checks = []
+    server = _server(tmp_path, candidate_check=lambda output: checks.append(output))
+    try:
+        assert _call(server) == _call(server) == {}
+        assert len(checks) == 2
+        assert server.snapshot()["accepted"]
+        assert server.snapshot()["rejected_count"] == 0
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("change", ["message", "source", "session"])
+def test_repeated_stop_rejects_identity_or_source_drift(tmp_path, change):
+    def check(output):
+        if changed[0]:
+            raise ValueError("source drift")
+    changed = [False]
+    server = _server(tmp_path, candidate_check=check)
+    try:
+        assert _call(server) == {}
+        changed[0] = change == "source"
+        with pytest.raises(ValueError, match="changed|source drift|session"):
+            _call(server, VALID.replace("1", "2") if change == "message" else VALID,
+                  session_id="foreign" if change == "session" else "session-owned")
+        assert not server.snapshot()["accepted"]
+    finally:
+        server.close()
+
+
 def test_context_advisory_does_not_accept_candidate_or_change_correction_count(tmp_path):
     server = _server(tmp_path, context_notice=lambda: "Input estimate near capacity; preserve draft paths and checks.")
     try:

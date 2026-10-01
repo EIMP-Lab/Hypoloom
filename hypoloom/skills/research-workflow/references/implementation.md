@@ -23,6 +23,10 @@ update/solve path, saved artifact, reload, evaluation and metric parser. For a
 training task this can be a tiny train/save/load/evaluate cycle; a solver or data
 pipeline should use its own equivalent. Include relevant device placement,
 shapes, units and boundary cases. Mock result JSON alone only checks a parser.
+Invoke the actual experiment entrypoint with every selected arm or variant,
+including new registrations, import/dispatch branches and data/cache lineage.
+Prioritize the changed candidate path before spending a long baseline run. A
+successful existing arm does not establish that a newly selected arm can start.
 Use existing authorized CPU checks or Host-submitted resource work for GPU needs;
 this guidance never authorizes direct GPU launch or a competing scheduler.
 

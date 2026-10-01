@@ -775,7 +775,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/68"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/69"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -2196,6 +2196,64 @@ _RESUME_ARTIFACT_RESULT = {
     "modelUsage": {},
     "origin": {"kind": "task-notification"},
 }
+
+
+def _notification_completions():
+    first = json.loads(_VALID_OUTPUT)
+    first["structured_output"]["typed_candidate"].update(parent_hypothesis_id=None, relation=None)
+    first["result"] = json.dumps(first.pop("structured_output"))
+    first.update(session_id="same-session", num_turns=2, total_cost_usd=0.5,
+        modelUsage={"stub-model": {"inputTokens": 70, "outputTokens": 110,
+            "cacheReadInputTokens": 30, "cacheCreationInputTokens": 0, "costUSD": 0.5}})
+    last = json.loads(json.dumps(first))
+    last.update(num_turns=1, total_cost_usd=0.6,
+        origin={"kind": "task-notification", "producer": "session-task"})
+    last["modelUsage"]["stub-model"].update(inputTokens=77, outputTokens=121, costUSD=0.6)
+    return first, last
+
+
+def test_identical_task_completion_accounts_cumulative_ledger_once():
+    first, last = _notification_completions()
+    request = _claude_request()
+    response, failure, _ = _provider_response(request, "stub-model",
+        _provider_ndjson(first, last), final_text_output=True)
+    assert response is None and failure == "turn_budget_exceeded"
+    request = replace(request, budget=replace(request.budget, max_turns=4, max_cost="1"))
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(first, last), final_text_output=True)
+    assert failure is None
+    assert response.token_usage == {"input_tokens": 107, "output_tokens": 121, "total_tokens": 228}
+    assert response.turn_count == 3
+    assert float(response.cost) == 0.6
+    assert diagnostics["provider_completion_results"] == 2
+    response, failure, _ = _provider_response(request, "stub-model",
+        _provider_ndjson(first, last), final_text_output=True,
+        session_usage_baseline={"modelUsage": {"stub-model": {
+            "inputTokens": 10, "outputTokens": 10, "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0, "costUSD": 0.1}}, "totalCostUSD": 0.1})
+    assert failure is None
+    assert response.token_usage["total_tokens"] == 208
+    assert float(response.cost) == 0.5
+
+
+@pytest.mark.parametrize("change", ["session", "candidate", "origin", "producer", "failure",
+    "ledger", "cost", "model", "turns", "trailing"])
+def test_task_completion_rejects_changed_or_unaccounted_tail(change):
+    first, last = _notification_completions()
+    if change == "session": last["session_id"] = "foreign"
+    elif change == "candidate": last["result"] += " "
+    elif change == "origin": last.pop("origin")
+    elif change == "producer": last["origin"].pop("producer")
+    elif change == "failure": last["is_error"] = True
+    elif change == "ledger": last["modelUsage"]["stub-model"]["inputTokens"] = 1
+    elif change == "cost": last["modelUsage"]["stub-model"]["costUSD"] = 0.1
+    elif change == "model": last["modelUsage"] = {}
+    elif change == "turns": last["num_turns"] = True
+    events = [first, last]
+    if change == "trailing": events.append({"type": "assistant", "message": {"role": "assistant", "content": []}})
+    response, failure, _ = _provider_response(_claude_request(), "stub-model",
+        _provider_ndjson(*events), final_text_output=True)
+    assert response is None and failure == "invalid_provider_envelope"
 
 
 def _structured_exchange_and_result() -> tuple[object, ...]:

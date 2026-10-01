@@ -75,7 +75,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/68"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/69"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -963,7 +963,10 @@ class ClaudeAgentHost:
             failure_code = "nonzero_exit"
         if reason is None and final_text_output:
             output = _read_bounded(handle._stdout_file, output_limit)
-            outer, _, _ = _unpack_provider_stream(output or b"")
+            outer, stream_failure, _ = _unpack_provider_stream(output or b"")
+            if stream_failure is not None:
+                reason = AgentHostTerminalReason.INVALID_OUTPUT
+                failure_code = stream_failure
             if isinstance(outer, Mapping) and outer.get("subtype") == "success" and outer.get("is_error") is False:
                 try:
                     final_candidate = decode_output(outer.get("result"),
@@ -1637,6 +1640,41 @@ def _session_resume_result(event: Mapping[str, object]) -> bool:
     )
 
 
+def _repeated_task_completion(previous: Mapping[str, object], current: Mapping[str, object]) -> bool:
+    """Recognize CC's identical post-completion task-notification response."""
+    origin = current.get("origin")
+    if (not isinstance(origin, Mapping) or origin.get("kind") != "task-notification"
+            or origin.get("producer") != "session-task"
+            or not isinstance(previous.get("session_id"), str) or not previous["session_id"]
+            or current.get("session_id") != previous["session_id"]
+            or not isinstance(previous.get("result"), str) or not previous["result"]
+            or current.get("result") != previous["result"]):
+        return False
+    try:
+        for item in (previous, current):
+            if (item.get("subtype") != "success" or item.get("is_error") is not False
+                    or "structured_output" in item):
+                return False
+            _nonnegative_int(item.get("num_turns"), "num_turns")
+        before = _mapping(previous.get("modelUsage"), "modelUsage")
+        after = _mapping(current.get("modelUsage"), "modelUsage")
+        # Existing settlement supports one exact model. A missing/reset ledger
+        # cannot establish that the final envelope covers all queries.
+        if len(before) != 1 or before.keys() != after.keys():
+            return False
+        identity = next(iter(before))
+        old = _mapping(before[identity], "model usage")
+        new = _mapping(after[identity], "model usage")
+        if any(a < b for a, b in zip(_model_usage_tokens(new, require_cache_fields=True),
+                                     _model_usage_tokens(old, require_cache_fields=True))):
+            return False
+        old_cost, new_cost = Decimal(_cost(previous.get("total_cost_usd"))), Decimal(_cost(current.get("total_cost_usd")))
+        return (new_cost >= old_cost and Decimal(_cost(old.get("costUSD"))) == old_cost
+                and Decimal(_cost(new.get("costUSD"))) == new_cost)
+    except (AgentACIError, TypeError, ValueError):
+        return False
+
+
 def _unpack_provider_stream(
     raw: bytes,
 ) -> tuple[Mapping[str, object] | None, str | None, Mapping[str, object]]:
@@ -1666,13 +1704,19 @@ def _unpack_provider_stream(
         index for index, event in enumerate(events) if event.get("type") == "result"
     ]
     final_position = result_positions[-1] if result_positions else None
+    completions = [events[index] for index in result_positions
+                   if not _session_resume_result(events[index])]
     if final_position is not None:
         # The CLI prepends a synthetic zero-turn result when a resumed session
         # inherits an orphaned background task, and appends system lifecycle
         # notices after the terminal result. Neither carries provider content.
-        if any(
-            not _session_resume_result(events[index]) for index in result_positions[:-1]
+        if len(completions) > 1 and not all(
+            _repeated_task_completion(previous, current)
+            for previous, current in zip(completions, completions[1:])
         ):
+            return None, "invalid_provider_envelope", {}
+        if any(_session_resume_result(events[index]) for index in result_positions
+               if completions and index > events.index(completions[0])):
             return None, "invalid_provider_envelope", {}
         if any(event.get("type") != "system" for event in events[final_position + 1:]):
             return None, "invalid_provider_envelope", {}
@@ -1750,6 +1794,11 @@ def _unpack_provider_stream(
 
     outer = events[final_position] if final_position is not None else events[-1]
     diagnostics: dict[str, object] = {}
+    if len(completions) > 1:
+        # modelUsage/cost are cumulative; never add successive ledgers. Turns
+        # are per query, with the existing assistant-ID accounting preferred.
+        outer = {**outer, "num_turns": sum(item["num_turns"] for item in completions)}
+        diagnostics["provider_completion_results"] = len(completions)
     correction = structured_output_trace(events)
     if correction["call_count"]:
         diagnostics["structured_output_correction"] = correction

@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Runtime and literature integration](../design/runtime-and-literature-integration.md):
+  topic-independent native completion, reporting, query replanning and corrected
+  PR #3/#2 merge plan. [Validation](../qualification.md#current-integration--runtime-and-literature-2026-10-01);
+  evidence `.local/qualification/runtime-literature-20261001/`.
+
 - [CURRENT](CURRENT.md): compact current decisions and outstanding work.
 - [Literature recovery and notification health](../qualification.md#current-repair--literature-recovery-and-notification-health-2026-10-01):
   separate pre-model service waiting, operator retry and actual recovery; safe
