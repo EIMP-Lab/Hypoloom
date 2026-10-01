@@ -8,8 +8,12 @@
   26 skips. Eight native roots close 171 Agents / 11 CPU Processes with clean
   Oracles and no residue. All 25 retained-store audits match baseline exactly,
   preserving two existing findings. Wheel/CLI/MCP/fresh-bundle checks pass.
-  The supplied Springer sample awaits restoration of the operator CDP tunnel;
-  no new real subscription claim. Existing runs/Profiles/pool remain unchanged.
+  Real Springer follow-up: operator login, standalone sample verification and two
+  independent connections yield the same DOI's 17-page PDF without relogin, with
+  exact-byte archives. A reproduced HTML-PDF/paywall retry is fixed using existing
+  access_required; 166 final focused checks pass. Existing runs/Profiles/pool
+  remain unchanged; same-platform second-paper/restart/expiry limits remain.
+  [Springer evidence](../qualification.md#real-springer-subscription-and-paywall-classification-2026-10-01).
   User authorizes phased commit/push to dev.
   [Design](../design/institutional-access-preparation.md),
   [guide](../guides/institutional-access.md),

@@ -525,6 +525,8 @@ class PlaywrightInstitutionalBrowser:
             if pdf_error == 'pdf_response_not_pdf' and (ieee_viewer or sciencedirect_viewer):
                 self._pdf_pending[provider] = (current, info['title'], info['doi'] or '')
                 return self._follow_pdf_page(provider, page, url, navigate=pdf_url)
+            if pdf_error == 'pdf_response_not_pdf' and info['paywall']:
+                return {"state": "access_required"}
             return unavailable(pdf_error)
         if info["login"]:
             self._tabs[provider] = (page, url, True)

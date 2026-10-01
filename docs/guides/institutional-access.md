@@ -274,7 +274,10 @@ seconds before returning `no_full_text`. If the bridge's own JS races the direct
 hop (`ERR_ABORTED`), follow the resulting navigation within that bound instead of
 immediately declaring a network failure; normal origin/DOI checks still apply.
 If a PDF endpoint returns HTML or other non-PDF bytes, the queue reports retryable
-`pdf_response_not_pdf`, not terminal missing full text. For an identified ScienceDirect
+`pdf_response_not_pdf`, not terminal missing full text. After supported viewer handling,
+a non-PDF response combined with an explicit article paywall instead returns
+`access_required`, ending background waiting without claiming denied entitlement.
+HTTP server errors and ambiguous non-PDF responses remain retryable. For an identified ScienceDirect
 article's `/pdfft` link, the adapter navigates its owned tab to execute interstitial
 scripts, waiting up to 25 seconds after navigation. Login/verification retains that
 tab for the operator; subsequent checks observe it without restarting the navigation.
@@ -342,7 +345,7 @@ tabs, preserving the operator browser/profile.
 
 The adapter uses [Playwright CDP](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)
 and supports Chromium browsers. Tests use real Chromium with synthetic
-publisher responses. One actual IEEE subscription and Windows-to-Linux tunnel
+publisher responses. Actual IEEE and Springer subscription samples and Windows-to-Linux tunnel
 have been verified; other institutions/publishers still require an
 environment-specific check. See the [design](../design/institutional-literature-access.md)
 and [qualification](../qualification.md).

@@ -6,13 +6,15 @@ from hypoloom.institutional_access import InstitutionalAccess, MAX_REQUESTS
 from tests.runtime.test_institutional_access import Backend, SCOPE, URL, SECOND, document, pump
 
 
-def test_background_auth_finishes_without_operator_and_does_not_reopen_for_new_papers():
+@pytest.mark.parametrize("state", ["login_required", "verification_required", "access_required"])
+def test_background_auth_finishes_without_operator_and_does_not_reopen_for_new_papers(state):
     backend = Backend()
+    backend.state = state
     access = InstitutionalAccess(backend)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.peek(SCOPE, URL).get("status") == "unavailable")
-        assert access.peek(SCOPE, URL)["reason"] == "login_required"
+        assert access.peek(SCOPE, URL)["reason"] == state
         assert access.request(SCOPE, SECOND)["status"] == "unavailable"
         access.tick({"run"})
         assert len(backend.calls) == 1

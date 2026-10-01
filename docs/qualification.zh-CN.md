@@ -2,6 +2,35 @@
 
 [English](qualification.md) · 简体中文
 
+## 真实 Springer 订阅与付费墙判断（2026-10-01）
+
+用户恢复 Windows Edge 154.0.4258.48 的回环 CDP 隧道，并为 DOI
+`10.1007/s10489-023-04932-7` 完成机构登录。登录前，已确认身份的论文页明确显示
+需要机构访问，但 PDF 链接返回 HTML。适配器将其当作可重试的 `pdf_response_not_pdf`，
+导致独立准备命令耗尽 120 秒获取窗口。
+
+通用适配器现已修复：保留既有 PDF 阅读器处理后，只有“非 PDF 响应＋论文页明确
+付费墙”才返回 `access_required`，沿用队列规则结束后台等待，不推断机构没有订阅。
+HTTP 服务错误及没有明确付费墙证据的非 PDF 响应仍可重试。身份、认证、来源校验
+没有放宽，也未增加持久状态。
+
+真实 Chrome 回归先复现错误重试，两个反例原已通过。最终机构、浏览器、UI、文献、
+阅读与文档相关 **166 项通过**，耗时 124.94 秒，包含三个新增浏览器场景及队列对
+登录、验证、访问提示三种状态的覆盖。未定义名称与空白检查通过。这是定向后续验收；
+下节全量 G1 与历史运行队列的结果早于此次两行适配器修复。
+
+用户登录后，独立非交互准备命令返回 `sample_verified`；之后两次独立浏览器／队列
+连接均取得 **17 页、2,627,769 字节的 PDF**，正文 DOI 与请求一致，每次归档与自身
+下载原文逐字节一致。这两次连接没有开启人工登录窗口，也没有再次要求登录。
+适配器清理后用户浏览器仍保持连接。未启动研究 Host、run 或模型调用，未导出
+Cookie／storage，未修改历史运行。
+
+证据位于 `.local/qualification/institutional-preparation-20261001/springer-live/`：
+`initial.log`、`initial-diagnosis.json`、`paywall-red.xml`、`paywall-final.xml`、
+`after-login.log`、`reuse/result.json`、`browser-after.json`。PDF 保持私有且不入 Git。
+本次在原 IEEE 证据之外增加一篇真实 Springer 论文及当前会话复用验证；不代表
+同平台第二篇论文、未来会话有效性、浏览器重启保持或全平台订阅权限已验收。
+
 ## 机构集中准备与有界获取（2026-10-01）
 
 [设计](design/institutional-access-preparation.md)的 A–D 四批已实施，适用于新建

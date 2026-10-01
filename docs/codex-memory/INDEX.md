@@ -6,7 +6,9 @@
   existing journal, shared DOI fallback and four implementation/qualification
   batches. [Qualification](../qualification.md#institutional-preparation-and-bounded-access-2026-10-01)
   records full/focused identity coverage, eight native closures, 25 retained-store
-  comparisons, wheel/CLI checks and the pending real Springer connection.
+  comparisons and wheel/CLI checks. [Springer follow-up](../qualification.md#real-springer-subscription-and-paywall-classification-2026-10-01)
+  records real login/session reuse, exact-byte archives and the generic paywall
+  retry repair with 166 focused passes.
   Current commands and limits are in the institutional guide.
 
 - [Real institutional subscription and IEEE viewer repair](../qualification.md#real-institutional-subscription-and-ieee-viewer-repair-2026-10-01):

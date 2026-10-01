@@ -230,7 +230,9 @@ ScienceDirect文章页一次，不再依赖中转页的JS。改写丢弃查询�
 ScienceDirect和IEEE可能在DOM完成后才插入PDF控件；没有全文/PDF或明确访问结果时，继续检查约8秒
 再判`no_full_text`。中转页JS与直达操作竞争导致`ERR_ABORTED`时，在这个时间窗口内跟随落定，
 不立即误报断网；最终仍校验来源和DOI。
-PDF入口返回HTML或其他非PDF字节时，显示可重试的`pdf_response_not_pdf`，不再判为缺少全文。
+PDF入口返回HTML或其他非PDF字节时，通常显示可重试的`pdf_response_not_pdf`。
+既有阅读器处理后，若论文页同时明确显示付费墙，则返回`access_required`，结束后台等待，
+不推断机构无订阅。HTTP服务错误、没有明确付费墙证据的非PDF响应仍可重试。
 已核对身份的ScienceDirect文章遇到`/pdfft`中转页时，会在自己的标签页中执行页面跳转，
 导航后最多继续观察25秒。登录或验证页会保留给用户，后续检查不反复刷新。
 仅接收同篇文章的PDF入口或`pdf.sciencedirectassets.com`上PII一致的PDF，继续使用既有大小、
@@ -275,7 +277,7 @@ HYPOLOOM_INSTITUTIONAL_BROWSER_TEST=1 python -m pytest tests/runtime/test_instit
 - 每个Host最多32个待获取/缓存条目、64MiB缓存、8个出版社标签，单文件最多24MiB/2000页。等待队列和缓存仅在内存中；Host重启后由原有输入或工具请求重新建立。停止运行后丢弃待处理项和迟到结果；所有项清空或Host关闭时关闭Hypoloom创建的标签，保留你的浏览器和登录目录。
 - 缺少标准“Abstract/Conclusions”章节标题不再导致可读PDF被舍弃；缺失的章节摘录保持空值。仅摘要、登录页、人机验证页不作为全文。
 
-本实现复用[Playwright的CDP连接](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)，只支持Chromium系列。回归使用真实Chromium和合成出版社页面；已有一次真实IEEE订阅及Windows↔Linux链路验证，其他学校与出版社仍需在你的环境联调。参见[设计](../design/institutional-literature-access.md)和[验证记录](../qualification.zh-CN.md)。
+本实现复用[Playwright的CDP连接](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)，只支持Chromium系列。回归使用真实Chromium和合成出版社页面；已有IEEE与Springer真实订阅样本及Windows↔Linux链路验证，其他学校与出版社仍需在你的环境联调。参见[设计](../design/institutional-literature-access.md)和[验证记录](../qualification.zh-CN.md)。
 
 ## 检索拒绝与文档身份
 

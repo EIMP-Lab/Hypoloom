@@ -85,6 +85,27 @@ def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser
     assert result == {"state": "identity_unconfirmed"}
 
 
+@pytest.mark.parametrize("paywall,pdf_status,expected", [
+    (True, 200, {"state": "access_required"}),
+    (False, 200, {"state": "fetch_unavailable", "reason": "pdf_response_not_pdf"}),
+    (True, 503, {"state": "fetch_unavailable", "reason": "http_server_error"}),
+])
+def test_html_instead_of_pdf_uses_positive_paywall_evidence(browser, paywall, pdf_status, expected):
+    adapter, context = browser
+    url = "https://link.springer.com/article/10.1007/s10489-023-04932-7"
+    pdf = url.replace("/article/", "/content/pdf/") + ".pdf"
+    def respond(route):
+        if route.request.url == pdf:
+            route.fulfill(status=pdf_status, content_type="text/html", body="Article access page")
+        else:
+            route.fulfill(status=200, content_type="text/html", body=(
+                '<meta name="citation_doi" content="10.1007/s10489-023-04932-7">'
+                f'<meta name="citation_pdf_url" content="{pdf}">'
+                + ("Access through your institution" if paywall else "Article abstract")))
+    context.route("**/*", respond)
+    assert adapter.fetch(url) == expected
+
+
 def test_login_is_not_fulltext_and_operator_completion_is_observed_without_navigation(browser):
     adapter, context = browser
     page_state = [article('<input type="password"><p>Institutional login</p><h2>Abstract</h2><p>Summary only.</p>')]

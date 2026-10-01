@@ -2,6 +2,44 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Real Springer subscription and paywall classification (2026-10-01)
+
+The operator restored the Windows Edge 154.0.4258.48 loopback CDP tunnel and
+completed institutional sign-in for DOI `10.1007/s10489-023-04932-7`. Before login,
+the identified article displayed an explicit access paywall while its PDF link
+returned HTML. The adapter classified that as retryable `pdf_response_not_pdf`,
+so standalone preparation exhausted its 120-second acquisition window.
+
+The generic adapter now returns `access_required` for that combination, after
+preserving the existing supported PDF-viewer routes. This ends background waiting
+through the existing queue policy; it does not infer that the institution lacks
+entitlement. An HTTP server error or a non-PDF response without positive paywall
+evidence remains retryable. No source identity, authentication or origin check is
+relaxed, and no additional persistent state is introduced.
+
+The real Chrome regression first reproduces the incorrect retry; its two negative
+controls already pass. All **166** final institutional/browser/UI/document/reading
+and documentation checks pass in 124.94 seconds, including all three new browser
+cases and queue coverage of login, verification and access-required states.
+Undefined-name and whitespace checks pass. This is focused follow-up validation;
+the full G1 and retained-run cohort below predate this two-line adapter repair.
+
+After the operator's login, the standalone non-interactive preparation command
+reports `sample_verified`. Two further independent browser/queue connections each
+obtain a **17-page PDF, 2,627,769 bytes**, with the expected content DOI and exact
+original bytes preserved in each private archive. Neither connection opens a
+manual login window or requires another login. Adapter cleanup leaves the user's
+browser connected. No research Host, run, model call, cookie/storage export or
+retained-state mutation is involved.
+
+Evidence stays under
+`.local/qualification/institutional-preparation-20261001/springer-live/`:
+`initial.log`, `initial-diagnosis.json`, `paywall-red.xml`, `paywall-final.xml`,
+`after-login.log`, `reuse/result.json` and `browser-after.json`. PDFs stay private
+and ignored. This adds one real Springer paper and current-session reuse to the
+previous IEEE evidence. It does not establish a second paper on the same platform,
+future session validity, browser-restart persistence or universal platform access.
+
 ## Institutional preparation and bounded access (2026-10-01)
 
 The four [design batches](design/institutional-access-preparation.md) are implemented
