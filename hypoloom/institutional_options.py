@@ -3,7 +3,7 @@ from .institutional_access import InstitutionalAccess, PROVIDERS
 from .institutional_browser import PlaywrightInstitutionalBrowser
 
 
-def add_arguments(parser):
+def add_arguments(parser, *, connection=False):
     parser.add_argument("--institutional-browser-url", help="opt-in loopback Chromium CDP endpoint")
     parser.add_argument("--institutional-browser-ui-url", help="loopback server-browser GUI origin")
     parser.add_argument("--institutional-library-url", help="HTTPS interactive library entry, never a SAML metadata endpoint")
@@ -11,6 +11,9 @@ def add_arguments(parser):
                         help="auto or public_only; repeat for different providers")
     parser.add_argument("--institutional-acquisition-seconds", type=float, default=120)
     parser.add_argument("--institutional-manual-seconds", type=float, default=600)
+    if connection:
+        from .institutional_connection import add_arguments as add_connection
+        add_connection(parser)
 
 
 def options(args):
@@ -27,6 +30,8 @@ def options(args):
 
 
 def build(args):
+    from .institutional_connection import configure
+    configure(args)
     settings = options(args)
     if not args.institutional_browser_url:
         if args.institutional_browser_ui_url:
@@ -39,7 +44,7 @@ def build(args):
         library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url), **settings)
 
 
-def launch_arguments(args):
+def launch_arguments(args, *, include_connection=False):
     result = []
     if args.institutional_browser_url:
         for name in ("browser_url", "browser_ui_url", "library_url", "acquisition_seconds", "manual_seconds"):
@@ -47,4 +52,7 @@ def launch_arguments(args):
             if value is not None: result += ["--institutional-" + name.replace("_", "-"), str(value)]
         for value in args.institutional_provider_mode:
             result += ["--institutional-provider-mode", value]
+    if include_connection:
+        from .institutional_connection import arguments
+        result += arguments(args)
     return result

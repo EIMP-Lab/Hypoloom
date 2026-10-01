@@ -12,12 +12,17 @@ def add_parser(subparsers):
     parser = subparsers.add_parser("institutional", help="prepare browser sessions without starting research")
     commands = parser.add_subparsers(dest="institutional_action", required=True)
     prepare = commands.add_parser("prepare", help="open selected platforms and optionally verify sample full text")
-    add_arguments(prepare)
+    add_arguments(prepare, connection=True)
+    prepare.add_argument("--repository", help="checkout containing the server Compose configuration")
     prepare.add_argument("--provider", action="append", choices=tuple(PROVIDERS.values()), default=[])
     prepare.add_argument("--sample", action="append", default=[], metavar="DOI_OR_URL",
                          help="verify a sample through the same browser and PDF identity validator")
     prepare.add_argument("--list", action="store_true", help="print the platform catalog without connecting")
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
+    connect = commands.add_parser("connect", help="inspect, start or stop an operator-owned browser connection")
+    connect.add_argument("connection_action", choices=("status", "start", "stop"))
+    connect.add_argument("--repository")
+    add_arguments(connect, connection=True)
 
 
 def sample_url(value):
@@ -40,6 +45,9 @@ def _observe(access, provider):
 
 
 def run(args, *, input_fn=input, output=print):
+    if getattr(args, "institutional_action", None) == "connect":
+        from .institutional_connection import run as connect
+        return connect(args, output=output)
     if args.list:
         output(json.dumps([{"provider": name, "entry_url": "https://" + domain + "/"}
                            for domain, name in PROVIDERS.items()], ensure_ascii=False))
@@ -53,6 +61,11 @@ def run(args, *, input_fn=input, output=print):
     if access is None: raise ValueError("preparation requires --institutional-browser-url")
     failures = 0
     try:
+        if args.institutional_browser_mode:
+            from .institutional_connection import operate
+            connected = operate(args, "start", args.repository)
+            output(json.dumps(connected, ensure_ascii=False))
+            if connected["status"] not in {"ready", "reused", "started"}: return 2
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         for provider in selected:
             if not args.non_interactive:

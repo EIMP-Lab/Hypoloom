@@ -65,4 +65,5 @@ exclude = ["tests*", "profiles*", "scripts*"]
     "skills/grounding-seed/.claude-plugin/plugin.json",
     "skills/grounding-seed/skills/*/SKILL.md",
     "web_observer_assets/*",
+    "connection_assets/*.ps1",
 ]
