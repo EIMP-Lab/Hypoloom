@@ -3,7 +3,11 @@
 - [Init browser-connection startup](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02):
   October 2 native Linux GUI, remote-client tunnel and server-browser placement;
   implemented session/ownership boundaries, graceful close and required real
-  desktop checks. See the bilingual institutional guide for current commands.
+  desktop checks. [Qualification](../qualification.md#institutional-connection-startup-2026-10-02)
+  records 6,661 passing identities / 65 skips, 113 final focused checks, concurrent
+  startup repair, 11 native closures, unchanged 25-root readers and installed wheel.
+  See the bilingual institutional guide for commands and Windows key/agent setup;
+  Windows native APIs/real SSH, visible Linux GUI and Docker remain unverified.
 
 - [Institutional preparation and bounded recovery design](../design/institutional-access-preparation.md):
   implemented run-independent publisher preparation, browser-owned sessions,

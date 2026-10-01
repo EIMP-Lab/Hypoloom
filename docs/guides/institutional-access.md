@@ -72,6 +72,34 @@ use normal SSH to establish host trust and configure your existing key/ssh-agent
 the helper uses BatchMode and stores no password. The server needs curl. A target is
 `user@host` or an SSH config alias, never an account password.
 
+If SSH currently asks for a server password, configure a key **on Windows** once.
+In an administrator PowerShell, enable the Windows agent:
+
+```powershell
+Set-Service ssh-agent -StartupType Automatic
+Start-Service ssh-agent
+```
+
+Return to an ordinary PowerShell under the desktop user. Choose a key passphrase
+when prompted; only the public key is sent to the Linux server. Enter the server
+password in SSH's prompt, never in a script or chat:
+
+```powershell
+$researchServer = 'research-server' # Replace with your user@host or SSH alias
+$researchKey = Join-Path $env:USERPROFILE '.ssh\hypoloom_ed25519'
+New-Item -ItemType Directory -Force (Split-Path $researchKey) | Out-Null
+if (!(Test-Path $researchKey)) { ssh-keygen -t ed25519 -f $researchKey }
+ssh-add $researchKey
+Get-Content "$researchKey.pub" | ssh $researchServer 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+ssh -o BatchMode=yes $researchServer exit
+$LASTEXITCODE # Must be 0 before using automatic reconnect
+```
+
+Keep the private key on Windows. See
+[Windows OpenSSH key management](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)
+for agent setup. These steps prepare SSH authentication; publisher login still
+happens in the dedicated browser.
+
 ```powershell
 $researchServer = 'research-server' # Your SSH target or config alias
 $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'

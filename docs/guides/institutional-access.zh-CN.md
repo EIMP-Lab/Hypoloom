@@ -114,6 +114,32 @@ Windows 不需要安装项目或 Python。使用 PowerShell 7.2+，将脚本放�
 `ssh research-server` 的首次主机信任，并配置本机 SSH 密钥／ssh-agent；无人值守连接
 使用 BatchMode，不保存密码，服务端需有 curl。学校 SSO/MFA 仍只在浏览器内操作。
 
+如果现在 SSH 仍要求服务器密码，请先在 **Windows** 配置一次密钥。在管理员 PowerShell 中
+启用 Windows 的 ssh-agent：
+
+```powershell
+Set-Service ssh-agent -StartupType Automatic
+Start-Service ssh-agent
+```
+
+随后回到桌面用户的普通 PowerShell。生成时按提示设置密钥口令，只把公钥发到 Linux
+服务器；服务器密码仅在 SSH 自己的提示中输入，不写入脚本或发到对话中：
+
+```powershell
+$researchServer = 'research-server' # 替换为自己的 user@host 或 SSH 别名
+$researchKey = Join-Path $env:USERPROFILE '.ssh\hypoloom_ed25519'
+New-Item -ItemType Directory -Force (Split-Path $researchKey) | Out-Null
+if (!(Test-Path $researchKey)) { ssh-keygen -t ed25519 -f $researchKey }
+ssh-add $researchKey
+Get-Content "$researchKey.pub" | ssh $researchServer 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+ssh -o BatchMode=yes $researchServer exit
+$LASTEXITCODE # 自动重连前应输出 0
+```
+
+私钥留在 Windows，系统配置可参考
+[Windows OpenSSH 密钥管理](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)。
+这一步只准备 SSH 认证，出版社登录仍在专用浏览器里完成。
+
 ```powershell
 $researchServer = 'research-server' # 替换为自己的 SSH 目标或配置别名
 $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'

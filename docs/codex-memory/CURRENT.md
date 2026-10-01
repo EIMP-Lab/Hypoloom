@@ -6,10 +6,17 @@
   Preview is read-only; endpoint-only usage stays compatible. Credentials remain
   browser-owned. Real headless Chrome reproduced mutable argv and unflushed-cookie
   shutdown failures; fixes reuse systemd ExecStart and Chromium graceful close.
-  Final qualification is in progress. Visible Linux GUI, Windows native task APIs
-  and server-container deployment remain separate unverified operator checks.
+  A reproduced concurrent preflight race now refreshes that same OS authority;
+  relative executable paths survive init's working-directory change. Full G1 plus
+  unchanged short-path rechecks and final repairs covers 6,661 passing identities
+  / 65 skips; final focused 113 pass. Eleven native roots close 327 Agents / 24 CPU
+  Processes with clean Oracles and no residue. All 25 retained roots match baseline;
+  final wheel/CLI/MCP/bundle checks pass. Windows key/ssh-agent setup is documented.
+  Visible Linux GUI, Windows native task APIs/real SSH and server-container
+  deployment remain unverified operator checks; user has Windows, not Linux GUI.
   Existing runs/Profiles/pool remain read-only; user authorizes commit/push dev.
-  [Design](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02).
+  [Design](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02),
+  [evidence and limits](../qualification.md#institutional-connection-startup-2026-10-02).
 
 - October 1 institutional follow-up A–D is implemented for new lifecycle v11
   runs: finite acquisition/manual windows, durable run-scoped skips/platform modes,

@@ -20,22 +20,61 @@ lost by signal-based shutdown. Chrome handles its own demonstrably stale local l
 the launcher never removes it. Explicit local stop sends Chromium `Browser.close`
 and confirms service termination, letting Chromium flush sessions normally.
 
-Final focused validation: **107 passed in 23.43 s**, including real concurrent
-systemd startup, CDP reuse, graceful stop/restart and persistence of a synthetic cookie
-in a disposable profile. The test uses a headless fixture wrapper; production adds
-neither headless, no-sandbox nor basic password-storage flags. An isolated PowerShell
-7.6.6 runtime parses the Windows script and exercises literal argument handling,
-browser-identity comparison and actual child-process cleanup. Other tests cover
-unknown ports/profiles/units, private/default profile restrictions, Compose expanded
-port validation, init ordering and unchanged preparation/deadline behavior.
+A later real concurrent-start run reproduced a second caller rejecting the first
+caller's newly created endpoint/profile after a stale preflight observation. Four
+red/green regressions cover ownership changing during handshake, port/profile checks,
+and an activating unit before MainPID appears. Startup now refreshes the existing
+systemd authority and waits within the original deadline; it neither adopts foreign
+resources nor stops the winning caller. An init regression also preserves an explicitly
+relative browser executable across the launch working-directory change.
 
-Full frozen-candidate G1, installation and retained-reader checks are in progress.
-Private evidence: `.local/qualification/institutional-connection-20261002/`.
+Final focused validation: **113 passed in 26.77 s**, including actual systemd/Chrome
+concurrent startup, CDP reuse, graceful stop/restart and persistence of a synthetic
+cookie. The repaired real-browser scenario also passed in the preceding 98-case
+selection. Headless/no-sandbox/basic-storage flags belong only to its disposable test
+wrapper. Portable PowerShell 7.6.6 checks syntax, literal arguments, browser-identity
+comparison and actual child-process cleanup. An actual failed connection through
+bootstrap verifies that no managed Host or run is created.
+
+Frozen candidate `c75c451` collected **6,720** G1 identities. The initial eight-group
+run recorded 6,322 passes, 247 failures, 85 errors and 66 skips. The qualification
+harness placed fixtures under paths too long for Unix sockets; one CPU overlap
+observation also missed its expected interval under concurrent load. All **332**
+failing/error identities passed unchanged with short fixture paths, without weakening
+product validators or assertions. Initial failures and rechecks are preserved.
+Combining G1, those rechecks and the final startup regressions/browser opt-in covers
+**6,661 passing identities and 65 skips**. This is full-suite plus focused repair
+coverage, not a second complete G1 run after the startup fixes. Compile, undefined-name
+and whitespace checks pass.
+
+Independent read-only inspection of **11** disposable native roots closes **327 Agents**
+(321 succeeded, four cancelled, one failed, one lost) and **24 successful CPU Processes**.
+There are 24 CREATE_EXPERIMENT and 24 ACCEPT_OUTCOME effects, clean existing Oracles,
+zero open attempts, zero live recorded process groups and no control-socket residue.
+The roots cover native source readers including institutional public-only/OA fallback,
+model-retry recovery, multi-chain science, Leader/Debate and final reports. Provider
+responses are locally scripted; the Host, CLI, tools, CPU execution and publication
+paths are real.
+
+Installed baseline `158b792` and candidate `c75c451` produce identical existing-Oracle
+results for all **25** retained roots, including the same two historical findings.
+Read-only before/after comparisons preserve logical SQLite rows and artifact metadata;
+there are no open Attempts, live recorded process groups or retained Hosts. Initial
+reader timeouts under G1 load are retained alongside successful bounded rechecks.
+The subsequent startup fixes do not change the Oracle or retained reader. A final-code
+wheel installed outside the checkout verifies **167** package files byte-for-byte,
+nine preparation platforms, CLI/MCP entry points and fresh runtime-bundle identity.
+
+Private evidence: `.local/qualification/institutional-connection-20261002/`, including
+`g1-*.xml`, `g1-recheck-*.xml`, `final-focused.xml`, `final-coverage.json`,
+`native-closure.json`, `retained-final.json` and `installation-qualified.json`.
 No retained run, Profile or production pool is started or changed. User browser/tunnel
 port 9222 is untouched; no subscription sample, paid model or GPU run is launched.
 Visible X11/Wayland windows, Windows CIM/Task Scheduler/real SSH reconnect, and Docker
-deployment are **not yet qualified**. Prior IEEE/Springer subscriptions do not establish
-these new platform-specific behaviors. No G4/G5 or all-publisher entitlement claim.
+deployment are **not yet qualified**. The operator uses Windows and password SSH;
+one-time local key/ssh-agent setup is documented, with no password stored or used by
+the connector. Prior IEEE/Springer subscriptions do not establish these new platform
+behaviors. No G4/G5 or all-publisher entitlement claim.
 
 ## Real Springer subscription and paywall classification (2026-10-01)
 
