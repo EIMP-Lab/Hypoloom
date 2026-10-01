@@ -29,13 +29,15 @@ def browser_connect_guide(endpoint, ui_url=None, connection=None):
     """The GUI URL selects a server-owned browser; CDP never needs a laptop tunnel."""
     if connection:
         common = "连接随本次运行分配，运行结束后释放；专用浏览器登录目录保留。\n"
+        if connection.get("reason"):
+            common += {"port_in_use": "所选固定端口被占用；释放后可重试。", "connection_unavailable": "连接资源暂不可用，可稍后重试。"}.get(connection["reason"], "连接暂不可用。") + "其他研究工作继续。\n"
         mode = connection.get("mode")
         if mode == "client":
             return common + "请保持 Windows 专用连接脚本运行；脚本会发现本次运行并自动建立隧道，无需填写服务器端口。\n连接状态：" + str(connection.get("state")) + "。连接后选平台 → 打开登录，在浏览器完成学校登录。"
         if mode == "local":
             return common + "在运行项目的 Linux 桌面上选平台 → 打开登录，使用弹出的专用浏览器。相同登录目录同时只允许一个运行使用。"
         if mode == "server":
-            return common + "在服务器终端运行 institutional connections --state-root <运行目录> --include-ui-credentials 获取本次浏览器入口和访问凭据，再转发显示的 GUI 端口。学校账号只在浏览器中输入。"
+            return common + "在服务器终端运行 hypoloom institutional connections --state-root <运行目录> --include-ui-credentials 获取本次浏览器入口和访问凭据，再转发显示的 GUI 端口。学校账号只在浏览器中输入。"
         return common + "使用已配置的外部浏览器完成登录；项目只释放自己的运行连接，外部浏览器仍由你管理。"
     if ui_url:
         parts = urlsplit(ui_url)

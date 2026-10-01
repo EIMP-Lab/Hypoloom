@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import errno
 from pathlib import Path
 import threading
 
@@ -32,6 +33,25 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
         self.socket_path = None
         self.stopping = threading.Event()
         self._headers = None
+        self.resource_lock = threading.RLock()
+        self.allocation_error = None
+        self._allocate()
+
+    def _allocate(self):
+        with self.resource_lock:
+            if self.stopping.is_set(): raise ConnectionFailure("run_connection_closed")
+            try:
+                self._start_resources()
+                self.allocation_error = None
+            except (OSError, ValueError) as exc:
+                self._release_transports()
+                self.allocation_error = "port_in_use" if getattr(exc, "errno", None) == errno.EADDRINUSE else "connection_unavailable"
+            except BaseException:
+                self._release_transports()
+                raise
+
+    def _start_resources(self):
+        spec = self.spec
         if spec["mode"] == "client":
             from .institutional_lifetime import TransportDirectory
             self.directory_owner = TransportDirectory(spec["ready_timeout"])
@@ -42,17 +62,13 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
             dial = lambda: tcp_backend(spec["endpoint"])
         elif spec["mode"] == "server":
             from .institutional_container import Container
-            self.container = Container(spec, run_id)
+            self.container = Container(spec, self.run_id)
             dial = self.container.cdp
             self.gui = CDPRelay(self.container.gui, gui=True)
             self.ui_url = self.gui.endpoint
         else:
             return
-        try:
-            self.relay = CDPRelay(dial, port=spec.get("port", 0))
-        except BaseException:
-            self.release()
-            raise
+        self.relay = CDPRelay(dial, port=spec.get("port", 0))
         self.endpoint = self.relay.endpoint
         self._headers = {"Authorization": "Bearer " + self.relay.token}
 
@@ -64,7 +80,9 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
     def details(self, *, private=False):
         value = {"mode": self.spec["mode"], "state": "closed" if self.stopping.is_set() else "allocated",
                  "endpoint": self.relay.endpoint if self.relay else None}
-        if self.socket_path is not None:
+        if self.allocation_error and not self.stopping.is_set():
+            value.update(state="unavailable", reason=self.allocation_error)
+        if self.socket_path is not None and not self.allocation_error and not self.stopping.is_set():
             value["state"] = "client_socket_present" if self.socket_path.exists() else "waiting_for_client"
             if private: value["socket_path"] = str(self.socket_path)
         if private and self.gui is not None:
@@ -72,6 +90,10 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
         return value
 
     def _connect(self):
+        if self.stopping.is_set(): raise ConnectionFailure("run_connection_closed")
+        if self.allocation_error:
+            self._allocate()
+            if self.allocation_error: raise ConnectionFailure(self.allocation_error)
         if self.stopping.is_set(): raise ConnectionFailure("run_connection_closed")
         if self.spec["mode"] != "local": return super()._connect()
         if self.context is not None and self.context.browser.is_connected(): return self.context
@@ -95,13 +117,20 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
     def release(self):
         """Host-thread release interrupts transports before worker-thread close."""
         self.stopping.set()
-        if self.relay is not None: self.relay.close()
-        if self.gui is not None: self.gui.close()
-        if self.container is not None: self.container.close()
-        if self.directory is not None:
-            # Only this instance's freshly allocated transport directory.
-            self.directory_owner.close()
-            self.directory = None
+        with self.resource_lock: self._release_transports()
+
+    def _release_transports(self):
+        failure = None
+        for name in ("relay", "gui", "container", "directory_owner"):
+            owned = getattr(self, name)
+            try:
+                if owned is not None: owned.close()
+            except Exception as exc: failure = failure or exc
+            finally: setattr(self, name, None)
+        self.directory = None
+        self._headers = None
+        if self.spec["mode"] == "server": self.ui_url = None
+        if failure is not None: raise failure
 
     def close(self):
         try:

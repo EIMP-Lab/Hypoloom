@@ -271,12 +271,37 @@ def test_fixed_port_conflict_cannot_adopt_another_runs_endpoint():
     try:
         a.sync({"a"}); browser = a.instances["a"].backend
         b = RunAccess(client_spec(port=urlsplit(browser.endpoint).port))
-        with pytest.raises(OSError): b.sync({"b"})
-        assert b.instances == {}
+        b.sync({"b"})
+        assert b.status("b")["connection"]["reason"] == "port_in_use"
+        assert b.connections()[0].get("socket_path") is None
         assert get(browser.endpoint)[0] == 401
     finally:
         if b: b.close()
         a.close()
+
+
+def test_one_run_port_failure_preserves_other_run_and_retries_after_release(monkeypatch):
+    from hypoloom.institutional_browser import PlaywrightInstitutionalBrowser
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0)); port = reservation.getsockname()[1]
+    access = RunAccess(client_spec(port=port))
+    try:
+        access.tick({"a"})
+        first = access.instances["a"].backend
+        access.tick({"a", "b"})
+        assert get(first.endpoint)[0] == 401
+        assert access.status("b")["connection"]["state"] == "unavailable"
+        access.tick({"b"})
+        assert_free(first.endpoint)
+        # Observe the actual authenticated listener rebuilt on the next browser
+        # acquisition; no Windows browser is needed for this transport check.
+        monkeypatch.setattr(PlaywrightInstitutionalBrowser, "_connect", lambda browser: get(browser.endpoint, browser.relay.token)[0])
+        second = access.instances["b"].backend
+        assert second._connect() == 503  # Endpoint is allocated; client is absent.
+        assert second.endpoint == first.endpoint
+        assert access.status("b")["connection"]["state"] == "waiting_for_client"
+    finally: access.close()
+    assert_free(second.endpoint)
 
 
 def test_preparation_does_not_print_private_gui_credentials(tmp_path, monkeypatch):

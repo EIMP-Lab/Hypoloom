@@ -147,7 +147,7 @@ function Get-RunConnections {
         (Remote-Command @('connections', '--runs-root', $RunsRoot)))
     try {
         if (-not $child.Process.WaitForExit(15000) -or $child.Process.ExitCode -ne 0) { throw 'run_discovery_unavailable' }
-        @((($child.Out.GetAwaiter().GetResult() | ConvertFrom-Json).connections) | Where-Object { $_.mode -eq 'client' })
+        @((($child.Out.GetAwaiter().GetResult() | ConvertFrom-Json).connections) | Where-Object { $_.mode -eq 'client' -and $_.socket_path })
     } finally { Stop-Child $child }
 }
 
