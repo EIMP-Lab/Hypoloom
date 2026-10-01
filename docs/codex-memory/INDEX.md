@@ -1,9 +1,13 @@
 # Development memory index
 
 - [Run-scoped institutional ports and cleanup](../design/institutional-access-preparation.md#运行级自动端口与清理2026-10-02):
-  October 2 user-selected follow-up implemented, qualification in progress; endpoints follow
-  individual runs, close on terminal/failure/crash paths and preserve login data.
-  Covers shared-browser ownership, external endpoints and pinned-runtime recovery.
+  October 2 follow-up implemented; endpoints follow individual runs, close on
+  terminal/failure/crash paths and preserve login data. Fixed-port conflicts stay
+  local; private credentials require explicit discovery. [Qualification](../qualification.md#run-scoped-institutional-connections-2026-10-02)
+  records 6,683 passing identities / 65 skips, 211 final focused checks, 14 native
+  closures, unchanged 25-root readers and the installed 172-file wheel. Actual
+  Linux OpenSSH/systemd/Chrome are covered; Windows native APIs, visible Linux GUI
+  and Docker deployment still require corresponding-machine checks.
 
 - [Init browser-connection startup](../design/institutional-access-preparation.md#init-自动准备浏览器连接2026-10-02):
   October 2 native Linux GUI, remote-client tunnel and server-browser placement;

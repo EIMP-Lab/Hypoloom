@@ -2,6 +2,84 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Run-scoped institutional connections (2026-10-02)
+
+The user authorized implementation and phased commits/push to dev from `8f6b39e`.
+Core `d5eb0d5` assigns institutional transports to individual runs using actual
+OS listeners, existing run heads and system-service ownership. Completion,
+cancellation, startup failure and Host exit retire owned resources; pause and
+monitor exit do not. Browser profiles persist. New client/local/server/existing
+modes separate Windows forwards, native persistent browser pipes, private containers
+and external browsers. Fixed-port allocation failure stays local to the affected
+connection and retries within existing acquisition limits after the port is freed.
+No port registry, terminal marker, credential export or retained-run migration.
+
+Real isolated Chrome checks cover authenticated HTTP/WebSocket CDP, external-browser
+ownership, native pipe startup/restart, synthetic-cookie persistence, concurrent
+profile refusal and owner SIGKILL. Actual Linux OpenSSH with disposable keys covers
+private Unix forwarding, reconnect and terminal-run watch exit. It reproduced stale
+socket paths after disconnect; reconnection now rechecks the current Host/run and
+removes only a same-user refused socket, never an active listener. Actual user-systemd
+EOF services release listeners and socket directories after owner death. Container
+lifecycle checks use a substituted Docker executable with real services/process
+death; the selected Chromium image is absent, so actual container deployment is not
+qualified. PowerShell 7.6.6 checks parsing, literal arguments, actual child cleanup
+and independent run retirement; Windows CIM/ACL/Task Scheduler APIs are substituted.
+
+The initial focused selection passed **240** cases. Final allocation-isolation and
+related institutional/bootstrap/control/browser coverage passed **211** cases in
+109.38 seconds, including the native browser and SSH opt-ins. Red/green regressions
+also reproduce and repair a private GUI password in default preparation output
+(`3186db2`) and a fixed-port conflict escaping into the shared Host (`195bd22`).
+Private GUI credentials now require explicit private-control discovery; partial
+allocations are cleaned without stopping another run.
+
+Full G1 collected **6,746** identities: initially **6,668 passed, eight failed and
+70 skipped**. Five native failures were caused by this maintenance session editing
+package source during the active run; the existing runtime-pin protection correctly
+rejected that drift. Those cases passed unchanged after source stabilization. Two
+CPU closure assertions also passed unchanged in the bounded recheck. The remaining
+batch-reading failure reproduced on baseline `8f6b39e`: the scripted test provider
+assumed both documents were available immediately despite one PDF worker. Fixture
+repair `360f7d9` retries the exact batch once, reuses the successful source and still
+requires both sources, three real readers and the unchanged CPU/publication checks.
+Production acquisition policy, slots and validators are unchanged. Original failures
+and baseline reproduction are retained. Full-suite plus focused repair/browser
+coverage totals **6,683 passing identities and 65 skips**, with no unresolved failure;
+this is not a second complete G1 run after the repairs.
+
+Independent read-only inspection of **14** successful final native roots counts
+**496 terminal Agents** (487 succeeded, four cancelled, one failed, four lost) and
+**37 successful CPU Processes**, with 37 CREATE_EXPERIMENT and 37 ACCEPT_OUTCOME
+effects. Existing Oracles are clean; there are no open Attempts, live recorded process
+groups or control sockets. Coverage includes multichain science, source readers/OA
+fallback, model retry, Leader/Debate, manager/proposal restart and final reports.
+Provider responses are locally scripted; Host, CLI, broker, CPU and publication are
+real. Failed initial qualification roots remain separate evidence, not settled into
+this clean cohort. No institutional connection service remains active.
+
+Installed baseline `8f6b39e` and core `d5eb0d5` produce identical existing-Oracle
+results for all **25** retained roots, preserving two historical findings. Logical
+SQLite rows and artifact metadata are unchanged, with zero open Attempts or live
+recorded process groups. Later repairs do not change the Oracle or retained readers.
+The final-code wheel installed outside the checkout matches **172** package files
+byte-for-byte; nine platform entries, two MCP tools, CLI preview and fresh runtime
+bundle identity pass. An initial final-install check reused an older disposable
+bundle and correctly failed identity comparison; a fresh fixture passes without
+changing retained bundles. Documentation, compile, undefined-name and whitespace
+checks pass.
+
+Evidence: `.local/qualification/institutional-run-connections-20261002/`, including
+`g1-*.xml`, `recheck-*.xml`, `isolation-native.xml`, `batch-fixed.xml`,
+`final-coverage.json`, `native-closure.json`, `retained-final.json` and
+`installation-final.json`. Existing research runs, Profiles, frozen bundles and the
+production pool remain unchanged; the user's browser/tunnel on 9222 is untouched.
+No real subscription, paid-model or GPU run is launched. Visible Linux GUI, Windows
+native APIs/logon tasks and actual Docker deployment still require corresponding
+machine acceptance. Linux SSH coverage does not establish Windows SSH integration.
+Earlier IEEE/Springer login results do not prove permanent sessions or all-publisher
+entitlement. No G4/G5 claim. See the [current guide](guides/institutional-access.md).
+
 ## Institutional connection startup (2026-10-02)
 
 The user authorized implementation and phased commits/push to dev from `158b792`.

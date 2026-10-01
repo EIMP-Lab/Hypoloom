@@ -22,7 +22,9 @@ or `institutional prepare` operations:
 
 New managed listeners bind port **0** and use the OS-assigned port, just like the
 Web observer. `--institutional-port N` explicitly fixes the run relay port for
-client/server/existing; conflicts fail without adopting an existing listener.
+client/server/existing; a conflict makes only that connection unavailable without
+adopting the existing listener or stopping other runs. Once the port is freed,
+the connection can retry within the original acquisition deadline.
 Only existing mode accepts `--institutional-browser-url` and `--institutional-browser-ui-url`.
 The endpoint-only form without a mode keeps its previous unmanaged behavior.
 
@@ -179,12 +181,13 @@ require checks on those machines; see [qualification](../qualification.md#run-sc
 
 ## Prepare platforms before research
 
-After connecting the dedicated browser, run these commands in the project's server environment:
+For a Windows client, start the helper described above, then run these commands in
+the project's server environment. Use `local` instead on a native Linux desktop:
 
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-url http://127.0.0.1:9222 \
+  --institutional-browser-mode client \
   --provider IEEE --provider Springer
 ```
 

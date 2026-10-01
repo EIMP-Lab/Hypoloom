@@ -1,12 +1,20 @@
 # Current Hypoloom development state
 
-- October 2 follow-up implementation, final qualification in progress: institutional ports
-  and tunnels belong to each run and are released on completion/termination,
-  startup failure or Host shutdown/crash. Pausing or closing a monitor is not run
-  termination. Preserve browser login profiles; close only owned resources and
-  never disrupt another run or an external browser. Reuse actual listeners,
-  existing run state and OS service ownership; no port registry or terminal marker.
-  Recovery must preserve runtime pinning and prevent stale-address reuse.
+- October 2 run-scoped institutional connections implemented and qualified:
+  ports/tunnels retire on completion/termination, startup failure or Host exit;
+  preserve login profiles and external browsers. Fixed-port failures stay local
+  and can recover; private GUI credentials require explicit discovery. Reuse
+  listeners, run state and OS ownership, with no port registry or terminal marker.
+  Full G1 plus repaired/opt-in cases covers 6,683 passing identities / 65 skips;
+  final related selection passes 211. Fourteen native roots close 496 Agents /
+  37 CPU Processes, clean Oracles/no residue. All 25 retained audits match baseline;
+  final installed 172-file wheel/CLI/MCP/fresh bundle pass. Real Linux Chrome,
+  OpenSSH and systemd coverage; Windows native APIs, visible Linux GUI and actual
+  Docker deployment remain operator checks. Initial source-drift failures and
+  baseline PDF-worker fixture failure are retained with repairs/rechecks.
+  Existing runs/Profiles/pool/9222 are unchanged; no paid/GPU/real SSO calls.
+  User authorizes phased commit/push dev.
+  [Evidence and limits](../qualification.md#run-scoped-institutional-connections-2026-10-02),
   [Run-scoped design](../design/institutional-access-preparation.md#运行级自动端口与清理2026-10-02).
 
 - October 2 connection startup implements explicit existing/local/server modes,

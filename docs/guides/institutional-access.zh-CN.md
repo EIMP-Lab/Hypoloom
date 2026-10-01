@@ -8,13 +8,13 @@
 
 ## 集中准备与研究期间的处理
 
-没有研究运行或待下载论文时，也可先准备常用平台。先建立上文所述的浏览器连接，
-在服务器的项目环境中执行：
+没有研究运行或待下载论文时，也可先准备常用平台。以下示例使用 Windows 客户端，
+先按下文启动连接脚本，再在服务器的项目环境中执行；原生 Linux 桌面改用 `local`：
 
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-url http://127.0.0.1:9222 \
+  --institutional-browser-mode client \
   --provider IEEE --provider Springer
 ```
 
@@ -72,7 +72,8 @@ OA 作者稿保留实际来源和版本限制，不声称为出版社定稿。�
 | `existing` | 明确指定的外部回环 CDP | 项目建立受保护的运行连接；外部浏览器仍由原管理者负责。 |
 
 受管监听默认绑定 **端口 0**，读取 OS 实际分配结果，与 Web 转发采用同一原则。
-client/server/existing 可用 `--institutional-port N` 明确固定运行端口；冲突时拒绝接管。
+client/server/existing 可用 `--institutional-port N` 明确固定运行端口；冲突时拒绝接管，
+只使对应连接暂不可用，不影响其他运行。端口释放后在原获取期限内可重试。
 只有 existing 接受 `--institutional-browser-url` 和 `--institutional-browser-ui-url`。
 只传旧 URL、不选 mode 时保留原来的非受管连接行为。
 
