@@ -119,18 +119,24 @@ identity. Only use the returned `launch_argv` once missing choices are resolved.
 Explicit off keeps public/OA retrieval and disables the institutional panel. A supplied
 legacy browser URL already answers this choice and retains its unmanaged behavior.
 
-**Optional institutional preparation.** With an enabled mode or legacy browser URL,
-the preview exposes `institutional_preparation_argv`. Offer the optional standalone
-`python -m hypoloom institutional prepare` before research launch, adding the user's
-selected `--provider` values and optional sample DOI/URL `--sample` values. Ordinary
-inspection remains read-only. Only an explicit choice to prepare authorizes opening
-the dedicated browser; it does not authorize creating a Host/run, changing Profiles,
-or calling a model. The user enters SSO/MFA in the browser, never in chat. Preparation
-does not need pending papers and can be skipped without blocking launch. Validate
-sample full text separately from login; one sample never proves platform-wide access.
-Review `auto`/`public_only` provider choices and finite 120-second acquisition /
-600-second manual defaults with the launch configuration. During research use the
-Host's TUI/Web controls, rather than a second standalone browser manager.
+**Optional institutional preparation.** Enabled previews expose `institutional_preparation`.
+Show its common catalog and default selection: IEEE, ScienceDirect and Springer;
+ACM is public-first with optional login. Offer defaults, custom platforms or skip.
+Reuse prior choices; repeated `--institutional-prepare-provider` replaces the list,
+and `none` skips preparation without limiting research. Re-inspect with the same
+launch identity. Use the complete `institutional_preparation_argv`; optional
+`--sample` values check the existing session first. See [details](references/init-details.md)
+for the shared library entry and result handling. Preview remains read-only.
+Only an explicit preparation choice opens the browser; it does not authorize a
+Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
+Show `preparation_summary`: opened pages without samples remain not_checked;
+sample_verified proves only that paper's current readability, not platform-wide
+authorization or institutional login. Missing access never blocks research startup.
+Merge returned `provider_modes` by platform into launch choices, replacing old values,
+then re-inspect and review. Retain completed/skipped preparation in this interaction;
+do not rerun a batch merely because its command still appears. Review auto/public_only
+and finite 120-second acquisition / 600-second manual defaults. During research,
+use Host TUI/Web controls rather than another standalone browser manager.
 
 The enabled `--institutional-browser-mode client|local|existing|server` selects
 run-owned connections. Windows `client` uses the standalone PowerShell helper

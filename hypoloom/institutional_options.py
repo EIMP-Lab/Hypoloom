@@ -1,5 +1,5 @@
 """Shared launch arguments; reviewing configuration never connects a browser."""
-from .institutional_access import InstitutionalAccess, PROVIDERS
+from .institutional_access import InstitutionalAccess, PROVIDERS, provider_catalog, provider_name
 from .institutional_browser import PlaywrightInstitutionalBrowser
 
 
@@ -20,6 +20,7 @@ def options(args):
     modes = {}
     for value in args.institutional_provider_mode:
         name, separator, mode = value.partition("=")
+        name = provider_name(name)
         if not separator or name not in PROVIDERS.values() or mode not in {"auto", "public_only"}:
             raise ValueError("institutional provider mode requires a supported PROVIDER=auto or PROVIDER=public_only")
         if name in modes and modes[name] != mode:
@@ -27,6 +28,35 @@ def options(args):
         modes[name] = mode
     return {"provider_modes": modes, "acquisition_seconds": args.institutional_acquisition_seconds,
             "manual_seconds": args.institutional_manual_seconds}
+
+
+def add_preparation_argument(parser, flag="--institutional-prepare-provider"):
+    parser.add_argument(flag, action="append", type=provider_name, choices=(*PROVIDERS.values(), "none"),
+                        help="replace common preparation defaults; repeat for platforms, Elsevier aliases ScienceDirect; none skips preparation")
+
+
+def preparation_selection(values, modes):
+    if values is None:
+        return [p["provider"] for p in provider_catalog()
+                if p["recommended_prepare"] and modes.get(p["provider"]) != "public_only"]
+    selected = list(dict.fromkeys(values))
+    if "none" in selected:
+        if len(selected) != 1: raise ValueError("preparation none cannot be combined with other platforms or samples")
+        return []
+    if any(name not in PROVIDERS.values() for name in selected):
+        raise ValueError("unsupported preparation platform")
+    if len(selected) > 8:
+        raise ValueError("prepare at most eight platforms per batch; run another batch afterward")
+    return selected
+
+
+def preparation(args):
+    modes = options(args)["provider_modes"]
+    selected = preparation_selection(getattr(args, "institutional_prepare_provider", None), modes)
+    return {"selected": selected, "library_url": args.institutional_library_url,
+            "catalog": [{**p, "selected": p["provider"] in selected,
+                         "mode": modes.get(p["provider"], "auto"), "state": "not_checked"}
+                        for p in provider_catalog()]}
 
 
 def build(args):
@@ -53,13 +83,18 @@ def preview(args, repository=None):
     from pathlib import Path
     from .institutional_connection import plan, runtime_plan
     mode = getattr(args, "institutional_browser_mode", None)
+    selection = getattr(args, "institutional_prepare_provider", None)
+    if selection is not None:
+        selected = preparation_selection(selection, options(args)["provider_modes"])
+        if selected and (mode == "off" or not mode and not args.institutional_browser_url):
+            raise ValueError("platform preparation requires an enabled institutional browser mode")
     if mode == "server" and not args.institutional_compose_file:
         args.institutional_compose_file = str(Path(repository or Path.cwd()) / "config/institutional-browser.compose.yaml")
     access = build(args)
     if access is None:
         return {"institutional_connection": {"enabled": False, "mode": "off"}} if mode == "off" else {}
     try:
-        return {"institutional_access": access.configuration,
+        return {"institutional_access": access.configuration, "institutional_preparation": preparation(args),
                 "institutional_connection": runtime_plan(args) if mode else plan(args, repository)}
     finally:
         access.close()

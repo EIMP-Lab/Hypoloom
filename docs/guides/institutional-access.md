@@ -197,17 +197,48 @@ the project's server environment. Use `local` instead on a native Linux desktop:
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-mode client \
-  --provider IEEE --provider Springer
+  --institutional-browser-mode client
 ```
 
-Complete SSO/MFA only in the browser and follow the terminal prompt. Supply a sample
-DOI/canonical article URL interactively or using repeatable `--sample`. With
+The existing catalog shows four common platforms first:
+
+| Platform | Prepare by default | Behavior |
+| --- | --- | --- |
+| IEEE | Yes | Reuse valid sessions; authenticate in the browser if needed. |
+| ACM | No, optional | Public full text first; login is not a reading prerequisite. |
+| Elsevier / ScienceDirect | Yes | Both names are accepted by preparation and mode arguments. |
+| Springer | Yes | Reuse valid sessions; authenticate in the browser if needed. |
+
+With no platform/sample arguments the command selects these three preparation
+defaults, excluding platforms set to `public_only`. Repeated `--provider <platform>`
+replaces the defaults and can include ACM or other supported platforms; `--provider none`
+does not connect. Samples alone still select only their own platforms. Preparation
+never restricts research discovery. ACM's default follows its
+[2026 open-access announcement](https://www.acm.org/about-acm/acm-pres-on-oa-transition-and-dl-changes);
+it does not guarantee successful automated downloads or disable browser fallback.
+
+Choose one browser profile and optional `--institutional-library-url` for the batch.
+Without a library URL, preparation opens publisher homepages. Institution selection,
+SSO and MFA remain browser operations; no account/password store is added. Supply
+sample DOI/canonical article URLs interactively or using repeatable `--sample`.
+Supplied samples are checked first; if all are readable, no login prompt appears.
+A readable public sample is not proof of institutional authentication. At a manual
+prompt, `s` skips, `p` selects public-only access, `q` ends the batch, and Enter
+finishes or rechecks supplied samples. Enter without a sample remains `not_checked`.
+Failed platforms do not prevent preparing others. Unresolved sample failures return
+a nonzero exit code but are not a research-start gate. With
 `--non-interactive --sample <DOI-or-URL>`, check the existing session without waiting
 for terminal input. `--list` does not connect. Prepare at most eight platforms per
 batch; close the command and start another batch as needed. No research Host/run,
 Attempt, Profile, model call or source archive is created. Bootstrap review provides
-`institutional_preparation_argv`; ordinary preview never opens the browser.
+`institutional_preparation` and a complete `institutional_preparation_argv`.
+Repeated bootstrap `--institutional-prepare-provider` replaces the list; `none`
+skips preparation, independently of the `off` browser mode. Ordinary preview never
+opens a browser. Final `preparation_summary` distinguishes unverified, skipped,
+readable samples, authentication/verification requirements and unavailable results.
+Merge returned `provider_modes` / `provider_mode_argv` by platform into subsequent
+launch choices and re-review; standalone users must pass these options themselves.
+The result is not persisted and does not change existing runs or store credentials.
 
 During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
 the complete catalog even without pending papers. Open login, verify a sample, or

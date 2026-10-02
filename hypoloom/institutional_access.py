@@ -24,6 +24,24 @@ PROVIDERS = {
     "journals.sagepub.com": "SAGE", "academic.oup.com": "Oxford",
     "tandfonline.com": "Taylor & Francis",
 }
+# Presentation/default preparation only; the full routing catalog stays authoritative.
+# ACM research content is public; optional preparation must not disable its browser fallback.
+COMMON_PREPARATION = {"IEEE": True, "ACM": False, "ScienceDirect": True, "Springer": True}
+
+
+def provider_name(value):
+    return "ScienceDirect" if value == "Elsevier" else value
+
+
+def provider_catalog():
+    entries = {name: "https://" + domain + "/" for domain, name in PROVIDERS.items()}
+    return [{"provider": name, "display_name": "Elsevier / ScienceDirect" if name == "ScienceDirect" else name,
+             "entry_url": entries[name], "common": name in COMMON_PREPARATION,
+             "recommended_prepare": COMMON_PREPARATION.get(name, False),
+             "note": "Public full text first; login optional" if name == "ACM" else "Reuse a valid browser session; authenticate if needed"}
+            for name in dict.fromkeys([*COMMON_PREPARATION, *entries])]
+
+
 DOI_PROVIDERS = {"10.1038": "Nature", "10.1007": "Springer", "10.1109": "IEEE",
     "10.1016": "ScienceDirect", "10.1145": "ACM", "10.1002": "Wiley", "10.1111": "Wiley",
     "10.1177": "SAGE", "10.1093": "Oxford", "10.1080": "Taylor & Francis"}

@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 2 common publisher preparation implemented: the existing catalog presents
+  IEEE/ACM/Elsevier-ScienceDirect/Springer; three default login preparations, ACM
+  public-first/optional. Init emits complete commands and retains custom/none choices;
+  samples check current sessions before prompting. Skip/public-only/finish results
+  reuse launch arguments, with no new credential store or research restriction.
+  Six red/green regressions; final combined focused coverage 257 distinct passes,
+  two skips. Existing instruction-length failure repaired by moving details to its
+  reference (44 final docs/skill/profile passes); six native/UI cases deselected,
+  current socket probe EPERM. Installed 172-file wheel/all-mode previews/fresh bundle
+  pass. No new full G1, native/SSO/paid qualification; retained research/browser
+  state unchanged. User authorizes commit/push dev. Previous init batch committed
+  as 91cb855; repository metadata is now writable.
+  [Design](../design/institutional-access-preparation.md#常用平台集中准备2026-10-02),
+  [evidence](../qualification.md#common-publisher-preparation-during-init-2026-10-02).
+
 - October 2 explicit init institutional choice implemented: existing missing/next-action
   output asks for off/local/client/server/existing; prior answers and launch identity
   survive reinspection. CLI and question options share one enum. Inspect/launch
@@ -10,7 +25,8 @@
   two setup errors and five deselections. Four initial socket failures reproduce on
   baseline. Installed 172-file wheel/CLI/fresh bundle checks pass; no new full G1,
   native closure or real SSO claim. Existing runs/Profiles/logins/services unchanged.
-  User authorizes commit/push dev.
+  Committed as 91cb855 after repository metadata became writable; user authorizes
+  push to dev alongside the common-platform follow-up above.
   [Design](../design/institutional-access-preparation.md#init-中明确选择机构访问2026-10-02),
   [evidence](../qualification.md#explicit-institutional-choice-during-init-2026-10-02).
 

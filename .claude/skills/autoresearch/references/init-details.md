@@ -53,6 +53,24 @@ legacy URL. Repeat inspect with the explicit answer and the same launch identity
 do not hand-build launch arguments to bypass an unanswered choice. Off leaves
 public/OA retrieval available and disables institutional-panel operations. Preview starts no browser; standalone
 preparation and final run startup retain their separate explicit choices.
+Enabled previews also provide the common-platform preparation catalog and a complete
+command. Keep selections in repeated `--institutional-prepare-provider` arguments;
+`none` skips this optional step without disabling institutional retrieval. The shared
+defaults prepare IEEE, ScienceDirect and Springer; ACM is shown as public-first with
+optional login. Use the existing single library URL and browser profile for the batch.
+Standalone preparation checks supplied samples first and returns current results and
+platform modes. Merge modes by platform, re-inspect, and retain the same run identity.
+Never turn not_checked, an opened page or a previous sample into permanent login proof.
+Ask for one optional interactive library entry only if needed and not already supplied;
+never substitute SAML metadata. Without one, use the catalog's publisher entry pages.
+Use the complete returned preparation command without appending a second platform list.
+Optional sample DOI/URLs check the current session before a manual prompt; all samples
+readable means no login prompt. The command is absent when preparation is skipped.
+Show the final preparation_summary without claiming that public access proves login.
+Merge provider_modes by platform into launch choices (replace, never append conflicting
+values), then re-inspect. Results are transient, not saved credentials or authority.
+Failures and skipped/unverified platforms do not block research startup. Preserve the
+interaction's completed/skipped decision; reinspection alone never repeats preparation.
 
 Use the deterministic helper for prospective Profile validation and launch
 assembly. It reuses admission, credentials, model-source inspection and the

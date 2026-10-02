@@ -300,8 +300,11 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     review.update(institutional_preview(args, repository))
     if "institutional_access" in review:
         from .institutional_options import launch_arguments as institutional_arguments
-        review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
-            "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
+        selected = review["institutional_preparation"]["selected"]
+        if selected:
+            review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
+                "--repository", str(repository), *institutional_arguments(args, include_connection=True),
+                *[part for provider in selected for part in ("--provider", provider)]]
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
                 "--state-root", str(state)]
@@ -511,7 +514,7 @@ def compact_result(result: dict) -> dict:
             "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
             "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
         **{key: review[key] for key in ("gpu", "notifications", "institutional_access",
-                                      "institutional_preparation_argv", "institutional_connection",
+                                      "institutional_preparation", "institutional_preparation_argv", "institutional_connection",
                                       "institutional_connection_argv") if key in review},
     }
     if "launch" in result:
@@ -563,6 +566,8 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--web-search-fallback", choices=("openalex",))
             from .institutional_options import add_arguments as add_institutional_arguments
             add_institutional_arguments(command, connection=True)
+            from .institutional_options import add_preparation_argument
+            add_preparation_argument(command)
             scheduling = command.add_mutually_exclusive_group()
             scheduling.add_argument("--managed-pool", action="store_true", help="plan management of this project's canonical shared pool")
             scheduling.add_argument("--nonpooled", action="store_true", help="explicitly select GPU scheduling without a pool")

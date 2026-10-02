@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Common publisher preparation](../design/institutional-access-preparation.md#常用平台集中准备2026-10-02):
+  shared four-platform presentation, three default preparations, ACM public-first,
+  complete init commands, custom/skip round-trips and sample-first session reuse.
+  [Qualification](../qualification.md#common-publisher-preparation-during-init-2026-10-02)
+  records six red/green cases, 257 distinct final focused passes, instruction-size
+  repair, installed wheel/bundle verification and current native/socket limits.
+
 - [Explicit institutional choice during init](../design/institutional-access-preparation.md#init-中明确选择机构访问2026-10-02):
   unanswered versus off versus enabled modes, one CLI/question enum, shared validated
   preview, retained choices/identity and legacy direct-command compatibility.

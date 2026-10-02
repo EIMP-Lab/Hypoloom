@@ -80,6 +80,17 @@ behavior. Existing direct launch/serve scripts may still omit the mode. Off reje
 conflicting connection or institutional-specific options; remove those options
 when changing the selection.
 
+Enabled reviews expose `institutional_preparation`, with IEEE, ACM, Elsevier /
+ScienceDirect and Springer first. The default batch prepares IEEE, ScienceDirect
+and Springer; ACM is public-first with optional login. Choose the default batch,
+a custom list or skip, without entering each publisher URL. Repeated
+`--institutional-prepare-provider <platform>` values replace the default list;
+`none` skips preparation. `Elsevier` aliases `ScienceDirect`. Choose the browser
+and optional interactive library URL once. Reinspection preserves selections;
+the preparation list does not restrict research. Merge public-only choices from
+the preparation result back into platform arguments and re-review. Unverified
+or unavailable platforms do not prevent research startup.
+
 Inspect and launch preview share the existing validators without contacting a
 browser or allocating ports. After Start now, the Host allocates resources for
 the run; missing connectivity/login uses bounded acquisition and OA fallback.

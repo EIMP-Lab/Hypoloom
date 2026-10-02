@@ -2,6 +2,42 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Common publisher preparation during init (2026-10-02)
+
+The user authorized design, implementation and commit/push to dev. The preceding
+explicit-mode change is committed as `91cb855`; this follow-up reuses the platform
+catalog, preparation queue, browser sessions and original document validator.
+IEEE, ACM, Elsevier / ScienceDirect and Springer appear first. Three platforms are
+selected for preparation by default; ACM is public-first with optional login.
+Bootstrap provides a complete command, custom/none selections round-trip, and
+preparation does not limit research discovery or change runtime defaults. Samples
+are checked before login prompts; only gaps are rechecked after operator action.
+Skip/public-only/finish choices return a transient summary and launch arguments,
+not an authentication store. Unchecked pages never become verified access. Existing
+research state, profiles, logged-in browsers and services remain untouched.
+
+Six new regressions first failed, then passed. The first related selection passed
+**140 tests**, with two skips and three deselections. Expanded coverage initially
+recorded **256 passed, one failed, two skipped and six deselected**. The failure was
+the existing init-instruction length limit: details were moved into its established
+reference without relaxing the limit. All **44** instruction/document/profile
+checks then passed. Combining final outcomes covers **257 distinct passing tests
+and two skips**, not a second full invocation of the expanded suite. Coverage
+includes inspect-to-launch-to-prepare parsing, default/custom/off choices, Elsevier
+aliasing, public-only suppression, partial sample recovery, failure continuation,
+interruption cleanup and existing routing/admission behavior.
+
+The two skips require PowerShell and opt-in real systemd/browser testing. Six
+deselections are three previously environment-blocked native bootstrap cases and
+three real Host/UI/socket cases; the current loopback bind probe still fails with
+EPERM. No new live browser/SSO/subscription test, native closure, full G1 or paid/GPU
+qualification is claimed. The wheel installed outside the checkout matches **172
+package files** exactly; installed catalog, alias/skip behavior, all five mode
+previews and fresh runtime-bundle identity pass. Compile, undefined-name lint and
+diff checks pass. Evidence: `.local/qualification/common-publisher-preparation-20261002/`
+(`red.xml`, `focused.xml`, `final-focused.xml`, `final-docs.xml`, `coverage.json`,
+`installation.json`, wheel/build/install output).
+
 ## Explicit institutional choice during init (2026-10-02)
 
 The user authorized design, implementation and commit/push to dev from `bf73e24`.

@@ -14,16 +14,40 @@
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-mode client \
-  --provider IEEE --provider Springer
+  --institutional-browser-mode client
 ```
 
-命令依次打开平台入口，请在专用浏览器完成机构 SSO/MFA，再按终端提示继续。
-可以输入该平台有权限的 DOI 或规范论文 URL 验证样本；也可传重复的 `--sample`。
+目录优先展示四个常用平台，入口来自现有平台目录，无须逐个输入网址：
+
+| 平台 | 默认集中准备 | 说明 |
+| --- | --- | --- |
+| IEEE | 是 | 复用有效会话，必要时在浏览器认证。 |
+| ACM | 否，可选 | 公开全文优先；不将登录作为读取论文的前提。 |
+| Elsevier / ScienceDirect | 是 | 参数可使用 `ScienceDirect` 或 `Elsevier`。 |
+| Springer | 是 | 复用有效会话，必要时在浏览器认证。 |
+
+不指定平台/样本时采用上述三个默认准备平台；已设为 `public_only` 的平台不默认准备。
+重复 `--provider <平台>` 替换默认名单，可加入 ACM 或目录中其他平台；`--provider none`
+不连接浏览器。只传 `--sample` 时仍只处理样本所属平台。准备名单不限制科研检索范围。
+ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/acm-pres-on-oa-transition-and-dl-changes)，
+不代表每次程序下载都成功，也不关闭已有浏览器回退。
+
+整个批次复用一个浏览器目录及可选的 `--institutional-library-url` 学校交互入口；
+不提供学校入口时打开出版社首页。学校选择、SSO/MFA 仍在浏览器内完成，不保存账号密码。
+可以输入该平台有权限的 DOI 或规范论文 URL 验证样本，也可传重复的 `--sample`。
+提供样本时先检查当前会话，全部样本可读就跳过登录提示；公开样本可读不证明机构认证。
+需要人工处理时，终端支持 `s` 跳过、`p` 仅公开获取、`q` 结束本批；回车完成或重新检查
+原样本。没有样本的回车仅表示准备操作结束，结果仍为 `not_checked`，不显示已登录。
+个别平台失败后继续其他平台；仍有失败的样本时命令返回非零，不阻止后续研究启动。
 `--non-interactive --sample <DOI或URL>` 只验证现有会话，不等待终端输入。
 `--list` 只列目录，不连接浏览器。每批最多八个平台，结束后可继续下一批。
-初始化审阅也提供 `institutional_preparation_argv`，只有明确选择准备才打开浏览器；
-它不创建 run、Attempt、Profile 或科研归档，不调用模型。
+初始化审阅通过 `institutional_preparation` 展示名单，`institutional_preparation_argv`
+给出完整命令。init 用重复的 `--institutional-prepare-provider` 自定义名单，用 `none`
+跳过集中准备；这与关闭机构功能的 `off` 不同。只有明确选择准备才打开浏览器。
+最终 `preparation_summary` 区分未验证、跳过、样本可读、需要认证/验证码或不可访问；
+`provider_modes` / `provider_mode_argv` 给出后续运行的偏好。init 按平台替换原值后重新
+审阅；独立使用命令时需自行带到后续启动参数中。结果不自动持久化或更改现有运行。
+准备不创建 run、Attempt、Profile 或科研归档，不调用模型。
 
 运行后通过 TUI 的 **i** 面板或带文献操作授权的 Web 面板管理；空待办也显示完整平台目录。
 选择“打开登录”“验证样本”或“检查并重试”。不要同时运行独立准备命令与 Host 来管理同一浏览器。

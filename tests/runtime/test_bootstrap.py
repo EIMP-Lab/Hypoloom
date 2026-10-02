@@ -454,6 +454,55 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
+@pytest.mark.parametrize("selection,expected", [
+    ([], ["IEEE", "ScienceDirect", "Springer"]),
+    (["--institutional-prepare-provider", "Elsevier", "--institutional-prepare-provider", "Wiley"],
+     ["ScienceDirect", "Wiley"]),
+    (["--institutional-prepare-provider", "none"], []),
+])
+def test_init_common_preparation_roundtrips_without_changing_research(checkout, capsys, monkeypatch, selection, expected):
+    from hypoloom import bootstrap_inspect, institutional_runtime
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    monkeypatch.setattr(institutional_runtime.RunBrowser, "__init__", lambda *a, **k: pytest.fail("preview opened browser"))
+    argv = ["inspect", "topic", "--repository", str(repo), "--control-python", sys.executable,
+            "--auth-transport", "none", "--offline", "--cpu-only", "--institutional-browser-mode", "client",
+            "--institutional-library-url", "https://library.example.edu/", *selection]
+    assert bootstrap.main(argv) == 0
+    review = json.loads(capsys.readouterr().out)
+    plan = review["effective_configuration"]["institutional_preparation"]
+    assert plan["selected"] == expected
+    assert [p["provider"] for p in plan["catalog"][:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer"]
+    assert plan["catalog"][1]["recommended_prepare"] is False
+    assert plan["library_url"] == "https://library.example.edu/"
+    assert bootstrap.main(review["launch_argv"][4:]) == 0
+    launch = json.loads(capsys.readouterr().out)
+    assert launch["effective_configuration"]["institutional_preparation"] == plan
+    if expected:
+        prepare = cli_parser().parse_args(review["effective_configuration"]["institutional_preparation_argv"][3:])
+        assert prepare.provider == expected
+    else:
+        assert "institutional_preparation_argv" not in review["effective_configuration"]
+    assert not (repo / "state").exists()
+
+
+@pytest.mark.parametrize("extra,message", [
+    (["--institutional-browser-mode", "off", "--institutional-prepare-provider", "IEEE"], "enabled"),
+    (["--institutional-browser-mode", "client", "--institutional-prepare-provider", "none",
+      "--institutional-prepare-provider", "IEEE"], "none"),
+    (["--institutional-browser-mode", "client",
+      *[part for name in ("IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis")
+        for part in ("--institutional-prepare-provider", name)]], "eight"),
+])
+def test_preparation_conflicts_fail_before_resources(checkout, capsys, extra, message):
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides, "launch"), *extra]) == 2
+    assert message in json.loads(capsys.readouterr().err)["error"]
+    assert not (repo / "state").exists()
+
+
 @pytest.mark.parametrize("status", ["started", "host_start_failed", "creation_uncertain"])
 def test_only_confirmed_start_exposes_complete_monitor_commands(checkout, capsys, monkeypatch, status):
     import shlex

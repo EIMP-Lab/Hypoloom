@@ -67,6 +67,14 @@ Prepare only、启动失败或创建结果未确认时，不能宣称启动成�
 已明确选择外部连接，保留原非受管行为。直接 launch/serve 的旧脚本仍可省略模式。
 off 与机构连接或机构专用配置同时提供会被拒绝，请在更改选择时移除冲突参数。
 
+启用后，审阅中的 `institutional_preparation` 展示常用平台：IEEE、ACM、
+Elsevier / ScienceDirect、Springer。默认集中准备 IEEE、ScienceDirect、Springer；
+ACM 优先公开获取，机构登录可选。选择默认批次、自定义名单或跳过即可，无须逐家填写网址。
+重复传 `--institutional-prepare-provider <平台>` 会替换默认名单，`none` 跳过集中准备；
+`Elsevier` 可作为 `ScienceDirect` 的别名。学校交互入口和浏览器位置只配置一次。
+已有选择随重查保留；准备名单不限制文献检索范围。准备结果中的“仅公开途径”选择
+应合并回平台参数并重新审阅，未验证或无权限的平台不阻止开始研究。
+
 检查与启动预览共用原校验器，预览不连接浏览器或分配端口。确认 Start now 后由 Host
 为运行分配资源；暂未连通／未登录沿用有限获取和 OA 回退，不要求所有平台先登录。
 也可明确选择独立 prepare 提前集中登录；prepare 不保存后续运行的模式选择。
