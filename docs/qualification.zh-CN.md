@@ -2,6 +2,37 @@
 
 [English](qualification.md) · 简体中文
 
+## init 明确选择机构访问（2026-10-02）
+
+用户授权从 `bf73e24` 设计、实施并提交推送 dev。init 现在通过原有 `missing`／
+`next_actions` 返回尚未回答的 `institutional_browser_mode`；CLI 枚举与交互说明
+共用同一份模式定义。显式 off 关闭机构访问，保留公开/OA 检索；未选择前不生成启动
+参数，复查沿用原 run ID、状态根和 request ID，先填写的图书馆入口也保留。直接
+launch/serve 省略模式以及旧 URL-only 命令保持兼容，不新增配置库、确认回执、运行
+schema 或迁移。
+
+先失败回归暴露六处缺口，包括缺失选择及完整 inspect → launch 路径。旧 inspect
+误用手动连接规划器，拒绝 client，并向 local/server 注入固定端点。现与 launch
+共用原校验器和同一预览；初期七个场景全部通过。最终覆盖还包含分步填写、冲突拒绝、
+off 不创建浏览器／队列及 Host 参数完整传递。交互指引和中英文指南明确要求按代码
+返回的问题询问。off 同时关闭机构面板；需要保留面板 PDF 导入时，选择启用模式，
+可按平台设为 `public_only` 来停止自动机构获取。
+
+初次定向 **153 通过、4 失败、2 跳过**；四项失败均在未改基线 `bf73e24` 同样复现，
+当前沙箱禁止 socket／Host 就绪。一次扩大选择在受限 fixture 和停滞 UI 用例后中断，
+保留部分日志，不计为通过。最终有界选择 **169 通过、2 跳过、1 失败、2 个 setup
+错误**，另排除 5 项；剩余失败为 HTTP socket 创建被拒绝，setup 错误为 `/var/tmp`
+只读而无法创建测试目录。排除项中四个是已在基线复现的 socket 失败，另一个是需要
+`/var/tmp` 的 Host 重启 fixture。未放宽断言或产品校验器。这是定向后续证据，不宣称
+新全量 G1、真实 Host／CPU 闭环、浏览器／订阅或 Claude 交互端到端验收。
+
+仓库外安装 wheel 的 **172 个包文件**与源码逐字节一致；真实只读 CLI 覆盖未选择、
+off、client、local、server、existing，新运行包身份、编译、未定义名称和文档检查
+通过。现有研究运行、Profile、登录目录、冻结包和生产服务未变，未调用付费模型、GPU
+或订阅。证据位于 `.local/qualification/init-institutional-choice-20261002/`，包括
+`red.xml`、`focused.xml`、`baseline-environment.xml`、`final-focused.xml`、
+`extended-sandbox-interrupted.log` 和 `installation.json`。
+
 ## 运行级机构连接与清理（2026-10-02）
 
 用户授权从 `8f6b39e` 实施并分批提交、推送 dev。核心提交 `d5eb0d5` 通过实际 OS

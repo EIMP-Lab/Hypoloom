@@ -113,8 +113,8 @@ def inspect(args, repository: Path) -> dict:
         tasks["gpu_inventory"] = lambda: _gpu_inventory(repository)
         tasks["project_pool"] = lambda: _pools(repository)
     if args.institutional_browser_mode or args.institutional_browser_url:
-        from .institutional_connection import plan
-        tasks["institutional_connection"] = lambda: plan(args, repository)
+        from .institutional_options import preview as institutional_preview
+        tasks["institutional_connection"] = lambda: institutional_preview(args, repository)["institutional_connection"]
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {name: pool.submit(timed, name, function) for name, function in tasks.items()}
         checks = {}
@@ -134,6 +134,11 @@ def inspect(args, repository: Path) -> dict:
         missing.append("profile")
     if args.allow_gpu is None:
         missing.append("execution_mode")
+    if args.institutional_browser_mode is None and not args.institutional_browser_url:
+        from .institutional_connection import BROWSER_MODES
+        missing.append("institutional_browser_mode")
+        result["choices"] = {"institutional_browser_mode": [
+            {"value": value, "description": description} for value, description in BROWSER_MODES.items()]}
     auth = checks["auth"]
     if auth["status"] == "unavailable":
         missing.append("model_auth_source")

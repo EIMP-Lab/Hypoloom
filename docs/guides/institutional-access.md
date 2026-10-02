@@ -15,10 +15,20 @@ or `institutional prepare` operations:
 
 | Mode | Browser location | Lifetime |
 | --- | --- | --- |
+| `off` | No institutional browser | No institutional connection or panel operations; public/OA retrieval remains available. |
 | `client` | Windows Edge/Chrome | The Windows helper discovers active runs and opens one private SSH forward for each run. |
 | `local` | Native Linux desktop | A visible persistent Chrome/Chromium context uses a process pipe, without a CDP TCP port. |
 | `server` | Headless Linux server | A separate container per run uses an installed image and private CDP/GUI relays. |
 | `existing` | Explicit external loopback CDP | A protected run relay connects to the supplied endpoint; the external browser remains operator-owned. |
+
+During init, an omitted choice appears as `institutional_browser_mode` in inspect's
+`missing` list; the conversation asks using the returned choices. Supplied answers
+are reused. Off is explicit, not an inferred default. See the
+[initialization guide](initialization.md#aggregate-inspection-and-one-launch).
+Off provides no preparation command and rejects conflicting institutional options;
+choose an enabled mode to prepare browser logins. To retain institutional-panel
+PDF import with public-only retrieval, keep an enabled mode and select `public_only`
+for the relevant platforms.
 
 New managed listeners bind port **0** and use the OS-assigned port, just like the
 Web observer. `--institutional-port N` explicitly fixes the run relay port for

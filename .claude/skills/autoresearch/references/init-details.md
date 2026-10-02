@@ -45,6 +45,15 @@ run fetch/pull automatically or migrate existing runs. To inspect paths again,
 use `--offline` and retain the first check's result in the review. See the
 [version reminder guide](../../../../docs/guides/version-check.md).
 
+For institutional access, use the main skill's missing-choice flow. If inspect
+returns `institutional_browser_mode` in `missing`, show the descriptions in
+`choices.institutional_browser_mode` and collect off/local/client/server/existing.
+Do not infer off from silence, choose a mode from the host OS or replace a supplied
+legacy URL. Repeat inspect with the explicit answer and the same launch identity;
+do not hand-build launch arguments to bypass an unanswered choice. Off leaves
+public/OA retrieval available and disables institutional-panel operations. Preview starts no browser; standalone
+preparation and final run startup retain their separate explicit choices.
+
 Use the deterministic helper for prospective Profile validation and launch
 assembly. It reuses admission, credentials, model-source inspection and the
 existing managed lifecycle. It creates no launch manifest. Models choose and

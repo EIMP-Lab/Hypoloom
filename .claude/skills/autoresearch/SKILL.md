@@ -109,7 +109,17 @@ disable a Hook, expand permissions or loop through equivalent shell forms.
 
 ### 2. Fill only missing choices and review
 
-**Optional institutional preparation.** With a selected `--institutional-browser-url`,
+**Institutional access choice.** If `missing` includes `institutional_browser_mode`,
+ask using `choices.institutional_browser_mode`, translating its descriptions for the
+user. The code supplies off/local/client/server/existing; do not infer off from an
+omitted answer or choose a placement from the server OS. If needed, split the UI
+question into whether to enable access and where the browser runs, then return one
+explicit mode to inspect. Preserve previously supplied choices and the same launch
+identity. Only use the returned `launch_argv` once missing choices are resolved.
+Explicit off keeps public/OA retrieval and disables the institutional panel. A supplied
+legacy browser URL already answers this choice and retains its unmanaged behavior.
+
+**Optional institutional preparation.** With an enabled mode or legacy browser URL,
 the preview exposes `institutional_preparation_argv`. Offer the optional standalone
 `python -m hypoloom institutional prepare` before research launch, adding the user's
 selected `--provider` values and optional sample DOI/URL `--sample` values. Ordinary
@@ -122,7 +132,7 @@ Review `auto`/`public_only` provider choices and finite 120-second acquisition /
 600-second manual defaults with the launch configuration. During research use the
 Host's TUI/Web controls, rather than a second standalone browser manager.
 
-The optional `--institutional-browser-mode client|local|existing|server` selects
+The enabled `--institutional-browser-mode client|local|existing|server` selects
 run-owned connections. Windows `client` uses the standalone PowerShell helper
 with existing SSH keys and three explicit server paths (repository, Python, run
 parent). Install on the client once; init cannot wake an unconfigured PC.

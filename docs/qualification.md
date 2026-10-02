@@ -2,6 +2,49 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Explicit institutional choice during init (2026-10-02)
+
+The user authorized design, implementation and commit/push to dev from `bf73e24`.
+Init now reports an unanswered `institutional_browser_mode` through its existing
+`missing`/`next_actions` flow. CLI choices and conversation descriptions share one
+mode definition; explicit `off` disables institutional access while public/OA
+retrieval continues. Inspection does not produce launch arguments until the choice
+is supplied, and reinspection retains the proposed run/state/request identity.
+Partially supplied library settings survive the question. Direct launch/serve
+omission and URL-only compatibility remain unchanged; no new configuration store,
+confirmation record, runtime schema or migration.
+
+Red regressions exposed six failures across the missing choice and the full
+inspect-to-launch path. The old inspector invoked the manual connection planner,
+rejecting client mode and injecting fixed endpoints into local/server. Inspect and
+launch now share the existing validated preview; all seven initial cases pass.
+Final coverage adds partial-choice continuation, conflict rejection, disabled-mode
+zero browser/queue construction and exact Host argument preservation. Instructions
+and bilingual guides now describe the required init question. Off disables the
+institutional panel as well; panel PDF import remains an enabled-mode operation,
+with per-platform `public_only` available when automatic access is unwanted.
+
+The initial focused selection records **153 passed, four failed and two skipped**.
+All four failures reproduce on unchanged baseline `bf73e24`: sandbox restrictions
+prevent socket/Host readiness. An extended selection was interrupted after a
+restricted fixture and a stalled UI test; its partial log is preserved, not counted
+as a pass. The final bounded selection records **169 passed, two skipped, one failed
+and two setup errors**, with five deselected cases. The remaining failure cannot
+create an HTTP socket; the setup errors cannot create fixture directories in the
+read-only `/var/tmp`. Four deselections are the baseline-confirmed socket failures;
+the other is a retained Host-restart fixture requiring `/var/tmp`. No assertion or
+product validator was relaxed. This is focused follow-up evidence, not a new full
+G1, native Host/CPU closure, real browser/SSO or interactive Claude acceptance.
+
+The installed wheel outside the checkout matches **172 package files** exactly.
+Actual read-only CLI inspection covers unanswered/off/client/local/server/existing;
+fresh runtime-bundle identity, compile, undefined-name and documentation checks
+pass. Existing research runs, Profiles, browser logins, frozen bundles and production
+services are unchanged. No paid-model, GPU or subscription call is made.
+Evidence: `.local/qualification/init-institutional-choice-20261002/`, including
+`red.xml`, `focused.xml`, `baseline-environment.xml`, `final-focused.xml`,
+`extended-sandbox-interrupted.log` and `installation.json`.
+
 ## Run-scoped institutional connections (2026-10-02)
 
 The user authorized implementation and phased commits/push to dev from `8f6b39e`.

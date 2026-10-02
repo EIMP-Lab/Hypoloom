@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Explicit institutional choice during init](../design/institutional-access-preparation.md#init-中明确选择机构访问2026-10-02):
+  unanswered versus off versus enabled modes, one CLI/question enum, shared validated
+  preview, retained choices/identity and legacy direct-command compatibility.
+  [Qualification](../qualification.md#explicit-institutional-choice-during-init-2026-10-02)
+  records six red failures, 169 final focused passes, installed wheel/CLI/bundle
+  checks and socket/read-only fixture limits; no new full-suite/native closure claim.
+
 - [Run-scoped institutional ports and cleanup](../design/institutional-access-preparation.md#运行级自动端口与清理2026-10-02):
   October 2 follow-up implemented; endpoints follow individual runs, close on
   terminal/failure/crash paths and preserve login data. Fixed-port conflicts stay

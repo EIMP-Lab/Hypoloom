@@ -66,10 +66,17 @@ OA 作者稿保留实际来源和版本限制，不声称为出版社定稿。�
 
 | mode | 浏览器位置 | 生命周期 |
 | --- | --- | --- |
+| `off` | 不使用机构浏览器 | 不创建机构连接；保留公开/OA，关闭机构面板操作。 |
 | `client` | Windows Edge/Chrome | Windows 脚本发现活跃运行，每个运行建立独立的私有 SSH 转发。 |
 | `local` | 原生 Linux 桌面 | 专用可见 Chrome/Chromium 通过进程管道控制，不开放 CDP TCP 端口。 |
 | `server` | 无桌面的 Linux 服务器 | 每次运行使用独立容器、私有 CDP 和 GUI 转发，要求镜像已安装。 |
 | `existing` | 明确指定的外部回环 CDP | 项目建立受保护的运行连接；外部浏览器仍由原管理者负责。 |
+
+init 未选择时，inspect 的 `missing` 会包含 `institutional_browser_mode`，对话按代码
+返回的选项询问；已有明确选择不重复询问。off 是显式回答，不是省略参数时自动代选。
+完整流程见[初始化指南](initialization.zh-CN.md#聚合检查与一次启动)。off 不提供登录准备
+命令，也不能与机构端点／目录等选项混用。需要机构面板导入 PDF 时，保留启用模式并
+按平台选择 `public_only`；准备登录时选择一种启用模式。
 
 受管监听默认绑定 **端口 0**，读取 OS 实际分配结果，与 Web 转发采用同一原则。
 client/server/existing 可用 `--institutional-port N` 明确固定运行端口；冲突时拒绝接管，

@@ -53,6 +53,8 @@ def arguments(repo, overrides, action="prepare", template="multi-expert-zh"):
         args += ["--set", value]
     if action == "launch":
         args += ["--state-root", str(repo / "state/topic-202609221010"), "--auth-transport", "none"]
+    if action == "inspect":
+        args += ["--institutional-browser-mode", "off"]
     return args
 
 
@@ -173,7 +175,8 @@ def test_aggregate_inspect_is_compact_and_returns_executable_arguments(checkout,
     assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
     capsys.readouterr()
     monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready", "linger": "no"})
-    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline"]
+    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline",
+            "--institutional-browser-mode", "off"]
     assert bootstrap.main(argv) == 0
     output = capsys.readouterr().out
     result = json.loads(output)
@@ -200,10 +203,81 @@ def test_inspect_collects_missing_choices_without_default_gpu_authorization(chec
     monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda *a: {"status": "observed", "devices": [{"uuid": "suggestion-only"}]})
     assert bootstrap.main(["inspect", "--repository", str(repo), "--auth-transport", "none", "--offline"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["missing"] == ["profile", "execution_mode"]
+    assert result["missing"] == ["profile", "execution_mode", "institutional_browser_mode"]
     assert "launch_argv" not in result and not (repo / "state").exists()
     assert bootstrap.main(["inspect", "--repository", str(repo), "--start"]) == 2
     assert "read-only" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("supplied_library", [False, True])
+def test_inspect_requires_institutional_choice_and_reuses_identity(checkout, capsys, monkeypatch, supplied_library):
+    from hypoloom import bootstrap_inspect
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline"]
+    if supplied_library:
+        argv += ["--institutional-library-url", "https://library.example.edu/"]
+    assert bootstrap.main(argv) == 0
+    pending = json.loads(capsys.readouterr().out)
+    assert pending["status"] == "needs_input"
+    assert pending["missing"] == ["institutional_browser_mode"]
+    assert pending["next_actions"][0] == "complete_choices" and "launch_argv" not in pending
+    choices = pending["choices"]["institutional_browser_mode"]
+    assert {choice["value"] for choice in choices} == {"off", "local", "client", "server", "existing"}
+    assert all(choice["description"] for choice in choices)
+    followup = [*argv, "--institutional-browser-mode", "client" if supplied_library else "off"]
+    for key, value in pending["identity"].items():
+        followup += ["--" + key.replace("_", "-"), value]
+    assert bootstrap.main(followup) == 0
+    selected = json.loads(capsys.readouterr().out)
+    assert selected["identity"] == pending["identity"] and not selected["missing"]
+    assert selected["status"] == "ready_for_review" and "choices" not in selected
+    if supplied_library:
+        assert selected["effective_configuration"]["institutional_connection"]["library_url"] == "https://library.example.edu/"
+    assert not (repo / "state").exists()
+
+
+@pytest.mark.parametrize("mode", ["off", "local", "client", "server", "existing", "legacy"])
+def test_inspect_institutional_choice_roundtrips_into_host_without_effects(checkout, capsys, monkeypatch, mode):
+    from hypoloom import bootstrap_inspect, institutional_connection, institutional_runtime
+    from hypoloom.institutional_options import build
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    before = {p: p.read_bytes() for p in (repo / "profiles").rglob("*.yaml")}
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    monkeypatch.setattr(institutional_connection, "_run", lambda *a, **k: pytest.fail("preview managed a process"))
+    monkeypatch.setattr(institutional_connection, "probe", lambda *a, **k: pytest.fail("preview contacted browser"))
+    monkeypatch.setattr(institutional_runtime.RunBrowser, "__init__", lambda *a, **k: pytest.fail("preview allocated a run browser"))
+    choice = (["--institutional-browser-url", "http://127.0.0.1:19222"] if mode == "legacy"
+              else ["--institutional-browser-mode", mode])
+    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline", *choice]
+    assert bootstrap.main(argv) == 0
+    inspected = json.loads(capsys.readouterr().out)
+    assert inspected["status"] == "ready_for_review" and not inspected["missing"]
+    policy = inspected["effective_configuration"]["institutional_connection"]
+    assert inspected["checks"]["institutional_connection"] == policy
+    assert policy["mode"] == ("existing" if mode == "legacy" else mode)
+    launch = [v for v in inspected["launch_argv"][4:] if v != "--summary"]
+    assert bootstrap.main(launch) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["effective_configuration"]["institutional_connection"] == policy
+    host = result["commands"]["host_start"]
+    serve = cli_parser().parse_args(host[host.index("--") + 4:])
+    assert serve.institutional_browser_mode == (None if mode == "legacy" else mode)
+    if mode in {"off", "client", "local", "server"}:
+        assert serve.institutional_browser_url is None
+    access = build(serve)
+    if mode == "off":
+        assert access is None
+        assert policy == {"enabled": False, "mode": "off"}
+        assert "institutional_preparation_argv" not in result["effective_configuration"]
+    else:
+        access.close()
+    assert before == {p: p.read_bytes() for p in (repo / "profiles").rglob("*.yaml")}
+    assert not (repo / "state").exists()
 
 
 def test_generated_arguments_preserve_spaces_and_quotes_in_repository(checkout, capsys, monkeypatch):
@@ -214,7 +288,8 @@ def test_generated_arguments_preserve_spaces_and_quotes_in_repository(checkout, 
     assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
     capsys.readouterr()
     monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
-    assert bootstrap.main(["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline"]) == 0
+    assert bootstrap.main(["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline",
+        "--institutional-browser-mode", "off"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ready_for_review"
     argv = result["launch_argv"]
@@ -245,7 +320,7 @@ def test_managed_inspect_preserves_full_pool_configuration_and_run_subset(checko
             "socket_path": args.socket_path}
     monkeypatch.setattr(managed_gpu_pool, "review", proposal)
     assert bootstrap.main(["inspect", "topic", "--repository", str(repo), "--allow-gpu", "--managed-pool",
-        "--gpu-device-uuid", devices[1], "--auth-transport", "none", "--offline"]) == 0
+        "--gpu-device-uuid", devices[1], "--auth-transport", "none", "--offline", "--institutional-browser-mode", "off"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ready_for_review"
     argv = result["launch_argv"]
@@ -406,7 +481,7 @@ def test_server_browser_ui_requires_a_cdp_endpoint(checkout, capsys):
     assert not (repo / "state").exists()
 
 
-@pytest.mark.parametrize("mode", ["local", "server", "existing"])
+@pytest.mark.parametrize("mode", ["local", "server", "existing", "client"])
 def test_connection_preview_roundtrips_without_starting_browser(checkout, capsys, monkeypatch, mode):
     from hypoloom import institutional_connection, bootstrap_inspect
     repo, overrides = checkout

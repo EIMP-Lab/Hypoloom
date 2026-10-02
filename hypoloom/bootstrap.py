@@ -296,21 +296,15 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":
         raise ValueError("web fallback requires the reviewed OpenAlex adapter")
-    from .institutional_options import build as build_institutional
-    if args.institutional_browser_mode == "server" and not args.institutional_compose_file:
-        args.institutional_compose_file = str(repository / "config/institutional-browser.compose.yaml")
-    access = build_institutional(args)
-    if access is not None:
-        review["institutional_access"] = access.configuration
+    from .institutional_options import preview as institutional_preview
+    review.update(institutional_preview(args, repository))
+    if "institutional_access" in review:
         from .institutional_options import launch_arguments as institutional_arguments
         review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
             "--repository", str(repository), *institutional_arguments(args, include_connection=True)]
-        from .institutional_connection import plan, runtime_plan
-        review["institutional_connection"] = runtime_plan(args) if args.institutional_browser_mode else plan(args, repository)
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
                 "--state-root", str(state)]
-        access.close()
     real = args.auth_transport != "none"
     if real:
         if not args.claude_model or not args.claude_executable or args.literature_adapter != "openalex":

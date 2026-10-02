@@ -16,13 +16,22 @@ import time
 from urllib.parse import urlsplit
 
 
+BROWSER_MODES = {
+    "off": "Disable institutional access; use public/OA retrieval",
+    "local": "Visible browser on this Linux desktop; no SSH tunnel",
+    "client": "Browser on your Windows PC, connected by the Windows SSH helper",
+    "server": "Browser container on this server, viewed through a private GUI forward",
+    "existing": "An explicitly supplied external loopback CDP browser endpoint",
+}
+
+
 class ConnectionFailure(RuntimeError):
     """Fixed diagnostics, never raw browser or SSH errors containing credentials."""
 
 
 def add_arguments(parser):
-    parser.add_argument("--institutional-browser-mode", choices=("existing", "local", "server", "client"),
-                        help="explicit connection placement; local starts a Linux desktop browser, server uses Compose")
+    parser.add_argument("--institutional-browser-mode", choices=tuple(BROWSER_MODES),
+                        help="explicit institutional choice: off, Linux desktop, Windows client, server container or existing endpoint")
     parser.add_argument("--institutional-browser-executable", help="local Chrome/Chromium executable")
     parser.add_argument("--institutional-browser-profile", help="absolute dedicated local browser data directory")
     parser.add_argument("--institutional-connect-timeout", type=float, default=30)
@@ -43,6 +52,10 @@ def configure(args):
     mode = getattr(args, "institutional_browser_mode", None)
     timeout = getattr(args, "institutional_connect_timeout", 30)
     port = getattr(args, "institutional_port", 0)
+    if mode == "off":
+        if port != 0 or timeout != 30 or any(getattr(args, "institutional_" + name, None) for name in (
+                "browser_url", "browser_ui_url", "library_url", "browser_executable", "browser_profile", "compose_file")):
+            raise ValueError("institutional browser mode off conflicts with connection options")
     if isinstance(port, bool) or not 0 <= port <= 65535:
         raise ValueError("institutional port must be between 0 and 65535")
     if port and mode not in {"existing", "client", "server"}:
@@ -70,6 +83,7 @@ def runtime_plan(args):
     """Stable launch policy; no listener, directory, browser or Docker operation."""
     configure(args)
     mode = args.institutional_browser_mode
+    if mode == "off": return {"enabled": False, "mode": "off"}
     if mode != "existing" and (args.institutional_browser_url or args.institutional_browser_ui_url):
         raise ValueError("managed run connections discover their addresses; use --institutional-port for a fixed listener")
     from .institutional_browser import PlaywrightInstitutionalBrowser
@@ -152,6 +166,7 @@ def plan(args, repository=None):
     # Explicit manual connect commands retain their operator-owned semantics.
     # Run-owned init/serve/prepare use runtime_plan instead.
     mode = getattr(args, "institutional_browser_mode", None)
+    if mode == "off": return {"enabled": False, "mode": "off"}
     if mode == "client": raise ValueError("client connections are created by a run or institutional prepare")
     if mode and not args.institutional_browser_url:
         args.institutional_browser_url = "http://127.0.0.1:9222"

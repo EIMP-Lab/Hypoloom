@@ -60,14 +60,32 @@ a failed launch or uncertain creation must not claim a run was started or return
 these post-start entries. After restarting CC, use `/autoresearch-monitor` to
 select from existing stores; see [monitoring](../../USAGE.md#tui-web-and-human-decisions).
 
-Institutional access can select `--institutional-browser-mode local|existing|server`
-during init. Local starts/reuses a dedicated browser on the native Linux desktop
-without a tunnel. Existing reuses a client browser/SSH forward; server uses the
-existing Compose image. Inspection only presents preparation commands. Start now
-checks an explicitly selected connection before creating a Host; failure creates
-no research. Optional standalone preparation can handle publisher logins beforehand.
-Windows has a standalone PowerShell connector and optional current-user logon task;
-server init cannot launch an unconfigured remote PC. See the
+Institutional access is an explicit init choice. When omitted, inspection returns
+`institutional_browser_mode` in `missing` and descriptions in
+`choices.institutional_browser_mode`. The conversation asks for that choice before
+inspection provides launch arguments. Previously supplied choices are reused:
+
+| Choice | Value | Behavior |
+| --- | --- | --- |
+| No institutional browser | `off` | Keep public/OA retrieval; disable institutional-panel operations. |
+| Native Linux desktop | `local` | Open a dedicated browser on the project's Linux desktop; no SSH tunnel. |
+| Windows PC | `client` | Use local Edge/Chrome and the helper's run-scoped SSH forwards. |
+| Server container | `server` | Use an installed image and a private per-run GUI forward. |
+| Existing external connection | `existing` | Use an explicitly supplied external CDP endpoint. |
+
+Pass the answer through `--institutional-browser-mode`, for example
+`--institutional-browser-mode off`. Omission does not count as choosing off.
+A legacy URL-only input already answers the choice and retains its unmanaged
+behavior. Existing direct launch/serve scripts may still omit the mode. Off rejects
+conflicting connection or institutional-specific options; remove those options
+when changing the selection.
+
+Inspect and launch preview share the existing validators without contacting a
+browser or allocating ports. After Start now, the Host allocates resources for
+the run; missing connectivity/login uses bounded acquisition and OA fallback.
+An explicit standalone preparation choice can handle logins first; preparation
+does not save the mode for future runs. Windows still needs a one-time local helper
+and SSH key/agent setup; server init cannot launch an unconfigured PC. See the
 [institutional guide](institutional-access.md#prepare-the-connection-during-init)
 for commands, stopping and qualification limits. SSO/MFA remains human-operated.
 

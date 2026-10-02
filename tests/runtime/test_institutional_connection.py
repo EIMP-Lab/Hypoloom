@@ -37,6 +37,36 @@ def test_default_external_status_and_stop_never_manage_resources(monkeypatch):
     assert connection.operate(selected, "stop")["status"] == "unmanaged"
 
 
+def test_off_and_legacy_omission_do_not_construct_browser_access(monkeypatch):
+    from hypoloom import institutional_options, institutional_runtime
+    monkeypatch.setattr(institutional_options, "PlaywrightInstitutionalBrowser", lambda *a, **k: pytest.fail("created browser"))
+    monkeypatch.setattr(institutional_runtime, "RunAccess", lambda *a, **k: pytest.fail("created access queue"))
+    assert institutional_options.build(args()) is None
+    selected = args("--institutional-browser-mode", "off")
+    assert institutional_options.build(selected) is None
+    assert institutional_options.preview(selected) == {"institutional_connection": {"enabled": False, "mode": "off"}}
+    assert institutional_options.launch_arguments(selected, include_connection=True) == ["--institutional-browser-mode", "off"]
+    with pytest.raises(ValueError): connection.operate(selected, "start")
+
+
+@pytest.mark.parametrize("values", [
+    ("--institutional-browser-url", "http://127.0.0.1:9222"),
+    ("--institutional-browser-ui-url", "http://127.0.0.1:5800"),
+    ("--institutional-library-url", "https://library.example.edu/"),
+    ("--institutional-browser-profile", "/tmp/dedicated"),
+    ("--institutional-browser-executable", "/usr/bin/chromium"),
+    ("--institutional-compose-file", "/tmp/browser.yaml"),
+    ("--institutional-port", "9223"), ("--institutional-connect-timeout", "60"),
+    ("--institutional-provider-mode", "IEEE=auto"),
+    ("--institutional-acquisition-seconds", "90"), ("--institutional-manual-seconds", "300"),
+])
+def test_off_refuses_conflicting_institutional_configuration(values, monkeypatch):
+    from hypoloom import institutional_options
+    monkeypatch.setattr(institutional_options, "PlaywrightInstitutionalBrowser", lambda *a, **k: pytest.fail("created browser"))
+    with pytest.raises(ValueError):
+        institutional_options.build(args("--institutional-browser-mode", "off", *values))
+
+
 @pytest.mark.parametrize("values", [
     ("--institutional-connect-timeout", "nan"), ("--institutional-connect-timeout", "121"),
     ("--institutional-browser-profile", "/tmp/profile"),

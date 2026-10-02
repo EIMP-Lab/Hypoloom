@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 2 explicit init institutional choice implemented: existing missing/next-action
+  output asks for off/local/client/server/existing; prior answers and launch identity
+  survive reinspection. CLI and question options share one enum. Inspect/launch
+  reuse one preview, fixing manual-planner client rejection and fixed-port injection.
+  Off creates no institutional browser/queue; direct legacy omission/URL remain
+  compatible. No new config store/schema or retained-run migration. Final focused
+  169 pass / two skip; socket restrictions and read-only /var/tmp leave one failure,
+  two setup errors and five deselections. Four initial socket failures reproduce on
+  baseline. Installed 172-file wheel/CLI/fresh bundle checks pass; no new full G1,
+  native closure or real SSO claim. Existing runs/Profiles/logins/services unchanged.
+  User authorizes commit/push dev.
+  [Design](../design/institutional-access-preparation.md#init-中明确选择机构访问2026-10-02),
+  [evidence](../qualification.md#explicit-institutional-choice-during-init-2026-10-02).
+
 - October 2 run-scoped institutional connections implemented and qualified:
   ports/tunnels retire on completion/termination, startup failure or Host exit;
   preserve login profiles and external browsers. Fixed-port failures stay local

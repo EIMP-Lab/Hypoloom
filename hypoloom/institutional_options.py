@@ -33,7 +33,7 @@ def build(args):
     from .institutional_connection import configure
     configure(args)
     settings = options(args)
-    if getattr(args, "institutional_browser_mode", None):
+    if getattr(args, "institutional_browser_mode", None) not in (None, "off"):
         from .institutional_connection import runtime_plan
         from .institutional_runtime import RunAccess
         return RunAccess(runtime_plan(args), **settings)
@@ -42,15 +42,33 @@ def build(args):
             raise ValueError("institutional browser UI requires a browser endpoint")
         if (args.institutional_library_url or args.institutional_browser_ui_url or settings["provider_modes"]
                 or settings["acquisition_seconds"] != 120 or settings["manual_seconds"] != 600):
-            raise ValueError("institutional options require --institutional-browser-url")
+            raise ValueError("institutional options require an enabled browser mode or --institutional-browser-url")
         return None
     return InstitutionalAccess(PlaywrightInstitutionalBrowser(args.institutional_browser_url,
         library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url), **settings)
 
 
+def preview(args, repository=None):
+    """The same validated, resource-free configuration for inspect and launch."""
+    from pathlib import Path
+    from .institutional_connection import plan, runtime_plan
+    mode = getattr(args, "institutional_browser_mode", None)
+    if mode == "server" and not args.institutional_compose_file:
+        args.institutional_compose_file = str(Path(repository or Path.cwd()) / "config/institutional-browser.compose.yaml")
+    access = build(args)
+    if access is None:
+        return {"institutional_connection": {"enabled": False, "mode": "off"}} if mode == "off" else {}
+    try:
+        return {"institutional_access": access.configuration,
+                "institutional_connection": runtime_plan(args) if mode else plan(args, repository)}
+    finally:
+        access.close()
+
+
 def launch_arguments(args, *, include_connection=False):
     result = []
-    if args.institutional_browser_url or getattr(args, "institutional_browser_mode", None):
+    mode = getattr(args, "institutional_browser_mode", None)
+    if args.institutional_browser_url or mode not in (None, "off"):
         for name in ("browser_url", "browser_ui_url", "library_url", "acquisition_seconds", "manual_seconds"):
             value = getattr(args, "institutional_" + name)
             if value is not None: result += ["--institutional-" + name.replace("_", "-"), str(value)]

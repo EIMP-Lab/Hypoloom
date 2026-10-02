@@ -50,13 +50,29 @@ Prepare only、启动失败或创建结果未确认时，不能宣称启动成�
 启动后入口。重开 CC 后可使用 `/autoresearch-monitor` 从已有状态库选择运行；
 详见[监控教程](../../USAGE.zh-CN.md#tuiweb-与人工决策)。
 
-机构全文可在 init 选择 `--institutional-browser-mode local|existing|server`。local 适用于
-项目所在的原生 Linux 桌面，直接启动／复用专用浏览器，无需隧道；existing 复用客户端
-浏览器及 SSH 转发；server 使用已有 Compose 镜像。普通检查只展示准备命令，实际
-Start now 先验证连接，失败不创建 Host。可以提前执行独立 prepare 集中登录多个平台。
-Windows 提供独立 PowerShell 连接脚本和可选的当前用户登录任务；服务器不能凭 init
+机构访问是 init 的明确选择项。未提供选择时，检查返回
+`missing: ["institutional_browser_mode", …]` 及 `choices.institutional_browser_mode`；
+对话据此询问，未回答前不提供启动参数。已经明确选择时沿用，不重复询问：
+
+| 选择 | 参数值 | 行为 |
+| --- | --- | --- |
+| 不使用机构浏览器 | `off` | 保留公开检索与 OA 回退，关闭机构面板操作。 |
+| Linux 本机桌面 | `local` | 在项目所在 Linux 桌面打开专用浏览器，无需 SSH 隧道。 |
+| Windows 本地电脑 | `client` | 本机 Edge/Chrome 通过连接脚本提供运行级 SSH 转发。 |
+| 服务器容器 | `server` | 使用已安装镜像及本次运行的私有 GUI 转发。 |
+| 已有外部连接 | `existing` | 使用明确提供的外部 CDP 端点。 |
+
+回答转换为同一个 `--institutional-browser-mode` 参数，例如不使用时传
+`--institutional-browser-mode off`；不传不等于已经选择 off。旧的仅 URL 参数视为
+已明确选择外部连接，保留原非受管行为。直接 launch/serve 的旧脚本仍可省略模式。
+off 与机构连接或机构专用配置同时提供会被拒绝，请在更改选择时移除冲突参数。
+
+检查与启动预览共用原校验器，预览不连接浏览器或分配端口。确认 Start now 后由 Host
+为运行分配资源；暂未连通／未登录沿用有限获取和 OA 回退，不要求所有平台先登录。
+也可明确选择独立 prepare 提前集中登录；prepare 不保存后续运行的模式选择。
+Windows 首次仍需在本机配置脚本与 SSH 密钥／ssh-agent；服务器不能凭 init
 启动未配置的另一台电脑。命令、停止方式及真人验收限制见
-[机构全文指南](institutional-access.zh-CN.md#init-自动准备连接)。学校 SSO/MFA 仍需真人完成。
+[机构全文指南](institutional-access.zh-CN.md#init-自动准备连接)。学校 SSO/MFA 仍由真人完成。
 
 ## 预算集中配置
 
