@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import sys
 from time import monotonic, sleep
 
 from .institutional_access import article_url, publisher, provider_catalog
 from .institutional_options import add_arguments, add_preparation_argument, build, options, preparation_selection
+from .institutional_dialogue import PreparationDialogue, PreparationEnded
 
 
 def add_parser(subparsers):
@@ -19,6 +23,12 @@ def add_parser(subparsers):
                          help="verify a sample through the same browser and PDF identity validator")
     prepare.add_argument("--list", action="store_true", help="print the platform catalog without connecting")
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
+    prepare.add_argument("--agent-session", action="store_true", help="receive init answers over the private preparation socket instead of stdin")
+    dialogue = commands.add_parser("preparation", help="observe or answer a live init preparation session")
+    dialogue.add_argument("preparation_action", choices=("status", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
+    dialogue.add_argument("--state-root", required=True)
+    dialogue.add_argument("--provider")
+    dialogue.add_argument("--sample")
     connect = commands.add_parser("connect", help="inspect, start or stop an operator-owned browser connection")
     connect.add_argument("connection_action", choices=("status", "start", "stop"))
     connect.add_argument("--repository")
@@ -43,9 +53,10 @@ def sample_url(value):
     return article_url(value)
 
 
-def _observe(access, provider):
+def _observe(access, provider, *, cancelled=lambda: False):
     deadline = monotonic() + access.acquisition_seconds + 1
     while monotonic() < deadline:
+        if cancelled(): raise PreparationEnded("finished")
         access.tick({"preparation"})
         group = next(g for g in access.status("preparation")["groups"] if g["provider"] == provider)
         result = group["preparation"]
@@ -55,29 +66,29 @@ def _observe(access, provider):
     return {"state": "acquisition_timeout"}
 
 
-def _verify(access, provider, samples, output):
+def _verify(access, provider, samples, output, *, cancelled=lambda: False):
     results = []
     for url in samples:
         access.control("preparation", provider, "verify", url=url)
-        result = {"provider": provider, "sample_url": url, **_observe(access, provider)}
+        result = {"provider": provider, "sample_url": url, **_observe(access, provider, cancelled=cancelled)}
         output(json.dumps(result, ensure_ascii=False))
         results.append(result)
     return results
 
 
-def _summary(rows, modes, output):
+def _summary(rows, modes, output, **extra):
     # This is a transient review, not saved proof of authentication or subscription.
-    output(json.dumps({"preparation_summary": rows, "provider_modes": modes,
+    output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
         "provider_mode_argv": [part for name, mode in modes.items()
                                for part in ("--institutional-provider-mode", f"{name}={mode}")]}, ensure_ascii=False))
 
 
-def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes):
+def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False):
     row = {"provider": provider, "state": "not_checked", "samples": []}
     if modes.get(provider) == "public_only":
         return {**row, "state": "public_only"}, False
     if samples:
-        row["samples"] = _verify(access, provider, samples, output)
+        row["samples"] = _verify(access, provider, samples, output, cancelled=cancelled)
         if all(r["state"] == "sample_verified" for r in row["samples"]):
             return {**row, "state": "sample_verified"}, False
         row["state"] = next(r["state"] for r in row["samples"] if r["state"] != "sample_verified")
@@ -85,13 +96,17 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
         return row, False
     # Preparing an entry is not a login assertion. Reuse cookies in the same browser.
     access.control("preparation", provider, "open")
-    opened = _observe(access, provider)
+    opened = _observe(access, provider, cancelled=cancelled)
     output(json.dumps({"provider": provider, **opened}, ensure_ascii=False))
     if opened["state"] != "opened":
         return {**row, "state": opened["state"]}, False
     while True:
-        answer = input_fn(f"{provider}: use the existing session or authenticate if needed. "
-            "Enter to finish/recheck samples; DOI/URL to verify; s skip; p public only; q finish batch: ").strip()
+        try:
+            answer = input_fn(f"{provider}: use the existing session or authenticate if needed. "
+                "Enter to finish/recheck samples; DOI/URL to verify; s skip; p public only; q finish batch: ").strip()
+        except EOFError:
+            output("Interactive input is unavailable; init must use --agent-session and the preparation commands.")
+            return {**row, "state": "input_required"}, True
         if answer.lower() in {"s", "q"}:
             return {**row, "state": "skipped"}, answer.lower() == "q"
         if answer.lower() == "p":
@@ -109,12 +124,44 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
             # Keep successful results; only recheck gaps after the operator's action.
             verified = {r["sample_url"] for r in row["samples"] if r["state"] == "sample_verified"}
             row["samples"] = [r for r in row["samples"] if r["state"] == "sample_verified"] + _verify(
-                access, provider, [url for url in samples if url not in verified], output)
+                access, provider, [url for url in samples if url not in verified], output, cancelled=cancelled)
             row["state"] = next((r["state"] for r in row["samples"] if r["state"] != "sample_verified"), "sample_verified")
         return row, False
 
 
+def _connection(access, seconds, dialogue):
+    if dialogue: dialogue.update(state="checking_connection", actions=["finish"])
+    future = access.check_connection("preparation", timeout_seconds=seconds)
+    while not future.done():
+        if dialogue and dialogue.cancelled(): raise PreparationEnded("finished")
+        sleep(.05)
+    return future.result()
+
+
+def _answer(args, output):
+    from .control_protocol import ControlRequest, request_over_socket
+    root = Path(args.state_root)
+    info = root.stat()
+    if root.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise ValueError("preparation root must be private and owned by the current user")
+    status = args.preparation_action == "status"
+    if status and (args.provider or args.sample): raise ValueError("status does not take platform answers")
+    payload = {} if status else {"action": args.preparation_action}
+    if args.provider:
+        from .institutional_access import provider_name
+        payload["provider"] = provider_name(args.provider)
+    if args.sample: payload["sample"] = args.sample
+    response = request_over_socket(root / "control.sock", ControlRequest(1, "institutional-preparation", None,
+        "PREPARATION_STATUS" if status else "PREPARATION_ANSWER", payload), timeout=3)
+    output(json.dumps(response.to_mapping(), ensure_ascii=False))
+    return 0 if response.status == "accepted" else 1
+
+
 def run(args, *, input_fn=input, output=print):
+    if output is print:
+        output = lambda text: print(text, flush=True)
+    if getattr(args, "institutional_action", None) == "preparation":
+        return _answer(args, output)
     if getattr(args, "institutional_action", None) in {"connections", "forward-ready", "watch"}:
         from .institutional_client import run as client
         return client(args, output=output)
@@ -124,6 +171,8 @@ def run(args, *, input_fn=input, output=print):
     if args.list:
         output(json.dumps(provider_catalog(), ensure_ascii=False))
         return 0
+    if args.agent_session and args.non_interactive:
+        raise ValueError("--agent-session cannot be combined with --non-interactive")
     samples = list(dict.fromkeys(sample_url(value) for value in args.sample))
     modes = options(args)["provider_modes"]
     values = args.provider if args.provider is not None else ([publisher(url) for url in samples] if samples else None)
@@ -143,28 +192,50 @@ def run(args, *, input_fn=input, output=print):
     if access is None: raise ValueError("preparation requires an enabled browser mode or --institutional-browser-url")
     rows = []
     control = directory = None
+    dialogue = PreparationDialogue(args.institutional_manual_seconds) if args.agent_session else None
+    cancelled = dialogue.cancelled if dialogue else lambda: False
     try:
-        if args.institutional_browser_mode:
-            from pathlib import Path
+        if args.institutional_browser_mode or dialogue:
             import tempfile
             from .institutional_client import PreparationControl
-            access.sync({"preparation"})
+            if args.institutional_browser_mode: access.sync({"preparation"})
             root = Path(args.repository or Path.cwd()) / "state"
             root.mkdir(parents=True, exist_ok=True)
             directory = tempfile.TemporaryDirectory(prefix="institutional-prepare-", dir=root)
-            control = PreparationControl(directory.name, access)
+            control = PreparationControl(directory.name, access, dialogue.handle if dialogue else None)
+            command = [sys.executable, "-B", "-m", "hypoloom", "institutional", "preparation"]
             output(json.dumps({"state_root": directory.name,
-                "connection": access.status("preparation")["connection"]}, ensure_ascii=False))
+                "connection": access.status("preparation").get("connection", {"mode": "existing", "state": "unchecked"}),
+                "status_argv": [*command, "status", "--state-root", directory.name],
+                "answer_argv": [*command, "<action>", "--state-root", directory.name]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
+        while True:
+            connection = _connection(access, args.institutional_connect_timeout, dialogue)
+            output(json.dumps({"connection": connection}, ensure_ascii=False))
+            if connection["state"] == "ready": break
+            if not dialogue:
+                _summary([{"provider": name, "state": "not_checked", "samples": []} for name in selected], modes, output,
+                    connection=connection, next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
+                return 1
+            output("Browser connection is unavailable. Init can retry the connection or finish preparation; no platform login was attempted.")
+            dialogue.wait(connection=connection)
         for provider in selected:
+            if cancelled(): raise PreparationEnded("finished")
+            if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
             row, stop = _prepare_platform(access, provider, [url for url in samples if publisher(url) == provider],
-                interactive=not args.non_interactive, input_fn=input_fn, output=output, modes=modes)
+                interactive=not args.non_interactive,
+                input_fn=(lambda prompt: dialogue.wait(provider=provider)) if dialogue else input_fn,
+                output=output, modes=modes, cancelled=cancelled)
             rows.append(row)
             if stop:
                 rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
                 break
         _summary(rows, modes, output)
         return int(any(row["state"] not in {"sample_verified", "not_checked", "skipped", "public_only"} for row in rows))
+    except PreparationEnded as exc:
+        rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
+        _summary(rows, modes, output, preparation_state=str(exc))
+        return int(str(exc) != "finished")
     finally:
         try:
             if control is not None: control.close()

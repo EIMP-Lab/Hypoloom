@@ -5,6 +5,7 @@ import os
 import errno
 from pathlib import Path
 import threading
+import time
 
 from .institutional_access import InstitutionalAccess
 from .institutional_browser import PlaywrightInstitutionalBrowser
@@ -114,6 +115,23 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
             self.close()
             raise
 
+    def check_connection(self, *, timeout_seconds):
+        deadline = time.monotonic() + timeout_seconds
+        # Wait for the existing client transport before starting Playwright.
+        # A present socket still requires a real CDP/context connection below.
+        while self.socket_path is not None and not self.socket_path.exists():
+            if self.stopping.is_set(): return {"state": "closed"}
+            remaining = deadline - time.monotonic()
+            if remaining <= 0: return {"state": "waiting_for_client"}
+            time.sleep(min(.1, remaining))
+        result = super().check_connection(timeout_seconds=max(.001, deadline - time.monotonic()))
+        if result["state"] != "ready":
+            observed = self.details()
+            result = {"state": observed["state"] if observed["state"] in
+                {"waiting_for_client", "unavailable", "closed"} else "browser_unavailable"}
+            if "reason" in observed: result["reason"] = observed["reason"]
+        return result
+
     def release(self):
         """Host-thread release interrupts transports before worker-thread close."""
         self.stopping.set()
@@ -215,6 +233,10 @@ class RunAccess:
         with self.lock:
             if run_id not in self.instances: raise ValueError("run_connection_inactive")
             return self._selected(run_id).control(run_id, *args, **kwargs)
+
+    def check_connection(self, run_id, *, timeout_seconds):
+        with self.lock:
+            return self._selected(run_id).check_connection(run_id, timeout_seconds=timeout_seconds)
 
     def close(self):
         try:

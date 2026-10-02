@@ -69,8 +69,9 @@ with grep, hand-written Python, repeated shell probes or source inspection.
 Read [Initialization reference](references/init-details.md) only for a specific
 compatibility blocker, custom source or new Profile authoring.
 
-Before the user's final confirmation, perform **zero writes**. No Host, Agent,
-service, scope, or run exists because of inspection. Do not contact a model
+Inspection performs **zero writes**. Explicit institutional preparation may create
+its temporary connection and control directory; research launch remains separate.
+No Host, Agent, service, scope, or run exists because of inspection. Do not contact a model
 provider, install dependencies, send notifications, or change existing Profiles,
 research runs, credentials or project settings. Preserve an inherited nonempty
 runtime-family conflict; never override it. Every Python invocation uses
@@ -124,9 +125,12 @@ Show its common catalog and default selection: IEEE, ScienceDirect and Springer;
 ACM is public-first with optional login. Offer defaults, custom platforms or skip.
 Reuse prior choices; repeated `--institutional-prepare-provider` replaces the list,
 and `none` skips preparation without limiting research. Re-inspect with the same
-launch identity. Use the complete `institutional_preparation_argv`; optional
-`--sample` values check the existing session first. See [details](references/init-details.md)
-for the shared library entry and result handling. Preview remains read-only.
+launch identity. Run the complete `institutional_preparation_argv` with its
+`--agent-session` in the background; read its immediately flushed `status_argv`.
+Use that command to observe connection readiness and pending answers. Only an
+observed opened page permits telling the user to log in. Submit their answer using
+`answer_argv` (complete/verify/skip/public_only/finish); never feed background stdin.
+See [details](references/init-details.md) for connection retry, deadlines and samples.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
 Show `preparation_summary`: opened pages without samples remain not_checked;
@@ -139,9 +143,11 @@ and finite 120-second acquisition / 600-second manual defaults. During research,
 use Host TUI/Web controls rather than another standalone browser manager.
 
 The enabled `--institutional-browser-mode client|local|existing|server` selects
-run-owned connections. Windows `client` uses the standalone PowerShell helper
-with existing SSH keys and three explicit server paths (repository, Python, run
-parent). Install on the client once; init cannot wake an unconfigured PC.
+run-owned connections. Windows `client` has a unified local `Init` entry that starts
+discovery and remote init using the same SSH target/repository. Standard paths are
+derived; no separate helper terminal is needed. First local setup/SSH authentication
+is still required; server-only init cannot start an unconfigured client. Missing
+connections mean unavailable transport, not proof that a helper was never installed.
 `local` uses the actual Linux user's visible browser over a process pipe, without
 SSH or Docker. Check the current X11/Wayland session. `existing` wraps an explicitly
 managed external endpoint. `server` uses the repository image/environment with

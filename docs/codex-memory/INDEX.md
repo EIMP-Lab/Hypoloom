@@ -1,5 +1,14 @@
 # Development memory index
 
+- [Init-owned institutional connection and dialogue](../design/institutional-access-preparation.md#init-内完成连接和交互2026-10-02):
+  one browser readiness check before platforms, private preparation answers for
+  background init, finite waits/cleanup and a Windows terminal Init entry that
+  starts client discovery and remote init together. Reuses existing SSH/task
+  ownership and control transport; first local entry/authentication remain real
+  prerequisites. Existing research runs and browser login profiles stay unchanged.
+  [Qualification](../qualification.md#init-owned-institutional-connection-and-dialogue-2026-10-02)
+  retains reproductions, real browser/SSH closure, focused/full results and install checks.
+
 - [Issue report evidence completeness](../design/issue-report-evidence.md):
   first-failure retry closure, terminal sources, existing run-wide accounting,
   metadata priority, explicit traversal/inventory omissions and independent

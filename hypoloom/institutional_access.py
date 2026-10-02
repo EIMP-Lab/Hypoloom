@@ -238,6 +238,12 @@ class InstitutionalAccess:
         return {**self.backend.configuration, "acquisition_seconds": self.acquisition_seconds,
                 "manual_seconds": self.manual_seconds, "provider_modes": dict(self.provider_modes)}
 
+    def check_connection(self, run_id, *, timeout_seconds):
+        # Playwright and later acquisition must run on the same existing worker.
+        with self._lock:
+            if self._closed: raise ValueError("institutional access is closed")
+            return self._executor.submit(self.backend.check_connection, timeout_seconds=timeout_seconds)
+
     def paper_identity(self, run_id, url):
         with self._lock:
             known = next((p.identity for p in self._items.values()

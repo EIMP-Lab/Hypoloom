@@ -544,6 +544,12 @@ def test_connection_preview_roundtrips_without_starting_browser(checkout, capsys
     command = review["institutional_connection_argv"]
     parsed = cli_parser().parse_args(command[4:])
     assert parsed.institutional_action == "connections"
+    assert "--agent-session" in review["institutional_preparation_argv"]
+    if mode == "client":
+        entry = review["institutional_client_entry"]
+        assert entry["argv"][entry["argv"].index("-Repository") + 1] == str(repo)
+        assert "Init" in entry["argv"] and entry["runs_on"] == "Windows client"
+        assert bootstrap.compact_result(result)["effective_configuration"]["institutional_client_entry"] == entry
     host = result["commands"]["host_start"]
     serve = cli_parser().parse_args(host[host.index("--") + 4:])
     assert serve.institutional_browser_mode == mode

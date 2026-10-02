@@ -1,5 +1,26 @@
 # Current Hypoloom development state
 
+- October 2 institutional init: Windows terminal SSH entry confirmed. Preparation
+  verifies the actual browser once before platforms and uses existing private
+  control transport for background answers, with flushed progress and finite
+  waits/cleanup. EOF becomes input_required; ordinary research connection retry
+  stays unchanged. Windows Init derives paths, checks SSH/remote tools, starts
+  the owned discovery task and enters remote init; first local entry/auth remain
+  prerequisites. No durable authority, Profile change or retained-run migration.
+  Final 336 related tests pass, including real Chromium/isolated SSH and PowerShell
+  orchestration; installed 173-file wheel/CLI/MCP/fresh bundle pass.
+  Independent isolated Host/CPU closure: 12 Agents / one Process, clean Oracle,
+  no open Attempts, live recorded groups, sockets or retained connection resources.
+  Full G1 exactly covers 6,825 identities: 6,753 pass / 71 skip / one failure.
+  Existing native accounting test fails under CC 2.1.287 (outer input 54 vs model
+  ledger 29); unchanged recheck and isolated 78cc3de baseline reproduce it. This
+  independent accounting compatibility issue remains open; no assertion weakened.
+  Windows native scheduler/visible desktop/SSO remain machine-specific checks;
+  no paid/GPU claim.
+  User authorizes commit to dev. [Design](../design/institutional-access-preparation.md#init-内完成连接和交互2026-10-02),
+  [qualification](../qualification.md#init-owned-institutional-connection-and-dialogue-2026-10-02).
+  Evidence stays in `.local/qualification/institutional-init-20261002/`.
+
 - October 2 issue report completeness: recent failures retain the first unresolved
   retry chain and recorded final-report/terminal sources; every scope keeps the
   existing run-wide accounting projection. Budget strings, public aliases and

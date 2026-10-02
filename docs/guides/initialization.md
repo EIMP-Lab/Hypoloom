@@ -95,8 +95,13 @@ Inspect and launch preview share the existing validators without contacting a
 browser or allocating ports. After Start now, the Host allocates resources for
 the run; missing connectivity/login uses bounded acquisition and OA fallback.
 An explicit standalone preparation choice can handle logins first; preparation
-does not save the mode for future runs. Windows still needs a one-time local helper
-and SSH key/agent setup; server init cannot launch an unconfigured PC. See the
+does not save the mode for future runs. Init uses a background `--agent-session`:
+connection readiness precedes platforms, and finish/verify/skip answers return
+through the init conversation, without background stdin. Windows terminal users
+can use the unified local `Init` entry to start discovery and remote init together;
+standard paths are derived and no separate helper terminal is needed. First local
+entry setup and SSH authentication remain necessary; server-only init cannot start
+an unconnected PC. See the
 [institutional guide](institutional-access.md#prepare-the-connection-during-init)
 for commands, stopping and qualification limits. SSO/MFA remains human-operated.
 

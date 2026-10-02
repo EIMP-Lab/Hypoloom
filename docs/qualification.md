@@ -2,6 +2,82 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Init-owned institutional connection and dialogue (2026-10-02)
+
+From `78cc3de`, the user authorized design, implementation and commit to dev,
+confirming a Windows terminal SSH entry. The failed preparation never created its
+proposed research run: one unavailable client connection consumed three separate
+120-second platform windows. A separate reproduction confirms that the background
+terminal path raises EOF after a browser opens but stdin is unavailable.
+
+Preparation now checks the actual CDP/context connection on the existing browser
+worker before platform operations, using the existing connection timeout. Init's
+generated command uses a private conversation session: answers travel through the
+existing temporary control socket, progress flushes immediately, and finite answer
+waits, finish and EOF close owned resources. Opened pages and unverified completion
+never become login/subscription proof. The Windows `Init` entry derives standard
+paths, checks SSH and remote tools, starts its existing owned discovery task, then
+enters remote init; existing ownership checks and browser profiles are preserved.
+The task remains available for research/later sessions. First local script access
+and valid SSH authentication remain necessary; a server cannot launch programs on
+an unconnected Windows machine. No new durable authority or research migration.
+
+Six new regressions fail on the baseline (`red.xml`). Final related validation
+passes **336 tests in 205.72 seconds**, including isolated real SSH, actual Chromium,
+PowerShell parser/runtime checks, private answers, sample identity, platform modes,
+source/preview boundaries and existing Host lifecycle cases. An actual subprocess
+with closed stdin emits progress before exit, reports one missing-client connection,
+never starts a platform action, and releases its private socket, relay port and
+temporary directory after finish. A real Chromium case verifies connection/open/
+sample work stays on one worker, sample bytes pass the original validator, and the
+operator's existing tab survives cleanup. No research database is created.
+
+Original intermediate results are retained: an implementation indentation error
+caused repeat prompts and a deliberately interrupted focused test; the old EOF
+assertion was updated for explicit input_required handling. An early readiness
+check affected ordinary runtime connection behavior, so it was moved into the
+preparation-only check without weakening the existing runtime test. A browser
+fixture initially pointed at an absent Playwright cache; explicitly selecting the
+installed Chrome resolves it. Privacy fixture setup was updated for readiness,
+while secret-filtering assertions remain intact.
+
+An additional isolated actual Host/CPU sample starts with waiting_for_client and
+reaches COMPLETED revision 18, closing **12 Agents / one Process**. Independent
+SQLite inspection counts one experiment, accepted outcome and goal verdict;
+the existing Oracle is clean. No open Attempt, live recorded process group,
+socket, connection directory or occupied relay port remains after Host close.
+Its target/data are retained for repeatable read-only audit. The audit launcher
+first lacked the test-helper import path and failed before creating any state;
+the corrected invocation and original failure are both retained.
+
+An isolated wheel install matches **173 package files** byte-for-byte with source
+and a fresh runtime bundle. Installed background preparation, private finish,
+resource cleanup, CLI parsing, MCP initialization and bundle identity pass.
+Compile, undefined-name/duplicate-key lint and whitespace checks pass.
+
+Full offline G1 covers all **6,825 collected identities exactly once: 6,753 passed,
+71 skipped, one failed, zero errors**, in eight disjoint file groups. The sole
+failure is the existing native model-usage accounting case under Claude Code
+2.1.287: the fallback result's outer usage reports 54 input tokens while the
+per-Attempt model ledger reports 29. The unchanged adapter conservatively retains
+the larger aggregate, so the test's expected modelUsage normalization is absent.
+Research reaches COMPLETED with all 12 Agents / one CPU Process closed; independent
+inspection finds no live recorded process group or socket. An unchanged focused
+recheck and an isolated checkout of baseline **78cc3de both reproduce the same
+failure**. No accounting implementation or assertion was changed. This separate
+accounting compatibility issue remains open; full G1 is not claimed green.
+
+Actual Windows Task Scheduler/visible desktop and institution SSO still require
+that machine; Linux PowerShell exercises parsing/orchestration with substituted
+Windows APIs, not those native facilities. No paid/GPU claim.
+
+Evidence: `.local/qualification/institutional-init-20261002/`, including `red.xml`,
+`final-focused.xml`, original intermediate logs, `native-fixed.xml`,
+`installation.json`, `retained-cpu-closure.json`, the complete G1 collection/results,
+and `accounting-{original-audit,recheck,baseline}` evidence.
+See the [design](design/institutional-access-preparation.md#init-内完成连接和交互2026-10-02)
+and [client entry guide](guides/institutional-access.md#one-windows-terminal-entry-for-init).
+
 ## Issue report evidence completeness (2026-10-02)
 
 From `e85b452`, the user authorized design, implementation and commit/push to dev.

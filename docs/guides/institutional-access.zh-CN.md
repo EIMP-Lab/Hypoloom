@@ -8,8 +8,9 @@
 
 ## 集中准备与研究期间的处理
 
-没有研究运行或待下载论文时，也可先准备常用平台。以下示例使用 Windows 客户端，
-先按下文启动连接脚本，再在服务器的项目环境中执行；原生 Linux 桌面改用 `local`：
+没有研究运行或待下载论文时，也可先准备常用平台。Windows 终端用户建议使用下文的
+统一 Init 入口，在同一流程中启动连接并进入服务器初始化，无须单独开启助手终端。
+已有连接时也可在服务器独立执行以下命令；原生 Linux 桌面改用 `local`：
 
 ```bash
 python -m hypoloom institutional prepare --list
@@ -48,6 +49,28 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 `provider_modes` / `provider_mode_argv` 给出后续运行的偏好。init 按平台替换原值后重新
 审阅；独立使用命令时需自行带到后续启动参数中。结果不自动持久化或更改现有运行。
 准备不创建 run、Attempt、Profile 或科研归档，不调用模型。
+
+init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接期限内验证实际浏览器
+连接，成功后才打开平台。连接失败只报告一次，各平台保持 `not_checked`，不会分别
+空等 120 秒。`waiting_for_client` 只说明未连接，不能据此判定助手未安装或学校无权限。
+进度立即输出；agent 通过临时私有控制通道查询并传回你的选择，不依赖后台任务 stdin。
+你在 init 对话中选择完成、样本验证、跳过、仅公开或结束；登录、验证码与 MFA 在
+专用浏览器中操作。等待回答沿用 `--institutional-manual-seconds` 的有限期限。
+超时/结束会清理连接与临时目录，已完成的平台结果保留在本次输出中，研究启动身份不变。
+独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
+
+手动诊断对话准备时，使用首次输出的 `status_argv` / `answer_argv`；例如：
+
+```bash
+python -m hypoloom institutional preparation status --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation complete --state-root /path/to/temporary-preparation --provider IEEE
+python -m hypoloom institutional preparation verify --state-root /path/to/temporary-preparation --provider IEEE --sample 10.1109/example
+python -m hypoloom institutional preparation retry_connection --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation finish --state-root /path/to/temporary-preparation
+```
+
+`complete` 没有样本时仍是未验证；`skip` / `public_only` 也须带当前平台。
+这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。
 
 运行后通过 TUI 的 **i** 面板或带文献操作授权的 Web 面板管理；空待办也显示完整平台目录。
 选择“打开登录”“验证样本”或“检查并重试”。不要同时运行独立准备命令与 Host 来管理同一浏览器。
@@ -163,7 +186,31 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 旧的 `institutional connect status|start|stop` 保留为 local/existing/server 的手动诊断命令，
 资源由操作员管理。新运行不再自动调用它，也不把它的常驻资源算作运行级连接。
 
-### Windows 客户端一键连接
+### Windows 终端统一 Init 入口
+
+首次在 Windows 取得下面的项目入口；以后无需另开助手终端，也无需编辑助手配置。
+使用你原有的 SSH 目标和服务器仓库位置，入口推导标准的 Python 与 state 路径：
+
+```powershell
+$researchServer = 'research-server' # 原有 user@host 或 SSH 别名
+$researchRepository = '/path/to/Hypoloom'
+$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
+scp "${researchServer}:${researchRepository}/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
+pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -Repository $researchRepository
+```
+
+入口先检查 SSH 认证、服务器 Python 和 Claude 命令，再安装或复用属于当前用户的
+连接发现计划任务并立即启动，最后进入服务器 `/autoresearch init`。该任务也在用户
+登录时启动，为后续研究保留连接能力；没有活跃准备/运行时不打开浏览器。以后也可以
+继续普通 SSH 登录并调用 init，复用已启动的任务。非标准安装可显式提供
+`-PythonExecutable` / `-RunsRoot`；已有任务归属或参数不匹配时不会覆盖。
+
+首次本机入口、PowerShell 7.2+、有效 SSH 认证是实际前提。纯服务器 init 无法在没有
+本地执行通道的 Windows 上安装或启动程序；它会在连接步骤给出实际状态和重试/结束
+选择。机构登录、验证码及 MFA 始终由本人完成。下方保留 SSH 准备与手动诊断命令。
+
+### 客户端前提与手动诊断
 
 将 `hypoloom/connection_assets/institutional-connect.ps1` 复制到 Windows 固定位置。
 要求 PowerShell 7.2+，Windows 不需要安装项目或 Python。SSH 目标为已有 `user@host`

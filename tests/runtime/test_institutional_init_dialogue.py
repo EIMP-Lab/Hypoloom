@@ -1,0 +1,178 @@
+"""Init owns connection readiness and dialogue without a research run or stdin."""
+from concurrent.futures import Future
+import json
+from pathlib import Path
+import threading
+import time
+
+import pytest
+
+from hypoloom.cli import build_parser
+from hypoloom.control_protocol import ControlRequest, request_over_socket
+from hypoloom.institutional_access import InstitutionalAccess
+from hypoloom.institutional_prepare import run
+from tests.runtime.test_institutional_preparation import PreparationBackend
+
+
+def arguments(*extra):
+    return build_parser().parse_args(["institutional", "prepare",
+        "--institutional-browser-url", "http://127.0.0.1:9222", *extra])
+
+
+def ready_access(monkeypatch, state="ready"):
+    backend = PreparationBackend()
+    access = InstitutionalAccess(backend)
+    checks = []
+    def check(run_id, *, timeout_seconds):
+        checks.append(timeout_seconds)
+        result = Future(); result.set_result({"state": state})
+        return result
+    access.check_connection = check
+    monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: access)
+    return access, backend, checks
+
+
+def test_connection_failure_is_one_batch_result_without_platform_attempts(monkeypatch):
+    access, backend, checks = ready_access(monkeypatch, "waiting_for_client")
+    monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *a: {"state": "acquisition_timeout"})
+    output = []
+    assert run(arguments(), input_fn=lambda _: pytest.fail("login requested"), output=output.append) == 1
+    assert checks == [30] and backend.calls == [] and backend.closed
+    summary = json.loads(output[-1])
+    assert summary["connection"]["state"] == "waiting_for_client"
+    assert {row["state"] for row in summary["preparation_summary"]} == {"not_checked"}
+
+
+def test_terminal_eof_is_reported_without_claiming_login_or_leaking_browser(monkeypatch):
+    _, backend, _ = ready_access(monkeypatch)
+    def eof(_): raise EOFError
+    output = []
+    assert run(arguments("--provider", "IEEE"), input_fn=eof, output=output.append) == 1
+    assert json.loads(output[-1])["preparation_summary"][0]["state"] == "input_required"
+    assert backend.closed
+
+
+def eventually(check):
+    deadline = time.monotonic() + 6
+    while time.monotonic() < deadline:
+        result = check()
+        if result: return result
+        time.sleep(.02)
+    raise AssertionError("preparation did not reach the expected observation")
+
+
+def request(root, command="PREPARATION_STATUS", payload=None):
+    return request_over_socket(root / "control.sock",
+        ControlRequest(1, "fixture", None, command, payload or {}), timeout=2)
+
+
+@pytest.mark.parametrize("answer,expected", [("complete", "not_checked"), ("skip", "skipped"), ("public_only", "public_only")])
+def test_background_preparation_accepts_dialogue_and_cleans_control(tmp_path, monkeypatch, answer, expected):
+    _, backend, _ = ready_access(monkeypatch)
+    output, results, failures = [], [], []
+    args = arguments("--agent-session", "--repository", str(tmp_path), "--provider", "IEEE")
+    def worker():
+        try: results.append(run(args, input_fn=lambda _: pytest.fail("background read stdin"), output=output.append))
+        except BaseException as exc: failures.append(exc)
+    thread = threading.Thread(target=worker); thread.start()
+    root = None
+    try:
+        def discover():
+            return next((Path(json.loads(line)["state_root"]) for line in output
+                if line.startswith('{') and "state_root" in json.loads(line)), None)
+        root = eventually(discover)
+        def waiting():
+            value = request(root).result
+            return value if value.get("state") == "waiting_for_user" else None
+        status = eventually(waiting)
+        assert status["provider"] == "IEEE"
+        rejected = request(root, "PREPARATION_ANSWER", {"provider": "Springer", "action": answer})
+        assert rejected.status != "accepted"
+        accepted = request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "action": answer})
+        assert accepted.status == "accepted"
+        thread.join(5)
+        assert not thread.is_alive() and not failures and results == [0]
+        assert json.loads(output[-1])["preparation_summary"][0]["state"] == expected
+        assert backend.closed and not root.exists()
+        assert not list(tmp_path.rglob("state.sqlite"))
+    finally:
+        if thread.is_alive() and root is not None:
+            request(root, "PREPARATION_ANSWER", {"action": "finish"})
+            thread.join(5)
+
+
+def test_background_mode_rejects_noninteractive_mix_before_connecting(monkeypatch):
+    monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: pytest.fail("connected"))
+    with pytest.raises(ValueError, match="agent-session"):
+        run(arguments("--agent-session", "--non-interactive"))
+
+
+def test_dialogue_wait_expires_without_marking_any_platform_complete(tmp_path, monkeypatch):
+    from hypoloom.institutional_dialogue import PreparationDialogue
+    _, backend, _ = ready_access(monkeypatch)
+    monkeypatch.setattr("hypoloom.institutional_prepare.PreparationDialogue", lambda _: PreparationDialogue(.03))
+    output = []
+    assert run(arguments("--agent-session", "--repository", str(tmp_path)), output=output.append) == 1
+    summary = json.loads(output[-1])
+    assert summary["preparation_state"] == "input_timeout"
+    assert {r["state"] for r in summary["preparation_summary"]} == {"not_checked"}
+    assert [c[0] for c in backend.calls] == ["IEEE"] and backend.closed
+    assert not list((tmp_path / "state").iterdir())
+
+
+def test_background_retries_connection_then_verifies_sample_through_cli(tmp_path, monkeypatch, capsys):
+    from tests.runtime.test_institutional_access import URL
+    access, backend, checks = ready_access(monkeypatch)
+    backend.state = "available"
+    def check(run_id, *, timeout_seconds):
+        checks.append(timeout_seconds)
+        future = Future(); future.set_result({"state": "waiting_for_client" if len(checks) == 1 else "ready"})
+        return future
+    access.check_connection = check
+    output, results, errors = [], [], []
+    def worker():
+        try: results.append(run(arguments("--agent-session", "--repository", str(tmp_path), "--provider", "Nature"), output=output.append))
+        except BaseException as exc: errors.append(exc)
+    thread = threading.Thread(target=worker); thread.start()
+    root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output if v.startswith('{') and "state_root" in json.loads(v)), None))
+    try:
+        eventually(lambda: request(root).result.get("state") == "waiting_for_connection")
+        assert not backend.calls
+        parser = build_parser()
+        def cli(action, *extra):
+            return run(parser.parse_args(["institutional", "preparation", action, "--state-root", str(root), *extra]))
+        assert cli("status") == 0
+        assert json.loads(capsys.readouterr().out)["result"]["state"] == "waiting_for_connection"
+        assert cli("retry_connection") == 0
+        eventually(lambda: request(root).result.get("state") == "waiting_for_user")
+        assert cli("verify", "--provider", "Nature", "--sample", URL) == 0
+        thread.join(5)
+        assert not thread.is_alive() and not errors and results == [0]
+        assert [c[0] for c in backend.calls] == ["Nature", URL]
+        assert len(checks) == 2
+        assert json.loads(output[-1])["preparation_summary"][0]["state"] == "sample_verified"
+        assert backend.closed and not root.exists()
+    finally:
+        if thread.is_alive():
+            request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(5)
+
+
+def test_finish_during_connection_check_releases_preparation(tmp_path, monkeypatch):
+    access, backend, _ = ready_access(monkeypatch)
+    pending = Future()
+    access.check_connection = lambda *a, **k: pending
+    output, results = [], []
+    thread = threading.Thread(target=lambda: results.append(run(
+        arguments("--agent-session", "--repository", str(tmp_path)), output=output.append)))
+    thread.start()
+    root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output if v.startswith('{') and "state_root" in json.loads(v)), None))
+    try:
+        assert request(root, "PREPARATION_ANSWER", {"action": "finish"}).status == "accepted"
+        thread.join(5)
+        assert not thread.is_alive() and results == [0]
+        assert backend.closed and not backend.calls and not root.exists()
+        assert json.loads(output[-1])["preparation_state"] == "finished"
+    finally:
+        if thread.is_alive():
+            pending.set_result({"state": "browser_unavailable"})
+            thread.join(5)

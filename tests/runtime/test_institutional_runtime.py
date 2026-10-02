@@ -309,7 +309,9 @@ def test_preparation_does_not_print_private_gui_credentials(tmp_path, monkeypatc
     from hypoloom.institutional_prepare import run
     config = tmp_path / "browser.yaml"
     config.write_text("services:\n  browser:\n    image: fixture:1\n")
-    monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *args: {"state": "opened"})
+    # This fixture checks GUI-secret filtering; connectivity has separate real tests.
+    monkeypatch.setattr(RunBrowser, "check_connection", lambda *a, **k: {"state": "ready"})
+    monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *args, **kwargs: {"state": "opened"})
     args = build_parser().parse_args(["institutional", "prepare", "--repository", str(tmp_path),
         "--institutional-browser-mode", "server", "--institutional-compose-file", str(config),
         "--institutional-browser-profile", str(tmp_path / "profile"), "--provider", "IEEE"])

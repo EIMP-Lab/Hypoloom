@@ -232,6 +232,22 @@ class PlaywrightInstitutionalBrowser:
             raise ValueError("authenticated browser context is unavailable")
         return self._browser.contexts[0]
 
+    def check_connection(self, *, timeout_seconds):
+        """Use the real CDP/context connection without opening a publisher page."""
+        self._deadline = monotonic() + timeout_seconds
+        try:
+            while monotonic() < self._deadline:
+                try:
+                    self._connect()
+                    return {"state": "ready"}
+                except Exception:
+                    if getattr(self, "stopping", None) is not None and self.stopping.is_set(): break
+                    from time import sleep
+                    sleep(min(.25, max(0, self._deadline - monotonic())))
+            return {"state": "browser_unavailable"}
+        finally:
+            self._deadline = None
+
     def _pdf(self, content, requested, final, title, identity=""):
         if (len(content) > MAX_DOCUMENT_BYTES or not content.startswith(b"%PDF-")
                 or not content.rstrip().endswith(b"%%EOF")):

@@ -11,6 +11,9 @@ from tests.runtime.test_institutional_access import Backend, URL, pump
 
 
 class PreparationBackend(Backend):
+    def check_connection(self, **kwargs):
+        return {"state": "ready"}
+
     def prepare(self, provider, **kwargs):
         self.calls.append((provider, kwargs))
         return {"state": "opened"}
@@ -172,6 +175,6 @@ def test_interrupted_preparation_closes_access(monkeypatch):
     backend = PreparationBackend()
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda args: InstitutionalAccess(backend))
     def interrupt(_): raise EOFError()
-    with pytest.raises(EOFError):
-        run(build_parser().parse_args(["institutional", "prepare"]), input_fn=interrupt, output=lambda _: None)
+    assert run(build_parser().parse_args(["institutional", "prepare"]),
+        input_fn=interrupt, output=lambda _: None) == 1
     assert backend.closed

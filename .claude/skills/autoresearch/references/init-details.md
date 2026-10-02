@@ -67,6 +67,34 @@ Use the complete returned preparation command without appending a second platfor
 Optional sample DOI/URLs check the current session before a manual prompt; all samples
 readable means no login prompt. The command is absent when preparation is skipped.
 Show the final preparation_summary without claiming that public access proves login.
+The generated command uses `--agent-session`. Run it once in the background and
+read the first flushed JSON record for `state_root`, `status_argv`, `answer_argv`.
+The control root is temporary preparation state, never the proposed research root.
+Query `status_argv` when checking progress; do not repeatedly start preparation.
+`checking_connection` has the configured connection timeout (default 30 seconds).
+`waiting_for_connection` exposes the actual reason; fix the client entry/SSH
+connection, then submit `retry_connection`, or submit `finish` to skip the batch.
+No publisher action has occurred at this point. Do not claim a local helper is
+absent solely from waiting_for_client, or promise a browser popup before `opened`.
+`waiting_for_user` supplies the current `provider` and allowed actions. Ask within
+this init conversation; replace `<action>` in `answer_argv` with the user's action,
+pass the exact `--provider`, and use `--sample DOI_OR_URL` only for `verify`.
+`complete` without a sample means not_checked, not authenticated. Answer waiting
+uses the existing manual timeout; expiry or finish cleans resources. Read the
+background command's final summary and merge modes even when some platforms fail.
+The command's nonzero exit is a preparation result, not a failed research run.
+Never put credentials in answers or use a second interactive manager concurrently.
+
+For Windows client mode, the local `institutional-connect.ps1 -Action Init` entry
+accepts the existing SSH target and remote repository; standard Python/state paths
+are derived, with explicit overrides for nonstandard installations. It verifies SSH
+and remote tools before installing/starting its existing current-user discovery task,
+then enters remote `/autoresearch init`. The task remains available for research and
+later sessions; it never opens a browser without an active preparation/run. Its
+Stop/Uninstall operations retain browser login data. Initial local script acquisition
+and valid SSH authentication are real prerequisites; a server-only invocation
+cannot install or run code on an unconnected Windows computer. Keep that boundary
+explicit and use the guide's integrated entry instead of a manual helper checklist.
 Merge provider_modes by platform into launch choices (replace, never append conflicting
 values), then re-inspect. Results are transient, not saved credentials or authority.
 Failures and skipped/unverified platforms do not block research startup. Preserve the

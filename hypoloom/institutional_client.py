@@ -88,9 +88,10 @@ def prepare_forward(root, run_id, path):
 
 class PreparationControl:
     """Temporary operation endpoint using the same private control transport."""
-    def __init__(self, root, access):
+    def __init__(self, root, access, handler=None):
         self.path = Path(root) / "control.sock"
         self.access = access
+        self.handler = handler
         self.closed = threading.Event()
         self.server = socket.socket(socket.AF_UNIX)
         address, fd = socket_address(self.path)
@@ -111,9 +112,15 @@ class PreparationControl:
                 peer.settimeout(1)
                 try:
                     request = ControlRequest.from_mapping(receive_message(peer))
-                    if request.command != "INSTITUTIONAL_CONNECTIONS" or request.payload: continue
-                    send_message(peer, ControlResponse.accepted(request.request_id, None,
-                        {"connections": self.access.connections()}).to_mapping())
+                    if request.command == "INSTITUTIONAL_CONNECTIONS" and not request.payload:
+                        response = ControlResponse.accepted(request.request_id, None,
+                            {"connections": self.access.connections() if hasattr(self.access, "connections") else []})
+                    elif self.handler is not None:
+                        try: response = self.handler(request)
+                        except ValueError as exc:
+                            response = ControlResponse.failure(request.request_id, "rejected", "invalid_preparation_action", str(exc))
+                    else: continue
+                    send_message(peer, response.to_mapping())
                 except (OSError, ValueError): pass
 
     def close(self):

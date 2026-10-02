@@ -303,11 +303,19 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         selected = review["institutional_preparation"]["selected"]
         if selected:
             review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
-                "--repository", str(repository), *institutional_arguments(args, include_connection=True),
+                "--agent-session", "--repository", str(repository), *institutional_arguments(args, include_connection=True),
                 *[part for provider in selected for part in ("--provider", provider)]]
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
                 "--state-root", str(state)]
+        if args.institutional_browser_mode == "client":
+            review["institutional_client_entry"] = {
+                "runs_on": "Windows client", "requires": ["local connector script", "existing SSH authentication"],
+                "script_source": str(Path(__file__).with_name("connection_assets") / "institutional-connect.ps1"),
+                "argv": ["pwsh", "-NoProfile", "-File", "<local-connector>", "-Action", "Init",
+                    "-Server", "<ssh-target>", "-Repository", str(repository),
+                    "-PythonExecutable", str(python), "-RunsRoot", str(repository / "state")],
+                "note": "Starts client discovery and remote init; server-only init cannot launch an unconnected client."}
     real = args.auth_transport != "none"
     if real:
         if not args.claude_model or not args.claude_executable or args.literature_adapter != "openalex":
@@ -515,7 +523,7 @@ def compact_result(result: dict) -> dict:
             "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
         **{key: review[key] for key in ("gpu", "notifications", "institutional_access",
                                       "institutional_preparation", "institutional_preparation_argv", "institutional_connection",
-                                      "institutional_connection_argv") if key in review},
+                                      "institutional_connection_argv", "institutional_client_entry") if key in review},
     }
     if "launch" in result:
         launch = result["launch"]

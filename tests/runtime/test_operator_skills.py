@@ -546,7 +546,9 @@ def test_public_skill_keeps_init_effect_free_until_one_final_choice() -> None:
 
     assert "`/autoresearch init` has no corresponding `hypoloom.cli init`" in text
     assert "AskUserQuestion" in text
-    assert "Before the user's final confirmation, perform **zero writes**" in text
+    assert "Inspection performs **zero writes**" in text
+    assert "Explicit institutional preparation may create" in text
+    assert "research launch remains separate" in text
     assert "No Host, Agent, service, scope, or run exists" in normalized
     assert "manage_host.py" not in before_choice
     assert "check-ignore --no-index" in text

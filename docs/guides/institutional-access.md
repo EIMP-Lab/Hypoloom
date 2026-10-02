@@ -41,6 +41,32 @@ The endpoint-only form without a mode keeps its previous unmanaged behavior.
 Preview has no effects. `institutional_connection` shows policy,
 `institutional_connection_argv` reads active endpoints, and
 `institutional_preparation_argv` starts a separate preparation operation.
+Init's command uses `--agent-session`: it first verifies the real browser connection
+within the connection timeout (30 seconds by default), then opens platforms.
+A missing connection is reported once, with platforms still `not_checked`, instead
+of spending a separate 120-second wait on each. `waiting_for_client` does not prove
+that a helper is absent or an institution lacks access. Output is flushed immediately.
+The agent queries the temporary private control socket and returns your answers
+from the init conversation; it never feeds a background process's stdin. Login,
+verification codes and MFA stay in the dedicated browser. Answer waiting uses the
+existing finite manual timeout; finish/expiry cleans up temporary resources.
+Standalone terminal preparation remains supported; EOF returns `input_required`
+and closes resources instead of raising or pretending login succeeded.
+
+For manual diagnosis, use the first record's `status_argv` and `answer_argv`:
+
+```bash
+python -m hypoloom institutional preparation status --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation complete --state-root /path/to/temporary-preparation --provider IEEE
+python -m hypoloom institutional preparation verify --state-root /path/to/temporary-preparation --provider IEEE --sample 10.1109/example
+python -m hypoloom institutional preparation retry_connection --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation finish --state-root /path/to/temporary-preparation
+```
+
+`complete` without a sample remains unverified; `skip` and `public_only` also take
+the current provider. These commands address only the live temporary preparation,
+never a research run. Read the background command's final summary after it exits.
+
 Resources are allocated inside the Host once the run exists. A missing browser
 can remain unavailable within the existing bounded acquisition/fallback policy;
 it does not prevent other research. No mode is silently changed.
@@ -107,7 +133,35 @@ The old explicit `institutional connect status|start|stop` commands remain manua
 operator-owned diagnostics for local/existing/server. They are not invoked by new
 run startup and do not acquire the run lifetime described above.
 
-### Windows connector
+### One Windows terminal entry for init
+
+Obtain the project entry on Windows once. Use the same SSH target and repository;
+standard Python and state paths are derived, without editing a helper configuration
+or keeping a second helper terminal open:
+
+```powershell
+$researchServer = 'research-server' # Your existing user@host or SSH alias
+$researchRepository = '/path/to/Hypoloom'
+$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
+scp "${researchServer}:${researchRepository}/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
+pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -Repository $researchRepository
+```
+
+Init checks SSH authentication and the remote Python/Claude commands first, then
+installs or reuses the existing current-user discovery task, starts it immediately,
+and opens remote `/autoresearch init`. The task also starts at user logon, retaining
+connection capability for research and later ordinary SSH init sessions. It never
+opens a browser without an active preparation/run. Nonstandard installations can
+pass `-PythonExecutable` and `-RunsRoot`; mismatched task ownership/arguments are
+not overwritten. Stop/Uninstall retain browser login data.
+
+The local entry, PowerShell 7.2+ and valid SSH authentication remain real prerequisites.
+Server-only init cannot install or start programs on an unconnected Windows PC;
+it reports connection state and offers retry/finish. Institution login and MFA
+remain human-operated. SSH setup and compatible manual commands follow below.
+
+### Client prerequisites and manual diagnostics
 
 Copy `hypoloom/connection_assets/institutional-connect.ps1` to a stable Windows
 location. PowerShell 7.2+ is required; Windows needs neither Python nor Hypoloom.

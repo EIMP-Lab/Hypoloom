@@ -4,14 +4,14 @@
    Keep this file at a stable path when installing the task. #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
+    [ValidateSet('Init', 'Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')][string]$Server,
     [string]$BrowserExecutable,
     [string]$BrowserProfile,
     [ValidateRange(0, 65535)][int]$LocalPort = 0,
     [Parameter(Mandatory)][string]$Repository,
-    [Parameter(Mandatory)][string]$PythonExecutable,
-    [Parameter(Mandatory)][string]$RunsRoot
+    [string]$PythonExecutable,
+    [string]$RunsRoot
 )
 $ErrorActionPreference = 'Stop'
 
@@ -141,6 +141,50 @@ function Remote-Command([string[]]$Values) {
         ForEach-Object { Quote-Remote $_ }) -join ' ')
 }
 
+function Resolve-ServerPaths {
+    if (-not $Repository.StartsWith('/')) { throw 'absolute_repository_path_required' }
+    $script:Repository = $Repository.TrimEnd('/')
+    if (-not $script:Repository) { throw 'repository_root_not_allowed' }
+    if (-not $script:PythonExecutable) { $script:PythonExecutable = "$Repository/.conda/envs/hypoloom/bin/python" }
+    if (-not $script:RunsRoot) { $script:RunsRoot = "$Repository/state" }
+    foreach ($value in @($Repository, $PythonExecutable, $RunsRoot)) {
+        if (-not $value.StartsWith('/')) { throw 'absolute_server_paths_required' }
+        $null = Quote-Remote $value
+    }
+}
+
+function Init-Command([switch]$Check) {
+    $body = 'cd ' + (Quote-Remote $Repository) + ' || exit 42; '
+    if ($Check) {
+        $body += 'test -x ' + (Quote-Remote $PythonExecutable) + ' || exit 40; command -v claude >/dev/null || exit 41'
+    } else {
+        $body += 'exec claude ' + (Quote-Remote '/autoresearch init')
+    }
+    'bash -lc ' + (Quote-Remote $body)
+}
+
+function Check-InitConnection {
+    $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
+        '-o', 'ConnectionAttempts=1', $Server, (Init-Command -Check))
+    try {
+        if (-not $child.Process.WaitForExit(15000)) { throw 'init_ssh_connection_timeout' }
+        switch ($child.Process.ExitCode) {
+            0 { return }
+            40 { throw 'init_control_python_unavailable' }
+            41 { throw 'init_claude_command_unavailable' }
+            42 { throw 'init_repository_unavailable' }
+            default { throw 'init_ssh_connection_unavailable_check_key_and_known_host' }
+        }
+    } finally { Stop-Child $child }
+}
+
+function Start-InitSession([string]$TaskName) {
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Output 'client_discovery_started; init will verify the browser connection before opening login pages'
+    & $script:ssh -t -o BatchMode=yes -o ConnectTimeout=5 $Server (Init-Command)
+    if ($LASTEXITCODE -ne 0) { throw 'remote_init_ended_unsuccessfully_client_task_retained' }
+}
+
 function Get-RunConnections {
     $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
         '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
@@ -207,9 +251,8 @@ function Connector-Main {
     $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $script:ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
     $script:RequestedPort = $LocalPort
-    foreach ($value in @($Repository, $PythonExecutable, $RunsRoot)) {
-        if (-not $value.StartsWith('/')) { throw 'absolute_server_paths_required' }
-    }
+    Resolve-ServerPaths
+    if ($Action -eq 'Init') { Check-InitConnection }
     if (-not $script:BrowserExecutable) {
         $candidates = @(
             "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -238,13 +281,13 @@ function Connector-Main {
         '-Repository', $Repository, '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot)
     $taskArguments = ($taskValues | ForEach-Object { Quote-Native $_ }) -join ' '
     $powershell = (Get-Process -Id $PID).Path
-    if ($Action -in @('Install', 'Stop', 'Uninstall')) {
+    if ($Action -in @('Init', 'Install', 'Stop', 'Uninstall')) {
         $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         if ($task -and (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $powershell -or
                 $task.Actions[0].Arguments -ne $taskArguments -or $task.Principal.UserId -notin @($script:userSid, [Security.Principal.WindowsIdentity]::GetCurrent().Name))) {
             throw 'scheduled_task_ownership_mismatch'
         }
-        if ($Action -eq 'Install') {
+        if ($Action -in @('Init', 'Install')) {
             if (-not $task) {
                 $principal = New-ScheduledTaskPrincipal -UserId $script:userSid -LogonType Interactive -RunLevel Limited
                 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $script:userSid
@@ -252,7 +295,11 @@ function Connector-Main {
                 $command = New-ScheduledTaskAction -Execute $powershell -Argument $taskArguments
                 $null = Register-ScheduledTask -TaskName $taskName -Action $command -Trigger $trigger -Principal $principal -Settings $settings
             }
-            Write-Output 'installed_for_next_user_logon; use Run now to connect'
+            if ($Action -eq 'Init') {
+                Start-InitSession $taskName
+            } else {
+                Write-Output 'installed_for_next_user_logon; use Run now to connect'
+            }
         } else {
             if ($task) {
                 Stop-ScheduledTask -TaskName $taskName

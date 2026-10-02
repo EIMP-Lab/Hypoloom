@@ -33,6 +33,27 @@ if (Test-Path '/bin/bash') {
         Assert ($quoted.Out.GetAwaiter().GetResult() -ceq $literal) 'remote argument was executed or altered'
     } finally { Stop-Child $quoted }
 }
+# Init derives standard server locations without modifying SSH authentication.
+$Repository = '/repo with spaces/'
+$PythonExecutable = ''; $RunsRoot = ''
+Resolve-ServerPaths
+Assert ($PythonExecutable -ceq '/repo with spaces/.conda/envs/hypoloom/bin/python') 'init Python default incorrect'
+Assert ($RunsRoot -ceq '/repo with spaces/state') 'init runs root default incorrect'
+$PythonExecutable = '/custom/python'; $RunsRoot = '/custom/state'
+Resolve-ServerPaths
+Assert ($PythonExecutable -ceq '/custom/python' -and $RunsRoot -ceq '/custom/state') 'explicit client paths replaced'
+Assert ((Init-Command).Contains('/autoresearch init')) 'init command not passed to remote Claude'
+Assert ((Init-Command -Check).Contains('command -v claude')) 'init did not check remote prerequisites'
+$script:InitEvents = @(); $script:ssh = 'Invoke-FixtureSSH'; $Server = 'fixture'
+function Start-ScheduledTask { param($TaskName) $script:InitEvents += "task:$TaskName" }
+function Invoke-FixtureSSH {
+    Assert ($args -contains '-t' -and $args -contains 'fixture') 'remote init lost terminal or SSH target'
+    Assert ($args[-1] -ceq (Init-Command)) 'remote init command changed'
+    $script:InitEvents += 'remote-init'
+    $global:LASTEXITCODE = 0
+}
+Start-InitSession 'owned-task'
+Assert ($script:InitEvents.Count -eq 2 -and $script:InitEvents[0] -eq 'task:owned-task' -and $script:InitEvents[1] -eq 'remote-init') 'init did not start client discovery before remote session'
 # Exercise discovery changes through the real loop; Windows APIs are substituted.
 $Repository = '/repo'; $PythonExecutable = '/python'; $RunsRoot = '/state'; $Server = 'fixture'
 $script:ssh = 'ssh-fixture'; $script:Step = 0; $script:Browsers = 0; $script:Forwards = @(); $script:Stopped = @()
