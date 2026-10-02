@@ -105,6 +105,12 @@ use the same program renderer. The complete block asks the user for their actual
 target on Windows, downloads the script from its actual package location, and runs
 `-Action Connect` with the exact server paths. Connect verifies SSH/remote Python and
 installs/starts the owned discovery task without opening another CC session. Return
+the full `& { ... }` block unchanged: this is one PowerShell command so an error
+stops all subsequent setup. Do not split it into independent commands. If an old
+damaged command is stuck at `>>`, instruct Ctrl+C before pasting the complete block.
+Explain that the SSH target is entered after Read-Host, not inside its prompt;
+loopback on Windows refers to Windows. Password login is not proof of BatchMode
+readiness; use the guide's SSH key/agent steps when noninteractive login fails. Return
 to the original init and use its fixed replies. `-Action Init` remains a separate
 entry for starting a new session; never recommend it inside an existing init.
 The task remains available for research and

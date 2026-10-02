@@ -1,6 +1,7 @@
 """Program-rendered client setup and preparation choices, without saved state."""
 from pathlib import Path
 import shlex
+from textwrap import indent
 
 
 REPLIES = {
@@ -23,19 +24,20 @@ def client_entry(repository, python):
     # Obtain the entire script through the operator's existing SSH trust before
     # replacing the stable local entry. No password, host guess or second init.
     download = _powershell_literal("cat -- " + shlex.quote(str(source)))
-    command = ("pwsh -NoProfile -File $researchConnector -Action Connect -Server $researchServer"
-               f" -Repository {_powershell_literal(repository)}"
-               f" -PythonExecutable {_powershell_literal(python)}"
-               f" -RunsRoot {_powershell_literal(repository / 'state')}")
     script = f"""$ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion -lt [version]'7.2') {{ throw '请先运行 pwsh 进入 PowerShell 7.2+ 后再执行。' }}
 if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {{ throw '请先安装 PowerShell 7.2 或更高版本。' }}
-$researchServer = Read-Host '请输入平时 SSH 使用的 user@host 或别名（不要输入密码）'
+Write-Host '填写从这台 Windows 登录 Linux 服务器的 SSH 目标；127.0.0.1/localhost 指向本机。'
+$researchServer = (Read-Host '服务器 user@host 或 SSH 别名（不是密码，也不是浏览器地址）').Trim()
 if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {{ throw '请输入 SSH 目标或别名，不要输入整条 ssh 命令。' }}
 $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\\institutional-connect.ps1'
+$researchSourceCommand = {download}
+$researchSource = & ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer $researchSourceCommand
+if ($LASTEXITCODE -ne 0) {{
+    throw "读取入口失败，已停止。检查服务器目标和路径；先用 ssh $researchServer exit 确认登录，再用 ssh -o BatchMode=yes $researchServer exit 验证免交互认证。若仍需密码，请先配置 SSH 密钥/ssh-agent。"
+}}
+if ([string]::IsNullOrWhiteSpace(($researchSource -join "`n"))) {{ throw '服务器未返回入口内容，已停止；请检查服务器目标和安装路径。' }}
 New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
-$researchSource = & ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer {download}
-if ($LASTEXITCODE -ne 0) {{ throw '读取入口失败，请检查 SSH 密钥、主机确认和服务器路径。' }}
 $researchTemporary = Join-Path (Split-Path $researchConnector) ([IO.Path]::GetRandomFileName())
 try {{
     $researchSource | Set-Content -LiteralPath $researchTemporary -Encoding utf8
@@ -43,8 +45,18 @@ try {{
 }} finally {{
     if (Test-Path -LiteralPath $researchTemporary) {{ Remove-Item -LiteralPath $researchTemporary }}
 }}
-{command}
+$researchArguments = @(
+    '-NoProfile', '-File', $researchConnector
+    '-Action', 'Connect', '-Server', $researchServer
+    '-Repository', {_powershell_literal(repository)}
+    '-PythonExecutable', {_powershell_literal(python)}
+    '-RunsRoot', {_powershell_literal(repository / 'state')}
+)
+& pwsh @researchArguments
 if ($LASTEXITCODE -ne 0) {{ throw '客户端接入未完成，请按上方错误处理后重新执行。' }}"""
+    # One REPL command: a terminating error must stop the rest of a pasted block,
+    # not just its current line. The child scope also preserves shell preferences.
+    script = "& {\n" + indent(script, "    ") + "\n}\n"
     return {"runs_on": "Windows client", "requires": ["PowerShell 7.2+", "existing SSH authentication"],
             "script_source": str(source), "powershell": script,
             "note": "Starts client discovery only; return to the same init conversation."}
@@ -72,8 +84,8 @@ def render(view):
     if state == "waiting_for_connection":
         lines.append("浏览器连接尚未验证成功；本次检查未进入平台操作。")
         if "client_entry" in view:
-            lines.extend(["首次接入或连接任务未运行时，在 Windows 本地 PowerShell 执行下面完整代码块；"
-                          "保留当前 SSH/CC 会话。程序会询问 SSH 目标，获取入口并启动连接任务。",
+            lines.extend(["首次接入或连接任务未运行时，在 Windows 本地 PowerShell 整块粘贴执行下面代码（包括 & { 和最后的 }）；"
+                          "不要逐行运行或复制 PS>/>> 提示符。保留当前 SSH/CC 会话。程序会询问 SSH 目标，获取入口并启动连接任务。",
                           "```powershell", view["client_entry"]["powershell"], "```",
                           "看到客户端连接任务已启动后，回到此会话回复：继续连接。启动任务不等于浏览器已连通。"])
         else:

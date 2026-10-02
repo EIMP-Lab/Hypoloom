@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 3 Windows pasted setup repair: real command-input reproduction shows
+  top-level throw did not stop later pasted commands after download failure.
+  Shared client renderer now emits one scoped PowerShell block, short argv lines,
+  empty-download rejection and explicit SSH target/BatchMode guidance. Three red
+  regressions now pass; final related 133 pass, including real PowerShell command
+  input and existing connector checks. No Windows desktop/SSO claim, SSH auth or
+  retained-run changes. Continues the user-authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#powershell-粘贴执行边界修复2026-10-03),
+  [qualification](../qualification.md#windows-pasted-client-setup-2026-10-03).
+  Evidence: `.local/qualification/institutional-paste-20261003/`.
+
 - October 2 fixed institutional setup/replies: user asks for a programmed flow
   and exact executable user instructions. Shared renderer emits the complete
   Windows download/Connect block; Connect starts the existing owned task without

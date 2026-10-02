@@ -166,3 +166,34 @@ Write-Output 'setup_connected_same_session'
         str(tmp_path / "desktop"), str(expected)], capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
     assert ("setup_connected_same_session" if download_ok else "download_failed_without_execution") in result.stdout
+
+
+@pytest.mark.parametrize("failure", ["partial_download", "empty_download", "invalid_target"])
+def test_pasted_setup_stops_as_one_command_and_preserves_existing_connector(tmp_path, failure):
+    executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
+    if not executable: pytest.skip("PowerShell parser/runtime not installed")
+    desktop = tmp_path / "desktop"
+    connector = desktop / "Hypoloom/institutional-connect.ps1"
+    connector.parent.mkdir(parents=True)
+    connector.write_text("# existing connector\n")
+    called = desktop / "called"
+    target = "ssh user@host" if failure == "invalid_target" else "research@fixture"
+    download = "'partial download'; $global:LASTEXITCODE = 255" if failure == "partial_download" else "$global:LASTEXITCODE = 0"
+    # Feed a real REPL's command input, without a surrounding file/try block that
+    # would accidentally supply the failure boundary missing from pasted text.
+    prelude = f"""$env:LOCALAPPDATA = $env:HYPOLOOM_TEST_DESKTOP
+$ErrorActionPreference = 'Continue'
+function Read-Host {{ '{target}' }}
+function ssh {{ {download} }}
+function pwsh {{ Set-Content (Join-Path $env:LOCALAPPDATA 'called') 'unexpected execution'; $global:LASTEXITCODE = 0 }}
+"""
+    result = subprocess.run([executable, "-NoProfile", "-NonInteractive", "-Command", "-"],
+        input=prelude + client_entry("/repository", "/python")["powershell"] +
+            "\n\nWrite-Output ('shell_alive:' + $ErrorActionPreference)\n",
+        env={**os.environ, "HYPOLOOM_TEST_DESKTOP": str(desktop), "TERM": "dumb"},
+        capture_output=True, text=True, timeout=15)
+    assert not called.exists(), result.stdout + result.stderr
+    assert connector.read_text() == "# existing connector\n"
+    assert list(connector.parent.iterdir()) == [connector]
+    assert "shell_alive:Continue" in result.stdout
+    assert "Move-Item:" not in result.stderr

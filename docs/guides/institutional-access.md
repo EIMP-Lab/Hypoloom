@@ -158,6 +158,17 @@ Do not replace it with `Init`, which opens another CC session. After
 still checks actual connectivity. If the batch has ended, reply `重新准备`.
 Bootstrap and live preparation use the same renderer for these instructions.
 
+Paste the entire block, including `& {` and the final `}`, without terminal
+`PS>` / `>>` prompts. It executes as one command: download or validation failure
+stops setup without replacing an existing entry or launching it. Press Ctrl+C
+first if a previously damaged command is stuck at a continuation prompt.
+The text passed to `Read-Host` is a question; enter the actual SSH target after
+the prompt. Use the Linux server address reachable from Windows; `127.0.0.1`
+and `localhost` refer to the Windows machine. Password login alone does not prove
+background authentication works. Follow the key/ssh-agent steps below and verify
+`ssh -o BatchMode=yes <target> exit` returns 0 before connecting. A local browser
+version response proves only local readiness; the server still checks its connection.
+
 **To start a new init session from Windows**, use the entry below:
 
 Obtain the project entry on Windows once. Use the same SSH target and repository;

@@ -205,6 +205,15 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 如原批次已结束，回复 **重新准备**。固定代码块由 bootstrap 与准备进程共用的
 `client_entry` 生成，助手不应改写代码或计时说明。
 
+完整粘贴代码块，包括开头的 `& {` 和最后的 `}`，不要复制终端里的 `PS>` / `>>`
+提示符。它作为一条命令执行，下载或校验失败就结束，不覆盖已有入口，也不继续启动。
+如果之前粘贴损坏的命令导致停在 `>>`，先按 Ctrl+C 取消，再粘贴完整代码块。
+SSH 目标填写从这台 Windows 登录 Linux 的地址；`Read-Host` 后引号里的文字只是
+问题，真正的目标要在提示后输入。`127.0.0.1` / `localhost` 指向 Windows 本机，
+不是远端服务器。普通 SSH 能输入密码登录，并不代表后台免交互认证可用；先按下方
+密钥/ssh-agent 步骤验证 `ssh -o BatchMode=yes <目标> exit` 返回 0，再执行接入。
+Edge/Chrome 的本地版本响应只证明本地端口当时可用，服务器仍需验证实际连接。
+
 **从 Windows 开始一个新的 init 会话时**，才使用以下入口：
 
 首次在 Windows 取得下面的项目入口；以后无需另开助手终端，也无需编辑助手配置。

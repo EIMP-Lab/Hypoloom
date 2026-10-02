@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Windows pasted setup](../design/institutional-access-preparation.md#powershell-粘贴执行边界修复2026-10-03):
+  one scoped PowerShell command stops failed downloads before replacement/start;
+  actual command-input regression replaces reliance on a surrounding test file.
+  [Qualification](../qualification.md#windows-pasted-client-setup-2026-10-03)
+  records three red cases and 133 passing related checks, with Windows/SSO limits.
+
 - [Program-generated institutional setup/replies](../design/institutional-access-preparation.md#程序生成接入步骤与固定回复2026-10-02):
   one Windows setup renderer, Connect without CC reentry, fixed reply validation,
   actual waiting deadlines and generated remaining preparation commands. Reuses

@@ -2,6 +2,33 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows pasted client setup (2026-10-03)
+
+The supplied Windows transcript exposed a command-boundary defect in `0aa190a`:
+after a top-level download error, subsequent pasted commands could still write or
+launch the connector. The previous file-mode test's outer try block hid this
+behavior. Real PowerShell `-Command -` reproduces three failing cases: partial
+failed download, empty successful download and malformed target. The partial
+download case actually launches the mock connector after the error; empty data
+reaches Move-Item, and the shell's ErrorActionPreference is changed globally.
+
+The shared renderer now emits one `& { ... }` command with local preference scope,
+keeps download validation ahead of replacement, rejects empty content, and uses
+short argv lines. Failed cases preserve an existing connector byte-for-byte, leave
+no temporary file, do not launch it, and return to the original shell preference.
+SSH prompt/error guidance distinguishes a server target from client loopback and
+password login from BatchMode readiness. No automatic authentication changes.
+
+Final related validation: **133 passed in 31.98 seconds**, covering the actual
+generated script in PowerShell file/command-input modes, quoted remote paths,
+existing connector execution fixtures, bootstrap, runtime instructions and docs.
+The three original red results remain in
+`.local/qualification/institutional-paste-20261003/`, alongside `instructions.xml`,
+`focused.xml` and the generated `windows-setup.ps1`. Windows APIs remain mocked on
+Linux; native desktop/Task Scheduler, real SSO and this user's SSH authentication
+are not verified. No new full G1, package promotion or paid/GPU qualification;
+existing research, profiles and authorization files remain untouched.
+
 ## Program-generated institutional setup and replies (2026-10-02)
 
 From `0c5a73a`, the user requested a programmed client setup procedure, fixed
