@@ -68,28 +68,46 @@ Optional sample DOI/URLs check the current session before a manual prompt; all s
 readable means no login prompt. The command is absent when preparation is skipped.
 Show the final preparation_summary without claiming that public access proves login.
 The generated command uses `--agent-session`. Run it once in the background and
-read the first flushed JSON record for `state_root`, `status_argv`, `answer_argv`.
+read the first flushed JSON record for `state_root`, `status_argv`, `instructions_argv`.
 The control root is temporary preparation state, never the proposed research root.
 Query `status_argv` when checking progress; do not repeatedly start preparation.
 `checking_connection` has the configured connection timeout (default 30 seconds).
-`waiting_for_connection` exposes the actual reason; fix the client entry/SSH
-connection, then submit `retry_connection`, or submit `finish` to skip the batch.
+Run `instructions_argv` and relay its entire output verbatim, including the complete
+Windows code block and fixed reply choices. Do not hand-write client commands,
+translate/reword the fixed replies, infer an SSH alias or calculate another deadline.
+`status_argv` returns the live stage, `remaining_seconds` and complete `reply_argv`.
+After an actual user reply, append `--text` containing that exact offered reply;
+for 验证样本 append `--sample` with the supplied DOI/URL. Invalid/stale replies are
+rejected by the process. A tool/background completion is never a user reply.
+`waiting_for_connection` offers 继续连接 and 跳过准备. Its manual deadline starts
+when connection waiting begins, even if no publisher page has opened. Platform
+answer waiting has its own deadline; polling does not extend either deadline.
 No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
-`waiting_for_user` supplies the current `provider` and allowed actions. Ask within
-this init conversation; replace `<action>` in `answer_argv` with the user's action,
-pass the exact `--provider`, and use `--sample DOI_OR_URL` only for `verify`.
+`waiting_for_user` supplies the current provider in its generated reply command.
+Keep it unchanged. Ask within this init conversation using the offered fixed choices.
 `complete` without a sample means not_checked, not authenticated. Answer waiting
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.
 Never put credentials in answers or use a second interactive manager concurrently.
+If the process has ended, instructions explicitly say so. On the user's fixed
+重新准备 reply, read the original background result first and execute its generated
+`remaining_preparation_argv` unchanged; an empty list means no unanswered platforms
+remain. It preserves connection options, updated modes and unfinished samples.
+Retain completed results and the same launch identity. Do not hand-build a restart,
+replay completed logins, restart CC or create a run.
+Do not launch a separate indefinite polling task or repeatedly ask the same question
+on background notifications; observe a bounded operation and then wait for user input.
 
-For Windows client mode, the local `institutional-connect.ps1 -Action Init` entry
-accepts the existing SSH target and remote repository; standard Python/state paths
-are derived, with explicit overrides for nonstandard installations. It verifies SSH
-and remote tools before installing/starting its existing current-user discovery task,
-then enters remote `/autoresearch init`. The task remains available for research and
+For Windows client mode, `institutional_client_entry.powershell` and live instructions
+use the same program renderer. The complete block asks the user for their actual SSH
+target on Windows, downloads the script from its actual package location, and runs
+`-Action Connect` with the exact server paths. Connect verifies SSH/remote Python and
+installs/starts the owned discovery task without opening another CC session. Return
+to the original init and use its fixed replies. `-Action Init` remains a separate
+entry for starting a new session; never recommend it inside an existing init.
+The task remains available for research and
 later sessions; it never opens a browser without an active preparation/run. Its
 Stop/Uninstall operations retain browser login data. Initial local script acquisition
 and valid SSH authentication are real prerequisites; a server-only invocation
@@ -109,7 +127,8 @@ scientific-quality qualification; preview performs no provider probe.
 
 ### Read-only decision and qualification phase
 
-Before the user's final confirmation, perform **zero writes**: do not create a
+Inspection performs **zero writes**. Explicitly selected institutional preparation
+may create its temporary connection/control resources as described above. Otherwise do not create a
 directory, copy or chmod a file, create the state root, install a package,
 contact a model provider, create a user unit, or start a process that can write
 workflow state. No Host, Agent, service, scope, or run exists because of this

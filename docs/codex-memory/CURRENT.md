@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 2 fixed institutional setup/replies: user asks for a programmed flow
+  and exact executable user instructions. Shared renderer emits the complete
+  Windows download/Connect block; Connect starts the existing owned task without
+  another CC session. Existing stage/provider/deadline validate exact replies and
+  expose remaining time. End summaries generate remaining argv with modes/options
+  preserved. No new persistent authority or research mutation. Final related 344
+  pass, including real browser/isolated SSH/PowerShell execution; installed 174-file
+  wheel/CLI/MCP/bundle pass. No new full G1/paid/GPU/native Windows GUI claim; the
+  existing baseline accounting issue below stays open. User authorizes commit/push
+  to dev. [Design](../design/institutional-access-preparation.md#程序生成接入步骤与固定回复2026-10-02),
+  [qualification](../qualification.md#program-generated-institutional-setup-and-replies-2026-10-02).
+  Evidence: `.local/qualification/institutional-fixed-flow-20261002/`.
+
 - October 2 institutional init: Windows terminal SSH entry confirmed. Preparation
   verifies the actual browser once before platforms and uses existing private
   control transport for background answers, with flushed progress and finite

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from copy import copy
 from pathlib import Path
 import sys
 from time import monotonic, sleep
@@ -25,10 +26,11 @@ def add_parser(subparsers):
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
     prepare.add_argument("--agent-session", action="store_true", help="receive init answers over the private preparation socket instead of stdin")
     dialogue = commands.add_parser("preparation", help="observe or answer a live init preparation session")
-    dialogue.add_argument("preparation_action", choices=("status", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
+    dialogue.add_argument("preparation_action", choices=("status", "instructions", "reply", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
     dialogue.add_argument("--state-root", required=True)
     dialogue.add_argument("--provider")
     dialogue.add_argument("--sample")
+    dialogue.add_argument("--text", help="exact user reply from the program's current instructions")
     connect = commands.add_parser("connect", help="inspect, start or stop an operator-owned browser connection")
     connect.add_argument("connection_action", choices=("status", "start", "stop"))
     connect.add_argument("--repository")
@@ -81,6 +83,21 @@ def _summary(rows, modes, output, **extra):
     output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
         "provider_mode_argv": [part for name, mode in modes.items()
                                for part in ("--institutional-provider-mode", f"{name}={mode}")]}, ensure_ascii=False))
+
+
+def _remaining_command(args, remaining, modes):
+    if not remaining: return []
+    from .institutional_options import launch_arguments
+    selected = copy(args)
+    selected.institutional_provider_mode = [f"{name}={mode}" for name, mode in modes.items()]
+    return [sys.executable, "-B", "-m", "hypoloom", "institutional", "prepare",
+        "--repository", str(Path(args.repository or Path.cwd()).resolve()),
+        *(["--agent-session"] if args.agent_session else []),
+        *(["--non-interactive"] if args.non_interactive else []),
+        *launch_arguments(selected, include_connection=True),
+        *[part for provider in remaining for part in ("--provider", provider)],
+        *[part for sample in args.sample if publisher(sample_url(sample)) in remaining
+          for part in ("--sample", sample)]]
 
 
 def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False):
@@ -140,20 +157,30 @@ def _connection(access, seconds, dialogue):
 
 def _answer(args, output):
     from .control_protocol import ControlRequest, request_over_socket
+    from .institutional_instructions import render
     root = Path(args.state_root)
-    info = root.stat()
-    if root.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
-        raise ValueError("preparation root must be private and owned by the current user")
-    status = args.preparation_action == "status"
-    if status and (args.provider or args.sample): raise ValueError("status does not take platform answers")
-    payload = {} if status else {"action": args.preparation_action}
+    instructions = args.preparation_action == "instructions"
+    status = args.preparation_action in {"status", "instructions"}
+    if status and (args.provider or args.sample or args.text): raise ValueError("status/instructions do not take answers")
+    if (args.preparation_action == "reply") != (args.text is not None):
+        raise ValueError("reply requires --text; other actions do not accept --text")
+    payload = {} if status else ({"reply": args.text} if args.preparation_action == "reply" else {"action": args.preparation_action})
     if args.provider:
         from .institutional_access import provider_name
         payload["provider"] = provider_name(args.provider)
     if args.sample: payload["sample"] = args.sample
-    response = request_over_socket(root / "control.sock", ControlRequest(1, "institutional-preparation", None,
-        "PREPARATION_STATUS" if status else "PREPARATION_ANSWER", payload), timeout=3)
-    output(json.dumps(response.to_mapping(), ensure_ascii=False))
+    try:
+        info = root.stat()
+        if root.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise ValueError("preparation root must be private and owned by the current user")
+        response = request_over_socket(root / "control.sock", ControlRequest(1, "institutional-preparation", None,
+            "PREPARATION_STATUS" if status else "PREPARATION_ANSWER", payload), timeout=3)
+    except (FileNotFoundError, ConnectionRefusedError):
+        if not instructions: raise
+        output(render({"state": "inactive"}))
+        return 1
+    output(render(response.result) if instructions and response.status == "accepted"
+           else json.dumps(response.to_mapping(), ensure_ascii=False))
     return 0 if response.status == "accepted" else 1
 
 
@@ -202,11 +229,17 @@ def run(args, *, input_fn=input, output=print):
             root = Path(args.repository or Path.cwd()) / "state"
             root.mkdir(parents=True, exist_ok=True)
             directory = tempfile.TemporaryDirectory(prefix="institutional-prepare-", dir=root)
-            control = PreparationControl(directory.name, access, dialogue.handle if dialogue else None)
             command = [sys.executable, "-B", "-m", "hypoloom", "institutional", "preparation"]
+            if dialogue:
+                dialogue.context = {"reply_argv": [*command, "reply", "--state-root", directory.name]}
+                if args.institutional_browser_mode == "client":
+                    from .institutional_instructions import client_entry
+                    dialogue.context["client_entry"] = client_entry(root.parent, sys.executable)
+            control = PreparationControl(directory.name, access, dialogue.handle if dialogue else None)
             output(json.dumps({"state_root": directory.name,
                 "connection": access.status("preparation").get("connection", {"mode": "existing", "state": "unchecked"}),
                 "status_argv": [*command, "status", "--state-root", directory.name],
+                "instructions_argv": [*command, "instructions", "--state-root", directory.name],
                 "answer_argv": [*command, "<action>", "--state-root", directory.name]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         while True:
@@ -215,10 +248,12 @@ def run(args, *, input_fn=input, output=print):
             if connection["state"] == "ready": break
             if not dialogue:
                 _summary([{"provider": name, "state": "not_checked", "samples": []} for name in selected], modes, output,
-                    connection=connection, next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
+                    connection=connection, remaining_preparation_argv=_remaining_command(args, selected, modes),
+                    next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
                 return 1
             output("Browser connection is unavailable. Init can retry the connection or finish preparation; no platform login was attempted.")
             dialogue.wait(connection=connection)
+        remaining = []
         for provider in selected:
             if cancelled(): raise PreparationEnded("finished")
             if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
@@ -228,13 +263,16 @@ def run(args, *, input_fn=input, output=print):
                 output=output, modes=modes, cancelled=cancelled)
             rows.append(row)
             if stop:
+                remaining = selected[len(rows) - int(row["state"] == "input_required"):]
                 rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
                 break
-        _summary(rows, modes, output)
+        _summary(rows, modes, output, remaining_preparation_argv=_remaining_command(args, remaining, modes))
         return int(any(row["state"] not in {"sample_verified", "not_checked", "skipped", "public_only"} for row in rows))
     except PreparationEnded as exc:
+        remaining = selected[len(rows):]
         rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
-        _summary(rows, modes, output, preparation_state=str(exc))
+        _summary(rows, modes, output, preparation_state=str(exc),
+                 remaining_preparation_argv=_remaining_command(args, remaining, modes))
         return int(str(exc) != "finished")
     finally:
         try:

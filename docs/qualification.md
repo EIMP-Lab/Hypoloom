@@ -2,6 +2,46 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Program-generated institutional setup and replies (2026-10-02)
+
+From `0c5a73a`, the user requested a programmed client setup procedure, fixed
+instructions and an executable user-facing block. One renderer now supplies both
+bootstrap and live preparation with the actual package path, a complete Windows
+download/Connect block and stage-specific replies. Connect starts the existing
+owned discovery task and returns to the current CC session. The existing deadline
+supplies remaining seconds for connection and platform waiting; status polling
+does not extend it. Unknown/stale replies are rejected by the existing control
+process. Ended batches are reported explicitly; the final summary generates the
+remaining preparation argv with updated modes, original connection options and
+unfinished samples. No persistent marker, credential store or research migration.
+
+Final related validation passes **344 tests in 174.30 seconds**, including actual
+Chromium and isolated SSH, closed-stdin subprocess cleanup, existing private
+control boundaries, fixed replies and deadline observation. Real PowerShell runs
+the complete generated block with substituted SSH/desktop operations; actual Bash
+reads a source path containing spaces, quotes and shell metacharacters. Assertions
+verify literal arguments, no second init, full download before execution, download
+failure without replacement/execution, and preserved modes after a timed-out batch.
+The original focused result (187 pass / two skip / one failed assertion) is retained:
+the assertion confused “remaining platforms” with “remaining waiting time”; it now
+matches the timer label specifically, without changing the behavior under test.
+
+The wheel, isolated install and fresh runtime bundle match **174 package files**
+byte-for-byte. Installed setup points to the installed script; actual installed
+preparation, private finish, remaining-command parsing, cleanup and MCP startup
+pass. No research database is created by preparation. Compile, undefined-name/
+duplicate-key lint and whitespace checks pass. Existing runs/Profiles/browser
+login data remain unchanged. No new full G1, paid/GPU, actual Windows Task Scheduler
+or visible SSO qualification is claimed. The baseline accounting issue recorded
+below remains open. Program validation constrains executable actions; it does not
+guarantee that a model can never add inaccurate natural-language commentary.
+
+Evidence: `.local/qualification/institutional-fixed-flow-20261002/`, including
+`initial-focused.xml`, `recovery.xml`, `final-focused.xml`, `installation.json`
+and the exact generated `windows-setup.ps1` block. See the
+[design](design/institutional-access-preparation.md#程序生成接入步骤与固定回复2026-10-02)
+and [client guide](guides/institutional-access.md#one-windows-terminal-entry-for-init).
+
 ## Init-owned institutional connection and dialogue (2026-10-02)
 
 From `78cc3de`, the user authorized design, implementation and commit to dev,

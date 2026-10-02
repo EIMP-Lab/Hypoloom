@@ -309,13 +309,8 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
                 "--state-root", str(state)]
         if args.institutional_browser_mode == "client":
-            review["institutional_client_entry"] = {
-                "runs_on": "Windows client", "requires": ["local connector script", "existing SSH authentication"],
-                "script_source": str(Path(__file__).with_name("connection_assets") / "institutional-connect.ps1"),
-                "argv": ["pwsh", "-NoProfile", "-File", "<local-connector>", "-Action", "Init",
-                    "-Server", "<ssh-target>", "-Repository", str(repository),
-                    "-PythonExecutable", str(python), "-RunsRoot", str(repository / "state")],
-                "note": "Starts client discovery and remote init; server-only init cannot launch an unconnected client."}
+            from .institutional_instructions import client_entry
+            review["institutional_client_entry"] = client_entry(repository, python)
     real = args.auth_transport != "none"
     if real:
         if not args.claude_model or not args.claude_executable or args.literature_adapter != "openalex":

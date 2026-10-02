@@ -126,11 +126,11 @@ ACM is public-first with optional login. Offer defaults, custom platforms or ski
 Reuse prior choices; repeated `--institutional-prepare-provider` replaces the list,
 and `none` skips preparation without limiting research. Re-inspect with the same
 launch identity. Run the complete `institutional_preparation_argv` with its
-`--agent-session` in the background; read its immediately flushed `status_argv`.
-Use that command to observe connection readiness and pending answers. Only an
-observed opened page permits telling the user to log in. Submit their answer using
-`answer_argv` (complete/verify/skip/public_only/finish); never feed background stdin.
-See [details](references/init-details.md) for connection retry, deadlines and samples.
+`--agent-session` in the background; run its flushed `instructions_argv` and show
+the returned instructions/code block verbatim. Use `status_argv` for the current
+`reply_argv`; append `--text` with the exact offered user reply, and `--sample` only
+for sample verification. Never invent commands, deadlines or answers from task
+notifications. See [details](references/init-details.md) for ended batches; never use stdin.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
 Show `preparation_summary`: opened pages without samples remain not_checked;
@@ -143,11 +143,10 @@ and finite 120-second acquisition / 600-second manual defaults. During research,
 use Host TUI/Web controls rather than another standalone browser manager.
 
 The enabled `--institutional-browser-mode client|local|existing|server` selects
-run-owned connections. Windows `client` has a unified local `Init` entry that starts
-discovery and remote init using the same SSH target/repository. Standard paths are
-derived; no separate helper terminal is needed. First local setup/SSH authentication
-is still required; server-only init cannot start an unconfigured client. Missing
-connections mean unavailable transport, not proof that a helper was never installed.
+run-owned connections. Windows `client` uses the program's `Connect` code block:
+download the local entry and start discovery, then return to this same CC session.
+Never substitute `Init` while init is already open. First local execution and SSH
+authentication remain necessary. Missing connections do not prove an absent helper.
 `local` uses the actual Linux user's visible browser over a process pipe, without
 SSH or Docker. Check the current X11/Wayland session. `existing` wraps an explicitly
 managed external endpoint. `server` uses the repository image/environment with

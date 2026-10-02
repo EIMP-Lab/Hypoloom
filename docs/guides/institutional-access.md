@@ -50,6 +50,8 @@ The agent queries the temporary private control socket and returns your answers
 from the init conversation; it never feeds a background process's stdin. Login,
 verification codes and MFA stay in the dedicated browser. Answer waiting uses the
 existing finite manual timeout; finish/expiry cleans up temporary resources.
+This timeout also starts when entering connection waiting. Platform-answer waiting
+has its own deadline. Status reads never extend it; the process reports remaining seconds.
 Standalone terminal preparation remains supported; EOF returns `input_required`
 and closes resources instead of raising or pretending login succeeded.
 
@@ -66,6 +68,18 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 `complete` without a sample remains unverified; `skip` and `public_only` also take
 the current provider. These commands address only the live temporary preparation,
 never a research run. Read the background command's final summary after it exits.
+
+Normal init runs the generated `instructions_argv` and displays its output verbatim:
+the complete Windows code block, live remaining time and fixed reply choices.
+Connection replies are `继续连接` (retry connection) and `跳过准备` (skip preparation).
+Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `结束准备`
+(complete, verify a separately supplied sample, skip this platform, public only, finish).
+The agent passes the exact choice to `reply_argv --text`; the process validates
+the current stage and provider. Background notifications are never answers.
+An ended batch explicitly requests `重新准备` (prepare again): read the prior final
+summary and execute its generated `remaining_preparation_argv` unchanged (an empty
+list means nothing remains). It retains connection options, updated modes and
+unfinished samples. No new CC session or research run is needed.
 
 Resources are allocated inside the Host once the run exists. A missing browser
 can remain unavailable within the existing bounded acquisition/fallback policy;
@@ -134,6 +148,17 @@ operator-owned diagnostics for local/existing/server. They are not invoked by ne
 run startup and do not acquire the run lifetime described above.
 
 ### One Windows terminal entry for init
+
+**Inside an existing CC init**, use the complete program-generated PowerShell block
+shown by init. It asks for the Windows SSH target, obtains the script from its actual
+server package location and runs `Connect`, which installs/starts discovery and
+returns to the same conversation. No Windows checkout or hand-built path is needed.
+Do not replace it with `Init`, which opens another CC session. After
+`client_discovery_started`, reply `继续连接` in the original conversation; the server
+still checks actual connectivity. If the batch has ended, reply `重新准备`.
+Bootstrap and live preparation use the same renderer for these instructions.
+
+**To start a new init session from Windows**, use the entry below:
 
 Obtain the project entry on Windows once. Use the same SSH target and repository;
 standard Python and state paths are derived, without editing a helper configuration

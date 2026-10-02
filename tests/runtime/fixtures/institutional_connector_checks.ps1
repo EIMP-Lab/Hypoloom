@@ -54,6 +54,10 @@ function Invoke-FixtureSSH {
 }
 Start-InitSession 'owned-task'
 Assert ($script:InitEvents.Count -eq 2 -and $script:InitEvents[0] -eq 'task:owned-task' -and $script:InitEvents[1] -eq 'remote-init') 'init did not start client discovery before remote session'
+$script:InitEvents = @(); $Action = 'Connect'
+Start-ClientConnection 'owned-task'
+Assert ($script:InitEvents.Count -eq 1 -and $script:InitEvents[0] -eq 'task:owned-task') 'connect entered another remote init session'
+Assert (-not (Init-Command -Check).Contains('command -v claude')) 'connect unnecessarily requires another Claude session'
 # Exercise discovery changes through the real loop; Windows APIs are substituted.
 $Repository = '/repo'; $PythonExecutable = '/python'; $RunsRoot = '/state'; $Server = 'fixture'
 $script:ssh = 'ssh-fixture'; $script:Step = 0; $script:Browsers = 0; $script:Forwards = @(); $script:Stopped = @()

@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Program-generated institutional setup/replies](../design/institutional-access-preparation.md#程序生成接入步骤与固定回复2026-10-02):
+  one Windows setup renderer, Connect without CC reentry, fixed reply validation,
+  actual waiting deadlines and generated remaining preparation commands. Reuses
+  the existing control process and task ownership; no persistent authority.
+  [Qualification](../qualification.md#program-generated-institutional-setup-and-replies-2026-10-02)
+  records 344 focused passes, installed-package verification and Windows/G1 limits.
+
 - [Init-owned institutional connection and dialogue](../design/institutional-access-preparation.md#init-内完成连接和交互2026-10-02):
   one browser readiness check before platforms, private preparation answers for
   background init, finite waits/cleanup and a Windows terminal Init entry that

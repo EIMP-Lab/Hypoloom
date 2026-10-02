@@ -56,6 +56,8 @@ init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接�
 进度立即输出；agent 通过临时私有控制通道查询并传回你的选择，不依赖后台任务 stdin。
 你在 init 对话中选择完成、样本验证、跳过、仅公开或结束；登录、验证码与 MFA 在
 专用浏览器中操作。等待回答沿用 `--institutional-manual-seconds` 的有限期限。
+该期限在进入连接等待时就开始计算；进入平台回答阶段后使用该阶段自己的期限。
+查询状态不会延长期限。程序输出实际剩余秒数，不让助手自行推算。
 超时/结束会清理连接与临时目录，已完成的平台结果保留在本次输出中，研究启动身份不变。
 独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
 
@@ -68,6 +70,14 @@ python -m hypoloom institutional preparation verify --state-root /path/to/tempor
 python -m hypoloom institutional preparation retry_connection --state-root /path/to/temporary-preparation
 python -m hypoloom institutional preparation finish --state-root /path/to/temporary-preparation
 ```
+
+正常 init 使用程序给出的 `instructions_argv`，原样展示操作说明、完整 Windows
+代码块和固定回复。连接阶段回复 **继续连接 / 跳过准备**；平台阶段回复 **完成 /
+验证样本 / 跳过此平台 / 仅公开 / 结束准备**。验证样本另提供 DOI 或论文 URL。
+助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台任务完成通知
+不是用户回答。批次结束后会明确提示 **重新准备**，先读取原摘要并保留已完成的平台
+和模式，再原样执行摘要中的 `remaining_preparation_argv`；空数组表示无需重开。
+无需新开 CC 会话或创建科研运行。
 
 `complete` 没有样本时仍是未验证；`skip` / `public_only` 也须带当前平台。
 这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。
@@ -187,6 +197,15 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 资源由操作员管理。新运行不再自动调用它，也不把它的常驻资源算作运行级连接。
 
 ### Windows 终端统一 Init 入口
+
+**已经在 CC 中进行 init 时**，使用它原样展示的程序生成代码块。代码会在 Windows
+询问 SSH 目标、自行取得脚本并执行 `Connect`，启动任务后返回原会话。无需本机已有
+仓库，也无需自己拼接路径；不要替换成下方会新开会话的 `Init`。看到
+`client_discovery_started` 后在原会话回复 **继续连接**；实际连通仍由服务端验证。
+如原批次已结束，回复 **重新准备**。固定代码块由 bootstrap 与准备进程共用的
+`client_entry` 生成，助手不应改写代码或计时说明。
+
+**从 Windows 开始一个新的 init 会话时**，才使用以下入口：
 
 首次在 Windows 取得下面的项目入口；以后无需另开助手终端，也无需编辑助手配置。
 使用你原有的 SSH 目标和服务器仓库位置，入口推导标准的 Python 与 state 路径：

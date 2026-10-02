@@ -4,7 +4,7 @@
    Keep this file at a stable path when installing the task. #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Init', 'Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
+    [ValidateSet('Connect', 'Init', 'Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')][string]$Server,
     [string]$BrowserExecutable,
     [string]$BrowserProfile,
@@ -156,7 +156,8 @@ function Resolve-ServerPaths {
 function Init-Command([switch]$Check) {
     $body = 'cd ' + (Quote-Remote $Repository) + ' || exit 42; '
     if ($Check) {
-        $body += 'test -x ' + (Quote-Remote $PythonExecutable) + ' || exit 40; command -v claude >/dev/null || exit 41'
+        $body += 'test -x ' + (Quote-Remote $PythonExecutable) + ' || exit 40; '
+        $body += if ($Action -eq 'Connect') { 'true' } else { 'command -v claude >/dev/null || exit 41' }
     } else {
         $body += 'exec claude ' + (Quote-Remote '/autoresearch init')
     }
@@ -183,6 +184,13 @@ function Start-InitSession([string]$TaskName) {
     Write-Output 'client_discovery_started; init will verify the browser connection before opening login pages'
     & $script:ssh -t -o BatchMode=yes -o ConnectTimeout=5 $Server (Init-Command)
     if ($LASTEXITCODE -ne 0) { throw 'remote_init_ended_unsuccessfully_client_task_retained' }
+}
+
+function Start-ClientConnection([string]$TaskName) {
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Output 'client_discovery_started'
+    Write-Output '客户端连接任务已启动。回到原来的 init 会话，回复：继续连接。'
+    Write-Output '任务启动不代表浏览器已连通；服务器会检查实际连接。若准备已结束，回复：重新准备。'
 }
 
 function Get-RunConnections {
@@ -252,7 +260,7 @@ function Connector-Main {
     $script:ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
     $script:RequestedPort = $LocalPort
     Resolve-ServerPaths
-    if ($Action -eq 'Init') { Check-InitConnection }
+    if ($Action -in @('Connect', 'Init')) { Check-InitConnection }
     if (-not $script:BrowserExecutable) {
         $candidates = @(
             "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -281,13 +289,13 @@ function Connector-Main {
         '-Repository', $Repository, '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot)
     $taskArguments = ($taskValues | ForEach-Object { Quote-Native $_ }) -join ' '
     $powershell = (Get-Process -Id $PID).Path
-    if ($Action -in @('Init', 'Install', 'Stop', 'Uninstall')) {
+    if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) {
         $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         if ($task -and (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $powershell -or
                 $task.Actions[0].Arguments -ne $taskArguments -or $task.Principal.UserId -notin @($script:userSid, [Security.Principal.WindowsIdentity]::GetCurrent().Name))) {
             throw 'scheduled_task_ownership_mismatch'
         }
-        if ($Action -in @('Init', 'Install')) {
+        if ($Action -in @('Connect', 'Init', 'Install')) {
             if (-not $task) {
                 $principal = New-ScheduledTaskPrincipal -UserId $script:userSid -LogonType Interactive -RunLevel Limited
                 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $script:userSid
@@ -297,6 +305,8 @@ function Connector-Main {
             }
             if ($Action -eq 'Init') {
                 Start-InitSession $taskName
+            } elseif ($Action -eq 'Connect') {
+                Start-ClientConnection $taskName
             } else {
                 Write-Output 'installed_for_next_user_logon; use Run now to connect'
             }
