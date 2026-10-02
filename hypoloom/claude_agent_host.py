@@ -40,6 +40,7 @@ from .agent_aci import (
     _synthesis_parent_hypothesis_id,
     _synthesis_parent_hypothesis_ids,
     validate_observer_candidate,
+    validate_output_size,
     validate_postflight,
     with_output_digest,
 )
@@ -75,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/69"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/70"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2171,8 +2172,40 @@ def _shared_acceptance_schema() -> dict[str, Any]:
     return {"type": "object", "additionalProperties": False, "properties": properties, "required": list(properties)}
 
 
+def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorkspace,
+                                output: Mapping[str, Any]) -> None:
+    """Reject already-oversized packages while the native call can still repair.
+
+    This partial envelope is a lower bound, never an accepted response or usage
+    record. Final provider diagnostics/accounting remain subject to postflight.
+    """
+    try:
+        if request.schema_version >= 19:
+            from .reference_aliases import canonical_output, reference_aliases
+            output = canonical_output(output, reference_aliases(request,
+                _output_schema(request, tool_workspace=True, reference_aliases=False)))
+        artifacts = _capture_tool_workspace(workspace, max_bytes=request.budget.max_output_bytes,
+            candidate=output["typed_candidate"])
+        raw_bytes = sum(len(item.content_bytes()) for item in artifacts)
+        validate_output_size(request, {
+            "typed_candidate": output["typed_candidate"],
+            "proposed_workspace_artifacts": [item.to_dict() for item in artifacts],
+            "declared_effects": [_provider_declared_effect(item, request).to_dict()
+                for item in output["declared_effects"]],
+        }, description=f"candidate and encoded workspace (raw workspace {raw_bytes} bytes)")
+    except (OSError, ValueError, WorkspaceIntegrityError, GitAuthoringIntegrityError) as exc:
+        message = _bounded_text(str(exc), 2048).replace(str(workspace.worktree_root), "/workspace")
+        raise ValueError(f"Implementation output check: {message}. "
+            f"The {request.budget.max_output_bytes}-byte output limit covers the complete response. "
+            "Reduce the submitted sources or cumulative implementation.patch, including tracked and "
+            "untracked changes; a separately captured source also appears in its patch. "
+            "Encoding and final response metadata need space too. Repair the actual files before completing.") from exc
+
+
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
     from .domain import AgentCommand
+    if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+        return lambda output: _native_design_output_check(request, workspace, output)
     observer = _observer_output_check(request)
     if request.schema_version < 24 or request.command not in {
             AgentCommand.GROUNDING, AgentCommand.LITERATURE_REVIEW, AgentCommand.DEBATE}:

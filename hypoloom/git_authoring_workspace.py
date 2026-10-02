@@ -105,13 +105,20 @@ class PreparedGitAuthoringWorkspace:
             )
         _audit_changed_paths(self.worktree_root, changed_paths,
                              deleted_paths=_deleted_paths(self, base_ref=base_ref))
-        patch = _capture_readonly_patch(
-            self,
-            tracked_paths=tracked_paths,
-            untracked_paths=untracked_paths,
-            max_bytes=max_bytes,
-            base_ref=base_ref,
-        )
+        try:
+            patch = _capture_readonly_patch(
+                self,
+                tracked_paths=tracked_paths,
+                untracked_paths=untracked_paths,
+                max_bytes=max_bytes,
+                base_ref=base_ref,
+            )
+        except GitAuthoringIntegrityError as exc:
+            if str(exc).startswith(("Git output exceeded its byte bound", "authoring patch exceeds its byte bound")):
+                raise GitAuthoringIntegrityError(
+                    f"cumulative implementation.patch exceeds its byte bound: {max_bytes} bytes remain "
+                    "after captured sources; tracked and untracked changes both count") from exc
+            raise
         if not patch:
             raise GitAuthoringIntegrityError(
                 "authoring worktree produced an empty patch"
@@ -506,7 +513,9 @@ def _bounded_communicate(
                 output = outputs[key.data]
                 if len(output) + len(chunk) > limits[key.data]:
                     label = "Git output" if key.data == "stdout" else "Git error output"
-                    raise GitAuthoringIntegrityError(f"{label} exceeded its byte bound")
+                    raise GitAuthoringIntegrityError(
+                        f"{label} exceeded its byte bound ({limits[key.data]} bytes; "
+                        f"observed at least {len(output) + len(chunk)} bytes)")
                 output.extend(chunk)
         remaining = deadline - time.monotonic()
         if remaining <= 0:

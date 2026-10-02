@@ -456,6 +456,13 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "A manually written implementation.patch is an ordinary file; its hunks are not recursively applied. "
                 "A passing scratch-only test does not validate the submitted target. "
             )
+    if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT":
+        common += (
+            "Keep the candidate, encoded sources and cumulative patch within "
+            f"the {request.budget.max_output_bytes}-byte response limit, leaving room for final metadata. "
+            "Untracked files count; source may appear separately and in the patch. "
+            "Repair native Stop capture/size errors by reducing the actual files. "
+        )
     shared = (grounding_acceptance_request(request)
         and getattr(getattr(request.task_context, "kind", None), "value", None) != "GROUNDING_QUERY_PLAN")
     if (shared and request.command.value == "GROUNDING") or (

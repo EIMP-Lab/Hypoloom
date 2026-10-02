@@ -7,6 +7,15 @@ checkout does not migrate a retained run or restart its GPU service.
 
 ## Completion and final-report evidence
 
+Implementation completion checks the actual sources and cumulative Git patch
+before the native Agent exits. Oversized output is returned to that same call
+for correction within the configured Stop limit. The invocation's output-byte
+budget includes the candidate and Base64-encoded files: tracked and untracked
+changes both count, and a captured source also appears in its patch. Reduce the
+actual files when this feedback appears. The final response still undergoes full
+validation, including usage and diagnostics that become available only at exit;
+leave space for that metadata. Updating the checkout does not change old runs.
+
 New runs accept identical native completion replies caused by same-session
 background-task notifications only after identity, current-output validation and
 cumulative accounting checks. The final cumulative ledger is charged once.

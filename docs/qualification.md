@@ -2,6 +2,63 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Implementation output feedback before native exit (2026-10-02)
+
+From `6c32ed0`, bwrap70 reuses native Stop, actual workspace capture and the
+canonical output-byte validator to return implementation capture/size errors
+while the same call can still repair its files. A synthetic 52 KB source passes
+the raw 128 KiB bound but exceeds it after source/patch encoding; 70 KB reproduces
+the Git bound. Committed and untracked changes both reproduce the problem.
+Feedback names the remaining patch allowance, encoded size and complete response
+limit. The preview is a lower bound: final accounting/diagnostics are unavailable
+until exit and still undergo unchanged full postflight. Correction caps, path
+protections, budgets, publication and frozen old runtimes remain authoritative.
+No new schema, acceptance record or persistent authority is introduced.
+
+The isolated baseline records **12 failing new cases**: eight size/capture cases,
+three correction/drift/path cases, and one final-validation case that cannot call
+the absent design callback. The final focused selection passes **241 tests**;
+the expanded source/session/ACI/instruction/document selection passes **262**,
+including all twelve new cases. These selections overlap. Earlier fixture errors
+(missing declared component configuration and fake response identity) and the
+initial error-message compatibility regression are retained with their repairs.
+
+The real installed CLI with a local scripted provider completes an entire Host
+workflow and CPU publication in **39.23 seconds**. One implementation Attempt
+receives two native rejections (patch capture, then encoded response), repairs
+actual files and passes the third Stop. Independent read-only inspection counts
+**11 successful terminal Agents / one successful CPU Process**, one
+CREATE_EXPERIMENT and one ACCEPT_OUTCOME, a clean existing Oracle and no recorded
+live process groups or sockets. Accounting uses the single terminal response per
+Attempt. This validates mechanics, not autonomous model quality or measured
+monetary savings. No paid model, GPU or submitted research run is executed.
+
+Full G1 records **6,724 passed, three failed and 71 skipped** in 2,516.75 seconds.
+All three failures are stale CLI expectations for bwrap69; the isolated CLI
+selection reproduces exactly those three failures, then all **45** tests pass
+after updating only the expected version to bwrap70. Combining final outcomes
+covers **6,727 passing test identities and 71 skips**, with no unresolved failure.
+The full suite was not repeated after that test-only assertion correction;
+production source remained frozen throughout qualification.
+Independent inspection of five completed native G1 roots counts **79 terminal
+Agents** (78 succeeded, one lost) and **nine terminal CPU Processes** (six
+succeeded, three failed in failure/recovery fixtures). CREATE_EXPERIMENT and
+ACCEPT_OUTCOME each occur nine times. All five existing Oracles are clean, with
+no open Attempts, live recorded process groups or sockets.
+
+The wheel installed outside the checkout matches **172 package files** exactly.
+Installed size validation, CLI help, MCP initialization and fresh runtime-bundle
+identity pass. Compile, undefined-name lint and whitespace checks pass. These
+checks make no G4/G5 or real-model savings claim.
+Evidence stays in `.local/qualification/agent-output-preflight-20261002/`, including
+`baseline-red.xml`, `focused-final.xml`, `extended.xml`, `native.xml` and
+`independent-native.json`, plus `g1.xml`, `cli-red.xml`, `cli-final.xml`,
+`coverage.json`, `independent-g1-native.json` and `installation.json`.
+Original support archives and research state are
+read-only; private case details remain under the ignored issue-report directory.
+See the [design](design/agent-output-preflight.md) and
+[runtime guide](guides/runtime-recovery.md#completion-and-final-report-evidence).
+
 ## Common publisher preparation during init (2026-10-02)
 
 The user authorized design, implementation and commit/push to dev. The preceding

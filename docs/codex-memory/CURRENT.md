@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 2 implementation output feedback: bwrap70 reuses native Stop, actual
+  source/cumulative-patch capture and the canonical byte validator. Committed and
+  untracked files count; known encoded oversize now gets feedback in the same
+  call. Final accounting/diagnostics still require full postflight. No new schema,
+  budget reserve, acceptance authority or retained-run migration. Focused 241 and
+  expanded 262 pass (overlapping); 45 CLI checks pass after synchronizing three
+  stale version assertions. Real CLI/local-provider/CPU closure repairs both size
+  boundaries in one design Attempt; 11 Agents / one Process close with a clean
+  Oracle and no residue. Installed 172-file wheel, CLI/MCP and fresh bundle pass.
+  Full G1 plus CLI assertion repairs covers 6,727 passing identities / 71 skips;
+  full results and five-root independent closure evidence are routed to
+  [qualification](../qualification.md#implementation-output-feedback-before-native-exit-2026-10-02).
+  [Design](../design/agent-output-preflight.md); evidence stays in
+  `.local/qualification/agent-output-preflight-20261002/`. Private support evidence
+  stays at its original ignored paths. No paid/GPU or model-savings claim; user
+  authorizes commit/push dev.
+
 - October 2 common publisher preparation implemented: the existing catalog presents
   IEEE/ACM/Elsevier-ScienceDirect/Springer; three default login preparations, ACM
   public-first/optional. Init emits complete commands and retains custom/none choices;

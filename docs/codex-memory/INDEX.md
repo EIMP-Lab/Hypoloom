@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Implementation output feedback](../design/agent-output-preflight.md):
+  bwrap70 native Stop reuses actual source/patch capture and canonical byte limits;
+  fixes late/opaque size feedback while preserving final validation and budgets.
+  [Qualification](../qualification.md#implementation-output-feedback-before-native-exit-2026-10-02)
+  records synthetic baseline failures, same-Attempt real-CLI/CPU repair, full/focused
+  checks, independent closure and installed-package evidence. Private support
+  material remains under the ignored `.local/issue-reports/` directory.
+
 - [Common publisher preparation](../design/institutional-access-preparation.md#常用平台集中准备2026-10-02):
   shared four-platform presentation, three default preparations, ACM public-first,
   complete init commands, custom/skip round-trips and sample-first session reuse.

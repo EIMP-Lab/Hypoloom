@@ -1132,6 +1132,15 @@ class ValidatedAgentResponse:
     workspace_files: Mapping[str, bytes]
 
 
+def validate_output_size(request: AgentRequest, document: Mapping[str, Any], *,
+                         description: str = "response envelope") -> None:
+    """Apply the invocation byte limit to canonical output, including encoding."""
+    size = len(canonical_json(document))
+    if size > request.budget.max_output_bytes:
+        raise AgentACIError("output_too_large",
+            f"{description} is {size} bytes; limit is {request.budget.max_output_bytes} bytes")
+
+
 def validate_postflight(
     request: AgentRequest,
     response: AgentResponse | Mapping[str, Any] | bytes | str,
@@ -1151,8 +1160,7 @@ def validate_postflight(
         raise AgentACIError("input_digest_mismatch", "response does not bind the canonical request")
     if parsed.output_digest != response_digest(parsed):
         raise AgentACIError("output_digest_mismatch", "response digest does not bind returned bytes")
-    if len(parsed.to_json()) > request.budget.max_output_bytes:
-        raise AgentACIError("output_too_large", f"response envelope is {len(parsed.to_json())} bytes")
+    validate_output_size(request, parsed.to_dict())
     if parsed.model_identity != request.required_model_identity:
         raise AgentACIError("model_identity_mismatch", f"{parsed.model_identity!r} != {request.required_model_identity!r}")
     if parsed.adapter_version != request.required_adapter_version:
