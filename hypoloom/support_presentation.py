@@ -21,6 +21,7 @@ class PublicSupportView:
         "experiment_id": "experiment", "execution_id": "execution",
         "host_generation": "host", "artifact_id": "artifact", "tool_use_id": "tool",
         "message_id": "message",
+        "fact_id": "fact", "outcome_id": "outcome", "role": "role", "expert_slot": "role",
     }
     _private_fields = {
         "state_root", "stdout_path", "stderr_path", "diagnostic_summary", "validation_error",
@@ -56,7 +57,11 @@ class PublicSupportView:
         if isinstance(value, Mapping):
             result = {}
             for key, item in value.items():
-                if key in self._private_fields:
+                if field == "accounting" and key == "source" and item in {
+                        "response", "provider", "rejected_response", "discarded_response",
+                        "declared", "rejected", "pre_model", "unavailable", "not_applicable"}:
+                    result[key] = item
+                elif key in self._private_fields:
                     if item not in (None, "", [], {}):
                         result[key + "_omitted"] = True
                 else:
@@ -109,21 +114,27 @@ def support_environment():
 def support_profile_summary(projection):
     """Summarize admitted structure without profile prose, names, paths or raw settings."""
     from .support_bundle import _walk
-    contracts = [item["research_contract"] for item in _walk(projection)
-                 if isinstance(item, Mapping) and isinstance(item.get("research_contract"), Mapping)]
-    if not contracts:
+    contract = next((item.get("payload", {}).get("research_contract")
+        for item in projection.get("related_records", {}).get("facts", [])
+        if item.get("fact_type") == "GoalDefined"), None)
+    if not isinstance(contract, Mapping):
+        contract = next((item["research_contract"] for item in _walk(projection)
+            if isinstance(item, Mapping) and isinstance(item.get("research_contract"), Mapping)), None)
+    if contract is None:
         return {"available": False, "reason": "no_recorded_contract"}
-    contract = contracts[0]
     experts = contract.get("roles")
     components = contract.get("components", [])
     budget = contract.get("budget", {})
-    safe_budget = {key: value for key, value in budget.items()
-                   if key in {"wallclock_hours", "max_experiments", "max_cycles", "max_cost_usd"}
-                   and (value is None or type(value) in {int, float})} if isinstance(budget, Mapping) else {}
+    from .agent_budget import PROFILE_BUDGET_FIELDS, AGENT_INVOCATION_BUDGET_FIELDS, _cost
+
+    def numeric_fields(values, allowed):
+        return {key: value for key, value in values.items() if key in allowed and
+            (value is None or (type(value) in {int, float, str} and _cost(value) is not None)
+             or (key == "token_enforcement_mode" and value in ("enforce", "observe")))} if isinstance(values, Mapping) else {}
+
+    safe_budget = numeric_fields(budget, PROFILE_BUDGET_FIELDS | {"max_cycles", "max_cost_usd"})
     invocation = budget.get("agent_invocation", {}) if isinstance(budget, Mapping) else {}
-    safe_budget["agent_invocation"] = {key: value for key, value in invocation.items()
-        if key in {"max_tokens", "max_turns", "max_output_bytes", "wall_seconds", "max_cost", "token_enforcement_mode"}
-        and (value is None or type(value) in {int, float} or value in ("enforce", "observe"))}
+    safe_budget["agent_invocation"] = numeric_fields(invocation, AGENT_INVOCATION_BUDGET_FIELDS)
     return {"available": True, "research_contract_schema_version": contract.get("schema_version"),
         "profile_authoring_version": None,
         "version_note": "Internal admitted contract version; the original Profile authoring version is not recorded here.",
@@ -131,6 +142,35 @@ def support_profile_summary(projection):
             len({item.get("owner_role") for item in components if isinstance(item, Mapping) and item.get("owner_role")}),
         "component_count": len(components) if isinstance(components, (list, tuple)) else None,
         "budget": safe_budget, "profile_text_included": False}
+
+
+def support_coverage(report):
+    """Explain the existing inventory; never infer unenumerated file counts."""
+    attachments = report["attachments"]
+    counts = {status: sum(a["status"] == status for a in attachments) for status in
+        ("included", "omitted", "unavailable", "not_inspected", "not_applicable")}
+    limits = sorted({a["reason"] for a in attachments if "limit" in a.get("reason", "")})
+    if report.get("detail_omissions"):
+        limits.append("debug_size_limit")
+    if any("debug_projection_exceeds_size_limit" in a.get("redactions", []) for a in attachments):
+        limits.append("debug_size_limit")
+    selection = report["selection"]
+    unselected = max(0, selection["run_attempt_count"] - selection["attachment_attempt_count"])
+    actions = []
+    if unselected:
+        actions.append("Select All recorded attempts or the missing Attempt to expand detail scope.")
+    if not report["include_private_data"]:
+        actions.append("Enable private attachments only when their content is needed and can be shared privately.")
+    if any(reason.startswith("inspection_") for reason in limits):
+        actions.append("Select an individual Attempt to collect scopes not inspected within the collection window.")
+    if "file_size_limit" in limits:
+        actions.append("Use CLI --max-file-mib to include a larger individual file; the package limit alone does not raise it.")
+    if any(reason in limits for reason in ("export_size_or_file_limit", "debug_size_limit")):
+        actions.append("Increase the package/file-count limit or select fewer Attempts; debug detail space scales with package size.")
+    return {"attachment_status_counts": counts, "inventory_complete": True, "limiting_reasons": sorted(set(limits)),
+        "unselected_attempt_count": unselected, "detail_omission_count": len(report.get("detail_omissions", [])),
+        "uninspected_file_count": None if counts["not_inspected"] else 0,
+        "next_steps": actions}
 
 
 def support_readme(report, projection):
@@ -157,6 +197,21 @@ def support_readme(report, projection):
         "- What did you expect, and what happened instead?", "- Which steps reproduce the problem?",
         "- Is it repeatable, and which version last worked?", "",
         "Paste a reviewed description into the issue; attach only approved evidence.", ""]
+    limits, coverage = report["limits"], report.get("coverage", {})
+    lines += ["## Coverage and limits", "",
+        "Scope, private content and size are independent; private does not mean all Attempts.",
+        f"Total / individual file / debug detail bytes: {limits['max_bytes']} / {limits['max_file_bytes']} / {limits['debug_max_bytes']}",
+        f"Exported file limit / inspected file limit: {limits['max_files']} / {limits['max_inspected_files']}",
+        f"Attachment collection window: {limits['inspection_seconds']} seconds (not an end-to-end export deadline).",
+        f"Attachment statuses: {coverage.get('attachment_status_counts', {})}",
+        f"Limiting reasons: {', '.join(coverage.get('limiting_reasons', [])) or 'none observed'}",
+        f"Detailed inventory entries omitted: {report.get('attachments_omitted_from_inventory', 0)} attachments, {report.get('agent_captures_omitted_from_inventory', 0)} Agent captures. Status counts describe observations before inventory trimming.",
+        "not_inspected describes unvisited scopes; their file counts are unknown.",
+        "not_applicable means the recorded effect did not launch, not that its log was lost.",
+        "See run_evidence for recorded terminal facts/artifact identities and budget_usage for the run-wide accounting projection.",
+        "Observed costs are distinct from charged/reserved amounts; unknown usage is not zero spend.", ""]
+    lines += ["- " + action for action in coverage.get("next_steps", [])]
+    lines.append("")
     if report.get("issue_description"):
         lines += ["## Submitted description", ""]
         for field, value in report["issue_description"].items():

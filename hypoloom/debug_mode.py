@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_aci import AgentACIError, AgentRequest, AgentResponse, validate_postflight
-from .agent_budget import AgentAttemptCharge, fold_agent_attempts
+from .agent_budget import AgentAttemptCharge, fold_agent_attempts, usage_projection
 from .diagnostics import (
     bounded_diagnostic_text,
     credential_shaped_text,
@@ -987,6 +987,11 @@ def build_debug_report(
         "attempts": list(projected),
         "evaluator_retries": list(evaluator_retries),
     }
+    contract = next((row.get("payload", {}).get("research_contract") for row in facts
+        if row.get("fact_type") == "GoalDefined"), None)
+    report["budget_usage"] = {"scope": "run", **usage_projection((), future_attempts=0,
+        future_budget=None, document=contract if isinstance(contract, Mapping) else None,
+        charges=tuple(charge_by_id.values()))}
     if include_payloads:
         report["related_records"] = {
             "commands": list(commands),

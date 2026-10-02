@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- October 2 issue report completeness: recent failures retain the first unresolved
+  retry chain and recorded final-report/terminal sources; every scope keeps the
+  existing run-wide accounting projection. Budget strings, public aliases and
+  independent input/output fidelity are preserved. Metadata precedes large bodies;
+  README/Web expose actual limits, uninspected scopes and inventory trimming.
+  No new authority, schema or run migration. Supplied-index replay expands four
+  detail targets to 15 without reconstructing missing old bodies. Final focused
+  117 pass; full G1 covers 6,743 passing identities / 71 skips, no failures/errors.
+  Interrupted serial work and disjoint remaining groups exactly cover all 6,814
+  collected cases; original interruption/launcher errors are retained. Installed
+  172-file wheel/CLI/MCP/fresh bundle pass. Isolated Host/CPU
+  export closes 12 Agents / one Process with unchanged authority rows; two native
+  recovery roots close another 44 Agents / four Processes. Oracles are clean,
+  with no recorded live groups or sockets. Existing research runs/private ZIPs
+  remain unchanged. No paid/GPU or export latency guarantee. User authorizes
+  commit/push dev. [Design](../design/issue-report-evidence.md),
+  [qualification](../qualification.md#issue-report-evidence-completeness-2026-10-02);
+  evidence stays in `.local/qualification/issue-report-20261002/`.
+
 - October 2 implementation output feedback: bwrap70 reuses native Stop, actual
   source/cumulative-patch capture and the canonical byte validator. Committed and
   untracked files count; known encoded oversize now gets feedback in the same

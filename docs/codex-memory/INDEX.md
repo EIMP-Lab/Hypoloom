@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Issue report evidence completeness](../design/issue-report-evidence.md):
+  first-failure retry closure, terminal sources, existing run-wide accounting,
+  metadata priority, explicit traversal/inventory omissions and independent
+  input/output fidelity. [Qualification](../qualification.md#issue-report-evidence-completeness-2026-10-02)
+  records original failures, focused coverage, supplied-index replay, isolated
+  Host/CPU closure and installed-package evidence. Original private ZIPs remain
+  unchanged; no run migration or new persisted authority.
+
 - [Implementation output feedback](../design/agent-output-preflight.md):
   bwrap70 native Stop reuses actual source/patch capture and canonical byte limits;
   fixes late/opaque size feedback while preserving final validation and budgets.

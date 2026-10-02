@@ -385,6 +385,10 @@ def test_browser_support_preview_private_choice_and_zip_download(browser, tmp_pa
         archive.writestr("report.json", '{"include_private_data":true}')
     preview = {"readme": "Review this support copy <script>window.supportInjected=true</script>",
         "report": {"include_private_data": False, "diagnosis": {"available": False}, "limited": True,
+                   "selection": {"selected_detail_count": 3, "supporting_detail_count": 11, "run_attempt_count": 63},
+                   "coverage": {"limiting_reasons": ["inspection_time_limit"],
+                       "attachment_status_counts": {"not_inspected": 2},
+                       "next_steps": ["Select an individual Attempt to collect uninspected evidence."]},
                    "exported_file_count": 3, "exported_payload_bytes": 2500},
         "diagnostics": {"oracle": {"available": False}, "attempts": []}}
     page.evaluate("""(() => {
@@ -413,7 +417,10 @@ def test_browser_support_preview_private_choice_and_zip_download(browser, tmp_pa
     assert page.evaluate("document.querySelector('#download-support').disabled")
     page.click("#preview-support")
     page.wait("!document.querySelector('#download-support').disabled")
-    assert "Some evidence was omitted" in page.text("#support-status")
+    assert "3 selected + 11 supporting details / 63 recorded attempts" in page.text("#support-status")
+    assert "inspection_time_limit" in page.text("#support-status")
+    assert "2 scopes/files not inspected" in page.text("#support-status")
+    assert "Select an individual Attempt" in page.text("#support-status")
     assert "diagnosis unavailable" in page.text("#support-status")
     assert page.evaluate("window.supportInjected !== true")
     page.click("#support-private")

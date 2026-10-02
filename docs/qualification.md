@@ -2,6 +2,76 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Issue report evidence completeness (2026-10-02)
+
+From `e85b452`, the user authorized design, implementation and commit/push to dev.
+Support selection expands the first unrecovered failure's retry chain and keeps
+recorded final-report Attempts plus goal/outcome/verdict sources. Compact terminal
+fact/artifact identities and the existing full-run charge/usage projection survive
+narrow selection. Public role/fact identities are aliased; current budget fields
+and decimal USD strings remain visible without Profile prose. Input and output
+fidelity are classified separately, and pre-model accounting distinguishes an
+unlaunched effect from lost capture.
+
+Metadata across selected Attempts precedes large provider/transcript bodies.
+The existing 15-second traversal and inspection limits are disclosed; unvisited
+scopes are inventoried without inventing file counts. Debug detail space scales
+with the package limit. README and Web preview explain effective limits, selection,
+omissions and next actions. A reproduced small-package inventory overflow now
+reports its omitted entries consistently in README and JSON. No new authority,
+schema, digest, persistent cache, run migration or automatic upload is introduced.
+
+Nine new cases first fail on unchanged implementation (`red.xml`). Final focused
+coverage passes **117 tests in 18.23 seconds** (`final-focused.xml`), including
+credential filtering, source immutability, accounting reservations, exact selectors,
+time/inspection/file/byte limits, public/private terminal evidence, real HTTP/TUI
+and browser download flows. Original intermediate failures are retained: an old
+fixed-size test now explicitly exceeds the proportional detail budget, a fixture
+phrase collided with new explanatory text, and a new assertion assumed every
+inventory row had an Attempt identity. No privacy assertion was weakened.
+
+Read-only replay of the supplied 63-Attempt index selects recent ordinals 60–62,
+supporting retry ordinals 30–40 and final report 63: **15 detail targets instead of
+four**. This validates selection over the available index; missing old bodies are
+not reconstructed. Private source archives remain unchanged and ignored.
+
+An isolated actual Host/CPU run closes **12 Agents / one Process**, with one
+accepted outcome and one verdict, at COMPLETED revision 18. After Host close,
+independent SQLite/process/socket inspection and the existing Oracle find no open
+Attempt, live recorded process group, socket or Oracle issue. Public and private
+exports preserve all authority rows and three terminal fact identities plus the
+final-report source. Target/data remain in this disposable evidence root so the
+audit stays reproducible. Earlier post-pytest inspection correctly reported nine
+missing-source findings after fixture teardown removed its target repository;
+two probe SQL table-name mistakes are retained, then corrected without rerunning
+or changing the closed sample.
+
+Independent inspection of two completed native G1 recovery roots counts **44
+terminal Agents / four terminal CPU Processes**, with CREATE_EXPERIMENT and
+ACCEPT_OUTCOME each recorded four times. Both existing Oracles are clean, with
+no open Attempts, live recorded process groups or sockets.
+
+The wheel installed outside the checkout matches **172 package files** exactly.
+Installed budget projection, CLI support preview, MCP initialization and fresh
+bundle identity/bytes pass; the absent startup source root stays absent. Compile,
+undefined-name/duplicate-key lint and whitespace checks pass.
+
+Full offline G1 covers all **6,814 collected identities: 6,743 passed / 71 skipped,
+zero failures or errors**. After 851 passing cases, the serial invocation was
+interrupted to finish the remainder in eight disjoint file groups. Its in-flight
+case was rerun in a fresh root; the aborted disposable root retains one OPEN Agent
+record but no live recorded process group or socket, and is not counted as a pass.
+One group initially could not launch because a parameterized node exceeded the
+OS argument limit; selecting the same complete files resolved the launcher error.
+All eight groups then passed. JUnit identities exactly match the original
+collection, with no omission or duplicate; source remained frozen throughout.
+Original interruption and launcher outputs remain alongside `g1-coverage.json`.
+Final documentation checks pass four tests. No paid-model/GPU compatibility or
+latency guarantee is claimed. Evidence: `.local/qualification/issue-report-20261002/`, including
+`retained-index-selection.json`, `retained-cpu-closure.json`, `installation.json`,
+`independent-g1-native.json`, the focused/G1 JUnit results and original probe outputs.
+See the [design](design/issue-report-evidence.md) and [usage guide](../USAGE.md).
+
 ## Implementation output feedback before native exit (2026-10-02)
 
 From `6c32ed0`, bwrap70 reuses native Stop, actual workspace capture and the

@@ -3784,7 +3784,10 @@
         setText("support-diagnostics", JSON.stringify(preview.diagnostics, null, 2));
         byId("support-preview").hidden = false;
         const report = object(preview.report);
-        setText("support-status", `${report.exported_file_count ?? "?"} files · ${compactNumber(report.exported_payload_bytes)} bytes before report metadata. ${report.limited ? "Some evidence was omitted by the limits. " : ""}${object(report.diagnosis).available ? "" : "Run diagnosis unavailable; available fallback evidence is included. "}Download reads current evidence with these options.`);
+        const selection = object(report.selection);
+        const coverage = object(report.coverage);
+        const counts = object(coverage.attachment_status_counts);
+        setText("support-status", `${selection.selected_detail_count ?? 0} selected + ${selection.supporting_detail_count ?? 0} supporting details / ${selection.run_attempt_count ?? "?"} recorded attempts. ${report.exported_file_count ?? "?"} files · ${compactNumber(report.exported_payload_bytes)} bytes before report metadata. ${report.limited ? `Limited: ${list(coverage.limiting_reasons).join(", ") || "see inventory"}. ` : ""}${counts.not_inspected ? `${counts.not_inspected} scopes/files not inspected; their contents are unknown. ` : ""}${object(report.diagnosis).available ? "" : "Run diagnosis unavailable; available fallback evidence is included. "}${list(coverage.next_steps).join(" ")} Download reads current evidence with these options.`);
       }
       byId("download-support").disabled = false;
     } catch (error) {

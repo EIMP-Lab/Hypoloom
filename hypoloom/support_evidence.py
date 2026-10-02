@@ -28,6 +28,50 @@ def _objects(value):
             pass
 
 
+_TERMINAL_FACTS = {"GoalDefined", "CanonicalOutcomeAccepted", "GoalVerdictRecorded"}
+
+
+def _final_report(item):
+    return item.get("module") in {"FINAL_REPORT", "auxiliary/final_report", "agent/final_report"}
+
+
+def run_evidence_summary(projection):
+    """Small recorded identities/statuses; no research prose or inferred verdict."""
+    records = projection.get("related_records", {})
+    facts = []
+    for row in records.get("facts", []):
+        if row.get("fact_type") not in _TERMINAL_FACTS:
+            continue
+        item = {key: row.get(key) for key in
+            ("fact_id", "fact_type", "execution_id", "experiment_id", "artifact_id")}
+        payload = row.get("payload", {})
+        for key in ("verdict", "outcome"):
+            if key in payload:
+                item[key] = payload[key]
+        facts.append(item)
+    return {"scope": "run", "facts": facts,
+        "final_report_attempt_ids": [a["attempt_id"] for a in projection["attempts"]
+            if _final_report(a)],
+        "artifacts": [{key: row.get(key) for key in
+            ("artifact_id", "attempt_id", "experiment_id", "execution_id", "artifact_kind")}
+            for row in records.get("artifacts", [])]}
+
+
+def _retry_closure(attempts, seeds):
+    neighbors = {item["attempt_id"]: set() for item in attempts}
+    for item in attempts:
+        previous = item.get("retry_of_attempt_id")
+        if previous in neighbors:
+            neighbors[item["attempt_id"]].add(previous)
+            neighbors[previous].add(item["attempt_id"])
+    found, pending = set(seeds), list(seeds)
+    while pending:
+        for identity in neighbors[pending.pop()] - found:
+            found.add(identity)
+            pending.append(identity)
+    return found
+
+
 def select_evidence(projection, attempt_id, recent_failures):
     """Select details plus one hop of their recorded sources, not a history graph."""
     attempts = sorted(projection["attempts"], key=attempt_time_key)
@@ -44,22 +88,15 @@ def select_evidence(projection, attempt_id, recent_failures):
         selected = {item["attempt_id"] for item in attempts if item["command_id"] in commands}
         if not selected:
             selected = {item["attempt_id"] for item in attempts[-3:]}
-        while True:
-            previous = set(selected)
-            for item in attempts:
-                if item.get("retry_of_attempt_id") in selected:
-                    selected.add(item["attempt_id"])
-                if item["attempt_id"] in selected and item.get("retry_of_attempt_id") in by_id:
-                    selected.add(item["retry_of_attempt_id"])
-            if previous == selected:
-                break
+        selected = _retry_closure(attempts, selected)
     else:
         selected = set(by_id)
     supporting = set()
     if recent_failures and attempt_id is None:
         first = projection["summary"].get("first_unrecovered_failure_attempt_id")
         if first in by_id:
-            supporting.add(first)
+            supporting.update(_retry_closure(attempts, {first}))
+        supporting.update(item["attempt_id"] for item in attempts if _final_report(item))
     owners = [by_id[key] for key in selected | supporting]
     executions = {item.get("execution_id") for item in owners} - {None}
     command_ids = {item["command_id"] for item in owners}
@@ -71,7 +108,8 @@ def select_evidence(projection, attempt_id, recent_failures):
             executions.add(fact["execution_id"])
     supporting.update(item["attempt_id"] for item in attempts if item.get("execution_id") in executions)
     facts = [item for item in records.get("facts", []) if
-        item.get("execution_id") in executions]
+        item.get("execution_id") in executions or
+        (attempt_id is None and recent_failures and item.get("fact_type") in _TERMINAL_FACTS)]
     # One direct fact-reference hop retains preregistration/outcome dependencies.
     references = {ref["ref_fact_id"] for fact in facts for ref in fact.get("refs", [])}
     facts += [item for item in records.get("facts", []) if
@@ -109,6 +147,7 @@ def select_evidence(projection, attempt_id, recent_failures):
     if attempt_id is None:
         fields = {"attempt_id", "kind", "state", "terminal_reason", "command_id", "command_type",
             "module", "started_at", "ended_at", "failure_code", "failure_stage", "diagnostic_summary",
+            "duration_seconds", "accounting", "task_identity",
             "retry_of_attempt_id", "source_attempt_id", "recovered_by_later_attempt", "final_failure_transition"}
         projection["run_attempts"] = [{key: value for key, value in item.items() if key in fields}
             for item in attempts]
@@ -140,18 +179,32 @@ def mark_export_fidelity(source, exported, reason):
             fidelity = item.get("reconstructability")
             if not isinstance(fidelity, dict):
                 continue
-            fidelity.setdefault("source_terminal_evidence", fidelity.get("terminal_evidence"))
-            if "observation" not in item:
-                fidelity["terminal_evidence"] = "SUMMARY_ONLY"
-                fidelity["pure_contract_input"] = "NOT_INCLUDED"
-            elif item["observation"] != original.get("observation") or any(
-                    isinstance(value, str) and (OMITTED_EMBEDDED_CONTENT in value or REDACTED in value)
-                    for value in _walk(item["observation"])):
-                fidelity["terminal_evidence"] = "SANITIZED_RECORDED_OUTPUT"
-                fidelity["pure_contract_input"] = "SANITIZED_COPY"
+            original_fidelity = original.get("reconstructability", {})
+            fidelity.setdefault("source_terminal_evidence", original_fidelity.get("terminal_evidence"))
+            observation = item.get("observation", {})
+            source_observation = original.get("observation", {})
+
+            def changed(value, source_value):
+                return value != source_value or any(isinstance(v, str) and
+                    (OMITTED_EMBEDDED_CONTENT in v or REDACTED in v) for v in _walk(value))
+
+            inputs = {k: v for k, v in observation.items() if k in {"request", "process_request"}}
+            source_inputs = {k: v for k, v in source_observation.items() if k in {"request", "process_request"}}
+            if not inputs:
+                fidelity["pure_contract_input"] = "NOT_INCLUDED" if source_inputs or "observation" not in item else original_fidelity.get("pure_contract_input")
             else:
-                continue
-            fidelity["omissions"] = list(dict.fromkeys([*fidelity.get("omissions", []), reason]))
+                fidelity["pure_contract_input"] = "SANITIZED_COPY" if changed(inputs, source_inputs) else original_fidelity.get("pure_contract_input")
+            outputs = {k: v for k, v in source_observation.items()
+                if k in {"response", "rejected_response", "discarded_response"} and isinstance(v, Mapping)}
+            if "observation" not in item or (outputs and not any(k in observation for k in outputs)):
+                fidelity["terminal_evidence"] = "SUMMARY_ONLY"
+            else:
+                original_output = outputs or {k: v for k, v in source_observation.items() if k not in source_inputs}
+                exported_output = ({k: observation[k] for k in outputs if k in observation} if outputs else
+                    {k: v for k, v in observation.items() if k not in inputs})
+                fidelity["terminal_evidence"] = "SANITIZED_RECORDED_OUTPUT" if changed(exported_output, original_output) else original_fidelity.get("terminal_evidence")
+            if changed(observation, source_observation):
+                fidelity["omissions"] = list(dict.fromkeys([*fidelity.get("omissions", []), reason]))
 
 
 def trim_payloads(projection, budget, encode):

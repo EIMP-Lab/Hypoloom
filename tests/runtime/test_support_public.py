@@ -182,7 +182,8 @@ def test_large_private_projection_keeps_diagnosis_when_payloads_do_not_fit(tmp_p
     from hypoloom.support_bundle import build_support_bundle
     root = tmp_path / "state"
     run_id, first, second = _seed_agent_retry(root, first_diagnostics={"private_note": "large payload " * 50000})
-    report, files = build_support_bundle(root, run_id, include_private_data=True)
+    # The detail allowance now scales with package size; explicitly exceed it.
+    report, files = build_support_bundle(root, run_id, include_private_data=True, max_bytes=1024 * 1024)
     debug = json.loads(files["debug.json"])
     assert {row["attempt_id"] for row in debug.get("attempts", [])} == {first, second}
     assert debug["attempts"][1]["retry_of_attempt_id"] == first

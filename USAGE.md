@@ -275,7 +275,8 @@ are filtered by default; private content requires an explicit
 `--include-private-data`. Exports are never uploaded automatically.
 
 `--recent-failures` selects the last three failing commands by failure time,
-their retries and directly related evidence. The package distinguishes the
+their retries, the first unrecovered failure's retry chain, recorded final-report
+Attempts and goal/outcome/verdict sources. The package distinguishes the
 run-wide summary, selected details and supporting sources; missing or trimmed
 records are listed explicitly. `--attempt-id` restricts details to that Attempt
 and its direct sources. Source availability is separate from exported fidelity:
@@ -283,6 +284,23 @@ sanitized or omitted text is not an exact replay fixture. README and report.json
 show the observed run state/revision, failure groups and exporter environment;
 recorded Attempt versions are separate and may be unknown. Downloads read fresh
 evidence and can differ from the preview of an active run.
+
+Scope, private content and size are independent: private export does not mean
+all Attempts. Every scope retains compact run-wide terminal fact/artifact
+identities and the existing accounting projection, including observed usage,
+unknown reservations and cumulative run/role limits. Exact-Attempt selection
+keeps other research bodies out. These records do not independently recompute a
+scientific result, and successful Process exit is not a scientific verdict.
+
+Critical metadata is collected before large transcripts/provider bodies. Preview
+and README expose total, individual-file, file-count, inspection-count and
+15-second attachment collection limits; this is not an end-to-end export timeout.
+Debug detail space is one quarter of the total byte limit. `not_inspected` means
+the remaining scope was not visited, with unknown file counts; `not_applicable`
+means the recorded effect never launched. Select an individual Attempt for a
+collection cutoff. Use `--max-file-mib` for an oversized individual file, or
+`--max-total-mib` / `--max-files` for the corresponding package limit. Missing
+historical records cannot be reconstructed by increasing any export limit.
 
 The browser also accepts an optional description. CLI equivalents are
 `--issue-actual`, `--issue-expected`, `--issue-steps` and `--issue-occurred-at`
