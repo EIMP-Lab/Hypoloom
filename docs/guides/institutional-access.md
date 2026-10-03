@@ -8,6 +8,57 @@ with each run, while dedicated profiles retain still-valid sessions. The TUI gro
 papers by publisher without opening repeated prompts. Other research continues;
 available bytes do not establish that an Agent read a paper.
 
+## Elsevier API
+
+ScienceDirect can use the official Article Retrieval API independently of the
+Windows browser. An API key is separate from website SSO. New keys normally use
+the requesting server's institutional IP; off-campus access may need an Insttoken
+issued by Elsevier. A key alone does not prove full-text entitlement.
+[Official authentication](https://dev.elsevier.com/tecdoc_api_authentication.html)
+
+Edit the private `profiles/local/YOUR_PROFILE/methodology.yaml` locally. Preserve
+existing fields and add `literature.elsevier_api_key`; optionally add
+`literature.elsevier_insttoken` only when issued. Keep the regular, non-symlink file
+mode 0600. Do not send secrets to chat, CC, argv or public templates; replace a key
+already shared in chat. No second credentials file is needed.
+
+Run this read-only sample check on the server, replacing the Profile and DOI:
+
+```bash
+./.conda/envs/hypoloom/bin/python -m hypoloom.elsevier \
+  --credentials-file /data/Gray/Project/Hypoloom/profiles/local/YOUR_PROFILE/methodology.yaml \
+  --url 'https://doi.org/REPLACE_WITH_YOUR_DOI'
+```
+
+It prints status/reason, a sample URL and page count, never keys or document bytes;
+it creates or changes no research run. `available` proves only this document's
+current access. `elsevier_authentication_failed`, `elsevier_access_denied` and
+`elsevier_rate_limited` distinguish authentication, authorization and quota failures.
+`identity_unconfirmed` / `elsevier_full_text_unconfirmed` mean source validation
+did not succeed. For 403, check the server's IP, institutional API access and
+Insttoken; do not copy browser cookies or repeat browser init as a remedy.
+
+Repeat init's read-only inspection to review the configuration. New Hosts use
+the key; default browser preparation omits ScienceDirect and retains IEEE and
+Springer. Explicit ScienceDirect browser preparation is still respected.
+Preflight reports `full_text_access: not_checked` and consumes no API quota.
+Existing runs retain their frozen version; no migration occurs.
+
+Existing public PDF reads retain their behavior. For a selected ScienceDirect
+article/Elsevier DOI, the API replaces the anonymous publisher request and automatic
+browser fallback. DOI selections start with PDF; PII-only links use XML to verify
+the returned article identity. PDF HTTP 403/406 permits one FULL XML representation fallback
+within the same deadline/request budget; 401/429 are not retried. Metadata, abstracts,
+challenges and identity mismatches never become full text. XML produces extracted
+text, labeled with missing PDF pagination and possible figure/formula formatting
+loss. Failure preserves exact-DOI OA fallback and manual PDF import without opening
+another CAPTCHA page. `ScienceDirect=public_only` also disables the authenticated
+API; retain `auto` to use it. Other platforms can still use the Windows browser.
+[Official retrieval API](https://dev.elsevier.com/documentation/FullTextRetrievalAPI.wadl)
+TUI/Web PDF import still requires an enabled institutional panel (browser mode
+other than `off`). Failed API papers appear there for manual import without
+scheduling a browser fetch. The API itself also works with browser mode `off`.
+
 ## Prepare the connection during init
 
 Select `--institutional-browser-mode` for new `bootstrap inspect/launch`, `serve`

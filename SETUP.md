@@ -90,6 +90,10 @@ settings copy or put model keys into literature/notification fields.
 Literature retrieval uses OpenAlex. The complete native expert path needs an
 OpenAlex key in `methodology.yaml.literature.openalex_api_key`; set
 `literature.unpaywall_email` when selecting the Unpaywall PDF fallback.
+Optional `literature.elsevier_api_key` enables the official ScienceDirect article
+API; `literature.elsevier_insttoken` is only for a token issued by Elsevier.
+Use the [bounded sample check](docs/guides/institutional-access.md#elsevier-api)
+to distinguish configuration from actual full-text access.
 Fill only the private local Profile and keep this file mode 0600, non-symlink.
 Admission removes values from the contract and derives the original YAML path;
 init passes that path through the existing `--credentials-file` argument to

@@ -6,6 +6,48 @@
 连接与端口随本次运行结束释放；专用浏览器目录保留，后续运行复用仍有效的登录。
 学校要求重新认证或MFA时仍需人工操作；全文就绪也不代表Agent已经读过它。
 
+## Elsevier API
+
+ScienceDirect 专用浏览器反复出现人机验证时，可配置官方 Article Retrieval API。
+它不需要 Windows 浏览器登录。API Key 与网站 SSO 是两套认证：新 Key 默认依赖
+请求服务器的机构出口 IP；校外可能需要 Elsevier 签发的 Insttoken。Key 本身不保证
+全文授权。[官方认证说明](https://dev.elsevier.com/tecdoc_api_authentication.html)
+
+1. 在服务器用本地编辑器打开 `profiles/local/<你的Profile>/methodology.yaml`。
+   保留现有字段，在 `literature` 下添加 `elsevier_api_key`；已有 Insttoken 才填写
+   `elsevier_insttoken`。不要把密钥发到 CC、聊天、命令行或公开模板。
+2. 文件保持普通非符号链接文件、权限 `0600`；仍复用这个 Profile，不创建第二份凭据文件。
+3. 在服务器执行下方只读检查，替换 Profile 和 DOI。输出只包含状态、原因、样本 URL
+   和页数，不输出密钥或全文，也不创建、启动或修改科研运行。
+
+```bash
+./.conda/envs/hypoloom/bin/python -m hypoloom.elsevier \
+  --credentials-file /data/Gray/Project/Hypoloom/profiles/local/YOUR_PROFILE/methodology.yaml \
+  --url 'https://doi.org/REPLACE_WITH_YOUR_DOI'
+```
+
+返回 `available` 仅证明该篇当前可获取；`elsevier_authentication_failed` 表示认证失败，
+`elsevier_access_denied` 表示请求的授权未通过，`elsevier_rate_limited` 表示额度／限流，
+`identity_unconfirmed` 或 `elsevier_full_text_unconfirmed` 表示内容尚未验证。
+这些状态不能通过重跑浏览器 init 修复。403 时检查服务器出口 IP、机构 API 权限及
+Insttoken；不要把浏览器 Cookie 复制到 API 配置。已发到聊天的 Key 建议替换后本地保存。
+
+填写后重新执行 init 的只读检查即可审阅新配置。新 Host 的文献获取会识别该 Key；
+init 默认浏览器准备跳过 ScienceDirect，保留 IEEE、Springer。显式选择 ScienceDirect
+浏览器准备仍被尊重。预检显示 `full_text_access: not_checked`，不会自动消耗 API 额度。
+已启动运行使用其原冻结版本，不自动迁移。
+
+对已有公开 PDF 路径保持原行为；选中 ScienceDirect／Elsevier DOI 时，官方 API 代替
+匿名出版社页面和自动浏览器回退。DOI 先请求 PDF；只有 PII 的链接直接请求 XML 以核对身份。
+PDF 返回 403／406 时在同一期限内
+尝试一次 `view=FULL` XML；401／429 不自动重试。元数据、摘要、验证码、错误论文不会
+被当成全文。XML 成功时保存提取文本并注明缺少 PDF 分页及可能缺失图形／公式排版。
+失败仍可走准确 DOI 的公开全文后备或人工 PDF 导入，不再自动打开验证码页面。
+`ScienceDirect=public_only` 同时关闭机构 API；要用 API 应保持 `auto`。
+Windows 专用浏览器仍可用于其他平台。[官方全文接口](https://dev.elsevier.com/documentation/FullTextRetrievalAPI.wadl)
+保留 TUI/Web 的人工 PDF 导入需要启用机构面板（浏览器模式不能为 `off`）。API 失败的
+论文会出现在该面板中，等待人工导入，不自动启动浏览器；API 本身可在浏览器 `off` 时使用。
+
 ## 集中准备与研究期间的处理
 
 没有研究运行或待下载论文时，也可先准备常用平台。Windows 终端用户建议使用下文的

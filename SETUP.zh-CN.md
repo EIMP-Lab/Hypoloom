@@ -66,7 +66,10 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
 
 文献检索使用 OpenAlex。在私有 `methodology.yaml` 中填写
 `literature.openalex_api_key`，选用 Unpaywall PDF 后备时填写
-`literature.unpaywall_email`。文件必须为普通非符号链接文件、权限 0600。
+`literature.unpaywall_email`。可选 `literature.elsevier_api_key` 启用 ScienceDirect 官方全文接口；
+`literature.elsevier_insttoken` 仅在 Elsevier 签发机构令牌后填写。
+使用[有界样本检查](docs/guides/institutional-access.zh-CN.md#elsevier-api)验证实际全文权限。
+文件必须为普通非符号链接文件、权限 0600。
 准入剥离明文，并由原 YAML 路径派生既有 `--credentials-file` 参数传给
 `serve`、`profile-check` 和 `start`，不会生成第二份密钥文件。
 旧 dotenv／单密钥参数仍兼容，但不能覆盖 Profile 中冲突的凭据来源。

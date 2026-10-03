@@ -52,8 +52,18 @@ def preparation_selection(values, modes):
 
 def preparation(args):
     modes = options(args)["provider_modes"]
-    selected = preparation_selection(getattr(args, "institutional_prepare_provider", None), modes)
+    selection = getattr(args, "institutional_prepare_provider", None)
+    selected = preparation_selection(selection, modes)
+    api_providers = []
+    source = getattr(args, "credentials_file", None)
+    if source and getattr(args, "literature_adapter", None) == "openalex":
+        from .credentials import ELSEVIER_API_KEY, read_credentials_file
+        if read_credentials_file(source).get(ELSEVIER_API_KEY):
+            api_providers = ["ScienceDirect"]
+            if selection is None:
+                selected = [name for name in selected if name not in api_providers]
     return {"selected": selected, "library_url": args.institutional_library_url,
+            **({"api_providers": api_providers, "api_full_text_access": "not_checked"} if api_providers else {}),
             "catalog": [{**p, "selected": p["provider"] in selected,
                          "mode": modes.get(p["provider"], "auto"), "state": "not_checked"}
                         for p in provider_catalog()]}

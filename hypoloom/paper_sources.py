@@ -348,6 +348,9 @@ def prepare_sources(host, workspace, retrieval=None) -> None:
                 if paper.pdf_trace is not None:
                     continue
                 url = next((u for u in (paper.landing_uri, paper.source_uri) if publisher(u)), None)
+                api = getattr(getattr(host, "literature_io", None), "article_api", None)
+                if api is not None and url and api.handles(url, paper.bibliographic_identity):
+                    continue
                 if url and not _source_rejected(url, rejected):
                     access.request(scope_for(workspace.request), url,
                                    title=paper.title, identity=paper.bibliographic_identity)
@@ -486,16 +489,21 @@ def web_tool(host, request, tool, arguments, *, defer=False):
         paper = known.get(item["url"])
         identity = paper.bibliographic_identity if paper else identity_from_url(item["url"])
         title = paper.title if paper else ""
+        api = getattr(io, "article_api", None)
+        if api is not None and not api.handles(item["url"], identity):
+            api = None
         pending = None
         if access is not None:
             pending = access.peek(access_scope, item["url"])
             if pending is not None and "content" in pending: return pending
             reason = access.automatic_reason(access_scope, item["url"], identity)
             if reason: return {"status": "unavailable", "reason": reason, "requested_url": item["url"]}
+            if api is not None and access.automatic_reason(access_scope, item["url"], identity, institution=True):
+                api = None  # Public-only keeps the ordinary unauthenticated/OA path.
             attempted = any(call.get("tool") == "web_fetch" and call.get("status") == "success"
                 and any(selection.get("url") == item["url"] for selection in call.get("arguments", {}).get("sources", [call.get("arguments", {})]))
                 for call in prior_tools)
-            if pending is not None and ("content" in pending or attempted):
+            if pending is not None and (api is None or pending.get("status") == "pending") and ("content" in pending or attempted):
                 return pending
         if not slots.acquire(blocking=False): return {"error": {"code": "paper_io_busy", "message": "Existing PDF workers are occupied; reuse local sources or retry later."}}
         try:
@@ -503,12 +511,16 @@ def web_tool(host, request, tool, arguments, *, defer=False):
             deadline = monotonic() + min(getattr(web, "max_seconds", 120), getattr(io, "pdf_work_window_seconds", 120))
             http_calls = [getattr(io, "max_pdf_http_calls_per_paper", 2 * (getattr(web, "max_redirects", 5) + 1))]
             try:
-                result = read_document(web, item["url"], deadline, http_calls)
+                if api is not None:
+                    result = api.document(item["url"], identity=identity, title=title,
+                                          deadline=deadline, http_calls=http_calls)
+                else:
+                    result = read_document(web, item["url"], deadline, http_calls)
                 if publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"} and not public_full_text(result):
                     raise GroundingWebError("full_text_unconfirmed", "Publisher HTML is not confirmed full text")
                 return result
             except GroundingWebError as exc:
-                if exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
+                if api is None and exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
                     return {"error": {"code": exc.code, "message": str(exc)[:1024]}}
                 error = {"code": exc.code, "message": str(exc)[:1024]}
             if identity not in located:
@@ -516,6 +528,13 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                 result = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls)
                 if events: observations.append({"bibliographic_identity": identity, "events": events})
                 if result is not None: return result
+            if api is not None:
+                if access is not None and publisher(item["url"]):
+                    # Keep the paper selectable for the existing manual import panel,
+                    # without scheduling another browser/CAPTCHA acquisition.
+                    access.request(access_scope, item["url"], title=title, identity=identity, automatic=False)
+                return {"status": "unavailable", "error": error, "requested_url": item["url"],
+                    "next_action": "Check Elsevier API credentials/entitlement or import an authorized PDF. Continue other sources; do not repeat browser CAPTCHA preparation."}
             if access is not None and publisher(item["url"]):
                 return access.request(access_scope, item["url"], title=title, identity=identity)
             return {"status": "unavailable", "error": error, "requested_url": item["url"],
@@ -525,7 +544,9 @@ def web_tool(host, request, tool, arguments, *, defer=False):
         if selections is not None:
             with ThreadPoolExecutor(max_workers=len(selections)) as executor:
                 return {"documents": list(executor.map(read_one, selections))}
-        if tool == "web_fetch" and access is not None and publisher(arguments["url"]):
+        api = getattr(io, "article_api", None)
+        if tool == "web_fetch" and ((access is not None and publisher(arguments["url"]))
+                or (api is not None and api.handles(arguments["url"]))):
             maximum = arguments.get("max_chars", 20000)
             if type(maximum) is not int or not 1 <= maximum <= 100000:
                 raise GroundingWebError("invalid_request", "max_chars must be within 1..100000")

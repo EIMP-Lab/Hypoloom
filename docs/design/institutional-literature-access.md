@@ -91,3 +91,58 @@ and snapshot passthrough.
 Fixture/browser tests do not qualify a school's real subscription or guarantee
 unattended access. Real institutional verification needs a user-provided entry
 URL and an entitled article.
+
+## Elsevier official article API (2026-10-04)
+
+Observed failure: the operator completes a Cloudflare challenge in an ordinary
+browser, while the dedicated controlled Edge repeats it. The user obtained an
+Elsevier API key. Browser retries cannot establish API entitlement, and public
+HTTP retrieval alone cannot consume the key. This adds an optional retrieval
+adapter, not a new schema, credential store, marker, gate or access-proof registry.
+Existing private Profile projection/reader, HTTPS DNS and peer validation, PDF
+extraction, institutional document validation and PaperWorkspace remain authoritative.
+
+`literature.elsevier_api_key` and optional `elsevier_insttoken` are authoring-only
+credentials. They are removed before admission projection, use the existing
+`credentials_file` reference and are reread only by the Host. CLI literals are
+not accepted. Preflight is local and explicitly leaves full-text access unchecked.
+New Host configuration records the adapter/bounds, never the secrets; retained
+runs remain on their frozen source. Default init browser selection excludes
+ScienceDirect when configured, but respects an explicit browser selection.
+
+Existing public/OA PDF discovery stays intact. Agent-selected canonical
+ScienceDirect/Elsevier DOI document access uses the official API instead of an
+anonymous publisher request or automatic browser queue entry. Only the exact
+generated HTTPS API URL receives authentication headers. Redirects reuse public
+URL/DNS/peer/size checks and receive no authentication headers. Signed redirect
+locations and raw error responses never enter source metadata or tool errors.
+HTTP 401/403/404/429 remain distinguishable; errors do not request CAPTCHA retries.
+
+Request `view=FULL`, initially as PDF for DOI selections. PII-only links use XML
+to bind the returned core PII rather than relying on an unassociated PDF DOI.
+A PDF HTTP 403 or 406 permits one XML
+representation attempt within the same deadline and HTTP-call budget. This is
+useful when the text-mining representation is accessible but PDF is not; it is
+not a retry of invalid credentials or quota errors. PDF bytes need first-page
+DOI/title evidence. XML requires the official response envelope, matching
+core DOI/PII and a nonempty article body beneath originalText; META_ABS, a 200
+challenge, malformed XML and entity declarations are rejected. Extracted XML text
+enters the existing plain-text document path with explicit format/figure limits;
+PDF retains its exact bytes. The ordinary source, reader and publication paths
+decide admission and reuse; availability does not imply that an Agent read it.
+
+The same existing PDF worker slots, work deadline and request budget bound the
+operation. There is no new worker, background login wait, persisted access claim
+or automatic browser fallback after an API failure. Exact-DOI OA fallback and
+manual import remain available: with institutional controls enabled, API failure
+registers a terminal item in the existing bounded acquisition queue, so the paper
+remains selectable without scheduling browser work. Explicit operator import can
+replace it and the next document call consumes the imported result. Existing skip/public-only choices also apply to
+the API; public-only preserves ordinary anonymous reads. A separate read-only
+module command verifies a selected sample without creating or altering a run.
+
+Primary protocol sources: [authentication](https://dev.elsevier.com/tecdoc_api_authentication.html),
+[Article Retrieval](https://dev.elsevier.com/documentation/FullTextRetrievalAPI.wadl),
+[FULL versus metadata](https://dev.elsevier.com/tecdoc_text_mining.html).
+The public official XML example was inspected for response/body namespaces;
+it does not verify the user's key, server IP or institutional subscription.

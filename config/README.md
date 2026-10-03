@@ -17,6 +17,8 @@ No separate `.env` is required. Start from the existing six-file
 |---|---|
 | OpenAlex API key / 文献密钥 | `methodology.yaml` → `literature.openalex_api_key` |
 | Unpaywall contact / PDF 后备联系方式 | `methodology.yaml` → `literature.unpaywall_email` |
+| Elsevier article API key / ScienceDirect 全文接口 | `methodology.yaml` → `literature.elsevier_api_key` |
+| Optional Elsevier institution token / 可选机构令牌 | `methodology.yaml` → `literature.elsevier_insttoken` |
 | Telegram bot token | `notify.yaml` → `sinks.telegram.bot_token` |
 | Telegram recipient / 接收会话 | `notify.yaml` → `sinks.telegram.chat_id` |
 | Optional webhook / 可选通知回调 | `notify.yaml` → `sinks.webhook.url` / `token` |
@@ -33,6 +35,8 @@ literature:
   max_sources: 8
   openalex_api_key: ""  # Fill locally / 本地填写
   unpaywall_email: ""   # Only for Unpaywall / 仅 Unpaywall 需要
+  elsevier_api_key: ""  # Optional official ScienceDirect API / 可选官方全文接口
+  elsevier_insttoken: "" # Only if issued by Elsevier / 仅在 Elsevier 签发后填写
 ```
 
 ```yaml
@@ -59,6 +63,12 @@ Never enter values through `--set`, shell arguments, chat, tracked templates or
 issue attachments. The helper rejects populated credential fields in templates
 and `--set`; it does not copy existing secrets into a new Profile.
 Sharing a filled Profile shares its credentials: share a blank template instead.
+
+An Elsevier key enables the official article path for new Hosts and removes
+ScienceDirect from init's default browser preparation. It does not establish
+full-text entitlement. See the [access check](../docs/guides/institutional-access.md#elsevier-api).
+Elsevier 密钥启用新 Host 的官方全文路径，init 默认不再准备 ScienceDirect 浏览器登录；
+不代表机构全文已授权。验证步骤见[机构访问教程](../docs/guides/institutional-access.zh-CN.md#elsevier-api)。
 
 秘密不通过 `--set`、命令行参数、对话、公开模板或 Issue 传递；分享配置时使用空白模板。
 准入剥离这些字段的明文，只保存原 YAML 文件引用。Host 复用既有私有文件读取器，

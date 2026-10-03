@@ -269,6 +269,12 @@ scratch.
    A schema-v2, schema-v3 or schema-v4 real `expert-six-node/1` run requires the explicit `openalex`
    literature adapter. New v4 Profiles store `literature.openalex_api_key` and
    optional `literature.unpaywall_email` directly in private `methodology.yaml`.
+   Optional `literature.elsevier_api_key` and `literature.elsevier_insttoken` use
+   the same private source. The official Elsevier article path is independent of
+   the browser. Respect program-selected default preparation: with a key it omits
+   ScienceDirect, retaining other platforms. Configuration is not full-text access;
+   do not re-add ScienceDirect, request keys in chat, or fall back to CAPTCHA retries
+   after API denial. An explicitly requested browser preparation remains possible.
    Prepare the blank six-file Profile first; the user fills secrets with a local
    editor, then init rereads it. Never request secrets in chat or pass them through
    `--set`, argv or public templates. Keep the file regular, non-symlink and mode

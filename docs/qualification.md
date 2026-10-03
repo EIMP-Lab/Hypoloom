@@ -2,6 +2,45 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Elsevier official article API (2026-10-04)
+
+The user supplied an API key after repeated ScienceDirect browser challenges.
+This work neither persists nor sends that credential. The optional Host adapter
+reuses private Profile projection, existing bounded HTTPS/PDF validation and source
+admission. Init omits default ScienceDirect browser preparation when configured,
+without claiming subscription access; explicit browser choices stay intact.
+API failures retain OA fallback and a non-running acquisition item for manual PDF
+import, rather than automatically opening the challenge page again. Retained
+research/preparation state and user Profiles are unchanged.
+
+Related regression selection: **400 passed**. Final changed-boundary selection:
+**113 passed**, covering PDF/XML API responses, real Poppler extraction, private
+Profile projection, original credential rereads, authentication/entitlement/quota
+failures, redirect header isolation, unsafe DNS, size/deadline/request bounds,
+DOI/PII mismatch, abstract/challenge rejection, OA recovery, public-only choices
+and API denial → operator import → document reuse. Counts overlap. Tests use
+synthetic credentials; a real Host/broker call admits a document, reuses it and
+completes a paper-reader child. Existing fixture cleanup closes those isolated
+Hosts and unfinished fixture Attempts. No paid/GPU/scientific-efficacy claim.
+
+The official public full-text XML example parses through the real adapter's
+identity/body checks and yields 25,823 characters of extracted text. It is
+protocol evidence, not a test of the user's key or institution. API-provided
+XML is labeled as extracted text with figure/formatting limits, not physical
+PDF pages. No real entitlement or CAPTCHA-resolution claim is made.
+
+Documentation/operator checks: **41 passed**. Compile, undefined-name/duplicate-key
+lint and whitespace checks pass. Final wheel, isolated installation and fresh
+runtime bundle match **175 package files**. Installed preparation/control cleanup,
+MCP initialization and bundle identity pass; no research database is created by
+that installation check. This is focused feature validation, not full G1.
+
+Evidence: `.local/qualification/elsevier-api-20261004/` includes focused and related
+test outputs, the initial invalid test-path invocation and corrected selection,
+the initial import-fixture path-type failure and corrected 113-case closure,
+`official-example.json`, build/install logs and final installation verification.
+[Design](design/institutional-literature-access.md#elsevier-official-article-api-2026-10-04).
+
 ## Preparation challenge instructions (2026-10-03)
 
 The user reports repeated ScienceDirect verification in dedicated Windows Edge,

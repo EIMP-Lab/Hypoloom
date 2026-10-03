@@ -147,6 +147,13 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
     )
     if args.credentials_file is not None:
         adapter.fetcher.api_key_loader = lambda: credential(read_credentials_file(args.credentials_file), OPENALEX_API_KEY_KEY)
+        from .credentials import ELSEVIER_API_KEY, ELSEVIER_INSTTOKEN
+        from .elsevier import ElsevierArticleAPI
+        if entries.get(ELSEVIER_INSTTOKEN) and not entries.get(ELSEVIER_API_KEY):
+            raise ValueError("Elsevier institutional token requires an Elsevier API key in the same private source")
+        if entries.get(ELSEVIER_API_KEY):
+            adapter.article_api = ElsevierArticleAPI(args.credentials_file,
+                max_bytes=args.literature_max_pdf_bytes, timeout_seconds=args.literature_timeout)
     return adapter
 
 

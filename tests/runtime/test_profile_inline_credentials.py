@@ -124,3 +124,29 @@ def test_yaml_credentials_reader_errors_do_not_print_source(tmp_path):
     with pytest.raises(CredentialError) as error:
         read_credentials_file(str(path))
     assert VALUES[2] not in str(error.value)
+
+
+def test_elsevier_uses_existing_private_profile_projection_and_init_selection(checkout, capsys):
+    root = private_profile(checkout, capsys)
+    path = root / "methodology.yaml"
+    method = yaml.safe_load(path.read_text())
+    method["literature"].update(elsevier_api_key="synthetic-elsevier", elsevier_insttoken="synthetic-insttoken")
+    path.write_text(yaml.safe_dump(method))
+    report = admit_profile(root, run_id="elsevier-private")
+    assert report.admitted, report.to_dict()
+    assert "synthetic-elsevier" not in json.dumps(report.to_dict())
+    assert "synthetic-insttoken" not in json.dumps(report.to_dict())
+    args = bootstrap.build_parser().parse_args(["inspect", root.name, "--run-id", "elsevier-private",
+        "--cpu-only", "--literature-adapter", "openalex", "--institutional-browser-mode", "client"])
+    cli._profile_literature_source(args, report)
+    adapter = cli._literature_adapter(args)
+    assert adapter.article_api is not None
+    check = adapter.preflight()["article_api"]
+    assert check["full_text_access"] == "not_checked" and not check["network_probe_performed"]
+    from hypoloom.institutional_options import preparation
+    view = preparation(args)
+    assert view["selected"] == ["IEEE", "Springer"]
+    assert view["api_providers"] == ["ScienceDirect"]
+    assert "synthetic" not in json.dumps(view) + json.dumps(check) + json.dumps(adapter.configuration)
+    args.institutional_prepare_provider = ["ScienceDirect"]
+    assert preparation(args)["selected"] == ["ScienceDirect"], "explicit browser choice is retained"

@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Elsevier official article API](../design/institutional-literature-access.md#elsevier-official-article-api-2026-10-04):
+  optional private Profile key/Insttoken, bounded full-text retrieval independent
+  of browser verification, existing source admission and explicit unverified
+  configuration. [Operator steps](../guides/institutional-access.zh-CN.md#elsevier-api)
+  include the read-only sample check and entitlement failure handling.
+
 - [Preparation challenge instructions](../design/institutional-access-preparation.md#准备入口的人机验证提示2026-10-03):
   observed Windows port-0 launch and ordinary-browser comparison; isolated headed
   Chrome distinguishes launch/attachment, without establishing the website cause.

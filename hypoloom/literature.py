@@ -3436,6 +3436,7 @@ class FixedLiteratureIO:
             raise TypeError("fallback_locator must implement locate")
         self.fetcher = fetcher
         self.fallback_locator = fallback_locator
+        self.article_api = None
         self.max_pdf_bytes = max_pdf_bytes
         self.max_pdf_pages = max_pdf_pages
         self.max_redirects = max_redirects
@@ -3605,6 +3606,8 @@ class FixedLiteratureIO:
                 )
             result["pdf_fallback"] = dict(fallback)
             result["pdf_fallback_cooldown_seconds"] = PDF_FALLBACK_COOLDOWN_SECONDS
+        if self.article_api is not None:
+            result["article_api"] = self.article_api.configuration
         return result
 
     def preflight(self) -> dict[str, object]:
@@ -3631,6 +3634,8 @@ class FixedLiteratureIO:
                     "PDF fallback preflight returned an invalid result"
                 )
             checked["pdf_fallback"] = dict(fallback_result)
+        if self.article_api is not None:
+            checked["article_api"] = self.article_api.preflight()
         return checked
 
     def _search_candidates(

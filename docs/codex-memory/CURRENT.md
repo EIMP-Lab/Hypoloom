@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 4 optional Elsevier API: repeated dedicated-browser challenges motivate
+  the official Article Retrieval path. Authoring-only API key/Insttoken reuse the
+  existing private Profile projection and reader. New Host document access uses
+  bounded PDF retrieval plus one FULL XML fallback on PDF 403/406, positive identity
+  checks, ordinary source/reader admission and OA fallback; no automatic CAPTCHA
+  retry. Default init omits ScienceDirect browser preparation when configured,
+  without claiming entitlement. Retained runs/Profiles stay unchanged; no new
+  schema or credential store. User key is not persisted or sent by this work;
+  synthetic tests and the public API example cannot establish real access.
+  Related 400 pass; final API/import/control 113 pass; docs 41 pass; installed
+  wheel/MCP/preparation/fresh-bundle checks match 175 package files. Counts overlap;
+  no full G1 or real subscription claim. Continues authorized dev commit/push.
+  [Design](../design/institutional-literature-access.md#elsevier-official-article-api-2026-10-04),
+  [guide](../guides/institutional-access.zh-CN.md#elsevier-api),
+  [qualification](../qualification.md#elsevier-official-article-api-2026-10-04).
+  Evidence: `.local/qualification/elsevier-api-20261004/`.
+
 - October 3 preparation challenge instructions: user confirms dedicated Edge uses
   debugging port 0 and loops verification while an ordinary browser succeeds.
   Headed local Chrome confirms port-0 webdriver differs before CDP attachment;

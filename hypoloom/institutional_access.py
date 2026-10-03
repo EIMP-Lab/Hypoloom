@@ -310,7 +310,7 @@ class InstitutionalAccess:
                     "role": item.scope[1], "component_id": item.scope[2], "provider": item.provider,
                     "url": item.url, "from": previous, "to": state, "reason_code": reason}})
 
-    def request(self, scope, url, *, title="", identity="") -> dict:
+    def request(self, scope, url, *, title="", identity="", automatic=True) -> dict:
         try:
             url = article_url(url)
         except ValueError:
@@ -332,9 +332,11 @@ class InstitutionalAccess:
                 deadline = self.clock() + self.acquisition_seconds
                 self._items[key] = Acquisition(tuple(scope), url, provider, title[:512], identity or identity_from_url(url),
                     deadline=min(deadline, end) if end else deadline)
-                state = self.automatic_reason(scope, url, identity, institution=True) or (
-                    self._auth_needed.get((scope[0], provider), "queued") if not end else "queued")
-                self._transition(self._items[key], state, "requested" if state == "queued" else state, initial=True)
+                state = self.automatic_reason(scope, url, identity, institution=True)
+                if state is None:
+                    state = (self._auth_needed.get((scope[0], provider), "queued") if not end else "queued") if automatic else "failed"
+                reason = "manual_import_available" if not automatic and state == "failed" else "requested" if state == "queued" else state
+                self._transition(self._items[key], state, reason, initial=True)
             item = self._items[key]
             return self._reply(item)
 

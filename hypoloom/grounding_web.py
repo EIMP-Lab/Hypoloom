@@ -21,9 +21,10 @@ from .literature import FetchResponse, LiteratureError, PdfDocument, PopplerPdfE
 
 
 class GroundingWebError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, http_status: int | None = None) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
+        self.http_status = http_status
 
 
 class WebTransport(Protocol):
@@ -43,6 +44,10 @@ class PublicHttpsTransport:
     def resolve(self, hostname: str) -> tuple[str, ...]:
         return tuple(sorted({item[4][0] for item in socket.getaddrinfo(
             hostname, 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)}))
+
+    def request_headers(self, uri: str) -> dict[str, str]:
+        return {"Accept": "text/html, text/plain, application/pdf;q=0.9, application/json;q=0.8",
+                "User-Agent": "Hypoloom-Grounding/1"}
 
     def fetch(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
               timeout_seconds: float | None = None) -> FetchResponse:
@@ -84,8 +89,7 @@ class PublicHttpsTransport:
                 raise GroundingWebError("unsafe_url", "HTTPS peer differs from approved DNS addresses")
             connection.sock.settimeout(remaining())
             connection.request("GET", urlunsplit(("", "", parsed.path or "/", parsed.query, "")),
-                headers={"Accept": "text/html, text/plain, application/pdf;q=0.9, application/json;q=0.8",
-                         "User-Agent": "Hypoloom-Grounding/1"})
+                headers=self.request_headers(canonical))
             connection.sock.settimeout(remaining())
             response = connection.getresponse()
             raw_length = response.getheader("Content-Length")
@@ -266,9 +270,9 @@ class GroundingWeb:
                     url = urljoin(uri, response.location)
                     continue
                 if response.status_code == 429:
-                    raise GroundingWebError("rate_limited", "web provider returned HTTP 429")
+                    raise GroundingWebError("rate_limited", "web provider returned HTTP 429", http_status=429)
                 if response.status_code != 200:
-                    raise GroundingWebError("http_error", f"web provider returned HTTP {response.status_code}")
+                    raise GroundingWebError("http_error", f"web provider returned HTTP {response.status_code}", http_status=response.status_code)
                 if response.location is not None:
                     raise GroundingWebError("redirect_error", "non-redirect response included Location")
                 return uri, response
