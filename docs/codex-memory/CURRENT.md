@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 3 preparation challenge instructions: user confirms dedicated Edge uses
+  debugging port 0 and loops verification while an ordinary browser succeeds.
+  Headed local Chrome confirms port-0 webdriver differs before CDP attachment;
+  this is not a Windows/website root-cause proof and launch parameters stay intact.
+  Reproduced missing preparation diagnostics now reuse the existing page inspector,
+  safe reason whitelist and fixed dialogue; positive challenges retain their page
+  and report detection at opening without extending waits or claiming login.
+  Six red cases; focused 143 pass plus 64 native/access cases, 41 docs checks and
+  nine initially skipped PowerShell cases subsequently pass. Installed 174-file
+  wheel/CLI/MCP/bundle checks pass. Retained runs/preparation unchanged; no full G1
+  or captcha-resolution claim. Continues authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#准备入口的人机验证提示2026-10-03),
+  [qualification](../qualification.md#preparation-challenge-instructions-2026-10-03).
+  Evidence: `.local/qualification/institutional-challenge-instructions-20261003/`;
+  headed comparison: `.local/qualification/institutional-browser-comparison-20261003/`.
+
 - October 3 platform failure diagnostics: another retained batch completed IEEE
   manually, then ScienceDirect/Springer timed out with generic browser_unavailable;
   the user confirms dedicated Edge remained open. Platform prepare now preserves

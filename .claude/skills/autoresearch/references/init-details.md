@@ -99,6 +99,11 @@ No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
 `waiting_for_user` supplies the current provider in its generated reply command.
 Keep it unchanged. Ask within this init conversation using the offered fixed choices.
+If its `reason_code` is `verification_required`, relay the generated challenge
+instructions. This records detection when the page opened, not a connection failure
+or proof that verification passed. Keep the same page and answer deadline; never
+solve challenges, refresh/reopen automatically, or claim that reinstalling the
+client will resolve a website challenge. The user may skip this platform.
 `complete` without a sample means not_checked, not authenticated. Answer waiting
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.

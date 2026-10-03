@@ -117,7 +117,8 @@ def _remaining_providers(selected, rows):
     return [row["provider"] for row in rows if row["state"] not in _COMPLETED_STATES] + selected[len(rows):]
 
 
-def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False):
+def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False,
+                      dialogue=None):
     row = {"provider": provider, "state": "not_checked", "samples": []}
     if modes.get(provider) == "public_only":
         return {**row, "state": "public_only"}, False
@@ -134,10 +135,16 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
     output(json.dumps({"provider": provider, **opened}, ensure_ascii=False))
     if opened["state"] != "opened":
         return {**row, "state": opened["state"]}, False
+    if opened.get("reason_code") == "verification_required":
+        output("Human verification was detected when opening this page. Complete it only in the browser; "
+               "if it keeps repeating, skip this platform. The existing answer deadline still applies.")
     while True:
         try:
-            answer = input_fn(f"{provider}: use the existing session or authenticate if needed. "
-                "Enter to finish/recheck samples; DOI/URL to verify; s skip; p public only; q finish batch: ").strip()
+            if dialogue:
+                answer = dialogue.wait(provider=provider, reason_code=opened.get("reason_code"))
+            else:
+                answer = input_fn(f"{provider}: use the existing session or authenticate if needed. "
+                    "Enter to finish/recheck samples; DOI/URL to verify; s skip; p public only; q finish batch: ").strip()
         except EOFError:
             output("Interactive input is unavailable; init must use --agent-session and the preparation commands.")
             return {**row, "state": "input_required"}, True
@@ -294,7 +301,7 @@ def run(args, *, input_fn=input, output=print):
             if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
             row, stop = _prepare_platform(access, provider, [url for url in samples if publisher(url) == provider],
                 interactive=not args.non_interactive,
-                input_fn=(lambda prompt: dialogue.wait(provider=provider)) if dialogue else input_fn,
+                input_fn=input_fn, dialogue=dialogue,
                 output=output, modes=modes, cancelled=cancelled)
             rows.append(row)
             if stop:

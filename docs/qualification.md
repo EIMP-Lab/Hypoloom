@@ -2,6 +2,44 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Preparation challenge instructions (2026-10-03)
+
+The user reports repeated ScienceDirect verification in dedicated Windows Edge,
+one successful challenge in an ordinary browser, and confirms actual launch with
+`--remote-debugging-port=0`. Isolated headed Chrome 149 under locally extracted
+Xvfb shows webdriver false for ordinary/nonzero-port launches and true for port 0,
+already before Playwright 1.63 attachment. Attachment preserves that value and
+test cookies. This does not reproduce the Windows CAPTCHA outcome or establish
+the publisher's reason; no launch flags, credentials or retained preparations were
+changed. Evidence stays in `.local/qualification/institutional-browser-comparison-20261003/`.
+An initial synthetic-challenge route matched only the www hostname and did not
+isolate the actual entry; its invalid result is retained in `challenge-first-attempt.json`.
+The corrected all-request interception observes exactly one navigation to a 403
+challenge, then same-page opened without a challenge reason despite the existing
+inspector detecting verification. Isolated browser/display/server processes and
+temporary profiles are cleaned; `cleanup.json` records no matching live processes.
+
+Six red regressions reproduce missing browser and dialogue observations. The fix
+reuses the existing inspector and safe reason whitelist: HTTP 200/403/429/503 with
+positive challenge evidence retain the same page and report verification_required
+at opening; negative HTTP evidence keeps its original failure. Reinspection after
+synthetic challenge removal clears the reason without another navigation. Fixed
+instructions offer manual handling/skip; skip advances to Springer, while complete
+without a sample stays not_checked. No new state authority or timeout is added.
+
+Focused selection: **143 passed / nine PowerShell skips**; an additional browser,
+native dialogue, access and deadline selection: **64 passed**. All nine skipped
+PowerShell cases subsequently pass using the available Linux PowerShell runtime
+and existing Windows API substitutes. Documentation/operator checks: **41 passed**.
+Real Chrome/CDP/private-control dialogue verifies challenge instructions, explicit
+sample verification and preservation of the user's test tab; owned resources are
+closed without a research database. The wheel, isolated installation and fresh
+runtime bundle match **174 package files**; installed CLI/control cleanup and MCP
+initialization pass. Repair evidence stays in
+`.local/qualification/institutional-challenge-instructions-20261003/`.
+This is focused repair validation, not full G1, Windows desktop/SSO qualification
+or evidence that ScienceDirect verification loops have been resolved.
+
 ## Platform browser failure diagnostics (2026-10-03)
 
 Read-only evidence from CC session `90fcf773-1338-40b2-a06b-fc5fd5ec094c`, batch

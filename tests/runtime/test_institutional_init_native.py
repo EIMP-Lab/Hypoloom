@@ -110,7 +110,8 @@ def test_real_background_client_failure_is_single_and_finish_releases_resources(
 
 
 @pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
-def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab(tmp_path, monkeypatch):
+@pytest.mark.parametrize('challenge', [False, True])
+def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab(tmp_path, monkeypatch, challenge):
     from hypoloom.institutional_access import InstitutionalAccess
     from hypoloom.institutional_browser import PlaywrightInstitutionalBrowser
     from hypoloom.institutional_prepare import run
@@ -125,7 +126,9 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
             workers.append(threading.get_ident())
             current = super()._connect()
             def route(request):
-                if request.request.url.endswith('.pdf'):
+                if challenge and request.request.url.rstrip('/') == 'https://nature.com':
+                    request.fulfill(status=403, content_type='text/html', body='<h1>Are you a robot?</h1>')
+                elif request.request.url.endswith('.pdf'):
                     request.fulfill(status=200, content_type='application/pdf', body=_pdf())
                 else:
                     request.fulfill(status=200, content_type='text/html', body=
@@ -144,6 +147,10 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
     try:
         root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output if v.startswith('{') and 'state_root' in json.loads(v)), None))
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
+        from hypoloom.institutional_instructions import render
+        view = request(root).result
+        assert (view.get('reason_code') == 'verification_required') == challenge
+        assert ('打开时检测到人机验证' in render(view)) == challenge
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'Nature', 'action': 'verify', 'sample': URL}).status == 'accepted'
         thread.join(15)
         assert not thread.is_alive() and not errors and results == [0]

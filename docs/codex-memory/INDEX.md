@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Preparation challenge instructions](../design/institutional-access-preparation.md#准备入口的人机验证提示2026-10-03):
+  observed Windows port-0 launch and ordinary-browser comparison; isolated headed
+  Chrome distinguishes launch/attachment, without establishing the website cause.
+  Existing challenge detection now reaches fixed preparation instructions while
+  preserving page, deadlines and unverified completion. [Qualification](../qualification.md#preparation-challenge-instructions-2026-10-03)
+  records red cases, native dialogue/browser closure and installation checks.
+
 - [Platform browser failure diagnostics](../design/institutional-access-preparation.md#平台阶段的控制连接与页面错误分类2026-10-03):
   retained IEEE completion followed by two timeouts with Edge still open; preserve
   safe connection/page causes through existing queue validation and prevent local

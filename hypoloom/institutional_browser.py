@@ -311,16 +311,27 @@ class PlaywrightInstitutionalBrowser:
             except Exception as exc:
                 return {"state": "browser_unavailable", "reason": _connection_reason(exc)}
             prior = self._tabs.get(provider)
+            reason = None
             if prior is None or prior[0].is_closed():
                 if not self._room_for_tab(): return {"state": "tab_limit"}
                 page = context.new_page()
                 page.set_default_timeout(self._remaining(5) * 1000)
                 self._tabs[provider] = (page, None, True)
                 reason = self._navigate(page, self.library_url or entry)
-                if reason: return {"state": "fetch_unavailable", "reason": reason}
+                if reason and not reason.startswith("http_"):
+                    return {"state": "fetch_unavailable", "reason": reason}
             else:
                 page = prior[0]
             if focus: page.bring_to_front()
+            try:
+                verification = page.evaluate(_INSPECT).get("verification", False)
+            except Exception:
+                if reason: return {"state": "fetch_unavailable", "reason": reason}
+                raise
+            # HTTP errors can contain an interactive challenge. Retain this page
+            # and report the observation without extending or automating the wait.
+            if verification: return {"state": "opened", "reason": "verification_required"}
+            if reason: return {"state": "fetch_unavailable", "reason": reason}
             return {"state": "opened"}
         except Exception as exc:
             # A page/context failure is not proof that the browser or SSH exited.

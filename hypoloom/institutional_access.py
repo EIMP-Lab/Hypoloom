@@ -54,7 +54,7 @@ _STATES = WAIT_STATES | {"available", "access_denied", "no_full_text", "identity
 _STATES |= {"opened", "tab_limit"}
 TRANSIENT_FETCH_REASONS = {"network_changed", "dns_failed", "connection_failed",
     "navigation_timeout", "network_error", "redirect_unresolved", "http_server_error", "http_rate_limited", "pdf_response_not_pdf"}
-_REASONS = TRANSIENT_FETCH_REASONS | {"request_blocked", "http_error",
+_REASONS = TRANSIENT_FETCH_REASONS | {"request_blocked", "http_error", "verification_required",
     "cdp_timeout", "cdp_connection_refused", "cdp_connection_closed", "cdp_authorization_failed",
     "cdp_endpoint_unavailable", "cdp_context_unavailable", "cdp_connection_failed", "browser_driver_unavailable",
     "browser_target_closed", "browser_operation_timeout", "browser_operation_failed"}

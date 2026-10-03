@@ -60,6 +60,16 @@ An expired connection wait retains the latest connection result and remaining co
 Standalone terminal preparation remains supported; EOF returns `input_required`
 and closes resources instead of raising or pretending login succeeded.
 
+If the opened entry contains a human-verification challenge, fixed instructions
+report `verification_required` as an observation made when opening the page. This
+does not establish that verification or institutional sign-in succeeded. Complete
+the challenge manually in the dedicated browser, or choose **跳过此平台** if it keeps
+repeating. The program does not solve challenges, refresh or reopen the page, or
+extend the existing answer deadline. A normal browser's verification and sign-in
+do not transfer to the separate profile. Reinstalling the client cannot guarantee
+recovery from a website challenge; supported provider APIs or manual PDF import
+remain alternatives.
+
 For manual diagnosis, use the first record's `status_argv` and `answer_argv`:
 
 ```bash

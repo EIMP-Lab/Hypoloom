@@ -84,6 +84,44 @@ def test_generated_setup_rejects_unrepresentable_paths(bad):
     with pytest.raises(ValueError): client_entry(bad, "/python")
 
 
+@pytest.mark.parametrize('reply,expected', [('跳过此平台', 'skipped'), ('完成', 'not_checked')])
+def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform(tmp_path, monkeypatch, reply, expected):
+    _, backend, _ = ready_access(monkeypatch)
+    def prepare(provider, **kwargs):
+        backend.calls.append((provider, kwargs))
+        return {'state': 'opened', **({'reason': 'verification_required'} if provider == 'ScienceDirect' else {})}
+    backend.prepare = prepare
+    output, codes, errors = [], [], []
+    def worker():
+        try:
+            codes.append(run(arguments('--agent-session', '--repository', str(tmp_path),
+                '--provider', 'ScienceDirect', '--provider', 'Springer'), output=output.append))
+        except BaseException as exc: errors.append(exc)
+    thread = threading.Thread(target=worker); thread.start()
+    root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+        if v.startswith('{') and 'state_root' in json.loads(v)), None))
+    try:
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
+        view = request(root).result
+        assert view['reason_code'] == 'verification_required'
+        assert '打开时检测到人机验证' in render(view)
+        assert '跳过此平台' in render(view) and '不代表登录或订阅已验证' in render(view)
+        assert [call[0] for call in backend.calls] == ['ScienceDirect']
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'reply': reply}).status == 'accepted'
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
+            and request(root).result.get('provider') == 'Springer')
+        assert 'verification_required' != request(root).result.get('reason_code')
+        assert '打开时检测到人机验证' not in render(request(root).result)
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'reply': '完成'}).status == 'accepted'
+        thread.join(5)
+        assert not thread.is_alive() and not errors and codes == [0]
+        assert [r['state'] for r in json.loads(output[-1])['preparation_summary']] == [expected, 'not_checked']
+        assert backend.closed and not root.exists() and not list(tmp_path.rglob('state.sqlite'))
+    finally:
+        if thread.is_alive():
+            request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); thread.join(5)
+
+
 def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, monkeypatch):
     ready_access(monkeypatch)
     monkeypatch.setattr("hypoloom.institutional_prepare.PreparationDialogue", lambda _: PreparationDialogue(.3))

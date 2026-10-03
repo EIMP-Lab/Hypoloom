@@ -85,6 +85,32 @@ def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser
     assert result == {"state": "identity_unconfirmed"}
 
 
+@pytest.mark.parametrize('status', [200, 403, 429, 503])
+def test_preparation_reports_challenge_without_reloading_or_claiming_login(browser, status):
+    adapter, context = browser
+    navigations = []
+    def challenge(route):
+        if route.request.is_navigation_request(): navigations.append(route.request.url)
+        route.fulfill(status=status, content_type='text/html', body='<h1>Are you a robot?</h1>')
+    context.route('**/*', challenge)
+    expected = {'state': 'opened', 'reason': 'verification_required'}
+    assert adapter.prepare('ScienceDirect') == expected
+    page = adapter._tabs['ScienceDirect'][0]
+    assert adapter.prepare('ScienceDirect') == expected
+    assert adapter._tabs['ScienceDirect'][0] is page and len(navigations) == 1
+    page.set_content('<h1>Publisher homepage</h1>')
+    assert adapter.prepare('ScienceDirect') == {'state': 'opened'}
+    assert len(navigations) == 1
+
+
+@pytest.mark.parametrize('status,reason', [(403, 'http_error'), (429, 'http_rate_limited'), (503, 'http_server_error')])
+def test_preparation_preserves_http_failure_without_positive_challenge_evidence(browser, status, reason):
+    adapter, context = browser
+    context.route('**/*', lambda route: route.fulfill(status=status,
+        content_type='text/html', body='<h1>Request failed</h1>'))
+    assert adapter.prepare('ScienceDirect') == {'state': 'fetch_unavailable', 'reason': reason}
+
+
 @pytest.mark.parametrize("paywall,pdf_status,expected", [
     (True, 200, {"state": "access_required"}),
     (False, 200, {"state": "fetch_unavailable", "reason": "pdf_response_not_pdf"}),
