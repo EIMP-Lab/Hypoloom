@@ -366,6 +366,7 @@ class InstitutionalAccess:
                 group = groups[item.provider]
                 if item.preparation:
                     group["preparation"] = {"state": item.state, "last_checked_at": item.last_checked_at,
+                        "reason_code": item.reason_code,
                         "sample_url": item.url if item.preparation == "verify" else None}
                     continue
                 # Different experts may request the same source. Show it once to the operator.

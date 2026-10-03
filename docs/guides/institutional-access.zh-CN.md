@@ -76,8 +76,15 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 验证样本 / 跳过此平台 / 仅公开 / 结束准备**。验证样本另提供 DOI 或论文 URL。
 助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台任务完成通知
 不是用户回答。批次结束后会明确提示 **重新准备**，先读取原摘要并保留已完成的平台
-和模式，再原样执行摘要中的 `remaining_preparation_argv`；空数组表示无需重开。
+和模式，再原样执行摘要中的 `remaining_preparation_argv`；其中包含失败及未回答的平台，
+保留连接参数、已选模式和原命令提供的样本。“完成”但无样本仍属未验证，不重复准备。
 无需新开 CC 会话或创建科研运行。
+
+所选平台超时时，init 应提供 **重新准备** 或 **接受未验证状态，继续检查启动配置**，
+由用户决定。准备失败不阻止科研启动，也不代表成功。如果旧版本摘要仍有失败项却输出
+空重试数组，助手应使用原只读 bootstrap 检查为这些平台重新生成准备命令，保留其他
+配置和启动身份。保持专用浏览器打开即可。中间的 `browser_unavailable` /
+`fetch_unavailable` 输出安全错误码；只有最终 `acquisition_timeout` 无法确定底层原因。
 
 `complete` 没有样本时仍是未验证；`skip` / `public_only` 也须带当前平台。
 这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。

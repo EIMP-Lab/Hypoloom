@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Preparation failure retry and diagnostics](../design/institutional-access-preparation.md#准备失败平台的重试与可见性2026-10-03):
+  completed IEEE followed by two acquisition timeouts reproduced an empty retry
+  vector. Reuse result rows plus the unvisited tail; preserve completed choices,
+  expose existing safe reason codes, and offer retry/continue before launch review.
+  Original Windows browser failure remains undetermined; isolated native relay
+  progression succeeds. [Qualification](../qualification.md#institutional-preparation-failure-retry-2026-10-03).
+  Evidence: `.local/qualification/institutional-preparation-retry-20261003/`.
+
 - [Windows default browser profile permissions](../design/institutional-access-preparation.md#windows-专用目录继承权限准备2026-10-03):
   repair only extra inherited grants on the owned default directory, reuse strict
   ACL validation, and prepare before hidden task startup. [API correction](../qualification.md#windows-acl-api-semantics-correction-2026-10-03)

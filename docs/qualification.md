@@ -2,6 +2,40 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Institutional preparation failure retry (2026-10-03)
+
+Retained CC output for institutional-prepare-sv09l416 records IEEE opened/completed,
+then ScienceDirect and Springer acquisition_timeout, exit 1 and an empty remaining
+vector. The user confirms the dedicated Edge window stayed open. Read-only checks
+found neither the proposed MERC-causal-202610031307 research root nor its process;
+the preparation root was already cleaned. No retained process/run was changed.
+
+The retry bug reproduces when normal iteration, EOF, finish or input timeout follows
+an earlier failure. Six corrected red cases also expose the missing intermediate
+diagnostics. An initial test fixture used durations below the public option bounds;
+that original failure is retained, then corrected by scaling only the test clock.
+Production timing validation and deadlines are unchanged. Fixed tests execute the
+generated remaining command and verify only ScienceDirect/Springer reopen, while
+IEEE completion, modes/options and supplied failed samples survive. Sanitized error
+events distinguish browser and navigation failures without exception text or SSO URLs.
+
+Final focused **224 passed**: preparation/access/deadlines, init dialogue/instructions,
+native preparation, bootstrap, documentation and runtime skill checks. Real PowerShell
+executes setup fixtures; isolated real Chromium/CDP relay stays idle beyond its I/O
+timeout, then advances through IEEE/ScienceDirect/Springer, preserves the external
+browser/user tab and closes its owned tabs, relay and temporary control root. No
+research SQLite database is created. This native scenario also passed before the fix:
+it does **not** reproduce or establish the cause of the user's Windows popup failure.
+The old output contains no intermediate fault code; next Windows attempt is still
+needed to identify that fault. No real publisher/SSO, Windows desktop, paid/GPU or new
+full G1 claim. This is a focused repair, not a frozen release candidate.
+
+Evidence: `.local/qualification/institutional-preparation-retry-20261003/`:
+`red.txt` (initial fixture error), `red-corrected.txt` (six expected failures),
+`native-before.txt` (one native pass), `initial-fixed.txt` (35 pass / ten missing-pwsh
+skips), `focused.txt` (224 pass with browser and PowerShell enabled). Counts overlap.
+Design and current operator behavior: [preparation repair](design/institutional-access-preparation.md#准备失败平台的重试与可见性2026-10-03).
+
 ## Windows ACL API semantics correction (2026-10-03)
 
 After running c254d5f, the user's native icacls output loses all inherited `(I)`

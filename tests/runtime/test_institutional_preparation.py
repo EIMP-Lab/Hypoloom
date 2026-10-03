@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from time import monotonic
 
 import pytest
 
@@ -150,6 +151,8 @@ def test_unavailable_sample_is_reported_and_other_platforms_continue(monkeypatch
     assert run(args, input_fn=lambda _: "", output=output.append) == 1
     rows = json.loads(output[-1])["preparation_summary"]
     assert [(r["provider"], r["state"]) for r in rows] == [("Nature", state), ("IEEE", "not_checked")]
+    remaining = build_parser().parse_args(json.loads(output[-1])["remaining_preparation_argv"][4:])
+    assert remaining.provider == ["Nature"] and remaining.sample == [URL]
     assert backend.closed
 
 
@@ -178,3 +181,67 @@ def test_interrupted_preparation_closes_access(monkeypatch):
     assert run(build_parser().parse_args(["institutional", "prepare"]),
         input_fn=interrupt, output=lambda _: None) == 1
     assert backend.closed
+
+
+@pytest.mark.parametrize("ending", ["timeout", "eof", "finish", "input_timeout"])
+def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_path, monkeypatch, ending):
+    from hypoloom.cli import build_parser
+    from hypoloom.institutional_dialogue import PreparationEnded
+    class Failing(PreparationBackend):
+        def prepare(self, provider, **kwargs):
+            self.calls.append((provider, kwargs))
+            return {"state": "browser_unavailable"} if provider == "ScienceDirect" or (
+                ending == "timeout" and provider == "Springer") else {"state": "opened"}
+    backend = Failing()
+    access = InstitutionalAccess(backend, clock=lambda: monotonic() * 100, acquisition_seconds=30, poll_seconds=1)
+    monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: access)
+    parser = build_parser()
+    args = parser.parse_args(["institutional", "prepare", "--repository", str(tmp_path),
+        "--institutional-browser-url", "http://127.0.0.1:9222", "--institutional-manual-seconds", "80",
+        "--institutional-provider-mode", "ACM=public_only"])
+    prompts, output = [], []
+    def answer(prompt):
+        prompts.append(prompt.split(':')[0])
+        if len(prompts) == 1: return ""  # IEEE completion without a sample remains not_checked.
+        if ending == "eof": raise EOFError
+        raise PreparationEnded("finished" if ending == "finish" else "input_timeout")
+    assert run(args, input_fn=answer, output=output.append) == (0 if ending == "finish" else 1)
+    summary = json.loads(output[-1])
+    remaining = parser.parse_args(summary["remaining_preparation_argv"][4:])
+    assert remaining.provider == ["ScienceDirect", "Springer"]
+    assert remaining.institutional_provider_mode == ["ACM=public_only"]
+    assert remaining.institutional_browser_url == args.institutional_browser_url
+    assert remaining.institutional_manual_seconds == 80 and remaining.repository == str(tmp_path)
+    assert summary["preparation_summary"][0] == {"provider": "IEEE", "state": "not_checked", "samples": []}
+    assert summary["preparation_summary"][1]["state"] == "acquisition_timeout"
+    assert backend.closed and not list(tmp_path.iterdir())
+    if ending == "timeout":
+        recovered = PreparationBackend()
+        monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: InstitutionalAccess(recovered))
+        retried = []
+        assert run(remaining, input_fn=lambda _: "", output=retried.append) == 0
+        assert [call[0] for call in recovered.calls] == ["ScienceDirect", "Springer"]
+        assert json.loads(retried[-1])["remaining_preparation_argv"] == []
+        assert recovered.closed and not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("failure", ["browser", "navigation"])
+def test_preparation_reports_safe_intermediate_failure_before_timeout(monkeypatch, failure):
+    from hypoloom.cli import build_parser
+    class Failing(PreparationBackend):
+        def prepare(self, provider, **kwargs):
+            if failure == "browser": raise RuntimeError("https://sso.invalid/?secret=never-export-this")
+            return {"state": "fetch_unavailable", "reason": "dns_failed"}
+    backend = Failing()
+    access = InstitutionalAccess(backend, clock=lambda: monotonic() * 100, acquisition_seconds=30, poll_seconds=1)
+    monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: access)
+    output = []
+    args = build_parser().parse_args(["institutional", "prepare", "--provider", "ScienceDirect"])
+    assert run(args, input_fn=lambda _: pytest.fail("failed browser requested login"), output=output.append) == 1
+    events = [json.loads(v) for v in output if v.startswith('{')]
+    state, reason = ("browser_unavailable", "browser_unavailable") if failure == "browser" else ("fetch_unavailable", "dns_failed")
+    failures = [e for e in events if e.get("state") == state]
+    assert len(failures) == 1 and failures[0]["reason_code"] == reason
+    assert failures[0]["provider"] == "ScienceDirect"
+    assert events[-1]["preparation_summary"][0]["state"] == "acquisition_timeout"
+    assert "never-export-this" not in "\n".join(output) and backend.closed

@@ -14,6 +14,52 @@ from tests.runtime.test_institutional_init_dialogue import arguments, eventually
 from tests.runtime.test_institutional_runtime import assert_free
 
 
+@pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
+def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch):
+    from hypoloom.institutional_access import InstitutionalAccess
+    from hypoloom.institutional_runtime import RunBrowser
+    from hypoloom.institutional_prepare import run
+    from tests.runtime.test_institutional_browser import browser as browser_fixture
+    fixture = browser_fixture.__wrapped__(tmp_path)
+    adapter, context = next(fixture)
+    user_page = context.pages[0]
+    class Browser(RunBrowser):
+        def _navigate(self, page, target):
+            # Real CDP/page operations, synthetic content; never visit a publisher.
+            page.set_content('<title>Preparation fixture</title>Login placeholder')
+    backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
+    relay_endpoint = backend.endpoint
+    access = InstitutionalAccess(backend)
+    monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
+    output, codes, errors = [], [], []
+    def worker():
+        try: codes.append(run(arguments('--agent-session', '--repository', str(tmp_path)), output=output.append))
+        except BaseException as exc: errors.append(exc)
+    thread = threading.Thread(target=worker); thread.start()
+    root = None
+    try:
+        root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+            if v.startswith('{') and 'state_root' in json.loads(v)), None))
+        for provider in ('IEEE', 'ScienceDirect', 'Springer'):
+            eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
+                and request(root).result.get('provider') == provider)
+            if provider == 'IEEE': time.sleep(6)  # Beyond relay's per-I/O timeout.
+            assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
+        thread.join(10)
+        assert not thread.is_alive() and not errors and codes == [0]
+        summary = json.loads(output[-1])
+        assert [r['state'] for r in summary['preparation_summary']] == ['not_checked'] * 3
+        assert summary['remaining_preparation_argv'] == []
+        assert not user_page.is_closed() and not backend._tabs and not root.exists()
+        assert not list(tmp_path.rglob('state.sqlite'))
+    finally:
+        if thread.is_alive() and root is not None:
+            request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); thread.join(10)
+        backend.release()
+        fixture.close()
+    assert_free(relay_endpoint)
+
+
 def test_real_background_client_failure_is_single_and_finish_releases_resources(tmp_path):
     process = subprocess.Popen([sys.executable, '-B', '-m', 'hypoloom', 'institutional', 'prepare',
         '--repository', str(tmp_path), '--agent-session', '--institutional-browser-mode', 'client',

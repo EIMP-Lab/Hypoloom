@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 3 preparation failure retry: retained CC output shows completed IEEE
+  followed by ScienceDirect/Springer acquisition timeouts and an incorrect empty
+  remaining command. Result rows plus the unvisited tail now retain failures on
+  normal completion, EOF, finish and input timeout without replaying completed
+  platforms. Existing safe reason codes are exposed during acquisition; init offers
+  retry or explicit continuation to review, including recovery from old summaries.
+  Corrected red reproduction covers six cases; final focused 224 pass, including
+  actual Chromium/CDP idle/multi-platform progression and PowerShell setup. Native
+  Windows page failure remains undetermined; user kept Edge open and no original
+  intermediate reason was retained. No retained preparation/research mutation or
+  full qualification claim. Continues authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#准备失败平台的重试与可见性2026-10-03),
+  [qualification](../qualification.md#institutional-preparation-failure-retry-2026-10-03).
+  Evidence: `.local/qualification/institutional-preparation-retry-20261003/`.
+
 - October 3 Windows ACL API correction: native before/after output proves c254d5f
   persisted the unwanted grant as explicit. The mock wrongly cleared inherited
   flags in memory; .NET protection preserves them and specific removal skips them.

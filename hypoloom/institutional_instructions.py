@@ -79,7 +79,8 @@ def render(view):
     if state == "inactive":
         return ("准备进程已结束或当前不可用，不能继续向旧批次发送回答。\n"
                 "回到原来的 init 会话回复：重新准备。助手先读取原后台任务的最终结果，"
-                "执行其中程序生成的 remaining_preparation_argv；为空则无需重开。"
+                "按需执行其中程序生成的 remaining_preparation_argv，重试失败或未完成的平台。"
+                "空数组不证明登录或准备成功；若旧摘要仍有失败项，须重新生成这些平台的准备命令。"
                 "已完成的平台和模式保留，不要新开 CC 会话或启动科研运行。")
     lines = [f"准备状态：{state}。"]
     if "remaining_seconds" in view:

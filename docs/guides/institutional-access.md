@@ -77,9 +77,19 @@ Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `
 The agent passes the exact choice to `reply_argv --text`; the process validates
 the current stage and provider. Background notifications are never answers.
 An ended batch explicitly requests `重新准备` (prepare again): read the prior final
-summary and execute its generated `remaining_preparation_argv` unchanged (an empty
-list means nothing remains). It retains connection options, updated modes and
-unfinished samples. No new CC session or research run is needed.
+summary and execute its generated `remaining_preparation_argv` unchanged. It includes
+failed and unanswered platforms, retaining connection options, updated modes and
+supplied samples; manual completion without a sample remains unverified and is not
+repeated. No new CC session or research run is needed.
+
+If a selected platform times out, init offers `重新准备` (retry the remaining platforms)
+or `接受未验证状态，继续检查启动配置` (accept unverified access and continue to launch
+review). Optional preparation failures do not block research, but do not mean success.
+For an older summary with failures and an empty retry vector, init regenerates the
+preparation command using read-only bootstrap inspection for just those platforms,
+preserving the other choices and launch identity. Keep the dedicated browser open.
+Intermediate `browser_unavailable` / `fetch_unavailable` events include sanitized
+reason codes; a final `acquisition_timeout` alone cannot identify the underlying fault.
 
 Resources are allocated inside the Host once the run exists. A missing browser
 can remain unavailable within the existing bounded acquisition/fallback policy;

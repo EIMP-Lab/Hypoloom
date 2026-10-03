@@ -13,6 +13,9 @@ from .institutional_options import add_arguments, add_preparation_argument, buil
 from .institutional_dialogue import PreparationDialogue, PreparationEnded
 
 
+_COMPLETED_STATES = {"sample_verified", "not_checked", "skipped", "public_only"}
+
+
 def add_parser(subparsers):
     parser = subparsers.add_parser("institutional", help="prepare browser sessions without starting research")
     commands = parser.add_subparsers(dest="institutional_action", required=True)
@@ -55,13 +58,20 @@ def sample_url(value):
     return article_url(value)
 
 
-def _observe(access, provider, *, cancelled=lambda: False):
+def _observe(access, provider, *, cancelled=lambda: False, output=lambda _: None):
     deadline = monotonic() + access.acquisition_seconds + 1
+    reported = set()
     while monotonic() < deadline:
         if cancelled(): raise PreparationEnded("finished")
         access.tick({"preparation"})
         group = next(g for g in access.status("preparation")["groups"] if g["provider"] == provider)
         result = group["preparation"]
+        if result["state"] in {"browser_unavailable", "fetch_unavailable"}:
+            failure = (result["state"], result.get("reason_code"))
+            if failure not in reported:
+                # Queue reason codes are sanitized by _acquire; never export browser exceptions.
+                output(json.dumps({"provider": provider, **result}, ensure_ascii=False))
+                reported.add(failure)
         if result["state"] not in {"queued", "checking", "browser_unavailable", "fetch_unavailable"}:
             return result
         sleep(.1)
@@ -72,7 +82,7 @@ def _verify(access, provider, samples, output, *, cancelled=lambda: False):
     results = []
     for url in samples:
         access.control("preparation", provider, "verify", url=url)
-        result = {"provider": provider, "sample_url": url, **_observe(access, provider, cancelled=cancelled)}
+        result = {"provider": provider, "sample_url": url, **_observe(access, provider, cancelled=cancelled, output=output)}
         output(json.dumps(result, ensure_ascii=False))
         results.append(result)
     return results
@@ -100,6 +110,12 @@ def _remaining_command(args, remaining, modes):
           for part in ("--sample", sample)]]
 
 
+def _remaining_providers(selected, rows):
+    # Completed manual preparation may be not_checked. Only the unvisited tail
+    # and actual failures need another batch; a timeout is not completion.
+    return [row["provider"] for row in rows if row["state"] not in _COMPLETED_STATES] + selected[len(rows):]
+
+
 def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False):
     row = {"provider": provider, "state": "not_checked", "samples": []}
     if modes.get(provider) == "public_only":
@@ -113,7 +129,7 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
         return row, False
     # Preparing an entry is not a login assertion. Reuse cookies in the same browser.
     access.control("preparation", provider, "open")
-    opened = _observe(access, provider, cancelled=cancelled)
+    opened = _observe(access, provider, cancelled=cancelled, output=output)
     output(json.dumps({"provider": provider, **opened}, ensure_ascii=False))
     if opened["state"] != "opened":
         return {**row, "state": opened["state"]}, False
@@ -253,7 +269,6 @@ def run(args, *, input_fn=input, output=print):
                 return 1
             output("Browser connection is unavailable. Init can retry the connection or finish preparation; no platform login was attempted.")
             dialogue.wait(connection=connection)
-        remaining = []
         for provider in selected:
             if cancelled(): raise PreparationEnded("finished")
             if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
@@ -263,13 +278,13 @@ def run(args, *, input_fn=input, output=print):
                 output=output, modes=modes, cancelled=cancelled)
             rows.append(row)
             if stop:
-                remaining = selected[len(rows) - int(row["state"] == "input_required"):]
-                rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
                 break
+        remaining = _remaining_providers(selected, rows)
+        rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
         _summary(rows, modes, output, remaining_preparation_argv=_remaining_command(args, remaining, modes))
-        return int(any(row["state"] not in {"sample_verified", "not_checked", "skipped", "public_only"} for row in rows))
+        return int(any(row["state"] not in _COMPLETED_STATES for row in rows))
     except PreparationEnded as exc:
-        remaining = selected[len(rows):]
+        remaining = _remaining_providers(selected, rows)
         rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
         _summary(rows, modes, output, preparation_state=str(exc),
                  remaining_preparation_argv=_remaining_command(args, remaining, modes))

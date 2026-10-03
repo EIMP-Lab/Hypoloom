@@ -90,11 +90,21 @@ Keep it unchanged. Ask within this init conversation using the offered fixed cho
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.
+If any selected platform failed, name the failed platforms and offer `重新准备`
+(retry only the failed/unfinished platforms) or `接受未验证状态，继续检查启动配置`
+(continue to launch review). Do not interpret timeout as completion or advance to
+Start now on the user's behalf. This is an optional preparation choice, not a
+research admission blocker; an explicit decision to finish/skip already permits review.
 Never put credentials in answers or use a second interactive manager concurrently.
 If the process has ended, instructions explicitly say so. On the user's fixed
 重新准备 reply, read the original background result first and execute its generated
-`remaining_preparation_argv` unchanged; an empty list means no unanswered platforms
-remain. It preserves connection options, updated modes and unfinished samples.
+`remaining_preparation_argv` unchanged. It includes failed as well as unanswered
+platforms and preserves connection options, updated modes and supplied samples.
+An empty list is never proof of login or success. If an older summary has failures
+but an empty vector, re-run the existing read-only bootstrap inspection with only
+those failed/unfinished `--institutional-prepare-provider` selections and the same
+other choices/identity; use its generated preparation command after the user's
+retry choice. Never replay successful/manual-complete platforms to repair this omission.
 Retain completed results and the same launch identity. Do not hand-build a restart,
 replay completed logins, restart CC or create a run.
 Do not launch a separate indefinite polling task or repeatedly ask the same question
