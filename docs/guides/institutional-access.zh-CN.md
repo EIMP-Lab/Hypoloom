@@ -222,6 +222,10 @@ init 重新生成的完整代码块。新代码经 SSH 传输 Base64，再按原
 任务已使用隐藏参数时不会因此重启。SSH 密钥和浏览器登录目录不变；需要学校认证
 时浏览器仍会正常打开。`client_discovery_started` 只表示已请求任务启动，实际浏览器
 连通仍以 init 的检查为准。
+Connect 返回后可以关闭其 Windows PowerShell 窗口，隐藏发现任务会继续运行。
+只有前台 `-Action Run` 诊断需要保持窗口打开；出现
+`waiting_for_preparation_or_run` 表示没有活动连接目标，应同时保留服务器上的 CC
+准备批次。这条等待提示不代表浏览器已连接成功。
 
 Windows 计划任务可能把运行账户显示为短用户名，而当前会话显示为“计算机名\\用户名”。
 新版通过 Windows 解析账户 SID 后核对归属。遇到旧版因此报出的
@@ -304,6 +308,15 @@ $researchConnection = @{
 & $researchConnector @researchConnection -Action Stop
 & $researchConnector @researchConnection -Action Uninstall
 ```
+
+Connect/Init 在启动发现任务前准备目录权限，失败会直接显示在当前终端。对于当前
+用户拥有的默认专用目录，额外的**继承 Allow**（例如其他本地组的读取权限）会在
+保护父目录继承、保留既有合法主体及 Deny 后移除，再以原私有校验重新读取确认。
+不修改父目录、组成员或浏览器文件内容；子项按 Windows 正常 ACL 继承传播处理，
+不递归重置独立保护的子项权限。新默认目录也走同一检查。自定义目录、显式额外
+授权、不同所有者及重定向目录不自动修复。旧入口因继承权限报
+`browser_profile_must_be_private` 时，重新执行更新后的完整 Base64 下载/Connect
+代码块；修复成功会显示 `browser_profile_permissions_repaired; login_data_preserved`。
 
 脚本优先查找 Edge，再查找 Chrome；默认本机端口为 0，由浏览器分配。
 使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，

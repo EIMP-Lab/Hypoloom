@@ -179,6 +179,10 @@ checks; a running prior visible task is restarted, briefly interrupting connecti
 Already updated tasks are not restarted for this change. SSH keys and browser
 profiles are retained; publisher login still uses a visible browser.
 `client_discovery_started` means task startup was requested, not browser readiness.
+Connect returns after starting hidden discovery; its PowerShell window may close.
+Only a foreground `-Action Run` diagnostic needs an open terminal. Its
+`waiting_for_preparation_or_run` message means no active connection target was found;
+keep the server CC preparation active as well. It is not a connection success.
 
 Windows may report a task principal as a short username while the current session
 uses a computer-qualified name. The connector resolves account names through
@@ -278,6 +282,20 @@ reports its own allocated port. Profiles remain under
 dedicated profile. Only its user, SYSTEM and administrators may access it. Cookies
 are not exported or copied. An existing browser with matching user, executable and
 profile may be reused, including one manually started on 9222.
+
+Connect/Init prepares profile permissions before starting discovery, so a failure
+appears in the calling terminal. For the current user's default dedicated profile,
+extra **inherited** allow rules (for example, another local group's read access)
+are removed after disabling parent inheritance while preserving existing allowed
+identities and deny rules. The helper rereads the ACL using the same privacy check;
+it does not change parent permissions, group membership or browser file contents.
+Windows propagates inherited ACL changes normally; this is not a recursive reset
+of independently protected child ACLs. New default profiles use the same check.
+Custom locations, explicit extra grants, different owners and redirected directories
+are not automatically repaired. If an older entry reports
+`browser_profile_must_be_private` for inherited permissions, rerun the complete
+updated Base64 download/Connect block. A successful repair prints
+`browser_profile_permissions_repaired; login_data_preserved`.
 
 The helper starts forwards only for active runs; with no run it starts no browser
 and holds no research port. Remote targets are private per-run Unix sockets, so

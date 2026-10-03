@@ -113,6 +113,12 @@ loopback on Windows refers to Windows. Password login is not proof of BatchMode
 readiness; use the guide's SSH key/agent steps when noninteractive login fails. Return
 to the original init and use its fixed replies. `-Action Init` remains a separate
 entry for starting a new session; never recommend it inside an existing init.
+Connect prepares the owned default browser directory's private permissions before
+starting the task. It returns while hidden discovery continues; do not require its
+PowerShell window to stay open or infer task health from server connection waiting.
+Only a foreground `-Action Run` diagnostic requires its window to remain open.
+It reports waiting_for_preparation_or_run when no active target exists; preserve
+the CC preparation alongside that diagnostic. This waiting is not browser success.
 The task remains available for research and
 later sessions; it never opens a browser without an active preparation/run. Its
 Stop/Uninstall operations retain browser login data. Initial local script acquisition

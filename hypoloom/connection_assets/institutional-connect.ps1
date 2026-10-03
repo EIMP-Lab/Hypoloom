@@ -70,18 +70,44 @@ function Assert-LocalOwner {
     $true
 }
 
-function Assert-ProfilePrivacy {
+function Assert-ProfilePrivacy([switch]$RepairInherited) {
     $acl = Get-Acl -LiteralPath $BrowserProfile
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $script:userSid) { throw 'browser_profile_owner_mismatch' }
-    foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
-        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($script:userSid, 'S-1-5-18', 'S-1-5-32-544')) {
-            throw 'browser_profile_must_be_private'
+    $allowed = @($script:userSid, 'S-1-5-18', 'S-1-5-32-544')
+    $unexpected = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -notin $allowed
+    })
+    if (-not $unexpected.Count) { return }
+    if (-not $RepairInherited -or $BrowserProfile -ne $script:DefaultBrowserProfile -or
+        @($unexpected | Where-Object { -not $_.IsInherited }).Count) {
+        throw 'browser_profile_must_be_private'
+    }
+    $directory = Get-Item -LiteralPath $BrowserProfile -Force
+    if (-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'browser_profile_directory_required'
+    }
+    # Restrict only this owned default profile. Preserve allowed identities and
+    # denies; never edit its parent, group membership, or browser login content.
+    $acl.SetAccessRuleProtection($true, $true)
+    foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $allowed) {
+            $acl.RemoveAccessRuleSpecific($rule)
         }
     }
+    Set-Acl -LiteralPath $BrowserProfile -AclObject $acl
+    Assert-ProfilePrivacy
+    Write-Host 'browser_profile_permissions_repaired; login_data_preserved'
+}
+
+function Initialize-BrowserProfile {
+    if (-not (Test-Path -LiteralPath $BrowserProfile)) {
+        $null = New-Item -ItemType Directory -Path $BrowserProfile -Force
+    }
+    Assert-ProfilePrivacy -RepairInherited
 }
 
 function Ensure-Browser {
-    if (Test-Path -LiteralPath $BrowserProfile) { Assert-ProfilePrivacy }
+    Initialize-BrowserProfile
     if ($script:RequestedPort -eq 0) {
         # Discover only this user's exact executable/profile. Chrome's own
         # DevToolsActivePort supplies a dynamic port; no connector PID registry.
@@ -103,7 +129,6 @@ function Ensure-Browser {
         if (-not $observed.webSocketDebuggerUrl) { throw 'existing_browser_cdp_unavailable' }
         return $observed
     }
-    $null = New-Item -ItemType Directory -Path $BrowserProfile -Force
     Assert-ProfilePrivacy
     $script:BrowserCommandPort = $script:RequestedPort
     $values = @('--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1',
@@ -190,6 +215,7 @@ function Start-ClientConnection([string]$TaskName) {
     Start-ScheduledTask -TaskName $TaskName
     Write-Output 'client_discovery_started'
     Write-Output '客户端连接任务已启动。回到原来的 init 会话，回复：继续连接。'
+    Write-Output '后台任务使用隐藏窗口；Connect 返回后可关闭此 PowerShell 窗口。'
     Write-Output '任务启动不代表浏览器已连通；服务器会检查实际连接。若准备已结束，回复：重新准备。'
 }
 
@@ -205,6 +231,7 @@ function Get-RunConnections {
 
 function Watch-Runs {
     $children = @{}; $failures = @{}; $retryAt = @{}; $discoveryFailures = 0
+    $idle = $false
     try {
         while ($true) {
             try { $entries = @(Get-RunConnections); $discoveryFailures = 0 }
@@ -216,6 +243,10 @@ function Watch-Runs {
                 Start-Sleep -Seconds 5
                 continue
             }
+            if (-not $entries.Count -and -not $idle) {
+                Write-Output 'waiting_for_preparation_or_run; foreground_Run_uses_Ctrl+C'
+            }
+            $idle = $entries.Count -eq 0
             $paths = @($entries | ForEach-Object { $_.socket_path })
             foreach ($path in @($children.Keys)) {
                 if ($path -notin $paths) { Stop-Child $children[$path]; $children.Remove($path); $failures.Remove($path); $retryAt.Remove($path) }
@@ -276,6 +307,7 @@ function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$Po
         throw 'scheduled_task_ownership_mismatch'
     }
     if ($Action -in @('Connect', 'Init', 'Install')) {
+        if ($Action -in @('Connect', 'Init')) { Initialize-BrowserProfile }
         $command = New-ScheduledTaskAction -Execute $PowerShell -Argument $taskArguments
         if (-not $task) {
             $principal = New-ScheduledTaskPrincipal -UserId $script:userSid -LogonType Interactive -RunLevel Limited
@@ -325,9 +357,9 @@ function Connector-Main {
     }
     if (-not $BrowserExecutable -or -not (Test-Path -LiteralPath $BrowserExecutable -PathType Leaf)) { throw 'browser_executable_missing' }
     $script:BrowserExecutable = (Resolve-Path -LiteralPath $BrowserExecutable).Path
-    if (-not $script:BrowserProfile) {
-        $script:BrowserProfile = Join-Path $env:LOCALAPPDATA ('Hypoloom\Institutional-' + [IO.Path]::GetFileNameWithoutExtension($BrowserExecutable))
-    }
+    $script:DefaultBrowserProfile = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA (
+        'Hypoloom\Institutional-' + [IO.Path]::GetFileNameWithoutExtension($BrowserExecutable)))).TrimEnd('\')
+    if (-not $script:BrowserProfile) { $script:BrowserProfile = $script:DefaultBrowserProfile }
     if (-not [IO.Path]::IsPathFullyQualified($BrowserProfile)) { throw 'absolute_dedicated_profile_required' }
     $script:BrowserProfile = [IO.Path]::GetFullPath($BrowserProfile).TrimEnd('\')
     foreach ($personal in @('Google\Chrome\User Data', 'Microsoft\Edge\User Data', 'Chromium\User Data')) {

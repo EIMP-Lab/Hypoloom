@@ -8,6 +8,104 @@ $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDe
     . ([scriptblock]::Create($_.Extent.Text))
 }
 function Assert($Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+# Exercise the real privacy validator against the reported inherited grant.
+# Only Windows ACL/filesystem APIs are substituted; no real login data is used.
+& {
+    $script:userSid = 'fixture-user'
+    $script:DefaultBrowserProfile = 'C:\Users\Fixture\Hypoloom\Institutional-msedge'
+    $BrowserProfile = $script:DefaultBrowserProfile
+    function New-Rule($Sid, $Inherited = $true, $Type = 'Allow') {
+        [pscustomobject]@{IdentityReference=[pscustomobject]@{Value=$Sid};IsInherited=$Inherited;
+            AccessControlType=$Type;FileSystemRights='FullControl'}
+    }
+    function Reset-Profile {
+        $script:ProfileExists = $true; $script:ProfileWrites = 0; $script:ProfileReads = 0
+        $script:ProfileReparse = $false; $script:ProfileWriteFails = $false; $script:ProfileWriteIgnored = $false
+        $script:ProfileAcl = [pscustomobject]@{Owner='fixture-user';AreAccessRulesProtected=$false;Rules=@(
+            (New-Rule 'fixture-extra-group'), (New-Rule 'S-1-5-18'),
+            (New-Rule 'S-1-5-32-544'), (New-Rule 'fixture-user'), (New-Rule 'fixture-denied' $true 'Deny'))}
+        $script:ProfileAcl | Add-Member ScriptMethod GetOwner { param($Type) [pscustomobject]@{Value=$this.Owner} }
+        $script:ProfileAcl.Rules[0].FileSystemRights = 'ReadAndExecute'
+        $script:ProfileAcl | Add-Member ScriptMethod GetAccessRules { param($Explicit, $Inherited, $Type) $this.Rules }
+        $script:ProfileAcl | Add-Member ScriptMethod SetAccessRuleProtection {
+            param($Protected, $Preserve)
+            Assert ($Protected -and $Preserve) 'permission repair would discard existing access/deny rules'
+            $this.AreAccessRulesProtected = $true
+            foreach ($rule in $this.Rules) { $rule.IsInherited = $false }
+        }
+        $script:ProfileAcl | Add-Member ScriptMethod RemoveAccessRuleSpecific {
+            param($Rule)
+            $this.Rules = @($this.Rules | Where-Object { -not [object]::ReferenceEquals($_, $Rule) })
+        }
+    }
+    function Get-Acl {
+        param($LiteralPath)
+        Assert ($LiteralPath -ceq $BrowserProfile) 'read ACL outside selected profile'
+        $script:ProfileReads++
+        $script:ProfileAcl
+    }
+    function Set-Acl {
+        param($LiteralPath, $AclObject)
+        Assert ($LiteralPath -ceq $BrowserProfile) 'changed ACL outside selected profile'
+        $script:ProfileWrites++
+        if ($script:ProfileWriteFails) { throw 'fixture_acl_write_failed' }
+        if ($script:ProfileWriteIgnored) { $script:ProfileAcl.Rules += New-Rule 'fixture-extra-group' }
+    }
+    function Get-Item {
+        param($LiteralPath, [switch]$Force)
+        Assert ($LiteralPath -ceq $BrowserProfile) 'inspected another directory'
+        [pscustomobject]@{PSIsContainer=$true;Attributes=if ($script:ProfileReparse) {
+            [IO.FileAttributes]::ReparsePoint
+        } else { [IO.FileAttributes]::Directory }}
+    }
+    function Test-Path { param($LiteralPath) $script:ProfileExists }
+    function New-Item {
+        param($ItemType, $Path, [switch]$Force)
+        Assert ($ItemType -eq 'Directory' -and $Path -ceq $BrowserProfile) 'created outside the selected directory'
+        $script:ProfileExists = $true
+    }
+    Reset-Profile
+    $rejected = $false
+    try { Assert-ProfilePrivacy } catch { $rejected = $_.Exception.Message -eq 'browser_profile_must_be_private' }
+    Assert ($rejected -and $script:ProfileWrites -eq 0) 'privacy assertion accepted inherited cross-user access'
+    Assert-ProfilePrivacy -RepairInherited
+    Assert ($script:ProfileWrites -eq 1 -and $script:ProfileReads -ge 3) 'repair did not write and reread the OS ACL'
+    Assert ($script:ProfileAcl.AreAccessRulesProtected) 'parent permissions would reappear'
+    Assert (($script:ProfileAcl.Rules.IdentityReference.Value -join ',') -ceq 'S-1-5-18,S-1-5-32-544,fixture-user,fixture-denied') 'repair changed required users or dropped a deny'
+    Assert-ProfilePrivacy
+    Initialize-BrowserProfile
+    Assert ($script:ProfileWrites -eq 1) 'private profile was rewritten on repeat startup'
+    Reset-Profile
+    $script:ProfileExists = $false
+    Initialize-BrowserProfile
+    Assert ($script:ProfileExists -and $script:ProfileWrites -eq 1) 'new profile inherited an unusable ACL'
+    foreach ($case in @('owner', 'explicit', 'custom', 'redirect', 'write_failure', 'write_ignored')) {
+        Reset-Profile
+        $BrowserProfile = $script:DefaultBrowserProfile
+        $expected = 'browser_profile_must_be_private'
+        switch ($case) {
+            'owner' { $script:ProfileAcl.Owner = 'fixture-other-owner'; $expected = 'browser_profile_owner_mismatch' }
+            'explicit' { $script:ProfileAcl.Rules[0].IsInherited = $false }
+            'custom' { $BrowserProfile = 'C:\custom\profile' }
+            'redirect' { $script:ProfileReparse = $true; $expected = 'browser_profile_directory_required' }
+            'write_failure' { $script:ProfileWriteFails = $true; $expected = 'fixture_acl_write_failed' }
+            'write_ignored' { $script:ProfileWriteIgnored = $true }
+        }
+        $caught = ''
+        try { Initialize-BrowserProfile } catch { $caught = $_.Exception.Message }
+        Assert ($caught -eq $expected) "profile repair did not reject $case"
+        $expectedWrites = if ($case -in @('write_failure', 'write_ignored')) { 1 } else { 0 }
+        Assert ($script:ProfileWrites -eq $expectedWrites) "unexpected mutation for $case"
+    }
+    Reset-Profile
+    $BrowserProfile = $script:DefaultBrowserProfile
+    $script:RequestedPort = 9222
+    function Assert-LocalOwner { $true }
+    function Get-LocalCDP { [pscustomobject]@{webSocketDebuggerUrl='ws://127.0.0.1:9222/devtools/browser/fixture'} }
+    $observed = @(Ensure-Browser)
+    Assert ($observed.Count -eq 1 -and $observed[0].webSocketDebuggerUrl) 'permission message polluted the browser result'
+    Assert ($script:ProfileWrites -eq 1) 'browser reuse bypassed profile preparation'
+}
 $BrowserProfile = 'C:\Users\Test User\Hypoloom\Institutional-msedge'
 $LocalPort = 9222
 foreach ($flag in @('--user-data-dir="' + $BrowserProfile + '"', '"--user-data-dir=' + $BrowserProfile + '"', '--user-data-dir=' + $BrowserProfile)) {
@@ -75,6 +173,10 @@ function Register-ScheduledTask {
     $script:TaskEvents += 'register'
     $script:ScheduledTask = [pscustomobject]@{Actions=@($Action);Principal=$Principal;State='Ready';Triggers=$Trigger;Settings=$Settings}
 }
+function Initialize-BrowserProfile {
+    $script:TaskEvents += 'profile'
+    if ($script:FailProfilePreparation) { throw 'browser_profile_must_be_private' }
+}
 function Set-ScheduledTask {
     param($TaskName, $Action)
     $script:TaskEvents += 'update'; $script:ScheduledTask.Actions = @($Action)
@@ -89,17 +191,21 @@ $legacy = ($values | ForEach-Object { Quote-Native $_ }) -join ' '
 $hidden = '"-WindowStyle" "Hidden" ' + $legacy
 $Action = 'Connect'
 Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' | Out-Null
-Assert (($script:TaskEvents -join ',') -eq 'register,start') 'new connection task not installed/started once'
+Assert (($script:TaskEvents -join ',') -eq 'profile,register,start') 'profile was not prepared before new task startup'
 Assert ($script:ScheduledTask.Actions[0].Arguments -ceq $hidden) 'new discovery task has a visible console'
 $script:ScheduledTask.Actions[0].Arguments = $legacy; $script:ScheduledTask.State = 'Running'; $script:TaskEvents = @()
 Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' | Out-Null
-Assert (($script:TaskEvents -join ',') -eq 'update,stop,start') 'legacy visible task was not updated/restarted'
+Assert (($script:TaskEvents -join ',') -eq 'profile,update,stop,start') 'legacy visible task was not updated/restarted'
 Assert ($script:ScheduledTask.Actions[0].Arguments -ceq $hidden) 'upgrade altered connection arguments'
 Assert ($script:ScheduledTask.Triggers -eq 'original-trigger' -and $script:ScheduledTask.Settings -eq 'original-settings') 'upgrade replaced task settings'
 $script:TaskEvents = @()
 Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' | Out-Null
-Assert (($script:TaskEvents -join ',') -eq 'start') 'repeat connect needlessly rewrote/stopped the current task'
+Assert (($script:TaskEvents -join ',') -eq 'profile,start') 'repeat connect needlessly rewrote/stopped the current task'
 $saved = $script:ScheduledTask
+$script:FailProfilePreparation = $true; $script:TaskEvents = @(); $caught = ''
+try { Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' } catch { $caught = $_.Exception.Message }
+Assert ($caught -eq 'browser_profile_must_be_private' -and ($script:TaskEvents -join ',') -eq 'profile') 'Connect started a task after profile preparation failed'
+$script:FailProfilePreparation = $false
 # Windows can return a short account name after registering the task by SID.
 # Substitute only the OS account lookup; acceptance still uses production code.
 function Resolve-AccountSid([string]$Name) {
@@ -115,7 +221,7 @@ foreach ($owner in @('fixture-sid', 'FixtureUser', 'DESKTOP\FixtureUser')) {
     $script:ScheduledTask = [pscustomobject]@{Actions=@([pscustomobject]@{Execute='C:\pwsh.exe';Arguments=$legacy});Principal=[pscustomobject]@{UserId=$owner};State='Ready'}
     $script:TaskEvents = @()
     Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' | Out-Null
-    Assert (($script:TaskEvents -join ',') -eq 'update,start') 'same account spelling blocked an idle task upgrade'
+    Assert (($script:TaskEvents -join ',') -eq 'profile,update,start') 'same account spelling blocked an idle task upgrade'
     Assert ($script:ScheduledTask.Principal.UserId -ceq $owner) 'account spelling repair rewrote the task principal'
 }
 foreach ($arguments in @($legacy, $hidden)) {
@@ -145,7 +251,7 @@ $script:ssh = 'ssh-fixture'; $script:Step = 0; $script:Browsers = 0; $script:For
 $a = [pscustomobject]@{socket_path='/tmp/run-a/browser.sock';state_root='/state/a';run_id='a'}
 $b = [pscustomobject]@{socket_path='/tmp/run-b/browser.sock';state_root='/state/b';run_id='b'}
 function Get-RunConnections {
-    if ($script:Step -eq 0) { @($a, $b) } elseif ($script:Step -eq 1) { @($b) } else { @() }
+    if ($script:Step -eq 1) { @($a, $b) } elseif ($script:Step -eq 2) { @($b) } else { @() }
 }
 function Ensure-Browser { $script:Browsers++; @{webSocketDebuggerUrl='ws://127.0.0.1:9222/devtools/browser/fixture'} }
 function Start-Captured([string]$Executable, [string[]]$Values) {
@@ -157,8 +263,9 @@ function Start-Captured([string]$Executable, [string[]]$Values) {
     @{Process=$process;Label=$label}
 }
 function Stop-Child($Child) { if ($Child.Label -ne 'readiness') { $script:Stopped += $Child.Label }; $Child.Process.HasExited=$true }
-function Start-Sleep { param($Seconds) $script:Step++; if ($script:Step -eq 4) { throw 'fixture_complete' } }
-try { Watch-Runs } catch { Assert ($_.Exception.Message -eq 'fixture_complete') 'unexpected connector error' }
+function Start-Sleep { param($Seconds) $script:Step++; if ($script:Step -eq 5) { throw 'fixture_complete' } }
+$messages = @(try { Watch-Runs } catch { Assert ($_.Exception.Message -eq 'fixture_complete') 'unexpected connector error' })
+Assert (@($messages | Where-Object { $_ -like 'waiting_for_preparation_or_run;*' }).Count -eq 2) 'idle waiting was silent or logged every poll'
 Assert ($script:Browsers -eq 2 -and $script:Forwards.Count -eq 2) 'ended runs were reconnected or idle discovery opened a browser'
 Assert ($script:Stopped.Count -eq 2 -and $script:Stopped[0] -like '/tmp/run-a/*' -and $script:Stopped[1] -like '/tmp/run-b/*') 'one run retirement disturbed another forward'
 Write-Output 'connector parser, literal arguments, browser identity, child cleanup and per-run retirement passed'

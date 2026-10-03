@@ -10,6 +10,26 @@
 再使用已有机构会话；后台遇到人工认证就返回缺口，只有用户主动登录才开启有界等待。**
 登录成功、取得某篇全文、Agent 实际阅读及科研证据接纳仍是不同事实。
 
+## Windows 专用目录继承权限准备（2026-10-03）
+
+用户的前台 Run 明确返回 browser_profile_must_be_private，目录 ACL 显示一个额外
+本地组通过父目录继承了读取权限；当前用户、SYSTEM、Administrators 均有完整权限。
+既有校验正确拒绝，但创建目录只继承父目录权限，且 Connect 未提前执行检查，导致
+后台以统一退出码 2 结束，用户反复启动无法恢复。问题与学校、论文或研究主题无关。
+
+复用 Windows ACL 和原私有校验：只对当前用户拥有的默认 Institutional-<browser>
+目录处理额外继承 Allow。先保护继承并保留原规则，再移除这些额外 Allow，保留既有
+允许主体及 Deny，写回后用原校验重新读取确认。自定义目录、显式额外授权、其他
+所有者和目录重定向继续拒绝自动修复；不修改父目录、组成员、SSH 或浏览器文件内容。
+已有子项沿用 Windows 的 ACL 继承传播，不做递归权限重置。新增目录也走同一流程。
+
+Connect/Init 在任务归属核验后、后台启动前准备该目录，失败直接显示；Run 在确有
+连接目标、启动/复用浏览器前准备。前台发现输出初次及转入无目标等待的提示，不逐轮
+刷屏；Connect 隐藏任务返回和前台 Run 保持窗口的区别写入程序说明及运行指引。
+不放宽原允许列表，不新增持久状态、配置、哈希或第二个权限判定源。验证以实际
+PowerShell 编排及 Windows ACL 替身为限；原生 ACL 传播、桌面/SSO 须客户端确认。
+Windows 权限操作依据 [Set-Acl 的保留继承规则示例](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-acl#example-4-disable-inheritance-and-preserve-inherited-access-rules)。
+
 ## Windows 任务账户名称归一（2026-10-03）
 
 用户的实际任务回读显示：任务 Principal.UserId 是短用户名，当前 WindowsIdentity

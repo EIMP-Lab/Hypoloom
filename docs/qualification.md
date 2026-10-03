@@ -2,6 +2,40 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows browser profile inherited permissions (2026-10-03)
+
+The user's foreground Run reports browser_profile_must_be_private. Native icacls
+output confirms an additional local group's inherited read/execute grant alongside
+the current user, SYSTEM and Administrators. Baseline `b580f04` correctly rejects
+that grant, but neither directory creation nor Connect prepares the required ACL.
+Repeated task startup cannot repair it. A synthetic ACL fixture executes the real
+PowerShell privacy function and reproduces the same rejection before the repair.
+
+Only the owned default browser directory's extra inherited allow rules are repaired.
+Existing allowed identities and denies survive inheritance protection; the original
+validator rereads the OS ACL after the write. Custom paths, explicit extra grants,
+other owners and directory redirects remain rejected. Write failure or an unchanged
+readback cannot permit startup. Connect/Init performs preparation after task ownership
+validation and before task start. Foreground Run emits idle discovery transitions;
+program instructions and bilingual guides explain hidden versus foreground operation.
+
+Final focused result: **106 passed / one skipped in 49.40 seconds**, covering
+connection, instructions, init dialogue, operator skills and documentation structure.
+The skip requires explicit real-browser opt-in. PowerShell execution covers the
+reported inherited grant, new-directory preparation, preserved users/deny, repeat
+idempotence, six rejection/write-failure cases, unpolluted CDP return data, preflight
+failure without task start, existing 14 task rejection cases, bounded idle messages
+and independent forward retirement. Windows filesystem/ACL/scheduler APIs are
+substituted on Linux; native ACL propagation, desktop and real SSO still require
+client confirmation. Static undefined-name checks and whitespace checks pass.
+
+Evidence: `.local/qualification/institutional-profile-acl-20261003/` retains
+`red.xml`, `initial-fixed.xml`, `focused.xml` and the program-generated Windows
+setup block. No full G1, package promotion, paid/GPU or native Windows claim. No
+retained research run, SSH authorization or real browser profile was changed here;
+the user-executed updated connector applies the scoped ACL repair on Windows.
+No persistent permission registry, marker or additional source of authority is added.
+
 ## Windows task principal normalization (2026-10-03)
 
 The user's Windows readback shows a Ready task whose principal is a short username,

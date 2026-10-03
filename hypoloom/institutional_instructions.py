@@ -90,6 +90,7 @@ def render(view):
             lines.extend(["首次接入或连接任务未运行时，在 Windows 本地 PowerShell 整块粘贴执行下面代码（包括 & { 和最后的 }）；"
                           "不要逐行运行或复制 PS>/>> 提示符。保留当前 SSH/CC 会话。程序会询问 SSH 目标，获取入口并启动连接任务。",
                           "```powershell", view["client_entry"]["powershell"], "```",
+                          "Connect 启动隐藏后台任务后返回，无需保持该 Windows PowerShell 窗口打开；保留当前 init 会话。",
                           "看到客户端连接任务已启动后，回到此会话回复：继续连接。启动任务不等于浏览器已连通。"])
         else:
             lines.append("完成所选浏览器的连接准备后回复：继续连接。")

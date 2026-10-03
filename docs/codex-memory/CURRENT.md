@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 3 Windows browser profile ACL preparation: supplied native ACL output
+  confirms an extra inherited local-group read grant; the strict privacy rejection
+  is correct, but retry alone could not repair the default profile. Connect/Init
+  now prepares its owned default directory before task startup. Only extra inherited
+  grants are removed, preserving existing allowed users/denies, with an OS reread
+  through the original validator. Custom/explicit/foreign/redirected cases fail
+  closed; no parent, group, login-content or retained-run changes. Run gains an
+  idle-target message and guides distinguish foreground Run from hidden Connect.
+  Focused 106 pass / one native-browser opt-in skip; PowerShell is real but Windows
+  ACL/scheduler APIs are substituted. Actual client ACL propagation/GUI still need
+  confirmation. Continues authorized dev repair/push. [Design](../design/institutional-access-preparation.md#windows-专用目录继承权限准备2026-10-03),
+  [qualification](../qualification.md#windows-browser-profile-inherited-permissions-2026-10-03).
+  Evidence: `.local/qualification/institutional-profile-acl-20261003/`.
+
 - October 3 Windows task principal repair: supplied client readback identifies a
   short task username versus the current computer-qualified account name. The
   connector now resolves names through Windows to the existing current-user SID;
