@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Platform browser failure diagnostics](../design/institutional-access-preparation.md#平台阶段的控制连接与页面错误分类2026-10-03):
+  retained IEEE completion followed by two timeouts with Edge still open; preserve
+  safe connection/page causes through existing queue validation and prevent local
+  deadline expiry masking an observed endpoint error. [Qualification](../qualification.md#platform-browser-failure-diagnostics-2026-10-03)
+  records 208 passing related tests and controlled native disconnect/recovery;
+  the actual Windows persistent failure remains unlocalized.
+
 - [File-based Windows client setup](../design/institutional-access-preparation.md#原始文件接入移除模型转贴程序正文2026-10-03):
   observed CC transcription corrupted valid program output. Original script transfer
   and its interactive Setup replace inline installation source; existing Connect,

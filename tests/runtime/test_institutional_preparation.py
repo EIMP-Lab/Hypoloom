@@ -225,13 +225,16 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
         assert recovered.closed and not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("failure", ["browser", "navigation"])
+@pytest.mark.parametrize("failure", ["browser", "navigation", "cdp_timeout", "cdp_connection_closed",
+    "cdp_endpoint_unavailable", "browser_target_closed", "browser_operation_timeout", "browser_operation_failed",
+    "https://sso.invalid/?secret=never-export-this"])
 def test_preparation_reports_safe_intermediate_failure_before_timeout(monkeypatch, failure):
     from hypoloom.cli import build_parser
     class Failing(PreparationBackend):
         def prepare(self, provider, **kwargs):
             if failure == "browser": raise RuntimeError("https://sso.invalid/?secret=never-export-this")
-            return {"state": "fetch_unavailable", "reason": "dns_failed"}
+            if failure == "navigation": return {"state": "fetch_unavailable", "reason": "dns_failed"}
+            return {"state": "browser_unavailable", "reason": failure}
     backend = Failing()
     access = InstitutionalAccess(backend, clock=lambda: monotonic() * 100, acquisition_seconds=30, poll_seconds=1)
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: access)
@@ -239,7 +242,8 @@ def test_preparation_reports_safe_intermediate_failure_before_timeout(monkeypatc
     args = build_parser().parse_args(["institutional", "prepare", "--provider", "ScienceDirect"])
     assert run(args, input_fn=lambda _: pytest.fail("failed browser requested login"), output=output.append) == 1
     events = [json.loads(v) for v in output if v.startswith('{')]
-    state, reason = ("browser_unavailable", "browser_unavailable") if failure == "browser" else ("fetch_unavailable", "dns_failed")
+    state, reason = ("fetch_unavailable", "dns_failed") if failure == "navigation" else (
+        "browser_unavailable", "browser_unavailable" if failure == "browser" or failure.startswith("https:") else failure)
     failures = [e for e in events if e.get("state") == state]
     assert len(failures) == 1 and failures[0]["reason_code"] == reason
     assert failures[0]["provider"] == "ScienceDirect"

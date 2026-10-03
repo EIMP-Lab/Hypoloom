@@ -91,12 +91,17 @@ sleep 或轮询循环。
 所选平台超时时，init 应提供 **重新准备** 或 **接受未验证状态，继续检查启动配置**，
 由用户决定。准备失败不阻止科研启动，也不代表成功。如果旧版本摘要仍有失败项却输出
 空重试数组，助手应使用原只读 bootstrap 检查为这些平台重新生成准备命令，保留其他
-配置和启动身份。保持专用浏览器打开即可。中间的 `browser_unavailable` /
+配置和启动身份。请保持专用浏览器打开。中间的 `browser_unavailable` /
 `fetch_unavailable` 输出安全错误码；只有最终 `acquisition_timeout` 无法确定底层原因。
 连接预检也返回固定错误码：`cdp_timeout`、`cdp_connection_refused`、
 `cdp_connection_closed`、`cdp_authorization_failed`、`cdp_endpoint_unavailable`、
 `cdp_context_unavailable`、`browser_driver_unavailable` 或 `cdp_connection_failed`。
 它们表示浏览器控制连接故障，不代表机构登录或订阅失败；不输出原始异常和私有地址。
+平台打开阶段也保留相同的连接错误码；`browser_target_closed` 表示页面、上下文或浏览器
+目标关闭，`browser_operation_timeout` 表示页面操作超时，`browser_operation_failed`
+表示未分类的页面操作失败。笼统的 `browser_unavailable` 不能证明用户关闭了 Edge 或
+SSH 任务退出。重试沿用原有有界队列；窗口仍开着不等于控制连接一直可用。
+
 
 `complete` 没有样本时仍是未验证；`skip` / `public_only` 也须带当前平台。
 这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。

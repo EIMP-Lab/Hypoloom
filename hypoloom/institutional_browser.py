@@ -258,6 +258,12 @@ class PlaywrightInstitutionalBrowser:
                     self._connect()
                     return {"state": "ready"}
                 except Exception as exc:
+                    # Startup/cleanup can exhaust the local budget before another
+                    # CDP request is made. Keep the last actual failure in that case;
+                    # a real network timeout still supersedes it below.
+                    if (isinstance(exc, TimeoutError) and str(exc) == "institutional acquisition deadline"
+                            and monotonic() >= self._deadline):
+                        break
                     reason = _connection_reason(exc)
                     if getattr(self, "stopping", None) is not None and self.stopping.is_set(): break
                     from time import sleep
@@ -300,7 +306,10 @@ class PlaywrightInstitutionalBrowser:
         if entry is None: raise ValueError("unsupported institutional provider")
         self._deadline = monotonic() + timeout_seconds
         try:
-            context = self._connect()
+            try:
+                context = self._connect()
+            except Exception as exc:
+                return {"state": "browser_unavailable", "reason": _connection_reason(exc)}
             prior = self._tabs.get(provider)
             if prior is None or prior[0].is_closed():
                 if not self._room_for_tab(): return {"state": "tab_limit"}
@@ -313,6 +322,13 @@ class PlaywrightInstitutionalBrowser:
                 page = prior[0]
             if focus: page.bring_to_front()
             return {"state": "opened"}
+        except Exception as exc:
+            # A page/context failure is not proof that the browser or SSH exited.
+            # Keep the queue's existing bounded retry, and export no exception text.
+            reason = ("browser_target_closed" if type(exc).__name__ == "TargetClosedError" else
+                      "browser_operation_timeout" if isinstance(exc, TimeoutError) or type(exc).__name__ == "TimeoutError"
+                      else "browser_operation_failed")
+            return {"state": "browser_unavailable", "reason": reason}
         finally:
             self._deadline = None
 

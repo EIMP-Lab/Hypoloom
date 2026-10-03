@@ -103,6 +103,10 @@ Keep it unchanged. Ask within this init conversation using the offered fixed cho
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.
+For a failed platform, report its intermediate safe `reason_code` from the task
+output when available. `browser_unavailable` alone does not establish that Edge,
+SSH or the client task exited; page operations can fail with a live connection.
+A platform that never opened was not verified for login or subscription.
 If any selected platform failed, name the failed platforms and offer `重新准备`
 (retry only the failed/unfinished platforms) or `接受未验证状态，继续检查启动配置`
 (continue to launch review). Do not interpret timeout as completion or advance to

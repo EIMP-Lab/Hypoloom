@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 3 platform failure diagnostics: another retained batch completed IEEE
+  manually, then ScienceDirect/Springer timed out with generic browser_unavailable;
+  the user confirms dedicated Edge remained open. Platform prepare now preserves
+  safe CDP reasons and distinguishes target closure/page operation timeout/failure
+  through the existing queue whitelist. Native tests also reproduced local deadline
+  expiry masking a prior 503; that expiry now retains the actual last cause while
+  real request timeouts remain cdp_timeout. No deadline/retry/state authority added.
+  Ten initial red cases plus one deadline red case; final related 208 pass including
+  actual relay disconnect/recovery between three platforms. Windows sustained failure
+  is not reproduced or claimed fixed; next operator retry must supply diagnostics.
+  Existing preparation/run unchanged; continues authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#平台阶段的控制连接与页面错误分类2026-10-03),
+  [qualification](../qualification.md#platform-browser-failure-diagnostics-2026-10-03).
+  Evidence: `.local/qualification/institutional-platform-diagnostics-20261003/`.
+
 - October 3 file-based Windows setup: retained CC tool output was correct but its
   assistant text inserted a hyphen into a PowerShell enum, stopping local setup.
   Init now exposes the existing script file, one fixed Setup launch and path values;

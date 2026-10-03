@@ -105,6 +105,13 @@ Connection checks also report fixed `cdp_timeout`, `cdp_connection_refused`,
 `cdp_context_unavailable`, `browser_driver_unavailable` or `cdp_connection_failed`
 codes. They describe the control connection, not publisher login or subscription;
 raw browser errors and private URLs are never printed.
+Platform opening preserves the same connection reason codes. `browser_target_closed`
+means a page/context/browser target closed, `browser_operation_timeout` means a page
+operation timed out, and `browser_operation_failed` is an unclassified page operation
+failure. Generic `browser_unavailable` does not prove that Edge or SSH exited. The
+existing bounded queue retries; an open window alone does not prove a healthy control
+connection.
+
 
 Resources are allocated inside the Host once the run exists. A missing browser
 can remain unavailable within the existing bounded acquisition/fallback policy;

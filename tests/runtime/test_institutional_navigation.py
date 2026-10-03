@@ -25,6 +25,55 @@ def test_connection_failure_returns_fixed_reason_without_exception_text(failure,
     assert "SECRET" not in str(result)
 
 
+@pytest.mark.parametrize("local_deadline,reason", [(True, "cdp_endpoint_unavailable"), (False, "cdp_timeout")])
+def test_local_check_deadline_does_not_erase_last_endpoint_failure(monkeypatch, local_deadline, reason):
+    from hypoloom import institutional_browser
+    import time
+    clock, calls = [0.], []
+    monkeypatch.setattr(institutional_browser, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
+    def connect():
+        calls.append(True)
+        if len(calls) == 1:
+            raise RuntimeError("Unexpected status 503 SECRET")
+        clock[0] = 1.1
+        if local_deadline: browser._remaining(5)
+        raise TimeoutError("actual control request timed out SECRET")
+    browser._connect = connect
+    assert browser.check_connection(timeout_seconds=1) == {"state": "browser_unavailable", "reason_code": reason}
+    assert len(calls) == 2 and browser._deadline is None
+
+
+@pytest.mark.parametrize("failure,reason", [
+    (TimeoutError("private callback SECRET"), "cdp_timeout"),
+    (RuntimeError("connect ECONNREFUSED SECRET"), "cdp_connection_refused"),
+    (RuntimeError("Unexpected status 503 SECRET"), "cdp_endpoint_unavailable"),
+    (ValueError("authenticated browser context is unavailable"), "cdp_context_unavailable"),
+])
+def test_platform_connection_errors_keep_the_same_safe_diagnostics(failure, reason):
+    browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
+    def fail(): raise failure
+    browser._connect = fail
+    assert browser.prepare("Springer") == {"state": "browser_unavailable", "reason": reason}
+
+
+@pytest.mark.parametrize("operation", ["new_page", "bring_to_front"])
+@pytest.mark.parametrize("failure,reason", [
+    (TimeoutError("page operation SECRET"), "browser_operation_timeout"),
+    (type("TargetClosedError", (Exception,), {})("target closed SECRET"), "browser_target_closed"),
+    (RuntimeError("page operation SECRET"), "browser_operation_failed"),
+])
+def test_platform_page_errors_do_not_claim_a_disconnected_browser(operation, failure, reason):
+    browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
+    def fail(*a): raise failure
+    page = SimpleNamespace(set_default_timeout=lambda *a: None, bring_to_front=fail)
+    browser._connect = lambda: SimpleNamespace(new_page=fail if operation == "new_page" else lambda: page)
+    browser._navigate = lambda *a: None
+    assert browser.prepare("Springer") == {"state": "browser_unavailable", "reason": reason}
+    assert "SECRET" not in str(browser.prepare("ScienceDirect"))
+
+
 class Page:
     def __init__(self, *, current=URL, failure=None, **info):
         self.url, self.failure, self.visits = current, failure, []

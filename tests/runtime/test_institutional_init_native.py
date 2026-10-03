@@ -155,3 +155,62 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
         if thread.is_alive() and root is not None:
             request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); thread.join(15)
         fixture.close()
+
+
+@pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
+def test_real_control_disconnect_between_platforms_recovers_with_browser_left_open(tmp_path, monkeypatch):
+    import socket
+    from hypoloom.institutional_access import InstitutionalAccess
+    from hypoloom.institutional_runtime import RunBrowser
+    from hypoloom.institutional_prepare import run
+    from tests.runtime.test_institutional_browser import browser as browser_fixture
+    fixture = browser_fixture.__wrapped__(tmp_path)
+    adapter, context = next(fixture)
+    user_page = context.pages[0]
+    class Browser(RunBrowser):
+        def _navigate(self, page, target):
+            page.set_content('<title>Fixture</title>Publisher preparation')
+    backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
+    reachable = threading.Event(); reachable.set()
+    dial = backend.relay.dial
+    def network():
+        if not reachable.is_set(): raise ConnectionRefusedError('disposable transport unavailable')
+        return dial()
+    backend.relay.dial = network
+    access = InstitutionalAccess(backend, poll_seconds=.05)
+    monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
+    output, codes = [], []
+    thread = threading.Thread(target=lambda: codes.append(run(arguments('--agent-session',
+        '--repository', str(tmp_path), '--provider', 'IEEE', '--provider', 'ScienceDirect',
+        '--provider', 'Springer'), output=output.append)))
+    thread.start(); root = None
+    try:
+        root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+            if v.startswith('{') and 'state_root' in json.loads(v)), None))
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
+        reachable.clear()
+        with backend.relay.lock:
+            for peer in list(backend.relay.peers):
+                try: peer.shutdown(socket.SHUT_RDWR)
+                except OSError: pass
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'IEEE', 'reply': '完成'}).status == 'accepted'
+        failure = eventually(lambda: next((json.loads(v) for v in output if v.startswith('{')
+            and json.loads(v).get('provider') == 'ScienceDirect'
+            and json.loads(v).get('state') == 'browser_unavailable'), None))
+        assert failure['reason_code'] in {'browser_target_closed', 'cdp_connection_closed', 'cdp_endpoint_unavailable'}
+        reachable.set()
+        for provider in ('ScienceDirect', 'Springer'):
+            eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
+                and request(root).result.get('provider') == provider)
+            assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
+        thread.join(10)
+        assert not thread.is_alive() and codes == [0]
+        assert json.loads(output[-1])['remaining_preparation_argv'] == []
+        assert not user_page.is_closed() and not backend._tabs and not root.exists()
+        assert not list(tmp_path.rglob('state.sqlite'))
+    finally:
+        reachable.set()
+        if thread.is_alive() and root is not None:
+            request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); thread.join(10)
+        backend.release(); fixture.close()
+    assert_free(backend.endpoint)

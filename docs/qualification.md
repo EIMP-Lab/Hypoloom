@@ -2,6 +2,46 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Platform browser failure diagnostics (2026-10-03)
+
+Read-only evidence from CC session `90fcf773-1338-40b2-a06b-fc5fd5ec094c`, batch
+`institutional-prepare-opu2ja9s`, shows IEEE opened/manual completion (not_checked,
+no sample), then ScienceDirect and Springer browser_unavailable/acquisition_timeout.
+The user confirms dedicated Edge remained open. The original output has no detailed
+exception cause; it cannot establish browser/SSH exit or a subscription failure.
+Remaining preparation correctly selects only the failed two platforms. No retained
+preparation or research run was answered, started, stopped or otherwise changed.
+
+Ten red regressions reproduce lost platform connection/page failures. Prepare now
+uses the existing CDP classifier and fixed page-operation classifications, filtered
+through the existing queue whitelist. Unknown raw reasons and private exception
+text remain excluded. One controlled real Chromium/CDP relay test drops active
+control sockets after IEEE and temporarily rejects reconnects, then restores the
+transport; ScienceDirect/Springer automatically proceed with original deadlines.
+The external browser/user page survives, owned tabs/control/relay are cleaned and
+no research database is created. This is not a reproduction of the Windows fault.
+
+The first expanded selection produced **205 pass / one failure**: a prior native
+late-connection test expected the actual 503 but received cdp_timeout. An unchanged
+isolated recheck reproduced it. A deterministic regression then demonstrated local
+budget exhaustion before the next request overwriting the prior endpoint cause.
+That explicit local-deadline case now preserves the last actual failure. A paired
+case still requires a real request timeout to return cdp_timeout. No timeout,
+assertion or admission rule was relaxed. Final related selection: **208 passed**,
+covering navigation, preparation, access/deadlines, dialogue/instructions, native
+browser/subprocess, documentation and operator guidance; no full G1 claim.
+
+The final wheel, isolated install and fresh runtime bundle match **174 package
+files**. Installed CLI preparation/control cleanup and MCP initialization pass.
+No native Windows desktop/Task Scheduler/SSO, paid/GPU or underlying incident-fix
+claim: the next user-selected retry must supply the newly available reason codes.
+
+Evidence: `.local/qualification/institutional-platform-diagnostics-20261003/` keeps
+`observed.json`, `red.txt`, `first-fixed.txt`, `focused.txt`, `native-recheck.txt`,
+`deadline-red.txt`, `final-focused.txt`, build/install logs, and installation
+verification scripts/results. Original private CC evidence remains at its source.
+Design: [platform-stage diagnostics](design/institutional-access-preparation.md#平台阶段的控制连接与页面错误分类2026-10-03).
+
 ## File-based Windows client setup (2026-10-03)
 
 Retained CC session `e7e522c0-f827-4d08-8ab2-ed0df5f5ae6b` contains two correct tool
