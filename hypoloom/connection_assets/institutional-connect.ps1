@@ -4,12 +4,12 @@
    Keep this file at a stable path when installing the task. #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Connect', 'Init', 'Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
-    [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')][string]$Server,
+    [ValidateSet('Setup', 'Connect', 'Init', 'Run', 'Status', 'Install', 'Stop', 'Uninstall')][string]$Action = 'Run',
+    [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')][string]$Server,
     [string]$BrowserExecutable,
     [string]$BrowserProfile,
     [ValidateRange(0, 65535)][int]$LocalPort = 0,
-    [Parameter(Mandatory)][string]$Repository,
+    [string]$Repository,
     [string]$PythonExecutable,
     [string]$RunsRoot
 )
@@ -196,7 +196,7 @@ function Init-Command([switch]$Check) {
     $body = 'cd ' + (Quote-Remote $Repository) + ' || exit 42; '
     if ($Check) {
         $body += 'test -x ' + (Quote-Remote $PythonExecutable) + ' || exit 40; '
-        $body += if ($Action -eq 'Connect') { 'true' } else { 'command -v claude >/dev/null || exit 41' }
+        $body += if ($Action -in @('Setup', 'Connect')) { 'true' } else { 'command -v claude >/dev/null || exit 41' }
     } else {
         $body += 'exec claude ' + (Quote-Remote '/autoresearch init')
     }
@@ -231,6 +231,50 @@ function Start-ClientConnection([string]$TaskName) {
     Write-Output '客户端连接任务已启动。回到原来的 init 会话查看进展；准备程序会自动检测连接。'
     Write-Output '后台任务使用隐藏窗口；Connect 返回后可关闭此 PowerShell 窗口。'
     Write-Output '任务启动不代表浏览器已连通；需要提前检查时回复：继续连接。若准备已结束，回复：重新准备。'
+}
+
+function Setup-ClientEntry([string]$Source) {
+    # The downloaded file is the program. Conversation output supplies values,
+    # never source code. Preserve its bytes at the existing task's stable path.
+    Write-Host '本机接入安装：保留服务器上的 init 会话；这里只启动客户端连接。'
+    $setupServer = $Server
+    if (-not $setupServer) {
+        Write-Host '127.0.0.1/localhost 指向这台 Windows；不要填写密码或整条 ssh 命令。'
+        $setupServer = (Read-Host '服务器 user@host 或 SSH 别名').Trim()
+    }
+    if ($setupServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') { throw 'invalid_ssh_target' }
+    $script:Server = $setupServer
+    if (-not $Repository) { $script:Repository = (Read-Host '服务器仓库绝对路径（见 init 显示的值）').Trim() }
+    if (-not $PythonExecutable) {
+        $script:PythonExecutable = (Read-Host '服务器 Python 绝对路径（回车使用仓库下 .conda/envs/hypoloom/bin/python）').Trim()
+    }
+    if (-not $RunsRoot) {
+        $script:RunsRoot = (Read-Host '服务器运行目录绝对路径（回车使用仓库下 state）').Trim()
+    }
+    Resolve-ServerPaths
+    # Authentication and server paths must work before replacing an installed entry.
+    Check-InitConnection
+    $destination = Join-Path $env:LOCALAPPDATA 'Hypoloom/institutional-connect.ps1'
+    if ([IO.Path]::GetFullPath($Source) -ne [IO.Path]::GetFullPath($destination)) {
+        $bytes = [IO.File]::ReadAllBytes($Source)
+        if (-not $bytes.Length) { throw 'empty_client_entry' }
+        $directory = Split-Path $destination
+        $null = New-Item -ItemType Directory -Force -Path $directory
+        $temporary = Join-Path $directory ([IO.Path]::GetRandomFileName())
+        try {
+            [IO.File]::WriteAllBytes($temporary, $bytes)
+            Move-Item -LiteralPath $temporary -Destination $destination -Force
+        } finally {
+            if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary }
+        }
+    }
+    $values = @('-NoProfile', '-NonInteractive', '-File', $destination,
+        '-Action', 'Connect', '-Server', $Server, '-Repository', $Repository,
+        '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot, '-LocalPort', "$LocalPort")
+    if ($BrowserExecutable) { $values += @('-BrowserExecutable', $BrowserExecutable) }
+    if ($BrowserProfile) { $values += @('-BrowserProfile', $BrowserProfile) }
+    & (Get-Process -Id $PID).Path @values
+    if ($LASTEXITCODE -ne 0) { throw 'client_setup_connection_failed' }
 }
 
 function Get-RunConnections {
@@ -354,8 +398,10 @@ function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$Po
 
 function Connector-Main {
     if (-not $IsWindows) { throw 'windows_desktop_required' }
-    $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $script:ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
+    if ($Action -eq 'Setup') { Setup-ClientEntry $PSCommandPath; return }
+    if (-not $Server -or -not $Repository) { throw 'server_and_repository_required' }
+    $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $script:RequestedPort = $LocalPort
     Resolve-ServerPaths
     if ($Action -in @('Connect', 'Init')) { Check-InitConnection }

@@ -547,9 +547,9 @@ def test_connection_preview_roundtrips_without_starting_browser(checkout, capsys
     assert "--agent-session" in review["institutional_preparation_argv"]
     if mode == "client":
         entry = review["institutional_client_entry"]
-        assert f"'-Repository', '{repo}'" in entry["powershell"]
-        assert "'-Action', 'Connect'" in entry["powershell"] and entry["runs_on"] == "Windows client"
-        assert "<ssh-target>" not in entry["powershell"] and "Read-Host" in entry["powershell"]
+        assert entry["setup_inputs"]["repository"] == str(repo)
+        assert "-Action Setup" in entry["powershell"] and entry["runs_on"] == "Windows client"
+        assert "Read-Host" not in entry["powershell"] and Path(entry["script_source"]).is_file()
         assert bootstrap.compact_result(result)["effective_configuration"]["institutional_client_entry"] == entry
     host = result["commands"]["host_start"]
     serve = cli_parser().parse_args(host[host.index("--") + 4:])

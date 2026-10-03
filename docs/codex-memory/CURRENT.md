@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 3 file-based Windows setup: retained CC tool output was correct but its
+  assistant text inserted a hyphen into a PowerShell enum, stopping local setup.
+  Init now exposes the existing script file, one fixed Setup launch and path values;
+  source bytes travel over SFTP/SCP. The script prompts, checks SSH/remote Python,
+  installs itself atomically at the existing stable path and calls Connect. Old live
+  instructions cannot reintroduce inline installation source. No new authority or
+  retained preparation/run mutation. Related 213 pass / four opt-in skips; final
+  focused recheck and real SFTP/PowerShell byte-preserving setup pass. Installed
+  wheel/CLI/MCP/fresh bundle match all 174 package files. Windows desktop/SSO remain
+  unverified. Continues authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#原始文件接入移除模型转贴程序正文2026-10-03),
+  [qualification](../qualification.md#file-based-windows-client-setup-2026-10-03).
+  Evidence: `.local/qualification/institutional-file-setup-20261003/`.
+
 - October 3 program-owned connection wait: new init stalled because CC polled the
   last connection result while the process waited for a retry reply. Preparation
   now rechecks automatically through its existing worker within one fixed window;

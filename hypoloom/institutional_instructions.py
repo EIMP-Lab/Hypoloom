@@ -1,7 +1,5 @@
 """Program-rendered client setup and preparation choices, without saved state."""
 from pathlib import Path
-import shlex
-from textwrap import indent
 
 
 REPLIES = {
@@ -9,60 +7,22 @@ REPLIES = {
     "完成": "complete", "验证样本": "verify", "跳过此平台": "skip",
     "仅公开": "public_only", "结束准备": "finish",
 }
-
-
-def _powershell_literal(value):
-    value = str(value)
-    if any(c in value for c in "\x00\r\n"):
-        raise ValueError("client setup paths must not contain control characters")
-    return "'" + value.replace("'", "''") + "'"
+CLIENT_SETUP_COMMAND = "pwsh -NoProfile -File .\\institutional-connect.ps1 -Action Setup"
 
 
 def client_entry(repository, python):
     repository = Path(repository).resolve()
     source = Path(__file__).with_name("connection_assets") / "institutional-connect.ps1"
-    # Obtain the entire script through the operator's existing SSH trust before
-    # replacing the stable local entry. No password, host guess or second init.
-    # ASCII transport avoids native stdout decoding through a Windows code page.
-    # This is byte transport, not a digest or a second source of script authority.
-    download = _powershell_literal("base64 -- " + shlex.quote(str(source)))
-    script = f"""$ErrorActionPreference = 'Stop'
-if ($PSVersionTable.PSVersion -lt [version]'7.2') {{ throw '请先运行 pwsh 进入 PowerShell 7.2+ 后再执行。' }}
-if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {{ throw '请先安装 PowerShell 7.2 或更高版本。' }}
-Write-Host '填写从这台 Windows 登录 Linux 服务器的 SSH 目标；127.0.0.1/localhost 指向本机。'
-$researchServer = (Read-Host '服务器 user@host 或 SSH 别名（不是密码，也不是浏览器地址）').Trim()
-if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {{ throw '请输入 SSH 目标或别名，不要输入整条 ssh 命令。' }}
-$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\\institutional-connect.ps1'
-$researchSourceCommand = {download}
-$researchSource = & ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer $researchSourceCommand
-if ($LASTEXITCODE -ne 0) {{
-    throw "读取入口失败，已停止。检查服务器目标和路径；先用 ssh $researchServer exit 确认登录，再用 ssh -o BatchMode=yes $researchServer exit 验证免交互认证。若仍需密码，请先配置 SSH 密钥/ssh-agent。"
-}}
-if ([string]::IsNullOrWhiteSpace(($researchSource -join "`n"))) {{ throw '服务器未返回入口内容，已停止；请检查服务器目标和安装路径。' }}
-$researchSourceBytes = [Convert]::FromBase64String(($researchSource -join ''))
-New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
-$researchTemporary = Join-Path (Split-Path $researchConnector) ([IO.Path]::GetRandomFileName())
-try {{
-    [IO.File]::WriteAllBytes($researchTemporary, $researchSourceBytes)
-    Move-Item -LiteralPath $researchTemporary -Destination $researchConnector -Force
-}} finally {{
-    if (Test-Path -LiteralPath $researchTemporary) {{ Remove-Item -LiteralPath $researchTemporary }}
-}}
-$researchArguments = @(
-    '-NoProfile', '-File', $researchConnector
-    '-Action', 'Connect', '-Server', $researchServer
-    '-Repository', {_powershell_literal(repository)}
-    '-PythonExecutable', {_powershell_literal(python)}
-    '-RunsRoot', {_powershell_literal(repository / 'state')}
-)
-& pwsh @researchArguments
-if ($LASTEXITCODE -ne 0) {{ throw '客户端接入未完成，请按上方错误处理后重新执行。' }}"""
-    # One REPL command: a terminating error must stop the rest of a pasted block,
-    # not just its current line. The child scope also preserves shell preferences.
-    script = "& {\n" + indent(script, "    ") + "\n}\n"
+    inputs = {"repository": str(repository), "python_executable": str(python),
+              "runs_root": str(repository / "state")}
+    if any(c in value for value in [str(source), *inputs.values()] for c in "\x00\r\n"):
+        raise ValueError("client setup paths must not contain control characters")
+    # Only a file launch is shown to the model. The installation program travels
+    # through SSH file transfer, never through a model-generated code block.
     return {"runs_on": "Windows client", "requires": ["PowerShell 7.2+", "existing SSH authentication"],
-            "script_source": str(source), "powershell": script,
-            "note": "Starts client discovery only; return to the same init conversation."}
+            "script_source": str(source), "setup_inputs": inputs,
+            "powershell": CLIENT_SETUP_COMMAND + "\n",
+            "note": "Download the original script via SFTP/SCP; run Setup in its local directory. Return to the same init conversation."}
 
 
 def reply_choices(view):
@@ -106,12 +66,25 @@ def render(view):
         if reason in reasons:
             lines.append(f"最近一次检查：{reason}（{reasons[reason]}）。")
         if "client_entry" in view:
-            lines.extend(["首次接入或连接任务未运行时，在 Windows 本地 PowerShell 整块粘贴执行下面代码（包括 & { 和最后的 }）；"
-                          "不要逐行运行或复制 PS>/>> 提示符。保留当前 SSH/CC 会话。程序会询问 SSH 目标，获取入口并启动连接任务。",
-                          "```powershell", view["client_entry"]["powershell"], "```",
-                          "Connect 启动隐藏后台任务后返回，无需保持该 Windows PowerShell 窗口打开；保留当前 init 会话。",
+            entry = view["client_entry"]
+            inputs = entry.get("setup_inputs")
+            lines.extend(["首次接入或更新时，通过 SFTP/SCP 从当前服务器下载原始脚本文件到 Windows；不要把助手转贴的脚本正文保存为文件。",
+                          "服务器文件：" + entry["script_source"],
+                          "在下载文件所在目录打开 PowerShell 7.2+，执行这个固定入口：",
+                          "```powershell", CLIENT_SETUP_COMMAND, "```",
+                          "程序会询问 SSH 目标（你从 Windows 登录服务器使用的 user@host 或别名，不是密码）及服务器路径。"])
+            if inputs:
+                lines.extend(["服务器仓库：" + inputs["repository"],
+                              "服务器 Python：" + inputs["python_executable"],
+                              "服务器运行目录：" + inputs["runs_root"]])
+            else:
+                # An already-running older preparation has only an inline script.
+                # Never render or parse that source as a substitute for path data.
+                lines.append("此旧批次未单独提供路径值；请使用本次 init 审阅中的仓库、Python 和运行目录。")
+            lines.extend(["Setup 安装到本机固定位置并执行 Connect；返回后可关闭此 PowerShell 窗口，保留当前 init 会话。",
+                          "后续 init 复用隐藏后台任务；任务正常时无需重复下载或安装。",
                           ("接入后回到此会话查看进展；程序会自动检测实际连接。" if automatic else
-                           "看到客户端连接任务已启动后，回到此会话回复：继续连接。") + "启动任务不等于浏览器已连通。"])
+                          "看到客户端连接任务已启动后，回到此会话回复：继续连接。") + "启动任务不等于浏览器已连通。"])
         else:
             lines.append("完成所选浏览器的连接准备后，程序会自动检测。" if automatic else
                          "完成所选浏览器的连接准备后回复：继续连接。")

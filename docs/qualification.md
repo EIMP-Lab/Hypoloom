@@ -2,6 +2,50 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## File-based Windows client setup (2026-10-03)
+
+Retained CC session `e7e522c0-f827-4d08-8ab2-ed0df5f5ae6b` contains two correct tool
+outputs followed by assistant text changing `-ErrorAction SilentlyContinue` to
+`-ErrorAction -SilentlyContinue`. Actual PowerShell execution returns 0 for the
+original and 1 for the transcription. Existing verbatim instructions did not prevent
+this failure. Only sanitized parameter/timestamp evidence is copied into local results.
+
+The existing connector now owns interactive Setup, path derivation, prerequisite
+checks, original-byte installation and Connect dispatch. Bootstrap/live views expose
+file location, fixed launch and values; an old live inline payload is never rendered
+as installation source. No new installer authority, digest or saved configuration.
+
+Initial focused **99 passed**; expanded related **213 passed / four opt-in browser
+skips**, covering instructions, connection, dialogue, preparation/native subprocess,
+bootstrap, documentation and operator guidance. A preceding collection attempt used
+an incorrect documentation-test path and ran no tests; its output is retained.
+The final prompt-validation adjustment was rechecked through the instruction,
+PowerShell, documentation and operator selections. Counts overlap, not a full G1.
+
+Real PowerShell executes the shipped Setup functions with only input and external
+connection effects substituted. Cases cover default/custom/supplied paths, metacharacter
+preservation, failed authentication, invalid target/path, interrupted replacement,
+Connect failure and execution from the installed path. Failures preserve the old entry
+where required and remove temporary installation files; success invokes Connect only.
+A disposable real OpenSSH SFTP server transfers the actual source file; the download
+and installed copy match the source bytes. Ephemeral keys/configuration are removed
+and sshd exits; the user's SSH keys and Windows/browser state are not touched.
+
+The final wheel, isolated install and fresh bundle match **174 package files**. The
+installed entry points at its actual installed script; installed CLI preparation,
+private control answer/cleanup and MCP initialization pass. The disposable preparation
+creates no research database and leaves no owned control/forward resources. No retained
+preparation or research run was answered, restarted, migrated or otherwise changed.
+Actual Windows Task Scheduler/ACL/visible desktop/SSO still need native verification;
+Linux PowerShell with substituted Windows effects is not that claim. No paid/GPU or
+frozen-candidate qualification was performed.
+
+Evidence: `.local/qualification/institutional-file-setup-20261003/` contains
+`transcription.json`, `focused-initial.txt`, the collection-error `focused.txt`,
+`focused-final.txt`, `final-checks.txt`, `final-transfer.txt`, `verify_transfer.py`,
+final build/install logs and `final-installation.json` with its verifier.
+Design: [original-file client setup](design/institutional-access-preparation.md#原始文件接入移除模型转贴程序正文2026-10-03).
+
 ## Program-owned institutional connection waiting (2026-10-03)
 
 Read-only inspection of CC session c807d820-dc5c-4583-bd41-388f4ae0611a confirms a

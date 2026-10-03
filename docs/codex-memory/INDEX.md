@@ -1,5 +1,12 @@
 # Development memory index
 
+- [File-based Windows client setup](../design/institutional-access-preparation.md#原始文件接入移除模型转贴程序正文2026-10-03):
+  observed CC transcription corrupted valid program output. Original script transfer
+  and its interactive Setup replace inline installation source; existing Connect,
+  SSH checks, atomic replacement and task ownership remain the execution path.
+  [Qualification](../qualification.md#file-based-windows-client-setup-2026-10-03)
+  records focused, real SFTP/PowerShell and installed-package checks with Windows limits.
+
 - [Program-owned connection waiting](../design/institutional-access-preparation.md#程序内连接等待与有界观察2026-10-03):
   automatically rechecks a late client within the existing fixed window, serializes
   probes, preserves diagnostics on timeout and generates a read-only 30-second watch.

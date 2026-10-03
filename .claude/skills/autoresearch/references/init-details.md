@@ -72,8 +72,8 @@ read the first flushed JSON record for `state_root`, `status_argv`, `instruction
 The control root is temporary preparation state, never the proposed research root.
 Query `status_argv` when checking progress; do not repeatedly start preparation.
 `checking_connection` has the configured connection timeout (default 30 seconds).
-Run `instructions_argv` and relay its entire output verbatim, including the complete
-Windows code block and fixed reply choices. Do not hand-write client commands,
+Run `instructions_argv` and relay its output, including the Windows file location,
+fixed Setup entry, input values and reply choices. Do not hand-write client commands,
 translate/reword the fixed replies, infer an SSH alias or calculate another deadline.
 `status_argv` returns the live stage, `remaining_seconds` and complete `reply_argv`.
 Connection checks are owned by the preparation program. After an unsuccessful
@@ -123,19 +123,22 @@ replay completed logins, restart CC or create a run.
 Do not launch polling tasks or repeatedly ask the same question on background
 notifications; use the program's watch once and then relay the current instructions.
 
-For Windows client mode, `institutional_client_entry.powershell` and live instructions
-use the same program renderer. The complete block asks the user for their actual SSH
-target on Windows, downloads the script from its actual package location, and runs
-`-Action Connect` with the exact server paths. Connect verifies SSH/remote Python and
-installs/starts the owned discovery task without opening another CC session. Return
-the full `& { ... }` block unchanged: this is one PowerShell command so an error
-stops all subsequent setup. Do not split it into independent commands. If an old
-damaged command is stuck at `>>`, instruct Ctrl+C before pasting the complete block.
-Explain that the SSH target is entered after Read-Host, not inside its prompt;
-loopback on Windows refers to Windows. Password login is not proof of BatchMode
-readiness; use the guide's SSH key/agent steps when noninteractive login fails. Return
-to the original init; preparation automatically checks readiness. Use its fixed
-replies only for the offered choices. `-Action Init` remains a separate
+For Windows client mode, `institutional_client_entry` supplies `script_source`,
+`setup_inputs` and a single fixed file-launch command in `powershell`. The user
+transfers the original script from that server to Windows through SFTP/SCP and runs
+`-Action Setup` in its downloaded directory. Show the source path, launch command and
+input values; never reproduce, rewrite or generate the installer body, nor use a
+chat-generated script file as the download. Keep installation source on the
+file-transfer path, outside model-generated text.
+Setup asks for the actual SSH target and server paths, verifies SSH/remote Python,
+installs the original file at the existing stable local path and invokes Connect.
+No Windows checkout or second CC session is needed. Use the guide's file-transfer
+steps if needed. If an old damaged command is stuck at `>>`, instruct Ctrl+C first.
+Explain that loopback on Windows refers to Windows. Password login is not proof of
+BatchMode readiness; use the guide's SSH key/agent steps when authentication fails.
+Return to the original init; preparation automatically checks readiness. A healthy
+installed discovery task is reused by later init sessions without another download.
+Use fixed replies only for the offered choices. `-Action Init` remains a separate
 entry for starting a new session; never recommend it inside an existing init.
 Connect prepares the owned default browser directory's private permissions before
 starting the task. It returns while hidden discovery continues; do not require its

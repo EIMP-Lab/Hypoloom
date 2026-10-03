@@ -173,99 +173,67 @@ def test_watch_returns_latest_instructions_at_its_wallclock_limit(tmp_path, monk
         control.close(); access.close()
 
 
-@pytest.mark.parametrize("code_page", [65001, 936, 1252])
-@pytest.mark.parametrize("download_ok", [True, False])
-def test_generated_powershell_downloads_then_connects_without_reentering_init(tmp_path, monkeypatch, download_ok, code_page):
-    executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
-    if not executable: pytest.skip("PowerShell parser/runtime not installed")
-    from hypoloom import institutional_instructions
-    package = tmp_path / "package $literal ' quote ` $(throw INJECTED)"
-    source = package / "connection_assets/institutional-connect.ps1"
-    source.parent.mkdir(parents=True)
-    source.write_text("Write-Output '客户端连接任务已启动。'\nWrite-Output '回复：继续连接。'\n")
-    monkeypatch.setattr(institutional_instructions, "__file__", str(package / "institutional_instructions.py"))
-    repository = "/repo $literal ' apostrophe ` $(throw INJECTED)"
-    entry = client_entry(repository, "/custom/python with spaces")
-    expected = tmp_path / "expected.json"
-    expected.write_text(json.dumps({"repository": repository, "python": "/custom/python with spaces"}))
-    fixture = tmp_path / "fixture.ps1"
-    # Execute the actual generated program. Substitute only external Windows/SSH
-    # operations; quoting, download writes, failure handling and argv stay real.
-    fixture.write_text("""param($Root, $Expected)
-$env:LOCALAPPDATA = $Root
-$script:Called = $false
-[Console]::OutputEncoding = [Text.Encoding]::GetEncoding(CODE_PAGE)
-function Read-Host { 'research@fixture' }
-function ssh {
-    if ($args[-2] -ne 'research@fixture') { throw 'bad download argv' }
-    if (DOWNLOAD_EXIT -ne 0) { $global:LASTEXITCODE = DOWNLOAD_EXIT; return }
-    & /bin/bash -c $args[-1]
-}
-function pwsh {
-    $script:Called = $true
-    $values = Get-Content -Raw -LiteralPath $Expected | ConvertFrom-Json
-    if ($args[$args.IndexOf('-Action') + 1] -ne 'Connect') { throw 'reentered init' }
-    if ($args[$args.IndexOf('-Repository') + 1] -cne $values.repository) { throw 'repository altered' }
-    if ($args[$args.IndexOf('-PythonExecutable') + 1] -cne $values.python) { throw 'python altered' }
-    $global:LASTEXITCODE = 0
-}
-try {
-GENERATED
-} catch {
-    if (EXPECTED_SUCCESS) { throw }
-    if ($script:Called) { throw 'executed failed download' }
-    if (Test-Path -LiteralPath (Join-Path $Root 'Hypoloom/institutional-connect.ps1')) { throw 'published failed download' }
-    Write-Output 'download_failed_without_execution'
-    exit 0
-}
-if (-not EXPECTED_SUCCESS -or -not $script:Called) { throw 'expected path was not executed' }
-Write-Output 'setup_connected_same_session'
-""".replace("DOWNLOAD_EXIT", "0" if download_ok else "1")
-        .replace("CODE_PAGE", str(code_page))
-        .replace("EXPECTED_SUCCESS", "$true" if download_ok else "$false")
-        .replace("GENERATED", entry["powershell"]))
-    result = subprocess.run([executable, "-NoProfile", "-File", str(fixture),
-        str(tmp_path / "desktop"), str(expected)], capture_output=True,
-        encoding="utf-8" if code_page == 65001 else f"cp{code_page}", timeout=15)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert ("setup_connected_same_session" if download_ok else "download_failed_without_execution") in result.stdout
-    if download_ok:
-        downloaded = tmp_path / "desktop/Hypoloom/institutional-connect.ps1"
-        assert downloaded.read_bytes() == source.read_bytes()
-        # Execute the downloaded text itself, not just a mocked connector call.
-        result = subprocess.run([executable, "-NoProfile", "-File", str(downloaded)],
-            capture_output=True, text=True, timeout=15)
-        assert result.returncode == 0, result.stderr
-        assert result.stdout.splitlines() == ["客户端连接任务已启动。", "回复：继续连接。"]
+def test_client_entry_delivers_a_file_launch_and_values_without_installation_source(tmp_path):
+    entry = client_entry(tmp_path, "/python with spaces")
+    assert not list(tmp_path.iterdir()), "inspection must not write an installer or state"
+    assert Path(entry["script_source"]).is_file()
+    assert entry["setup_inputs"] == {"repository": str(tmp_path),
+        "python_executable": "/python with spaces", "runs_root": str(tmp_path / "state")}
+    view = render({"state": "waiting_for_connection", "client_entry": entry,
+        "automatic_connection_checks": True, "actions": ["retry_connection", "finish"]})
+    command = view.split("```powershell\n", 1)[1].split("```", 1)[0].strip()
+    assert command == r"pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup"
+    assert "Get-Command" not in view and "WriteAllBytes" not in view and "FromBase64String" not in view
+    assert "SFTP/SCP" in view and "/python with spaces" in view
 
 
-@pytest.mark.parametrize("failure", ["partial_download", "empty_download", "invalid_target", "invalid_encoding"])
-def test_pasted_setup_stops_as_one_command_and_preserves_existing_connector(tmp_path, failure):
+def test_old_live_preparation_does_not_reintroduce_inline_installation_code():
+    view = render({"state": "waiting_for_connection", "client_entry": {
+        "script_source": "/installed/institutional-connect.ps1",
+        "powershell": "Get-Command pwsh -ErrorAction -SilentlyContinue"}})
+    assert "-Action Setup" in view and "此旧批次未单独提供路径值" in view
+    assert "Get-Command" not in view and "SilentlyContinue" not in view
+
+
+@pytest.mark.parametrize("scenario", ["defaults", "custom", "ssh_failure", "invalid_target",
+    "invalid_repository", "write_failure", "connection_failure", "installed", "supplied"])
+def test_file_setup_installs_original_bytes_and_reuses_connect(tmp_path, scenario):
     executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
-    if not executable: pytest.skip("PowerShell parser/runtime not installed")
+    if not executable: pytest.skip("PowerShell runtime not installed")
+    source = Path(__file__).resolve().parents[2] / "hypoloom/connection_assets/institutional-connect.ps1"
     desktop = tmp_path / "desktop"
-    connector = desktop / "Hypoloom/institutional-connect.ps1"
-    connector.parent.mkdir(parents=True)
-    connector.write_text("# existing connector\n")
-    called = desktop / "called"
-    target = "ssh user@host" if failure == "invalid_target" else "research@fixture"
-    download = "'partial download'; $global:LASTEXITCODE = 255" if failure == "partial_download" else "$global:LASTEXITCODE = 0"
-    if failure == "invalid_encoding": download = "'invalid base64!'; $global:LASTEXITCODE = 0"
-    # Feed a real REPL's command input, without a surrounding file/try block that
-    # would accidentally supply the failure boundary missing from pasted text.
-    prelude = f"""$env:LOCALAPPDATA = $env:HYPOLOOM_TEST_DESKTOP
-$ErrorActionPreference = 'Continue'
-function Read-Host {{ '{target}' }}
-function ssh {{ {download} }}
-function pwsh {{ Set-Content (Join-Path $env:LOCALAPPDATA 'called') 'unexpected execution'; $global:LASTEXITCODE = 0 }}
-"""
-    result = subprocess.run([executable, "-NoProfile", "-NonInteractive", "-Command", "-"],
-        input=prelude + client_entry("/repository", "/python")["powershell"] +
-            "\n\nWrite-Output ('shell_alive:' + $ErrorActionPreference)\n",
-        env={**os.environ, "HYPOLOOM_TEST_DESKTOP": str(desktop), "TERM": "dumb"},
-        capture_output=True, text=True, timeout=15)
-    assert not called.exists(), result.stdout + result.stderr
-    assert connector.read_text() == "# existing connector\n"
-    assert list(connector.parent.iterdir()) == [connector]
-    assert "shell_alive:Continue" in result.stdout
-    assert "Move-Item:" not in result.stderr
+    installed = desktop / "Hypoloom/institutional-connect.ps1"
+    installed.parent.mkdir(parents=True)
+    original = source.read_bytes() if scenario == "installed" else b"# existing entry\n"
+    installed.write_bytes(original)
+    downloaded = tmp_path / "download ' $literal ` file.ps1"
+    downloaded.write_bytes(source.read_bytes())
+    fixture = Path(__file__).with_name("fixtures") / "institutional_setup_checks.ps1"
+    result = subprocess.run([executable, "-NoProfile", "-File", str(fixture),
+        "-Connector", str(installed if scenario == "installed" else downloaded),
+        "-Desktop", str(desktop), "-Scenario", scenario], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    observed = json.loads((desktop / "observed.json").read_text())
+    errors = {"ssh_failure": "init_ssh_connection_unavailable_check_key_and_known_host",
+        "invalid_target": "invalid_ssh_target", "invalid_repository": "absolute_repository_path_required",
+        "write_failure": "fixture_write_failure", "connection_failure": "client_setup_connection_failed"}
+    assert observed["error"] == errors.get(scenario, "")
+    executes = scenario not in {"ssh_failure", "invalid_target", "invalid_repository", "write_failure"}
+    if executes:
+        assert installed.read_bytes() == source.read_bytes()
+        args = observed["args"]
+        assert args[args.index("-File") + 1] == str(installed)
+        assert args[args.index("-Action") + 1] == "Connect", "setup must not open another CC init"
+        assert args[args.index("-Server") + 1] == "research@fixture"
+        repository = "/server/repo ' $literal ` $(throw INJECTED)"
+        assert args[args.index("-Repository") + 1] == repository
+        expected_python = "/custom/python space" if scenario in {"custom", "supplied"} else repository + "/.conda/envs/hypoloom/bin/python"
+        assert args[args.index("-PythonExecutable") + 1] == expected_python
+        expected_runs = "/custom/runs" if scenario in {"custom", "supplied"} else repository + "/state"
+        assert args[args.index("-RunsRoot") + 1] == expected_runs
+        assert observed["checks"] == 1
+    else:
+        assert observed["args"] == []
+        assert installed.read_bytes() == original
+    assert list(installed.parent.iterdir()) == [installed], "setup left a partial installation"
+    if scenario == "supplied": assert observed["prompts"] == 0

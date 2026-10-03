@@ -76,8 +76,8 @@ python -m hypoloom institutional preparation retry_connection --state-root /path
 python -m hypoloom institutional preparation finish --state-root /path/to/temporary-preparation
 ```
 
-正常 init 使用程序给出的 `instructions_argv`，原样展示操作说明、完整 Windows
-代码块和固定回复。连接阶段回复 **继续连接 / 跳过准备**；平台阶段回复 **完成 /
+正常 init 使用程序给出的 `instructions_argv`，展示文件下载位置、固定启动入口、
+需填写的路径和固定回复，不转贴安装程序正文。连接阶段回复 **继续连接 / 跳过准备**；平台阶段回复 **完成 /
 验证样本 / 跳过此平台 / 仅公开 / 结束准备**。验证样本另提供 DOI 或论文 URL。
 客户端接入后由程序自动检测。程序提供的 `watch_argv` 最多等待 30 秒，到需人工操作
 的阶段或批次结束便返回当前说明；只观察、不代答。CC 使用这个命令，不自行拼接
@@ -217,26 +217,48 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 
 ### Windows 终端统一 Init 入口
 
-**已经在 CC 中进行 init 时**，使用它原样展示的程序生成代码块。代码会在 Windows
-询问 SSH 目标、自行取得脚本并执行 `Connect`，启动任务后返回原会话。无需本机已有
-仓库，也无需自己拼接路径；不要替换成下方会新开会话的 `Init`。看到
-`client_discovery_started` 后回到原会话查看进展，程序会自动检测实际连接；
-需要提前检查时可回复 **继续连接**。
-如原批次已结束，回复 **重新准备**。固定代码块由 bootstrap 与准备进程共用的
-`client_entry` 生成，助手不应改写代码或计时说明。
+**已经在 CC 中进行 init 时**，首次接入或升级采用原始脚本文件，不执行助手转贴的
+安装代码。bootstrap 与准备进程共同给出 `script_source`（服务器文件位置）、
+`setup_inputs`（需要填写的路径）和固定启动入口。
 
-完整粘贴代码块，包括开头的 `& {` 和最后的 `}`，不要复制终端里的 `PS>` / `>>`
-提示符。它作为一条命令执行，下载或校验失败就结束，不覆盖已有入口，也不继续启动。
-如果之前粘贴损坏的命令导致停在 `>>`，先按 Ctrl+C 取消，再粘贴完整代码块。
-SSH 目标填写从这台 Windows 登录 Linux 的地址；`Read-Host` 后引号里的文字只是
-问题，真正的目标要在提示后输入。`127.0.0.1` / `localhost` 指向 Windows 本机，
-不是远端服务器。普通 SSH 能输入密码登录，并不代表后台免交互认证可用；先按下方
-密钥/ssh-agent 步骤验证 `ssh -o BatchMode=yes <目标> exit` 返回 0，再执行接入。
-Edge/Chrome 的本地版本响应只证明本地端口当时可用，服务器仍需验证实际连接。
+1. 在 Windows 打开一个用于下载的目录，通过现有 SFTP/SCP 或文件传输工具，从当前
+   SSH 服务器下载程序给出的 `institutional-connect.ps1` 原始文件。不要将聊天中的
+   脚本正文另存为文件。Windows 无需安装 Hypoloom 或 Python。
+2. 在该下载目录打开 PowerShell 7.2+，执行：
 
-若旧接入代码出现中文乱码，尤其把 `Write-Output` 也显示为正文，请使用更新版本
-init 重新生成的完整代码块。新代码经 SSH 传输 Base64，再按原始字节写入入口，
-避免本机代码页在下载阶段损坏脚本；只在最后指定 UTF-8 保存不能恢复已读坏的内容。
+   ```powershell
+   pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
+   ```
+
+3. 按程序提示输入 Windows 使用的 SSH 目标、服务器仓库路径、Python 路径和运行目录。
+   init 会显示三个路径的实际值。标准安装的后两项可回车使用默认值；非标准安装填写
+   init 显示的值，不要修改脚本源码。Setup 验证 SSH 和服务器 Python，再按原始字节
+   安装到 `%LOCALAPPDATA%\Hypoloom\institutional-connect.ps1`，随后执行 Connect。
+4. 看到 `client_discovery_started` 后回到原 init 查看进展，程序自动检测实际连接。
+   如原批次已结束，回复 **重新准备**。后续 init 复用已安装的后台任务；任务正常时
+   不需要再次下载或安装。Setup 不新开 CC 会话。
+
+没有图形文件传输工具时，可以在 Windows 下载目录使用 OpenSSH 的交互式 SFTP。
+以下目标和文件路径是示例，应使用自己原有的 SSH 目标及 init 显示的 `script_source`：
+
+```powershell
+sftp research-server
+```
+
+进入 `sftp>` 提示符后下载文件并退出（路径含空格时用双引号包围）：
+
+```text
+get /path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1
+bye
+```
+
+确认下载成功后再运行上面的固定 Setup 入口。文件传输直接保留脚本字节，避免聊天
+转述改写和本机代码页损坏程序正文。旧版本发生乱码或参数拼写错误时，重新取得
+原始文件并执行 Setup，不继续修补助手生成的代码块。若旧命令停在 `>>`，先 Ctrl+C。
+SSH 目标不是密码；`127.0.0.1` / `localhost` 指向 Windows 本机。普通 SSH 能输入密码
+登录，不代表后台免交互认证可用；先按下方密钥/ssh-agent 步骤验证
+`ssh -o BatchMode=yes <目标> exit` 返回 0。服务器仍须验证实际浏览器连接。
+
 后台发现任务使用隐藏窗口。重新执行 `Connect` 会在严格核对用户、程序和全部连接
 参数后，为旧任务更新窗口设置；正在运行的旧可见任务会重启，连接可能短暂中断。
 任务已使用隐藏参数时不会因此重启。SSH 密钥和浏览器登录目录不变；需要学校认证
@@ -249,20 +271,18 @@ Connect 返回后可以关闭其 Windows PowerShell 窗口，隐藏发现任务�
 
 Windows 计划任务可能把运行账户显示为短用户名，而当前会话显示为“计算机名\\用户名”。
 新版通过 Windows 解析账户 SID 后核对归属。遇到旧版因此报出的
-`scheduled_task_ownership_mismatch`，重新执行完整的 Base64 下载/Connect 代码块，
+`scheduled_task_ownership_mismatch`，重新下载原始脚本文件并运行 Setup
 取得新版入口；无需改名或删除任务。真实账户、程序或连接参数不同仍会拒绝更新。
 
 **从 Windows 开始一个新的 init 会话时**，才使用以下入口：
 
-首次在 Windows 取得下面的项目入口；以后无需另开助手终端，也无需编辑助手配置。
-使用你原有的 SSH 目标和服务器仓库位置，入口推导标准的 Python 与 state 路径：
+先按上面的文件流程完成一次 Setup。以后也可从 Windows 启动新的 init，使用原有
+SSH 目标和服务器仓库位置；入口推导标准的 Python 与 state 路径：
 
 ```powershell
 $researchServer = 'research-server' # 原有 user@host 或 SSH 别名
 $researchRepository = '/path/to/Hypoloom'
 $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
-New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
-scp "${researchServer}:${researchRepository}/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
 pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -Repository $researchRepository
 ```
 
@@ -335,8 +355,7 @@ Connect/Init 在启动发现任务前准备目录权限，失败会直接显示�
 不修改父目录、组成员或浏览器文件内容；子项按 Windows 正常 ACL 继承传播处理，
 不递归重置独立保护的子项权限。新默认目录也走同一检查。自定义目录、显式额外
 授权、不同所有者及重定向目录不自动修复。旧入口因继承权限报
-`browser_profile_must_be_private` 时，重新执行更新后的完整 Base64 下载/Connect
-代码块；修复成功会显示 `browser_profile_permissions_repaired; login_data_preserved`。
+`browser_profile_must_be_private` 时，重新下载更新后的原始脚本并执行 Setup；修复成功会显示 `browser_profile_permissions_repaired; login_data_preserved`。
 
 最初的 `c254d5f` 修复可能只把额外授权变成显式条目而未删除；纠正版在内存中准备
 保留规则后一次写回。如果前后 ACL 输出确认发生了这次旧版部分修复，只针对已确认

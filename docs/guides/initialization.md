@@ -96,10 +96,12 @@ browser or allocating ports. After Start now, the Host allocates resources for
 the run; missing connectivity/login uses bounded acquisition and OA fallback.
 An explicit standalone preparation choice can handle logins first; preparation
 does not save the mode for future runs. Init uses a background `--agent-session`:
-connection readiness precedes platforms. Instructions, code blocks and fixed reply
-choices come from the program; replies are validated against the current stage and
-provider, without background stdin. Inside an existing init, the generated Windows
-`Connect` block starts discovery and returns to the same conversation. Connection
+connection readiness precedes platforms. Instructions and fixed replies come from
+the program and are validated against the current stage/provider, without background
+stdin. For first Windows setup, transfer the original script through SFTP/SCP and
+run its fixed `Setup` entry. It asks for paths, installs the file and invokes Connect;
+installation source never passes through assistant prose. Return to the same init;
+later sessions reuse the installed discovery task. Connection
 waiting also has a deadline, with remaining seconds reported by the process. The program
 automatically rechecks until ready; a retry reply only expedites a check without extending
 the window. CC uses the generated `watch_argv` for at most 30 seconds of observation,
