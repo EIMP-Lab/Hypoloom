@@ -23,7 +23,9 @@ def client_entry(repository, python):
     source = Path(__file__).with_name("connection_assets") / "institutional-connect.ps1"
     # Obtain the entire script through the operator's existing SSH trust before
     # replacing the stable local entry. No password, host guess or second init.
-    download = _powershell_literal("cat -- " + shlex.quote(str(source)))
+    # ASCII transport avoids native stdout decoding through a Windows code page.
+    # This is byte transport, not a digest or a second source of script authority.
+    download = _powershell_literal("base64 -- " + shlex.quote(str(source)))
     script = f"""$ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion -lt [version]'7.2') {{ throw '请先运行 pwsh 进入 PowerShell 7.2+ 后再执行。' }}
 if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {{ throw '请先安装 PowerShell 7.2 或更高版本。' }}
@@ -37,10 +39,11 @@ if ($LASTEXITCODE -ne 0) {{
     throw "读取入口失败，已停止。检查服务器目标和路径；先用 ssh $researchServer exit 确认登录，再用 ssh -o BatchMode=yes $researchServer exit 验证免交互认证。若仍需密码，请先配置 SSH 密钥/ssh-agent。"
 }}
 if ([string]::IsNullOrWhiteSpace(($researchSource -join "`n"))) {{ throw '服务器未返回入口内容，已停止；请检查服务器目标和安装路径。' }}
+$researchSourceBytes = [Convert]::FromBase64String(($researchSource -join ''))
 New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
 $researchTemporary = Join-Path (Split-Path $researchConnector) ([IO.Path]::GetRandomFileName())
 try {{
-    $researchSource | Set-Content -LiteralPath $researchTemporary -Encoding utf8
+    [IO.File]::WriteAllBytes($researchTemporary, $researchSourceBytes)
     Move-Item -LiteralPath $researchTemporary -Destination $researchConnector -Force
 }} finally {{
     if (Test-Path -LiteralPath $researchTemporary) {{ Remove-Item -LiteralPath $researchTemporary }}

@@ -113,15 +113,16 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
             request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(5)
 
 
+@pytest.mark.parametrize("code_page", [65001, 936, 1252])
 @pytest.mark.parametrize("download_ok", [True, False])
-def test_generated_powershell_downloads_then_connects_without_reentering_init(tmp_path, monkeypatch, download_ok):
+def test_generated_powershell_downloads_then_connects_without_reentering_init(tmp_path, monkeypatch, download_ok, code_page):
     executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
     if not executable: pytest.skip("PowerShell parser/runtime not installed")
     from hypoloom import institutional_instructions
     package = tmp_path / "package $literal ' quote ` $(throw INJECTED)"
     source = package / "connection_assets/institutional-connect.ps1"
     source.parent.mkdir(parents=True)
-    source.write_text("# synthetic downloaded connector\n")
+    source.write_text("Write-Output '客户端连接任务已启动。'\nWrite-Output '回复：继续连接。'\n")
     monkeypatch.setattr(institutional_instructions, "__file__", str(package / "institutional_instructions.py"))
     repository = "/repo $literal ' apostrophe ` $(throw INJECTED)"
     entry = client_entry(repository, "/custom/python with spaces")
@@ -133,9 +134,10 @@ def test_generated_powershell_downloads_then_connects_without_reentering_init(tm
     fixture.write_text("""param($Root, $Expected)
 $env:LOCALAPPDATA = $Root
 $script:Called = $false
+[Console]::OutputEncoding = [Text.Encoding]::GetEncoding(CODE_PAGE)
 function Read-Host { 'research@fixture' }
 function ssh {
-    if ($args[-2] -ne 'research@fixture' -or -not $args[-1].StartsWith('cat -- ')) { throw 'bad download argv' }
+    if ($args[-2] -ne 'research@fixture') { throw 'bad download argv' }
     if (DOWNLOAD_EXIT -ne 0) { $global:LASTEXITCODE = DOWNLOAD_EXIT; return }
     & /bin/bash -c $args[-1]
 }
@@ -145,7 +147,6 @@ function pwsh {
     if ($args[$args.IndexOf('-Action') + 1] -ne 'Connect') { throw 'reentered init' }
     if ($args[$args.IndexOf('-Repository') + 1] -cne $values.repository) { throw 'repository altered' }
     if ($args[$args.IndexOf('-PythonExecutable') + 1] -cne $values.python) { throw 'python altered' }
-    if ((Get-Content -Raw -LiteralPath $args[$args.IndexOf('-File') + 1]).Trim() -ne '# synthetic downloaded connector') { throw 'download incomplete' }
     $global:LASTEXITCODE = 0
 }
 try {
@@ -160,15 +161,25 @@ GENERATED
 if (-not EXPECTED_SUCCESS -or -not $script:Called) { throw 'expected path was not executed' }
 Write-Output 'setup_connected_same_session'
 """.replace("DOWNLOAD_EXIT", "0" if download_ok else "1")
+        .replace("CODE_PAGE", str(code_page))
         .replace("EXPECTED_SUCCESS", "$true" if download_ok else "$false")
         .replace("GENERATED", entry["powershell"]))
     result = subprocess.run([executable, "-NoProfile", "-File", str(fixture),
-        str(tmp_path / "desktop"), str(expected)], capture_output=True, text=True, timeout=15)
+        str(tmp_path / "desktop"), str(expected)], capture_output=True,
+        encoding="utf-8" if code_page == 65001 else f"cp{code_page}", timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
     assert ("setup_connected_same_session" if download_ok else "download_failed_without_execution") in result.stdout
+    if download_ok:
+        downloaded = tmp_path / "desktop/Hypoloom/institutional-connect.ps1"
+        assert downloaded.read_bytes() == source.read_bytes()
+        # Execute the downloaded text itself, not just a mocked connector call.
+        result = subprocess.run([executable, "-NoProfile", "-File", str(downloaded)],
+            capture_output=True, text=True, timeout=15)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines() == ["客户端连接任务已启动。", "回复：继续连接。"]
 
 
-@pytest.mark.parametrize("failure", ["partial_download", "empty_download", "invalid_target"])
+@pytest.mark.parametrize("failure", ["partial_download", "empty_download", "invalid_target", "invalid_encoding"])
 def test_pasted_setup_stops_as_one_command_and_preserves_existing_connector(tmp_path, failure):
     executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
     if not executable: pytest.skip("PowerShell parser/runtime not installed")
@@ -179,6 +190,7 @@ def test_pasted_setup_stops_as_one_command_and_preserves_existing_connector(tmp_
     called = desktop / "called"
     target = "ssh user@host" if failure == "invalid_target" else "research@fixture"
     download = "'partial download'; $global:LASTEXITCODE = 255" if failure == "partial_download" else "$global:LASTEXITCODE = 0"
+    if failure == "invalid_encoding": download = "'invalid base64!'; $global:LASTEXITCODE = 0"
     # Feed a real REPL's command input, without a surrounding file/try block that
     # would accidentally supply the failure boundary missing from pasted text.
     prelude = f"""$env:LOCALAPPDATA = $env:HYPOLOOM_TEST_DESKTOP

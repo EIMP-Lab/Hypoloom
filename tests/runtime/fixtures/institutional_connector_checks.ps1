@@ -58,6 +58,66 @@ $script:InitEvents = @(); $Action = 'Connect'
 Start-ClientConnection 'owned-task'
 Assert ($script:InitEvents.Count -eq 1 -and $script:InitEvents[0] -eq 'task:owned-task') 'connect entered another remote init session'
 Assert (-not (Init-Command -Check).Contains('command -v claude')) 'connect unnecessarily requires another Claude session'
+# Actual task orchestration with substituted Windows scheduler APIs. The previous
+# exact invocation may gain Hidden; unrelated task ownership/options stay strict.
+$script:userSid = 'fixture-sid'; $script:ScheduledTask = $null; $script:TaskEvents = @()
+function Get-ScheduledTask { param($TaskName, $ErrorAction) $script:ScheduledTask }
+function New-ScheduledTaskAction { param($Execute, $Argument) [pscustomobject]@{Execute=$Execute;Arguments=$Argument} }
+function New-ScheduledTaskPrincipal {
+    param($UserId, $LogonType, $RunLevel)
+    Assert ($UserId -eq 'fixture-sid' -and $LogonType -eq 'Interactive' -and $RunLevel -eq 'Limited') 'task changed desktop user privileges'
+    [pscustomobject]@{UserId=$UserId}
+}
+function New-ScheduledTaskTrigger { param([switch]$AtLogOn, $User) 'original-trigger' }
+function New-ScheduledTaskSettingsSet { 'original-settings' }
+function Register-ScheduledTask {
+    param($TaskName, $Action, $Trigger, $Principal, $Settings)
+    $script:TaskEvents += 'register'
+    $script:ScheduledTask = [pscustomobject]@{Actions=@($Action);Principal=$Principal;State='Ready';Triggers=$Trigger;Settings=$Settings}
+}
+function Set-ScheduledTask {
+    param($TaskName, $Action)
+    $script:TaskEvents += 'update'; $script:ScheduledTask.Actions = @($Action)
+}
+function Start-ScheduledTask { param($TaskName) $script:TaskEvents += 'start' }
+function Stop-ScheduledTask { param($TaskName) $script:TaskEvents += 'stop' }
+function Unregister-ScheduledTask { param($TaskName, $Confirm) $script:TaskEvents += 'uninstall' }
+$values = @('-NoProfile', '-NonInteractive', '-File', 'C:\entry with spaces.ps1', '-Action', 'Run', '-Server', 'fixture',
+    '-BrowserExecutable', 'C:\Edge\msedge.exe', '-BrowserProfile', 'C:\dedicated', '-LocalPort', '0',
+    '-Repository', '/repo', '-PythonExecutable', '/python', '-RunsRoot', '/state')
+$legacy = ($values | ForEach-Object { Quote-Native $_ }) -join ' '
+$hidden = '"-WindowStyle" "Hidden" ' + $legacy
+$Action = 'Connect'
+Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' 'FixtureUser' | Out-Null
+Assert (($script:TaskEvents -join ',') -eq 'register,start') 'new connection task not installed/started once'
+Assert ($script:ScheduledTask.Actions[0].Arguments -ceq $hidden) 'new discovery task has a visible console'
+$script:ScheduledTask.Actions[0].Arguments = $legacy; $script:ScheduledTask.State = 'Running'; $script:TaskEvents = @()
+Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' 'FixtureUser' | Out-Null
+Assert (($script:TaskEvents -join ',') -eq 'update,stop,start') 'legacy visible task was not updated/restarted'
+Assert ($script:ScheduledTask.Actions[0].Arguments -ceq $hidden) 'upgrade altered connection arguments'
+Assert ($script:ScheduledTask.Triggers -eq 'original-trigger' -and $script:ScheduledTask.Settings -eq 'original-settings') 'upgrade replaced task settings'
+$script:TaskEvents = @()
+Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' 'FixtureUser' | Out-Null
+Assert (($script:TaskEvents -join ',') -eq 'start') 'repeat connect needlessly rewrote/stopped the current task'
+$saved = $script:ScheduledTask
+foreach ($arguments in @($legacy, $hidden)) {
+    foreach ($mismatch in @('owner', 'executable', 'arguments', 'extra_action')) {
+        $script:ScheduledTask = [pscustomobject]@{Actions=@([pscustomobject]@{Execute='C:\pwsh.exe';Arguments=$arguments});Principal=[pscustomobject]@{UserId='fixture-sid'};State='Running'}
+        switch ($mismatch) {
+            'owner' { $script:ScheduledTask.Principal.UserId = 'other-user' }
+            'executable' { $script:ScheduledTask.Actions[0].Execute = 'C:\other.exe' }
+            'arguments' { $script:ScheduledTask.Actions[0].Arguments += ' "-RunsRoot" "/other"' }
+            'extra_action' { $script:ScheduledTask.Actions += $script:ScheduledTask.Actions[0] }
+        }
+        $script:TaskEvents = @(); $rejected = $false
+        try { Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' 'FixtureUser' | Out-Null }
+        catch { $rejected = $_.Exception.Message -eq 'scheduled_task_ownership_mismatch' }
+        Assert ($rejected -and $script:TaskEvents.Count -eq 0) 'changed task was adopted or mutated'
+    }
+}
+$script:ScheduledTask = $saved; $script:TaskEvents = @(); $Action = 'Uninstall'
+Invoke-ClientTask 'owned-task' $values 'C:\pwsh.exe' 'FixtureUser' | Out-Null
+Assert (($script:TaskEvents -join ',') -eq 'stop,uninstall') 'hidden task cannot be uninstalled'
 # Exercise discovery changes through the real loop; Windows APIs are substituted.
 $Repository = '/repo'; $PythonExecutable = '/python'; $RunsRoot = '/state'; $Server = 'fixture'
 $script:ssh = 'ssh-fixture'; $script:Step = 0; $script:Browsers = 0; $script:Forwards = @(); $script:Stopped = @()

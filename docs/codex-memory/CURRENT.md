@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 3 Windows download/window repair: old SSH text capture corrupts UTF-8
+  script bytes under real PowerShell CP936/1252. Shared setup now transports ASCII
+  Base64 and writes the original bytes before the existing atomic replacement.
+  Discovery uses WindowStyle Hidden; exact prior tasks can update that option,
+  with Connect/Init restarting a running prior visible task. Existing ownership,
+  connection arguments, keys and browser profiles stay protected. Final related
+  138 pass, including byte equality/execution under three code pages and mocked
+  scheduler transitions/eight ownership rejection cases. Native Windows GUI/SSO
+  remain unverified; no retained-run changes or new persistent authority. Continues
+  user-authorized dev repair/push. [Design](../design/institutional-access-preparation.md#windows-下载编码与后台窗口修复2026-10-03),
+  [qualification](../qualification.md#windows-client-byte-transfer-and-hidden-discovery-2026-10-03).
+  Evidence: `.local/qualification/institutional-encoding-20261003/`.
+
 - October 3 Windows pasted setup repair: real command-input reproduction shows
   top-level throw did not stop later pasted commands after download failure.
   Shared client renderer now emits one scoped PowerShell block, short argv lines,

@@ -254,6 +254,46 @@ function Watch-Runs {
     } finally { foreach ($child in $children.Values) { Stop-Child $child } }
 }
 
+function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$PowerShell, [string]$UserName) {
+    $previousArguments = ($TaskValues | ForEach-Object { Quote-Native $_ }) -join ' '
+    $taskArguments = ((@('-WindowStyle', 'Hidden') + $TaskValues) | ForEach-Object { Quote-Native $_ }) -join ' '
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task -and (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $PowerShell -or
+            $task.Actions[0].Arguments -notin @($taskArguments, $previousArguments) -or
+            $task.Principal.UserId -notin @($script:userSid, $UserName))) {
+        throw 'scheduled_task_ownership_mismatch'
+    }
+    if ($Action -in @('Connect', 'Init', 'Install')) {
+        $command = New-ScheduledTaskAction -Execute $PowerShell -Argument $taskArguments
+        if (-not $task) {
+            $principal = New-ScheduledTaskPrincipal -UserId $script:userSid -LogonType Interactive -RunLevel Limited
+            $trigger = New-ScheduledTaskTrigger -AtLogOn -User $script:userSid
+            $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+            $null = Register-ScheduledTask -TaskName $TaskName -Action $command -Trigger $trigger -Principal $principal -Settings $settings
+        } elseif ($task.Actions[0].Arguments -eq $previousArguments) {
+            # Upgrade only the exact prior invocation's window presentation.
+            # Preserve principal/triggers/settings and every connection argument.
+            $null = Set-ScheduledTask -TaskName $TaskName -Action $command
+            if ($Action -in @('Connect', 'Init') -and $task.State -eq 'Running') {
+                Stop-ScheduledTask -TaskName $TaskName
+            }
+        }
+        if ($Action -eq 'Init') {
+            Start-InitSession $TaskName
+        } elseif ($Action -eq 'Connect') {
+            Start-ClientConnection $TaskName
+        } else {
+            Write-Output 'installed_for_next_user_logon; use Run now to connect'
+        }
+    } else {
+        if ($task) {
+            Stop-ScheduledTask -TaskName $TaskName
+            if ($Action -eq 'Uninstall') { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
+        }
+        Write-Output 'task_stopped; browser_profile_preserved; foreground_Run_uses_Ctrl+C'
+    }
+}
+
 function Connector-Main {
     if (-not $IsWindows) { throw 'windows_desktop_required' }
     $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -287,36 +327,9 @@ function Connector-Main {
     $taskValues = @('-NoProfile', '-NonInteractive', '-File', $PSCommandPath, '-Action', 'Run', '-Server', $Server,
         '-BrowserExecutable', $BrowserExecutable, '-BrowserProfile', $BrowserProfile, '-LocalPort', "$LocalPort",
         '-Repository', $Repository, '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot)
-    $taskArguments = ($taskValues | ForEach-Object { Quote-Native $_ }) -join ' '
     $powershell = (Get-Process -Id $PID).Path
     if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) {
-        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        if ($task -and (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $powershell -or
-                $task.Actions[0].Arguments -ne $taskArguments -or $task.Principal.UserId -notin @($script:userSid, [Security.Principal.WindowsIdentity]::GetCurrent().Name))) {
-            throw 'scheduled_task_ownership_mismatch'
-        }
-        if ($Action -in @('Connect', 'Init', 'Install')) {
-            if (-not $task) {
-                $principal = New-ScheduledTaskPrincipal -UserId $script:userSid -LogonType Interactive -RunLevel Limited
-                $trigger = New-ScheduledTaskTrigger -AtLogOn -User $script:userSid
-                $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-                $command = New-ScheduledTaskAction -Execute $powershell -Argument $taskArguments
-                $null = Register-ScheduledTask -TaskName $taskName -Action $command -Trigger $trigger -Principal $principal -Settings $settings
-            }
-            if ($Action -eq 'Init') {
-                Start-InitSession $taskName
-            } elseif ($Action -eq 'Connect') {
-                Start-ClientConnection $taskName
-            } else {
-                Write-Output 'installed_for_next_user_logon; use Run now to connect'
-            }
-        } else {
-            if ($task) {
-                Stop-ScheduledTask -TaskName $taskName
-                if ($Action -eq 'Uninstall') { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false }
-            }
-            Write-Output 'task_stopped; browser_profile_preserved; foreground_Run_uses_Ctrl+C'
-        }
+        Invoke-ClientTask $taskName $taskValues $powershell ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
         return
     }
     if ($Action -eq 'Status') {

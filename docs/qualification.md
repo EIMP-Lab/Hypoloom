@@ -2,6 +2,40 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows client byte transfer and hidden discovery (2026-10-03)
+
+The user observed garbled Chinese with literal Write-Output fragments after
+client_discovery_started and a blank PowerShell window. On `7b1e776`, actual
+PowerShell native stdout capture under CP936 and Windows-1252 changes a Chinese
+script's bytes before Set-Content saves it as UTF-8; the UTF-8 control succeeds.
+The baseline rerun records **two failures / four passes**. An earlier test harness
+incorrectly decoded all captured console output as UTF-8; its three failures are
+retained separately, and the harness now uses the deliberately selected encoding.
+
+Setup transports Base64 through existing SSH and writes decoded bytes, retaining
+empty/failure rejection and atomic replacement. Real PowerShell verifies exact
+download bytes and executes the downloaded Chinese statements under all three
+code pages. Invalid Base64 leaves the existing connector untouched. No hash,
+credential record or parallel readiness authority is added.
+
+The task action now requests WindowStyle Hidden. Tests execute the actual task
+orchestration with substituted Windows scheduler APIs: create/start; update only
+the exact prior invocation; stop/start an old running visible task; repeated
+Connect without rewriting/stopping the updated task; preserved triggers/settings;
+uninstall; and eight owner/executable/arguments/action-count rejection cases.
+An initial mock declared AtLogOn as a value rather than a switch; that fixture
+error is fixed without changing the production transition or weakening assertions.
+
+Final related checks: **138 passed in 34.21 seconds**. Undefined-name/duplicate-key
+lint and whitespace checks pass. Evidence is retained in
+`.local/qualification/institutional-encoding-20261003/`, including `red.xml`,
+`baseline.xml`, `initial-fixed.xml`, `focused.xml` and generated `windows-setup.ps1`.
+The code-page reproduction is real; Windows scheduler and GUI effects still need
+native client confirmation. No new full G1, installed-package promotion, paid/GPU
+or SSO claim. Existing research runs, SSH authorization and browser profiles were
+not changed on the development host. A user-executed Connect upgrade may briefly
+interrupt that old task's connections while restarting it with a hidden window.
+
 ## Windows pasted client setup (2026-10-03)
 
 The supplied Windows transcript exposed a command-boundary defect in `0aa190a`:

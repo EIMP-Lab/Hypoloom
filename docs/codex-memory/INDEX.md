@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Windows script encoding and background windows](../design/institutional-access-preparation.md#windows-下载编码与后台窗口修复2026-10-03):
+  byte-preserving SSH transfer and hidden discovery with narrowly compatible
+  prior-task updates. [Qualification](../qualification.md#windows-client-byte-transfer-and-hidden-discovery-2026-10-03)
+  records CP936/1252 baseline failures, 138 related passes and Windows GUI limits.
+
 - [Windows pasted setup](../design/institutional-access-preparation.md#powershell-粘贴执行边界修复2026-10-03):
   one scoped PowerShell command stops failed downloads before replacement/start;
   actual command-input regression replaces reliance on a surrounding test file.
