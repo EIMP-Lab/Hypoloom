@@ -1,18 +1,19 @@
 # Current Hypoloom development state
 
-- October 3 Windows browser profile ACL preparation: supplied native ACL output
-  confirms an extra inherited local-group read grant; the strict privacy rejection
-  is correct, but retry alone could not repair the default profile. Connect/Init
-  now prepares its owned default directory before task startup. Only extra inherited
-  grants are removed, preserving existing allowed users/denies, with an OS reread
-  through the original validator. Custom/explicit/foreign/redirected cases fail
-  closed; no parent, group, login-content or retained-run changes. Run gains an
-  idle-target message and guides distinguish foreground Run from hidden Connect.
-  Focused 106 pass / one native-browser opt-in skip; PowerShell is real but Windows
-  ACL/scheduler APIs are substituted. Actual client ACL propagation/GUI still need
-  confirmation. Continues authorized dev repair/push. [Design](../design/institutional-access-preparation.md#windows-专用目录继承权限准备2026-10-03),
-  [qualification](../qualification.md#windows-browser-profile-inherited-permissions-2026-10-03).
-  Evidence: `.local/qualification/institutional-profile-acl-20261003/`.
+- October 3 Windows ACL API correction: native before/after output proves c254d5f
+  persisted the unwanted grant as explicit. The mock wrongly cleared inherited
+  flags in memory; .NET protection preserves them and specific removal skips them.
+  Corrected preparation copies only retained inherited rules, preserving rights,
+  propagation and denies, then writes once and rereads with the same validator.
+  Explicit/custom/owner/redirect protections remain; errors distinguish failure
+  stages. The confirmed old residual requires a narrowly targeted operator grant
+  removal, not automatic deletion of arbitrary explicit rules. Corrected red/green
+  fixture and related 106 pass / one opt-in skip; added native Windows temp-tree
+  regression is not executable on this Linux host. No native success claim yet.
+  Continues authorized dev repair/push. [Design](../design/institutional-access-preparation.md#windows-专用目录继承权限准备2026-10-03),
+  [qualification](../qualification.md#windows-acl-api-semantics-correction-2026-10-03).
+  Evidence: `.local/qualification/institutional-acl-api-20261003/`; earlier evidence
+  remains in `.local/qualification/institutional-profile-acl-20261003/`.
 
 - October 3 Windows task principal repair: supplied client readback identifies a
   short task username versus the current computer-qualified account name. The

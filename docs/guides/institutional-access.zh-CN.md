@@ -318,6 +318,15 @@ Connect/Init 在启动发现任务前准备目录权限，失败会直接显示�
 `browser_profile_must_be_private` 时，重新执行更新后的完整 Base64 下载/Connect
 代码块；修复成功会显示 `browser_profile_permissions_repaired; login_data_preserved`。
 
+最初的 `c254d5f` 修复可能只把额外授权变成显式条目而未删除；纠正版在内存中准备
+保留规则后一次写回。如果前后 ACL 输出确认发生了这次旧版部分修复，只针对已确认
+的残留账户，在该专用目录执行 `icacls <专用目录> /remove:g <已确认本地组>`，再接入。
+连接器仍拒绝未知显式授权，重复下载不会自动删除它。错误码现区分
+`browser_profile_explicit_access_requires_manual_permissions`（显式额外授权）、
+`browser_profile_custom_path_requires_manual_permissions`（自定义目录）、
+`browser_profile_permissions_write_failed`（写入失败）和
+`browser_profile_permissions_not_applied`（读回不合格）。
+
 脚本优先查找 Edge，再查找 Chrome；默认本机端口为 0，由浏览器分配。
 使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，
 可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。

@@ -2,7 +2,44 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows ACL API semantics correction (2026-10-03)
+
+After running c254d5f, the user's native icacls output loses all inherited `(I)`
+flags but retains the same unwanted group's read/execute grant. This confirms a
+partial permission repair, not a new SSH or school-authentication failure. The
+previous mock cleared IsInherited in memory during SetAccessRuleProtection(true,true).
+The .NET implementation only marks the DACL protected; RemoveAccessRuleSpecific
+skips inherited ACEs. Correcting those two simulated semantics reproduces the
+same browser_profile_must_be_private failure against the unchanged prior code.
+
+The fix removes inherited rules in memory and recreates retained ones with their
+original SID, rights, inheritance/propagation flags and allow/deny type. Existing
+explicit allowed/deny entries survive. Only the completed ACL is persisted once,
+then the original validator rereads it. Tests reject intermediate persistence with
+extra access or missing retained rules, preserve mixed explicit/inherited rules,
+reject arbitrary explicit access and distinguish custom path, explicit access,
+write failure and failed readback. Previously converted explicit residuals are not
+automatically adopted as inherited; user-confirmed before/after evidence permits
+a one-off grant removal for that identified group on that dedicated directory.
+
+Focused result: **106 passed / one skipped in 50.74 seconds**; the skip requires
+real-browser opt-in. Evidence: `.local/qualification/institutional-acl-api-20261003/`
+contains `red.xml`, `initial-fixed.xml` and `focused.xml`. PowerShell is real;
+final rule-factory and documentation recheck: **five passed in 1.56 seconds**
+(`final-focused.xml`). The ACL's own AccessRuleFactory preserves raw rights masks;
+no constructor-added access bits are introduced. Native fixture syntax also passes.
+Windows APIs remain substituted on this Linux host. A new native Windows fixture,
+called by the connector test only on Windows, uses an isolated temporary directory
+to check inherited grants, retained deny, child propagation, unchanged parent/data
+and repeat idempotence. It has **not been executed here**, so native ACL/GUI/SSO
+success is not claimed. No full G1/package promotion/paid run or research mutation.
+Earlier evidence remains unchanged; its simulated ACL pass did not establish
+Windows API compatibility. API sources and recovery scope are linked in the design.
+
 ## Windows browser profile inherited permissions (2026-10-03)
+
+The native follow-up and correction above supersede this initial implementation's
+ACL compatibility assumption; the original test evidence is retained below.
 
 The user's foreground Run reports browser_profile_must_be_private. Native icacls
 output confirms an additional local group's inherited read/execute grant alongside

@@ -2,9 +2,10 @@
 
 - [Windows default browser profile permissions](../design/institutional-access-preparation.md#windows-专用目录继承权限准备2026-10-03):
   repair only extra inherited grants on the owned default directory, reuse strict
-  ACL validation, and prepare before hidden task startup. [Qualification](../qualification.md#windows-browser-profile-inherited-permissions-2026-10-03)
-  records the supplied ACL evidence, red regression, 106 focused passes / one skip,
-  failure boundaries and remaining native Windows verification.
+  ACL validation, and prepare before hidden task startup. [API correction](../qualification.md#windows-acl-api-semantics-correction-2026-10-03)
+  supersedes c254d5f's incorrect in-memory inheritance assumption; records native
+  partial-write evidence, corrected red/green tests, 106 passes / one skip, targeted
+  residual recovery and the unexecuted native Windows regression.
 
 - [Windows task principal names](../design/institutional-access-preparation.md#windows-任务账户名称归一2026-10-03):
   resolve scheduler account names through Windows to the current SID, preserving

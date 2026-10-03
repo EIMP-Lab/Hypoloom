@@ -74,13 +74,17 @@ function Assert-ProfilePrivacy([switch]$RepairInherited) {
     $acl = Get-Acl -LiteralPath $BrowserProfile
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $script:userSid) { throw 'browser_profile_owner_mismatch' }
     $allowed = @($script:userSid, 'S-1-5-18', 'S-1-5-32-544')
-    $unexpected = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object {
+    $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+    $unexpected = @($rules | Where-Object {
         $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -notin $allowed
     })
     if (-not $unexpected.Count) { return }
-    if (-not $RepairInherited -or $BrowserProfile -ne $script:DefaultBrowserProfile -or
-        @($unexpected | Where-Object { -not $_.IsInherited }).Count) {
-        throw 'browser_profile_must_be_private'
+    if (-not $RepairInherited) { throw 'browser_profile_must_be_private' }
+    if ($BrowserProfile -ne $script:DefaultBrowserProfile) {
+        throw 'browser_profile_custom_path_requires_manual_permissions'
+    }
+    if (@($unexpected | Where-Object { -not $_.IsInherited }).Count) {
+        throw 'browser_profile_explicit_access_requires_manual_permissions'
     }
     $directory = Get-Item -LiteralPath $BrowserProfile -Force
     if (-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -88,14 +92,24 @@ function Assert-ProfilePrivacy([switch]$RepairInherited) {
     }
     # Restrict only this owned default profile. Preserve allowed identities and
     # denies; never edit its parent, group membership, or browser login content.
-    $acl.SetAccessRuleProtection($true, $true)
-    foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
-        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $allowed) {
-            $acl.RemoveAccessRuleSpecific($rule)
+    # Protect(preserve=true) leaves inherited ACE flags intact in memory, and
+    # RemoveAccessRuleSpecific skips those ACEs. Build retained explicit copies
+    # before the single filesystem write instead of persisting that intermediate ACL.
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in $rules) {
+        if ($rule.IsInherited -and ($rule.AccessControlType -ne 'Allow' -or $rule.IdentityReference.Value -in $allowed)) {
+            $copy = $acl.AccessRuleFactory($rule.IdentityReference, [int]$rule.FileSystemRights, $false,
+                $rule.InheritanceFlags, $rule.PropagationFlags, $rule.AccessControlType)
+            $acl.AddAccessRule($copy)
         }
     }
-    Set-Acl -LiteralPath $BrowserProfile -AclObject $acl
-    Assert-ProfilePrivacy
+    try { Set-Acl -LiteralPath $BrowserProfile -AclObject $acl }
+    catch { throw 'browser_profile_permissions_write_failed' }
+    try { Assert-ProfilePrivacy }
+    catch {
+        if ($_.Exception.Message -eq 'browser_profile_must_be_private') { throw 'browser_profile_permissions_not_applied' }
+        throw
+    }
     Write-Host 'browser_profile_permissions_repaired; login_data_preserved'
 }
 

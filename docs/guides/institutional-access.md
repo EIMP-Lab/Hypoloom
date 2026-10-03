@@ -297,6 +297,17 @@ are not automatically repaired. If an older entry reports
 updated Base64 download/Connect block. A successful repair prints
 `browser_profile_permissions_repaired; login_data_preserved`.
 
+The initial `c254d5f` repair could leave an extra grant as explicit instead of
+removing it. The corrected entry builds retained rules in memory and writes once.
+If before/after ACL output confirms this older partial repair, remove only the
+identified residual group's grant on that dedicated directory with
+`icacls <dedicated-profile> /remove:g <confirmed-local-group>`, then reconnect.
+The connector still refuses unknown explicit grants; merely downloading again
+does not authorize their removal. Its errors now distinguish
+`browser_profile_explicit_access_requires_manual_permissions`,
+`browser_profile_custom_path_requires_manual_permissions`,
+`browser_profile_permissions_write_failed` and `browser_profile_permissions_not_applied`.
+
 The helper starts forwards only for active runs; with no run it starts no browser
 and holds no research port. Remote targets are private per-run Unix sockets, so
 there is no `-RemotePort`. Before reconnecting it verifies the current run and

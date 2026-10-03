@@ -18,8 +18,9 @@
 后台以统一退出码 2 结束，用户反复启动无法恢复。问题与学校、论文或研究主题无关。
 
 复用 Windows ACL 和原私有校验：只对当前用户拥有的默认 Institutional-<browser>
-目录处理额外继承 Allow。先保护继承并保留原规则，再移除这些额外 Allow，保留既有
-允许主体及 Deny，写回后用原校验重新读取确认。自定义目录、显式额外授权、其他
+目录处理额外继承 Allow。在内存中移除继承规则，再把需要保留的继承授权和 Deny
+按原 SID、权限及传播标志加入显式副本；原显式合法规则保持不变。一次写回后用原
+校验重新读取确认。自定义目录、显式额外授权、其他
 所有者和目录重定向继续拒绝自动修复；不修改父目录、组成员、SSH 或浏览器文件内容。
 已有子项沿用 Windows 的 ACL 继承传播，不做递归权限重置。新增目录也走同一流程。
 
@@ -29,6 +30,18 @@ Connect/Init 在任务归属核验后、后台启动前准备该目录，失败�
 不放宽原允许列表，不新增持久状态、配置、哈希或第二个权限判定源。验证以实际
 PowerShell 编排及 Windows ACL 替身为限；原生 ACL 传播、桌面/SSO 须客户端确认。
 Windows 权限操作依据 [Set-Acl 的保留继承规则示例](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-acl#example-4-disable-inheritance-and-preserve-inherited-access-rules)。
+
+同日原生回读纠错：`c254d5f` 实际保留了额外授权，仅去掉 `(I)`。此前测试替身
+错误地认为 SetAccessRuleProtection(true,true) 会立即清除内存 ACE 的继承标志；
+[.NET 实现](https://github.com/dotnet/runtime/blob/v9.0.0/src/libraries/System.Security.AccessControl/src/System/Security/AccessControl/SecurityDescriptor.cs)
+只设置保护，而 [RemoveAccessRuleSpecific 的底层实现](https://github.com/dotnet/runtime/blob/v9.0.0/src/libraries/System.Security.AccessControl/src/System/Security/AccessControl/ACL.cs)
+跳过继承 ACE。以上一次写回方案取代原两种 API 的错误组合。纠正替身先复现红例，
+新增原生 Windows 临时目录回归（Linux 不执行），涵盖子项继承和内容保留。
+错误码区分自定义目录、显式额外授权、写入失败及读回不合格。
+
+对旧版已写入的显式残留不能假装它仍是继承规则；只有用户前后 ACL 证据确认的具体
+账户可用一次性 `icacls <专用目录> /remove:g <已确认账户>` 恢复。不增加迁移标记，
+不自动识别/删除任意显式授权；正常连接器继续拒绝未知显式授权。
 
 ## Windows 任务账户名称归一（2026-10-03）
 
