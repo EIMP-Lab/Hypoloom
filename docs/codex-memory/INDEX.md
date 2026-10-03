@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Program-owned connection waiting](../design/institutional-access-preparation.md#程序内连接等待与有界观察2026-10-03):
+  automatically rechecks a late client within the existing fixed window, serializes
+  probes, preserves diagnostics on timeout and generates a read-only 30-second watch.
+  CDP failures have safe reason codes; runtime instructions no longer delegate polling
+  to CC. [Qualification](../qualification.md#program-owned-institutional-connection-waiting-2026-10-03).
+  Evidence: `.local/qualification/institutional-connection-loop-20261003/`.
+
 - [Preparation failure retry and diagnostics](../design/institutional-access-preparation.md#准备失败平台的重试与可见性2026-10-03):
   completed IEEE followed by two acquisition timeouts reproduced an empty retry
   vector. Reuse result rows plus the unvisited tail; preserve completed choices,

@@ -68,7 +68,7 @@ Optional sample DOI/URLs check the current session before a manual prompt; all s
 readable means no login prompt. The command is absent when preparation is skipped.
 Show the final preparation_summary without claiming that public access proves login.
 The generated command uses `--agent-session`. Run it once in the background and
-read the first flushed JSON record for `state_root`, `status_argv`, `instructions_argv`.
+read the first flushed JSON record for `state_root`, `status_argv`, `instructions_argv`, `watch_argv`.
 The control root is temporary preparation state, never the proposed research root.
 Query `status_argv` when checking progress; do not repeatedly start preparation.
 `checking_connection` has the configured connection timeout (default 30 seconds).
@@ -76,12 +76,25 @@ Run `instructions_argv` and relay its entire output verbatim, including the comp
 Windows code block and fixed reply choices. Do not hand-write client commands,
 translate/reword the fixed replies, infer an SSH alias or calculate another deadline.
 `status_argv` returns the live stage, `remaining_seconds` and complete `reply_argv`.
+Connection checks are owned by the preparation program. After an unsuccessful
+initial check it automatically retries at a bounded cadence within the same manual
+window, using the existing single browser worker. A late client needs no agent reply
+to advance. `继续连接` only expedites a check; it never extends the deadline or stacks
+concurrent checks. Render the latest `connection.reason_code` when present; never
+infer that the browser opened from a socket, task start or an expired observation.
+Use `watch_argv` for one bounded observation after client setup or a platform reply.
+The command stops at a user-action stage, an ended batch, or 30 seconds of wall time
+and prints current instructions. It never sends replies. If still waiting for client
+setup, relay those instructions and leave automatic checks to the program; do not
+invent a shell loop, ask the user to reinstall solely because a check failed, or
+claim a cached result proves the client remained disconnected for the whole wait.
 After an actual user reply, append `--text` containing that exact offered reply;
 for 验证样本 append `--sample` with the supplied DOI/URL. Invalid/stale replies are
 rejected by the process. A tool/background completion is never a user reply.
 `waiting_for_connection` offers 继续连接 and 跳过准备. Its manual deadline starts
 when connection waiting begins, even if no publisher page has opened. Platform
-answer waiting has its own deadline; polling does not extend either deadline.
+answer waiting has its own deadline; checks, retry replies and polling do not extend
+the connection deadline. Expiry ends the batch and emits its latest connection result.
 No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
 `waiting_for_user` supplies the current provider in its generated reply command.
@@ -107,8 +120,8 @@ other choices/identity; use its generated preparation command after the user's
 retry choice. Never replay successful/manual-complete platforms to repair this omission.
 Retain completed results and the same launch identity. Do not hand-build a restart,
 replay completed logins, restart CC or create a run.
-Do not launch a separate indefinite polling task or repeatedly ask the same question
-on background notifications; observe a bounded operation and then wait for user input.
+Do not launch polling tasks or repeatedly ask the same question on background
+notifications; use the program's watch once and then relay the current instructions.
 
 For Windows client mode, `institutional_client_entry.powershell` and live instructions
 use the same program renderer. The complete block asks the user for their actual SSH
@@ -121,7 +134,8 @@ damaged command is stuck at `>>`, instruct Ctrl+C before pasting the complete bl
 Explain that the SSH target is entered after Read-Host, not inside its prompt;
 loopback on Windows refers to Windows. Password login is not proof of BatchMode
 readiness; use the guide's SSH key/agent steps when noninteractive login fails. Return
-to the original init and use its fixed replies. `-Action Init` remains a separate
+to the original init; preparation automatically checks readiness. Use its fixed
+replies only for the offered choices. `-Action Init` remains a separate
 entry for starting a new session; never recommend it inside an existing init.
 Connect prepares the owned default browser directory's private permissions before
 starting the task. It returns while hidden discovery continues; do not require its

@@ -43,15 +43,20 @@ Preview has no effects. `institutional_connection` shows policy,
 `institutional_preparation_argv` starts a separate preparation operation.
 Init's command uses `--agent-session`: it first verifies the real browser connection
 within the connection timeout (30 seconds by default), then opens platforms.
-A missing connection is reported once, with platforms still `not_checked`, instead
-of spending a separate 120-second wait on each. `waiting_for_client` does not prove
+A missing connection enters one connection-wait window with platforms still
+`not_checked`, instead of spending a separate 120-second wait on each. The program
+automatically rechecks after five seconds between completed checks, through the same
+browser worker. Each check is capped by the remaining window and connection timeout;
+success opens the selected platform without another user reply. `waiting_for_client` does not prove
 that a helper is absent or an institution lacks access. Output is flushed immediately.
 The agent queries the temporary private control socket and returns your answers
 from the init conversation; it never feeds a background process's stdin. Login,
 verification codes and MFA stay in the dedicated browser. Answer waiting uses the
 existing finite manual timeout; finish/expiry cleans up temporary resources.
 This timeout also starts when entering connection waiting. Platform-answer waiting
-has its own deadline. Status reads never extend it; the process reports remaining seconds.
+has its own deadline. Status reads and `继续连接` never extend the connection window;
+that reply only expedites the next check. The process reports remaining seconds.
+An expired connection wait retains the latest connection result and remaining command.
 Standalone terminal preparation remains supported; EOF returns `input_required`
 and closes resources instead of raising or pretending login succeeded.
 
@@ -59,6 +64,7 @@ For manual diagnosis, use the first record's `status_argv` and `answer_argv`:
 
 ```bash
 python -m hypoloom institutional preparation status --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation watch --state-root /path/to/temporary-preparation
 python -m hypoloom institutional preparation complete --state-root /path/to/temporary-preparation --provider IEEE
 python -m hypoloom institutional preparation verify --state-root /path/to/temporary-preparation --provider IEEE --sample 10.1109/example
 python -m hypoloom institutional preparation retry_connection --state-root /path/to/temporary-preparation
@@ -72,6 +78,10 @@ never a research run. Read the background command's final summary after it exits
 Normal init runs the generated `instructions_argv` and displays its output verbatim:
 the complete Windows code block, live remaining time and fixed reply choices.
 Connection replies are `继续连接` (retry connection) and `跳过准备` (skip preparation).
+After local setup, the program detects connection readiness automatically. Its
+generated `watch_argv` waits at most 30 seconds for a user-action stage or batch exit,
+then prints current instructions. It is read-only and never answers for you; CC must
+use this command instead of writing sleep/poll loops.
 Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `结束准备`
 (complete, verify a separately supplied sample, skip this platform, public only, finish).
 The agent passes the exact choice to `reply_argv --text`; the process validates
@@ -90,6 +100,11 @@ preparation command using read-only bootstrap inspection for just those platform
 preserving the other choices and launch identity. Keep the dedicated browser open.
 Intermediate `browser_unavailable` / `fetch_unavailable` events include sanitized
 reason codes; a final `acquisition_timeout` alone cannot identify the underlying fault.
+Connection checks also report fixed `cdp_timeout`, `cdp_connection_refused`,
+`cdp_connection_closed`, `cdp_authorization_failed`, `cdp_endpoint_unavailable`,
+`cdp_context_unavailable`, `browser_driver_unavailable` or `cdp_connection_failed`
+codes. They describe the control connection, not publisher login or subscription;
+raw browser errors and private URLs are never printed.
 
 Resources are allocated inside the Host once the run exists. A missing browser
 can remain unavailable within the existing bounded acquisition/fallback policy;
@@ -164,7 +179,7 @@ shown by init. It asks for the Windows SSH target, obtains the script from its a
 server package location and runs `Connect`, which installs/starts discovery and
 returns to the same conversation. No Windows checkout or hand-built path is needed.
 Do not replace it with `Init`, which opens another CC session. After
-`client_discovery_started`, reply `继续连接` in the original conversation; the server
+`client_discovery_started`, return to the original conversation; the preparation program
 still checks actual connectivity. If the batch has ended, reply `重新准备`.
 Bootstrap and live preparation use the same renderer for these instructions.
 

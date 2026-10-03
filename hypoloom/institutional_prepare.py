@@ -14,6 +14,7 @@ from .institutional_dialogue import PreparationDialogue, PreparationEnded
 
 
 _COMPLETED_STATES = {"sample_verified", "not_checked", "skipped", "public_only"}
+_WATCH_SECONDS = 30
 
 
 def add_parser(subparsers):
@@ -29,7 +30,7 @@ def add_parser(subparsers):
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
     prepare.add_argument("--agent-session", action="store_true", help="receive init answers over the private preparation socket instead of stdin")
     dialogue = commands.add_parser("preparation", help="observe or answer a live init preparation session")
-    dialogue.add_argument("preparation_action", choices=("status", "instructions", "reply", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
+    dialogue.add_argument("preparation_action", choices=("status", "instructions", "watch", "reply", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
     dialogue.add_argument("--state-root", required=True)
     dialogue.add_argument("--provider")
     dialogue.add_argument("--sample")
@@ -163,7 +164,7 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
 
 
 def _connection(access, seconds, dialogue):
-    if dialogue: dialogue.update(state="checking_connection", actions=["finish"])
+    if dialogue: dialogue.update(state="checking_connection", actions=["finish"], automatic_connection_checks=True)
     future = access.check_connection("preparation", timeout_seconds=seconds)
     while not future.done():
         if dialogue and dialogue.cancelled(): raise PreparationEnded("finished")
@@ -175,8 +176,9 @@ def _answer(args, output):
     from .control_protocol import ControlRequest, request_over_socket
     from .institutional_instructions import render
     root = Path(args.state_root)
-    instructions = args.preparation_action == "instructions"
-    status = args.preparation_action in {"status", "instructions"}
+    watching = args.preparation_action == "watch"
+    instructions = args.preparation_action in {"instructions", "watch"}
+    status = args.preparation_action in {"status", "instructions", "watch"}
     if status and (args.provider or args.sample or args.text): raise ValueError("status/instructions do not take answers")
     if (args.preparation_action == "reply") != (args.text is not None):
         raise ValueError("reply requires --text; other actions do not accept --text")
@@ -185,16 +187,29 @@ def _answer(args, output):
         from .institutional_access import provider_name
         payload["provider"] = provider_name(args.provider)
     if args.sample: payload["sample"] = args.sample
-    try:
-        info = root.stat()
-        if root.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
-            raise ValueError("preparation root must be private and owned by the current user")
-        response = request_over_socket(root / "control.sock", ControlRequest(1, "institutional-preparation", None,
-            "PREPARATION_STATUS" if status else "PREPARATION_ANSWER", payload), timeout=3)
-    except (FileNotFoundError, ConnectionRefusedError):
-        if not instructions: raise
-        output(render({"state": "inactive"}))
-        return 1
+    deadline = monotonic() + _WATCH_SECONDS
+    response = None
+    while True:
+        if watching and response is not None and monotonic() >= deadline: break
+        try:
+            info = root.stat()
+            if root.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError("preparation root must be private and owned by the current user")
+            response = request_over_socket(root / "control.sock", ControlRequest(1, "institutional-preparation", None,
+                "PREPARATION_STATUS" if status else "PREPARATION_ANSWER", payload),
+                timeout=min(3, max(.001, deadline - monotonic())) if watching else 3)
+        except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, TimeoutError):
+            if not instructions: raise
+            output(render({"state": "inactive"}))
+            return 1
+        if not watching or response.status != "accepted": break
+        view = response.result
+        if view["state"] not in {"checking_connection", "preparing_platform", "processing", "waiting_for_connection"}: break
+        # An older preparation waits for an answer rather than automatic checks.
+        if view["state"] == "waiting_for_connection" and not view.get("automatic_connection_checks"): break
+        remaining = deadline - monotonic()
+        if remaining <= 0: break
+        sleep(min(.25, remaining))
     output(render(response.result) if instructions and response.status == "accepted"
            else json.dumps(response.to_mapping(), ensure_ascii=False))
     return 0 if response.status == "accepted" else 1
@@ -256,6 +271,7 @@ def run(args, *, input_fn=input, output=print):
                 "connection": access.status("preparation").get("connection", {"mode": "existing", "state": "unchecked"}),
                 "status_argv": [*command, "status", "--state-root", directory.name],
                 "instructions_argv": [*command, "instructions", "--state-root", directory.name],
+                "watch_argv": [*command, "watch", "--state-root", directory.name],
                 "answer_argv": [*command, "<action>", "--state-root", directory.name]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         while True:
@@ -267,8 +283,12 @@ def run(args, *, input_fn=input, output=print):
                     connection=connection, remaining_preparation_argv=_remaining_command(args, selected, modes),
                     next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
                 return 1
-            output("Browser connection is unavailable. Init can retry the connection or finish preparation; no platform login was attempted.")
-            dialogue.wait(connection=connection)
+            output("Browser connection is unavailable. Preparation automatically rechecks within this fixed waiting window; no platform login was attempted.")
+            if dialogue.wait(connection=connection,
+                    check=lambda **kwargs: access.check_connection("preparation", **kwargs),
+                    check_seconds=args.institutional_connect_timeout,
+                    observed=lambda value: output(json.dumps({"connection": value}, ensure_ascii=False))) == "ready":
+                break
         for provider in selected:
             if cancelled(): raise PreparationEnded("finished")
             if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
@@ -286,7 +306,9 @@ def run(args, *, input_fn=input, output=print):
     except PreparationEnded as exc:
         remaining = _remaining_providers(selected, rows)
         rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
+        connection = dialogue.snapshot().get("connection") if dialogue else None
         _summary(rows, modes, output, preparation_state=str(exc),
+                 **({"connection": connection} if connection else {}),
                  remaining_preparation_argv=_remaining_command(args, remaining, modes))
         return int(str(exc) != "finished")
     finally:

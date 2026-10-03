@@ -113,6 +113,66 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
             request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(5)
 
 
+def test_watch_waits_for_program_progress_and_never_submits_a_reply(tmp_path, monkeypatch):
+    from hypoloom import institutional_dialogue
+    from concurrent.futures import Future
+    monkeypatch.setattr(institutional_dialogue, "CONNECTION_RETRY_SECONDS", .05)
+    access, backend, _ = ready_access(monkeypatch)
+    connected = threading.Event()
+    def check(*_, **kwargs):
+        result = Future(); result.set_result({"state": "ready" if connected.is_set() else "waiting_for_client"})
+        return result
+    access.check_connection = check
+    output, codes = [], []
+    worker = threading.Thread(target=lambda: codes.append(run(
+        arguments("--agent-session", "--repository", str(tmp_path), "--provider", "IEEE"), output=output.append)))
+    worker.start()
+    first = eventually(lambda: next((json.loads(v) for v in output if v.startswith('{') and "state_root" in json.loads(v)), None))
+    root = Path(first["state_root"])
+    watched, watch_codes = [], []
+    watcher = threading.Thread(target=lambda: watch_codes.append(run(
+        build_parser().parse_args(first["watch_argv"][4:]), output=watched.append)))
+    try:
+        eventually(lambda: request(root).result.get("state") == "waiting_for_connection")
+        watcher.start()
+        connected.set()
+        watcher.join(3)
+        assert not watcher.is_alive() and watch_codes == [0]
+        assert "IEEE 页面已打开" in watched[-1]
+        assert worker.is_alive() and codes == [], "watch must never complete manual preparation"
+        assert request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "reply": "完成"}).status == "accepted"
+        worker.join(3)
+        assert codes == [0] and backend.closed and not root.exists()
+        assert run(build_parser().parse_args(first["watch_argv"][4:]), output=watched.append) == 1
+        assert "准备进程已结束" in watched[-1]
+    finally:
+        if worker.is_alive():
+            request(root, "PREPARATION_ANSWER", {"action": "finish"}); worker.join(3)
+        if watcher.is_alive(): watcher.join(3)
+
+
+def test_watch_returns_latest_instructions_at_its_wallclock_limit(tmp_path, monkeypatch):
+    from hypoloom import institutional_prepare
+    from hypoloom.institutional_client import PreparationControl
+    from time import monotonic
+    access, _, _ = ready_access(monkeypatch)
+    root = tmp_path / "preparation"; root.mkdir(mode=0o700)
+    dialogue = PreparationDialogue(600)
+    dialogue.update(state="waiting_for_connection", automatic_connection_checks=True,
+        connection={"state": "browser_unavailable", "reason_code": "cdp_timeout"}, actions=["retry_connection", "finish"])
+    monkeypatch.setattr(institutional_prepare, "_WATCH_SECONDS", .15)
+    control = PreparationControl(root, access, dialogue.handle)
+    output = []
+    start = monotonic()
+    try:
+        assert run(build_parser().parse_args(["institutional", "preparation", "watch", "--state-root", str(root)]), output=output.append) == 0
+        assert .1 <= monotonic() - start < 1
+        assert "自动重检连接" in output[-1] and "cdp_timeout" in output[-1]
+        assert dialogue.answer is None and not dialogue.finished
+    finally:
+        control.close(); access.close()
+
+
 @pytest.mark.parametrize("code_page", [65001, 936, 1252])
 @pytest.mark.parametrize("download_ok", [True, False])
 def test_generated_powershell_downloads_then_connects_without_reentering_init(tmp_path, monkeypatch, download_ok, code_page):

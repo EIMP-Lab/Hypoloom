@@ -2,6 +2,51 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Program-owned institutional connection waiting (2026-10-03)
+
+Read-only inspection of CC session c807d820-dc5c-4583-bd41-388f4ae0611a confirms a
+waiting_for_client check, a user-triggered browser_unavailable check, then approximately
+six minutes of agent-written status/sleep polling before input_timeout. Those status
+calls could not cause another check. The result correctly retains all four platforms
+in its retry vector; no platform opened and no research root was created. A subsequent
+batch was inspected through its existing control socket only: its client forwarding
+socket was absent at that observation. No retained preparation was answered/stopped,
+no browser page was controlled, and no existing research run was changed.
+
+Eight initial regressions reproduce the inability to progress when a client becomes
+ready without a reply, the lack of a fixed automatic window, and six missing safe
+connection classifications. The existing dialogue condition/deadline and single
+browser worker now drive retries. Coverage checks that replies/status cannot extend
+the deadline, only one check is in flight, timeout preserves the last reason, and a
+finish wins over late readiness without opening a platform. The generated watch uses
+a wall-clock bound, issues only status reads and never submits an answer. A final
+boundary correction avoids starting a new watch request after its deadline. The
+initial repaired test caught a test-observation race (backend called before the stage
+changed); the fixture now observes the actual user-action stage without changing the
+production transition. No validator/deadline assertion was weakened.
+
+Focused selection: **322 passed / one isolated-SSH opt-in skipped** across preparation,
+access/deadlines, dialogue/instructions, navigation, native runtime/connection,
+bootstrap, docs and runtime skill checks. The skipped real SSH case then **passed**
+with its opt-in enabled, using ephemeral keys/sshd only. Final watch/entry checks:
+**three passed**; final dialogue checks include both initial and automatic-check
+cancellation with a late successful Future. Counts overlap and are not a full G1.
+
+Native Chromium/CDP relay preparation covers both immediate and delayed connectivity:
+a real 503 first produces cdp_endpoint_unavailable, recovery advances without a retry
+reply, and all three synthetic publisher stages proceed after an idle answer wait.
+External browser/user tab survive; owned tabs, control root and relay are closed;
+no research SQLite database is created. Native systemd/CDP and isolated SSH lifetime
+tests also pass in the focused selections. PowerShell runs generated setup and owned
+task orchestration with Windows APIs substituted. Actual Windows desktop cold start,
+publisher SSO and the original user's underlying connection fault still need client
+verification; no paid/GPU or frozen candidate claim.
+
+Evidence: `.local/qualification/institutional-connection-loop-20261003/` contains
+`red.txt`, `initial-fixed.txt`, `fixed-dialogue.txt`, `native.txt`, `focused.txt`,
+`watch-final.txt`, `final-targeted.txt`, `final-dialogue.txt` and `ssh.txt`.
+Design: [program-owned connection waiting](design/institutional-access-preparation.md#程序内连接等待与有界观察2026-10-03).
+
 ## Institutional preparation failure retry (2026-10-03)
 
 Retained CC output for institutional-prepare-sv09l416 records IEEE opened/completed,

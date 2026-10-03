@@ -157,22 +157,108 @@ def test_background_retries_connection_then_verifies_sample_through_cli(tmp_path
             request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(5)
 
 
-def test_finish_during_connection_check_releases_preparation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_finish_during_connection_check_releases_preparation(tmp_path, monkeypatch, automatic):
+    from hypoloom import institutional_dialogue
+    monkeypatch.setattr(institutional_dialogue, "CONNECTION_RETRY_SECONDS", .01)
     access, backend, _ = ready_access(monkeypatch)
     pending = Future()
-    access.check_connection = lambda *a, **k: pending
+    checks = []
+    def check(*a, **k):
+        checks.append(k)
+        if automatic and len(checks) == 1:
+            initial = Future(); initial.set_result({"state": "waiting_for_client"}); return initial
+        return pending
+    access.check_connection = check
     output, results = [], []
     thread = threading.Thread(target=lambda: results.append(run(
         arguments("--agent-session", "--repository", str(tmp_path)), output=output.append)))
     thread.start()
     root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output if v.startswith('{') and "state_root" in json.loads(v)), None))
     try:
+        eventually(lambda: len(checks) == (2 if automatic else 1))
         assert request(root, "PREPARATION_ANSWER", {"action": "finish"}).status == "accepted"
+        pending.set_result({"state": "ready"})  # Late success must not open a platform after finish.
         thread.join(5)
         assert not thread.is_alive() and results == [0]
         assert backend.closed and not backend.calls and not root.exists()
         assert json.loads(output[-1])["preparation_state"] == "finished"
     finally:
         if thread.is_alive():
-            pending.set_result({"state": "browser_unavailable"})
+            if not pending.done(): pending.set_result({"state": "browser_unavailable"})
             thread.join(5)
+
+
+def test_late_client_attaches_without_agent_reply_or_polling(tmp_path, monkeypatch):
+    from hypoloom import institutional_dialogue
+    monkeypatch.setattr(institutional_dialogue, "CONNECTION_RETRY_SECONDS", .05, raising=False)
+    access, backend, checks = ready_access(monkeypatch)
+    connected = threading.Event()
+    def check(run_id, *, timeout_seconds):
+        checks.append(timeout_seconds)
+        result = Future()
+        result.set_result({"state": "ready"} if connected.is_set() else
+                          {"state": "browser_unavailable", "reason_code": "cdp_connection_refused"})
+        return result
+    access.check_connection = check
+    output, codes = [], []
+    thread = threading.Thread(target=lambda: codes.append(run(
+        arguments("--agent-session", "--repository", str(tmp_path), "--provider", "IEEE"), output=output.append)))
+    thread.start()
+    root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output
+        if v.startswith('{') and "state_root" in json.loads(v)), None))
+    try:
+        eventually(lambda: len(checks) >= 2)
+        assert not backend.calls
+        connected.set()  # Client becomes available without any dialogue request.
+        eventually(lambda: bool(backend.calls))
+        eventually(lambda: request(root).result.get("state") == "waiting_for_user")
+        status = request(root).result
+        assert status["state"] == "waiting_for_user" and status["provider"] == "IEEE"
+        assert request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "reply": "完成"}).status == "accepted"
+        thread.join(3)
+        assert not thread.is_alive() and codes == [0]
+        assert backend.closed and not root.exists() and not list(tmp_path.rglob("state.sqlite"))
+    finally:
+        if thread.is_alive():
+            request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(3)
+
+
+def test_automatic_connection_deadline_is_not_extended_by_replies_or_status(tmp_path, monkeypatch):
+    from hypoloom import institutional_dialogue
+    monkeypatch.setattr(institutional_dialogue, "CONNECTION_RETRY_SECONDS", .04, raising=False)
+    monkeypatch.setattr("hypoloom.institutional_prepare.PreparationDialogue", lambda _: institutional_dialogue.PreparationDialogue(.5))
+    access, backend, checks = ready_access(monkeypatch)
+    pending = Future()
+    def check(run_id, *, timeout_seconds):
+        checks.append(timeout_seconds)
+        if len(checks) == 1:
+            initial = Future(); initial.set_result({"state": "browser_unavailable", "reason_code": "cdp_timeout"})
+            return initial
+        return pending
+    access.check_connection = check
+    output, codes = [], []
+    started = time.monotonic()
+    thread = threading.Thread(target=lambda: codes.append(run(
+        arguments("--agent-session", "--repository", str(tmp_path)), output=output.append)))
+    thread.start()
+    root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output
+        if v.startswith('{') and "state_root" in json.loads(v)), None))
+    try:
+        eventually(lambda: len(checks) == 2)
+        for _ in range(3):
+            assert request(root).result["state"] == "waiting_for_connection"
+            request(root, "PREPARATION_ANSWER", {"reply": "继续连接"})
+            time.sleep(.03)
+        assert len(checks) == 2, "only one connection check may be in flight"
+        thread.join(2)
+        assert not thread.is_alive() and time.monotonic() - started < 2 and codes == [1]
+        summary = json.loads(output[-1])
+        assert summary["preparation_state"] == "input_timeout"
+        assert summary["connection"]["reason_code"] == "cdp_timeout"
+        assert 0 < checks[1] <= .5
+        assert not backend.calls and backend.closed and not root.exists()
+    finally:
+        pending.set_result({"state": "ready"})
+        if thread.is_alive():
+            request(root, "PREPARATION_ANSWER", {"action": "finish"}); thread.join(3)

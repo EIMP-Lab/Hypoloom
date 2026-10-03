@@ -8,6 +8,23 @@ from hypoloom.institutional_browser import PlaywrightInstitutionalBrowser
 URL = "https://www.nature.com/articles/s41586-026-00001-1"
 
 
+@pytest.mark.parametrize("failure,reason", [
+    (TimeoutError("private callback SECRET"), "cdp_timeout"),
+    (RuntimeError("connect ECONNREFUSED 127.0.0.1:42 SECRET"), "cdp_connection_refused"),
+    (RuntimeError("Unexpected status 401 when connecting to SECRET"), "cdp_authorization_failed"),
+    (RuntimeError("Unexpected status 503 when connecting to SECRET"), "cdp_endpoint_unavailable"),
+    (ValueError("authenticated browser context is unavailable"), "cdp_context_unavailable"),
+    (RuntimeError("private SSO SECRET"), "cdp_connection_failed"),
+])
+def test_connection_failure_returns_fixed_reason_without_exception_text(failure, reason):
+    browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
+    def fail(): raise failure
+    browser._connect = fail
+    result = browser.check_connection(timeout_seconds=.005)
+    assert result == {"state": "browser_unavailable", "reason_code": reason}
+    assert "SECRET" not in str(result)
+
+
 class Page:
     def __init__(self, *, current=URL, failure=None, **info):
         self.url, self.failure, self.visits = current, failure, []

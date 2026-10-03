@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 3 program-owned connection wait: new init stalled because CC polled the
+  last connection result while the process waited for a retry reply. Preparation
+  now rechecks automatically through its existing worker within one fixed window;
+  late readiness advances, retry replies only expedite, and expiry retains the last
+  safe reason. Generated read-only watch replaces agent-written loops (30-second
+  wall bound); initial instructions/setup and CDP diagnostics are program-rendered.
+  Eight red regressions; focused 322 pass / one SSH opt-in skip, isolated SSH pass,
+  final watch/entry three pass and dialogue recheck (including late-success/finish)
+  pass. Native Chromium/relay late recovery and multi-platform progression pass;
+  Windows desktop/SSO and the original client failure remain unverified. No retained
+  preparation/run mutation, new authority or full qualification claim. Continues
+  authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#程序内连接等待与有界观察2026-10-03),
+  [qualification](../qualification.md#program-owned-institutional-connection-waiting-2026-10-03).
+  Evidence: `.local/qualification/institutional-connection-loop-20261003/`.
+
 - October 3 preparation failure retry: retained CC output shows completed IEEE
   followed by ScienceDirect/Springer acquisition timeouts and an incorrect empty
   remaining command. Result rows plus the unvisited tail now retain failures on

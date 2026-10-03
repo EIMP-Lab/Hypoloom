@@ -15,7 +15,8 @@ from tests.runtime.test_institutional_runtime import assert_free
 
 
 @pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
-def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch):
+@pytest.mark.parametrize('delayed_connection', [False, True])
+def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch, delayed_connection):
     from hypoloom.institutional_access import InstitutionalAccess
     from hypoloom.institutional_runtime import RunBrowser
     from hypoloom.institutional_prepare import run
@@ -28,18 +29,32 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
             # Real CDP/page operations, synthetic content; never visit a publisher.
             page.set_content('<title>Preparation fixture</title>Login placeholder')
     backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
+    from hypoloom import institutional_dialogue
+    monkeypatch.setattr(institutional_dialogue, 'CONNECTION_RETRY_SECONDS', .1)
+    reachable = threading.Event()
+    if not delayed_connection: reachable.set()
+    dial = backend.relay.dial
+    def delayed_dial():
+        if not reachable.is_set(): raise ConnectionRefusedError('disposable transport not ready')
+        return dial()
+    backend.relay.dial = delayed_dial
     relay_endpoint = backend.endpoint
     access = InstitutionalAccess(backend)
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, codes, errors = [], [], []
     def worker():
-        try: codes.append(run(arguments('--agent-session', '--repository', str(tmp_path)), output=output.append))
+        try: codes.append(run(arguments('--agent-session', '--repository', str(tmp_path),
+            '--institutional-connect-timeout', '3'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = None
     try:
         root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
             if v.startswith('{') and 'state_root' in json.loads(v)), None))
+        if delayed_connection:
+            eventually(lambda: request(root).result.get('state') == 'waiting_for_connection')
+            assert request(root).result['connection']['reason_code'] == 'cdp_endpoint_unavailable'
+            reachable.set()  # No retry reply: the program must discover recovery itself.
         for provider in ('IEEE', 'ScienceDirect', 'Springer'):
             eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
                 and request(root).result.get('provider') == provider)

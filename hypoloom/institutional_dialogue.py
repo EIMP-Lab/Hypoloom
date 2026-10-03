@@ -7,6 +7,9 @@ from time import monotonic
 from .control_protocol import ControlResponse
 
 
+CONNECTION_RETRY_SECONDS = 5
+
+
 class PreparationEnded(Exception):
     pass
 
@@ -75,13 +78,16 @@ class PreparationDialogue:
             else: sample = None
             self.answer = {"complete": "", "skip": "s", "public_only": "p",
                 "retry_connection": "retry", "verify": sample}[action]
-            self.view = {**self.view, "state": "processing", "actions": ["finish"]}
-            self.deadline = None
+            if action != "retry_connection":
+                self.view = {**self.view, "state": "processing", "actions": ["finish"]}
+                self.deadline = None
             self.condition.notify_all()
             return ControlResponse.accepted(request.request_id, None, deepcopy(self.view))
 
-    def wait(self, *, provider=None, connection=None):
+    def wait(self, *, provider=None, connection=None, check=None, check_seconds=30, observed=lambda _: None):
         deadline = monotonic() + self.seconds
+        future = None
+        next_check = monotonic() + CONNECTION_RETRY_SECONDS
         with self.condition:
             self.answer = None
             self.deadline = deadline
@@ -89,9 +95,32 @@ class PreparationDialogue:
                           "actions": ["retry_connection", "finish"]} if connection else
                          {"state": "waiting_for_user", "provider": provider,
                           "actions": ["complete", "verify", "skip", "public_only", "finish"]})
-            while self.answer is None:
+            if check is not None:
+                self.view["automatic_connection_checks"] = True
+            while True:
                 if self.finished: raise PreparationEnded("finished")
                 remaining = deadline - monotonic()
                 if remaining <= 0: raise PreparationEnded("input_timeout")
-                self.condition.wait(remaining)
-            return self.answer
+                if check is None:
+                    if self.answer is not None: return self.answer
+                    self.condition.wait(remaining)
+                    continue
+                # Connection recovery belongs to the preparation program. A reply
+                # can expedite the next probe, but cannot extend this window or
+                # queue a second probe while one is still running.
+                if self.answer == "retry":
+                    self.answer = None
+                    next_check = monotonic()
+                if future is not None and future.done():
+                    connection = future.result()
+                    future = None
+                    self.view["connection"] = connection
+                    observed(connection)
+                    if connection["state"] == "ready":
+                        self.view = {"state": "processing", "actions": ["finish"]}
+                        self.deadline = None
+                        return "ready"
+                    next_check = monotonic() + CONNECTION_RETRY_SECONDS
+                if future is None and monotonic() >= next_check:
+                    future = check(timeout_seconds=min(check_seconds, max(.001, deadline - monotonic())))
+                self.condition.wait(min(remaining, .1 if future is not None else max(.001, next_check - monotonic())))

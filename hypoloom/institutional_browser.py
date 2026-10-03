@@ -171,6 +171,22 @@ def _navigation_reason(error):
     return "network_error"
 
 
+def _connection_reason(error):
+    # CDP errors can contain authorization headers or private callback URLs.
+    # Classify locally; only these fixed reason codes leave the browser worker.
+    if isinstance(error, TimeoutError) or type(error).__name__ == "TimeoutError":
+        return "cdp_timeout"
+    if isinstance(error, ModuleNotFoundError): return "browser_driver_unavailable"
+    if type(error).__name__ == "TargetClosedError": return "cdp_connection_closed"
+    text = str(error)
+    if text == "authenticated browser context is unavailable": return "cdp_context_unavailable"
+    if "ECONNREFUSED" in text: return "cdp_connection_refused"
+    if "ECONNRESET" in text or "WebSocket was closed" in text: return "cdp_connection_closed"
+    if re.search(r"(?:[Ss]tatus|response:)\s*(?:code:?\s*)?(401|403)\b", text): return "cdp_authorization_failed"
+    if re.search(r"(?:[Ss]tatus|response:)\s*(?:code:?\s*)?5\d\d\b", text): return "cdp_endpoint_unavailable"
+    return "cdp_connection_failed"
+
+
 def _login_url(url):
     # An intermediate resolver/redirect is not evidence of an expired session.
     path = urlsplit(url).path.lower()
@@ -235,16 +251,18 @@ class PlaywrightInstitutionalBrowser:
     def check_connection(self, *, timeout_seconds):
         """Use the real CDP/context connection without opening a publisher page."""
         self._deadline = monotonic() + timeout_seconds
+        reason = "cdp_timeout"
         try:
             while monotonic() < self._deadline:
                 try:
                     self._connect()
                     return {"state": "ready"}
-                except Exception:
+                except Exception as exc:
+                    reason = _connection_reason(exc)
                     if getattr(self, "stopping", None) is not None and self.stopping.is_set(): break
                     from time import sleep
                     sleep(min(.25, max(0, self._deadline - monotonic())))
-            return {"state": "browser_unavailable"}
+            return {"state": "browser_unavailable", "reason_code": reason}
         finally:
             self._deadline = None
 

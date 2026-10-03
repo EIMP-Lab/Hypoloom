@@ -51,13 +51,17 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 准备不创建 run、Attempt、Profile 或科研归档，不调用模型。
 
 init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接期限内验证实际浏览器
-连接，成功后才打开平台。连接失败只报告一次，各平台保持 `not_checked`，不会分别
-空等 120 秒。`waiting_for_client` 只说明未连接，不能据此判定助手未安装或学校无权限。
+连接，成功后才打开平台。失败后进入统一的连接等待窗口，各平台保持 `not_checked`，
+不会分别空等 120 秒。程序通过同一浏览器工作线程，在每次检查结束后间隔 5 秒自动
+重检；每次检查受连接超时和窗口剩余时间约束，成功后自动进入平台，无须另行回复。
+`waiting_for_client` 只说明未连接，不能据此判定助手未安装或学校无权限。
 进度立即输出；agent 通过临时私有控制通道查询并传回你的选择，不依赖后台任务 stdin。
 你在 init 对话中选择完成、样本验证、跳过、仅公开或结束；登录、验证码与 MFA 在
 专用浏览器中操作。等待回答沿用 `--institutional-manual-seconds` 的有限期限。
 该期限在进入连接等待时就开始计算；进入平台回答阶段后使用该阶段自己的期限。
-查询状态不会延长期限。程序输出实际剩余秒数，不让助手自行推算。
+查询状态和“继续连接”都不会延长期限；后者只提前下一次检查，不叠加并发检查。
+程序输出实际剩余秒数，不让助手自行推算。连接等待超时的摘要保留最后一次检查
+结果及重新准备命令。
 超时/结束会清理连接与临时目录，已完成的平台结果保留在本次输出中，研究启动身份不变。
 独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
 
@@ -65,6 +69,7 @@ init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接�
 
 ```bash
 python -m hypoloom institutional preparation status --state-root /path/to/temporary-preparation
+python -m hypoloom institutional preparation watch --state-root /path/to/temporary-preparation
 python -m hypoloom institutional preparation complete --state-root /path/to/temporary-preparation --provider IEEE
 python -m hypoloom institutional preparation verify --state-root /path/to/temporary-preparation --provider IEEE --sample 10.1109/example
 python -m hypoloom institutional preparation retry_connection --state-root /path/to/temporary-preparation
@@ -74,6 +79,9 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 正常 init 使用程序给出的 `instructions_argv`，原样展示操作说明、完整 Windows
 代码块和固定回复。连接阶段回复 **继续连接 / 跳过准备**；平台阶段回复 **完成 /
 验证样本 / 跳过此平台 / 仅公开 / 结束准备**。验证样本另提供 DOI 或论文 URL。
+客户端接入后由程序自动检测。程序提供的 `watch_argv` 最多等待 30 秒，到需人工操作
+的阶段或批次结束便返回当前说明；只观察、不代答。CC 使用这个命令，不自行拼接
+sleep 或轮询循环。
 助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台任务完成通知
 不是用户回答。批次结束后会明确提示 **重新准备**，先读取原摘要并保留已完成的平台
 和模式，再原样执行摘要中的 `remaining_preparation_argv`；其中包含失败及未回答的平台，
@@ -85,6 +93,10 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 空重试数组，助手应使用原只读 bootstrap 检查为这些平台重新生成准备命令，保留其他
 配置和启动身份。保持专用浏览器打开即可。中间的 `browser_unavailable` /
 `fetch_unavailable` 输出安全错误码；只有最终 `acquisition_timeout` 无法确定底层原因。
+连接预检也返回固定错误码：`cdp_timeout`、`cdp_connection_refused`、
+`cdp_connection_closed`、`cdp_authorization_failed`、`cdp_endpoint_unavailable`、
+`cdp_context_unavailable`、`browser_driver_unavailable` 或 `cdp_connection_failed`。
+它们表示浏览器控制连接故障，不代表机构登录或订阅失败；不输出原始异常和私有地址。
 
 `complete` 没有样本时仍是未验证；`skip` / `public_only` 也须带当前平台。
 这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。
@@ -208,7 +220,8 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 **已经在 CC 中进行 init 时**，使用它原样展示的程序生成代码块。代码会在 Windows
 询问 SSH 目标、自行取得脚本并执行 `Connect`，启动任务后返回原会话。无需本机已有
 仓库，也无需自己拼接路径；不要替换成下方会新开会话的 `Init`。看到
-`client_discovery_started` 后在原会话回复 **继续连接**；实际连通仍由服务端验证。
+`client_discovery_started` 后回到原会话查看进展，程序会自动检测实际连接；
+需要提前检查时可回复 **继续连接**。
 如原批次已结束，回复 **重新准备**。固定代码块由 bootstrap 与准备进程共用的
 `client_entry` 生成，助手不应改写代码或计时说明。
 

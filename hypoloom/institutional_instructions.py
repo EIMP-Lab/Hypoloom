@@ -85,20 +85,40 @@ def render(view):
     lines = [f"准备状态：{state}。"]
     if "remaining_seconds" in view:
         lines.append(f"本次等待剩余 {view['remaining_seconds']} 秒；连接等待和平台回答各自都有期限。")
-    if state == "waiting_for_connection":
+    if state in {"checking_connection", "waiting_for_connection"}:
+        automatic = view.get("automatic_connection_checks", False)
         lines.append("浏览器连接尚未验证成功；本次检查未进入平台操作。")
+        if automatic:
+            lines.append("程序会在同一期限内自动重检连接，成功后自动打开平台；无需反复执行接入代码或等待助手发起重试。")
+            lines.append("继续连接仅提前下一次检查，不延长等待期限；状态查询也不会延长期限。")
+        connection = view.get("connection", {})
+        reasons = {
+            "cdp_timeout": "浏览器控制连接检查超时",
+            "cdp_connection_refused": "浏览器控制端点拒绝连接",
+            "cdp_connection_closed": "浏览器控制连接已断开",
+            "cdp_authorization_failed": "浏览器控制连接认证失败",
+            "cdp_endpoint_unavailable": "浏览器控制端点或转发返回服务错误",
+            "cdp_context_unavailable": "浏览器未提供可用的会话上下文",
+            "cdp_connection_failed": "浏览器控制连接未成功，尚无法确定具体原因",
+            "browser_driver_unavailable": "服务器缺少浏览器控制依赖",
+        }
+        reason = connection.get("reason_code")
+        if reason in reasons:
+            lines.append(f"最近一次检查：{reason}（{reasons[reason]}）。")
         if "client_entry" in view:
             lines.extend(["首次接入或连接任务未运行时，在 Windows 本地 PowerShell 整块粘贴执行下面代码（包括 & { 和最后的 }）；"
                           "不要逐行运行或复制 PS>/>> 提示符。保留当前 SSH/CC 会话。程序会询问 SSH 目标，获取入口并启动连接任务。",
                           "```powershell", view["client_entry"]["powershell"], "```",
                           "Connect 启动隐藏后台任务后返回，无需保持该 Windows PowerShell 窗口打开；保留当前 init 会话。",
-                          "看到客户端连接任务已启动后，回到此会话回复：继续连接。启动任务不等于浏览器已连通。"])
+                          ("接入后回到此会话查看进展；程序会自动检测实际连接。" if automatic else
+                           "看到客户端连接任务已启动后，回到此会话回复：继续连接。") + "启动任务不等于浏览器已连通。"])
         else:
-            lines.append("完成所选浏览器的连接准备后回复：继续连接。")
+            lines.append("完成所选浏览器的连接准备后，程序会自动检测。" if automatic else
+                         "完成所选浏览器的连接准备后回复：继续连接。")
     elif state == "waiting_for_user":
         lines.append(f"{view['provider']} 页面已打开。需要登录时，仅在浏览器完成学校认证和 MFA。")
         lines.append("完成表示结束此平台的人工准备；未验证样本时，不代表登录或订阅已验证。")
-    elif state in {"checking_connection", "preparing_platform", "processing"}:
+    elif state in {"preparing_platform", "processing"}:
         lines.append("程序正在处理；尚未请求本阶段的人工完成确认。")
     elif state == "finishing":
         lines.append("正在结束并清理临时准备资源，请读取后台任务的最终结果。")

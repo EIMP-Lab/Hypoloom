@@ -129,8 +129,9 @@ launch identity. Run the complete `institutional_preparation_argv` with its
 `--agent-session` in the background; run its flushed `instructions_argv` and show
 the returned instructions/code block verbatim. Use `status_argv` for the current
 `reply_argv`; append `--text` with the exact offered user reply, and `--sample` only
-for sample verification. Never invent commands, deadlines or answers from task
-notifications. See [details](references/init-details.md) for ended batches; never use stdin.
+for sample verification. Connection checks advance automatically; retries never extend
+the deadline. Use `watch_argv` (at most 30 seconds), not custom polling or inferred answers.
+For ended batches see [details](references/init-details.md); never invent commands or use stdin.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
 Show `preparation_summary`: opened pages without samples remain not_checked;

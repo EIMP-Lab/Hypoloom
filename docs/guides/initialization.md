@@ -100,7 +100,10 @@ connection readiness precedes platforms. Instructions, code blocks and fixed rep
 choices come from the program; replies are validated against the current stage and
 provider, without background stdin. Inside an existing init, the generated Windows
 `Connect` block starts discovery and returns to the same conversation. Connection
-waiting also has a deadline, with remaining seconds reported by the process. Windows terminal users
+waiting also has a deadline, with remaining seconds reported by the process. The program
+automatically rechecks until ready; a retry reply only expedites a check without extending
+the window. CC uses the generated `watch_argv` for at most 30 seconds of observation,
+instead of writing polling loops. Windows terminal users
 can use the unified local `Init` entry to start discovery and remote init together;
 standard paths are derived and no separate helper terminal is needed. First local
 entry setup and SSH authentication remain necessary; server-only init cannot start

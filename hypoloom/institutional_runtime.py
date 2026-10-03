@@ -127,8 +127,8 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
         result = super().check_connection(timeout_seconds=max(.001, deadline - time.monotonic()))
         if result["state"] != "ready":
             observed = self.details()
-            result = {"state": observed["state"] if observed["state"] in
-                {"waiting_for_client", "unavailable", "closed"} else "browser_unavailable"}
+            if observed["state"] in {"waiting_for_client", "unavailable", "closed"}:
+                result = {"state": observed["state"]}
             if "reason" in observed: result["reason"] = observed["reason"]
         return result
 
