@@ -16,6 +16,12 @@ rounds and cite the exact accepted references supplied by the Host. Include the
 hypothesis, experiment identities, outcomes, repair lessons, limitations and next
 research question. Follow the request's output language and byte budget.
 
+For the round file's YAML frontmatter, copy the `assessments` list exactly from
+the current `--cycle-assessments.assessments` input. That list is the only
+allowlist for this round. If it is empty, write `assessments: []`; facts from
+older rounds or other immutable inputs must not be repeated in this round's
+frontmatter.
+
 When selected paper reading affected a decision, keep a compact note in this
 same report: originating question/result, exact source_ref and physical pages,
 what was learned, the interpretation used, and remaining gaps or dependent
