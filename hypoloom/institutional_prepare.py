@@ -20,12 +20,12 @@ _WATCH_SECONDS = 30
 def add_parser(subparsers):
     parser = subparsers.add_parser("institutional", help="prepare browser sessions without starting research")
     commands = parser.add_subparsers(dest="institutional_action", required=True)
-    prepare = commands.add_parser("prepare", help="open selected platforms and optionally verify sample full text")
+    prepare = commands.add_parser("prepare", help="open selected platforms and verify fixed or supplied full-text samples")
     add_arguments(prepare, connection=True)
     prepare.add_argument("--repository", help="checkout containing the server Compose configuration")
     add_preparation_argument(prepare, "--provider")
     prepare.add_argument("--sample", action="append", default=[], metavar="DOI_OR_URL",
-                         help="verify a sample through the same browser and PDF identity validator")
+                         help="override this platform's default probe; verify through the same browser and document identity validator")
     prepare.add_argument("--list", action="store_true", help="print the platform catalog without connecting")
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
     prepare.add_argument("--agent-session", action="store_true", help="receive init answers over the private preparation socket instead of stdin")
@@ -81,9 +81,12 @@ def _observe(access, provider, *, cancelled=lambda: False, output=lambda _: None
 
 def _verify(access, provider, samples, output, *, cancelled=lambda: False):
     results = []
+    default = next(p["default_sample_url"] for p in provider_catalog() if p["provider"] == provider)
     for url in samples:
         access.control("preparation", provider, "verify", url=url)
-        result = {"provider": provider, "sample_url": url, **_observe(access, provider, cancelled=cancelled, output=output)}
+        result = {"provider": provider, "sample_url": url,
+                  "sample_scope": "public_full_text" if url == default else "article_full_text",
+                  **_observe(access, provider, cancelled=cancelled, output=output)}
         output(json.dumps(result, ensure_ascii=False))
         results.append(result)
     return results
@@ -92,6 +95,7 @@ def _verify(access, provider, samples, output, *, cancelled=lambda: False):
 def _summary(rows, modes, output, **extra):
     # This is a transient review, not saved proof of authentication or subscription.
     output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
+        "verification_scope": "Sample readability only; institutional login and platform-wide subscription are not established.",
         "provider_mode_argv": [part for name, mode in modes.items()
                                for part in ("--institutional-provider-mode", f"{name}={mode}")]}, ensure_ascii=False))
 
@@ -129,6 +133,10 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
         row["state"] = next(r["state"] for r in row["samples"] if r["state"] != "sample_verified")
     if not interactive:
         return row, False
+    default = next(p["default_sample_url"] for p in provider_catalog() if p["provider"] == provider)
+    # Default probes run only after manual completion, so an OA success cannot
+    # silently bypass the requested opportunity to authenticate at the platform.
+    completion_samples = samples or ([default] if default else [])
     # Preparing an entry is not a login assertion. Reuse cookies in the same browser.
     access.control("preparation", provider, "open")
     opened = _observe(access, provider, cancelled=cancelled, output=output)
@@ -141,10 +149,15 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
     while True:
         try:
             if dialogue:
-                answer = dialogue.wait(provider=provider, reason_code=opened.get("reason_code"))
+                answer = dialogue.wait(provider=provider, reason_code=opened.get("reason_code"),
+                                       completion_samples=completion_samples)
             else:
+                completion = (f"verify {', '.join(completion_samples)}" if completion_samples
+                              else "finish without a sample")
                 answer = input_fn(f"{provider}: use the existing session or authenticate if needed. "
-                    "Enter to finish/recheck samples; DOI/URL to verify; s skip; p public only; q finish batch: ").strip()
+                    f"Enter to {completion} "
+                    "(sample readability only, not proof of login/subscription); "
+                    "DOI/URL to use your sample; s skip; p public only; q finish batch: ").strip()
         except EOFError:
             output("Interactive input is unavailable; init must use --agent-session and the preparation commands.")
             return {**row, "state": "input_required"}, True
@@ -161,6 +174,8 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
                 output("Use a supported DOI/canonical URL for this platform, or s/p/q. No login credentials here.")
                 continue
             if url not in samples: samples.append(url)
+        elif not samples:
+            samples = list(completion_samples)
         if samples:
             # Keep successful results; only recheck gaps after the operator's action.
             verified = {r["sample_url"] for r in row["samples"] if r["state"] == "sample_verified"}

@@ -104,7 +104,17 @@ instructions. This records detection when the page opened, not a connection fail
 or proof that verification passed. Keep the same page and answer deadline; never
 solve challenges, refresh/reopen automatically, or claim that reinstalling the
 client will resolve a website challenge. The user may skip this platform.
-`complete` without a sample means not_checked, not authenticated. Answer waiting
+For IEEE, ScienceDirect, Springer and optional ACM, the program supplies fixed
+public DOI probes in `completion_samples`. After `完成`, it automatically fetches
+and validates that sample through the same browser. Do not invent another DOI or
+ask the user to find one. Explicit `--sample` or a `验证样本` reply supplies the user's
+own article instead. Defaults run after the manual answer, never instead of the
+requested login opportunity. `sample_verified` proves only that article's current
+readability; `sample_scope: public_full_text` cannot prove institutional login or
+subscription. Retain `verification_scope` in the review. Failures remain failures
+with their generated retry command; completing the manual step is not test success.
+For other platforms or older sessions without a sample, completion stays
+not_checked. Use each live process's generated instructions. Answer waiting
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.

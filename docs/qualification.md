@@ -2,6 +2,44 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Automatic preparation samples (2026-10-04)
+
+Preparation without an explicit DOI previously recorded manual completion as
+not_checked, leaving full-text acquisition untested in the ordinary init path.
+The existing catalog now supplies one fixed public DOI for IEEE, ScienceDirect,
+Springer and optional ACM. Completion invokes the existing browser/document
+verifier; it cannot replace the manual authentication opportunity. Explicit samples
+override defaults. Skip/public-only/finish avoid default downloads; unrelated
+platforms without samples retain unverified completion. No new persistence,
+authentication proof, archive, schema or admission requirement is introduced.
+
+Focused preparation/dialogue/browser/control/deadline/navigation selection:
+**232 passed**, including native Chromium, PDF extraction, private CDP relay,
+four-platform progression after idle and delayed attachment, inter-platform
+disconnect recovery, exact sample-download counts and owned resource cleanup.
+One additional cancellation regression passes: ending during a default acquisition
+prevents opening the next platform and cleans control resources. Final core checks
+after the last source adjustment: **69 passed**, overlapping that selection.
+Bootstrap inspection: **16 passed / 64 deselected**; docs/Profile: **7 passed**.
+
+Wrong-document identity, access/challenge failures, explicit sample overrides,
+retrying failures only, public-only/skip/no-sample behavior and no research archive
+are covered. Native responses are synthetic; the fixture uses intercepted JS
+navigation, since fulfilling an HTTP redirect did not intercept its destination.
+The initial fixture failures are not evidence of a production-browser regression.
+The final wheel, isolated install and fresh bundle match **175 package files**;
+installed catalog, private preparation/finish cleanup and MCP initialize pass.
+
+Sample DOI/publication identity and public-access selection are supported by the
+[publisher sources](guides/institutional-access.md#fixed-samples); ACM's DOI/title
+was checked against Crossref. A subsequent parallel metadata lookup returned 429
+and was not retried. These source checks are not tests of the user's authenticated
+Windows browser or school entitlement. Existing runs, client tasks, login profiles
+and credentials were not modified. This is focused feature qualification, not full
+G1/promotion or paid/GPU qualification. Evidence:
+`.local/qualification/institutional-default-samples-20261004/` (focused XML/output,
+final core, cancellation, bootstrap/docs and build/install checks).
+
 ## Windows browser automatic port selection (2026-10-04)
 
 The user's Windows Edge compatibility report identifies webdriver=true and

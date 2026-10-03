@@ -21,6 +21,7 @@ def arguments(*extra):
 
 def ready_access(monkeypatch, state="ready"):
     backend = PreparationBackend()
+    backend.state = "available"
     access = InstitutionalAccess(backend)
     checks = []
     def check(run_id, *, timeout_seconds):
@@ -66,7 +67,7 @@ def request(root, command="PREPARATION_STATUS", payload=None):
         ControlRequest(1, "fixture", None, command, payload or {}), timeout=2)
 
 
-@pytest.mark.parametrize("answer,expected", [("complete", "not_checked"), ("skip", "skipped"), ("public_only", "public_only")])
+@pytest.mark.parametrize("answer,expected", [("complete", "sample_verified"), ("skip", "skipped"), ("public_only", "public_only")])
 def test_background_preparation_accepts_dialogue_and_cleans_control(tmp_path, monkeypatch, answer, expected):
     _, backend, _ = ready_access(monkeypatch)
     output, results, failures = [], [], []
@@ -86,6 +87,7 @@ def test_background_preparation_accepts_dialogue_and_cleans_control(tmp_path, mo
             return value if value.get("state") == "waiting_for_user" else None
         status = eventually(waiting)
         assert status["provider"] == "IEEE"
+        assert len(status['completion_samples']) == 1 and [c[0] for c in backend.calls] == ['IEEE']
         rejected = request(root, "PREPARATION_ANSWER", {"provider": "Springer", "action": answer})
         assert rejected.status != "accepted"
         accepted = request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "action": answer})
@@ -93,6 +95,7 @@ def test_background_preparation_accepts_dialogue_and_cleans_control(tmp_path, mo
         thread.join(5)
         assert not thread.is_alive() and not failures and results == [0]
         assert json.loads(output[-1])["preparation_summary"][0]["state"] == expected
+        assert len(backend.calls) == (2 if answer == 'complete' else 1)
         assert backend.closed and not root.exists()
         assert not list(tmp_path.rglob("state.sqlite"))
     finally:
@@ -105,6 +108,39 @@ def test_background_mode_rejects_noninteractive_mix_before_connecting(monkeypatc
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: pytest.fail("connected"))
     with pytest.raises(ValueError, match="agent-session"):
         run(arguments("--agent-session", "--non-interactive"))
+
+
+def test_finish_during_automatic_sample_check_prevents_next_platform(tmp_path, monkeypatch):
+    access, backend, _ = ready_access(monkeypatch)
+    started, release = threading.Event(), threading.Event()
+    fetch = backend.fetch
+    def blocked(url, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return fetch(url, **kwargs)
+    backend.fetch = blocked
+    output, codes = [], []
+    worker = threading.Thread(target=lambda: codes.append(run(arguments('--agent-session',
+        '--repository', str(tmp_path), '--provider', 'IEEE', '--provider', 'Springer'), output=output.append)))
+    worker.start(); root = None
+    try:
+        root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+            if v.startswith('{') and 'state_root' in json.loads(v)), None))
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'IEEE', 'reply': '完成'}).status == 'accepted'
+        assert started.wait(3)
+        assert request(root).result['state'] == 'processing'
+        assert request(root, 'PREPARATION_ANSWER', {'reply': '结束准备'}).status == 'accepted'
+        release.set(); worker.join(5)
+        assert not worker.is_alive() and codes == [0]
+        assert json.loads(output[-1])['preparation_state'] == 'finished'
+        assert not any(c[0] == 'Springer' for c in backend.calls)
+        assert backend.closed and not root.exists() and not list(tmp_path.rglob('state.sqlite'))
+        assert all(item.document is None for item in access._items.values())
+    finally:
+        release.set()
+        if worker.is_alive() and root is not None:
+            request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(5)
 
 
 def test_dialogue_wait_expires_without_marking_any_platform_complete(tmp_path, monkeypatch):

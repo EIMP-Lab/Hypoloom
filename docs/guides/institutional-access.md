@@ -132,7 +132,8 @@ python -m hypoloom institutional preparation retry_connection --state-root /path
 python -m hypoloom institutional preparation finish --state-root /path/to/temporary-preparation
 ```
 
-`complete` without a sample remains unverified; `skip` and `public_only` also take
+`complete` checks the samples displayed by the program; without a fixed or supplied
+sample it remains unverified. `skip` and `public_only` also take
 the current provider. These commands address only the live temporary preparation,
 never a research run. Read the background command's final summary after it exits.
 
@@ -150,8 +151,9 @@ the current stage and provider. Background notifications are never answers.
 An ended batch explicitly requests `重新准备` (prepare again): read the prior final
 summary and execute its generated `remaining_preparation_argv` unchanged. It includes
 failed and unanswered platforms, retaining connection options, updated modes and
-supplied samples; manual completion without a sample remains unverified and is not
-repeated. No new CC session or research run is needed.
+supplied samples. Failed default probes are retryable; successful platforms are not
+repeated. Platforms without any fixed or supplied sample retain unverified manual
+completion. No new CC session or research run is needed.
 
 If a selected platform times out, init offers `重新准备` (retry the remaining platforms)
 or `接受未验证状态，继续检查启动配置` (accept unverified access and continue to launch
@@ -495,7 +497,10 @@ sample DOI/canonical article URLs interactively or using repeatable `--sample`.
 Supplied samples are checked first; if all are readable, no login prompt appears.
 A readable public sample is not proof of institutional authentication. At a manual
 prompt, `s` skips, `p` selects public-only access, `q` ends the batch, and Enter
-finishes or rechecks supplied samples. Enter without a sample remains `not_checked`.
+finishes or rechecks supplied samples. With no supplied sample, IEEE, ScienceDirect,
+Springer and optional ACM automatically check a fixed public DOI after Enter (or
+`完成` in init). Defaults never bypass the manual login opportunity. Other platforms
+without fixed samples retain `not_checked`.
 Failed platforms do not prevent preparing others. Unresolved sample failures return
 a nonzero exit code but are not a research-start gate. With
 `--non-interactive --sample <DOI-or-URL>`, check the existing session without waiting
@@ -510,6 +515,40 @@ readable samples, authentication/verification requirements and unavailable resul
 Merge returned `provider_modes` / `provider_mode_argv` by platform into subsequent
 launch choices and re-review; standalone users must pass these options themselves.
 The result is not persisted and does not change existing runs or store credentials.
+
+### Fixed samples
+
+After updating, select institutional preparation in the next init, connect the
+Windows client, finish any needed authentication in the dedicated browser and
+reply `完成` in the original conversation. No separate test command or DOI search
+is needed. The program retrieves and validates one fixed full-text sample per
+platform using the existing acquisition deadline (120 seconds by default), byte
+limit and document identity validator. Skip, public-only and finish do not download
+default samples.
+
+| Platform | Fixed DOI / publisher source |
+| --- | --- |
+| IEEE | [10.1109/ACCESS.2019.2902267](https://ieeexplore.ieee.org/document/8654603/) |
+| ScienceDirect | [10.1016/j.softx.2024.101723](https://www.sciencedirect.com/science/article/pii/S2352711024000943) |
+| Springer | [10.1007/s10664-020-09851-6](https://link.springer.com/article/10.1007/s10664-020-09851-6) |
+| ACM, when selected | [10.1145/945445.945450](https://dl.acm.org/doi/10.1145/945445.945450) |
+
+These public full-text probes are independent of the institution and research topic.
+[IEEE Access is fully open access](https://ieeeaccess.ieee.org/about/); the
+ScienceDirect and Springer pages mark these articles Open access. ACM follows the
+2026 announcement linked above; its sample's title/DOI is also registered in
+[Crossref](https://api.crossref.org/works/10.1145/945445.945450).
+The existing platform catalog owns the defaults (`institutional prepare --list`);
+the model does not choose them during setup.
+
+`sample_verified` with `sample_scope: public_full_text` proves that article's
+current readability, **not institutional authentication or subscription coverage**.
+Use `验证样本` with a platform DOI, or explicit `--sample` in a standalone command,
+to replace that platform's default with an article covered by your institution.
+Even a custom sample proves only its own readability. Challenge, access, transport
+and identity failures retain their actual states; retry failed platforms or accept
+unverified access before launch review. Sample bytes are released after checking
+and never enter a research archive. Existing runs are unchanged.
 
 During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
 the complete catalog even without pending papers. The TUI's bottom **Close** button

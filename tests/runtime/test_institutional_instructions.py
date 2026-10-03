@@ -84,7 +84,7 @@ def test_generated_setup_rejects_unrepresentable_paths(bad):
     with pytest.raises(ValueError): client_entry(bad, "/python")
 
 
-@pytest.mark.parametrize('reply,expected', [('跳过此平台', 'skipped'), ('完成', 'not_checked')])
+@pytest.mark.parametrize('reply,expected', [('跳过此平台', 'skipped'), ('完成', 'sample_verified')])
 def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform(tmp_path, monkeypatch, reply, expected):
     _, backend, _ = ready_access(monkeypatch)
     def prepare(provider, **kwargs):
@@ -115,7 +115,7 @@ def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'reply': '完成'}).status == 'accepted'
         thread.join(5)
         assert not thread.is_alive() and not errors and codes == [0]
-        assert [r['state'] for r in json.loads(output[-1])['preparation_summary']] == [expected, 'not_checked']
+        assert [r['state'] for r in json.loads(output[-1])['preparation_summary']] == [expected, 'sample_verified']
         assert backend.closed and not root.exists() and not list(tmp_path.rglob('state.sqlite'))
     finally:
         if thread.is_alive():

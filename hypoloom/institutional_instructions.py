@@ -93,7 +93,12 @@ def render(view):
         if view.get("reason_code") == "verification_required":
             lines.append("页面打开时检测到人机验证；这不是连接失败，也不代表机构登录已完成。")
             lines.append("仅在浏览器手动完成验证；若验证反复出现，可回复：跳过此平台。程序不会代做验证码、自动刷新或重开页面，等待期限不延长。")
-        lines.append("完成表示结束此平台的人工准备；未验证样本时，不代表登录或订阅已验证。")
+        if view.get("completion_samples"):
+            lines.append("回复完成后，程序自动获取并校验以下全文样本，无需另外寻找 DOI：")
+            lines.extend(view["completion_samples"])
+            lines.append("默认固定样本为公开全文，可用验证样本另提供 DOI；通过仅证明该篇当前可读，不代表登录或订阅已验证。验证失败会保留具体状态，允许重试或接受未验证。")
+        else:
+            lines.append("完成表示结束此平台的人工准备；未验证样本时，不代表登录或订阅已验证。")
     elif state in {"preparing_platform", "processing"}:
         lines.append("程序正在处理；尚未请求本阶段的人工完成确认。")
     elif state == "finishing":

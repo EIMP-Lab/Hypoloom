@@ -27,6 +27,14 @@ PROVIDERS = {
 # Presentation/default preparation only; the full routing catalog stays authoritative.
 # ACM research content is public; optional preparation must not disable its browser fallback.
 COMMON_PREPARATION = {"IEEE": True, "ACM": False, "ScienceDirect": True, "Springer": True}
+# Public full-text probes, not subscription/authentication tests. Publisher
+# sources and selection rationale: docs/guides/institutional-access.md#fixed-samples
+PREPARATION_SAMPLES = {
+    "IEEE": "10.1109/ACCESS.2019.2902267",
+    "ACM": "10.1145/945445.945450",
+    "ScienceDirect": "10.1016/j.softx.2024.101723",
+    "Springer": "10.1007/s10664-020-09851-6",
+}
 
 
 def provider_name(value):
@@ -38,6 +46,7 @@ def provider_catalog():
     return [{"provider": name, "display_name": "Elsevier / ScienceDirect" if name == "ScienceDirect" else name,
              "entry_url": entries[name], "common": name in COMMON_PREPARATION,
              "recommended_prepare": COMMON_PREPARATION.get(name, False),
+             "default_sample_url": "https://doi.org/" + PREPARATION_SAMPLES[name] if name in PREPARATION_SAMPLES else None,
              "note": "Public full text first; login optional" if name == "ACM" else "Reuse a valid browser session; authenticate if needed"}
             for name in dict.fromkeys([*COMMON_PREPARATION, *entries])]
 

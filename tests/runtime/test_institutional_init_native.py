@@ -14,6 +14,32 @@ from tests.runtime.test_institutional_init_dialogue import arguments, eventually
 from tests.runtime.test_institutional_runtime import assert_free
 
 
+def route_fixed_samples(context, downloads):
+    from hypoloom.institutional_access import provider_catalog
+    from tests.runtime.test_institutional_browser import _pdf
+    catalog = [p for p in provider_catalog() if p['default_sample_url']]
+    def respond(route):
+        url = route.request.url
+        for item in catalog:
+            doi_url = item['default_sample_url']
+            landing = item['entry_url'] + 'sample'
+            doi = doi_url.removeprefix('https://doi.org/')
+            if url == doi_url:
+                # Browser-initiated navigation stays intercepted; an HTTP redirect
+                # from route.fulfill can fetch its destination outside the route.
+                route.fulfill(status=200, content_type='text/html', body=
+                    f'<script>location.href = {json.dumps(landing)}</script>'); return
+            if url == landing:
+                route.fulfill(status=200, content_type='text/html', body=
+                    f'<meta name="citation_doi" content="{doi}">'
+                    f'<meta name="citation_pdf_url" content="{landing}.pdf">Controlled article'); return
+            if url == landing + '.pdf':
+                downloads.append(item['provider'])
+                route.fulfill(status=200, content_type='application/pdf', body=_pdf(doi)); return
+        route.fulfill(status=200, content_type='text/html', body='Publisher preparation fixture')
+    context.route('**/*', respond)
+
+
 @pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
 @pytest.mark.parametrize('delayed_connection', [False, True])
 def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch, delayed_connection):
@@ -24,10 +50,12 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     fixture = browser_fixture.__wrapped__(tmp_path)
     adapter, context = next(fixture)
     user_page = context.pages[0]
+    downloads = []
     class Browser(RunBrowser):
-        def _navigate(self, page, target):
-            # Real CDP/page operations, synthetic content; never visit a publisher.
-            page.set_content('<title>Preparation fixture</title>Login placeholder')
+        def _connect(self):
+            current = super()._connect()
+            route_fixed_samples(current, downloads)
+            return current
     backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
     from hypoloom import institutional_dialogue
     monkeypatch.setattr(institutional_dialogue, 'CONNECTION_RETRY_SECONDS', .1)
@@ -44,7 +72,8 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     output, codes, errors = [], [], []
     def worker():
         try: codes.append(run(arguments('--agent-session', '--repository', str(tmp_path),
-            '--institutional-connect-timeout', '3'), output=output.append))
+            '--institutional-connect-timeout', '3', '--provider', 'IEEE', '--provider', 'ScienceDirect',
+            '--provider', 'Springer', '--provider', 'ACM'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = None
@@ -55,7 +84,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
             eventually(lambda: request(root).result.get('state') == 'waiting_for_connection')
             assert request(root).result['connection']['reason_code'] == 'cdp_endpoint_unavailable'
             reachable.set()  # No retry reply: the program must discover recovery itself.
-        for provider in ('IEEE', 'ScienceDirect', 'Springer'):
+        for provider in ('IEEE', 'ScienceDirect', 'Springer', 'ACM'):
             eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
                 and request(root).result.get('provider') == provider)
             if provider == 'IEEE': time.sleep(6)  # Beyond relay's per-I/O timeout.
@@ -63,7 +92,9 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
         thread.join(10)
         assert not thread.is_alive() and not errors and codes == [0]
         summary = json.loads(output[-1])
-        assert [r['state'] for r in summary['preparation_summary']] == ['not_checked'] * 3
+        assert [r['state'] for r in summary['preparation_summary']] == ['sample_verified'] * 4
+        assert downloads == ['IEEE', 'ScienceDirect', 'Springer', 'ACM']
+        assert all(r['samples'][0]['sample_scope'] == 'public_full_text' for r in summary['preparation_summary'])
         assert summary['remaining_preparation_argv'] == []
         assert not user_page.is_closed() and not backend._tabs and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))
@@ -174,9 +205,22 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
     fixture = browser_fixture.__wrapped__(tmp_path)
     adapter, context = next(fixture)
     user_page = context.pages[0]
+    downloads = []
     class Browser(RunBrowser):
-        def _navigate(self, page, target):
-            page.set_content('<title>Fixture</title>Publisher preparation')
+        disconnected = False
+        def _connect(self):
+            current = super()._connect()
+            route_fixed_samples(current, downloads)
+            return current
+        def prepare(self, provider, **kwargs):
+            if provider == 'ScienceDirect' and not self.disconnected:
+                self.disconnected = True
+                reachable.clear()
+                with self.relay.lock:
+                    for peer in list(self.relay.peers):
+                        try: peer.shutdown(socket.SHUT_RDWR)
+                        except OSError: pass
+            return super().prepare(provider, **kwargs)
     backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
     reachable = threading.Event(); reachable.set()
     dial = backend.relay.dial
@@ -195,11 +239,6 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
         root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
             if v.startswith('{') and 'state_root' in json.loads(v)), None))
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
-        reachable.clear()
-        with backend.relay.lock:
-            for peer in list(backend.relay.peers):
-                try: peer.shutdown(socket.SHUT_RDWR)
-                except OSError: pass
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'IEEE', 'reply': '完成'}).status == 'accepted'
         failure = eventually(lambda: next((json.loads(v) for v in output if v.startswith('{')
             and json.loads(v).get('provider') == 'ScienceDirect'
@@ -213,6 +252,7 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
         thread.join(10)
         assert not thread.is_alive() and codes == [0]
         assert json.loads(output[-1])['remaining_preparation_argv'] == []
+        assert downloads == ['IEEE', 'ScienceDirect', 'Springer']
         assert not user_page.is_closed() and not backend._tabs and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))
     finally:

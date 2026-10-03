@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Automatic preparation samples](../design/institutional-access-preparation.md#配置完成后的固定全文样本2026-10-04):
+  fixed public DOI catalog, automatic checks after manual completion, user overrides,
+  bounded failure/retry and sample-only claims. [Sources and operator flow](../guides/institutional-access.zh-CN.md#固定全文样本);
+  [qualification](../qualification.md#automatic-preparation-samples-2026-10-04)
+  covers native PDF acquisition, cancellation, cleanup and isolated installation.
+
 - [Institutional TUI return](../guides/institutional-access.zh-CN.md): dedicated
   bottom Close button reuses the existing action; Esc and request guard remain.
   Focused and three-terminal-size checks are recorded in CURRENT and

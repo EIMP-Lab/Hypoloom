@@ -2,6 +2,22 @@
 
 [English](qualification.md) · 简体中文
 
+## 配置后的固定全文样本（2026-10-04）
+
+常规 init 的人工“完成”现在自动检查目录中 IEEE、ScienceDirect、Springer 和可选
+ACM 的公开 DOI，复用已有浏览器、正文／PDF 身份校验和获取期限。明确自选样本可
+覆盖默认；跳过、仅公开、结束准备不下载默认样本。成功只证明该篇可读，不证明
+机构登录或订阅，也不创建研究档案或修改既有运行。
+
+相关 **232 项通过**，另加取消期间不打开下一平台的 **1 项通过**；最终核心
+**69 项通过**（与前述重叠），初始化 **16 项通过／64 项未选**，文档/Profile
+**7 项通过**。包含真实 Chromium、PDF 提取、CDP relay、四平台推进、断线恢复、
+下载次数与资源清理。独立安装、CLI/MCP 和新运行副本的 **175 个包文件一致**。
+原生页面为合成内容，出版社公开资料确认 DOI 来源，不替代 Windows 实际全文下载
+或学校订阅验证；不是完整 G1／正式晋级。详见
+[英文记录](qualification.md#automatic-preparation-samples-2026-10-04)与
+[样本及使用步骤](guides/institutional-access.zh-CN.md#固定全文样本)。
+
 ## Windows 浏览器自动端口选择（2026-10-04）
 
 用户的 Edge 兼容性报告明确记录 webdriver=true、automated_browser 和 Turnstile

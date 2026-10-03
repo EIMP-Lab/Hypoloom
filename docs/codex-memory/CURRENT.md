@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 4 automatic preparation samples: common-platform completion previously
+  stopped at not_checked without a user DOI. Existing catalog now owns fixed public
+  IEEE/ScienceDirect/Springer and optional ACM probes; manual completion calls the
+  existing bounded full-text/identity verifier. Explicit samples override defaults;
+  skip/public-only/finish avoid default fetching. Results distinguish public sample
+  readability from authentication/subscription; no archive or retained run changes.
+  Related 232 pass plus one cancellation case; final core 69 pass (overlapping),
+  bootstrap 16 and docs/Profile 7 pass. Native CDP/PDF/relay progression and cleanup,
+  installed CLI/MCP/fresh bundle with 175 package files pass. Publisher sources
+  establish sample identity/public status, not real Windows download/entitlement.
+  [Design](../design/institutional-access-preparation.md#配置完成后的固定全文样本2026-10-04),
+  [qualification](../qualification.md#automatic-preparation-samples-2026-10-04).
+  Evidence: `.local/qualification/institutional-default-samples-20261004/`.
+
 - October 4 institutional TUI return: operator confirms Esc works but requests an
   explicit Close button. Reuse the existing close action in a separate bottom
   footer; retain Esc and the in-flight request guard. Two focused regressions
