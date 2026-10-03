@@ -2,6 +2,30 @@
 
 [English](qualification.md) · 简体中文
 
+## Windows 浏览器自动端口选择（2026-10-04）
+
+用户的 Edge 兼容性报告明确记录 webdriver=true、automated_browser 和 Turnstile
+600010，普通 Edge 正常。结合既有有界面 Chromium 对照，修复把调试端口 0 直接
+传给浏览器的启动副作用：默认自动选择现在由 OS 回环 socket 分配实际非零端口，
+再启动浏览器并用原监听地址、SID、程序及专用目录校验确认归属。复用端口来自
+实际进程命令行，移除 DevToolsActivePort 读取。旧端口 0 窗口提示手动关闭后重连，
+不强杀、不删除登录目录，不更改科研运行、凭据或网页属性。
+
+旧代码的 PowerShell 回归先复现端口 0 启动失败；最终相关 **154 项通过**。涵盖真实
+PowerShell 与 OS socket、Windows API 替身、自动／固定端口、复用／重启、旧窗口、
+竞争／不同归属／非回环拒绝、有界失败，以及真实 CDP／relay、准备对话和多平台推进。
+使用实际函数生成参数的有界面 Linux Chrome 对照：旧启动在连接前后及新标签页均为
+webdriver=true，新启动均为 false，测试 Cookie 可用；浏览器、显示服务、HTTP 线程
+和临时目录均清理。没有访问出版社或自动处理验证码。
+
+文档／Profile 检查 **7 项通过**；最终 wheel、独立安装和新运行副本 **175 个包文件
+一致**。安装后的准备／控制清理、MCP 初始化、副本身份与空白检查通过；不创建研究
+数据库。PowerShell 执行同时验证脚本及夹具语法。
+
+证据：`.local/qualification/institutional-browser-port-20261004/`。这不证明 Windows
+Edge/ScienceDirect 已通过，仍需更新客户端后的真人验证；无完整 G1、正式晋级或付费／
+GPU 验收声明。[完整范围](qualification.md#windows-browser-automatic-port-selection-2026-10-04)。
+
 ## Elsevier 官方全文 API（2026-10-04）
 
 用户在 ScienceDirect 专用浏览器持续人机验证后提供 API Key。本次未保存或发送该真实

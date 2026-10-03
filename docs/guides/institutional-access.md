@@ -389,13 +389,33 @@ $researchConnection = @{
 & $researchConnector @researchConnection -Action Uninstall
 ```
 
-The helper finds Edge before Chrome. The local browser uses port 0 by default and
-reports its own allocated port. Profiles remain under
+The helper finds Edge before Chrome. Default `-LocalPort 0` asks the helper to
+allocate an available loopback port through the OS, then launch the browser with
+that actual nonzero port. Passing debugging port 0 directly to Chromium enables
+its webdriver flag, so new launches no longer use it. Listener ownership and
+loopback checks still apply after allocation. Profiles remain under
 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` or `Institutional-chrome`; use
 `-BrowserExecutable` / `-BrowserProfile` to retain your previously authenticated
 dedicated profile. Only its user, SYSTEM and administrators may access it. Cookies
 are not exported or copied. An existing browser with matching user, executable and
-profile may be reused, including one manually started on 9222.
+profile and nonzero port may be reused, including one manually started on 9222.
+
+**Updating an older port-0 browser:** arrange a client connection interruption,
+run the installed entry with `-Action Stop` and its original server/connection
+arguments, then close all dedicated Hypoloom browser windows normally. Ordinary
+browser windows and the dedicated login directory can stay. Download the original
+script using the file workflow above and run `-Action Setup`. Replacing a file or
+reopening CC does not reload an already running task or browser. If the entry
+reports `browser_restart_required_close_dedicated_window`, the old browser process
+still exists: exit that dedicated browser and Connect again. The program never
+kills it or removes stored login data.
+
+Use `继续连接` while the existing preparation is still waiting, or `重新准备`
+after it ends; a new research run is unnecessary. In the new dedicated window,
+check Automation Check on [Cloudflare's official diagnostic](https://debug.challenges.cloudflare.com/),
+then verify the actual ScienceDirect challenge and a paper sample. Removing the
+known launch side effect does not guarantee website acceptance; login, challenges
+and MFA remain manual browser actions.
 
 Connect/Init prepares profile permissions before starting discovery, so a failure
 appears in the calling terminal. For the current user's default dedicated profile,

@@ -419,11 +419,25 @@ Connect/Init 在启动发现任务前准备目录权限，失败会直接显示�
 `browser_profile_permissions_write_failed`（写入失败）和
 `browser_profile_permissions_not_applied`（读回不合格）。
 
-脚本优先查找 Edge，再查找 Chrome；默认本机端口为 0，由浏览器分配。
+脚本优先查找 Edge，再查找 Chrome。默认 `-LocalPort 0` 表示由连接器向 OS 申请
+可用端口，启动浏览器时传入实际非零端口。直接给 Chromium 传调试端口 0 会启用
+webdriver 标志，因此不再使用这种启动方式。端口接管仍校验回环地址和进程归属。
 使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，
 可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。
 不导出 Cookie，不复制登录凭据；目录权限限于当前用户、SYSTEM 和管理员。
-已有相同程序、目录及用户的专用浏览器可复用，包括手动启动的 9222 端点。
+已有相同程序、目录及用户的非零端口专用浏览器可复用，包括手动启动的 9222 端点。
+
+**从旧版端口 0 浏览器更新：** 安排一次客户端连接中断，以原服务器和连接参数运行
+`-Action Stop`，停止旧发现任务；手动关闭 Hypoloom 专用浏览器的所有窗口。普通
+浏览器不需要关闭，专用目录不需要删除。再按上面的文件流程下载原始脚本并运行
+`-Action Setup`。仅覆盖文件或重开 CC 不会更新已运行的任务／浏览器启动参数。
+若看到 `browser_restart_required_close_dedicated_window`，说明仍有旧参数的专用
+进程，请正常退出该专用浏览器后重新 Connect；程序不会强杀浏览器或清理登录数据。
+
+原准备批次仍在等待连接时回复“继续连接”，已结束时选择“重新准备”，无需为此
+创建科研运行。在新专用窗口打开 [Cloudflare 官方检测](https://debug.challenges.cloudflare.com/)
+检查 Automation Check，再在 ScienceDirect 实际完成验证和论文样本检查；消除已知
+启动副作用不代表网站一定放行。登录、验证码及 MFA 仍由本人在浏览器完成。
 
 脚本仅对活跃运行建立 SSH 转发，没有运行时不启动浏览器、不占服务器研究端口。
 服务端目标为每次运行的私有 Unix socket，无需 `-RemotePort`。

@@ -120,11 +120,23 @@ function Initialize-BrowserProfile {
     Assert-ProfilePrivacy -RepairInherited
 }
 
+function Get-AvailableBrowserPort {
+    # LocalPort=0 means automatic selection by this helper. Passing port 0 to
+    # Chromium itself also enables its webdriver flag, even before CDP attaches.
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    try {
+        $listener.Start()
+        $listener.LocalEndpoint.Port
+    } finally { $listener.Stop() }
+}
+
 function Ensure-Browser {
     Initialize-BrowserProfile
+    $script:LocalPort = $script:RequestedPort
+    $script:BrowserCommandPort = $script:RequestedPort
     if ($script:RequestedPort -eq 0) {
-        # Discover only this user's exact executable/profile. Chrome's own
-        # DevToolsActivePort supplies a dynamic port; no connector PID registry.
+        # Discover only this user's exact executable/profile from the live
+        # command line; no port file or connector PID registry is needed.
         foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "Name='$([IO.Path]::GetFileName($BrowserExecutable))'")) {
             if ($candidate.ExecutablePath -ne $BrowserExecutable) { continue }
             $matched = [regex]::Match($candidate.CommandLine, '(?:^|\s)"?--remote-debugging-port=(\d+)"?(?=\s|$)')
@@ -133,40 +145,35 @@ function Ensure-Browser {
             if (-not (Test-ProfileCommand $candidate.CommandLine)) { continue }
             $owner = Invoke-CimMethod -InputObject $candidate -MethodName GetOwnerSid
             if ($owner.Sid -ne $script:userSid) { throw 'browser_profile_owner_mismatch' }
+            # Launch options cannot be updated in an existing browser. Preserve
+            # its windows/profile; the operator closes it once before reconnecting.
+            if ($script:BrowserCommandPort -eq 0) { throw 'browser_restart_required_close_dedicated_window' }
             $script:LocalPort = $script:BrowserCommandPort
-            if ($LocalPort -eq 0) { Read-BrowserPort }
             break
         }
     }
-    if (Assert-LocalOwner) {
+    if ($LocalPort -gt 0 -and (Assert-LocalOwner)) {
         $observed = Get-LocalCDP
         if (-not $observed.webSocketDebuggerUrl) { throw 'existing_browser_cdp_unavailable' }
         return $observed
     }
     Assert-ProfilePrivacy
-    $script:BrowserCommandPort = $script:RequestedPort
+    if ($script:RequestedPort -eq 0) { $script:LocalPort = Get-AvailableBrowserPort }
+    $script:BrowserCommandPort = $LocalPort
     $values = @('--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1',
-        "--remote-debugging-port=$script:RequestedPort", "--user-data-dir=$BrowserProfile", 'about:blank')
+        "--remote-debugging-port=$LocalPort", "--user-data-dir=$BrowserProfile", 'about:blank')
     # Leave browser/profile cleanup to the operator; never delete stored sessions.
     Start-Process -FilePath $BrowserExecutable -ArgumentList (($values | ForEach-Object { Quote-Native $_ }) -join ' ')
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 1
-        if ($script:RequestedPort -eq 0) { Read-BrowserPort }
+        # Selection/release is not a reservation. Reject a competing listener
+        # using the same ownership checks before issuing any CDP request.
         if (Assert-LocalOwner) {
             $observed = Get-LocalCDP
             if ($observed.webSocketDebuggerUrl) { return $observed }
         }
     }
     throw 'browser_start_failed_check_profile_and_desktop'
-}
-
-function Read-BrowserPort {
-    $path = Join-Path $BrowserProfile 'DevToolsActivePort'
-    if (Test-Path -LiteralPath $path) {
-        $first = @(Get-Content -LiteralPath $path -TotalCount 1)[0]
-        $number = 0
-        if ([int]::TryParse($first, [ref]$number) -and $number -gt 0 -and $number -le 65535) { $script:LocalPort = $number }
-    }
 }
 
 function Quote-Remote([string]$Value) {

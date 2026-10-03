@@ -239,11 +239,12 @@ def test_catalog_ignores_startup_without_effects(monkeypatch):
     assert run(parsed, output=lambda *a: None) == 0
 
 
-def test_windows_connector_with_real_powershell():
+@pytest.mark.parametrize("fixture", ["institutional_connector_checks.ps1", "institutional_browser_port_checks.ps1"])
+def test_windows_connector_with_real_powershell(fixture):
     executable = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
     if not executable: pytest.skip("PowerShell parser/runtime not installed")
     root = Path(__file__).resolve().parents[2]
-    result = subprocess.run([executable, "-NoProfile", "-File", str(root / "tests/runtime/fixtures/institutional_connector_checks.ps1"),
+    result = subprocess.run([executable, "-NoProfile", "-File", str(root / "tests/runtime/fixtures" / fixture),
         "-Connector", str(root / "hypoloom/connection_assets/institutional-connect.ps1")], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
 

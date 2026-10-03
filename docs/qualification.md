@@ -2,6 +2,49 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows browser automatic port selection (2026-10-04)
+
+The user's Windows Edge compatibility report identifies webdriver=true and
+automated_browser, with Turnstile 600010; ordinary Edge works. Combined with the
+retained headed comparison and browser documentation, this establishes an unwanted
+launch side effect of passing debugging port 0. It does not establish every reason
+for the ScienceDirect challenge or prove a successful Windows recovery.
+
+The connector now resolves automatic port selection through an OS loopback socket
+and passes its nonzero port to Chromium. Existing ownership checks still reject a
+competing listener after release. Live process command lines supply reusable ports;
+the obsolete DevToolsActivePort reader is removed. Owned old port-0 browsers report
+that the dedicated window needs a manual restart, preserving login files and open
+windows. No research/preparation state, credentials, browser DOM properties or
+site verification scripts are changed. No additional persistent authority is added.
+
+A red PowerShell regression reproduces the old zero-port launch. Final focused
+selection: **154 passed**, including the real PowerShell parser/runtime, substituted
+Windows process/ownership APIs, actual OS socket allocation/release, explicit and
+automatic ports, connector restart/browser reuse, browser relaunch, old-process
+rejection, unrelated/foreign process and bind-race rejection, bounded failures,
+native CDP/private relays, preparation dialogue and multi-platform transitions.
+
+A headed Linux Chrome comparison uses argv emitted by the shipped Ensure-Browser
+function. The old launch reports webdriver=true before/after CDP and in a new tab;
+the new launch reports false at all three points, with test cookies available.
+Both browsers survive CDP detachment. Disposable browser/display/server processes
+and profiles are cleaned. The native comparison visits only a local test page;
+it neither automates nor establishes passage of a production CAPTCHA.
+
+Documentation/Profile checks: **7 passed**. The final wheel, isolated installation
+and fresh runtime bundle match **175 package files**. Installed preparation/control
+cleanup, MCP initialization and runtime identity pass without creating a research
+database. Whitespace checks pass; native PowerShell execution parses the shipped
+script and fixtures. These checks reuse existing package/runtime validators.
+
+Evidence: `.local/qualification/institutional-browser-port-20261004/` retains the
+red result, focused output, native argv generation/comparison and cleanup, and
+build/install checks. Windows desktop/SSO and ScienceDirect passage still require
+the user's updated-client check. This is focused repair validation, not full G1,
+formal promotion or paid/GPU qualification.
+[Design](design/institutional-access-preparation.md#windows-自动调试端口的启动副作用2026-10-04).
+
 ## Elsevier official article API (2026-10-04)
 
 The user supplied an API key after repeated ScienceDirect browser challenges.

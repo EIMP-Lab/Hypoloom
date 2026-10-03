@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 4 Windows browser port: the user's Cloudflare diagnostic confirms
+  webdriver=true/automated_browser in dedicated Edge. Default LocalPort=0 now
+  selects an OS loopback port and passes the nonzero number to Chromium. Live
+  process discovery and existing ownership checks handle reuse/collisions; the
+  DevToolsActivePort reader is removed. Legacy port-0 windows require a manual
+  restart, preserving login data. One red regression; focused 154 pass. Headed
+  Linux Chrome using actual emitted argv reports webdriver=false before/after CDP
+  and in new tabs, with cookies and cleanup intact. Docs/Profile 7 pass; installed
+  wheel/MCP/preparation/fresh bundle match 175 package files. Windows/ScienceDirect passage
+  remains unverified; no retained research/browser/credential mutation. User
+  chooses browser investigation after the separate API probe's authentication
+  failure. [Design](../design/institutional-access-preparation.md#windows-自动调试端口的启动副作用2026-10-04),
+  [qualification](../qualification.md#windows-browser-automatic-port-selection-2026-10-04).
+  Evidence: `.local/qualification/institutional-browser-port-20261004/`.
+
 - October 4 optional Elsevier API: repeated dedicated-browser challenges motivate
   the official Article Retrieval path. Authoring-only API key/Insttoken reuse the
   existing private Profile projection and reader. New Host document access uses

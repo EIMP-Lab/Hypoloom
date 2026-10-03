@@ -10,6 +10,27 @@
 再使用已有机构会话；后台遇到人工认证就返回缺口，只有用户主动登录才开启有界等待。**
 登录成功、取得某篇全文、Agent 实际阅读及科研证据接纳仍是不同事实。
 
+## Windows 自动调试端口的启动副作用（2026-10-04）
+
+用户提供的 Windows Edge 官方兼容性检测显示 `navigator.webdriver=true`、
+`criticalFailure=automated_browser`，并记录 Turnstile 600010。普通 Edge 可通过。
+这与已有隔离 Chromium 对照和浏览器文档中“调试端口 0 启用 webdriver 标志”的
+行为一致；600010 本身仍不是网站唯一判定原因的证明。
+参考：[浏览器 webdriver 条件](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver)、
+[Cloudflare 支持的浏览器环境](https://developers.cloudflare.com/cloudflare-challenges/reference/supported-browsers/)。
+
+修复将客户端 `LocalPort=0` 保留为自动分配选项，由本机 TCP listener 向 OS 申请
+回环临时端口，释放后将实际非零端口传给浏览器。浏览器接管前的竞争仍由已有的
+监听地址、用户 SID、程序和专用目录校验拒绝，不把“刚选过端口”当作所有权。
+同目录现有非零端口浏览器仍从进程命令行发现、校验和复用；旧端口 0 浏览器报告
+需关闭专用窗口后重连，不强杀浏览器或删除登录目录。旧发现任务也需要由用户停止
+后再执行更新的 Setup，使运行中的 PowerShell 实际加载新程序。
+
+复用 OS 分配、进程命令行及原所有权验证，无新端口注册表、PID 文件、hash 或状态
+权威。没有修改网页属性、User-Agent 或验证码脚本；本次只改变客户端启动参数。
+本地回归可证明新启动行为和连接边界，真实 Edge/ScienceDirect 仍需用户复测，
+不承诺自动化浏览器必然通过生产挑战。不修改既有研究运行或其他平台/API 配置。
+
 ## 准备入口的人机验证提示（2026-10-03）
 
 用户确认普通浏览器一次验证通过，专用 Edge 反复验证，且实际启动参数包含
