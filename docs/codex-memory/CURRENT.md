@@ -1,5 +1,13 @@
 # Current Hypoloom development state
 
+- October 4 institutional TUI return: operator confirms Esc works but requests an
+  explicit Close button. Reuse the existing close action in a separate bottom
+  footer; retain Esc and the in-flight request guard. Two focused regressions
+  pass; button and dropdown/Esc return checked at 237×52, 100×34 and 80×24 with
+  a read-only captured status. Existing research/Host/browser remain unchanged.
+  [Guide](../guides/institutional-access.zh-CN.md); evidence:
+  `.local/qualification/institutional-tui-return-20261004/`.
+
 - October 4 Windows browser port: the user's Cloudflare diagnostic confirms
   webdriver=true/automated_browser in dedicated Edge. Default LocalPort=0 now
   selects an OS loopback port and passes the nonzero number to Chromium. Live

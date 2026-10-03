@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Institutional TUI return](../guides/institutional-access.zh-CN.md): dedicated
+  bottom Close button reuses the existing action; Esc and request guard remain.
+  Focused and three-terminal-size checks are recorded in CURRENT and
+  `.local/qualification/institutional-tui-return-20261004/`.
+
 - [Windows browser port selection](../design/institutional-access-preparation.md#windows-自动调试端口的启动副作用2026-10-04):
   native Edge automated-browser diagnostic; OS-selected nonzero launch port,
   process-based reuse, retained ownership checks and explicit old-window restart.

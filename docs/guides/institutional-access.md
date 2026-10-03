@@ -512,7 +512,9 @@ launch choices and re-review; standalone users must pass these options themselve
 The result is not persisted and does not change existing runs or store credentials.
 
 During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
-the complete catalog even without pending papers. Open login, verify a sample, or
+the complete catalog even without pending papers. The TUI's bottom **Close** button
+or **Esc** returns to the research view without stopping research or skipping papers.
+If a dropdown is expanded, the first Esc closes that menu. Open login, verify a sample, or
 check/retry. Avoid running a second standalone manager against the same browser.
 A timestamped verified sample proves that paper was readable at that time; its bytes
 are released, not archived as research evidence. Reconnecting the same browser can

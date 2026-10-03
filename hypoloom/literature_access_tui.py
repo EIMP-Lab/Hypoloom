@@ -75,8 +75,9 @@ class LiteratureAccessScreen(ModalScreen):
     #literature-access-form { width: 90%; max-width: 105; height: 85%; border: round #63d7f2; padding: 1 2; background: $surface; }
     #literature-access-scroll { height: 1fr; }
     #literature-access-form Static { height: auto; margin-bottom: 1; }
-    #literature-access-actions { height: auto; }
+    #literature-access-actions, #literature-access-choices { height: auto; }
     #literature-access-actions Button { width: 1fr; min-width: 8; }
+    #literature-access-footer { height: 3; align-horizontal: right; }
     """
 
     def __init__(self, status):
@@ -104,13 +105,14 @@ class LiteratureAccessScreen(ModalScreen):
                 yield Button("检查并重试 · R", id="literature-retry")
                 yield Button("导入PDF", id="literature-import")
                 yield Button("Web面板链接", id="literature-web")
-                yield Button("稍后处理", id="literature-close")
-            with Horizontal():
+            with Horizontal(id="literature-access-choices"):
                 yield Button("验证样本", id="literature-verify")
                 yield Button("跳过此篇", id="literature-skip")
                 yield Button("恢复此篇", id="literature-restore")
                 yield Button("仅公开途径", id="literature-public-only")
                 yield Button("启用机构访问", id="literature-auto")
+            with Horizontal(id="literature-access-footer"):
+                yield Button("Close", id="literature-close", variant="primary")
 
     def on_mount(self):
         self.update_status(self.status)
