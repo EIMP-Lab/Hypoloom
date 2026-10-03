@@ -22,9 +22,12 @@ webdriver=true，新启动均为 false，测试 Cookie 可用；浏览器、显�
 一致**。安装后的准备／控制清理、MCP 初始化、副本身份与空白检查通过；不创建研究
 数据库。PowerShell 执行同时验证脚本及夹具语法。
 
-证据：`.local/qualification/institutional-browser-port-20261004/`。这不证明 Windows
-Edge/ScienceDirect 已通过，仍需更新客户端后的真人验证；无完整 G1、正式晋级或付费／
-GPU 验收声明。[完整范围](qualification.md#windows-browser-automatic-port-selection-2026-10-04)。
+证据：`.local/qualification/institutional-browser-port-20261004/`。收到 `397f151` 的
+更新／重启步骤后，用户反馈“这次正常通过”，确认其 Windows 环境本次验证循环已
+恢复。没有提供新的诊断导出或论文下载结果，不据此独立确认更新后的 webdriver 值、
+机构 SSO／订阅权限、PDF 获取或其他浏览器／网站及后续会话的稳定性。无完整 G1、
+正式晋级或付费／GPU 验收声明。
+[完整范围](qualification.md#windows-browser-automatic-port-selection-2026-10-04)。
 
 ## Elsevier 官方全文 API（2026-10-04）
 

@@ -8,8 +8,10 @@
   restart, preserving login data. One red regression; focused 154 pass. Headed
   Linux Chrome using actual emitted argv reports webdriver=false before/after CDP
   and in new tabs, with cookies and cleanup intact. Docs/Profile 7 pass; installed
-  wheel/MCP/preparation/fresh bundle match 175 package files. Windows/ScienceDirect passage
-  remains unverified; no retained research/browser/credential mutation. User
+  wheel/MCP/preparation/fresh bundle match 175 package files. After the 397f151
+  update/restart instructions, the user reports verification now passes in their
+  Windows environment. This is operator confirmation, without a new diagnostic
+  export or full-text download result; no retained research/browser/credential mutation. User
   chooses browser investigation after the separate API probe's authentication
   failure. [Design](../design/institutional-access-preparation.md#windows-自动调试端口的启动副作用2026-10-04),
   [qualification](../qualification.md#windows-browser-automatic-port-selection-2026-10-04).

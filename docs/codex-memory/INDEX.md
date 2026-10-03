@@ -4,7 +4,8 @@
   native Edge automated-browser diagnostic; OS-selected nonzero launch port,
   process-based reuse, retained ownership checks and explicit old-window restart.
   [Evidence and limits](../qualification.md#windows-browser-automatic-port-selection-2026-10-04)
-  separate local headed Chromium behavior from pending Windows/site acceptance.
+  separate local headed Chromium checks from subsequent operator-confirmed
+  Windows verification success and still-unverified full-text downloading.
 
 - [Elsevier official article API](../design/institutional-literature-access.md#elsevier-official-article-api-2026-10-04):
   optional private Profile key/Insttoken, bounded full-text retrieval independent

@@ -7,8 +7,9 @@ English · [简体中文](qualification.zh-CN.md)
 The user's Windows Edge compatibility report identifies webdriver=true and
 automated_browser, with Turnstile 600010; ordinary Edge works. Combined with the
 retained headed comparison and browser documentation, this establishes an unwanted
-launch side effect of passing debugging port 0. It does not establish every reason
-for the ScienceDirect challenge or prove a successful Windows recovery.
+launch side effect of passing debugging port 0. Those implementation checks alone
+do not establish every reason for the ScienceDirect challenge; the subsequent
+operator confirmation is recorded below.
 
 The connector now resolves automatic port selection through an OS loopback socket
 and passes its nonzero port to Chromium. Existing ownership checks still reject a
@@ -40,9 +41,15 @@ script and fixtures. These checks reuse existing package/runtime validators.
 
 Evidence: `.local/qualification/institutional-browser-port-20261004/` retains the
 red result, focused output, native argv generation/comparison and cleanup, and
-build/install checks. Windows desktop/SSO and ScienceDirect passage still require
-the user's updated-client check. This is focused repair validation, not full G1,
+build/install checks. This is focused repair validation, not full G1,
 formal promotion or paid/GPU qualification.
+
+After receiving the update/restart steps for commit `397f151`, the user reports
+“这次正常通过” (verification passes this time). This closes the reported verification
+loop for that operator's environment at this check. No new diagnostic export or
+paper-download result was supplied, so this does not independently establish the
+post-update webdriver value, institutional SSO/subscription entitlement, PDF
+retrieval, or reliability across other browsers/sites and later sessions.
 [Design](design/institutional-access-preparation.md#windows-自动调试端口的启动副作用2026-10-04).
 
 ## Elsevier official article API (2026-10-04)
