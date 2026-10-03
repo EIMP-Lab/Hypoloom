@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Windows task principal names](../design/institutional-access-preparation.md#windows-任务账户名称归一2026-10-03):
+  resolve scheduler account names through Windows to the current SID, preserving
+  strict task configuration checks. [Qualification](../qualification.md#windows-task-principal-normalization-2026-10-03)
+  records the supplied short-name mismatch, red regression, 138 related passes
+  and the remaining native Windows verification boundary.
+
 - [Windows script encoding and background windows](../design/institutional-access-preparation.md#windows-下载编码与后台窗口修复2026-10-03):
   byte-preserving SSH transfer and hidden discovery with narrowly compatible
   prior-task updates. [Qualification](../qualification.md#windows-client-byte-transfer-and-hidden-discovery-2026-10-03)

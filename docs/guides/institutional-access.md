@@ -180,6 +180,13 @@ Already updated tasks are not restarted for this change. SSH keys and browser
 profiles are retained; publisher login still uses a visible browser.
 `client_discovery_started` means task startup was requested, not browser readiness.
 
+Windows may report a task principal as a short username while the current session
+uses a computer-qualified name. The connector resolves account names through
+Windows and compares SIDs. If an older entry rejects this with
+`scheduled_task_ownership_mismatch`, rerun the complete Base64 download/Connect
+block to obtain the update; do not rename or delete the task. Different accounts,
+programs or connection arguments are still rejected.
+
 **To start a new init session from Windows**, use the entry below:
 
 Obtain the project entry on Windows once. Use the same SSH target and repository;

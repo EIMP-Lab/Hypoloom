@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 3 Windows task principal repair: supplied client readback identifies a
+  short task username versus the current computer-qualified account name. The
+  connector now resolves names through Windows to the existing current-user SID;
+  removes redundant name matching and retains all action/path/argument checks.
+  A red regression reproduces the old rejection; final related 138 pass, including
+  three same-account forms and 14 ownership/configuration rejection cases with
+  substituted Windows lookup/scheduler APIs. Native client confirmation remains
+  required; no retained-run/auth/profile changes or new identity authority.
+  Continues user-authorized dev repair/push.
+  [Design](../design/institutional-access-preparation.md#windows-任务账户名称归一2026-10-03),
+  [qualification](../qualification.md#windows-task-principal-normalization-2026-10-03).
+  Evidence: `.local/qualification/institutional-task-user-20261003/`.
+
 - October 3 Windows download/window repair: old SSH text capture corrupts UTF-8
   script bytes under real PowerShell CP936/1252. Shared setup now transports ASCII
   Base64 and writes the original bytes before the existing atomic replacement.

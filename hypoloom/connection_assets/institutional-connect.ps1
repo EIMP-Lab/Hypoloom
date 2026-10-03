@@ -254,13 +254,25 @@ function Watch-Runs {
     } finally { foreach ($child in $children.Values) { Stop-Child $child } }
 }
 
-function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$PowerShell, [string]$UserName) {
+function Resolve-AccountSid([string]$Name) {
+    ([Security.Principal.NTAccount]::new($Name)).Translate([Security.Principal.SecurityIdentifier]).Value
+}
+
+function Test-TaskUser([string]$UserId) {
+    if ($UserId -eq $script:userSid) { return $true }
+    # Task Scheduler may return a short name even when registered by SID.
+    # Resolve through Windows, never compare an unqualified username suffix.
+    try { (Resolve-AccountSid $UserId) -eq $script:userSid }
+    catch { $false }
+}
+
+function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$PowerShell) {
     $previousArguments = ($TaskValues | ForEach-Object { Quote-Native $_ }) -join ' '
     $taskArguments = ((@('-WindowStyle', 'Hidden') + $TaskValues) | ForEach-Object { Quote-Native $_ }) -join ' '
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($task -and (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $PowerShell -or
             $task.Actions[0].Arguments -notin @($taskArguments, $previousArguments) -or
-            $task.Principal.UserId -notin @($script:userSid, $UserName))) {
+            -not (Test-TaskUser $task.Principal.UserId))) {
         throw 'scheduled_task_ownership_mismatch'
     }
     if ($Action -in @('Connect', 'Init', 'Install')) {
@@ -329,7 +341,7 @@ function Connector-Main {
         '-Repository', $Repository, '-PythonExecutable', $PythonExecutable, '-RunsRoot', $RunsRoot)
     $powershell = (Get-Process -Id $PID).Path
     if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) {
-        Invoke-ClientTask $taskName $taskValues $powershell ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
+        Invoke-ClientTask $taskName $taskValues $powershell
         return
     }
     if ($Action -eq 'Status') {

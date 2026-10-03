@@ -2,6 +2,32 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows task principal normalization (2026-10-03)
+
+The user's Windows readback shows a Ready task whose principal is a short username,
+while WindowsIdentity reports the current computer-qualified username. Its program
+and old invocation otherwise match the supplied connection. The `c99588e` string
+comparison rejects the short form after successful initial registration by SID.
+The previous fixture returned a SID unchanged and missed this Windows behavior.
+
+The fix uses NTAccount.Translate to compare the task account with the existing
+current-user SID. A raw matching SID still succeeds directly. Lookup errors fail
+closed; another domain's same-named account is not accepted by suffix matching.
+Executable, action count and complete connection arguments retain their checks.
+No identity cache, persistent marker, task deletion or credential change is added.
+
+A real PowerShell fixture first reproduces the old ownership_mismatch. The repaired
+fixture accepts SID/short/qualified forms for the same synthetic identity, upgrades
+an idle prior task without rewriting its principal, and rejects 14 cases covering
+different/unmapped/missing users, another domain's same username, wrong executable,
+changed arguments and extra actions under both supported window forms. Final
+related validation: **138 passed in 36.49 seconds**; whitespace checks pass.
+Evidence: `.local/qualification/institutional-task-user-20261003/red.xml` and
+`focused.xml`. OS account lookup and Task Scheduler APIs are substituted on Linux;
+native Windows account resolution/GUI/SSO still need client confirmation. No new
+full G1, package promotion, paid/GPU or retained-run validation is claimed. Existing
+research state, SSH authorization and browser login data remain unchanged.
+
 ## Windows client byte transfer and hidden discovery (2026-10-03)
 
 The user observed garbled Chinese with literal Write-Output fragments after

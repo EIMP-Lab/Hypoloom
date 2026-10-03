@@ -2,6 +2,24 @@
 
 [English](qualification.md) · 简体中文
 
+## Windows 任务账户名称归一（2026-10-03）
+
+用户实际 Windows 回读显示任务为 Ready，运行账户是短用户名，当前 WindowsIdentity
+返回计算机名限定的用户名；程序和旧连接参数其余部分与提供的入口匹配。`c99588e`
+注册时传 SID，却在回读时按字符串比较名称，因而误拒绝。旧夹具直接回传 SID，
+未覆盖 Windows 的这一真实行为。
+
+修复以 NTAccount.Translate 将名称解析为既有当前用户 SID；原始相同 SID 直接
+通过。解析失败继续拒绝，其他域的同名账户不按名称后缀接纳。程序、动作数量和
+完整参数校验保留，无身份缓存、持久标记、任务删除或认证修改。
+
+真实 PowerShell 夹具首先复现原误判。修复后验证同一合成账户的 SID/短名/完整名、
+空闲旧任务更新且不重写 Principal，以及两种窗口参数形式下的 14 个拒绝场景。
+最终相关 **138 项通过，36.49 秒**；diff 检查通过。证据保留在
+`.local/qualification/institutional-task-user-20261003/`。Linux 侧替代了 Windows
+账户解析和计划任务 API，原生解析、GUI、SSO 仍须客户端确认。无新全套 G1、包晋级、
+付费/GPU 或已有运行验收结论；研究状态、SSH 授权和浏览器登录数据均未修改。
+
 ## Windows 客户端字节传输与隐藏发现任务（2026-10-03）
 
 用户在 client_discovery_started 后看到中文乱码、Write-Output 正文及空白窗口。
