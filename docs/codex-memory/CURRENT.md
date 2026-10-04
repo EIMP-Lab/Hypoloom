@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 4 development workflow change: user now wants acquisition developed
+  and tested independently before Host/init integration; repeated fresh init is
+  no longer the debugging prerequisite. Added repository-only
+  `scripts/probe_literature.py`, reusing production transport/OA/locator/PDF/CDP
+  validators. No model, research run, retained browser or production routing
+  changes. Exact metadata lookup/HTTP-to-HTTPS candidate experiments stay here.
+  Final two-round live catalog: IEEE repository and Springer each 2/2 PDFs;
+  ACM/ScienceDirect each 0/2, total 4/8. Springer keyword search-to-PDF passes.
+  ACM supplied author URL passes separately, not automatic discovery. Earlier
+  OpenAlex timeout, ACM 403, Semantic Scholar 429 and public-search timeout remain
+  evidence. Do not claim all-publisher readiness or merge experimental routing
+  into init merely because unit tests pass. Native synthetic CDP/Poppler checks
+  cover PDF, identity, challenge termination and owned-tab cleanup.
+  Final 117 pass; six saved PDFs independently reread/validated, no research DB.
+  [Evidence](../qualification.md#standalone-literature-acquisition-experiment-2026-10-04):
+  `.local/qualification/standalone-literature-20261004/`.
+
 - October 4 unattended publisher review: user requires automatic search/PDFs,
   not per-paper CAPTCHA intervention. Manual init recovery is not that guarantee.
   Anonymous metadata found all four samples; targeted production downloads and

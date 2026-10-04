@@ -2,6 +2,52 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Standalone literature acquisition experiment (2026-10-04)
+
+The user now prefers independent acquisition development before Host/init
+integration, superseding repeated fresh-init debugging. The repository-only
+`scripts/probe_literature.py` reuses the production transport, OA parser, exact-DOI
+locator, PDF extractor/validator and optional CDP adapter. It creates only a new
+experiment directory, PDFs and an observation report. It does not create a
+research run or change init/Host routing. Exact metadata discovery and HTTPS
+versions of advertised HTTP PDF locations remain experiment-only behavior.
+
+Actual anonymous network checks, without publisher keys or user browser:
+
+| Selection | Result |
+| --- | --- |
+| Four catalog DOIs, final two rounds | IEEE repository 2/2 and Springer publisher 2/2 PDFs; ACM 0/2 and ScienceDirect 0/2; overall 4/8, exit 2 |
+| Keyword query for the Springer sample, one result | Search → DOI → discovered PDF → saved 32-page PDF with matching DOI, exit 0 |
+| ACM DOI with explicit Google Research URL | Saved 15-page PDF with existing first-page title check, labeled `supplied`; not automatic discovery, exit 0 |
+
+ACM automatic discovery reaches its publisher PDF link via Crossref but receives
+HTTP 403. ScienceDirect metadata provides no supported public PDF candidate for
+this sample. Semantic Scholar returns HTTP 429, with no successful fallback.
+A separate bounded public web-search probe timed out; no speculative search
+fallback was integrated. An earlier two-round cohort saved only 3/8 PDFs after
+an OpenAlex timeout removed IEEE's second-round repository discovery; that failure
+is preserved. The final cohort does not establish continuous availability or
+comprehensive publisher coverage. No production XML/HTML result is counted as PDF.
+
+Tests exercise discovery, exact downloaded bytes, actual Poppler extraction,
+wrong-paper rejection, alternate sources, HTTP/total-work bounds, late results,
+repeat-round failure visibility, output preservation and empty/error searches.
+Native Chromium/CDP cases verify exact PDF saving, immediate challenge failure,
+owned-tab cleanup and preservation of the user's original tab. They use synthetic
+publisher responses, not real subscriptions or a Windows client. Broader Host
+archive and init integration acceptance remains pending; this experiment is not
+a new release gate or a substitute for G0–G5.
+
+Final focused, native browser and documentation/Profile selection: **117 passed**.
+Two red cases caught empty queries starting unintended sample/network work; input
+validation now rejects them before output creation. Reopening the six final
+experiment PDFs independently confirmed actual file counts, byte lengths, parsed
+page counts and article identity; no research database was created. Static checks
+and compilation pass. No full G1 or paid/resource qualification is claimed.
+
+Evidence: `.local/qualification/standalone-literature-20261004/`.
+[Usage](guides/institutional-access.md#independent-acquisition-development).
+
 ## Unattended publisher acquisition review (2026-10-04)
 
 Read-only public checks queried Crossref and OpenAlex for the four existing init

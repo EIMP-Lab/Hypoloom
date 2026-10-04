@@ -764,6 +764,42 @@ sink时，Host把`literature_access`事件写入原有`events.jsonl`，包含pro
 
 ## 开发验证
 
+### 独立验证获取能力
+
+开发阶段先使用仓库内的独立入口，不需要 CC 会话或 `/autoresearch init`：
+
+```bash
+python scripts/probe_literature.py --samples --repeat 2 \
+  --output .local/qualification/literature-samples-01
+
+python scripts/probe_literature.py \
+  --query 'Publish or perish but do not forget your software artifacts' \
+  --max-items 1 --output .local/qualification/literature-search-01
+```
+
+在已安装项目依赖与 Poppler 的环境运行。每次选择一个**尚不存在的输出目录**；
+程序保存实际 PDF 和 `report.json`，按 DOI 逐项记录来源、字节数、页数、身份核对
+方式、失败阶段及 HTTP 状态。退出码 0 仅表示本次所选论文全部取得校验通过的
+PDF；部分失败、无结果或只有 HTML 全文均退出 2，不代表整个平台不可访问。
+公开元数据服务的可用性和限流也会影响结果。
+
+`--doi` 可重复提供最多十篇论文；`--seconds-per-paper` 默认 45 秒，
+`--total-seconds` 默认 300 秒。`--samples` 复用既有四平台样本目录，
+`--repeat 2` 会重新执行两轮获取，后续失败不会被首次成功掩盖。
+它复用现有公网下载、PDF 解析、精确 DOI 回退和身份校验，不调用模型、收集登录
+信息或创建科研运行。公开元数据里仅有 HTTP 的 PDF 地址会在实验中尝试其 HTTPS
+形式；这是独立实验行为，尚未接入正式检索流程。
+
+定位下载器问题时，可为单个 `--doi` 增加 `--url` 指定已知公开 PDF 地址；结果会
+标为 `supplied`，**不能把它算作自动发现成功**。已建立本地 CDP 连接时，可显式传
+`--browser-endpoint http://127.0.0.1:端口` 测试现有浏览器适配器。程序只操作自己
+创建的标签，结束时关闭这些标签并断开连接；不会关闭用户浏览器或处理验证码。
+该选项不负责安装 Windows 助手或建立 SSH 连接。不要与同一浏览器的活跃研究操作
+同时执行。
+
+先验收独立检索、下载及连续多篇结果，再接入 Host 文档归档，最后验收 init 交互。
+独立实验通过不代表后两步通过，现有运行不会自动换用实验路径。
+
 没有系统Chrome时，可以使用已安装的Playwright Chromium。Linux开发环境示例：
 
 ```bash

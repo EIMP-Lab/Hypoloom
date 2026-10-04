@@ -934,6 +934,44 @@ Final Agent failures remain visible in TUI/Web after run completion. A per-call
 cost refusal displays `BUDGET LIMIT` and `error_max_budget_usd`; other final
 failures display their code. Adjust frozen limits for a new run, not a retained one.
 
+## Independent acquisition development
+
+Develop and test acquisition before returning to CC/init or research integration:
+
+```bash
+python scripts/probe_literature.py --samples --repeat 2 \
+  --output .local/qualification/literature-samples-01
+
+python scripts/probe_literature.py \
+  --query 'Publish or perish but do not forget your software artifacts' \
+  --max-items 1 --output .local/qualification/literature-search-01
+```
+
+Use the project environment with Poppler. Each output directory must be new.
+The script saves actual PDFs and `report.json`, including source, bytes, pages,
+identity basis, failure stage and HTTP status. Exit 0 means every selected paper
+yielded a validated PDF in this experiment; partial failures, empty search and
+HTML-only results exit 2. It does not qualify a whole publisher or institution.
+Public metadata availability and rate limits can also affect the result.
+
+Repeat `--doi` for up to ten selections. Defaults are 45 seconds per paper and
+300 seconds overall (`--seconds-per-paper`, `--total-seconds`). `--samples` reuses
+the existing four-platform catalog. Repeated rounds fetch again and retain later
+failures. The runner reuses public transport, PDF extraction, the DOI fallback and
+identity validation without model calls, login collection or a research run.
+Trying HTTPS forms of HTTP PDF locations is an experiment-only discovery step;
+production retrieval has not adopted that behavior.
+
+For one DOI, `--url` supplies an explicit candidate to isolate downloading from
+discovery. Such results are labeled `supplied`, not automatic discovery success.
+An explicitly supplied `--browser-endpoint http://127.0.0.1:PORT` tests the existing
+CDP adapter without answering challenges. It creates and closes only its own tabs
+and disconnects afterward, preserving the browser. It does not install a Windows
+helper or create an SSH connection; avoid concurrent research on that browser.
+
+Independent acquisition, actual Host document/archive closure and init interaction
+are separate acceptance steps. Existing runs do not adopt the experiment path.
+
 For browser tests without system Chrome, explicitly install Playwright Chromium
 in the development environment and select its executable:
 

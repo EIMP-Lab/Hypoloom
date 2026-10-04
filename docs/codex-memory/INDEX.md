@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Standalone acquisition first](../qualification.md#standalone-literature-acquisition-experiment-2026-10-04):
+  new operator development preference postpones Host/init integration. Independent
+  DOI/query/CDP experiment reuses existing validators; real four-platform results
+  distinguish automatic discovery, supplied URLs, PDF and unsupported access.
+  [Commands](../guides/institutional-access.md#independent-acquisition-development).
+
 - [Unattended publisher acquisition](../design/institutional-literature-access.md#unattended-publisher-acquisition-review-2026-10-04):
   public search/PDF feasibility, per-paper challenge limits and strict distinction
   between readable text, actual PDF and unattended coverage. Reuses literature's

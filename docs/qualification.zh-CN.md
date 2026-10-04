@@ -2,6 +2,28 @@
 
 [English](qualification.md) · 简体中文
 
+## 独立文献获取实验（2026-10-04）
+
+用户改为先独立开发、测试获取能力，再验收 Host／init 集成。新增仓库开发入口
+`scripts/probe_literature.py`，复用现有下载、候选解析、DOI 回退、PDF 校验及可选
+CDP 适配器；只写新实验目录，没有创建科研运行或修改正式编排。
+
+最终四篇样本连续两轮：IEEE 仓储 PDF 和 Springer 出版社 PDF 各 **2/2**，ACM 和
+ScienceDirect 各 **0/2**，整体 **4/8**，正确退出 2。关键词检索 Springer 样本到
+保存 32 页 PDF 的链路通过。显式提供 ACM 作者副本地址时保存 15 页 PDF，但不算
+自动发现通过。ACM 出版社返回 403；ScienceDirect 缺少可用 PDF 候选，Semantic
+Scholar 回退返回 429。前一轮 OpenAlex 超时导致 IEEE 重复获取失败，保留该记录，
+不能把后来的两次成功推断为持续稳定。公开网页搜索的单次补充探测也超时。
+
+程序回归包括真实 Poppler、错误文献、晚到结果、工作预算、重复失败及目录保护；
+真实 Chromium/CDP 配合合成站点检查 PDF 保存、验证码立即返回及仅关闭自建标签。
+这些结果不代表 Windows、订阅或正式研究归档已验收。后续集成仍待获取能力结果
+支持，不要求用户为此次开发反复 init。
+最终定向、原生浏览器及文档／Profile 检查 **117 项通过**；两个红回归复现空检索词
+意外开始网络获取，已在创建目录前拒绝。另独立重读最终实验的六个 PDF，确认实际
+文件数、字节数、页数及论文身份，无科研数据库。未宣称完整 G1 或付费／资源资格。
+[完整记录](qualification.md#standalone-literature-acquisition-experiment-2026-10-04)。
+
 ## 无人值守文献获取分析（2026-10-04）
 
 四个固定 DOI 的公开 Crossref／OpenAlex 元数据查询均成功。使用实际匿名下载器、

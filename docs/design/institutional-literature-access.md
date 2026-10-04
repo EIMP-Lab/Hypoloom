@@ -94,6 +94,31 @@ URL and an entitled article.
 
 ## Unattended publisher acquisition review (2026-10-04)
 
+The operator subsequently changed the development sequence: isolate acquisition
+development and tests before returning to init or full research integration. The
+repository-only `scripts/probe_literature.py` is the independent experiment entry.
+It runs without a model, preparation batch or research database, using existing
+GroundingWeb, OA location parsing, Semantic Scholar DOI lookup, optional browser
+adapter, Poppler and `validate_document`. Exact DOI metadata discovery and HTTPS
+forms of advertised HTTP PDF locations are exercised in the script only. Missing
+OpenAlex PDF candidates also permit exact-DOI Crossref PDF links. No production
+Host routing or init instructions are changed by this experiment.
+
+Inputs are existing catalog samples, explicit DOIs or a bounded public OpenAlex
+keyword search. A supplied URL is labeled separately from discovery. The new
+output directory holds ordinary experiment PDFs and a JSON observation report;
+it has no admission, recovery or release authority. No schema, digest, access
+registry or new research state is added. Repeated rounds preserve both success
+and failure. Existing PDF/identity validation controls success; HTML/XML, empty
+searches and challenge pages cannot pass the PDF check. Request counts and
+existing call deadlines bound the work; explicit CDP checks do not prompt, solve
+challenges or navigate user-owned tabs. Browser/helper setup remains separate.
+
+Acceptance proceeds through independent acquisition, actual Host document/source
+closure, and finally init orchestration. A real site's restriction is a recorded
+availability gap, not a reason to relax the validator or claim the whole platform
+works. Broader integration remains pending until those results justify it.
+
 The requested outcome is setup-time authentication followed by automatic search
 and PDF retrieval, without per-paper CAPTCHA interaction. The normal background
 queue already ends authentication/challenge requests as unavailable and shares
