@@ -342,7 +342,11 @@ class InstitutionalAccess:
                 return {"status": "unavailable", "reason": "institutional_access_closed"}
             if key not in self._items:
                 if len(self._items) >= MAX_REQUESTS:
-                    evict = next((k for k, p in self._items.items() if not self._pending(p)), None)
+                    finished = [(k, p) for k, p in self._items.items() if not self._pending(p)]
+                    # Keep verified bytes ahead of cheap failures/preferences;
+                    # all entries still obey the existing count/byte bounds.
+                    evict = next((k for k, p in finished if p.document is None),
+                                 finished[0][0] if finished else None)
                     if evict is None:
                         return {"status": "unavailable", "reason": "institutional_request_limit"}
                     del self._items[evict]
@@ -357,15 +361,46 @@ class InstitutionalAccess:
                 reason = "manual_import_available" if not automatic and state == "failed" else "requested" if state == "queued" else state
                 self._transition(self._items[key], state, reason, initial=True)
             item = self._items[key]
+            self._reuse_available(item)
             return self._reply(item)
+
+    def _reuse_available(self, item):
+        if item.state != "queued" or item.preparation or item.import_path or item.force:
+            return
+        source = next((other for other in self._items.values()
+            if other is not item and other.scope[0] == item.scope[0] and other.url == item.url
+            and other.document is not None and not other.preparation and not other.import_path), None)
+        if source is None:
+            return
+        # A new expert must explicitly request the URL and pass its own identity
+        # check. Only acquisition bytes are reused; source refs/archives stay owned
+        # by each requesting Attempt. Nothing crosses runs or manual-import scopes.
+        try:
+            document = validate_document(source.document, title=item.title, identity=item.identity)
+        except ValueError:
+            self._transition(item, "identity_unconfirmed", "document_validation_failed")
+            return
+        if self._cache_size(document) > MAX_CACHE_BYTES:
+            self._transition(item, "failed", "cache_limit")
+            return
+        item.document = document
+        item.last_checked_at = source.last_checked_at
+        self._transition(item, "available", "document_verified")
+
+    def _cache_size(self, document):
+        documents = [p.document for p in self._items.values() if p.document is not None]
+        if document is not None:
+            documents.append(document)
+        return sum(len(d["content"]) + sum(len(t.encode()) for t in d["pages"]) for d in documents)
 
     def _reply(self, item):
         if item.document is not None:
             return dict(item.document)
         return {"status": "pending" if self._pending(item) else "unavailable",
                 "reason": item.state, "reason_code": item.reason_code, "provider": item.provider, "requested_url": item.url,
-                "next_action": "Continue other papers. The operator can use i in the TUI. "
-                    "Later repeat web_fetch with mode=document and this URL; do not repeatedly poll or infer full-text claims."}
+                "remaining_seconds": max(0, item.deadline - self.clock()) if self._pending(item) else None,
+                "next_action": "Document tools wait automatically within this acquisition deadline. "
+                    "If unavailable, continue other sources; do not repeatedly poll, request operator action or infer full-text claims."}
 
     def peek(self, scope, url):
         with self._lock:
@@ -544,10 +579,7 @@ class InstitutionalAccess:
                 state, document, reason = future.result()
                 if self._items.get(key) is acquired and acquired.state == "checking":
                     item = self._items[key]
-                    cache_size = sum(len(p.document["content"]) + sum(len(t.encode()) for t in p.document["pages"])
-                                     for p in self._items.values() if p.document is not None)
-                    size = 0 if document is None else len(document["content"]) + sum(len(t.encode()) for t in document["pages"])
-                    if cache_size + size > MAX_CACHE_BYTES:
+                    if self._cache_size(document) > MAX_CACHE_BYTES:
                         state, document, reason = "failed", None, "cache_limit"
                     if item.preparation and state == "available":
                         from .document_fallback import public_url
@@ -579,6 +611,7 @@ class InstitutionalAccess:
             # One waiting publisher tab at a time; never navigate away from an unfinished login.
             waiting = {p.provider: p for p in self._items.values() if p.state in AUTH_WAIT_STATES and self._pending(p)}
             for key, item in sorted(self._items.items(), key=lambda pair: (pair[1].next_check, pair[1].deadline)):
+                self._reuse_available(item)
                 if not self._pending(item) or item.state == "checking" or item.next_check > self.clock():
                     continue
                 if not item.import_path and self._connection_retry > self.clock():

@@ -68,7 +68,7 @@ def publisher_table(status):
     table = Table(box=box.SIMPLE, expand=True, padding=(0, 1), pad_edge=False)
     table.add_column("出版社", min_width=6)
     table.add_column("访问策略", min_width=8)
-    table.add_column("进行/就绪/缺口", min_width=12)
+    table.add_column("当前进行/就绪/缺口", min_width=12)
     table.add_column("最近观察", ratio=2, overflow="fold")
     access = status.get("literature_access") or {}
     if not access.get("enabled"):
@@ -99,6 +99,10 @@ def publisher_table(status):
         else:
             recent = "尚无机构请求"
         mode = {"auto": "公开＋机构", "public_only": "仅公开"}.get(group.get("mode"), "策略未知")
+        history = access.get("history") or {}
+        if history.get("state") == "observed":
+            count = history.get("document_verified", {}).get(group["provider"], 0)
+            recent += f"；日志内验证 {count} 次" if count else "；日志内未见验证"
         table.add_row(Text(group["provider"]), Text(mode), Text(f"{pending} / {ready} / {gaps}"), Text(recent))
     return table
 
@@ -126,7 +130,8 @@ class LiteratureAccessScreen(ModalScreen):
                 yield Static("", markup=False, id="literature-connection")
                 yield Static("", id="literature-publishers")
                 yield Static("策略表示当前运行允许的访问途径，不代表登录成功或整个平台有订阅权限。\n"
-                    "数量仅包含当前机构请求队列；公开获取与历史下载不在此计数。缺口不阻止其他研究工作。",
+                    "进行/就绪/缺口仅计当前队列，缓存为零不代表从未成功。日志验证仅来自最近最多 1 MiB 的已有记录；"
+                    "未显示时历史未知，且不等同于 PDF 已归档或已阅读。缺口不阻止其他研究工作。",
                     markup=False, id="literature-scope")
             with Horizontal(id="literature-access-footer"):
                 yield Button("Close", id="literature-close", variant="primary")

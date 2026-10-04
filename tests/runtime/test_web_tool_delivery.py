@@ -22,6 +22,30 @@ from test_host_tools_server import _finish
 URL = "https://example.org/slow-source"
 
 
+@pytest.mark.parametrize('delivered', [False, True])
+def test_download_trace_does_not_change_native_delivery_identity(delivered):
+    from hypoloom.grounding_background import delivered_web_metadata
+    record = {'tool': 'web_fetch', 'arguments': {'mode': 'document', 'url': URL},
+        'status': 'success', 'result': {'status': 'available', 'url': URL, 'source_ref': 'owned-source'}}
+    host = {**record, 'literature_download_trace': [{'events': [{'stage': 'fallback_lookup'}]}]}
+    result = delivered_web_metadata([host], [record] if delivered else [])
+    assert result[0]['status'] == ('success' if delivered else 'error')
+    assert result[0]['literature_download_trace'] == host['literature_download_trace']
+    if not delivered:
+        assert result[0]['error']['code'] == 'response_not_observed'
+
+
+def test_internal_document_waits_keep_diagnostics_under_the_actual_native_call():
+    from hypoloom.grounding_background import delivered_web_metadata
+    call = {'tool': 'web_fetch', 'arguments': {'mode': 'document', 'url': URL}, 'status': 'success'}
+    pending = {**call, 'result': {'status': 'pending', 'remaining_seconds': 10},
+        'literature_download_trace': [{'events': [{'stage': 'fallback_lookup'}]}]}
+    final = {**call, 'result': {'status': 'available', 'url': URL, 'source_ref': 'owned-source'}}
+    assert delivered_web_metadata([pending, final], [final]) == [
+        {**final, 'literature_download_trace': pending['literature_download_trace']}]
+    assert delivered_web_metadata([pending], []) == []
+
+
 def test_expired_queued_web_call_never_starts_read_or_records_success(tmp_path):
     reads = []
     class Web:

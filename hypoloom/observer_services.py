@@ -86,6 +86,7 @@ class ObserverServices:
         error = self._reported.get(f"{run_id}/notification")
         return {"state": "unavailable" if self._closed else "error" if error else "observed" if notifier else "unverified",
                 "error": error,
+                "local_log_path": str(notifier.log_path) if notifier is not None and notifier.log_path is not None else None,
                 "sinks": {} if notifier is None else notifier.health()}
 
     def notification_retry(self, run_id, sink):

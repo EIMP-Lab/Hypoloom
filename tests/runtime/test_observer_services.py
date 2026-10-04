@@ -42,6 +42,7 @@ def test_live_literature_transitions_reuse_local_log_without_research_writes_or_
              runs=("notifications",))
         service.poll_once()
         log = service.output_root / "notifications/events.jsonl"
+        assert service.notification_status("notifications")["local_log_path"] == str(log)
         records = [json.loads(line) for line in log.read_text().splitlines()]
         events = [e for e in records if e["type"] == "literature_access"]
         assert [e["payload"]["to"] for e in events] == ["queued", "checking", "login_required"]

@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- October 4 demand-driven institutional repair: IEEE JavaScript PDF controls
+  expose an ignored metadata viewer; reuse article-number/origin and document
+  validators. Remove missing-packet-PDF browser prefetch. Explicit same-run URL
+  requests reuse validated automatic bytes within existing cache bounds, keeping
+  separate source ownership and excluding manual imports. MCP waits within the
+  existing deadline and delivers the document in one model call; internal polls
+  collapse under native transcript delivery with diagnostics preserved. No new
+  observation status or weaker Oracle. TUI optionally projects existing log
+  verification separately from current cache, never PDF/archive/read totals.
+  Final 402 distinct tests pass, five optional SSH/runtime-browser cases skipped;
+  two native CC/Host/three-reader/CPU closures independently pass with 18 Agent
+  + one Process each, one delivered web call, no human controls or live residue.
+  Wheel/install/fresh bundle match 175 files. No retained run/client/browser
+  changes; user manually closed the research run. New init uses the repair.
+  [Design](../design/institutional-literature-access.md#demand-driven-acquisition-and-delivery-repair--2026-10-04)
+  and [qualification](../qualification.md#demand-driven-institutional-acquisition-2026-10-04):
+  `.local/qualification/institutional-demand-20261004/`.
+
 - October 4 read-only institutional TUI: user wants brief publisher support/work
   observations, without manual PDF import or other actions. The i panel now shows
   Host-reported auto/public-only routes, bounded queue pending/ready/gap counts

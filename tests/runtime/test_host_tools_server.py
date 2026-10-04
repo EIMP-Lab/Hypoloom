@@ -190,6 +190,35 @@ def test_wait_holds_dispatch_block_without_model_turns_or_fabricated_completion(
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("outcome", ["available", "verification_required", "deadline", "legacy", "batch"])
+def test_document_wait_uses_existing_deadline_without_model_polling(monkeypatch, outcome):
+    now, sleeps, calls = [0.0], [], []
+    def sleep(seconds):
+        now[0] += seconds
+        sleeps.append(seconds)
+    def query(_socket, tool, arguments, **kwargs):
+        calls.append(now[0])
+        if outcome == "available" and now[0] >= .3:
+            return {"status": "available", "source_ref": "owned:paper"}
+        if outcome == "verification_required" and now[0] >= .3:
+            return {"status": "unavailable", "reason": outcome}
+        if outcome == "legacy": return {"status": "pending"}
+        # A repeated full window must not extend the first observed deadline.
+        result = {"status": "pending", "remaining_seconds": .7}
+        return {"documents": [{"status": "available", "source_ref": "owned:paper"}, result]} if outcome == "batch" else result
+    monkeypatch.setattr(host_tools_server, "time", SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
+    monkeypatch.setattr(host_tools_server, "_call_host", query)
+    result = call_tool("unused.sock", "web_fetch", {"mode": "document", "url": "https://doi.org/10.1109/example"})
+    if outcome in {"deadline", "batch"}:
+        assert now[0] == pytest.approx(.7)
+        assert result.get("status") != "available"
+    elif outcome == "legacy":
+        assert len(calls) == 1 and not sleeps
+    else:
+        assert now[0] == pytest.approx(.3)
+        assert result["status"] == ("available" if outcome == "available" else "unavailable")
+
+
 def test_reader_capacity_block_still_returns_for_parent_serial_reading(monkeypatch):
     result = {"status": "blocked", "terminal": False, "reason": "agent_capacity"}
     monkeypatch.setattr(host_tools_server, "_call_host", lambda *args: result)

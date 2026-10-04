@@ -127,6 +127,10 @@ def test_observer_snapshot_default_timeout_tolerates_busy_host_tick(
     _create_run(state_root, run_id)
     offline = build_monitor_snapshot(state_root, run_id)
     live = dict(offline.status)
+    log = state_root / "existing-events.jsonl"
+    log.write_text(json.dumps({"run_id": run_id, "type": "literature_access",
+        "payload": {"provider": "IEEE", "to": "available", "reason_code": "document_verified"}}) + "\n")
+    live.update(literature_access={"enabled": True, "groups": []}, notifications={"local_log_path": str(log)})
     live.update({
         "quiescent_for_backup": False,
         "agent_usage": {"observed_lower_bound": {"tokens": 7, "turns": 1}},
@@ -154,6 +158,7 @@ def test_observer_snapshot_default_timeout_tolerates_busy_host_tick(
     assert snapshot.status_source == "offline-state-store+resident-host-status"
     assert snapshot.overview["host_observation"]["availability"] == "responded"
     assert snapshot.status["agent_usage"] == live["agent_usage"]
+    assert snapshot.status["literature_access"]["history"]["document_verified"] == {"IEEE": 1}
 
 
 def test_observer_snapshot_default_timeout_preserves_offline_view_when_host_is_silent(

@@ -336,24 +336,9 @@ def prepare_sources(host, workspace, retrieval=None) -> None:
                 else: papers.copy_from(found, source_workspace.root, live=True)
     papers._index()
 
-    access = getattr(host, "institutional_access", None)
-    if access is not None:
-        from .institutional_access import publisher, scope_for
-        from .literature import LiteraturePacket
-        rejected = rejected_packet_sources(host, workspace.request)
-        for item in workspace.request.input_artifacts:
-            if not item.ref.endswith("--literature-packet"):
-                continue
-            for paper in LiteraturePacket.from_bytes(item.content_bytes()).papers:
-                if paper.pdf_trace is not None:
-                    continue
-                url = next((u for u in (paper.landing_uri, paper.source_uri) if publisher(u)), None)
-                api = getattr(getattr(host, "literature_io", None), "article_api", None)
-                if api is not None and url and api.handles(url, paper.bibliographic_identity):
-                    continue
-                if url and not _source_rejected(url, rejected):
-                    access.request(scope_for(workspace.request), url,
-                                   title=paper.title, identity=paper.bibliographic_identity)
+    # Missing packet PDFs are metadata, not requests to browse every candidate.
+    # web_fetch selects sources, tries public copies, then acquires institutional
+    # bytes through the same tool completion and ordinary archive admission.
 
 
 def reconcile_sources(host) -> None:

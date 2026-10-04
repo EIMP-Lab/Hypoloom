@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Demand-driven institutional acquisition](../design/institutional-literature-access.md#demand-driven-acquisition-and-delivery-repair--2026-10-04):
+  selected-source scheduling, strict IEEE viewer discovery, same-run byte reuse,
+  bounded single-call delivery and existing-log TUI observations. Native archive,
+  Oracle, reader/CPU closure and installation evidence in
+  [qualification](../qualification.md#demand-driven-institutional-acquisition-2026-10-04).
+
 - [Read-only institutional TUI](../design/institutional-access-preparation.md#tui-只读机构状态2026-10-04):
   current user direction replaces TUI manual actions with publisher policies and
   brief Host queue observations; no new probes or persistent counters.

@@ -834,15 +834,27 @@ institutional pending/ready/gap counts and latest observations. Public-only supp
 automatic institutional browsing. No institutional requests does not mean public
 retrieval failed, and ready full text does not prove an Agent read it or obtained PDF.
 Counts cover the current bounded queue, not historical totals or public downloads.
+Where the Host exposes its existing local notification log, recent observations
+also show successful document-validation events from its last 1 MiB. These are
+best-effort events, not unique PDF downloads, archived sources or evidence of reading.
+An empty cache does not erase past successes; absent log observations mean unknown.
 Client endpoint presence is not browser readiness. Missing Host observations show
 unknown, separately from explicitly disabled access. **Close** or **Esc** returns;
 the panel requests no files, login, retry decisions or state changes.
 
-The Agent subsequently consumes ready documents through
-`web_fetch(mode="document", url=...)`, admitting exact originals and extracted
+Browser acquisition starts only for explicitly selected tool requests, after
+public/OA retrieval. Merely receiving a metadata packet does not queue all missing
+PDFs. `web_fetch` waits in the tool process within the existing acquisition
+deadline, without extra model calls or blocking the Host. A successful
+`web_fetch(mode="document", url=...)` admits exact originals and extracted
 text through the existing `/papers` workspace and archive. Downloading does not
 rewrite finished research conclusions. Denial, missing full text and uncertain
 identity stop automatic retries and remain explicit evidence gaps.
+The bounded in-memory cache can reuse automatically acquired bytes for the same
+URL explicitly requested by another expert in this run. Each selection must pass
+its own identity check; source references and archives remain separately owned.
+Manual imports and other runs are excluded. Nothing assumes a continuing login,
+subscription or successful CAPTCHA resolution.
 
 For optional manual intervention, start a separate Web observer with
 `--allow-literature-control` and use its operator link. Plain read links cannot

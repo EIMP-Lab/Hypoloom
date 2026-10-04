@@ -31,7 +31,8 @@ def windows_browser_command(port):
 
 _INSPECT = r"""() => {
   const meta = name => document.querySelector(`meta[name="${name}"]`)?.content || '';
-  const ieeeDoi = location.hostname === 'ieeexplore.ieee.org' ? window.xplGlobal?.document?.metadata?.doi : '';
+  const ieee = location.hostname === 'ieeexplore.ieee.org' ? window.xplGlobal?.document?.metadata : null;
+  const ieeeDoi = ieee?.doi;
   const body = (document.body?.innerText || '').slice(0, 120000);
   const network_error = document.querySelector('#main-frame-error .error-code')?.textContent?.trim() || '';
   const main = document.querySelector('.c-article-body, .article-sections, .article-body, #body, #bodymatter, article');
@@ -54,7 +55,8 @@ _INSPECT = r"""() => {
   const redirecting = /^\s*redirecting[.\s…]*$/i.test(document.title)
       || /^\s*redirecting[.\s…]*$/i.test(body);
   return {title: meta('citation_title') || document.title, doi: meta('citation_doi') || meta('dc.Identifier') || (typeof ieeeDoi === 'string' ? ieeeDoi : ''),
-    pdf, login, verification, denied, paywall, full, network_error,
+    pdf, ieee_pdf: typeof ieee?.pdfUrl === 'string' ? ieee.pdfUrl : '',
+    login, verification, denied, paywall, full, network_error,
     loading: document.readyState === 'loading', content_type: document.contentType,
     redirecting, text: full ? mainText : ''};
 }"""
@@ -536,7 +538,8 @@ class PlaywrightInstitutionalBrowser:
                         # These publishers render PDF controls after DOMContentLoaded.
                         # An initial abstract with DOI metadata is not yet a missing-PDF verdict.
                         if (provider not in {"ScienceDirect", "IEEE"} or attempt == 16
-                                or any(info[key] for key in ("pdf", "full", "denied", "paywall"))):
+                                or any(info[key] for key in ("pdf", "full", "denied", "paywall"))
+                                or info.get("ieee_pdf")):
                             return info, None
                 if attempt < 16:
                     self._wait(page)
@@ -595,6 +598,13 @@ class PlaywrightInstitutionalBrowser:
         if info["denied"]:
             return {"state": "access_denied"}
         pdf_url = urljoin(current, info["pdf"]) if info["pdf"] else (url if urlsplit(url).path.endswith(".pdf") else "")
+        if not pdf_url and provider == "IEEE" and info.get("ieee_pdf"):
+            # IEEE's visible PDF control may be javascript:void() rather than a
+            # link. Bind its metadata viewer to this article before fetching it;
+            # the downloaded document still passes the ordinary DOI validator.
+            pdf_url = urljoin(current, info["ieee_pdf"])
+            if not _ieee_pdf_url(current, pdf_url, viewer=True):
+                return {"state": "identity_unconfirmed", "reason": "pdf_target_unconfirmed"}
         pdf_error = None
         if pdf_url and urlsplit(pdf_url).scheme == "https":
             try:

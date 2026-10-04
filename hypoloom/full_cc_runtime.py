@@ -345,8 +345,8 @@ def full_cc_instruction(request: AgentRequest) -> str:
         + ("/papers/INDEX.md lists retained exact originals and physical-page text. Use Read/Grep for selected methods, "
            "assumptions or experimental details. Available text is not proof of understanding; cite source_ref and page. "
            "Document access tries public/OA sources before an existing institutional browser session. "
-           "Pending means bounded active work or an operator-opened login window; continue independent papers, "
-           "then check selected sources before synthesis without busy-polling. Unavailable/skipped sources are "
+           "A selected document call waits automatically within its acquisition deadline and returns a readable source or a gap. "
+           "A remaining pending result is not evidence; continue independent sources without repeated polling or requesting operator action. Unavailable/skipped sources are "
            "evidence gaps: use permitted academic search for alternatives and state any changed source/version. "
            "Never request passwords, wait indefinitely for login, infer a source was read, or treat an OA copy as the publisher final version. "
            if request.schema_version >= 20 else "")

@@ -510,7 +510,8 @@ def test_server_profile_retains_persistent_login_after_browser_restart(tmp_path)
 
 
 @pytest.mark.parametrize('entry', ['article', 'doi'])
-def test_ieee_late_controls_and_pdf_viewer_deliver_exact_document(browser, entry):
+@pytest.mark.parametrize('control', ['anchor', 'metadata'])
+def test_ieee_late_controls_and_pdf_viewer_deliver_exact_document(browser, entry, control):
     import json
     adapter, context = browser
     doi = '10.1109/TBC.2025.3565888'
@@ -528,6 +529,11 @@ def test_ieee_late_controls_and_pdf_viewer_deliver_exact_document(browser, entry
             # IEEE renders controls/metadata after the initial abstract shell.
             script = ('window.xplGlobal={document:{metadata:{doi:' + json.dumps(doi) + '}}};'
                 'const a=document.createElement("a");a.href=' + json.dumps(viewer) + ';document.body.append(a);')
+            if control == 'metadata':
+                script = ('window.xplGlobal={document:{metadata:{doi:' + json.dumps(doi)
+                    + ',pdfUrl:' + json.dumps(viewer) + '}}};'
+                    'const a=document.createElement("a");a.href="javascript:void(0)";'
+                    'a.textContent="PDF";document.body.append(a);')
             route.fulfill(status=200, content_type='text/html', body=
                 '<title>Controlled article</title><p>Abstract</p><script>setTimeout(()=>{' + script + '},800)</script>')
     context.route('**/*', respond)
@@ -583,3 +589,24 @@ def test_ieee_pdf_viewer_preserves_identity_and_operator_verification(browser, m
     else:
         assert result == {'state': 'identity_unconfirmed', 'reason':
             'document_validation_failed' if mode == 'wrong_doi' else 'pdf_target_unconfirmed'}
+
+
+@pytest.mark.parametrize('viewer', [
+    'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=99999999',
+    'https://unrelated.example/stamp/stamp.jsp?arnumber=11006507',
+    'javascript:void(0)',
+    'https://user:secret@ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11006507',
+])
+def test_ieee_metadata_viewer_is_bound_before_any_download(browser, viewer):
+    import json
+    adapter, context = browser
+    selected = 'https://ieeexplore.ieee.org/document/11006507'
+    requested = []
+    def respond(route):
+        requested.append(route.request.url)
+        route.fulfill(status=200, content_type='text/html', body='<script>window.xplGlobal='
+            + json.dumps({'document': {'metadata': {'doi': '10.1109/example', 'pdfUrl': viewer}}})
+            + '</script><a href="javascript:void(0)">PDF</a>')
+    context.route('**/*', respond)
+    assert adapter.fetch(selected) == {'state': 'identity_unconfirmed', 'reason': 'pdf_target_unconfirmed'}
+    assert requested == [selected]

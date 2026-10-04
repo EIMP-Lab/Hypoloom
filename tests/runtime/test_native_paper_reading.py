@@ -129,8 +129,8 @@ class ReadingScenario(_FinalReportHostScenario):
 @pytest.mark.parametrize("end_run,batch_documents,correct_errors,institutional_oa", [
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
     (False, False, True, False), (False, False, False, True), (False, False, False, "metadata"),
-    (False, False, False, "preparation-failure")],
-    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure"])
+    (False, False, False, "preparation-failure"), (False, False, False, "browser")],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser"])
 def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
     if institutional_oa:
         import sys
@@ -151,6 +151,14 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         from test_institutional_access import Backend
         from test_institutional_browser import _pdf
         backend, metadata = Backend(), Metadata()
+        if institutional_oa == "browser":
+            def fetch(url, **kwargs):
+                backend.calls.append(url)
+                return {"state": "available", "document": {"content": _pdf(DOI + " " + scenario.nonce),
+                    "pages": (DOI + " " + scenario.nonce,), "media_type": "application/pdf",
+                    "url": DOC + ".pdf", "requested_url": url, "identity": "doi:" + DOI,
+                    "title": "Original method for independent reading"}}
+            backend.fetch = fetch
         modes = {}
         if institutional_oa == 'preparation-failure':
             from hypoloom.cli import build_parser
@@ -184,7 +192,8 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             lookup: _response(lookup, json.dumps(work).encode(), media_type="application/json",
                               status_code=200 if institutional_oa in {"metadata", "preparation-failure"} else 404),
             crossref: _response(crossref, b"Not found", status_code=404),
-            OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf")}))
+            OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf",
+                          status_code=403 if institutional_oa == "browser" else 200)}))
     run_id = "native-paper-reading"
     max_readers = 0; stopped = False
     try:
@@ -199,7 +208,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         created = host.handle(ControlRequest(schema_version=1, request_id="create-reading", expected_revision=0,
             command="CREATE_RUN", payload=payload))
         assert created.status == "accepted", created
-        if institutional_oa and institutional_oa != 'preparation-failure':
+        if institutional_oa and institutional_oa not in {'preparation-failure', 'browser'}:
             choice = host.handle(ControlRequest(1, "native-public-only", created.revision, "LITERATURE_ACCESS",
                 {"run_id": run_id, "provider": "Nature", "action": "mode", "mode": "public_only"}))
             assert choice.status == "accepted", choice
@@ -222,11 +231,13 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         assert max_readers == 3
         if not end_run: assert len(scenario.readers) == 3
         if institutional_oa:
-            assert not backend.calls
+            assert backend.calls == ([DOC] if institutional_oa == "browser" else [])
             assert len(metadata.calls) == (0 if institutional_oa in {"metadata", "preparation-failure"} else 1)
-            assert all(source["url"] == OA for sources in scenario.sources.values() for source in sources)
-            assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
-            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if institutional_oa == 'preparation-failure' else 1)
+            assert all(source["url"] == (DOC + ".pdf" if institutional_oa == "browser" else OA)
+                       for sources in scenario.sources.values() for source in sources)
+            if institutional_oa != "browser":
+                assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
+            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if institutional_oa in {'preparation-failure', 'browser'} else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
         if not end_run: assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts)

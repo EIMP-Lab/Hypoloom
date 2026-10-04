@@ -31,8 +31,8 @@ Browser state validity remains subject to institutional policy and network acces
 The existing Host owns acquisition and the existing web document tool owns
 source admission. A bounded, disposable queue/cache holds pending acquisition
 work; no new SQL table, workflow state, SQL schema version, receipt or paper registry
-is needed. Requests derive from frozen LiteraturePackets and actual web tool
-requests. Complete bytes enter the existing PaperWorkspace and Agent archive
+is needed. Requests derive from actual web tool selections, with identities from
+frozen LiteraturePackets where available. Complete bytes enter the existing PaperWorkspace and Agent archive
 only through a successful document tool call, with ordinary source references.
 Available bytes are not evidence of reading. Finished requests/reports are not
 rewritten when a login later succeeds.
@@ -40,8 +40,8 @@ rewritten when a login later succeeds.
 One browser worker serializes access. Background authentication requests finish
 unavailable; explicit operator login/check opens a finite publisher window, polled
 without repeated navigation. These requests never block the Host or
-ordinary research dispatch. A TUI screen shows the whole pending group and can
-focus its browser tab or request another bounded attempt. The Web observer
+ordinary research dispatch. The TUI observes publisher routes and current work
+without issuing controls. The Web observer
 shows the same group in its Workbench and permits the same open/retry/import
 actions only with a separately granted operator literature link; read links
 stay read-only, and the panel never collects credentials. STOPPING/terminal runs
@@ -272,3 +272,45 @@ Primary protocol sources: [authentication](https://dev.elsevier.com/tecdoc_api_a
 [FULL versus metadata](https://dev.elsevier.com/tecdoc_text_mining.html).
 The public official XML example was inspected for response/body namespaces;
 it does not verify the user's key, server IP or institutional subscription.
+
+## Demand-driven acquisition and delivery repair — 2026-10-04
+
+Read-only inspection of the October 4 research run found 49 IEEE queue requests
+for 25 URLs, including 15 queue timeouts. Four earlier `document_verified`
+events existed even when the current cache showed zero available documents;
+those events did not establish PDF media, Agent receipt or archived sources.
+Two existing IEEE article tabs exposed a JavaScript PDF control and
+`xplGlobal.document.metadata.pdfUrl`, which the adapter ignored. A synthetic
+Chromium reproduction returned `no_full_text` before the repair.
+
+Reuse existing authorities and validators:
+
+- Metadata packets supply identities and publicly retrieved originals, without
+  scheduling browser work for every missing PDF. Explicit tool selections start
+  the existing public/OA/browser path.
+- IEEE metadata supplies a viewer candidate only when its origin and article
+  number match the selected article. Existing PDF-byte, readable-text and DOI
+  checks still decide admission; wrong targets and challenges remain failures.
+- Same-run explicit requests for the same URL may reuse automatically acquired
+  cached bytes after validating the requesting paper's identity. No cross-run,
+  preparation or manual-import sharing; each Attempt retains its own references
+  and archive. Both existing cache limits still apply. Eviction prefers finished
+  failures over verified documents, without guaranteeing permanent retention.
+- The existing MCP wait loop handles pending `web_fetch` results inside one
+  native tool call. It reads the Host's remaining acquisition deadline; later
+  observations cannot extend the initial wait. Ordinary retrieval returns
+  immediately, and old Hosts without this field keep their existing behavior.
+  The Host remains responsive, and failed authentication/challenges return gaps.
+- Native transcript pairing still determines actual delivery. Host-only download
+  diagnostics do not change response identity; intermediate internal pending
+  observations are collapsed into the delivered call, retaining lookup diagnostics.
+  An unobserved available response remains an error.
+- The observer optionally reads the last 1 MiB of the Host's existing local
+  notification log outside the Host thread. TUI labels distinguish current
+  queue/cache counts from logged validation events. Logs are best effort, may be
+  incomplete and do not establish PDF download, unique papers, archives or reads.
+
+No new ledger, durable counter, schema, digest or authority is introduced.
+Existing research runs, client helpers and browser sessions are not modified.
+Qualification and boundaries are recorded in
+[the validation report](../qualification.md#demand-driven-institutional-acquisition-2026-10-04).

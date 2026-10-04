@@ -49,6 +49,15 @@ def test_summary_separates_configured_paths_current_work_and_sample_readability(
     assert status == original
 
 
+def test_empty_cache_does_not_erase_logged_verification():
+    status = observation()
+    status['literature_access']['groups'][0]['papers'] = []
+    status['literature_access']['history'] = {'state': 'observed', 'document_verified': {'IEEE': 4}}
+    text = plain(publisher_table(status), width=130)
+    assert '0 / 0 / 0' in text and '日志内验证 4 次' in text
+    assert '日志内未见验证' in text and 'PDF' not in text
+
+
 @pytest.mark.parametrize('access,expected', [(None, '状态未知'), ({}, '状态未知'),
     ({'enabled': False, 'groups': []}, '未启用机构浏览器')])
 def test_missing_host_observation_is_not_disabled_or_connected(access, expected):

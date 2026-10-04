@@ -9,6 +9,8 @@ import base64
 import binascii
 import json
 import math
+import os
+import stat
 from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -18,6 +20,39 @@ from pathlib import Path
 from typing import Any
 
 _TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
+
+
+def institutional_history(log_path, run_id, *, max_bytes=1024 * 1024):
+    """Bounded read of existing best-effort events, never a download ledger."""
+    unknown = {"state": "unknown", "document_verified": {}}
+    if not isinstance(log_path, str) or not Path(log_path).is_absolute():
+        return unknown
+    try:
+        descriptor = os.open(log_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                return unknown
+            start = max(0, info.st_size - max_bytes)
+            handle.seek(start)
+            data = handle.read(max_bytes)
+        if start:
+            data = data.partition(b"\n")[2]
+        counts = Counter()
+        for line in data.splitlines():
+            try:
+                event = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue
+            if not isinstance(event, dict) or event.get("run_id") != run_id or event.get("type") != "literature_access":
+                continue
+            payload = event.get("payload")
+            if (isinstance(payload, dict) and payload.get("to") == "available"
+                    and payload.get("reason_code") == "document_verified" and isinstance(payload.get("provider"), str)):
+                counts[payload["provider"]] += 1
+        return {"state": "observed", "tail_only": bool(start), "document_verified": dict(counts)}
+    except (OSError, ValueError):
+        return unknown
 
 
 def _payload(row):

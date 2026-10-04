@@ -187,11 +187,27 @@ def delivered_web_metadata(records: Sequence[Mapping[str, Any]],
     """Retain retrieval diagnostics, but only paired native results are success."""
     remaining = list(native)
     result = []
+    waiting = []
     for record in records:
         item = dict(record)
         if item.get("status") == "success":
-            if item in remaining:
-                remaining.remove(item)
+            delivered = {key: item[key] for key in ("tool", "arguments", "status", "result") if key in item}
+            if delivered in remaining:
+                remaining.remove(delivered)
+                prior = [pending for pending in waiting if pending["arguments"] == item["arguments"]]
+                traces = [trace for pending in prior for trace in pending.get("literature_download_trace", [])]
+                traces.extend(item.get("literature_download_trace", []))
+                if traces:
+                    item["literature_download_trace"] = traces
+                waiting = [pending for pending in waiting if pending not in prior]
+            elif (item.get("tool") == "web_fetch"
+                    and any(document.get("status") == "pending" for document in
+                        item.get("result", {}).get("documents", [item.get("result", {})]))):
+                # MCP waits on the existing acquisition, returning only its last
+                # result to the model. Internal polls are not separate tool calls;
+                # carry their diagnostics into the eventual delivered response.
+                waiting.append(item)
+                continue
             else:
                 item.update(status="error", error={"code": "response_not_observed",
                     "message": "Host retrieval completed, but no matching successful native tool result was observed"})

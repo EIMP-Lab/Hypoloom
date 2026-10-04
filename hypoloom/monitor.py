@@ -1725,6 +1725,12 @@ def build_observer_snapshot(
         {field: response.result[field] for field in _HOST_STATUS_FIELDS if field in response.result}
     )
     enriched_status["dispatch_error"] = response.result.get("dispatch_error")
+    notifications = enriched_status.get("notifications") or {}
+    if (isinstance(enriched_status.get("literature_access"), dict) and isinstance(notifications, dict)
+            and isinstance(notifications.get("local_log_path"), str)):
+        from .observer_summary import institutional_history
+        enriched_status["literature_access"] = {**enriched_status["literature_access"],
+            "history": institutional_history(notifications.get("local_log_path"), run_id)}
     return replace(
         snapshot,
         status_source="offline-state-store+resident-host-status",

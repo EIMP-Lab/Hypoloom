@@ -7581,3 +7581,55 @@ Collection does not enable resource/paid flags. Clear live opt-ins before G1,
 G2 fixture replay or G3; the selector rejects those accidental inherited flags.
 For a focused repair, invoke pytest directly on its relevant tests before
 freezing a candidate for the full funnel.
+
+
+## Demand-driven institutional acquisition (2026-10-04)
+
+Authorized repair follows read-only examination of MERC-causal-202610041801.
+The user subsequently closed that research run; no restart, migration, browser
+navigation, client-helper change or retained-run control was performed here.
+Evidence: `.local/qualification/institutional-demand-20261004/`.
+
+- IEEE's JavaScript PDF control and metadata viewer reproduce the old
+  `no_full_text` failure. Real isolated Chromium checks now retrieve and validate
+  the exact PDF; different article numbers, unrelated origins, JavaScript and
+  credential-bearing targets are rejected before downloading.
+- Browser requests are selected by tools rather than queued for every missing
+  packet PDF. Same-run explicit peer requests reuse validated automatic bytes,
+  preserving count/byte bounds, identity validation, import/run isolation and
+  per-Attempt source ownership. One MCP call waits within the original deadline;
+  challenges return gaps without operator intervention or blocking Host service.
+- Final related selection: 277 passed / five opt-in cases skipped. Real Chromium
+  and navigation selection: 114 passed. Final delivery regressions: 38 passed
+  (overlapping); log service: one passed; documentation/Profile: seven passed.
+  Including the two native scenarios, the final outcome for 402 distinct test
+  identities is pass, with five skipped. The skips cover isolated SSH and browser
+  runtime lifecycle tests; this repair does not change those launchers.
+- The real installed CC, local scripted provider and actual Host complete both
+  preparation-failure/public-PDF fallback and automatic-browser-document paths.
+  Each closes 18 Agent and one CPU Process Attempts successfully, three readers,
+  collection and Oracle. Independent census finds exactly one native web fetch
+  and one delivered metadata record, no web errors, zero runtime literature
+  controls, no live process groups and empty paper staging. Six reader PDF copies
+  were independently parsed again with Poppler and contain the sample identity
+  and per-scenario method text.
+- The new native browser case initially exposed an invalid intermediate `pending`
+  tool-observation status. Internal waits are now folded into the actual native
+  call, preserving lookup diagnostics; Oracle and scope/source checks remain
+  unchanged. The initial failure remains in `native.xml`; the corrected browser
+  result is `native-final.xml`. A separate earlier development test correctly
+  rejected source edits during execution; final tests used stable runtime source.
+- `independent-census.json`, `test-counts.json` and JUnit files record closure and
+  distinct outcomes. `retained-log-observation.json` reads the existing log without
+  changing it and confirms four historical IEEE validation events. These events
+  do not prove PDF media, archive delivery or institutional subscription.
+- Wheel, isolated installation and fresh runtime bundle match all 175 package
+  files; installed read-only TUI/refresh/Esc smoke passes. The previously created
+  bundle remains unchanged, as intended; the final comparison uses a fresh root.
+
+This qualifies the repaired framework paths and bounded fallback, not Windows
+SSO, uninterrupted publisher availability or unattended Cloudflare resolution.
+No full offline-suite, paid-model, GPU or soak promotion is claimed. Existing
+runs retain their original implementation. The next user acceptance step is a
+new init from this version; the Windows helper does not need an update for this
+server-side repair.

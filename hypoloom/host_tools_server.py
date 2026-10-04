@@ -476,15 +476,34 @@ def call_tool(socket_path: str, tool: str, arguments: Any) -> dict[str, Any]:
     """Perform one MCP call; wait polls statuses without blocking Host service."""
     arguments = _arguments(tool, arguments)
     reading_wait = tool == "read_papers" and arguments.get("action") == "wait"
-    if tool != "wait_experiment" and not reading_wait:
+    document_wait = tool == "web_fetch"
+    if tool != "wait_experiment" and not reading_wait and not document_wait:
         return _call_host(socket_path, tool, arguments)
     wait_seconds = arguments.get("max_wait_seconds", 600)
-    deadline = time.monotonic() + wait_seconds
+    deadline = None if document_wait else time.monotonic() + wait_seconds
     poll_delay = 0.1
+    result = None
     while True:
-        result = _call_host(
-            socket_path, tool, ({**arguments, "max_wait_seconds": 0} if reading_wait else {"exp_id": arguments["exp_id"], "max_wait_seconds": 0})
-        )
+        try:
+            result = _call_host(socket_path, tool, arguments if document_wait else (
+                {**arguments, "max_wait_seconds": 0} if reading_wait else {"exp_id": arguments["exp_id"], "max_wait_seconds": 0}),
+                **({"deadline_at": deadline} if document_wait and deadline is not None else {}))
+        except TimeoutError:
+            if not document_wait or result is None or deadline is None or time.monotonic() < deadline:
+                raise
+            return result
+        if document_wait:
+            documents = result.get("documents", [result])
+            pending = [item for item in documents if item.get("status") == "pending"]
+            if not pending:
+                return result
+            limits = [item.get("remaining_seconds") for item in pending]
+            # Older Hosts without a deadline retain their immediate reply.
+            # Repeated responses can only shorten the original bounded wait.
+            if any(type(value) not in (int, float) or not 0 <= value <= 600 for value in limits):
+                return result
+            observed_deadline = time.monotonic() + max(limits)
+            deadline = observed_deadline if deadline is None else min(deadline, observed_deadline)
         # Capacity-blocked readers let their parent fall back to serial reading.
         # A quarantined experiment instead waits for Host-owned Agent shutdown;
         # returning immediately would spend model turns on an unrepairable wait.
@@ -492,7 +511,7 @@ def call_tool(socket_path: str, tool: str, arguments: Any) -> dict[str, Any]:
             return result
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return {**result, "terminal": False}
+            return result if document_wait else {**result, "terminal": False}
         time.sleep(min(poll_delay, remaining))
         poll_delay = min(1.0, poll_delay * 2)
 
