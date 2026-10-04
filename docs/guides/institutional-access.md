@@ -946,6 +946,33 @@ failures display their code. Adjust frozen limits for a new run, not a retained 
 
 ## Fresh init acceptance
 
+For an explicit unattended-stability priority, send this in a new CC session:
+
+```text
+/autoresearch init
+Prioritize unattended stability with Windows client mode.
+Use public_only for ScienceDirect and ACM; keep IEEE and Springer on auto and prepare them.
+Use --institutional-prepare-failure-mode public_only.
+Convert failed or unfinished preparation platforms to public-only and retain the failure reasons.
+Stop at final launch review and wait for my Start now decision.
+```
+
+ScienceDirect/ACM are examples from the reported failures, not a global blacklist.
+Use your own observed platform results. The program returns existing `provider_modes`
+for replacement in launch choices. Public-only keeps public search and exact-DOI
+full-text fallback while disabling automatic institutional browser acquisition.
+Failures, connection timeout and unvisited platforms become public-only; completed
+or skipped choices remain. Actual failed states and nonzero probe exits stay visible.
+There is no repeated retry/accept question or automatic research launch. The default
+`review` policy still offers retry or continuation with unverified access.
+
+Missing legitimate full text remains an explicit gap; this does not guarantee every
+PDF. First client setup and preparation of platforms kept on auto may still require
+authentication, but research does not require solving per-paper challenges. No client
+helper update is needed for this policy, and retained runs are not changed.
+
+To specifically test every publisher, use the ordinary review policy:
+
 1. Open a new CC session in the updated server checkout and run `/autoresearch init`.
 2. Select Windows client mode and IEEE, ScienceDirect, Springer and ACM (select ACM
    explicitly). Reuse a healthy Windows helper; this update does not change its script.

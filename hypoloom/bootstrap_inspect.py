@@ -95,7 +95,8 @@ def _launch_argv(args, repository: Path) -> list[str]:
     for provider in args.institutional_prepare_provider or ():
         values += ["--institutional-prepare-provider", provider]
     from .institutional_options import launch_arguments as institutional_arguments
-    return [*values, *bootstrap._literature_arguments(args), *institutional_arguments(args, include_connection=True)]
+    return [*values, *bootstrap._literature_arguments(args),
+            *institutional_arguments(args, include_connection=True, include_preparation=True)]
 
 
 def inspect(args, repository: Path) -> dict:

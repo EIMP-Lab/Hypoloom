@@ -243,7 +243,8 @@ def test_summary_separates_browser_html_from_pdf_and_strips_source_queries():
     assert '网页全文，不代表已下载 PDF' in text and 'PRIVATE' not in text
 
 
-def test_mixed_sample_results_explain_document_identity_without_claiming_download(monkeypatch):
+@pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
+def test_mixed_sample_results_explain_document_identity_without_claiming_download(monkeypatch, failure_mode):
     from hypoloom.cli import build_parser
     from hypoloom.institutional_access import publisher
     class Mixed(PreparationBackend):
@@ -256,7 +257,8 @@ def test_mixed_sample_results_explain_document_identity_without_claiming_downloa
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: InstitutionalAccess(backend))
     parser = build_parser(); output = []
     args = parser.parse_args(['institutional', 'prepare', '--provider', 'IEEE', '--provider', 'ScienceDirect',
-                             '--provider', 'Springer', '--provider', 'ACM'])
+                             '--provider', 'Springer', '--provider', 'ACM',
+                             '--institutional-prepare-failure-mode', failure_mode])
     assert run(args, input_fn=lambda _: '', output=output.append) == 1
     summary = json.loads(output[-1]); text = output[-2]
     assert [r['state'] for r in summary['preparation_summary']] == [
@@ -265,8 +267,15 @@ def test_mixed_sample_results_explain_document_identity_without_claiming_downloa
     assert '论文页面身份校验未通过' in text and '尚不能证明已下载全文' in text
     assert '机构账号' in text and '结果未区分校验阶段' in text
     assert '人机验证' in text and '只证明该样本当前可读' in text
-    assert parser.parse_args(summary['remaining_preparation_argv'][4:]).provider == ['IEEE', 'ScienceDirect', 'ACM']
-    assert summary['provider_modes'] == {} and backend.closed
+    assert summary['preparation_failure_mode'] == failure_mode
+    if failure_mode == 'public_only':
+        assert summary['remaining_preparation_argv'] == []
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'ACM'], 'public_only')
+        assert text.count('运行策略：仅公开') == 3
+    else:
+        assert parser.parse_args(summary['remaining_preparation_argv'][4:]).provider == ['IEEE', 'ScienceDirect', 'ACM']
+        assert summary['provider_modes'] == {}
+    assert backend.closed
 
 
 def test_platform_without_fixed_sample_keeps_manual_completion_unverified(monkeypatch):
@@ -378,7 +387,8 @@ def test_interrupted_preparation_closes_access(monkeypatch):
 
 
 @pytest.mark.parametrize("ending", ["timeout", "eof", "finish", "input_timeout"])
-def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_path, monkeypatch, ending):
+@pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
+def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_path, monkeypatch, ending, failure_mode):
     from hypoloom.cli import build_parser
     from hypoloom.institutional_dialogue import PreparationEnded
     class Failing(PreparationBackend):
@@ -392,7 +402,8 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
     parser = build_parser()
     args = parser.parse_args(["institutional", "prepare", "--repository", str(tmp_path),
         "--institutional-browser-url", "http://127.0.0.1:9222", "--institutional-manual-seconds", "80",
-        "--institutional-provider-mode", "ACM=public_only"])
+        "--institutional-provider-mode", "ACM=public_only",
+        "--institutional-prepare-failure-mode", failure_mode])
     prompts, output = [], []
     def answer(prompt):
         prompts.append(prompt.split(':')[0])
@@ -401,16 +412,20 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
         raise PreparationEnded("finished" if ending == "finish" else "input_timeout")
     assert run(args, input_fn=answer, output=output.append) == (0 if ending == "finish" else 1)
     summary = json.loads(output[-1])
-    remaining = parser.parse_args(summary["remaining_preparation_argv"][4:])
-    assert remaining.provider == ["ScienceDirect", "Springer"]
-    assert remaining.institutional_provider_mode == ["ACM=public_only"]
-    assert remaining.institutional_browser_url == args.institutional_browser_url
-    assert remaining.institutional_manual_seconds == 80 and remaining.repository == str(tmp_path)
+    if failure_mode == 'public_only':
+        assert summary['remaining_preparation_argv'] == []
+        assert summary['provider_modes'] == dict.fromkeys(['ACM', 'ScienceDirect', 'Springer'], 'public_only')
+    else:
+        remaining = parser.parse_args(summary["remaining_preparation_argv"][4:])
+        assert remaining.provider == ["ScienceDirect", "Springer"]
+        assert remaining.institutional_provider_mode == ["ACM=public_only"]
+        assert remaining.institutional_browser_url == args.institutional_browser_url
+        assert remaining.institutional_manual_seconds == 80 and remaining.repository == str(tmp_path)
     assert summary["preparation_summary"][0]['state'] == 'sample_verified'
     assert len(summary["preparation_summary"][0]['samples']) == 1
     assert summary["preparation_summary"][1]["state"] == "acquisition_timeout"
     assert backend.closed and not list(tmp_path.iterdir())
-    if ending == "timeout":
+    if ending == "timeout" and failure_mode == 'review':
         recovered = PreparationBackend(); recovered.state = "available"
         monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: InstitutionalAccess(recovered))
         retried = []

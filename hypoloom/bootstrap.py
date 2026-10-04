@@ -303,7 +303,8 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         selected = review["institutional_preparation"]["selected"]
         if selected:
             review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
-                "--agent-session", "--repository", str(repository), *institutional_arguments(args, include_connection=True),
+                "--agent-session", "--repository", str(repository),
+                *institutional_arguments(args, include_connection=True, include_preparation=True),
                 *[part for provider in selected for part in ("--provider", provider)]]
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",

@@ -459,8 +459,11 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
     (["--institutional-prepare-provider", "Elsevier", "--institutional-prepare-provider", "Wiley"],
      ["ScienceDirect", "Wiley"]),
     (["--institutional-prepare-provider", "none"], []),
+    (["--institutional-provider-mode", "ScienceDirect=public_only",
+      "--institutional-provider-mode", "ACM=public_only"], ["IEEE", "Springer"]),
 ])
-def test_init_common_preparation_roundtrips_without_changing_research(checkout, capsys, monkeypatch, selection, expected):
+@pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
+def test_init_common_preparation_roundtrips_without_changing_research(checkout, capsys, monkeypatch, selection, expected, failure_mode):
     from hypoloom import bootstrap_inspect, institutional_runtime
     repo, overrides = checkout
     assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
@@ -469,20 +472,27 @@ def test_init_common_preparation_roundtrips_without_changing_research(checkout, 
     monkeypatch.setattr(institutional_runtime.RunBrowser, "__init__", lambda *a, **k: pytest.fail("preview opened browser"))
     argv = ["inspect", "topic", "--repository", str(repo), "--control-python", sys.executable,
             "--auth-transport", "none", "--offline", "--cpu-only", "--institutional-browser-mode", "client",
-            "--institutional-library-url", "https://library.example.edu/", *selection]
+            "--institutional-library-url", "https://library.example.edu/", *selection,
+            "--institutional-prepare-failure-mode", failure_mode]
     assert bootstrap.main(argv) == 0
     review = json.loads(capsys.readouterr().out)
     plan = review["effective_configuration"]["institutional_preparation"]
     assert plan["selected"] == expected
+    assert plan['failure_mode'] == failure_mode
     assert [p["provider"] for p in plan["catalog"][:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer"]
     assert plan["catalog"][1]["recommended_prepare"] is False
     assert plan["library_url"] == "https://library.example.edu/"
-    assert bootstrap.main(review["launch_argv"][4:]) == 0
+    assert bootstrap.main([part for part in review["launch_argv"][4:] if part != '--summary']) == 0
     launch = json.loads(capsys.readouterr().out)
     assert launch["effective_configuration"]["institutional_preparation"] == plan
+    host = launch['commands']['host_start']
+    serve = cli_parser().parse_args(host[host.index('--') + 4:])
+    assert serve.institutional_provider_mode == ([] if not selection or selection[0] != '--institutional-provider-mode'
+                                               else ['ScienceDirect=public_only', 'ACM=public_only'])
     if expected:
         prepare = cli_parser().parse_args(review["effective_configuration"]["institutional_preparation_argv"][3:])
         assert prepare.provider == expected
+        assert prepare.institutional_prepare_failure_mode == failure_mode
     else:
         assert "institutional_preparation_argv" not in review["effective_configuration"]
     assert not (repo / "state").exists()

@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Unattended stability policy](../design/institutional-access-preparation.md#无人值守优先的失败处理2026-10-04):
+  explicit preparation failure policy reuses public-only launch preferences,
+  preserves real failures and final review, and avoids repeated retry choices.
+  [Fresh-init steps](../guides/institutional-access.zh-CN.md#新-init-实测) and
+  [native Host/installation evidence](../qualification.md#unattended-preparation-failure-policy-2026-10-04).
+
 - [Shared acquisition in Host/init](../qualification.md#shared-pdf-acquisition-through-host-and-init-2026-10-04):
   production DOI/PDF path, format/source observations, automatic fixed-sample
   challenge termination and PDF preference over readable HTML. Real Host/CC readers,

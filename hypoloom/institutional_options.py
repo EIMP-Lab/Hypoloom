@@ -33,6 +33,8 @@ def options(args):
 def add_preparation_argument(parser, flag="--institutional-prepare-provider"):
     parser.add_argument(flag, action="append", type=provider_name, choices=(*PROVIDERS.values(), "none"),
                         help="replace common preparation defaults; repeat for platforms, Elsevier aliases ScienceDirect; none skips preparation")
+    parser.add_argument("--institutional-prepare-failure-mode", choices=("review", "public_only"), default="review",
+                        help="review failures, or use public_only for failed/unvisited platforms before launch review")
 
 
 def preparation_selection(values, modes):
@@ -63,6 +65,7 @@ def preparation(args):
             if selection is None:
                 selected = [name for name in selected if name not in api_providers]
     return {"selected": selected, "library_url": args.institutional_library_url,
+            "failure_mode": args.institutional_prepare_failure_mode,
             **({"api_providers": api_providers, "api_full_text_access": "not_checked"} if api_providers else {}),
             "catalog": [{**p, "selected": p["provider"] in selected,
                          "mode": modes.get(p["provider"], "auto"), "state": "not_checked"}
@@ -110,7 +113,7 @@ def preview(args, repository=None):
         access.close()
 
 
-def launch_arguments(args, *, include_connection=False):
+def launch_arguments(args, *, include_connection=False, include_preparation=False):
     result = []
     mode = getattr(args, "institutional_browser_mode", None)
     if args.institutional_browser_url or mode not in (None, "off"):
@@ -122,4 +125,6 @@ def launch_arguments(args, *, include_connection=False):
     if include_connection:
         from .institutional_connection import arguments
         result += arguments(args)
+    if include_preparation and args.institutional_prepare_failure_mode != "review":
+        result += ["--institutional-prepare-failure-mode", args.institutional_prepare_failure_mode]
     return result

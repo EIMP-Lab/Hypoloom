@@ -128,8 +128,9 @@ class ReadingScenario(_FinalReportHostScenario):
 
 @pytest.mark.parametrize("end_run,batch_documents,correct_errors,institutional_oa", [
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
-    (False, False, True, False), (False, False, False, True), (False, False, False, "metadata")],
-    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata"])
+    (False, False, True, False), (False, False, False, True), (False, False, False, "metadata"),
+    (False, False, False, "preparation-failure")],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure"])
 def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
     if institutional_oa:
         import sys
@@ -150,7 +151,26 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         from test_institutional_access import Backend
         from test_institutional_browser import _pdf
         backend, metadata = Backend(), Metadata()
-        host.institutional_access = InstitutionalAccess(backend)
+        modes = {}
+        if institutional_oa == 'preparation-failure':
+            from hypoloom.cli import build_parser
+            from hypoloom import institutional_prepare
+            from test_institutional_preparation import PreparationBackend
+            failed = PreparationBackend(); failed.state = 'verification_required'
+            output = []
+            with monkeypatch.context() as preparation_patch:
+                preparation_patch.setattr(institutional_prepare, 'build', lambda _: InstitutionalAccess(failed))
+                args = build_parser().parse_args(['institutional', 'prepare', '--sample', DOC, '--non-interactive',
+                    '--institutional-prepare-failure-mode', 'public_only'])
+                assert institutional_prepare.run(args, input_fn=lambda _: pytest.fail('manual recovery requested'),
+                    output=output.append) == 1
+            summary = json.loads(output[-1])
+            (tmp_path / 'preparation-summary.json').write_text(json.dumps(summary, indent=2))
+            assert summary['preparation_summary'][0]['state'] == 'verification_required'
+            assert summary['remaining_preparation_argv'] == [] and failed.closed
+            modes = summary['provider_modes']
+            assert modes == {'Nature': 'public_only'}
+        host.institutional_access = InstitutionalAccess(backend, provider_modes=modes)
         host.configuration["institutional_access"] = host.institutional_access.configuration
         host.literature_io.fallback_locator = UnpaywallPdfLocator(email="reader@example.org", transport=metadata)
         host.configuration["literature"] = host.literature_io.configuration
@@ -162,7 +182,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                 "locations": [{"is_oa": True, "pdf_url": OA.replace("https:", "http:")}]}
         host.grounding_web = GroundingWeb(Transport({DOC: _response(DOC, b"Denied", status_code=403),
             lookup: _response(lookup, json.dumps(work).encode(), media_type="application/json",
-                              status_code=200 if institutional_oa == "metadata" else 404),
+                              status_code=200 if institutional_oa in {"metadata", "preparation-failure"} else 404),
             crossref: _response(crossref, b"Not found", status_code=404),
             OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf")}))
     run_id = "native-paper-reading"
@@ -179,7 +199,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         created = host.handle(ControlRequest(schema_version=1, request_id="create-reading", expected_revision=0,
             command="CREATE_RUN", payload=payload))
         assert created.status == "accepted", created
-        if institutional_oa:
+        if institutional_oa and institutional_oa != 'preparation-failure':
             choice = host.handle(ControlRequest(1, "native-public-only", created.revision, "LITERATURE_ACCESS",
                 {"run_id": run_id, "provider": "Nature", "action": "mode", "mode": "public_only"}))
             assert choice.status == "accepted", choice
@@ -203,10 +223,10 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         if not end_run: assert len(scenario.readers) == 3
         if institutional_oa:
             assert not backend.calls
-            assert len(metadata.calls) == (0 if institutional_oa == "metadata" else 1)
+            assert len(metadata.calls) == (0 if institutional_oa in {"metadata", "preparation-failure"} else 1)
             assert all(source["url"] == OA for sources in scenario.sources.values() for source in sources)
             assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
-            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 1
+            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if institutional_oa == 'preparation-failure' else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
         if not end_run: assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts)

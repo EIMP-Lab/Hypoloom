@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 4 unattended stability priority: user chooses bounded progress over
+  repeated publisher login/download retries. Opt-in preparation failure policy
+  `--institutional-prepare-failure-mode public_only` maps failed/unvisited platforms
+  into existing launch provider modes; default review remains. Preserve failed
+  states/exit codes, completed choices and final launch confirmation. Known failed
+  platforms can start public-only; no global blacklist or new persistent authority.
+  Runtime instructions merge returned modes without another retry question. Guides
+  give fresh-init text with ScienceDirect/ACM public-only as reported examples.
+  Related 358 pass, 18 optional environment cases skipped; separate real CC/Host
+  test passes from preparation challenge to public PDF, three readers and CPU
+  closure. Independent count: 18 Agent + one Process terminal successes, no live
+  process groups/staging or runtime human policy controls. Installed CLI/MCP/fresh
+  bundle matches 175 package files. No Windows/SSO, soak or universal PDF claim;
+  no retained research/preparation/client changes. [Design](../design/institutional-access-preparation.md#无人值守优先的失败处理2026-10-04)
+  and [evidence](../qualification.md#unattended-preparation-failure-policy-2026-10-04):
+  `.local/qualification/unattended-preparation-20261004/`.
+
 - October 4 Host/init integration: operator authorizes proceeding beyond the
   standalone stage to a fresh-init acceptance version. Reuse document_fallback
   exact-DOI discovery/PDF validation in probe, Host and initial sample acquisition;

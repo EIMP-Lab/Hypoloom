@@ -2,6 +2,31 @@
 
 [English](qualification.md) · 简体中文
 
+## 无人值守优先的准备失败策略（2026-10-04）
+
+用户明确选择无人值守稳定性优先。可选参数
+`--institutional-prepare-failure-mode public_only` 将失败或尚未到达的平台转为既有
+“仅公开”启动偏好；保留真实失败、样本观察和非零退出码。默认审阅策略与最终
+启动确认保持。已知失败平台可从准备前就选择仅公开；不增加全局黑名单或持久状态，
+不修改既有科研运行、准备批次或浏览器。
+
+相关测试 **358 通过、18 跳过**（可选 PowerShell、浏览器与 SSH 环境检查）；另有
+**1 项真实 CC／Host 测试通过**。覆盖混合结果、连接失败、中断、私有 socket 回答
+及清理、inspect→prepare→launch→serve 参数传递、公开回退、错误论文拒绝和既有
+有限队列／期限。测试中首次读取紧凑摘要命令字段的错误已修正，生产校验未放宽。
+
+真实 Host 测试将准备阶段的验证码失败结果转入新运行，公开元数据／PDF 获取、
+3 个并发阅读进程、原文归档、CPU 实验收集正常完成，无浏览器调用或运行期人工策略
+回答。独立只读计数：18 个 Agent 与 1 个 Process 均成功关闭，19 个进程组均不存活，
+staging 残留和 LITERATURE_ACCESS 命令均为零；现有 Oracle 无问题。这使用已安装
+CC、隔离脚本 provider 和合成文档，不代表付费模型或真实出版社订阅验证。
+
+wheel／源码／安装／新运行包的 175 个文件一致；安装后 CLI 准备结束时正确应用
+未完成平台策略，清理私有控制与连接资源，MCP 初始化通过。静态检查通过。
+未声称完整 G1／发布、长时间 soak、Windows SSO 或所有出版社可用。
+证据：`.local/qualification/unattended-preparation-20261004/`。
+[新 init 操作](guides/institutional-access.zh-CN.md#新-init-实测)。
+
 ## 公共 PDF 路径接入 Host 与 init（2026-10-04）
 
 用户已授权继续独立开发之后的阶段，直至可通过新 init 实测。独立入口、Host 公开

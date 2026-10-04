@@ -33,15 +33,23 @@ def ready_access(monkeypatch, state="ready"):
     return access, backend, checks
 
 
-def test_connection_failure_is_one_batch_result_without_platform_attempts(monkeypatch):
+@pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
+def test_connection_failure_is_one_batch_result_without_platform_attempts(monkeypatch, failure_mode):
     access, backend, checks = ready_access(monkeypatch, "waiting_for_client")
     monkeypatch.setattr("hypoloom.institutional_prepare._observe", lambda *a: {"state": "acquisition_timeout"})
     output = []
-    assert run(arguments(), input_fn=lambda _: pytest.fail("login requested"), output=output.append) == 1
+    assert run(arguments('--institutional-prepare-failure-mode', failure_mode),
+               input_fn=lambda _: pytest.fail("login requested"), output=output.append) == 1
     assert checks == [30] and backend.calls == [] and backend.closed
     summary = json.loads(output[-1])
     assert summary["connection"]["state"] == "waiting_for_client"
     assert {row["state"] for row in summary["preparation_summary"]} == {"not_checked"}
+    if failure_mode == 'public_only':
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer'], 'public_only')
+        assert summary['remaining_preparation_argv'] == []
+        assert summary['next_actions'] == ['review_launch_configuration']
+    else:
+        assert summary['provider_modes'] == {} and summary['remaining_preparation_argv']
 
 
 def test_terminal_eof_is_reported_without_claiming_login_or_leaking_browser(monkeypatch):
@@ -227,7 +235,8 @@ def test_sample_skip_prevents_later_platform_ticks_from_fetching_it_again(tmp_pa
         if worker.is_alive(): request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(4)
 
 
-def test_fixed_sample_challenge_advances_without_manual_download_or_background_retries(tmp_path, monkeypatch):
+@pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
+def test_fixed_sample_challenge_advances_without_manual_download_or_background_retries(tmp_path, monkeypatch, failure_mode):
     from hypoloom.institutional_access import publisher
     access, backend, _ = ready_access(monkeypatch)
     access.poll_seconds = .01
@@ -240,7 +249,8 @@ def test_fixed_sample_challenge_advances_without_manual_download_or_background_r
     backend.fetch = challenged
     output, results = [], []
     worker = threading.Thread(target=lambda: results.append(run(arguments('--agent-session',
-        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer'), output=output.append)))
+        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer',
+        '--institutional-prepare-failure-mode', failure_mode), output=output.append)))
     worker.start()
     root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
         if v.startswith('{') and 'state_root' in json.loads(v)), None))
@@ -253,8 +263,10 @@ def test_fixed_sample_challenge_advances_without_manual_download_or_background_r
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'action': 'complete'}).status == 'accepted'
         worker.join(4)
         assert not worker.is_alive() and results == [1]
-        rows = json.loads(output[-1])['preparation_summary']
+        summary = json.loads(output[-1]); rows = summary['preparation_summary']
         assert [r['state'] for r in rows] == ['verification_required', 'sample_verified']
+        assert summary['provider_modes'] == ({'ScienceDirect': 'public_only'} if failure_mode == 'public_only' else {})
+        assert bool(summary['remaining_preparation_argv']) == (failure_mode == 'review')
         assert len(attempts) == 1 and backend.closed and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))
     finally:

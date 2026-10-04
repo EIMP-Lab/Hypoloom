@@ -773,6 +773,30 @@ sink时，Host把`literature_access`事件写入原有`events.jsonl`，包含pro
 
 ### 新 init 实测
 
+无人值守稳定性优先时，在新 CC 会话直接输入：
+
+```text
+/autoresearch init
+优先保证无人值守稳定性，使用 Windows 客户端模式。
+ScienceDirect 和 ACM 设置为 public_only；IEEE 和 Springer 保留 auto，先做准备。
+使用 --institutional-prepare-failure-mode public_only。
+准备失败或未完成的平台自动转为仅公开，保留失败原因，不反复要求登录或重试。
+完成后停在最终启动配置审阅，等待我选择 Start now。
+```
+
+ScienceDirect／ACM 是本轮已反复失败的平台示例，并非所有用户的固定限制；按自己的
+实测选择。程序生成准备和启动命令，返回的 `provider_modes` 按平台替换后进入启动
+配置。“仅公开”仍允许公开检索和精确 DOI 的合法全文回退，但不会自动请求该平台的
+机构浏览器。已有的人工完成／跳过选择保留；失败、连接超时和未到达的平台转为
+`public_only`，原失败状态与非零退出码保留，不包装成验证成功。无需再选“接受未验证”，
+也不会自动启动研究。默认 `review` 策略仍提供重试／接受未验证的选择。
+
+该策略不保证全部论文可下载：没有合法可用全文时记录缺口并继续其他工作。初次
+Windows 接入和你选择保留的机构平台准备仍可能需要一次人工认证；研究期间不要求
+逐篇解验证码。现有客户端助手无需为此更新，既有运行也不会被自动改动。
+
+需要专门测试所有出版社时，使用常规审阅策略：
+
 1. 在已更新的服务器仓库中新开 CC 会话，运行 `/autoresearch init`。
 2. 选择 Windows 客户端模式及 IEEE、ScienceDirect、Springer、ACM（ACM 需主动选择）。
    健康的 Windows 后台助手可复用；本轮没有修改助手脚本，无需重复安装。

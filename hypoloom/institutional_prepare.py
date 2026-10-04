@@ -126,7 +126,7 @@ def _verify(access, provider, samples, output, *, cancelled=lambda: False, dialo
 def _summary(rows, modes, output, **extra):
     # This is a transient review, not saved proof of authentication or subscription.
     from .institutional_instructions import render_results
-    output(render_results(rows))
+    output(render_results(rows, modes))
     output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
         "verification_scope": "Sample readability only; institutional login and platform-wide subscription are not established.",
         "provider_mode_argv": [part for name, mode in modes.items()
@@ -142,7 +142,7 @@ def _remaining_command(args, remaining, modes):
         "--repository", str(Path(args.repository or Path.cwd()).resolve()),
         *(["--agent-session"] if args.agent_session else []),
         *(["--non-interactive"] if args.non_interactive else []),
-        *launch_arguments(selected, include_connection=True),
+        *launch_arguments(selected, include_connection=True, include_preparation=True),
         *[part for provider in remaining for part in ("--provider", provider)],
         *[part for sample in args.sample if publisher(sample_url(sample)) in remaining
           for part in ("--sample", sample)]]
@@ -152,6 +152,21 @@ def _remaining_providers(selected, rows):
     # Completed manual preparation may be not_checked. Only the unvisited tail
     # and actual failures need another batch; a timeout is not completion.
     return [row["provider"] for row in rows if row["state"] not in _COMPLETED_STATES] + selected[len(rows):]
+
+
+def _finish_summary(args, selected, rows, modes, output, **extra):
+    # Apply an explicit preparation policy to the existing launch preferences.
+    # Keep observations (including failure/timeout and untouched platforms) intact.
+    remaining = _remaining_providers(selected, rows)
+    failure_mode = args.institutional_prepare_failure_mode
+    if failure_mode == "public_only":
+        modes.update(dict.fromkeys(remaining, "public_only"))
+        if "next_actions" in extra:
+            extra["next_actions"] = ["review_launch_configuration"]
+    remaining = [name for name in remaining if modes.get(name) != "public_only"]
+    rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
+    _summary(rows, modes, output, preparation_failure_mode=failure_mode,
+             remaining_preparation_argv=_remaining_command(args, remaining, modes), **extra)
 
 
 def _sample_state(results):
@@ -306,12 +321,13 @@ def run(args, *, input_fn=input, output=print):
         raise ValueError("preparation none cannot be combined with samples")
     selected = list(dict.fromkeys([*selected, *(publisher(url) for url in samples)]))
     if not selected:
-        _summary([], modes, output)
+        _finish_summary(args, [], [], modes, output)
         return 0
     if len(selected) > 8: raise ValueError("prepare at most eight platforms per batch; run another batch afterward")
     if args.non_interactive and not samples: raise ValueError("non-interactive preparation requires a sample")
     if all(modes.get(provider) == "public_only" for provider in selected):
-        _summary([{"provider": provider, "state": "public_only", "samples": []} for provider in selected], modes, output)
+        _finish_summary(args, selected, [{"provider": provider, "state": "public_only", "samples": []}
+                                       for provider in selected], modes, output)
         return 0
     access = build(args)
     if access is None: raise ValueError("preparation requires an enabled browser mode or --institutional-browser-url")
@@ -349,8 +365,7 @@ def run(args, *, input_fn=input, output=print):
             output(json.dumps({"connection": connection}, ensure_ascii=False))
             if connection["state"] == "ready": break
             if not dialogue:
-                _summary([{"provider": name, "state": "not_checked", "samples": []} for name in selected], modes, output,
-                    connection=connection, remaining_preparation_argv=_remaining_command(args, selected, modes),
+                _finish_summary(args, selected, rows, modes, output, connection=connection,
                     next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
                 return 1
             output("Browser connection is unavailable. Preparation automatically rechecks within this fixed waiting window; no platform login was attempted.")
@@ -369,17 +384,12 @@ def run(args, *, input_fn=input, output=print):
             rows.append(row)
             if stop:
                 break
-        remaining = _remaining_providers(selected, rows)
-        rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
-        _summary(rows, modes, output, remaining_preparation_argv=_remaining_command(args, remaining, modes))
+        _finish_summary(args, selected, rows, modes, output)
         return int(any(row["state"] not in _COMPLETED_STATES for row in rows))
     except PreparationEnded as exc:
-        remaining = _remaining_providers(selected, rows)
-        rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
         connection = dialogue.snapshot().get("connection") if dialogue else None
-        _summary(rows, modes, output, preparation_state=str(exc),
-                 **({"connection": connection} if connection else {}),
-                 remaining_preparation_argv=_remaining_command(args, remaining, modes))
+        _finish_summary(args, selected, rows, modes, output, preparation_state=str(exc),
+                        **({"connection": connection} if connection else {}))
         return int(str(exc) != "finished")
     finally:
         try:

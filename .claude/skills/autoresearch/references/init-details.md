@@ -58,6 +58,14 @@ command. Keep selections in repeated `--institutional-prepare-provider` argument
 `none` skips this optional step without disabling institutional retrieval. The shared
 defaults prepare IEEE, ScienceDirect and Springer; ACM is shown as public-first with
 optional login. Use the existing single library URL and browser profile for the batch.
+When the user explicitly prioritizes unattended stability, carry
+`--institutional-prepare-failure-mode public_only` through inspection and launch.
+Known failed/challenge-dependent platforms can use the existing repeated
+`--institutional-provider-mode PROVIDER=public_only` from the outset; retain the
+user's platform choices instead of imposing a global publisher blacklist.
+This policy converts failed/unvisited preparation platforms to public-only, including
+connection failure or interrupted preparation. Completed/skipped platform choices
+are retained. Review is still the default for users who have not chosen this policy.
 Standalone preparation checks supplied samples first and returns current results and
 platform modes. Merge modes by platform, re-inspect, and retain the same run identity.
 Never turn not_checked, an opened page or a previous sample into permanent login proof.
@@ -168,7 +176,15 @@ For a failed platform, report its intermediate safe `reason_code` from the task
 output when available. `browser_unavailable` alone does not establish that Edge,
 SSH or the client task exited; page operations can fail with a live connection.
 A platform that never opened was not verified for login or subscription.
-If any selected platform failed, name the failed platforms and offer `重新准备`
+If `preparation_failure_mode` is `public_only`, name each failure and its returned
+public-only mode, merge `provider_modes` and re-inspect without asking for another
+retry/accept decision. This was already authorized by the policy; an empty
+`remaining_preparation_argv` means the failures have a selected fallback, not success.
+Do not regenerate preparation for those platforms. Still stop at final launch review;
+the policy does not authorize Start now. Keep the real failed sample states and
+nonzero preparation exit visible. Public-only preserves public search/OA retrieval
+and disables automatic institutional browser acquisition for that platform.
+Otherwise, if any selected platform failed, name the failed platforms and offer `重新准备`
 (retry only the failed/unfinished platforms) or `接受未验证状态，继续检查启动配置`
 (continue to launch review). Do not interpret timeout as completion or advance to
 Start now on the user's behalf. This is an optional preparation choice, not a
@@ -178,7 +194,7 @@ If the process has ended, instructions explicitly say so. On the user's fixed
 重新准备 reply, read the original background result first and execute its generated
 `remaining_preparation_argv` unchanged. It includes failed as well as unanswered
 platforms and preserves connection options, updated modes and supplied samples.
-An empty list is never proof of login or success. If an older summary has failures
+An empty list is never proof of login or success. If an older review-mode summary has failures
 but an empty vector, re-run the existing read-only bootstrap inspection with only
 those failed/unfinished `--institutional-prepare-provider` selections and the same
 other choices/identity; use its generated preparation command after the user's

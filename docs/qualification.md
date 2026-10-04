@@ -2,6 +2,38 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Unattended preparation failure policy (2026-10-04)
+
+The user prioritizes unattended stability. Explicit
+`--institutional-prepare-failure-mode public_only` converts failed/unvisited
+platforms into existing launch preferences. Actual failures, sample observations
+and nonzero exits remain; default review and final launch confirmation remain.
+Known failed platforms can be public-only before preparation. No publisher blacklist,
+new persistence or changes to retained research/preparation/browser state.
+
+Related selections: **358 passed, 18 skipped** (optional PowerShell, browser and
+SSH environment checks); separate native CC/Host case: **1 passed**. Tests cover
+mixed results, connection failure, interruption, socket replies and cleanup,
+inspect/prepare/launch/serve argument handoff, public fallback, identity rejection
+and existing finite queues/deadlines. Initial test defects in compact-command
+inspection were corrected without weakening the production checks.
+
+The native case feeds a real preparation challenge result's modes into a new
+isolated Host. Public metadata/PDF acquisition, three concurrent reader processes,
+original-source archives and CPU experiment collection complete without browser
+calls or a runtime policy answer. Independent read-only counting finds **18 Agent
+and one Process** attempts closed successfully, **19 process groups no longer live**,
+zero staging residue and zero `LITERATURE_ACCESS` commands. The existing Oracle is
+clean. It uses the installed CC executable and a local scripted provider with
+synthetic documents, not paid models or live publisher entitlement.
+
+Wheel/source/install/fresh bundle match **175 package files**. Installed agent
+preparation applies the policy to unfinished platforms and cleans its private
+control/connection resources; MCP initialization passes. Static checks pass.
+No full G1/release, long soak, Windows SSO or complete publisher coverage is claimed.
+Evidence: `.local/qualification/unattended-preparation-20261004/`.
+[Fresh-init instructions](guides/institutional-access.md#fresh-init-acceptance).
+
 ## Shared PDF acquisition through Host and init (2026-10-04)
 
 The operator authorized proceeding beyond the standalone experiment to fresh init

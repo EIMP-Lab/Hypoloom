@@ -121,7 +121,7 @@ Explicit off keeps public/OA retrieval and disables the institutional panel. A s
 legacy browser URL already answers this choice and retains its unmanaged behavior.
 
 **Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
-Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip.
+Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For an explicit unattended-stability priority, use `--institutional-prepare-failure-mode public_only` and the failure policy in [details](references/init-details.md).
 Reuse choices; repeated `--institutional-prepare-provider` replaces the list, and `none` skips
 preparation without limiting research. Re-inspect with the same identity. Run `institutional_preparation_argv` with
 `--agent-session` in the background; run its flushed `instructions_argv` and show

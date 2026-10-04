@@ -33,7 +33,7 @@ def reply_choices(view):
             if action in allowed and (action != "finish" or text == finish)]
 
 
-def render_results(rows):
+def render_results(rows, modes=None):
     """Explain the existing final observations without asserting account identity."""
     lines = ["准备结果（论文样本校验，不是机构账号身份认证）："]
     identity_reasons = {
@@ -61,6 +61,8 @@ def render_results(rows):
             detail = "检测到人机验证，自动获取未通过；重复 init 或重试不保证解决，可接受未验证并继续"
         else:
             detail = "未验证样本可读性或机构权限，以本次状态为准"
+        if (modes or {}).get(row['provider']) == 'public_only':
+            detail += "。运行策略：仅公开；保留公开检索与全文回退，不自动访问该平台机构浏览器"
         lines.append(f"{row['provider']}：{state} — {detail}。")
     return "\n".join(lines)
 
@@ -72,7 +74,8 @@ def render(view):
         return ("准备进程已结束或当前不可用，不能继续向旧批次发送回答。\n"
                 "回到原来的 init 会话回复：重新准备。助手先读取原后台任务的最终结果，"
                 "按需执行其中程序生成的 remaining_preparation_argv，重试失败或未完成的平台。"
-                "空数组不证明登录或准备成功；若旧摘要仍有失败项，须重新生成这些平台的准备命令。"
+                "空数组不证明登录或准备成功；已按策略转为仅公开的平台无需重开。"
+                "旧摘要仍有未处理失败项时，按用户重试选择重新生成准备命令。"
                 "已完成的平台和模式保留，不要新开 CC 会话或启动科研运行。")
     lines = [f"准备状态：{state}。"]
     if "remaining_seconds" in view:
