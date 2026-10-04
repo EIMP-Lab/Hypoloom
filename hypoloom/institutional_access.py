@@ -41,14 +41,22 @@ def provider_name(value):
     return "ScienceDirect" if value == "Elsevier" else value
 
 
+def provider_entry_url(provider):
+    # Public authentication navigation only; never a supported article source.
+    if provider == "Springer":
+        return "https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F"
+    entry = next(("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider), None)
+    if entry is None: raise ValueError("unsupported institutional provider")
+    return entry
+
+
 def provider_catalog():
-    entries = {name: "https://" + domain + "/" for domain, name in PROVIDERS.items()}
     return [{"provider": name, "display_name": "Elsevier / ScienceDirect" if name == "ScienceDirect" else name,
-             "entry_url": entries[name], "common": name in COMMON_PREPARATION,
+             "entry_url": provider_entry_url(name), "common": name in COMMON_PREPARATION,
              "recommended_prepare": COMMON_PREPARATION.get(name, False),
              "default_sample_url": "https://doi.org/" + PREPARATION_SAMPLES[name] if name in PREPARATION_SAMPLES else None,
              "note": "Public full text first; login optional" if name == "ACM" else "Reuse a valid browser session; authenticate if needed"}
-            for name in dict.fromkeys([*COMMON_PREPARATION, *entries])]
+            for name in dict.fromkeys([*COMMON_PREPARATION, *PROVIDERS.values()])]
 
 
 DOI_PROVIDERS = {"10.1038": "Nature", "10.1007": "Springer", "10.1109": "IEEE",
@@ -369,7 +377,7 @@ class InstitutionalAccess:
             self._apply_choices(run_id)
             self._expire()
             modes, skipped = self.read_choices(run_id)
-            groups = {name: {"provider": name, "entry_url": "https://" + domain + "/", "papers": [],
+            groups = {name: {"provider": name, "entry_url": provider_entry_url(name), "papers": [],
                 "mode": modes.get(name, self.provider_modes.get(name, "auto")),
                 "manual_remaining_seconds": max(0, ceil(self._manual_until.get((run_id, name), 0) - self.clock())),
                 "preparation": {"state": "unchecked"}}
@@ -449,7 +457,7 @@ class InstitutionalAccess:
         return self.status(run_id)
 
     def _prepare(self, run_id, provider, action, url):
-        entry = next("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider)
+        entry = provider_entry_url(provider)
         if action == "verify":
             if article_url(url) != url or publisher(url) != provider:
                 raise ValueError("sample must be a canonical article URL for this platform")

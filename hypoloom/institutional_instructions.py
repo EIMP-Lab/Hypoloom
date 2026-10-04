@@ -90,6 +90,12 @@ def render(view):
                          "完成所选浏览器的连接准备后回复：继续连接。")
     elif state == "waiting_for_user":
         lines.append(f"{view['provider']} 页面已打开。需要登录时，仅在浏览器完成学校认证和 MFA。")
+        if view['provider'] == 'Springer':
+            from .institutional_access import provider_entry_url
+            lines.append("Springer 机构入口：" + provider_entry_url('Springer'))
+            lines.append("在 Find your institution 中搜索学校并选择机构登录；若找不到学校，使用学校图书馆提供的 Springer 访问入口。个人账号登录不等于机构授权。")
+        elif view['provider'] == 'ScienceDirect':
+            lines.append("文章页和 PDF 下载页可能分别出现人机验证；登录后仍须以样本检查结果判断全文是否可获取。")
         lines.append("如果刚才已在该专用浏览器完成登录，无需重新登录，直接回复：完成。连接会自动检测，连接完成不等于平台准备已完成。")
         if view.get("reason_code") == "verification_required":
             lines.append("页面打开时检测到人机验证；这不是连接失败，也不代表机构登录已完成。")

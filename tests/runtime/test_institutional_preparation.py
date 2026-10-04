@@ -47,6 +47,23 @@ def test_empty_catalog_opens_platform_without_admitting_homepage_or_sample_bytes
         access.close()
 
 
+def test_springer_entry_is_institution_discovery_not_a_document_source():
+    from hypoloom.institutional_access import publisher
+    entry = 'https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F'
+    selected = next(p for p in provider_catalog() if p['provider'] == 'Springer')
+    assert selected['entry_url'] == entry
+    access = InstitutionalAccess(PreparationBackend())
+    try:
+        result = access.control('preparation', 'Springer', 'open')
+        assert next(g for g in result['groups'] if g['provider'] == 'Springer')['entry_url'] == entry
+        assert next(iter(access._items.values())).url == entry
+        assert publisher(entry) is None
+        with pytest.raises(ValueError): article_url(entry)
+        with pytest.raises(ValueError): access.control('preparation', 'Springer', 'verify', url=entry)
+    finally:
+        access.close()
+
+
 def test_standalone_preparation_has_no_research_or_filesystem_side_effect(tmp_path, monkeypatch):
     from hypoloom.cli import build_parser
     backend = PreparationBackend(); backend.state = "available"

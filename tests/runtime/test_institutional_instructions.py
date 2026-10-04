@@ -105,6 +105,7 @@ def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform
         view = request(root).result
         assert view['reason_code'] == 'verification_required'
         assert '打开时检测到人机验证' in render(view)
+        assert '文章页和 PDF 下载页可能分别出现人机验证' in render(view)
         assert '跳过此平台' in render(view) and '不代表登录或订阅已验证' in render(view)
         assert [call[0] for call in backend.calls] == ['ScienceDirect']
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'reply': reply}).status == 'accepted'
@@ -112,6 +113,9 @@ def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform
             and request(root).result.get('provider') == 'Springer')
         assert 'verification_required' != request(root).result.get('reason_code')
         assert '打开时检测到人机验证' not in render(request(root).result)
+        from hypoloom.institutional_access import provider_entry_url
+        assert provider_entry_url('Springer') in render(request(root).result)
+        assert 'Find your institution' in render(request(root).result)
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'reply': '完成'}).status == 'accepted'
         thread.join(5)
         assert not thread.is_alive() and not errors and codes == [0]

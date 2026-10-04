@@ -11,7 +11,7 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
-from .institutional_access import (MAX_DOCUMENT_BYTES, PROVIDERS, TRANSIENT_FETCH_REASONS, publisher,
+from .institutional_access import (MAX_DOCUMENT_BYTES, TRANSIENT_FETCH_REASONS, publisher, provider_entry_url,
     pdf_identity, identity_from_url, validate_document)
 from .literature import PopplerPdfExtractor
 
@@ -308,9 +308,8 @@ class PlaywrightInstitutionalBrowser:
         return True
 
     def prepare(self, provider, *, focus=True, timeout_seconds=120):
-        """Open a public platform entry without treating its homepage as a paper."""
-        entry = next(("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider), None)
-        if entry is None: raise ValueError("unsupported institutional provider")
+        """Open a platform's public access entry without treating it as a paper."""
+        entry = provider_entry_url(provider)
         self._deadline = monotonic() + timeout_seconds
         try:
             try:

@@ -15,14 +15,16 @@ from tests.runtime.test_institutional_runtime import assert_free
 
 
 def route_fixed_samples(context, downloads):
-    from hypoloom.institutional_access import provider_catalog
+    from hypoloom.institutional_access import PROVIDERS, provider_catalog
     from tests.runtime.test_institutional_browser import _pdf
     catalog = [p for p in provider_catalog() if p['default_sample_url']]
     def respond(route):
         url = route.request.url
         for item in catalog:
             doi_url = item['default_sample_url']
-            landing = item['entry_url'] + 'sample'
+            # Authentication entries may live outside the article origin.
+            domain = next(domain for domain, provider in PROVIDERS.items() if provider == item['provider'])
+            landing = 'https://' + domain + '/sample'
             doi = doi_url.removeprefix('https://doi.org/')
             if url == doi_url:
                 # Browser-initiated navigation stays intercepted; an HTTP redirect

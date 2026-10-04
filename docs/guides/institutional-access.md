@@ -512,7 +512,7 @@ The existing catalog shows four common platforms first:
 | IEEE | Yes | Reuse valid sessions; authenticate in the browser if needed. |
 | ACM | No, optional | Public full text first; login is not a reading prerequisite. |
 | Elsevier / ScienceDirect | Yes | Both names are accepted by preparation and mode arguments. |
-| Springer | Yes | Reuse valid sessions; authenticate in the browser if needed. |
+| Springer | Yes | Open the official institution finder, then authenticate with the institution. |
 
 With no platform/sample arguments the command selects these three preparation
 defaults, excluding platforms set to `public_only`. Repeated `--provider <platform>`
@@ -523,7 +523,8 @@ never restricts research discovery. ACM's default follows its
 it does not guarantee successful automated downloads or disable browser fallback.
 
 Choose one browser profile and optional `--institutional-library-url` for the batch.
-Without a library URL, preparation opens publisher homepages. Institution selection,
+Without a library URL, preparation opens Springer's official institution finder
+or the other publishers' homepages. Institution selection,
 SSO and MFA remain browser operations; no account/password store is added. Supply
 sample DOI/canonical article URLs interactively or using repeatable `--sample`.
 Supplied samples are checked first; if all are readable, no login prompt appears.
@@ -546,6 +547,33 @@ opens a browser. Final `preparation_summary` distinguishes unverified, skipped,
 readable samples, authentication/verification requirements and unavailable results.
 Merge returned `provider_modes` / `provider_mode_argv` by platform into subsequent
 launch choices and re-review; standalone users must pass these options themselves.
+
+### Springer institution access and PDF challenges
+
+Springer preparation opens the [official institution finder](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F).
+Search **Find your institution**, select the institution and complete its login.
+An existing batch on the homepage can use this URL in the same dedicated browser
+tab. New batches use the updated entry; the Windows helper and init need no reinstall
+or recreation. A supplied library URL still takes precedence; repeated open actions
+preserve the existing tab. If no institution appears, use the school's library
+database link and its supported campus/remote access. A personal Springer account
+alone is not subscription proof. Springer documents both
+[federated institution lookup](https://support.springernature.com/en/support/solutions/articles/6000083159-institution-not-displayed-on-institutional-login-page-for-athens-shibboleth-list)
+and [IP/proxy access](https://support.springernature.com/en/support/solutions/articles/6000080116-user-access-to-springer-nature-link-and-springer-for-r-d-content).
+
+ScienceDirect article access or school login does not establish PDF access.
+Cloudflare's [challenge lifetime](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/challenge-passage/)
+and [clearance levels](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/)
+are site-controlled; later requests may require another challenge. If manual
+completion in the same dedicated Edge opens the PDF, retry the failed platform
+after the batch ends and check for `sample_verified`. A persistent loop can prevent
+institutional PDF retrieval. Positive detection returns `verification_required`,
+never article content or a no-subscription claim. Positively identified full HTML
+and same-article public/repository sources may still supply full text, or the user
+can legally download/import a PDF; alternative availability is not guaranteed.
+Preparation/acquisition deadlines remain finite, without automated challenge solving
+or endless retries. Opening a page, authenticating, downloading and verifying the
+paper's identity are separate outcomes.
 The result is not persisted and does not change existing runs or store credentials.
 
 ### Fixed samples

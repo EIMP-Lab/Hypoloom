@@ -67,7 +67,7 @@ python -m hypoloom institutional prepare \
 | IEEE | 是 | 复用有效会话，必要时在浏览器认证。 |
 | ACM | 否，可选 | 公开全文优先；不将登录作为读取论文的前提。 |
 | Elsevier / ScienceDirect | 是 | 参数可使用 `ScienceDirect` 或 `Elsevier`。 |
-| Springer | 是 | 复用有效会话，必要时在浏览器认证。 |
+| Springer | 是 | 直接打开官方机构选择页，搜索学校后认证。 |
 
 不指定平台/样本时采用上述三个默认准备平台；已设为 `public_only` 的平台不默认准备。
 重复 `--provider <平台>` 替换默认名单，可加入 ACM 或目录中其他平台；`--provider none`
@@ -76,7 +76,8 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 不代表每次程序下载都成功，也不关闭已有浏览器回退。
 
 整个批次复用一个浏览器目录及可选的 `--institutional-library-url` 学校交互入口；
-不提供学校入口时打开出版社首页。学校选择、SSO/MFA 仍在浏览器内完成，不保存账号密码。
+不提供学校入口时打开平台默认访问入口；Springer 使用官方机构选择页，其他平台使用
+出版社首页。学校选择、SSO/MFA 仍在浏览器内完成，不保存账号密码。
 可以输入该平台有权限的 DOI 或规范论文 URL 验证样本，也可传重复的 `--sample`。
 提供样本时先检查当前会话，全部样本可读就跳过登录提示；公开样本可读不证明机构认证。
 需要人工处理时，终端支持 `s` 跳过、`p` 仅公开获取、`q` 结束本批；回车完成或重新检查
@@ -93,6 +94,28 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 `provider_modes` / `provider_mode_argv` 给出后续运行的偏好。init 按平台替换原值后重新
 审阅；独立使用命令时需自行带到后续启动参数中。结果不自动持久化或更改现有运行。
 准备不创建 run、Attempt、Profile 或科研归档，不调用模型。
+
+### Springer 机构入口与 PDF 人机验证
+
+Springer 默认直接打开[官方机构选择页](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F)。
+在 **Find your institution** 中输入学校名称并选择机构，再完成学校认证。若旧批次
+停在首页，可在同一专用浏览器标签打开这个入口；新版入口对新批次生效，不要求更新
+Windows 助手或重建 init。自定义学校图书馆入口仍优先，重复“打开登录”仍保留已有页。
+如果搜索不到学校，从学校图书馆的数据库列表进入 Springer，按学校提供的校园网络／
+远程访问方式操作。个人 Springer 账号不自动代表学校订阅。
+[Springer 官方说明](https://support.springernature.com/en/support/solutions/articles/6000083159-institution-not-displayed-on-institutional-login-page-for-athens-shibboleth-list)
+指出可搜索的机构取决于联合认证配置；另支持
+[IP、代理等访问方式](https://support.springernature.com/en/support/solutions/articles/6000080116-user-access-to-springer-nature-link-and-springer-for-r-d-content)。
+
+ScienceDirect 文章页或机构登录成功，不保证 PDF 入口也已放行。
+[Cloudflare 的验证有效期](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/challenge-passage/)
+及[验证级别](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/)由网站控制，
+后续请求仍可能再次要求验证。若能在同一个专用 Edge 手动完成并打开 PDF，可在原批次
+结束后重新准备失败平台，以实际 `sample_verified` 为准；若仍循环，机构 PDF 获取会
+受影响。程序识别到验证时返回 `verification_required`，不将其视为论文或机构无订阅。
+HTML 全文只有通过正文和论文身份校验才可使用；研究仍可走同篇公开全文／仓储来源，
+或由用户合法下载并导入 PDF，但不能保证每篇都有替代来源。准备和自动获取有固定期限，
+不自动代做验证或无限重试。页面打开、机构登录、下载成功及论文身份确认须分别判断。
 
 ### 固定全文样本
 

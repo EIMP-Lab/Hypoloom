@@ -2,6 +2,33 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Publisher preparation entry (2026-10-04)
+
+The operator confirms Windows now opens successive publisher pages after the
+discovery recovery update. Retry3 records IEEE identity_unconfirmed, ScienceDirect
+verification_required and Springer opened: flow progression is not full-text
+verification. The reported Springer login-entry problem is reproduced by two red
+tests showing that both catalog and browser still selected the generic homepage.
+The official support page links directly to the institution finder.
+
+Catalog, queue, status and browser now share one entry resolver; Springer uses
+that official public URL. Library overrides and existing tabs retain precedence.
+The authentication domain is not added to article admission; samples pointing to
+it are rejected. Fixed instructions explain institution search and the distinction
+between ScienceDirect article access and a PDF challenge. Existing challenge
+preservation, manual recovery, full-text identity and acquisition limits remain.
+
+Focused preparation/browser/access/instructions/native selection: **156 passed**;
+documentation/Profile: **7 passed**. Real Chromium tests cover default and library entries, exact navigation counts,
+existing-tab reuse and no false login result. Native four-platform tests keep
+authentication and article origins separate. Installed wheel/CLI preparation
+cleanup/MCP/fresh bundle checks pass with **175 equal package files**. Operator
+Windows confirmation applies to the prior discovery fix, not this new entry or
+publisher entitlement. No live preparation answer, retained run or browser is
+mutated; the IEEE identity gap and the actual PDF challenge cause remain unresolved.
+This is focused repair qualification, not full G1 or paid/GPU qualification.
+Evidence: `.local/qualification/institutional-publisher-entry-20261004/`.
+
 ## Windows discovery recovery (2026-10-04)
 
 The operator's foreground helper printed run_connection_started followed by
@@ -30,8 +57,9 @@ Existing real SSH reconnect/terminal-watch and native Chromium preparation check
 also pass. Windows browser APIs are substituted in these Linux PowerShell tests.
 
 Documentation/Profile: **7 passed**. Wheel/isolated install/CLI preparation cleanup,
-MCP initialize and fresh bundle checks match **175 package files**. Native Windows
-deployment and real publisher full-text success still require operator validation.
+MCP initialize and fresh bundle checks match **175 package files**. The operator
+subsequently confirms Windows publisher-page progression (above); actual publisher
+full-text success remains separately unverified.
 No retained research run, live preparation reply, browser profile or Windows task
 was changed here. This is focused repair qualification, not full G1/promotion.
 Evidence: `.local/qualification/institutional-discovery-recovery-20261004/`.

@@ -1,12 +1,19 @@
 # Development memory index
 
+- [Publisher entry and PDF challenges](../design/institutional-access-preparation.md#出版社入口与下载验证的区别2026-10-04):
+  operator confirms Windows progression; retry3 records IEEE identity_unconfirmed
+  and ScienceDirect verification_required. Springer now opens its official
+  institution finder through the shared entry resolver, without admitting auth
+  pages as literature or replacing library overrides/user tabs.
+  [Guide](../guides/institutional-access.zh-CN.md#springer-机构入口与-pdf-人机验证).
+
 - [Windows discovery recovery](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04):
   reported run_discovery_unavailable reproduces the three-query-failure exit and
   teardown of healthy forwards. Long-lived discovery now backs off, preserves
   independent remote watches, rejects stale creation and reports safe query causes.
   [Qualification](../qualification.md#windows-discovery-recovery-2026-10-04)
-  covers real PowerShell/SSH retention, recovery and cleanup; native Windows
-  deployment and the original underlying query failure remain separate limits.
+  covers real PowerShell/SSH retention, recovery and cleanup; subsequent operator
+  confirmation covers Windows page progression, not the original query cause.
 
 - [Sample-stage disconnect diagnostics](../design/institutional-access-preparation.md#样本阶段断连诊断与已登录提示2026-10-04):
   real preparation timed out after opening IEEE; Windows task exited 2 while Edge

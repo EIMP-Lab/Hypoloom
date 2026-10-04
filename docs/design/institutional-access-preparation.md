@@ -10,6 +10,24 @@
 再使用已有机构会话；后台遇到人工认证就返回缺口，只有用户主动登录才开启有界等待。**
 登录成功、取得某篇全文、Agent 实际阅读及科研证据接纳仍是不同事实。
 
+## 出版社入口与下载验证的区别（2026-10-04）
+
+用户确认发现恢复修复后，CC 能依次打开本机出版社页面；新批次 retry3 记录 IEEE
+样本 identity_unconfirmed、ScienceDirect verification_required、Springer opened。
+这些结果确认流程推进，不等于论文全文或机构权限已验证。IEEE 身份缺口另行保留，
+不能因为页面正常就弱化原 PDF 身份校验。Elsevier PDF 的再次验证可能影响自动全文
+获取；原浏览器会保留检测到的验证页并返回 verification_required，后续仍沿现有
+有界队列、人工操作和公开来源回退。未取得新的验证诊断，不推断本次为 webdriver
+或网络问题，不再次更改浏览器参数，也不承诺绕过站点验证。
+
+Springer 难找机构按钮则是已定位的入口问题：原实现从论文域名拼接首页，且在目录、
+状态、队列和浏览器各重复一次。现在由 provider_entry_url 统一提供入口，Springer
+使用[官方支持文档](https://support.springernature.com/en/support/solutions/articles/6000083159-institution-not-displayed-on-institutional-login-page-for-athens-shibboleth-list)
+指向的 WAYF 页面，公开 redirect_uri 固定回 Springer 首页。浏览器和固定回复引导
+搜索机构；已有标签和自定义学校入口仍优先。WAYF 只作认证导航，不加入文献域名
+白名单，不能作为样本或全文接纳。统一的是现有 entry_url，未新增配置、持久状态、
+认证证明或第二个校验器；普通调用复用和回归足够。
+
 ## Windows 发现失败与转发生命周期解耦（2026-10-04）
 
 用户补充了前台原因：`run_connection_started` 后出现 `run_discovery_unavailable`、

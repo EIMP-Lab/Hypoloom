@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 4 publisher preparation follow-up: operator confirms Windows now opens
+  publishers sequentially after discovery repair. Retry3 still records IEEE
+  identity_unconfirmed and ScienceDirect verification_required; page opening is
+  not verified full text. Springer previously opened only its homepage. A single
+  entry resolver now supplies the official institution finder to catalog, queue,
+  status and browser, preserving library overrides and existing tabs. WAYF remains
+  outside article admission; fixed instructions/docs explain institution search
+  and separate PDF challenges. No retained batch/run or Windows browser mutation.
+  Related 156 pass, docs/Profile 7 pass; installed CLI/MCP/fresh bundle 175-file
+  checks pass. Real PDF challenge resolution and IEEE identity remain unverified.
+  [Design](../design/institutional-access-preparation.md#出版社入口与下载验证的区别2026-10-04).
+  Evidence: `.local/qualification/institutional-publisher-entry-20261004/`.
+
 - October 4 discovery recovery: foreground output now identifies
   run_discovery_unavailable / exit 2. A red PowerShell regression confirms the
   old three-failure exit closed every forward even with usable Edge. Discovery
@@ -12,8 +25,9 @@
   Windows must download the original file and restart the helper via Setup;
   preserve Edge/profile and reuse the original CC preparation. No retained run
   or preparation answer changed. Related 136 pass / no skips, docs/Profile 7 pass,
-  installed CLI/MCP/fresh bundle 175-file checks pass; Windows deployment remains
-  operator validation. [Design](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04).
+  installed CLI/MCP/fresh bundle 175-file checks pass. Operator subsequently confirms
+  Windows publisher-page progression; full-text results remain separate (above).
+  [Design](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04).
   Evidence: `.local/qualification/institutional-discovery-recovery-20261004/`.
 
 - October 4 sample-stage disconnect: fresh MERC init opened IEEE, then all four

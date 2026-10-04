@@ -72,6 +72,24 @@ def test_preparation_is_bounded_to_owned_tabs_and_preserves_the_users_tab(browse
     assert not user_page.is_closed()
 
 
+@pytest.mark.parametrize('library_url', ['', 'https://library.example.edu/databases'])
+def test_springer_preparation_opens_institution_finder_and_preserves_it(browser, library_url):
+    adapter, context = browser
+    adapter.library_url = library_url
+    navigations = []
+    def respond(route):
+        if route.request.is_navigation_request(): navigations.append(route.request.url)
+        route.fulfill(status=200, content_type='text/html',
+                      body='<form>Find your institution: <input name="search"></form>')
+    context.route('**/*', respond)
+    expected = library_url or 'https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F'
+    assert adapter.prepare('Springer') == {'state': 'opened'}
+    page = adapter._tabs['Springer'][0]
+    assert page.url == expected
+    assert adapter.prepare('Springer') == {'state': 'opened'}
+    assert navigations == [expected] and adapter._tabs['Springer'][0] is page
+
+
 def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser):
     adapter, context = browser
     wrong_doi = "10.1038/s41586-026-99999-9"

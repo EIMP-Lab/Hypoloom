@@ -2,6 +2,22 @@
 
 [English](qualification.md) · 简体中文
 
+## 出版社准备入口（2026-10-04）
+
+用户确认发现恢复修复后 Windows 能依次打开出版社页面。retry3 中 IEEE 仍为
+identity_unconfirmed、ScienceDirect 为 verification_required，不能据此确认全文
+获取成功。两个红测试复现 Springer 目录和浏览器都只选择首页；修复由同一入口函数
+提供官方机构选择页，供目录、队列、面板及浏览器使用。自定义图书馆地址与已有标签
+保留优先；认证域名未加入文献接纳名单，不能冒充样本或全文。
+
+相关 **156 项通过**，文档/Profile **7 项通过**。原生 Chromium 检查默认／学校入口、
+导航次数、页面复用和无虚假登录证明；四平台
+准备夹具区分认证页与论文域名。安装包／独立安装／新副本 **175 个包文件一致**，
+CLI 清理和 MCP 通过。用户 Windows 反馈确认前一连接修复，不代表本次入口和真实
+订阅已验证；既有科研／准备／浏览器未修改，IEEE 身份缺口和 PDF 验证原因尚未解决。
+这是定向修复验证，不是完整 G1 或付费／GPU 验收。
+[完整证据](qualification.md#publisher-preparation-entry-2026-10-04)。
+
 ## Windows 发现失败恢复（2026-10-04）
 
 用户前台报告 `run_connection_started` 后 `run_discovery_unavailable`、退出码 2。
