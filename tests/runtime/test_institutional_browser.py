@@ -591,6 +591,61 @@ def test_ieee_pdf_viewer_preserves_identity_and_operator_verification(browser, m
             'document_validation_failed' if mode == 'wrong_doi' else 'pdf_target_unconfirmed'}
 
 
+@pytest.mark.parametrize('outcome', ['pdf', 'verification', 'wrong_doi', 'no_pdf'])
+def test_ieee_readable_html_does_not_hide_pdf_viewer_result(browser, tmp_path, outcome):
+    import json
+    adapter, context = browser
+    doi = '10.1109/TBC.2025.3565888'
+    selected = 'https://ieeexplore.ieee.org/document/11006507'
+    viewer = 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11006507'
+    target = 'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?arnumber=11006507'
+    original = _pdf('10.1109/TBC.2025.9999999' if outcome == 'wrong_doi' else doi)
+    requests = []
+    def respond(route):
+        url = route.request.url
+        requests.append(url)
+        if url == selected:
+            body = ('<script>window.xplGlobal=' + json.dumps({'document': {'metadata': {
+                'doi': doi, 'pdfUrl': '' if outcome == 'no_pdf' else viewer}}}) + '</script><a href="javascript:void(0)">PDF</a>'
+                '<article><h2>Methods</h2>' + ('Readable article methods. ' * 200)
+                + '<h2>References</h2></article>')
+        elif url == viewer:
+            body = '<p>Verify you are human</p>' if outcome == 'verification' else f'<iframe src="{target}"></iframe>'
+        elif url == target:
+            route.fulfill(status=200, content_type='application/pdf', body=original)
+            return
+        else:
+            route.abort()
+            return
+        route.fulfill(status=200, content_type='text/html', body=body)
+    context.route('**/*', respond)
+    result = adapter.fetch(selected)
+    if outcome == 'pdf':
+        assert result['state'] == 'available'
+        assert result['document']['media_type'] == 'application/pdf'
+        assert result['document']['content'] == original and target in requests
+        from hypoloom.domain import AgentCommand
+        from hypoloom.fake_agent import default_request
+        from hypoloom.paper_sources import PaperWorkspace
+        request = default_request(AgentCommand.GROUNDING)
+        papers = PaperWorkspace(tmp_path / 'papers', request)
+        try:
+            source = papers.add(result['document'], source_ref=request.attempt_id + ':selected-paper',
+                                acquisition=request.attempt_id)
+            archive = tmp_path / 'archive'; archive.mkdir()
+            papers.archive(archive)
+            assert (archive / source['original_path'].lstrip('/')).read_bytes() == original
+        finally:
+            papers.close()
+    elif outcome == 'no_pdf':
+        assert result['state'] == 'available' and result['document']['media_type'] == 'text/plain'
+        assert requests == [selected]
+    elif outcome == 'verification':
+        assert result == {'state': 'verification_required'}
+    else:
+        assert result == {'state': 'identity_unconfirmed', 'reason': 'document_validation_failed'}
+
+
 @pytest.mark.parametrize('viewer', [
     'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=99999999',
     'https://unrelated.example/stamp/stamp.jsp?arnumber=11006507',

@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 4 IEEE PDF follow-up: a server graphical desktop is unsuitable for
+  the user's shared server; it is not a required replacement for an intermittent
+  Windows client. Offline research uses archived/public sources with explicit
+  gaps, not guaranteed private PDFs. The cancelled run has zero archived IEEE
+  sources; historical available events do not establish PDF delivery. Reproduced
+  readable HTML short-circuiting an identified IEEE PDF viewer; finish the viewer
+  before text fallback, retaining challenge/identity rejection. Real Chromium
+  routes plus queue/deadline/fallback tests: 191 pass; docs/Profile: seven pass.
+  Wheel, isolated installation and fresh runtime bundle match 175 package files.
+  Public probes for two actual research IEEE DOIs: zero PDFs this round (one
+  locator HTTP 429). No new Windows institutional download test or run mutation.
+  [Design](../design/institutional-literature-access.md#pdf-viewer-precedence-follow-up--2026-10-04)
+  and [qualification](../qualification.md#ieee-pdf-viewer-precedence-2026-10-04):
+  `.local/qualification/ieee-pdf-preference-20261004/`.
+
 - October 4 demand-driven institutional repair: IEEE JavaScript PDF controls
   expose an ignored metadata viewer; reuse article-number/origin and document
   validators. Remove missing-packet-PDF browser prefetch. Explicit same-run URL

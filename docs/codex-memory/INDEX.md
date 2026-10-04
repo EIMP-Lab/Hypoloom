@@ -1,5 +1,11 @@
 # Development memory index
 
+- [IEEE PDF viewer precedence](../design/institutional-literature-access.md#pdf-viewer-precedence-follow-up--2026-10-04):
+  shared-server desktop is not a requirement; intermittent clients leave explicit
+  full-text gaps. Readable HTML must not short-circuit an identified PDF viewer.
+  [Qualification](../qualification.md#ieee-pdf-viewer-precedence-2026-10-04)
+  separates Chromium/archive regressions from unproven current Windows access.
+
 - [Demand-driven institutional acquisition](../design/institutional-literature-access.md#demand-driven-acquisition-and-delivery-repair--2026-10-04):
   selected-source scheduling, strict IEEE viewer discovery, same-run byte reuse,
   bounded single-call delivery and existing-log TUI observations. Native archive,

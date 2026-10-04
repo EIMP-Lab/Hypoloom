@@ -7633,3 +7633,36 @@ No full offline-suite, paid-model, GPU or soak promotion is claimed. Existing
 runs retain their original implementation. The next user acceptance step is a
 new init from this version; the Windows helper does not need an update for this
 server-side repair.
+
+## IEEE PDF viewer precedence (2026-10-04)
+
+Evidence: `.local/qualification/ieee-pdf-preference-20261004/`. The user clarifies
+that a server graphical desktop is unsuitable on a shared server. Inspection of
+the cancelled MERC-causal-202610041801 run finds no archived IEEE source and a
+selected TASLP fetch ending in `no_full_text`. Its historical validation events
+do not record PDF media or archive delivery. No retained run or client was changed.
+
+- Three isolated Chromium cases fail before the repair (`red.xml`): readable
+  article HTML prevents following the identified PDF viewer, masking either the
+  available PDF, a challenge or conflicting PDF identity. Move the existing viewer
+  step before text fallback. All three now preserve the actual viewer outcome;
+  the fourth case retains HTML-only behavior when no PDF is identified.
+- The successful case validates actual PDF bytes and checks their ordinary
+  PaperWorkspace archive. The initial archive assertion used an invalid source
+  ownership reference; correct the test fixture, retaining the validator.
+- Final browser/navigation/access/deadline/demand/fallback selection: 191 pass
+  (`final.xml`); documentation/Profile checks: seven pass (`docs.xml`). These use
+  isolated scripted publisher routes with real Chromium, not the Windows session.
+- Wheel, isolated installation and fresh runtime bundle match all 175 package
+  files; installed read-only TUI/refresh/Esc smoke passes (`installation.json`).
+- A fresh bounded public-only probe of `10.1109/TASLP.2024.3434495` and
+  `10.1109/TAFFC.2025.3558222` obtains zero PDFs. The first locator returns HTTP 429;
+  both retain `no_verified_pdf` and the probe's nonzero result. This is a limit of
+  this automatic public lookup, not evidence that no legitimate copy exists.
+
+No new Windows institutional download, native CC closure, full offline-suite,
+paid-model, GPU or soak qualification is claimed. Previous native Host closure
+evidence remains separate above. Current IEEE institutional readiness still needs
+an actual authorized PDF download, identity validation and archive; opening its
+viewer or finding a repository sample is insufficient. That bounded acceptance
+check can run independently of a fresh research init.

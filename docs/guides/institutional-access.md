@@ -829,6 +829,15 @@ Sign In** on the publisher page; select your institution there to start SSO.
 
 ## During research
 
+On a shared server where a private institutional browser is unsuitable, keep the
+Windows client as an optional source. While it is offline, research can still use
+archived originals and public/OA copies; new documents requiring its private
+session are not guaranteed. One init login does not transfer continuing access
+to the server or fetch every paper that future research might select. A server
+desktop is not a prerequisite for this workflow. Qualify IEEE PDF access using
+actual PDF bytes, paper-identity validation and an archive; readable HTML, a PDF
+viewer or a successful public repository copy is not stable institutional access.
+
 Press **i** in the TUI to see one row per publisher: access policy, current
 institutional pending/ready/gap counts and latest observations. Public-only suppresses
 automatic institutional browsing. No institutional requests does not mean public

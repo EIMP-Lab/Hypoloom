@@ -314,3 +314,28 @@ No new ledger, durable counter, schema, digest or authority is introduced.
 Existing research runs, client helpers and browser sessions are not modified.
 Qualification and boundaries are recorded in
 [the validation report](../qualification.md#demand-driven-institutional-acquisition-2026-10-04).
+
+## PDF viewer precedence follow-up — 2026-10-04
+
+The user rejects a server graphical desktop as a practical requirement on a
+shared machine and questions IEEE PDF readiness. The cancelled research run has
+no archived IEEE source; its selected TASLP DOI ends in `no_full_text`. Historical
+`document_verified` events omit media and delivery, so they cannot settle this
+question. Earlier public IEEE sample successes include repository copies rather
+than publisher institutional PDFs.
+
+A new isolated Chromium reproduction exposes a remaining ordering bug: positive
+article HTML returns before an identified IEEE HTML PDF viewer is followed. Move
+that existing viewer step before the text fallback. Preserve the same deadline,
+origin/article-number/DOI validators and challenge behavior; no new retrieval
+service or validator. PDF bytes reach the ordinary archive, a challenge remains
+unavailable, conflicting DOI fails, and HTML without a PDF remains readable text.
+The shared ScienceDirect viewer branch follows the same ordering.
+
+This repairs the reproduced adapter defect, not proof of current Windows
+institutional access. The current client connection ended with the research run.
+Independent public probing of `10.1109/TASLP.2024.3434495` and
+`10.1109/TAFFC.2025.3558222` obtains no PDF this round; the first also encounters
+locator HTTP 429. Client-offline operation must retain explicit gaps rather than
+promise unrestricted institutional downloading. Server desktop/container
+deployment is optional, and no user browser, helper or retained run was changed.

@@ -614,12 +614,6 @@ class PlaywrightInstitutionalBrowser:
             pdf_error = (data or {}).get("error")
             if data and data.get("data"):
                 return self._pdf(base64.b64decode(data["data"], validate=True), url, data["url"], info["title"], info["doi"] or "")
-        if info["full"] and info["doi"]:
-            content = info["text"].encode("utf-8")
-            return {"state": "available", "document": {"requested_url": url,
-                "url": _public_reference(current), "title": info["title"][:512],
-                "identity": info["doi"], "media_type": "text/plain", "content": content,
-                "pages": (info["text"],)}}
         if pdf_error:
             ieee_viewer = provider == 'IEEE' and _ieee_pdf_url(current, pdf_url, viewer=True)
             sciencedirect_viewer = (provider == 'ScienceDirect'
@@ -627,8 +621,18 @@ class PlaywrightInstitutionalBrowser:
                     and re.fullmatch(r'/science/article/pii/S[0-9X]{16}', urlsplit(current).path)
                     and urlsplit(pdf_url).path == urlsplit(current).path + '/pdfft')
             if pdf_error == 'pdf_response_not_pdf' and (ieee_viewer or sciencedirect_viewer):
+                # An HTML PDF viewer is an intermediate download step. Finish
+                # it before accepting readable article HTML as a text fallback;
+                # otherwise the requested PDF is never actually fetched.
                 self._pdf_pending[provider] = (current, info['title'], info['doi'] or '')
                 return self._follow_pdf_page(provider, page, url, navigate=pdf_url)
+        if info["full"] and info["doi"]:
+            content = info["text"].encode("utf-8")
+            return {"state": "available", "document": {"requested_url": url,
+                "url": _public_reference(current), "title": info["title"][:512],
+                "identity": info["doi"], "media_type": "text/plain", "content": content,
+                "pages": (info["text"],)}}
+        if pdf_error:
             if pdf_error == 'pdf_response_not_pdf' and info['paywall']:
                 return {"state": "access_required"}
             return unavailable(pdf_error)
