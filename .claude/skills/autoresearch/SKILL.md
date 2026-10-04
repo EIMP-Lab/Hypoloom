@@ -117,7 +117,7 @@ omitted answer or choose a placement from the server OS. If needed, split the UI
 question into whether to enable access and where the browser runs, then return one
 explicit mode to inspect. Preserve previously supplied choices and the same launch
 identity. Only use the returned `launch_argv` once missing choices are resolved.
-Explicit off keeps public/OA retrieval and disables the institutional panel. A supplied
+Explicit off keeps public/OA retrieval and disables institutional browser acquisition. A supplied
 legacy browser URL already answers this choice and retains its unmanaged behavior.
 
 **Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
@@ -141,7 +141,7 @@ Merge returned `provider_modes` by platform into launch choices, replacing old v
 then re-inspect and review. Retain completed/skipped preparation in this interaction;
 do not rerun a batch merely because its command still appears. Review auto/public_only
 and finite 120-second acquisition / 600-second manual defaults. During research,
-use Host TUI/Web controls rather than another standalone browser manager.
+observe Host status in the read-only TUI; optional manual controls use authorized Web, not another standalone browser manager.
 
 The enabled `--institutional-browser-mode client|local|existing|server` selects
 run-owned connections. Windows `client` uses the program's `Connect` code block:

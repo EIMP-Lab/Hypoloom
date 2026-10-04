@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Read-only institutional TUI](../design/institutional-access-preparation.md#tui-只读机构状态2026-10-04):
+  current user direction replaces TUI manual actions with publisher policies and
+  brief Host queue observations; no new probes or persistent counters.
+  [Guide](../guides/institutional-access.zh-CN.md#运行中怎么用) and
+  [qualification](../qualification.md#read-only-institutional-tui-2026-10-04).
+
 - [Unattended stability policy](../design/institutional-access-preparation.md#无人值守优先的失败处理2026-10-04):
   explicit preparation failure policy reuses public-only launch preferences,
   preserves real failures and final review, and avoids repeated retry choices.

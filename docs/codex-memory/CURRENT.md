@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 4 read-only institutional TUI: user wants brief publisher support/work
+  observations, without manual PDF import or other actions. The i panel now shows
+  Host-reported auto/public-only routes, bounded queue pending/ready/gap counts
+  and latest results; configured routes are not login/subscription proof. Missing
+  Host status clears live rows and remains unknown, distinct from disabled access.
+  Remove login/retry/sample/import/preferences and the TUI Web-grant shortcut;
+  retain automatic refresh, Close and Esc. Authorized Web controls remain optional.
+  Reuse existing STATUS/catalog; no new probes, stored counters or run mutations.
+  Related 171 identities pass across final selection and targeted rerun: one
+  AF_UNIX path overflow from the chosen long qualification directory passes with
+  normal short pytest paths. Nine-provider views tested at 80x24/100x34/237x52,
+  including scroll/return; real Host row census/browser calls unchanged by viewing.
+  Wheel/install/fresh bundle match 175 files; installed panel smoke passes.
+  [Design](../design/institutional-access-preparation.md#tui-只读机构状态2026-10-04)
+  and [qualification](../qualification.md#read-only-institutional-tui-2026-10-04):
+  `.local/qualification/institutional-tui-status-20261004/`.
+
 - October 4 unattended stability priority: user chooses bounded progress over
   repeated publisher login/download retries. Opt-in preparation failure policy
   `--institutional-prepare-failure-mode public_only` maps failed/unvisited platforms

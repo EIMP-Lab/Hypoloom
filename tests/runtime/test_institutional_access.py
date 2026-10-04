@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import replace
 import json
 from threading import Event
@@ -11,11 +10,11 @@ import pytest
 
 from hypoloom.institutional_access import InstitutionalAccess, publisher, validate_document
 from hypoloom.institutional_browser import PlaywrightInstitutionalBrowser
-from hypoloom.grounding_web import GroundingWeb, GroundingWebError
+from hypoloom.grounding_web import GroundingWebError
 from hypoloom.paper_sources import PaperWorkspace, web_tool
 from hypoloom.fake_agent import default_request
 from hypoloom.domain import AgentCommand
-from tests.runtime.test_paper_reading import reading_host
+from tests.runtime.test_paper_reading import reading_host as reading_host
 
 URL = "https://www.nature.com/articles/s41586-026-00001-1"
 SECOND = "https://www.nature.com/articles/s41586-026-00002-2"
@@ -449,16 +448,7 @@ def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp
         papers.close(); access.close()
 
 
-def test_browser_connect_guide_and_status_expose_endpoint_without_secrets():
-    from hypoloom.literature_access_tui import browser_connect_guide
-    text = browser_connect_guide("http://127.0.0.1:52929")
-    assert '--remote-debugging-port=52929' in text and 'msedge.exe' in text and 'Test-Path' in text
-    assert '"--user-data-dir=$researchProfile"' in text and "GetFileNameWithoutExtension" in text
-    assert "ssh -N " in text and "-R 127.0.0.1:52929:127.0.0.1:52929" in text
-    assert "<ssh-user>@<research-server>" in text
-    assert "浏览器页面" in text
-    fallback = browser_connect_guide(None)
-    assert "--remote-debugging-port=<端口>" in fallback
+def test_status_exposes_endpoint_without_document_bytes():
     backend = Backend()
     backend.configuration = {"browser_endpoint": "http://127.0.0.1:52929", "library_url": None}
     access = InstitutionalAccess(backend, clock=lambda: 0.0)
@@ -470,17 +460,12 @@ def test_browser_connect_guide_and_status_expose_endpoint_without_secrets():
     assert "content" not in json.dumps(status)
 
 
-def test_server_browser_status_and_guide_do_not_depend_on_laptop_chrome():
-    from hypoloom.literature_access_tui import browser_connect_guide
+def test_server_browser_status_exposes_its_gui_endpoint():
     backend = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222", ui_url="http://127.0.0.1:5800")
     access = InstitutionalAccess(backend)
     try:
         status = access.status("run")
         assert status["browser_ui_url"] == "http://127.0.0.1:5800"
-        text = browser_connect_guide(status["browser_endpoint"], status["browser_ui_url"])
-        assert "-L 127.0.0.1:5800:127.0.0.1:5800" in text
-        assert "关闭笔记本" in text
-        assert "chrome.exe" not in text and " -R " not in text
     finally:
         access.close()
 
@@ -491,48 +476,6 @@ def test_server_browser_ui_never_accepts_authentication_urls(ui):
     with pytest.raises(ValueError, match="loopback") as error:
         PlaywrightInstitutionalBrowser("http://127.0.0.1:9222", ui_url=ui)
     assert "SECRET" not in str(error.value)
-
-
-def test_tui_only_sends_open_retry_and_selected_pdf_not_credentials(tmp_path, monkeypatch):
-    from textual.app import App
-    from textual.widgets import Input, Button
-    from hypoloom.literature_access_tui import LiteratureAccessScreen
-    from hypoloom.control_protocol import ControlResponse
-    calls = []
-    def send(path, request, **kwargs):
-        calls.append(request)
-        return ControlResponse.accepted(request.request_id, 1, {})
-    monkeypatch.setattr("hypoloom.literature_access_tui.request_over_socket", send)
-    status = {"run_state": "ACTIVE", "literature_access": {"enabled": True,
-        "browser_endpoint": "http://127.0.0.1:52929", "groups": [
-        {"provider": "Nature", "papers": [{"url": URL, "title": "Selected paper", "state": "fetch_unavailable",
-            "reason_code": "redirect_unresolved", "retry_in_seconds": 120}]}]}}
-    class TestApp(App):
-        run_id = "run"
-        state_root = tmp_path
-        def action_refresh(self):
-            pass
-    async def exercise():
-        app = TestApp()
-        async with app.run_test(size=(100, 34)) as pilot:
-            app.push_screen(LiteratureAccessScreen(status))
-            await pilot.pause()
-            assert len(list(app.screen.query(Input))) == 2
-            assert app.screen.query_one("#literature-guide") is not None
-            details = str(app.screen.query_one("#literature-pending").render())
-            assert "重定向未完成（redirect_unresolved）" in details
-            assert "下次检查约120秒后" in details
-            await pilot.click("#literature-login")
-            await pilot.click("#literature-retry")
-            app.screen.query_one("#literature-import-path", Input).value = "/home/user/paper.pdf"
-            await pilot.click("#literature-import")
-            assert [r.payload["action"] for r in calls] == ["open", "retry", "import"]
-            assert calls[-1].payload["url"] == URL
-            app.screen.update_status({**status, "run_state": "STOPPING"})
-            assert app.screen.query_one("#literature-login", Button).disabled
-            app.save_screenshot("institutional-access.svg", path=tmp_path)
-            await pilot.press("escape")
-    asyncio.run(exercise())
 
 
 def test_web_literature_actions_require_scoped_grant_and_send_clean_payload(tmp_path, monkeypatch):

@@ -87,7 +87,8 @@ Grounding 可以请求人工澄清,而不必保持一个模型调用打开。公
 
 可选的[机构全文访问](guides/institutional-access.zh-CN.md)通过一个独立Playwright
 worker连接操作者已登录的浏览器。队列和缓存有界、可丢弃，复用run/role/component
-身份。TUI按出版社合并待办，不接收登录凭据，也不暂停其他研究。只有现有文档工具
+身份。TUI只读展示各出版社的访问策略与当前队列观察；可选 Web 控制不接收登录凭据，
+也不暂停其他研究。只有现有文档工具
 能把经校验的原文纳入`/papers`和普通发布；后台就绪不等于已经阅读，也不改写已完成
 结论。停止运行丢弃待处理和迟到结果，详见[设计](design/institutional-literature-access.md)。
 

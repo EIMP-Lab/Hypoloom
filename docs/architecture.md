@@ -110,7 +110,8 @@ uses the existing abandoned-Attempt/retry path, without another persistence form
 
 Optional [institutional access](guides/institutional-access.md) uses one separate
 Playwright worker for an operator-authenticated browser. Its bounded queue/cache
-are disposable, scoped by existing run/role/component identity. Grouped TUI
+are disposable, scoped by existing run/role/component identity. The read-only TUI
+groups configured routes and live queue observations by publisher; optional Web
 controls never receive credentials or pause research. Only the existing web
 document tool admits verified bytes into `/papers` and ordinary publication;
 background availability is not reading evidence and cannot revise finished

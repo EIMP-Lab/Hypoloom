@@ -4,8 +4,8 @@ English · [简体中文](institutional-access.zh-CN.md)
 
 Public discovery and PDF retrieval remain first. Optional institutional access
 uses a researcher's authenticated Chromium browser. Managed connections retire
-with each run, while dedicated profiles retain still-valid sessions. The TUI groups unresolved
-papers by publisher without opening repeated prompts. Other research continues;
+with each run, while dedicated profiles retain still-valid sessions. The TUI shows
+read-only publisher policies and current acquisition observations. Other research continues;
 available bytes do not establish that an Agent read a paper.
 
 ## Elsevier API
@@ -55,7 +55,7 @@ loss. Failure preserves exact-DOI OA fallback and manual PDF import without open
 another CAPTCHA page. `ScienceDirect=public_only` also disables the authenticated
 API; retain `auto` to use it. Other platforms can still use the Windows browser.
 [Official retrieval API](https://dev.elsevier.com/documentation/FullTextRetrievalAPI.wadl)
-TUI/Web PDF import still requires an enabled institutional panel (browser mode
+Optional Web PDF import still requires an enabled institutional panel (browser mode
 other than `off`). Failed API papers appear there for manual import without
 scheduling a browser fetch. The API itself also works with browser mode `off`.
 
@@ -663,11 +663,13 @@ public copies can be downloaded automatically; per-paper success is not guarante
 The optional [Elsevier TDM channel](https://www.elsevier.com/about/policies-and-standards/text-and-data-mining/faq)
 requires verified access, and XML full text is not the publisher PDF.
 
-During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
-the complete catalog even without pending papers. The TUI's bottom **Close** button
-or **Esc** returns to the research view without stopping research or skipping papers.
-If a dropdown is expanded, the first Esc closes that menu. Open login, verify a sample, or
-check/retry. Avoid running a second standalone manager against the same browser.
+During a run, the TUI **i** panel is read-only: publisher routes, public-plus-institutional
+or public-only policies, current pending/ready/gap counts and latest observations.
+Idle publishers remain visible; a configured route is not proof of login or subscription.
+The panel refreshes with the main monitor. **Close** or **Esc** returns to research.
+It has no PDF path input, login/retry/sample actions or policy controls. Optional manual
+operations remain available through an authorized Web panel and are not required for
+unattended operation. Avoid a second standalone manager against the same browser.
 A timestamped verified sample proves that paper was readable at that time; its bytes
 are released, not archived as research evidence. Reconnecting the same browser can
 reuse a valid session, but institutional/publisher expiry can require another login.
@@ -679,7 +681,7 @@ deadline from enqueue, including queue time and retries. Explicit login/check op
 **600-second** platform window. New papers never extend it. Timeouts need an operator
 retry; denial of one paper never disables the entire platform automatically.
 
-| Control | Scope |
+| Optional Web control | Scope |
 | --- | --- |
 | Skip / restore paper | Across experts in this run, keyed by known DOI or canonical link; existing admitted originals remain available. |
 | `public_only` platform | Suppresses automatic institutional browsing; public/OA retrieval and validated manual PDF import remain available. |
@@ -750,8 +752,8 @@ debugging or reverse CDP tunnel is needed. For each new `serve` / `bootstrap lau
 --institutional-browser-ui-url http://127.0.0.1:5800
 ```
 
-The optional library-entry flag still applies. TUI/Web display the server GUI
-instructions. Login actions focus the server tab; credentials are entered only
+The optional library-entry flag still applies. The TUI observes connection state;
+optional Web login actions focus the server tab. Credentials are entered only
 there. Ending a Host closes its owned tabs, leaving the browser service alive.
 Subsequent Hosts reuse valid sessions for each publisher.
 
@@ -827,12 +829,14 @@ Sign In** on the publisher page; select your institution there to start SSO.
 
 ## During research
 
-Press `i` in the TUI, select a publisher and choose the login button. Complete
-school selection, SSO or MFA in the browser. If the library leaves you on its
-home page, navigate to the listed article in that same tab. The Host checks
-waiting tabs approximately every 30 seconds within an explicit manual window, without restarting login. Retry
-is also available explicitly. A valid browser session serves later papers;
-expired sessions or required verification still need the operator.
+Press **i** in the TUI to see one row per publisher: access policy, current
+institutional pending/ready/gap counts and latest observations. Public-only suppresses
+automatic institutional browsing. No institutional requests does not mean public
+retrieval failed, and ready full text does not prove an Agent read it or obtained PDF.
+Counts cover the current bounded queue, not historical totals or public downloads.
+Client endpoint presence is not browser readiness. Missing Host observations show
+unknown, separately from explicitly disabled access. **Close** or **Esc** returns;
+the panel requests no files, login, retry decisions or state changes.
 
 The Agent subsequently consumes ready documents through
 `web_fetch(mode="document", url=...)`, admitting exact originals and extracted
@@ -840,17 +844,13 @@ text through the existing `/papers` workspace and archive. Downloading does not
 rewrite finished research conclusions. Denial, missing full text and uncertain
 identity stop automatic retries and remain explicit evidence gaps.
 
-For manual import, download an entitled PDF yourself, transfer it to the Host,
-select the matching paper in the TUI and enter its absolute **Host-side** path.
-PDF, readable-text and DOI/title identity checks still apply. Requests without
-a DOI or a reliable title may need to use a DOI URL before import.
-
-The Web panel mirrors the TUI. Obtain an operator link from the TUI `i`
-screen ("Web panel link"; plain read links cannot trigger actions) or start a
-standalone `python -m hypoloom.web_observer --allow-literature-control`. The
-Workbench "机构全文" tab lists pending papers by publisher and triggers the
-same open-login, retry and PDF-import actions. Sign-in and verification stay
-in your own browser pages; the panel never collects credentials.
+For optional manual intervention, start a separate Web observer with
+`--allow-literature-control` and use its operator link. Plain read links cannot
+trigger actions. Its Workbench "机构全文" tab retains login, retry and PDF import;
+these are no longer TUI actions. Imports require an absolute Host-side path and
+the existing PDF, readable-text, DOI/title and source validation. Authentication
+stays in browser pages. This is optional supplementation, not an unattended workflow
+requirement.
 
 ## Legacy fixed ports and persistent sessions (compatibility mode)
 
@@ -930,8 +930,8 @@ been [verified with one real IEEE paper](../qualification.md#real-institutional-
 Other proprietary viewers/native downloads may still require manual PDF import.
 HTML bytes are never admitted as a PDF or evidence of missing access.
 
-TUI/Web show translated reasons, original codes, last-check time and approximate
-time until the next eligible check (the serial queue can delay it). With the Profile log
+The TUI shows the latest brief reason; Web retains original codes, last-check time
+and approximate time until the next eligible check (the serial queue can delay it). With the Profile log
 sink enabled, the Host writes `literature_access` transitions to the existing
 `events.jsonl`, including provider, canonical paper URL, from/to state and reason.
 These are live local diagnostics, respect the log level, and do not enter

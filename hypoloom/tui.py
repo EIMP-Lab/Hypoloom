@@ -693,9 +693,9 @@ class SummaryPanel(CockpitPanel):
                 failure = item.get("failure") or {}
                 health.append(escape(f"{sink}: {item.get('state', 'unverified')} · pending {item.get('pending', '?')} · last success {_service_time(item.get('last_success_at'))} · {failure.get('code', '')} · next retry {_service_time(item.get('next_retry_at'))} · n Telegram retry"))
         literature_access = status.get("literature_access") or {}
-        if literature_access.get("pending") or literature_access.get("available"):
-            health.append(f"[yellow]机构全文：{literature_access.get('pending', 0)}篇待处理 · "
-                f"{literature_access.get('available', 0)}篇已就绪 · i 查看（其他研究继续）[/]")
+        if literature_access:
+            from .literature_access_tui import access_summary
+            health.append(escape("机构接入：" + access_summary(status) + " · i 状态"))
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1183,7 +1183,7 @@ class HypoloomVNextMonitor(App):
         Binding("g", "resource_recheck", "GPU recheck"),
         Binding("l", "literature_retry", "Literature retry", show=False),
         Binding("n", "notification_retry", "Telegram retry", show=False),
-        Binding("i", "literature_access", "机构全文访问"),
+        Binding("i", "literature_access", "机构接入状态"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
@@ -1772,16 +1772,6 @@ class HypoloomVNextMonitor(App):
             return
         url = server.human_answer_url()
         content = ("[b #ffb86b]OPERATOR ANSWER LINK[/]\nThis link permits reviewed Grounding answers for this run. Keep it private.\n\n"
-            + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
-        self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
-
-    def action_literature_browser(self) -> None:
-        server = self._web_server
-        if server is None:
-            self.notify("Web is unavailable. Use institutional access in this TUI.")
-            return
-        url = server.literature_access_url()
-        content = ("[b #ffb86b]OPERATOR LITERATURE LINK[/]\nThis link permits institutional full-text actions (open login, retry, import PDF). Keep it private.\n\n"
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 

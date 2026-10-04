@@ -2,6 +2,34 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Read-only institutional TUI (2026-10-04)
+
+The operator requests a concise observation panel instead of login, retries,
+sample checks, PDF import and policy actions. The i panel now formats existing
+Host publisher routes, connection observations and bounded queue counts/results.
+It does not probe a browser or send controls. Missing Host state clears live rows
+and remains unknown; endpoint presence and configured routes are not entitlement.
+Public downloads and historical totals are explicitly outside these queue counts.
+Automatic refresh, a fixed Close button and Esc remain; optional authorized Web
+controls and their validators are unchanged.
+
+**171 distinct related tests pass** across the final selection and rerun. The
+final selection had 170 passes and one AF_UNIX pathname-length failure caused by
+placing fixtures under the long qualification directory. That unchanged test
+passes under normal short pytest paths; a targeted rerun also checks the final
+nine-provider layouts. Evidence preserves both outcomes. Native Textual pilots
+cover 80x24, 100x34 and 237x52, scrolling, both exit actions, live/offline updates
+and former login/retry keys. Actual Host STATUS supplies configured modes and a
+verified document; observing/closing leaves database row counts and browser calls
+unchanged, with no LITERATURE_ACCESS command.
+
+Wheel/source/install/fresh runtime bundle match **175 package files**. Installed
+read-only panel and offline clearing/return smoke pass, along with static checks.
+No retained Host/run/client/browser changes, real Windows login, paid/GPU or full
+G1 qualification are claimed for this UI change.
+Evidence: `.local/qualification/institutional-tui-status-20261004/`.
+[Operator guide](guides/institutional-access.md#during-research).
+
 ## Unattended preparation failure policy (2026-10-04)
 
 The user prioritizes unattended stability. Explicit

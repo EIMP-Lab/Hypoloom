@@ -2437,6 +2437,7 @@ def test_institutional_panel_does_not_shadow_existing_service_retry_keys(tmp_pat
             await pilot.press("i")
             await pilot.pause()
             assert isinstance(app.screen, LiteratureAccessScreen)
+            await pilot.press("l", "n")
             assert not retries
             await pilot.press("escape")
             await pilot.press("l", "n")
