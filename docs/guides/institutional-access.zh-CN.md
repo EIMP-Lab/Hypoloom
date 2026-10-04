@@ -409,6 +409,10 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 安装代码。bootstrap 与准备进程共同给出 `script_source`（服务器文件位置）、
 `setup_inputs`（需要填写的路径）和固定启动入口。
 
+首次使用或更换 Windows 机器／用户账户时，先完成下方的
+[SSH 免交互认证检查](#首次接入或更换-windows-机器账户)。能用密码下载脚本，不代表
+后台助手已能登录服务器。
+
 1. 在 Windows 打开一个用于下载的目录，通过现有 SFTP/SCP 或文件传输工具，从当前
    SSH 服务器下载程序给出的 `institutional-connect.ps1` 原始文件。不要将聊天中的
    脚本正文另存为文件。Windows 无需安装 Hypoloom 或 Python。
@@ -507,31 +511,96 @@ pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -R
 不保存密码。Linux SSH 服务须允许远程 Unix socket 转发；脚本通过下方三个明确的
 服务器绝对路径调用项目 CLI。
 
-如果现在 SSH 仍要求服务器密码，请先在 **Windows** 配置一次密钥。在管理员 PowerShell 中
-启用 Windows 的 ssh-agent：
+#### 首次接入或更换 Windows 机器／账户
+
+复制连接脚本不会迁移旧机器的 SSH 密钥、主机确认记录、计划任务或浏览器登录状态。
+先保证新机器能访问服务器；如果服务器地址通过 VPN／组网软件访问，新机器也需接入
+相同网络。SSH 目标仍是 Linux 的 `user@host` 或本机已配置的别名；本机 Windows
+用户名改变，不意味着服务器用户名也要改变。
+
+在新机器的普通 PowerShell 中检查两种登录：
+
+```powershell
+$researchServer = (Read-Host '服务器 user@host 或 SSH 别名（不是密码）').Trim()
+ssh -o ConnectTimeout=5 $researchServer exit
+Write-Host "普通登录退出码：$LASTEXITCODE"
+ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer exit
+Write-Host "免交互登录退出码：$LASTEXITCODE"
+```
+
+首次连接提示主机指纹时，核对服务器指纹后再接受。服务器密码只在 SSH 的提示中输入。
+
+| 结果 | 处理 |
+| --- | --- |
+| 超时、连接拒绝或主机名无法解析 | 检查网络／VPN、服务器地址、端口及 SSH 别名配置。 |
+| 主机密钥验证失败 | 核对服务器身份，完成主机确认；不要关闭主机密钥检查。 |
+| 普通登录为 `0`，免交互为 `255` 且提示 `Permission denied (publickey,password)` | 网络与密码登录可用，但当前用户的免交互认证未通过；按下面步骤配置密钥／代理。 |
+| 两次均为 `0` | SSH 已就绪，直接重试 Setup；无需再生成或上传密钥。 |
+
+Setup 的 `init_ssh_connection_unavailable_check_key_and_known_host` 是连接预检错误，
+本身不能区分上述原因，也不是出版社或 Edge 登录失败。两次 SSH 均通过而 Setup
+仍报错时，保留原始报错并检查其使用的同一目标、服务器路径和远程命令。
+
+需要配置密钥时，先在 **Windows 管理员 PowerShell** 启用 ssh-agent：
 
 ```powershell
 Set-Service ssh-agent -StartupType Automatic
 Start-Service ssh-agent
 ```
 
-随后回到桌面用户的普通 PowerShell。生成时按提示设置密钥口令，只把公钥发到 Linux
-服务器；服务器密码仅在 SSH 自己的提示中输入，不写入脚本或发到对话中：
+随后回到**实际运行助手的 Windows 用户**的普通 PowerShell。下面使用标准用户级
+`~/.ssh/id_ed25519`，不限定于 Hypoloom；已有私钥不会覆盖。若已使用其他路径的密钥，
+将 `$clientKey` 改为它的路径并加载到同一用户的代理。生成时按提示设置密钥口令；
+`ssh-add` 可能要求该口令，它与服务器登录密码不同。
 
 ```powershell
-$researchServer = 'research-server' # 替换为自己的 user@host 或 SSH 别名
-$researchKey = Join-Path $env:USERPROFILE '.ssh\hypoloom_ed25519'
-New-Item -ItemType Directory -Force (Split-Path $researchKey) | Out-Null
-if (!(Test-Path $researchKey)) { ssh-keygen -t ed25519 -f $researchKey }
-ssh-add $researchKey
-Get-Content "$researchKey.pub" | ssh $researchServer 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
-ssh -o BatchMode=yes $researchServer exit
-$LASTEXITCODE # 自动重连前应输出 0
+& {
+    $ErrorActionPreference = 'Stop'
+    $researchServer = (Read-Host '服务器 user@host 或 SSH 别名（不是密码）').Trim()
+    if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {
+        throw '请输入 SSH 目标或别名，不要输入整条 ssh 命令。'
+    }
+    $clientKey = Join-Path $env:USERPROFILE '.ssh\id_ed25519'
+    New-Item -ItemType Directory -Force (Split-Path $clientKey) | Out-Null
+
+    if (-not (Test-Path -LiteralPath $clientKey)) {
+        & ssh-keygen -t ed25519 -f $clientKey
+        if ($LASTEXITCODE -ne 0) { throw '生成密钥失败，已停止。' }
+    }
+    if (-not (Test-Path -LiteralPath "$clientKey.pub")) {
+        $publicKey = & ssh-keygen -y -f $clientKey
+        if ($LASTEXITCODE -ne 0) { throw '导出公钥失败，已停止。' }
+        $publicKey | Set-Content -LiteralPath "$clientKey.pub" -Encoding ascii
+    }
+
+    & ssh-add $clientKey
+    if ($LASTEXITCODE -ne 0) { throw '加载密钥失败，请检查 ssh-agent 服务。' }
+
+    $installPublicKey = 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && { printf "\n"; tr -d "\r"; } >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+    Get-Content -LiteralPath "$clientKey.pub" | & ssh $researchServer $installPublicKey
+    if ($LASTEXITCODE -ne 0) { throw '上传公钥失败，已停止。' }
+
+    & ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer exit
+    if ($LASTEXITCODE -ne 0) { throw '免交互认证仍未通过，请保留上方 SSH 错误。' }
+    Write-Host '免交互 SSH 认证成功，可以重新执行 Hypoloom Setup。'
+}
 ```
 
-私钥留在 Windows，系统配置可参考
+这段代码只上传公钥，追加到 Linux 用户的 `authorized_keys`，保留其他机器的授权。
+给另一台服务器配置时可复用同一用户密钥，只更改 SSH 目标并上传公钥；不要覆盖已有
+密钥或授权列表。私钥留在 Windows，系统配置可参考
 [Windows OpenSSH 密钥管理](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)。
-这一步只准备 SSH 认证，出版社登录仍在专用浏览器里完成。
+认证成功后，在下载原始脚本的目录中重新执行：
+
+```powershell
+pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
+```
+
+填写服务器 init 显示的目标及路径，标准安装的 Python 和运行目录可回车使用默认值。
+回到原 CC 会话：准备仍在等待时会自动检测；已结束时选择“重新准备”。不必为了 SSH
+配置另建研究运行。此步骤只准备 SSH 认证，新机器上的出版社登录仍在专用浏览器完成。
+
+#### 手动连接诊断
 
 ```powershell
 $researchServer = 'research-server' # user@host or SSH alias

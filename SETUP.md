@@ -30,6 +30,10 @@ model availability or scientific quality. Exact helper usage is in
 
 See [Initialization](docs/guides/initialization.md) for effective model precedence, unified Profile budgets and managed notification credentials.
 
+For a first Windows institutional client or a replacement PC/account, complete
+[user-level SSH key and noninteractive login setup](docs/guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
+before running the connector's `Setup`; password login alone is insufficient.
+
 Init also shows a bounded [version reminder](docs/guides/version-check.md)
 against the configured remote branch. Run `hypoloom version-check` manually or
 use `bootstrap paths --offline` to skip remote lookup. Updates and failed checks

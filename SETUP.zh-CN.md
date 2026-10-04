@@ -22,6 +22,10 @@ init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默
 
 实际模型优先级、Profile 集中预算和托管通知凭据见[初始化指南](docs/guides/initialization.zh-CN.md)。
 
+Windows 机构客户端首次接入或换机时，先完成
+[用户级 SSH 密钥与免交互登录配置](docs/guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)，
+再运行连接脚本的 `Setup`；只有密码登录可用还不够。
+
 init 同时显示针对已配置远端分支的[版本提醒](docs/guides/version-check.zh-CN.md)，
 可用 `hypoloom version-check` 手动检查，或 `bootstrap paths --offline` 跳过远端查询。
 发现更新、超时或检查失败均只提醒，不自动更新代码或迁移运行。

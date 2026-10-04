@@ -285,6 +285,10 @@ run startup and do not acquire the run lifetime described above.
 not installation source reproduced in chat. Bootstrap and preparation expose the
 same `script_source`, `setup_inputs` and fixed file-launch command.
 
+On first use or after changing Windows PC/account, complete the
+[noninteractive SSH check](#first-setup-or-a-new-windows-pcaccount) below first.
+Downloading the script with a password does not establish background authentication.
+
 1. On Windows, open a download directory. Use SFTP/SCP or your existing file transfer
    tool to download the original `institutional-connect.ps1` from the server path
    shown by init. Do not save assistant-written source as the script. A Windows
@@ -402,33 +406,104 @@ SSH key/ssh-agent authentication. The helper uses BatchMode and stores no passwo
 The Linux server must permit remote Unix-socket forwarding. It runs the installed
 Hypoloom CLI using the three explicit absolute server paths below.
 
-If SSH currently asks for a server password, configure a key **on Windows** once.
-In an administrator PowerShell, enable the Windows agent:
+#### First setup or a new Windows PC/account
+
+Copying the connector does not transfer the old PC's SSH keys, host-key trust,
+scheduled task or browser login state. Ensure the new PC can reach the server;
+join the required VPN/private network if its address depends on one. The target
+is still the Linux `user@host` or a locally configured SSH alias. A different
+Windows username does not require changing the remote Linux username.
+
+In the new PC's ordinary PowerShell, check both login modes:
+
+```powershell
+$researchServer = (Read-Host 'Server user@host or SSH alias (not a password)').Trim()
+ssh -o ConnectTimeout=5 $researchServer exit
+Write-Host "Interactive login exit code: $LASTEXITCODE"
+ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer exit
+Write-Host "Noninteractive login exit code: $LASTEXITCODE"
+```
+
+Verify the server fingerprint before accepting first-use host trust. Enter the
+server password only in SSH's own prompt.
+
+| Result | Action |
+| --- | --- |
+| Timeout, connection refused or unresolved hostname | Check network/VPN, server address, port and SSH alias configuration. |
+| Host key verification failed | Verify the server identity and establish trust; do not disable host-key checking. |
+| Interactive login returns `0`; BatchMode returns `255` with `Permission denied (publickey,password)` | Networking and password login work, but this user's noninteractive authentication does not; configure the key/agent below. |
+| Both return `0` | SSH is ready. Retry Setup without generating or uploading another key. |
+
+Setup's `init_ssh_connection_unavailable_check_key_and_known_host` is a connection
+preflight error. It cannot by itself distinguish these causes, and is not an
+Edge/publisher login failure. If both SSH checks pass but Setup still fails,
+retain the original error and check its exact target, server paths and remote command.
+
+If key setup is needed, enable ssh-agent in **Windows administrator PowerShell**:
 
 ```powershell
 Set-Service ssh-agent -StartupType Automatic
 Start-Service ssh-agent
 ```
 
-Return to an ordinary PowerShell under the desktop user. Choose a key passphrase
-when prompted; only the public key is sent to the Linux server. Enter the server
-password in SSH's prompt, never in a script or chat:
+Return to ordinary PowerShell as the **Windows user who will run the helper**.
+The following uses the standard user-level `~/.ssh/id_ed25519`, not a project-specific
+key, and preserves an existing private key. To use a key at another path, set
+`$clientKey` to that path and load it into this user's agent. Choose a key passphrase
+when generating a key; `ssh-add` may ask for it again. It differs from the server password.
 
 ```powershell
-$researchServer = 'research-server' # Replace with your user@host or SSH alias
-$researchKey = Join-Path $env:USERPROFILE '.ssh\hypoloom_ed25519'
-New-Item -ItemType Directory -Force (Split-Path $researchKey) | Out-Null
-if (!(Test-Path $researchKey)) { ssh-keygen -t ed25519 -f $researchKey }
-ssh-add $researchKey
-Get-Content "$researchKey.pub" | ssh $researchServer 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
-ssh -o BatchMode=yes $researchServer exit
-$LASTEXITCODE # Must be 0 before using automatic reconnect
+& {
+    $ErrorActionPreference = 'Stop'
+    $researchServer = (Read-Host 'Server user@host or SSH alias (not a password)').Trim()
+    if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {
+        throw 'Enter an SSH target or alias, not a complete ssh command.'
+    }
+    $clientKey = Join-Path $env:USERPROFILE '.ssh\id_ed25519'
+    New-Item -ItemType Directory -Force (Split-Path $clientKey) | Out-Null
+
+    if (-not (Test-Path -LiteralPath $clientKey)) {
+        & ssh-keygen -t ed25519 -f $clientKey
+        if ($LASTEXITCODE -ne 0) { throw 'Key generation failed; stopped.' }
+    }
+    if (-not (Test-Path -LiteralPath "$clientKey.pub")) {
+        $publicKey = & ssh-keygen -y -f $clientKey
+        if ($LASTEXITCODE -ne 0) { throw 'Public key export failed; stopped.' }
+        $publicKey | Set-Content -LiteralPath "$clientKey.pub" -Encoding ascii
+    }
+
+    & ssh-add $clientKey
+    if ($LASTEXITCODE -ne 0) { throw 'Key loading failed; check the ssh-agent service.' }
+
+    $installPublicKey = 'umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && { printf "\n"; tr -d "\r"; } >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+    Get-Content -LiteralPath "$clientKey.pub" | & ssh $researchServer $installPublicKey
+    if ($LASTEXITCODE -ne 0) { throw 'Public key upload failed; stopped.' }
+
+    & ssh -o BatchMode=yes -o ConnectTimeout=5 $researchServer exit
+    if ($LASTEXITCODE -ne 0) { throw 'Noninteractive authentication still failed; retain the SSH error above.' }
+    Write-Host 'Noninteractive SSH authentication succeeded; rerun Hypoloom Setup.'
+}
 ```
 
-Keep the private key on Windows. See
+Only the public key is appended to the Linux user's `authorized_keys`; other
+machines' authorizations remain. Another server can use the same user key: change
+the SSH target and deploy the public key there, without replacing existing keys
+or authorization lists. Keep the private key on Windows. See
 [Windows OpenSSH key management](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)
-for agent setup. These steps prepare SSH authentication; publisher login still
-happens in the dedicated browser.
+for agent setup. Once authentication succeeds, rerun this in the directory where
+you downloaded the original connector:
+
+```powershell
+pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
+```
+
+Enter the target and paths shown by server init; standard installations may accept
+the Python and runs-directory defaults. Return to the original CC session: a
+waiting preparation detects the connection automatically; choose `重新准备` if
+the batch ended. SSH setup does not require another research run. Publisher login
+on the new PC still happens separately in the dedicated browser.
+
+#### Manual connection diagnostics
 
 ```powershell
 $researchServer = 'research-server' # user@host or SSH alias

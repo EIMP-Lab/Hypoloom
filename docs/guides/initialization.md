@@ -113,6 +113,11 @@ an unconnected PC. See the
 [institutional guide](institutional-access.md#prepare-the-connection-during-init)
 for commands, stopping and qualification limits. SSO/MFA remains human-operated.
 
+On first use or after changing Windows PC/account, follow the
+[SSH setup guide](institutional-access.md#first-setup-or-a-new-windows-pcaccount)
+and verify that `BatchMode=yes` login returns `0`; password login alone does not
+establish background helper access.
+
 ## One place for budgets
 
 Keep the six Profile files. New templates put financial and time limits in

@@ -89,6 +89,10 @@ init 使用后台 `--agent-session`，先确认连接，再打开平台；说明
 本机入口及 SSH 认证仍是必要前提，服务器不能凭空启动未连接的电脑。命令、停止方式及真人验收限制见
 [机构全文指南](institutional-access.zh-CN.md#init-自动准备连接)。学校 SSO/MFA 仍由真人完成。
 
+首次接入或更换 Windows 机器／账户时，先按
+[SSH 接入教程](institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)
+验证 `BatchMode=yes` 登录返回 `0`；密码登录成功不等于后台助手已可用。
+
 ## 预算集中配置
 
 保留现有六份 Profile 文件。新模板将费用、时限和单次调用限制统一放在

@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Windows first setup/replacement PC](../guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
+  / [中文](../guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户):
+  distinguish password login from BatchMode readiness; user-level keys and agent,
+  preserved server authorizations, new-client Setup and return to existing init.
+
 - [PR 4 report and patch instructions](../qualification.md#pr-4-report-and-patch-instructions-2026-10-05):
   current-cycle references and Host-generated patches; integration repairs the
   reviewed Skill's whole-record copy instruction by projecting the existing three

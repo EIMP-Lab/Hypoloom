@@ -1,5 +1,14 @@
 # Current Hypoloom development state
 
+- October 5 Windows replacement-client tutorial: reported ordinary SSH exit 0
+  and BatchMode exit 255 on a new PC isolate missing noninteractive authentication.
+  Both institutional guides now cover new PC/account prerequisites, error triage,
+  standard user-level id_ed25519 reuse/creation, agent setup, public-key append and
+  BatchMode verification before retrying Setup. SETUP/init guides link there.
+  Documentation only; no client/server keys, helper code or research state changed.
+  [Chinese steps](../guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)
+  / [English](../guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount).
+
 - October 5 PR #4 integration: user authorizes merge/push. Preserve the PR's
   current-cycle report scope, useful rejection context and Host-owned patch
   instructions. Repair its reviewed Skill mismatch: project fact_id,
