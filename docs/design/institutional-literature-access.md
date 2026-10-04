@@ -339,3 +339,30 @@ Independent public probing of `10.1109/TASLP.2024.3434495` and
 locator HTTP 429. Client-offline operation must retain explicit gaps rather than
 promise unrestricted institutional downloading. Server desktop/container
 deployment is optional, and no user browser, helper or retained run was changed.
+
+## Same-title arXiv fallback — 2026-10-04
+
+The operator requests an automatic arXiv PDF fallback for the same paper. Reuse
+the shared public acquisition function, exact-DOI metadata, existing document
+validator, source rejection, work budgets and archive. Search the official Atom
+API only after existing PDF candidates fail. Require a normalized exact title,
+matching first author and another author where available, no conflicting supplied
+DOI, one unambiguous versioned arXiv result and its official PDF link. Downloaded
+bytes still pass the ordinary PDF/identity checks. Preserve the actual arXiv
+version in the existing version note; this does not establish the publisher's
+version of record. Missing metadata, ambiguity, rate limits and timeouts are gaps,
+not manual controls or retries beyond the current work window.
+
+Concurrency rationale: independent Host/probe processes can otherwise issue API
+requests concurrently, exceeding the official single-connection/three-second
+limit and losing the public fallback. The affected boundary is HTTP admission to
+one external service, not research state or source authority. Git, atomic writes,
+types and per-Host semaphores cannot serialize independent live processes; ordinary
+OS advisory locking is sufficient. Use one empty, readable Linux `/tmp` lock file,
+hold the lock across each API request and wait three seconds before sending. This
+adds no ledger, receipt, schema or stored timing authority. Kernel lock release
+handles process exit; never unlink the shared inode. Maintenance is one bounded
+lock helper, removable when requests use a shared outbound scheduler. Coordination
+covers processes/users sharing that host's `/tmp`, not separate hosts/containers;
+operators deploying those must coordinate their combined arXiv traffic as required
+by the [official terms](https://info.arxiv.org/help/api/tou.html).

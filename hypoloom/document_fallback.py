@@ -44,7 +44,11 @@ def work_details(work, identity):
     if not isinstance(title, str) or not title.strip():
         raise ValueError("metadata_title_missing")
     candidates = list(_openalex_pdf_uris(work))
-    return title[:1024], candidates[:16]
+    authorships = work.get("authorships")
+    authors = [author["author"]["display_name"] for author in (authorships if isinstance(authorships, list) else [])[:200]
+               if isinstance(author, dict) and isinstance(author.get("author"), dict)
+               and isinstance(author["author"].get("display_name"), str)]
+    return title[:1024], candidates[:16], authors
 
 
 def error_event(stage, error, url=None):
@@ -61,11 +65,12 @@ def error_event(stage, error, url=None):
 def discover(web, identity, deadline, calls, events):
     doi = identity[4:]
     title = ""
+    authors = []
     try:
         work = read_json(web, "https://api.openalex.org/works/https://doi.org/" + quote(doi, safe="/"), deadline, calls)
-        title, candidates = work_details(work, identity)
+        title, candidates, authors = work_details(work, identity)
         if candidates:
-            return title, candidates
+            return title, candidates, authors
     except (GroundingWebError, LiteratureError, ValueError) as exc:
         events.append(error_event("openalex", exc))
     try:
@@ -93,10 +98,14 @@ def discover(web, identity, deadline, calls, events):
                 continue
             if url not in candidates:
                 candidates.append(url)
-        return title or titles[0][:1024], candidates
+        if not authors:
+            names = work.get("author")
+            authors = [(str(author.get("given", "")) + " " + str(author.get("family", ""))).strip()
+                       for author in (names if isinstance(names, list) else [])[:200] if isinstance(author, dict)]
+        return title or titles[0][:1024], candidates, authors
     except (GroundingWebError, LiteratureError, ValueError) as exc:
         events.append(error_event("crossref", exc))
-        return title, []
+        return title, [], authors
 
 
 def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
@@ -105,7 +114,7 @@ def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
     if not identity.startswith("doi:") or monotonic() >= deadline or http_calls[0] <= 0:
         return None, title
     identity = _identity(identity)
-    discovered_title, candidates = discover(web, identity, deadline, http_calls, events)
+    discovered_title, candidates, authors = discover(web, identity, deadline, http_calls, events)
     title = title or discovered_title
     seen = set()
 
@@ -115,6 +124,8 @@ def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
         seen.add(url)
         try:
             document = read_document(web, url, deadline, http_calls)
+            if source == "arxiv" and document["url"] != url:
+                raise ValueError("arxiv_pdf_version_changed")
             if reject(document["url"]):
                 raise ValueError("rejected_source")
             if document.get("media_type") != "application/pdf":
@@ -141,6 +152,25 @@ def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
                     return document, title
         except LiteratureError as exc:
             events.append(error_event("fallback_lookup", exc))
+    # A title alone cannot establish a publisher/preprint relationship. Authors
+    # come from the exact-DOI metadata above, not model-generated search guesses.
+    if authors and title and monotonic() < deadline and http_calls[0] >= 2:
+        from .arxiv_fallback import candidates as arxiv_candidates, title_query
+        query = title_query(title)
+        if query is not None:
+            try:
+                feed = read_document(web, query, deadline, http_calls)
+                matches = arxiv_candidates(feed, identity=identity, title=title, authors=authors)
+                if not matches:
+                    events.append({"stage": "arxiv_lookup", "reason": "no_matching_paper"})
+                for pdf, version in matches:
+                    document = attempt(pdf, "arxiv")
+                    if document is not None:
+                        document["version_note"] = (f"arXiv {version}, matched by title and authors; "
+                            "publisher version of record is not established.")
+                        return document, title
+            except (GroundingWebError, LiteratureError, ValueError) as exc:
+                events.append(error_event("arxiv_lookup", exc))
     return None, title
 
 
@@ -163,4 +193,5 @@ def open_copy(io, web, url, identity, title, rejected, events, deadline, http_ca
         return None
     _download_event(events, "fallback", "RETRIEVED", uri=document["url"])
     return {**document, "requested_url": url,
-            "version_note": "Open-access copy at the recorded source URL; publisher version of record is not established."}
+            "version_note": document.get("version_note",
+                "Open-access copy at the recorded source URL; publisher version of record is not established.")}

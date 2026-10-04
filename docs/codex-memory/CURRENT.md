@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 4 same-title arXiv fallback: after existing selected-paper public PDF
+  candidates fail, query the official API using the exact-DOI title; require title,
+  authors, non-conflicting DOI and one versioned official PDF. Reuse source/PDF
+  validation, deadlines, attempt reuse and archives; retain arXiv version notes.
+  No key, browser, manual control or new init step. Ordinary same-host `/tmp` flock
+  serializes API requests with three-second spacing; separate hosts/containers
+  need combined traffic coordination. Live token-AND query missed known papers;
+  full-title phrase fixes it. ResNet API-to-PDF/archive succeeds (12 pages).
+  Actual TASLP DOI finds arXiv 2407.16714v1 but PDF times out twice; TAFFC has no
+  admitted match. Do not claim these two gaps resolved. Related 403 + docs seven
+  + one native CC/Host/three-reader/CPU closure pass: 18 Agent + one Process,
+  one delivered PDF, zero human controls/residue. Wheel/install/bundle: 176 files.
+  [Design](../design/institutional-literature-access.md#same-title-arxiv-fallback--2026-10-04)
+  and [qualification](../qualification.md#same-title-arxiv-fallback-2026-10-04):
+  `.local/qualification/arxiv-fallback-20261004/`. Retained runs/client untouched.
+
 - October 4 IEEE PDF follow-up: a server graphical desktop is unsuitable for
   the user's shared server; it is not a required replacement for an intermittent
   Windows client. Offline research uses archived/public sources with explicit

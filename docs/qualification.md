@@ -7666,3 +7666,52 @@ evidence remains separate above. Current IEEE institutional readiness still need
 an actual authorized PDF download, identity validation and archive; opening its
 viewer or finding a repository sample is insufficient. That bounded acceptance
 check can run independently of a fresh research init.
+
+## Same-title arXiv fallback (2026-10-04)
+
+Evidence: `.local/qualification/arxiv-fallback-20261004/`. The operator requests
+same-title arXiv PDF fallback without depending on a local browser. This extends
+the selected-paper public acquisition shared by Host, preparation samples and
+the standalone probe; it does not add broad arXiv topic search or bulk prefetch.
+Existing research runs, Windows helper/browser and credentials remain unchanged.
+
+- Match exact normalized title, first author and another author when present,
+  non-conflicting publisher DOI, a unique versioned ID and its official PDF link.
+  Existing PDF validation, source rejection, byte/time/HTTP limits and archive
+  ownership still apply. Actual arXiv version notes survive delivery and archive.
+- Same-host processes serialize API calls using an ordinary empty `/tmp` lock
+  file, waiting three seconds before each request. Independent-process exclusion,
+  abrupt holder exit, request spacing and deadline-without-send checks pass.
+  This does not coordinate isolated containers or multiple machines.
+- Final related selection: 403 pass (`final-green.xml`); documentation/Profile:
+  seven pass. Negative cases cover author/title/DOI conflicts, ambiguous entries,
+  absent metadata, hostile XML declarations, wrong PDF, challenge pages, rejected
+  sources, version-changing redirects and bounded HTTP failures. An earlier
+  browser-probe fixture still returned the old discovery tuple; updating its
+  author field restores both cases without changing their assertions (`final.xml`).
+- The installed native CC, actual Host, local scripted model provider and CPU
+  process complete automatic arXiv acquisition, three readers, collection and
+  Oracle (`native-final.xml`). Independent census: 18 Agent + one Process terminal
+  successes, one delivered PDF record, four byte-identical original archives,
+  zero runtime literature controls, live process groups or paper-staging residue.
+  All four PDFs are independently reread with Poppler.
+- Live API discovery exposed token-AND title queries missing the known ResNet
+  paper; the complete title phrase returns its correct entry. The final production
+  query/parser plus real PDF validation and ordinary archive obtain
+  `1512.03385v1` for `10.1109/CVPR.2016.90`: 819,383 bytes, 12 pages
+  (`live-resnet/`). This directly tests arXiv lookup/download; the broader public
+  candidate ordering is separately covered by the Host test.
+- For actual research DOI `10.1109/TASLP.2024.3434495`, the unmodified standalone
+  acquisition now finds `2407.16714v1`, but PDF retrieval times out in both the
+  initial phrase-query run and one bounded retry. `10.1109/TAFFC.2025.3558222`
+  has no admitted match. Keep the nonzero probe results and Semantic Scholar 429
+  observations; these documents are not reported downloaded (`live-ieee-phrase/`,
+  `live-ieee-retry/`). Initial empty token-AND results remain in `live-ieee/` and
+  `live-direct/`, with the query comparison XML retained.
+- Wheel, isolated install and fresh runtime bundle match 176 package files.
+  Installed arXiv parser reads the actual saved feed; existing TUI/refresh/Esc
+  smoke also passes (`installation.json`).
+
+No Windows subscription, universal IEEE coverage, full offline-suite, paid-model,
+GPU or soak qualification is claimed. The new default fallback needs no new init
+configuration; existing runs keep their original runtime version.

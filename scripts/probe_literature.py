@@ -50,7 +50,8 @@ def acquire(doi, output, *, web, locator, seconds=45, deadline=None, supplied_ur
                    file=output.name, bytes=len(verified["content"]), page_count=len(verified["pages"]),
                    identity_basis="doi" if pdf_identity(verified["pages"]) else "title",
                    media_type="application/pdf",
-                   version_note="PDF from the recorded source URL; publisher version of record is not established.")
+                   version_note=document.get("version_note",
+                       "PDF from the recorded source URL; publisher version of record is not established."))
         return True
 
     if document is not None:

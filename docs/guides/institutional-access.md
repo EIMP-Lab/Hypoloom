@@ -838,6 +838,19 @@ desktop is not a prerequisite for this workflow. Qualify IEEE PDF access using
 actual PDF bytes, paper-identity validation and an archive; readable HTML, a PDF
 viewer or a successful public repository copy is not stable institutional access.
 
+When a selected paper's existing public PDF candidates fail, the shared acquisition
+path tries an **arXiv same-title fallback**. It queries the title from exact-DOI
+metadata, checks the title/authors and any supplied DOI, then downloads the unique
+versioned official PDF. Missing authors, ambiguity, conflicting identity, invalid
+PDFs and timeouts remain gaps without human recovery requests. The archive records
+the actual arXiv ID/version; a preprint is not the publisher's version of record.
+This reuses public downloading and archiving, with no API key, institutional login,
+Windows helper or additional init configuration. Hypoloom processes sharing a
+Linux host's `/tmp` serialize arXiv API calls, waiting three seconds before each
+request within the existing deadline. Separate hosts/containers still require
+coordination of their combined traffic under the
+[official limits](https://info.arxiv.org/help/api/tou.html).
+
 Press **i** in the TUI to see one row per publisher: access policy, current
 institutional pending/ready/gap counts and latest observations. Public-only suppresses
 automatic institutional browsing. No institutional requests does not mean public

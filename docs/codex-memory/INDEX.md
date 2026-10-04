@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Same-title arXiv fallback](../design/institutional-literature-access.md#same-title-arxiv-fallback--2026-10-04):
+  automatic selected-paper PDF discovery, strict title/author/version matching,
+  same-host API pacing and ordinary archive reuse. [Qualification](../qualification.md#same-title-arxiv-fallback-2026-10-04)
+  includes a real API/PDF/archive success, unresolved IEEE examples and native
+  CC/Host reader/CPU closure; no new init login or configuration.
+
 - [IEEE PDF viewer precedence](../design/institutional-literature-access.md#pdf-viewer-precedence-follow-up--2026-10-04):
   shared-server desktop is not a requirement; intermittent clients leave explicit
   full-text gaps. Readable HTML must not short-circuit an identified PDF viewer.

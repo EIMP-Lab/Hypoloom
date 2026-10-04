@@ -235,7 +235,7 @@ def test_standalone_cli_native_browser_saves_pdf_or_exits_on_challenge(browser, 
                 f'<meta name="citation_doi" content="{DOI}"><meta name="citation_pdf_url" content="{pdf}">')
             route.fulfill(status=200, content_type="text/html", body=body)
     context.route("**/*", respond)
-    monkeypatch.setattr("hypoloom.document_fallback.discover", lambda *args: ("Controlled article", []))
+    monkeypatch.setattr("hypoloom.document_fallback.discover", lambda *args: ("Controlled article", [], []))
     monkeypatch.setattr(probe, "SemanticScholarPdfLocator", lambda **kwargs: Locator())
     monkeypatch.setattr(browser_module, "PlaywrightInstitutionalBrowser", lambda endpoint: adapter)
     output = tmp_path / "experiment"

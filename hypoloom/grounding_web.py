@@ -13,6 +13,7 @@ import ipaddress
 import re
 import socket
 import time
+from contextlib import nullcontext
 from html.parser import HTMLParser
 from typing import Any, Callable, Protocol, Sequence
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
@@ -47,7 +48,7 @@ class PublicHttpsTransport:
             hostname, 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)}))
 
     def request_headers(self, uri: str) -> dict[str, str]:
-        return {"Accept": "text/html, text/plain, application/pdf;q=0.9, application/json;q=0.8",
+        return {"Accept": "text/html, text/plain, application/pdf;q=0.9, application/json;q=0.8, application/atom+xml;q=0.8",
                 "User-Agent": "Hypoloom-Grounding/1"}
 
     def fetch(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
@@ -251,11 +252,17 @@ class GroundingWeb:
                         f"DNS must resolve 1..{MAX_ADDRESSES_PER_HOST} public addresses")
                 if self.clock() >= deadline:
                     raise GroundingWebError("timed_out", "web work window expired")
-                bounds = {"timeout_seconds": deadline - self.clock()} if isinstance(self.transport, PublicHttpsTransport) else {}
-                if http_calls is not None:
-                    if http_calls[0] <= 0: raise GroundingWebError("request_limit", "document HTTP work budget exhausted")
-                    http_calls[0] -= 1
-                response = self.transport.fetch(uri, approved_addresses=addresses, max_bytes=self.max_response_bytes, **bounds)
+                if http_calls is not None and http_calls[0] <= 0:
+                    raise GroundingWebError("request_limit", "document HTTP work budget exhausted")
+                admission = nullcontext()
+                if host in {"export.arxiv.org", "arxiv.org"} and urlsplit(uri).path == "/api/query":
+                    from .arxiv_fallback import request_slot
+                    admission = request_slot(time.monotonic() + max(0, deadline - self.clock()))
+                with admission:
+                    bounds = {"timeout_seconds": deadline - self.clock()} if isinstance(self.transport, PublicHttpsTransport) else {}
+                    if http_calls is not None:
+                        http_calls[0] -= 1
+                    response = self.transport.fetch(uri, approved_addresses=addresses, max_bytes=self.max_response_bytes, **bounds)
                 if not isinstance(response, FetchResponse) or response.requested_uri != uri:
                     raise GroundingWebError("transport_failed", "web response does not bind its requested URL")
                 if _public_address(response.peer_address, "web peer") not in addresses:
@@ -367,7 +374,7 @@ class GroundingWeb:
             parser.close()
             text = "\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip())
             title, links = " ".join("".join(parser.title_parts).split()), parser.links
-        elif media.startswith("text/") or media in {"application/json", "application/xml"}:
+        elif media.startswith("text/") or media in {"application/json", "application/xml", "application/atom+xml"}:
             text = self._text(response)
         elif media == "application/pdf":
             if not response.body.startswith(b"%PDF-") or not response.body.rstrip().endswith(b"%%EOF"):
@@ -407,7 +414,7 @@ class GroundingWeb:
             parser.feed(self._text(response)); parser.close()
             title = " ".join("".join(parser.title_parts).split())[:512]
             pages = ("\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip()),)
-        elif media.startswith("text/") or media in {"application/json", "application/xml"}:
+        elif media.startswith("text/") or media in {"application/json", "application/xml", "application/atom+xml"}:
             pages = (self._text(response),)
         else:
             raise GroundingWebError("unsupported_media", f"unsupported document type: {media or 'missing'}")
