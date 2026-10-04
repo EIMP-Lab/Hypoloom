@@ -33,6 +33,32 @@ def reply_choices(view):
             if action in allowed and (action != "finish" or text == finish)]
 
 
+def render_results(rows):
+    """Explain the existing final observations without asserting account identity."""
+    lines = ["准备结果（论文样本校验，不是机构账号身份认证）："]
+    identity_reasons = {
+        "article_identity_unconfirmed": "论文页面身份校验未通过，尚不能证明已下载全文",
+        "pdf_target_unconfirmed": "PDF 下载目标与论文的对应关系未确认，未接纳为全文",
+        "document_validation_failed": "取得内容后文档校验未通过，未接纳为目标论文全文",
+    }
+    for row in rows:
+        state = row["state"]
+        if state == "identity_unconfirmed":
+            samples = [s for s in row.get("samples", ()) if s["state"] == state]
+            reasons = [identity_reasons.get(s.get("reason_code"),
+                "结果未区分校验阶段，尚不能证明已下载全文") for s in samples]
+            detail = "；".join(dict.fromkeys(reasons)) if reasons else "尚不能确定失败阶段或是否已下载全文"
+            detail += "。这是论文身份未确认，不是机构账号身份未确认；重复登录不保证解决"
+        elif state == "sample_verified":
+            detail = "只证明该样本当前可读，不证明机构登录成功或平台整体订阅权限"
+        elif state == "verification_required":
+            detail = "检测到人机验证，全文未通过校验；在浏览器中手动处理，自动重试不保证解决"
+        else:
+            detail = "未验证样本可读性或机构权限，以本次状态为准"
+        lines.append(f"{row['provider']}：{state} — {detail}。")
+    return "\n".join(lines)
+
+
 def render(view):
     """Display only observations supplied by the live preparation process."""
     state = view["state"]
@@ -44,7 +70,8 @@ def render(view):
                 "已完成的平台和模式保留，不要新开 CC 会话或启动科研运行。")
     lines = [f"准备状态：{state}。"]
     if "remaining_seconds" in view:
-        lines.append(f"本次等待剩余 {view['remaining_seconds']} 秒；连接等待和平台回答各自都有期限。")
+        scope = "沿用此样本的原获取期限，回答不会延长" if view.get('sample_url') else "连接等待和平台回答各自都有期限"
+        lines.append(f"本次等待剩余 {view['remaining_seconds']} 秒；{scope}。")
     if state in {"checking_connection", "waiting_for_connection"}:
         automatic = view.get("automatic_connection_checks", False)
         lines.append("浏览器连接尚未验证成功；本次检查未进入平台操作。")
@@ -89,6 +116,11 @@ def render(view):
         else:
             lines.append("完成所选浏览器的连接准备后，程序会自动检测。" if automatic else
                          "完成所选浏览器的连接准备后回复：继续连接。")
+    elif state == "waiting_for_user" and view.get('sample_url'):
+        lines.append(f"{view['provider']} 样本页面需要人工处理：{view['sample_url']}。")
+        lines.append("全文样本检查遇到人机验证或登录页；先在当前专用浏览器页面手动完成，再回复：完成。")
+        lines.append("程序保留当前样本、标签页与原获取期限，继续校验同一份内容；不会重新打开登录入口或自动操作验证码。")
+        lines.append("完成不代表全文已验证；程序继续检查，只有 sample_verified 才证明该样本可读。若仍无法通过，可跳过此平台或结束准备。")
     elif state == "waiting_for_user":
         lines.append(f"{view['provider']} 页面已打开。需要登录时，仅在浏览器完成学校认证和 MFA。")
         if view['provider'] == 'Springer':

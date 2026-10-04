@@ -171,8 +171,37 @@ def test_default_probe_rejects_wrong_document_and_retains_failed_provider_for_re
                input_fn=lambda _: '', output=output.append) == 1
     summary = json.loads(output[-1])
     assert summary['preparation_summary'][0]['state'] == 'identity_unconfirmed'
+    assert summary['preparation_summary'][0]['samples'][0]['reason_code'] == 'document_validation_failed'
+    assert '论文身份' in output[-2] and '机构账号' in output[-2]
+    assert '取得内容后' in output[-2]
     assert parser.parse_args(summary['remaining_preparation_argv'][4:]).provider == ['IEEE']
     assert len(backend.calls) == 2 and backend.closed
+
+
+def test_mixed_sample_results_explain_document_identity_without_claiming_download(monkeypatch):
+    from hypoloom.cli import build_parser
+    from hypoloom.institutional_access import publisher
+    class Mixed(PreparationBackend):
+        def fetch(self, url, **kwargs):
+            name = publisher(url)
+            if name == 'Springer': return super().fetch(url, **kwargs)
+            if name == 'ScienceDirect': return {'state': 'verification_required'}
+            return {'state': 'identity_unconfirmed', **({'reason': 'article_identity_unconfirmed'} if name == 'IEEE' else {})}
+    backend = Mixed(); backend.state = 'available'
+    monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: InstitutionalAccess(backend))
+    parser = build_parser(); output = []
+    args = parser.parse_args(['institutional', 'prepare', '--provider', 'IEEE', '--provider', 'ScienceDirect',
+                             '--provider', 'Springer', '--provider', 'ACM'])
+    assert run(args, input_fn=lambda _: '', output=output.append) == 1
+    summary = json.loads(output[-1]); text = output[-2]
+    assert [r['state'] for r in summary['preparation_summary']] == [
+        'identity_unconfirmed', 'verification_required', 'sample_verified', 'identity_unconfirmed']
+    assert summary['preparation_summary'][0]['samples'][0]['reason_code'] == 'article_identity_unconfirmed'
+    assert '论文页面身份校验未通过' in text and '尚不能证明已下载全文' in text
+    assert '机构账号' in text and '结果未区分校验阶段' in text
+    assert '人机验证' in text and '只证明该样本当前可读' in text
+    assert parser.parse_args(summary['remaining_preparation_argv'][4:]).provider == ['IEEE', 'ScienceDirect', 'ACM']
+    assert summary['provider_modes'] == {} and backend.closed
 
 
 def test_platform_without_fixed_sample_keeps_manual_completion_unverified(monkeypatch):

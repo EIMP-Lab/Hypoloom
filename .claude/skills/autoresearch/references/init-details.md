@@ -132,11 +132,28 @@ requested login opportunity. `sample_verified` proves only that article's curren
 readability; `sample_scope: public_full_text` cannot prove institutional login or
 subscription. Retain `verification_scope` in the review. Failures remain failures
 with their generated retry command; completing the manual step is not test success.
+If checking the sample reaches a challenge/sign-in page, the program offers another
+`waiting_for_user` with `sample_url` and the remaining original acquisition time.
+Relay those instructions: the user handles that sample page and replies 完成, skips,
+chooses public-only or ends preparation. Do not call the initial login incomplete.
+Completion resumes the same acquisition and tab, without restarting the deadline
+or generating another prepare/verify command. Use its current fixed choices; this
+stage does not accept a replacement sample. Expiry is still failure, never success.
 For other platforms or older sessions without a sample, completion stays
 not_checked. Use each live process's generated instructions. Answer waiting
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.
+Relay the program's final human-readable preparation results verbatim before
+offering retry/continue; the final JSON remains the source of states and commands.
+`identity_unconfirmed` concerns the requested paper, never the user's institutional
+account identity. It may occur before any PDF fetch. Use `reason_code` to distinguish
+`article_identity_unconfirmed` (landing identity), `pdf_target_unconfirmed` (download
+target) and `document_validation_failed` (obtained content validation). Older results
+without those reasons do not establish which stage failed or that a PDF was fetched.
+Do not treat logging in again as a proven repair or public/OA fallback as guaranteed
+success. A user's explicit fresh-init acceptance test is different from recovery:
+honor their fresh-session scope rather than steering them back to the old batch.
 Only a sample_verified result supports a readability claim. acquisition_timeout,
 browser_unavailable or any other failure proves neither readability nor login.
 For a failed platform, report its intermediate safe `reason_code` from the task

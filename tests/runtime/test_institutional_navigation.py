@@ -117,6 +117,19 @@ def adapter(page):
     return backend
 
 
+def test_missing_landing_identity_reports_pre_download_stage():
+    page = Page(current='https://ieeexplore.ieee.org/document/8654603/', doi='',
+                pdf='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8654603&secret=never-log')
+    original = page.evaluate
+    def evaluate(script, *args):
+        assert not args, 'unconfirmed landing page must not fetch PDF bytes'
+        return original(script)
+    page.evaluate = evaluate
+    result = adapter(page).fetch('https://doi.org/10.1109/ACCESS.2019.2902267')
+    assert result == {'state': 'identity_unconfirmed', 'reason': 'article_identity_unconfirmed'}
+    assert 'never-log' not in str(result)
+
+
 @pytest.mark.parametrize("failure,reason", [
     (RuntimeError("net::ERR_NETWORK_CHANGED at https://school.example/?SAMLResponse=SECRET"), "network_changed"),
     (RuntimeError("net::ERR_NAME_NOT_RESOLVED"), "dns_failed"),
@@ -257,7 +270,8 @@ def test_pii_rewrite_drops_query_and_does_not_prove_article_identity():
             page.url = final
         return SimpleNamespace(status=200)
     page.goto = goto
-    assert adapter(page).fetch("https://doi.org/10.1016/j.chb.2014.04.002") == {"state": "identity_unconfirmed"}
+    assert adapter(page).fetch("https://doi.org/10.1016/j.chb.2014.04.002") == {
+        "state": "identity_unconfirmed", "reason": "article_identity_unconfirmed"}
 
 
 def test_bridge_js_racing_direct_navigation_is_followed_without_reloading():

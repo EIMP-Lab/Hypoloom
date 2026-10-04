@@ -62,7 +62,7 @@ def sample_url(value):
     return article_url(value)
 
 
-def _observe(access, provider, *, cancelled=lambda: False, output=lambda _: None):
+def _observe(access, provider, *, cancelled=lambda: False, output=lambda _: None, wait_for_auth=False):
     deadline = monotonic() + access.acquisition_seconds + 1
     reported = set()
     while monotonic() < deadline:
@@ -76,27 +76,52 @@ def _observe(access, provider, *, cancelled=lambda: False, output=lambda _: None
                 # Queue reason codes are sanitized by _acquire; never export browser exceptions.
                 output(json.dumps({"provider": provider, **result}, ensure_ascii=False))
                 reported.add(failure)
-        if result["state"] not in {"queued", "checking", "browser_unavailable", "fetch_unavailable"}:
+        if result["state"] not in ({"queued", "checking", "browser_unavailable", "fetch_unavailable"}
+                | ({"verification_required", "login_required"} if wait_for_auth else set())):
             return result
         sleep(.1)
     return {"state": "acquisition_timeout"}
 
 
-def _verify(access, provider, samples, output, *, cancelled=lambda: False):
+def _verify(access, provider, samples, output, *, cancelled=lambda: False, dialogue=None):
     results = []
     default = next(p["default_sample_url"] for p in provider_catalog() if p["provider"] == provider)
     for url in samples:
+        deadline = monotonic() + access.acquisition_seconds
         access.control("preparation", provider, "verify", url=url)
+        observed = _observe(access, provider, cancelled=cancelled, output=output)
+        if dialogue and observed["state"] in {"verification_required", "login_required"}:
+            output(json.dumps({"provider": provider, **observed}, ensure_ascii=False))
+            try:
+                answer = dialogue.wait(provider=provider, reason_code=observed["state"], sample_url=url,
+                                       wait_seconds=max(0, deadline - monotonic()))
+            except PreparationEnded as exc:
+                if str(exc) != "input_timeout": raise
+                state = "acquisition_timeout" if monotonic() >= deadline else "input_timeout"
+                observed = {"state": state, "reason_code": state}
+                answer = None  # Expiry is not an implicit completion reply.
+            if answer in {"s", "p"}:
+                state = "skipped" if answer == "s" else "public_only"
+                observed = {"state": state, "reason_code": "operator_" + state}
+            elif answer == "":
+                # Keep the same acquisition, deadline and retained challenge tab.
+                # Do not send control(verify) again or force browser navigation.
+                observed = _observe(access, provider, cancelled=cancelled, output=output, wait_for_auth=True)
+            if observed["state"] in {"skipped", "public_only", "input_timeout", "acquisition_timeout"}:
+                access.discard_preparation("preparation", provider)
         result = {"provider": provider, "sample_url": url,
                   "sample_scope": "public_full_text" if url == default else "article_full_text",
-                  **_observe(access, provider, cancelled=cancelled, output=output)}
+                  **observed}
         output(json.dumps(result, ensure_ascii=False))
         results.append(result)
+        if observed["state"] in {"skipped", "public_only"}: break
     return results
 
 
 def _summary(rows, modes, output, **extra):
     # This is a transient review, not saved proof of authentication or subscription.
+    from .institutional_instructions import render_results
+    output(render_results(rows))
     output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
         "verification_scope": "Sample readability only; institutional login and platform-wide subscription are not established.",
         "provider_mode_argv": [part for name, mode in modes.items()
@@ -124,16 +149,23 @@ def _remaining_providers(selected, rows):
     return [row["provider"] for row in rows if row["state"] not in _COMPLETED_STATES] + selected[len(rows):]
 
 
+def _sample_state(results):
+    # A subsequent explicit platform choice takes precedence over an earlier gap.
+    chosen = next((r["state"] for r in results if r["state"] in {"skipped", "public_only"}), None)
+    return chosen or next((r["state"] for r in results if r["state"] != "sample_verified"), "sample_verified")
+
+
 def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False,
                       dialogue=None):
     row = {"provider": provider, "state": "not_checked", "samples": []}
     if modes.get(provider) == "public_only":
         return {**row, "state": "public_only"}, False
     if samples:
-        row["samples"] = _verify(access, provider, samples, output, cancelled=cancelled)
-        if all(r["state"] == "sample_verified" for r in row["samples"]):
-            return {**row, "state": "sample_verified"}, False
-        row["state"] = next(r["state"] for r in row["samples"] if r["state"] != "sample_verified")
+        row["samples"] = _verify(access, provider, samples, output, cancelled=cancelled, dialogue=dialogue)
+        row["state"] = _sample_state(row["samples"])
+        if row["state"] in {"sample_verified", "skipped", "public_only"}:
+            if row["state"] == "public_only": modes[provider] = "public_only"
+            return row, False
     if not interactive:
         return row, False
     default = next(p["default_sample_url"] for p in provider_catalog() if p["provider"] == provider)
@@ -183,8 +215,10 @@ def _prepare_platform(access, provider, samples, *, interactive, input_fn, outpu
             # Keep successful results; only recheck gaps after the operator's action.
             verified = {r["sample_url"] for r in row["samples"] if r["state"] == "sample_verified"}
             row["samples"] = [r for r in row["samples"] if r["state"] == "sample_verified"] + _verify(
-                access, provider, [url for url in samples if url not in verified], output, cancelled=cancelled)
-            row["state"] = next((r["state"] for r in row["samples"] if r["state"] != "sample_verified"), "sample_verified")
+                access, provider, [url for url in samples if url not in verified], output,
+                cancelled=cancelled, dialogue=dialogue)
+            row["state"] = _sample_state(row["samples"])
+            if row["state"] == "public_only": modes[provider] = "public_only"
         return row, False
 
 

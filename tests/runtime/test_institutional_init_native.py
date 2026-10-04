@@ -14,7 +14,7 @@ from tests.runtime.test_institutional_init_dialogue import arguments, eventually
 from tests.runtime.test_institutional_runtime import assert_free
 
 
-def route_fixed_samples(context, downloads):
+def route_fixed_samples(context, downloads, manual_clearance=None):
     from hypoloom.institutional_access import PROVIDERS, provider_catalog
     from tests.runtime.test_institutional_browser import _pdf
     catalog = [p for p in provider_catalog() if p['default_sample_url']]
@@ -32,6 +32,10 @@ def route_fixed_samples(context, downloads):
                 route.fulfill(status=200, content_type='text/html', body=
                     f'<script>location.href = {json.dumps(landing)}</script>'); return
             if url == landing:
+                if item['provider'] == 'ScienceDirect' and manual_clearance is not None and not manual_clearance.is_set():
+                    route.fulfill(status=200, content_type='text/html', body=
+                        '<p>Verify you are human</p><button onclick="document.body.innerText = \'Fixture cleared\'">Complete fixture verification</button>')
+                    return
                 route.fulfill(status=200, content_type='text/html', body=
                     f'<meta name="citation_doi" content="{doi}">'
                     f'<meta name="citation_pdf_url" content="{landing}.pdf">Controlled article'); return
@@ -43,8 +47,8 @@ def route_fixed_samples(context, downloads):
 
 
 @pytest.mark.skipif(os.environ.get('HYPOLOOM_INSTITUTIONAL_BROWSER_TEST') != '1', reason='opt-in real Chromium preparation')
-@pytest.mark.parametrize('delayed_connection', [False, True])
-def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch, delayed_connection):
+@pytest.mark.parametrize('delayed_connection,sample_challenge', [(False, False), (True, False), (False, True)])
+def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkeypatch, delayed_connection, sample_challenge):
     from hypoloom.institutional_access import InstitutionalAccess
     from hypoloom.institutional_runtime import RunBrowser
     from hypoloom.institutional_prepare import run
@@ -53,10 +57,11 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     adapter, context = next(fixture)
     user_page = context.pages[0]
     downloads = []
+    manual_clearance = threading.Event() if sample_challenge else None
     class Browser(RunBrowser):
         def _connect(self):
             current = super()._connect()
-            route_fixed_samples(current, downloads)
+            route_fixed_samples(current, downloads, manual_clearance)
             return current
     backend = Browser({'mode': 'existing', 'endpoint': adapter.endpoint}, 'preparation')
     from hypoloom import institutional_dialogue
@@ -70,6 +75,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     backend.relay.dial = delayed_dial
     relay_endpoint = backend.endpoint
     access = InstitutionalAccess(backend)
+    if sample_challenge: access.poll_seconds = .05
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, codes, errors = [], [], []
     def worker():
@@ -100,6 +106,20 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
             assert view['state'] == 'waiting_for_user' and view['provider'] == provider
             if provider == 'IEEE': time.sleep(6)  # Beyond relay's per-I/O timeout.
             assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
+            if sample_challenge and provider == 'ScienceDirect':
+                observer = observe()
+                text, error = observer.communicate(timeout=15)
+                assert observer.returncode == 0, error
+                assert '样本页面' in text and '原获取期限' in text
+                view = request(root).result
+                assert view['provider'] == 'ScienceDirect' and view['sample_url']
+                assert downloads == ['IEEE'], 'no sample should be claimed before human verification'
+                # Pump this independent CDP client's queued page-created events.
+                user_page.wait_for_timeout(100)
+                target = next(p for p in context.pages if p.url == 'https://sciencedirect.com/sample')
+                manual_clearance.set()
+                target.get_by_text('Complete fixture verification').click()
+                assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
             if provider != 'ACM': observer = observe()
         thread.join(10)
         assert not thread.is_alive() and not errors and codes == [0]

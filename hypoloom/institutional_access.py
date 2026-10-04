@@ -74,7 +74,8 @@ TRANSIENT_FETCH_REASONS = {"network_changed", "dns_failed", "connection_failed",
 _REASONS = TRANSIENT_FETCH_REASONS | {"request_blocked", "http_error", "verification_required",
     "cdp_timeout", "cdp_connection_refused", "cdp_connection_closed", "cdp_authorization_failed",
     "cdp_endpoint_unavailable", "cdp_context_unavailable", "cdp_connection_failed", "browser_driver_unavailable",
-    "browser_target_closed", "browser_operation_timeout", "browser_operation_failed"}
+    "browser_target_closed", "browser_operation_timeout", "browser_operation_failed",
+    "article_identity_unconfirmed", "pdf_target_unconfirmed", "document_validation_failed"}
 
 
 def publisher(url: str) -> str | None:
@@ -462,9 +463,7 @@ class InstitutionalAccess:
             if article_url(url) != url or publisher(url) != provider:
                 raise ValueError("sample must be a canonical article URL for this platform")
         else: url = entry
-        for key, item in list(self._items.items()):
-            if item.scope[0] == run_id and item.provider == provider and item.preparation:
-                del self._items[key]
+        self.discard_preparation(run_id, provider)
         if len(self._items) >= MAX_REQUESTS:
             key = next((key for key, item in self._items.items() if not self._pending(item)), None)
             if key is None: raise ValueError("institutional request limit; retry after active requests finish")
@@ -478,6 +477,13 @@ class InstitutionalAccess:
         self._items[(*scope, url)] = item
         self._transition(item, "queued", "operator_" + action, initial=True)
         return self.status(run_id)
+
+    def discard_preparation(self, run_id, provider):
+        """Retire this transient sample without changing research requests or tabs."""
+        with self._lock:
+            for key, item in list(self._items.items()):
+                if item.scope[0] == run_id and item.provider == provider and item.preparation:
+                    del self._items[key]
 
     def _acquire(self, item, force, focus, import_path):
         try:
@@ -500,7 +506,7 @@ class InstitutionalAccess:
             return "available", document, "document_verified"
         except ValueError as exc:
             state = "identity_unconfirmed" if str(exc) == "identity_unconfirmed" else "failed"
-            return state, None, state
+            return state, None, "document_validation_failed" if state == "identity_unconfirmed" else state
         except Exception:
             # Browser exceptions can contain SSO URLs/tokens. Never publish their text.
             return "browser_unavailable", None, "browser_unavailable"

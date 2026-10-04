@@ -2,6 +2,48 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Preparation sample challenge and identity diagnostics (2026-10-04)
+
+The fresh 14:19 init first timed out waiting for a client. Its operator-requested
+retry opened all four platforms: IEEE/ACM identity_unconfirmed, ScienceDirect
+verification_required, Springer sample_verified. The operator observes an IEEE PDF,
+ACM detail, ScienceDirect PDF after manually passing verification, and Springer
+detail. These observations do not establish program acquisition or institutional
+entitlement. CC incorrectly explained paper identity as institutional account
+identity and assumed full text had been fetched; historical logs cannot locate
+the failed identity stage.
+
+Three red tests reproduce lost identity stages and missing fixed result explanations.
+Existing safe reasons now distinguish article identity, PDF target and obtained
+document validation. The final human-readable explanation precedes the unchanged
+JSON summary. Identity admission checks stay strict; no new saved state or schema.
+
+A separate red test reproduces sample verification returning immediately on a
+challenge and abandoning the later manual completion. Normal init now uses its
+existing dialogue for the retained sample page, capped by the remaining original
+acquisition time. Complete resumes the same queue item; skip/public-only/finish
+and both timeout bounds remain explicit. Two additional red cases catch abandoned
+samples being fetched by later-platform ticks; existing preparation-item removal
+now retires them. Earlier sample failures remain visible when a later explicit
+platform choice takes precedence. Noninteractive checks retain immediate reporting.
+
+Native Chromium, the private relay/control socket and separate generated CLI watches
+exercise four-platform progression including manual completion of a synthetic
+challenge, actual PDF bytes/identity validation and resource cleanup. This tests
+the handoff, not Cloudflare acceptance. The Windows IEEE/ACM identity failure stage
+and real publisher recovery still need a fresh-init test. No retained research,
+preparation answer or operator browser was mutated; fresh-init acceptance is now
+the operator's requested workflow, separate from first-install evidence.
+Final focused tests **246 pass** (including native four-platform/control/watch,
+PowerShell fixtures, operator instructions and docs/Profile). The unchanged browser
+adapter selection contributes **48 passing tests**, disjoint from that final set.
+The preceding combined native/browser run exposed a fixture CDP-event synchronization
+error; its corrected challenge case passes in the final set, without weakening
+sample or cleanup assertions. Wheel, isolated installation and fresh bundle match
+**175 package files**; installed CLI preparation/cleanup and MCP initialize pass.
+No full G1, paid, GPU or native Windows publisher qualification is claimed.
+Evidence: `.local/qualification/institutional-result-diagnostics-20261004/`.
+
 ## Late-client init handoff (2026-10-04)
 
 New MERC-causal-202610041222 preparation opened IEEE at 12:31:18 local time.

@@ -1,5 +1,25 @@
 # Current Hypoloom development state
 
+- October 4 preparation result interpretation: user now requires a fresh CC/init
+  acceptance test after each repair, not old-batch recovery. Existing client/login
+  reuse is not proof of first-install success. New 14:19 init's first batch waited
+  out client connection; operator-chosen retry opened all four platforms. Final:
+  IEEE/ACM identity_unconfirmed, ScienceDirect verification_required, Springer
+  sample_verified. CC incorrectly called paper identity institutional account
+  identity and claimed a download. Existing reasons now distinguish article-page,
+  PDF target and obtained-document validation; fixed final text explains limits.
+  Operator observes IEEE PDF, ACM detail, ScienceDirect PDF after manual challenge,
+  Springer detail. Red regression confirms sample challenge immediately ended the
+  check. Normal init now waits for sample-page completion/skip/public-only/finish
+  within the original acquisition deadline and resumes the same queued item;
+  standalone noninteractive reporting and website challenge handling stay unchanged.
+  No identity check is relaxed, no retained run/batch/browser changed. Historical
+  Windows failure stage and actual publisher recovery remain unverified.
+  Final focused 246 pass; browser adapter 48 pass (disjoint); installed CLI/MCP/
+  fresh bundle matches 175 package files. No full G1/paid/GPU qualification claim.
+  [Design](../design/institutional-access-preparation.md#论文身份失败的阶段与结果解释2026-10-04).
+  Evidence: `.local/qualification/institutional-result-diagnostics-20261004/`.
+
 - October 4 late-client init handoff: new 12:22 init opened IEEE at 12:31:18 and
   waited for the user, but CC had armed no observer after its connection message.
   User replied finish at 12:31:53; accepted at 12:33, leaving all four not_checked.

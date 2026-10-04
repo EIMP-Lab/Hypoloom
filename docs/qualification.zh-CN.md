@@ -2,6 +2,29 @@
 
 [English](qualification.md) · 简体中文
 
+## 样本验证交接与论文身份诊断（2026-10-04）
+
+新 init 首批等待客户端超时，用户选择重试后四平台依次打开；结果为 IEEE／ACM
+identity_unconfirmed、ScienceDirect verification_required、Springer sample_verified。
+用户观察到 IEEE PDF、ACM 详情、ScienceDirect 手动验证后 PDF 和 Springer 详情。
+这些页面观察不能代替程序获取结果，也不证明学校订阅。CC 把论文身份误作机构账号
+身份，原日志还不能区分失败阶段。三个红回归复现原因丢失与缺少固定说明，现复用
+安全原因码区分页面、下载目标、内容校验，并在最终 JSON 前输出固定解释；接纳
+规则保持严格，无新存储或 schema。
+
+另一红回归复现验证码出现后过早结束检查。正常 init 现复用对话等待样本页面的
+人工完成，沿用原获取期限、队列项和标签页；跳过／仅公开／结束和超时有明确结果。
+两个红回归覆盖跳过后被后续平台 tick 再次请求的问题，复用原准备项移除逻辑解决。
+真实 Chromium／relay／私有控制／独立 CLI 观察覆盖合成人工验证后的四平台样本
+获取与清理，不宣称解决 Cloudflare 本身。现存运行和用户浏览器未变；真实 IEEE／
+ACM 失败阶段及修复后站点表现仍待用户按要求用新 init 验收。
+最终定向检查 **246 项通过**，包含原生浏览器交接、PowerShell 夹具、运行指令和
+文档／Profile；无重叠的浏览器适配器 **48 项通过**。前一轮原生夹具发现观察端
+未处理新标签事件，补足 CDP 事件同步后在最终集合通过，未放宽样本及清理断言。
+安装包／独立安装／新副本 **175 个包文件一致**，CLI 准备清理与 MCP 初始化通过。
+本次不宣称完整 G1、付费、GPU 或原生 Windows 出版社资格通过。
+[完整证据](qualification.md#preparation-sample-challenge-and-identity-diagnostics-2026-10-04)。
+
 ## 延迟连接后的 init 提示交接（2026-10-04）
 
 新批次 12:31:18 已打开 IEEE、进入人工等待，CC 却在显示连接提示后没有启动观察。

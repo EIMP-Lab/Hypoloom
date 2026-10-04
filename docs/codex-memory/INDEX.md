@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Paper identity result diagnostics](../design/institutional-access-preparation.md#论文身份失败的阶段与结果解释2026-10-04):
+  mixed fresh-init results; distinguish paper identity from account authentication,
+  expose existing validation stage through safe reasons and fixed final output.
+  User requests new-init acceptance rounds, separately from first-install evidence.
+
 - [Late-client init handoff](../design/institutional-access-preparation.md#延迟连接后的-init-提示交接2026-10-04):
   new batch opened IEEE before the user's explicit finish, while CC showed stale
   connection instructions with no observer running. Generated background watch

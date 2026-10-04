@@ -291,7 +291,7 @@ class PlaywrightInstitutionalBrowser:
         try:
             validate_document(document, title=title, identity=expected)
         except ValueError:
-            return {"state": "identity_unconfirmed"}
+            return {"state": "identity_unconfirmed", "reason": "document_validation_failed"}
         return {"state": "available", "document": document}
 
     def _room_for_tab(self):
@@ -380,11 +380,11 @@ class PlaywrightInstitutionalBrowser:
 
         def read_pdf(target):
             if not matching_pdf(target):
-                return {'state': 'identity_unconfirmed'}
+                return {'state': 'identity_unconfirmed', 'reason': 'pdf_target_unconfirmed'}
             data = page.evaluate(_FETCH, {'url': target, 'limit': MAX_DOCUMENT_BYTES, 'timeout': self._remaining(15) * 1000})
             if data and data.get('data'):
                 if not matching_pdf(data['url']):
-                    return {'state': 'identity_unconfirmed'}
+                    return {'state': 'identity_unconfirmed', 'reason': 'pdf_target_unconfirmed'}
                 return self._pdf(base64.b64decode(data['data'], validate=True),
                     requested, data['url'], title, identity)
             return {'state': 'fetch_unavailable', 'reason': (data or {}).get('error') or 'pdf_response_not_pdf'}
@@ -567,7 +567,7 @@ class PlaywrightInstitutionalBrowser:
             return unavailable("redirect_unresolved")
         doi_request = urlsplit(url).path.lstrip("/").lower() if urlsplit(url).hostname == "doi.org" else None
         if not _same_article(url, current) and (not doi_request or (info["doi"] or "").lower() != doi_request):
-            return {"state": "identity_unconfirmed"}
+            return {"state": "identity_unconfirmed", "reason": "article_identity_unconfirmed"}
         if info["denied"]:
             return {"state": "access_denied"}
         pdf_url = urljoin(current, info["pdf"]) if info["pdf"] else (url if urlsplit(url).path.endswith(".pdf") else "")

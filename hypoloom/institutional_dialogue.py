@@ -85,8 +85,8 @@ class PreparationDialogue:
             return ControlResponse.accepted(request.request_id, None, deepcopy(self.view))
 
     def wait(self, *, provider=None, connection=None, check=None, check_seconds=30, observed=lambda _: None,
-             reason_code=None, completion_samples=()):
-        deadline = monotonic() + self.seconds
+             reason_code=None, completion_samples=(), sample_url=None, wait_seconds=None):
+        deadline = monotonic() + (self.seconds if wait_seconds is None else min(self.seconds, max(0, wait_seconds)))
         future = None
         next_check = monotonic() + CONNECTION_RETRY_SECONDS
         with self.condition:
@@ -96,8 +96,11 @@ class PreparationDialogue:
                           "actions": ["retry_connection", "finish"]} if connection else
                          {"state": "waiting_for_user", "provider": provider,
                           "actions": ["complete", "verify", "skip", "public_only", "finish"]})
-            if connection is None and reason_code == "verification_required":
+            if connection is None and reason_code in {"verification_required", "login_required"}:
                 self.view["reason_code"] = reason_code
+            if sample_url:
+                self.view["sample_url"] = sample_url
+                self.view["actions"].remove("verify")
             if connection is None and completion_samples:
                 self.view["completion_samples"] = list(completion_samples)
             if check is not None:

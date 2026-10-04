@@ -137,6 +137,27 @@ sample it remains unverified. `skip` and `public_only` also take
 the current provider. These commands address only the live temporary preparation,
 never a research run. Read the background command's final summary after it exits.
 
+`identity_unconfirmed` concerns the **requested paper**, not the user's institutional
+account. It does not prove a PDF was downloaded. CC relays the program's fixed result
+explanations before the final JSON. `article_identity_unconfirmed` locates failure
+at the landing-page identity check; `pdf_target_unconfirmed` at the download target;
+`document_validation_failed` at validation of obtained content. Older results without
+these reason codes cannot establish the stage. Repeated login/retry is not a proven
+repair, and public/OA fallback remains an attempt rather than guaranteed retrieval.
+
+During normal init, a sample that encounters verification or sign-in produces a
+second user prompt for that **sample page**. Handle it in the dedicated browser and
+reply 完成, skip, choose public-only or finish. Completion resumes the same pending
+acquisition and retained tab. It does not reopen the institution entry or restart
+the acquisition deadline (120 seconds by default); the prompt reports time remaining.
+The program never operates CAPTCHA controls. Standalone noninteractive checks
+continue to report the observed status without waiting for a person.
+
+For fresh-init acceptance testing, start a new CC session and `/autoresearch init`
+each round, stopping at launch review. Recovery of the old batch is not required.
+An installed client and browser session may still be reused; first-install testing
+needs a separate test account and must be recorded separately.
+
 Normal init runs the generated `instructions_argv` and displays its output verbatim:
 the Windows file location, fixed Setup entry, input values, remaining time and replies.
 Connection replies are `继续连接` (retry connection) and `跳过准备` (skip preparation).

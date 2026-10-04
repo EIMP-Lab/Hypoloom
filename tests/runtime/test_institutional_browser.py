@@ -100,7 +100,7 @@ def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser
             route.fulfill(status=200, content_type="text/html", body=article("Article", pdf=URL + ".pdf"))
     context.route("**/*", respond)
     result = adapter.fetch(URL)
-    assert result == {"state": "identity_unconfirmed"}
+    assert result == {"state": "identity_unconfirmed", "reason": "document_validation_failed"}
 
 
 @pytest.mark.parametrize('status', [200, 403, 429, 503])
@@ -403,7 +403,7 @@ def test_sciencedirect_pdf_interstitial_runs_in_browser_and_preserves_identity(b
         adapter._tabs['ScienceDirect'][0].goto(asset)
         result = adapter.fetch(final)
     if mode == 'wrong_pii':
-        assert result == {'state': 'identity_unconfirmed'}
+        assert result == {'state': 'identity_unconfirmed', 'reason': 'pdf_target_unconfirmed'}
     else:
         assert result['state'] == 'available' and result['document']['content'] == original
         assert result['document']['identity'] == doi
@@ -581,4 +581,5 @@ def test_ieee_pdf_viewer_preserves_identity_and_operator_verification(browser, m
         result = adapter.fetch(article_url)
         assert result['state'] == 'available' and result['document']['content'] == original
     else:
-        assert result == {'state': 'identity_unconfirmed'}
+        assert result == {'state': 'identity_unconfirmed', 'reason':
+            'document_validation_failed' if mode == 'wrong_doi' else 'pdf_target_unconfirmed'}
