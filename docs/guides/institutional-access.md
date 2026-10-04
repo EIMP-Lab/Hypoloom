@@ -851,6 +851,12 @@ request within the existing deadline. Separate hosts/containers still require
 coordination of their combined traffic under the
 [official limits](https://info.arxiv.org/help/api/tou.html).
 
+A temporary public PDF timeout can retry once within the acquisition's remaining
+time and HTTP budget, without extending its deadline, repeating discovery or
+keeping a partial PDF. Rate limits, access denial, challenges, invalid PDFs and
+identity conflicts do not trigger this retry. Download diagnostics retain the
+DNS/TCP/TLS/request/header/body timeout phase and received-byte count where known.
+
 Press **i** in the TUI to see one row per publisher: access policy, current
 institutional pending/ready/gap counts and latest observations. Public-only suppresses
 automatic institutional browsing. No institutional requests does not mean public

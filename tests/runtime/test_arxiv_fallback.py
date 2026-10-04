@@ -77,6 +77,76 @@ def test_title_phrase_preserves_stopwords_without_requiring_them_as_individual_t
     assert query['search_query'] == ['ti:"deep residual learning for image recognition"']
 
 
+def test_pdf_timeout_recovers_once_without_repeating_discovery():
+    web, transport, original = setup()
+    fetch = transport.fetch
+    downloads = []
+    def transient(url, **kwargs):
+        if url == PDF:
+            downloads.append(url)
+            if len(downloads) == 1:
+                raise TimeoutError('private transport diagnostic')
+        return fetch(url, **kwargs)
+    transport.fetch = transient
+    result, events, remaining = acquire(web)
+    assert result is not None and result['content'] == original
+    assert len(downloads) == 2 and remaining == 6
+    assert sum(call[:2] == ('fetch', arxiv.title_query(TITLE)) for call in transport.calls) == 1
+    failure = next(event for event in events if event['stage'] == 'arxiv')
+    assert failure['reason'] == 'timed_out' and failure['transport_phase'] == 'request'
+    assert failure['retrying'] is True and 'private' not in str(events)
+
+
+@pytest.mark.parametrize('mode', ['repeated_timeout', 'exhausted_budget', 'expired_deadline', 'limited', 'denied', 'invalid'])
+def test_pdf_retry_never_resets_limits_or_retries_other_failures(monkeypatch, mode):
+    import hypoloom.document_fallback as fallback
+    web, transport, _ = setup()
+    fetch = transport.fetch
+    downloads = []
+    now = time.monotonic()
+    monkeypatch.setattr(fallback, 'monotonic', lambda: now)
+    def failure(url, **kwargs):
+        nonlocal now
+        if url == PDF:
+            downloads.append(url)
+            if mode in {'limited', 'denied'}:
+                return _response(url, b'no', status_code=429 if mode == 'limited' else 403)
+            if mode == 'invalid':
+                return _response(url, b'not a PDF', media_type='application/pdf')
+            if mode == 'expired_deadline': now += 20
+            raise TimeoutError('private network text')
+        return fetch(url, **kwargs)
+    transport.fetch = failure
+    result, events, remaining = acquire(web, calls=5 if mode == 'exhausted_budget' else 12)
+    assert result is None and len(downloads) == (2 if mode == 'repeated_timeout' else 1)
+    assert remaining >= 0 and 'private' not in str(events)
+
+
+def test_host_keeps_timeout_evidence_when_retry_delivers_original(system, tmp_path):
+    host, request, _, _, backend, papers = system
+    web, transport, original = setup()
+    url = 'https://doi.org/' + DOI
+    transport.responses[url] = _response(url, b'denied', status_code=403)
+    host.grounding_web, host.literature_io = web, None
+    fetch = transport.fetch
+    downloaded = []
+    def transient(target, **kwargs):
+        if target == PDF:
+            downloaded.append(target)
+            if len(downloaded) == 1:
+                raise GroundingWebError('timed_out', 'fixed safe error', transport_phase='response_body', received_bytes=1378)
+        return fetch(target, **kwargs)
+    transport.fetch = transient
+    result = web_tool(host, request, 'web_fetch', {'mode': 'document', 'url': url})
+    assert result['status'] == 'available' and len(downloaded) == 2 and not backend.calls
+    trace = host.web_tool_results[request.attempt_id][0]['literature_download_trace'][0]['events']
+    timed_out = next(event for event in trace if event.get('transport_phase') == 'response_body')
+    assert timed_out['outcome'] == 'TIMEOUT' and timed_out['received_bytes'] == 1378 and timed_out['retrying'] is True
+    archive = tmp_path / 'recovered'; archive.mkdir()
+    papers.archive(archive)
+    assert (archive / result['original_path'].lstrip('/')).read_bytes() == original
+
+
 @pytest.mark.parametrize('entry', [
     atom(title='Masked Graph Learning Without Recurrent Alignment'),
     atom(authors=['Carol Smith', 'Bob Jones']),

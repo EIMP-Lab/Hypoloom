@@ -366,3 +366,24 @@ lock helper, removable when requests use a shared outbound scheduler. Coordinati
 covers processes/users sharing that host's `/tmp`, not separate hosts/containers;
 operators deploying those must coordinate their combined arXiv traffic as required
 by the [official terms](https://info.arxiv.org/help/api/tou.html).
+
+## Public PDF timeout recovery — 2026-10-04
+
+The preceding TASLP probe found the correct arXiv version but twice timed out.
+Before changing code, a staged production-transport observation now resolves DNS
+in 0.047 seconds or less, completes TLS and receives headers in under 0.4 seconds,
+and downloads all 4,260,599 bytes in about one second. The unchanged full DOI path
+also succeeds in 9.363 seconds and validates 15 pages. These observations support
+a transient network/service condition, not a permanent PDF or identity defect;
+the old generic timeout record cannot identify its historical network phase.
+
+Two regressions reproduce the framework limitation: one temporary PDF timeout
+discards the candidate despite remaining time/HTTP budget, and DNS timeout loses
+its phase. Reuse the existing exception and download trace to retain fixed network
+phase labels and received-byte counts without exporting exception messages or
+partial content. A selected-paper public acquisition may retry a timed-out PDF
+once in total, after 0.2 seconds, only with remaining HTTP budget and more than
+one second of its original deadline. Metadata lookup is not replayed. Known HTTP
+errors, rate limits, challenges, invalid PDFs and identity failures are not retried.
+Each retry starts a fresh response; partial bytes never reach validation/archive.
+No overall timeout, browser wait, source validator or persistent authority changes.

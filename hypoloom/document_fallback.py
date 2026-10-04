@@ -1,12 +1,12 @@
 """Bounded exact-DOI OA acquisition through existing public document validators."""
 import json
 import re
-from time import monotonic
+from time import monotonic, sleep
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .grounding_web import GroundingWeb, GroundingWebError
 from .institutional_access import validate_document
-from .literature import LiteratureError, _download_event, _identity, _openalex_pdf_uris, _uri_parts
+from .literature import LiteratureError, LiteratureFailureCode, _download_event, _identity, _openalex_pdf_uris, _uri_parts
 
 
 def read_document(web, url, deadline, http_calls):
@@ -59,6 +59,12 @@ def error_event(stage, error, url=None):
         event["url"] = public_url(url)
     if getattr(error, "http_status", None) is not None:
         event["http_status"] = error.http_status
+    phase = getattr(error, "transport_phase", None)
+    if phase in {"dns", "tcp_connect", "tls_handshake", "request_send", "response_headers", "response_body", "request"}:
+        event["transport_phase"] = phase
+        size = getattr(error, "received_bytes", 0)
+        if type(size) is int and 0 <= size <= 64 * 1024 * 1024:
+            event["received_bytes"] = size
     return event
 
 
@@ -117,13 +123,30 @@ def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
     discovered_title, candidates, authors = discover(web, identity, deadline, http_calls, events)
     title = title or discovered_title
     seen = set()
+    retries_left = 1
 
     def attempt(url, source):
+        nonlocal retries_left
         if url in seen or reject(url) or monotonic() >= deadline or http_calls[0] <= 0:
             return None
         seen.add(url)
         try:
-            document = read_document(web, url, deadline, http_calls)
+            while True:
+                try:
+                    document = read_document(web, url, deadline, http_calls)
+                    break
+                except GroundingWebError as exc:
+                    retry = (exc.code == "timed_out" and exc.http_status is None and retries_left > 0
+                             and http_calls[0] > 0 and deadline - monotonic() > 1)
+                    event = error_event(source, exc, url)
+                    event["retrying"] = retry
+                    events.append(event)
+                    if not retry:
+                        return None
+                    # One retry for the whole public acquisition, using only its
+                    # remaining time/HTTP budget. Never admit partial PDF bytes.
+                    retries_left -= 1
+                    sleep(.2)
             if source == "arxiv" and document["url"] != url:
                 raise ValueError("arxiv_pdf_version_changed")
             if reject(document["url"]):
@@ -185,8 +208,12 @@ def open_copy(io, web, url, identity, title, rejected, events, deadline, http_ca
         reject=lambda target: target == url or _source_rejected(target, rejected))
     # Reuse the Host's existing attempt trace and repeated-lookup suppression.
     for event in observed:
+        before = len(events)
         _download_event(events, "fallback", "VALIDATION_FAILURE", uri=event.get("url"),
-            error=LiteratureError(str(event["reason"]), http_status=event.get("http_status")))
+            error=LiteratureError(str(event["reason"]), http_status=event.get("http_status"),
+                code=LiteratureFailureCode.PDF_TIMEOUT if event["reason"] == "timed_out" else LiteratureFailureCode.VALIDATION_FAILED))
+        if len(events) > before:
+            events[-1].update({key: event[key] for key in ("transport_phase", "received_bytes", "retrying") if key in event})
     if not any(event.get("stage") == "fallback_lookup" for event in events):
         _download_event(events, "fallback_lookup", "FALLBACK_FOUND" if document else "FALLBACK_EMPTY")
     if document is None:

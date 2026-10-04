@@ -7715,3 +7715,47 @@ Existing research runs, Windows helper/browser and credentials remain unchanged.
 No Windows subscription, universal IEEE coverage, full offline-suite, paid-model,
 GPU or soak qualification is claimed. The new default fallback needs no new init
 configuration; existing runs keep their original runtime version.
+
+## Public PDF timeout recovery (2026-10-04)
+
+Evidence: `.local/qualification/arxiv-timeout-20261004/`. The user requests
+diagnosis and repair of the previous arXiv PDF timeout. No retained research run,
+Windows helper/browser or credentials are changed.
+
+- Before modifying production code, instrument the existing HTTPS transport for
+  `https://arxiv.org/pdf/2407.16714v1`: DNS 0.033 s, TLS by 0.261 s, headers by
+  0.366 s, full 4,260,599 bytes by 1.064 s. The unchanged full DOI probe succeeds
+  in 9.363 s and verifies 15 pages (`transport-trace.json`, `baseline/`). ResNet
+  remains a successful control. This supports a transient network/service problem;
+  old generic timeout events cannot identify the historical phase. Do not claim
+  this spontaneous recovery as the effect of the patch.
+- Red regressions show a temporary PDF timeout drops the candidate with remaining
+  budget, and DNS timeout loses its phase (`red.xml`). Retain safe phase labels
+  and byte counts in the existing exception and download trace. One public
+  acquisition may retry a timeout once, using its remaining HTTP/time budget;
+  no discovery replay, partial-content admission or fresh deadline. Known HTTP
+  errors/rate limits, invalid PDFs and identity failures do not qualify.
+- Final browser/navigation/public acquisition/deadline/demand/transport selection:
+  291 pass (`final.xml`); documentation/Profile: seven pass (`docs.xml`). Checks
+  distinguish TCP/TLS/request/header/body timeouts, hide exception text, recover
+  once, preserve archive bytes and stop at repeated failure or exhausted budgets.
+- A real download with a controlled first-response interruption after 1,378 bytes
+  recovers on the single retry, validates the same 15-page PDF and completes in
+  12.687 s with six public requests (`live-injected/`, `injected-fault.json`). The
+  retained event identifies `response_body`, byte count and retry. Separately
+  reread with Poppler, validate and archive through PaperWorkspace; resulting
+  bytes equal both baseline downloads (`live-archive-check.json`). The injected
+  fault proves recovery behavior, not the cause of the earlier natural timeouts.
+- Native installed CC + actual Host + local scripted model provider closes the
+  timeout/recovery, three-reader, CPU experiment, collection and Oracle path
+  (`native.xml`). Independent census finds 18 Agent + one Process successes, one
+  delivered web PDF with both timeout and retrieved events, four identical original
+  archives, zero runtime literature controls, live process groups or paper-staging
+  residue (`independent-census.json`). All originals are independently parsed.
+- Wheel, isolated installation and fresh runtime bundle match 176 package files;
+  installed phase/byte diagnostics pass (`installation.json`). No full offline,
+  paid-model, GPU, soak or perpetual publisher-access qualification is claimed.
+
+This resolves the selected-paper recovery gap and demonstrates the formerly
+timed-out paper's current arXiv availability. It is an author/preprint source,
+not proof that the IEEE publisher subscription PDF channel is available.

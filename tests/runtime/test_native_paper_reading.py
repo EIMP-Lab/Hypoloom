@@ -130,9 +130,10 @@ class ReadingScenario(_FinalReportHostScenario):
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
     (False, False, True, False), (False, False, False, True), (False, False, False, "metadata"),
     (False, False, False, "preparation-failure"), (False, False, False, "browser"),
-    (False, False, False, "arxiv")],
-    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback"])
+    (False, False, False, "arxiv"), (False, False, False, "arxiv-timeout")],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback", "arxiv-timeout"])
 def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
+    arxiv_oa = institutional_oa in {'arxiv', 'arxiv-timeout'}
     if institutional_oa:
         import sys
         monkeypatch.setattr(sys.modules[__name__], "DOC", "https://www.nature.com/articles/s41586-026-00001-1")
@@ -160,7 +161,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                     "url": DOC + ".pdf", "requested_url": url, "identity": "doi:" + DOI,
                     "title": "Original method for independent reading"}}
             backend.fetch = fetch
-        modes = {"Nature": "public_only"} if institutional_oa == "arxiv" else {}
+        modes = {"Nature": "public_only"} if arxiv_oa else {}
         if institutional_oa == 'preparation-failure':
             from hypoloom.cli import build_parser
             from hypoloom import institutional_prepare
@@ -189,22 +190,34 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         crossref = "https://api.crossref.org/works/" + DOI
         work = {"doi": DOI, "display_name": "Original method for independent reading",
                 "locations": [{"is_oa": True, "pdf_url": OA.replace("https:", "http:")}]}
-        if institutional_oa == "arxiv":
+        if arxiv_oa:
             from hypoloom import arxiv_fallback
             from test_arxiv_fallback import atom, feed, AUTHORS, PDF as ARXIV_PDF
             monkeypatch.setattr(arxiv_fallback, 'API_LOCK', tmp_path / 'arxiv-api.lock')
             work.update(locations=[], authorships=[{'author': {'display_name': author}} for author in AUTHORS])
         host.grounding_web = GroundingWeb(Transport({DOC: _response(DOC, b"Denied", status_code=403),
             lookup: _response(lookup, json.dumps(work).encode(), media_type="application/json",
-                              status_code=200 if institutional_oa in {"metadata", "preparation-failure", "arxiv"} else 404),
+                              status_code=200 if arxiv_oa or institutional_oa in {"metadata", "preparation-failure"} else 404),
             crossref: _response(crossref, b"Not found", status_code=404),
             OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf",
-                          status_code=403 if institutional_oa in {"browser", "arxiv"} else 200)}))
-        if institutional_oa == "arxiv":
+                          status_code=403 if arxiv_oa or institutional_oa == "browser" else 200)}))
+        if arxiv_oa:
             target = arxiv_fallback.title_query(work['display_name'])
             host.grounding_web.transport.responses.update({
                 target: _response(target, feed(atom(title=work['display_name'], doi=DOI)), media_type='application/atom+xml'),
                 ARXIV_PDF: _response(ARXIV_PDF, _pdf(DOI + ' ' + scenario.nonce), media_type='application/pdf')})
+            if institutional_oa == 'arxiv-timeout':
+                from hypoloom.grounding_web import GroundingWebError
+                fetch = host.grounding_web.transport.fetch
+                pdf_requests = []
+                def interrupted_once(url, **kwargs):
+                    if url == ARXIV_PDF:
+                        pdf_requests.append(url)
+                        if len(pdf_requests) == 1:
+                            raise GroundingWebError('timed_out', 'controlled partial transfer timeout',
+                                transport_phase='response_body', received_bytes=1378)
+                    return fetch(url, **kwargs)
+                host.grounding_web.transport.fetch = interrupted_once
     run_id = "native-paper-reading"
     max_readers = 0; stopped = False
     try:
@@ -219,7 +232,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         created = host.handle(ControlRequest(schema_version=1, request_id="create-reading", expected_revision=0,
             command="CREATE_RUN", payload=payload))
         assert created.status == "accepted", created
-        if institutional_oa and institutional_oa not in {'preparation-failure', 'browser', 'arxiv'}:
+        if institutional_oa and not arxiv_oa and institutional_oa not in {'preparation-failure', 'browser'}:
             choice = host.handle(ControlRequest(1, "native-public-only", created.revision, "LITERATURE_ACCESS",
                 {"run_id": run_id, "provider": "Nature", "action": "mode", "mode": "public_only"}))
             assert choice.status == "accepted", choice
@@ -244,14 +257,16 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         if institutional_oa:
             assert backend.calls == ([DOC] if institutional_oa == "browser" else [])
             assert len(metadata.calls) == (0 if institutional_oa in {"metadata", "preparation-failure"} else 1)
-            assert all(source["url"] == (DOC + ".pdf" if institutional_oa == "browser" else ARXIV_PDF if institutional_oa == "arxiv" else OA)
+            assert all(source["url"] == (DOC + ".pdf" if institutional_oa == "browser" else ARXIV_PDF if arxiv_oa else OA)
                        for sources in scenario.sources.values() for source in sources)
-            if institutional_oa == 'arxiv':
+            if arxiv_oa:
                 assert all('arXiv 2401.01234v2' in source['version_note']
                            for sources in scenario.sources.values() for source in sources)
+            if institutional_oa == 'arxiv-timeout':
+                assert len(pdf_requests) == 2
             if institutional_oa != "browser":
                 assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
-            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if institutional_oa in {'preparation-failure', 'browser', 'arxiv'} else 1)
+            assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if arxiv_oa or institutional_oa in {'preparation-failure', 'browser'} else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
         if not end_run: assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts)

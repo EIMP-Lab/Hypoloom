@@ -23,10 +23,13 @@ from .literature import (MAX_ADDRESSES_PER_HOST, FetchResponse, LiteratureError,
 
 
 class GroundingWebError(ValueError):
-    def __init__(self, code: str, message: str, *, http_status: int | None = None) -> None:
+    def __init__(self, code: str, message: str, *, http_status: int | None = None,
+                 transport_phase: str | None = None, received_bytes: int = 0) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.http_status = http_status
+        self.transport_phase = transport_phase
+        self.received_bytes = received_bytes
 
 
 class WebTransport(Protocol):
@@ -59,14 +62,21 @@ class PublicHttpsTransport:
         if timeout <= 0: raise GroundingWebError("timed_out", "web request wall bound expired")
         deadline = time.monotonic() + timeout
         connection = http.client.HTTPSConnection(host, 443, timeout=timeout)
+        phase, size, status = "tcp_connect", 0, None
+        def timed_out():
+            return GroundingWebError("timed_out", "web transport timed out",
+                transport_phase=phase, received_bytes=size,
+                http_status=status if status != 200 else None)
         def remaining() -> float:
             value = deadline - time.monotonic()
-            if value <= 0: raise GroundingWebError("timed_out", "web request wall bound expired")
+            if value <= 0: raise timed_out()
             return value
         def connect_approved(_address, _timeout, source_address=None):
+            nonlocal phase
             # Do not repeat DNS or grant each address a fresh full timeout.
             last_error = None
             for address in approved_addresses:
+                phase = "tcp_connect"
                 address = _public_address(address, "web DNS address")
                 sock = socket.socket(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM)
                 try:
@@ -74,6 +84,7 @@ class PublicHttpsTransport:
                     if source_address is not None: sock.bind(source_address)
                     sock.connect((address, 443))
                     sock.settimeout(remaining())
+                    phase = "tls_handshake"
                     return sock
                 except OSError as exc:
                     last_error = exc; sock.close()
@@ -89,18 +100,22 @@ class PublicHttpsTransport:
             peer = _public_address(str(connection.sock.getpeername()[0]), "web peer")
             if peer not in approved_addresses:
                 raise GroundingWebError("unsafe_url", "HTTPS peer differs from approved DNS addresses")
+            phase = "request_send"
             connection.sock.settimeout(remaining())
             connection.request("GET", urlunsplit(("", "", parsed.path or "/", parsed.query, "")),
                 headers=self.request_headers(canonical))
             connection.sock.settimeout(remaining())
+            phase = "response_headers"
             response = connection.getresponse()
+            status = response.status
             raw_length = response.getheader("Content-Length")
             if raw_length is not None and (not raw_length.isascii() or not raw_length.isdigit()):
                 raise GroundingWebError("transport_failed", "invalid Content-Length")
             length = None if raw_length is None else int(raw_length)
             if length is not None and length > max_bytes:
                 raise GroundingWebError("response_limit", "web response exceeds its byte bound")
-            chunks, size = [], 0
+            chunks = []
+            phase = "response_body"
             while True:
                 seconds_left = remaining()
                 if connection.sock is not None:
@@ -115,6 +130,8 @@ class PublicHttpsTransport:
             return FetchResponse(requested_uri=canonical, status_code=response.status,
                 peer_address=peer, media_type=response.getheader("Content-Type"),
                 content_length=length, location=response.getheader("Location"), body=b"".join(chunks))
+        except (TimeoutError, socket.timeout) as exc:
+            raise timed_out() from exc
         finally:
             connection.close()
 
@@ -232,6 +249,7 @@ class GroundingWeb:
 
     def _read(self, url: str, *, max_seconds: float | None = None, http_calls: list[int] | None = None) -> tuple[str, FetchResponse]:
         visited = set()
+        phase = "dns"
         deadline = self.clock() + (self.max_seconds if max_seconds is None else min(max_seconds, self.max_seconds))
         try:
             for _ in range(self.max_redirects + 1):
@@ -243,6 +261,7 @@ class GroundingWeb:
                     literal = ipaddress.ip_address(host)
                 except ValueError:
                     literal = None
+                phase = "dns"
                 resolved = (str(literal),) if literal is not None else self.transport.resolve(host)
                 if isinstance(resolved, (str, bytes)):
                     raise GroundingWebError("unsafe_url", "DNS must return an address array")
@@ -251,7 +270,7 @@ class GroundingWeb:
                     raise GroundingWebError("unsafe_url",
                         f"DNS must resolve 1..{MAX_ADDRESSES_PER_HOST} public addresses")
                 if self.clock() >= deadline:
-                    raise GroundingWebError("timed_out", "web work window expired")
+                    raise GroundingWebError("timed_out", "web work window expired", transport_phase=phase)
                 if http_calls is not None and http_calls[0] <= 0:
                     raise GroundingWebError("request_limit", "document HTTP work budget exhausted")
                 admission = nullcontext()
@@ -259,6 +278,7 @@ class GroundingWeb:
                     from .arxiv_fallback import request_slot
                     admission = request_slot(time.monotonic() + max(0, deadline - self.clock()))
                 with admission:
+                    phase = "request"
                     bounds = {"timeout_seconds": deadline - self.clock()} if isinstance(self.transport, PublicHttpsTransport) else {}
                     if http_calls is not None:
                         http_calls[0] -= 1
@@ -291,7 +311,7 @@ class GroundingWeb:
         except LiteratureError as exc:
             raise GroundingWebError("unsafe_url", str(exc)) from exc
         except (TimeoutError, socket.timeout) as exc:
-            raise GroundingWebError("timed_out", "web transport timed out") from exc
+            raise GroundingWebError("timed_out", "web transport timed out", transport_phase=phase) from exc
         except (OSError, http.client.HTTPException, TypeError, ValueError) as exc:
             raise GroundingWebError("transport_failed", f"web transport failed ({type(exc).__name__})") from exc
 

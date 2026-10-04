@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Public PDF timeout recovery](../design/institutional-literature-access.md#public-pdf-timeout-recovery--2026-10-04):
+  TASLP arXiv download recovered before code changes; safe network-phase diagnosis
+  and one bounded internal PDF retry address the reproduced recovery gap.
+  [Qualification](../qualification.md#public-pdf-timeout-recovery-2026-10-04)
+  includes live body interruption/recovery/archive and native reader/CPU closure.
+
 - [Same-title arXiv fallback](../design/institutional-literature-access.md#same-title-arxiv-fallback--2026-10-04):
   automatic selected-paper PDF discovery, strict title/author/version matching,
   same-host API pacing and ordinary archive reuse. [Qualification](../qualification.md#same-title-arxiv-fallback-2026-10-04)

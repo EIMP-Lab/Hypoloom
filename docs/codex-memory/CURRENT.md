@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 4 public PDF timeout follow-up: TASLP's arXiv 2407.16714v1 now downloads
+  before any repair (4,260,599 bytes, 15 pages; full DOI path 9.363 s). The historical
+  generic timeout cannot identify its phase; do not attribute spontaneous recovery
+  to new code. Reproduced one-time timeout abandoning a recoverable PDF. Public
+  acquisition now retries once in total within remaining time/HTTP budget, without
+  metadata replay, partial-byte admission or retrying known HTTP/identity failures.
+  Reuse exception/download trace for safe network phase and received bytes.
+  Live controlled interruption after 1,378 bytes recovers in 12.687 s; exact bytes
+  match baseline and ordinary archive. Related 291 + docs seven + native one pass.
+  Native census: 18 Agent + one Process, one delivered PDF, retained timeout event,
+  zero human controls/live residue. Wheel/install/bundle match 176 files. No retained
+  run/client changes or claim of universal availability. [Design](../design/institutional-literature-access.md#public-pdf-timeout-recovery--2026-10-04)
+  and [qualification](../qualification.md#public-pdf-timeout-recovery-2026-10-04):
+  `.local/qualification/arxiv-timeout-20261004/`.
+
 - October 4 same-title arXiv fallback: after existing selected-paper public PDF
   candidates fail, query the official API using the exact-DOI title; require title,
   authors, non-conflicting DOI and one versioned official PDF. Reuse source/PDF

@@ -337,6 +337,47 @@ def test_default_https_transport_never_forwards_ambient_credentials(monkeypatch)
     assert calls[-1] == "closed"
 
 
+@pytest.mark.parametrize('phase', ['tcp_connect', 'tls_handshake', 'request_send', 'response_headers', 'response_body'])
+def test_public_timeout_reports_phase_and_partial_bytes_without_exception_text(monkeypatch, phase):
+    from hypoloom.document_fallback import error_event
+    closed = []
+    class Sock:
+        def __init__(self, *args): pass
+        def settimeout(self, _seconds): pass
+        def connect(self, _address):
+            if phase == 'tcp_connect': raise TimeoutError('private network text')
+        def getpeername(self): return ('8.8.8.8', 443)
+        def close(self): pass
+    class Response:
+        status = 200
+        calls = 0
+        def getheader(self, name):
+            return {'Content-Type': 'application/pdf', 'Content-Length': '8'}.get(name)
+        def read1(self, _size):
+            self.calls += 1
+            if self.calls == 1: return b'%PDF'
+            raise TimeoutError('private network text')
+    class Connection:
+        def __init__(self, *args, **kwargs): self.sock = None
+        def connect(self):
+            self.sock = self._create_connection(('ignored', 443), 15)
+            if phase == 'tls_handshake': raise TimeoutError('private network text')
+        def request(self, *args, **kwargs):
+            if phase == 'request_send': raise TimeoutError('private network text')
+        def getresponse(self):
+            if phase == 'response_headers': raise TimeoutError('private network text')
+            return Response()
+        def close(self): closed.append(True)
+    monkeypatch.setattr(web_module.socket, 'socket', Sock)
+    monkeypatch.setattr(web_module.http.client, 'HTTPSConnection', Connection)
+    with pytest.raises(GroundingWebError) as error:
+        PublicHttpsTransport().fetch(DOC, approved_addresses=('8.8.8.8',), max_bytes=10)
+    event = error_event('download', error.value, DOC)
+    assert event['reason'] == 'timed_out' and event['transport_phase'] == phase
+    assert event['received_bytes'] == (4 if phase == 'response_body' else 0)
+    assert 'private' not in str(error.value) + str(event) and closed == [True]
+
+
 def test_network_timeout_and_expired_work_window_are_visible():
     transport = Transport({DOC: _response(DOC)})
     def timeout(_host):
@@ -345,6 +386,7 @@ def test_network_timeout_and_expired_work_window_are_visible():
     with pytest.raises(GroundingWebError, match="timed_out") as error:
         GroundingWeb(transport).web_fetch(DOC)
     assert "credential" not in str(error.value)
+    assert error.value.transport_phase == 'dns'
     transport = Transport({DOC: _response(DOC)})
     ticks = iter((0.0, 31.0))
     with pytest.raises(GroundingWebError, match="work window"):
