@@ -2,6 +2,45 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## PR 4 report and patch instructions (2026-10-05)
+
+The user authorizes merging PR #4 (`ab6369c`) into dev (`0e8c488`) after review.
+Current-cycle accepted facts already own report admission; Host source capture
+already generates `implementation.patch`. The PR clarifies these instructions
+and adds cycle/count context to rejected references without changing acceptance.
+
+Review reproduced a mismatch in the proposed Skill: copying its input assessment
+list verbatim copies full fact records, but report references allow only
+`fact_id`, `hypothesis_id` and `assessment`. Two real Host cycles reject literal
+copies. The integration instead projects every current row once, taking the
+assessment from `payload.assessment`, and retains the empty-cycle rule. A small
+executable example in the packaged Skill demonstrates the existing format;
+there is no new production converter, schema or source of authority.
+
+Focused validation: **157 passed** across report admission, rendered instructions,
+plugin publication, source/patch capture and Host cycle progression. Eight new
+cases cover the packaged example with zero/one/two assessments, historical facts,
+full-record copying, omissions and duplicates. The first three fail before the
+example is supplied; existing validators already reject the other invalid inputs.
+Original review evidence remains in `.local/reviews/pr-4-20261005/`.
+
+Native validation: **three passed**, including installed CC with a local scripted
+provider, two CPU experiments, Host restart, next-cycle memory consumption and
+final-report publication. Independent census finds 27 successful Agent Attempts,
+two successful Processes and one deliberately lost/recovered Agent; both cycle
+reports contain only their own assessment and match their Git/archive bytes.
+There are no open Attempts or live process groups; Oracle passes. The initial
+native run failed a new test assertion that inspected the Skill launch reply
+instead of the separate delivered body. Inspecting the actual provider message
+corrects that observation without changing runtime behavior or admission.
+Documentation/Profile checks: **seven passed**.
+
+Wheel/source/isolated installation/fresh runtime bundle match **176 package
+files**; an installed plugin's example passes ordinary report validation for
+empty and nonempty inputs. No existing research run or plugin revision is
+rewritten. This is focused integration validation, not a full release, paid-model
+behavior or GPU qualification. Evidence: `.local/qualification/pr-4-20261005/`.
+
 ## Read-only institutional TUI (2026-10-04)
 
 The operator requests a concise observation panel instead of login, retries,

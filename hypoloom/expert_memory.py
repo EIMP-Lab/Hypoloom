@@ -90,7 +90,10 @@ def validate_report(files: Mapping[str, bytes], *, cycle: int,
             raise MemoryError("assessment references must be strings")
         row = accepted.get(item["fact_id"])
         if row is None or item["fact_id"] in cited or str(row.get("hypothesis_id")) != item["hypothesis_id"] or row["payload"].get("assessment") != item["assessment"]:
-            raise MemoryError("report assessment must match one accepted scientific fact")
+            raise MemoryError(
+                "report assessment is not an exact match for the current cycle's "
+                f"accepted-assessment list (cycle={cycle}, allowed_count={len(accepted)})"
+            )
         cited.add(item["fact_id"])
     if cited != set(accepted):
         raise MemoryError("report must cite every assessment supplied for its cycle")

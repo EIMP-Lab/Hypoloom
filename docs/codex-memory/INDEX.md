@@ -1,5 +1,10 @@
 # Development memory index
 
+- [PR 4 report and patch instructions](../qualification.md#pr-4-report-and-patch-instructions-2026-10-05):
+  current-cycle references and Host-generated patches; integration repairs the
+  reviewed Skill's whole-record copy instruction by projecting the existing three
+  reference fields, with packaged-example and Host validation.
+
 - [Public PDF timeout recovery](../design/institutional-literature-access.md#public-pdf-timeout-recovery--2026-10-04):
   TASLP arXiv download recovered before code changes; safe network-phase diagnosis
   and one bounded internal PDF retry address the reproduced recovery gap.

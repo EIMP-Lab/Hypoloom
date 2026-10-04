@@ -1,8 +1,11 @@
+import json
 from pathlib import Path
+import re
 
 import pytest
 
 from hypoloom.expert_memory import ExpertMemory, MemoryError, validate_report
+from hypoloom.expert_plugin import ExpertPluginStore
 
 
 def _report(fact_id: str = "assessment-1", assessment: str = "SUPPORTED") -> bytes:
@@ -24,6 +27,62 @@ def test_report_requires_exact_accepted_assessment_not_an_agent_verdict():
             validate_report({**files, "rounds/1.md": invalid}, cycle=1, facts=_facts(), max_bytes=8192)
     with pytest.raises(MemoryError):
         validate_report({**files, "rounds/2.md": b"wrong round"}, cycle=1, facts=_facts(), max_bytes=8192)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_seed_report_example_projects_only_current_assessment_references(tmp_path, count):
+    store = ExpertPluginStore(tmp_path)
+    binding = store.ensure("run", "expert", "Test current-cycle reporting")
+    view = store.read("run", "expert", commit=binding.commit,
+                      attempt_id="report", max_bytes=131072)
+    try:
+        skill = (view.root / "skills/experiment-report/SKILL.md").read_text()
+    finally:
+        view.close()
+    examples = re.findall(r"```python\n(.*?)\n```", skill, re.DOTALL)
+    assert len(examples) == 1, "the report Skill must demonstrate the input-to-reference projection"
+    current = [
+        {"fact_id": "assessment-current", "hypothesis_id": "hyp-current",
+         "fact_type": "HypothesisAssessed", "payload": {"assessment": "SUPPORTED"}},
+        {"fact_id": "assessment-other", "hypothesis_id": "hyp-other",
+         "fact_type": "HypothesisAssessed", "payload": {"assessment": "REFUTED"}},
+    ][:count]
+    namespace = {"cycle_assessments": {"cycle": 2, "assessments": current},
+                 "prior_assessments": _facts()}
+    exec(compile(examples[0], "experiment-report/SKILL.md", "exec"), namespace)
+    references = namespace["assessments"]
+    assert references == [
+        {"fact_id": "assessment-current", "hypothesis_id": "hyp-current", "assessment": "SUPPORTED"},
+        {"fact_id": "assessment-other", "hypothesis_id": "hyp-other", "assessment": "REFUTED"},
+    ][:count]
+    report = ("---\n" + json.dumps({"assessments": references}) +
+              "\n---\n# Round 2\nCurrent cycle observations.\n").encode()
+    validate_report({"MEMORY.md": b"# Index\n", "rounds/2.md": report},
+                    cycle=2, facts=current, max_bytes=8192)
+
+
+@pytest.mark.parametrize("current", [[], [
+    {"fact_id": "assessment-current", "hypothesis_id": "hyp-current",
+     "fact_type": "HypothesisAssessed", "payload": {"assessment": "SUPPORTED"}},
+]])
+def test_report_rejects_prior_cycle_fact_even_with_the_same_scientific_verdict(current):
+    with pytest.raises(MemoryError, match=rf"cycle=2, allowed_count={len(current)}"):
+        validate_report({"MEMORY.md": b"# Index\n", "rounds/2.md": _report()},
+                        cycle=2, facts=current, max_bytes=8192)
+
+
+@pytest.mark.parametrize("references, error", [
+    (_facts(), "invalid assessment reference"),
+    ([], "report must cite every assessment"),
+    ([{"fact_id": "assessment-1", "hypothesis_id": "hyp-1", "assessment": "SUPPORTED"}] * 2,
+     "accepted-assessment list"),
+])
+def test_report_rejects_full_records_omissions_and_duplicates(references, error):
+    report = ("---\n" + json.dumps({"assessments": references}) +
+              "\n---\n# Round 1\nObserved results.\n").encode()
+    with pytest.raises(MemoryError, match=error):
+        validate_report({"MEMORY.md": b"# Index\n", "rounds/1.md": report},
+                        cycle=1, facts=_facts(), max_bytes=8192)
 
 
 def test_memory_commits_report_and_old_snapshot_does_not_follow_head(tmp_path: Path):

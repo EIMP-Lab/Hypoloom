@@ -452,8 +452,8 @@ def full_cc_instruction(request: AgentRequest) -> str:
         if request.schema_version >= 14:
             common += (
                 "Edit the actual target source files under /workspace and test those edited files. "
-                "The Host generates implementation.patch from cumulative changes against the pinned base. "
-                "A manually written implementation.patch is an ordinary file; its hunks are not recursively applied. "
+                "The Host generates implementation.patch from cumulative changes against the pinned base; "
+                "do not create, write, copy, or regenerate /workspace/implementation.patch yourself. "
                 "A passing scratch-only test does not validate the submitted target. "
             )
     if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT":

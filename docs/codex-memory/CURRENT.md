@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 5 PR #4 integration: user authorizes merge/push. Preserve the PR's
+  current-cycle report scope, useful rejection context and Host-owned patch
+  instructions. Repair its reviewed Skill mismatch: project fact_id,
+  hypothesis_id and payload.assessment instead of copying full input facts.
+  Existing validators and source capture remain authoritative. Packaged example,
+  report/patch/Host regressions: 157 pass; native three and docs seven pass.
+  Native census: 27 successful Agents + two Processes, one expected LOST/recovery,
+  two correctly scoped Git/archive reports, zero open Attempts/live processes.
+  Initial native assertion read the Skill launch reply instead of delivered body;
+  corrected observation passes without weaker admission. Wheel/install/fresh bundle
+  match 176 files. No retained run/plugin migration or paid-model quality claim.
+  [Qualification](../qualification.md#pr-4-report-and-patch-instructions-2026-10-05):
+  `.local/qualification/pr-4-20261005/`; original review under `.local/reviews/pr-4-20261005/`.
+
 - October 4 public PDF timeout follow-up: TASLP's arXiv 2407.16714v1 now downloads
   before any repair (4,260,599 bytes, 15 pages; full DOI path 9.363 s). The historical
   generic timeout cannot identify its phase; do not attribute spontaneous recovery

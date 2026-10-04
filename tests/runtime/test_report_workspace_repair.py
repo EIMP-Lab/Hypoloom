@@ -110,3 +110,7 @@ def test_report_prompt_uses_bound_relative_path_under_canonical_memory():
     assert "/memory/" in instruction and "report_path" in instruction
     assert "Multi-component owners use" not in instruction
     assert "Claude Code" in instruction and "memory directory" in instruction
+    assert "--cycle-assessments.assessments" in instruction
+    assert "row['payload']['assessment']" in instruction
+    assert "do not copy whole fact records" in instruction
+    assert "If it is empty, write assessments: []" in instruction

@@ -16,6 +16,26 @@ rounds and cite the exact accepted references supplied by the Host. Include the
 hypothesis, experiment identities, outcomes, repair lessons, limitations and next
 research question. Follow the request's output language and byte budget.
 
+For the round file's YAML frontmatter, use only the current
+`--cycle-assessments.assessments` input. Each input row is a full fact record;
+include every row exactly once using only `fact_id`, `hypothesis_id` and
+`assessment`, taking `assessment` from `row["payload"]["assessment"]`.
+Do not copy whole fact records into the frontmatter. With `cycle_assessments`
+bound to the decoded current input, the projection is:
+
+```python
+assessments = [
+    {"fact_id": row["fact_id"],
+     "hypothesis_id": row["hypothesis_id"],
+     "assessment": row["payload"]["assessment"]}
+    for row in cycle_assessments["assessments"]
+]
+```
+
+That input list is the only allowlist for this round. If it is empty, write
+`assessments: []`; facts from older rounds or other immutable inputs must not
+be repeated in this round's frontmatter.
+
 When selected paper reading affected a decision, keep a compact note in this
 same report: originating question/result, exact source_ref and physical pages,
 what was learned, the interpretation used, and remaining gaps or dependent
