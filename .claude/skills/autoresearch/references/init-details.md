@@ -125,14 +125,22 @@ solve challenges, refresh/reopen automatically, or claim that reinstalling the
 client will resolve a website challenge. The user may skip this platform.
 For IEEE, ScienceDirect, Springer and optional ACM, the program supplies fixed
 public DOI probes in `completion_samples`. After `完成`, it automatically fetches
-and validates that sample through the same browser. Do not invent another DOI or
+and validates that sample through the shared public-PDF path, then the same browser
+if no public PDF is available. Do not invent another DOI or
 ask the user to find one. Explicit `--sample` or a `验证样本` reply supplies the user's
 own article instead. Defaults run after the manual answer, never instead of the
 requested login opportunity. `sample_verified` proves only that article's current
 readability; `sample_scope: public_full_text` cannot prove institutional login or
 subscription. Retain `verification_scope` in the review. Failures remain failures
 with their generated retry command; completing the manual step is not test success.
-If checking the sample reaches a challenge/sign-in page, the program offers another
+Report the returned `media_type`, `acquisition_source`, `source_url` and `page_count`
+when present. A public PDF verifies public acquisition, not browser login; HTML full
+text is readable content, not a downloaded PDF. Old results without these fields
+do not establish PDF format. Fixed catalog samples stop on a challenge/sign-in page
+and proceed to the next platform, retaining failure rather than requesting manual
+per-paper downloading. Do not retry those samples automatically or promise that
+repeating init clears a website restriction. For a different explicit sample only,
+if checking reaches a challenge/sign-in page, the program offers another
 `waiting_for_user` with `sample_url` and the remaining original acquisition time.
 Relay those instructions: the user handles that sample page and replies 完成, skips,
 chooses public-only or ends preparation. Do not call the initial login incomplete.

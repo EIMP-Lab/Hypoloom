@@ -614,6 +614,12 @@ platform using the existing acquisition deadline (120 seconds by default), byte
 limit and document identity validator. Skip, public-only and finish do not download
 default samples.
 
+After the login opportunity, the fixed probe tries the shared public PDF discovery
+and download path first, then the existing browser within the original deadline.
+A fixed sample that hits a challenge/sign-in page records failure and advances; it
+does not ask for per-paper manual downloading. A different explicit sample still
+allows optional manual recovery. Do not rerun init repeatedly to clear a CAPTCHA.
+
 | Platform | Fixed DOI / publisher source |
 | --- | --- |
 | IEEE | [10.1109/ACCESS.2019.2902267](https://ieeexplore.ieee.org/document/8654603/) |
@@ -639,8 +645,12 @@ unverified access before launch review. Sample bytes are released after checking
 and never enter a research archive. Existing runs are unchanged.
 
 `sample_verified` accepts an identity-checked PDF or positively identified HTML
-full text. It does **not separately establish PDF downloading or unattended batch
-access**. PDF acceptance needs actual bytes, parsed pages and article identity;
+full text. Results now include `media_type`, `acquisition_source`, `source_url` and
+`page_count`: only `application/pdf` establishes a PDF transfer. `public_pdf` means
+a public source; `browser` means the dedicated browser. A successful public PDF
+needs no new browser PDF tab. Neither establishes unattended batch access; older
+results without these fields do not establish PDF
+downloading. PDF acceptance needs actual bytes, parsed pages and article identity;
 an abstract/detail page or HTML/XML full text is not a PDF.
 
 Unattended research uses existing public search, PDF candidates and exact-DOI OA
@@ -934,6 +944,21 @@ Final Agent failures remain visible in TUI/Web after run completion. A per-call
 cost refusal displays `BUDGET LIMIT` and `error_max_budget_usd`; other final
 failures display their code. Adjust frozen limits for a new run, not a retained one.
 
+## Fresh init acceptance
+
+1. Open a new CC session in the updated server checkout and run `/autoresearch init`.
+2. Select Windows client mode and IEEE, ScienceDirect, Springer and ACM (select ACM
+   explicitly). Reuse a healthy Windows helper; this update does not change its script.
+3. Finish authentication where needed and reply `完成` for each platform. Existing
+   sessions need no repeated login. The program checks fixed samples automatically.
+4. Review state, source, format and page count. Challenges, 403, identity failures
+   and timeouts are failures. Choose the offered continuation with unverified access
+   if desired, then stop at launch review. Only selecting **Start now** launches research.
+
+This tests fresh init orchestration in the current environment. Reusing a login
+profile is not first-install Windows qualification; one public sample does not
+establish coverage for every paper from its publisher.
+
 ## Independent acquisition development
 
 Develop and test acquisition before returning to CC/init or research integration:
@@ -959,8 +984,9 @@ Repeat `--doi` for up to ten selections. Defaults are 45 seconds per paper and
 the existing four-platform catalog. Repeated rounds fetch again and retain later
 failures. The runner reuses public transport, PDF extraction, the DOI fallback and
 identity validation without model calls, login collection or a research run.
-Trying HTTPS forms of HTTP PDF locations is an experiment-only discovery step;
-production retrieval has not adopted that behavior.
+The experiment, Host document fallback and init samples now share exact-DOI
+OpenAlex/Crossref discovery and PDF validation. The ordinary OA parser tries the
+exact HTTPS form of advertised HTTP PDF locations; HTTP itself remains rejected.
 
 For one DOI, `--url` supplies an explicit candidate to isolate downloading from
 discovery. Such results are labeled `supplied`, not automatic discovery success.
@@ -970,7 +996,8 @@ and disconnects afterward, preserving the browser. It does not install a Windows
 helper or create an SSH connection; avoid concurrent research on that browser.
 
 Independent acquisition, actual Host document/archive closure and init interaction
-are separate acceptance steps. Existing runs do not adopt the experiment path.
+are separate acceptance steps. Only newly launched runs use the updated runtime;
+existing runs keep their pinned version.
 
 For browser tests without system Chrome, explicitly install Playwright Chromium
 in the development environment and select its executable:

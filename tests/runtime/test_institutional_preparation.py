@@ -178,6 +178,71 @@ def test_default_probe_rejects_wrong_document_and_retains_failed_provider_for_re
     assert len(backend.calls) == 2 and backend.closed
 
 
+def test_init_uses_production_public_pdf_and_reports_source_format_without_retaining_bytes(monkeypatch):
+    from hypoloom.cli import build_parser
+    from hypoloom.institutional_instructions import render_results
+    from tests.runtime.test_literature_probe import system, DOI, PDF
+    from tests.runtime.test_grounding_web import _response
+    from tests.runtime.test_institutional_browser import _pdf
+    web, transport, _ = system()
+    transport.responses[PDF] = _response(PDF, _pdf(DOI), media_type='application/pdf')
+    monkeypatch.setattr('hypoloom.grounding_web.GroundingWeb', lambda **kwargs: web)
+    class Browser(PlaywrightInstitutionalBrowser):
+        closed = False
+        def check_connection(self, **kwargs): return {'state': 'ready'}
+        def fetch(self, *args, **kwargs): pytest.fail('public PDF must not require a browser download')
+        def close(self): self.closed = True
+    backend = Browser('http://127.0.0.1:9222')
+    access = InstitutionalAccess(backend)
+    monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
+    output = []
+    args = build_parser().parse_args(['institutional', 'prepare', '--non-interactive', '--sample', DOI])
+    assert run(args, output=output.append) == 0
+    summary = json.loads(output[-1]); rows = summary['preparation_summary']
+    sample = rows[0]['samples'][0]
+    assert sample['state'] == 'sample_verified' and sample['media_type'] == 'application/pdf'
+    assert sample['acquisition_source'] == 'public_pdf' and sample['source_url'] == PDF
+    assert sample['page_count'] == 1 and summary['provider_modes'] == {}
+    assert '公开来源' in render_results(rows) and 'PDF（1 页）' in render_results(rows)
+    assert 'not established' in summary['verification_scope'] and 'content' not in sample
+    assert not access._items and backend.closed
+
+
+@pytest.mark.parametrize('state', ['verification_required', 'identity_unconfirmed', 'browser_unavailable'])
+def test_public_probe_failure_preserves_browser_failure_and_remaining_deadline(monkeypatch, state):
+    import hypoloom.institutional_browser as module
+    from hypoloom.grounding_web import GroundingWebError
+    clock = [0.]
+    class Public:
+        max_seconds = 25
+        def document(self, url):
+            clock[0] = 25.
+            raise GroundingWebError('timed_out', 'SECRET URL must not escape')
+    monkeypatch.setattr('hypoloom.grounding_web.GroundingWeb', lambda **kwargs: Public())
+    monkeypatch.setattr('hypoloom.document_fallback.monotonic', lambda: clock[0])
+    monkeypatch.setattr(module, 'monotonic', lambda: clock[0])
+    class Browser(PlaywrightInstitutionalBrowser):
+        calls = []
+        def fetch(self, url, **kwargs):
+            self.calls.append(kwargs)
+            return {'state': state}
+    backend = Browser('http://127.0.0.1:9222')
+    result = backend.fetch_sample('https://doi.org/10.1109/example', force=True, timeout_seconds=120)
+    assert result == {'state': state, 'acquisition_source': 'browser'}
+    assert backend.calls == [{'force': True, 'focus': False, 'timeout_seconds': 95}]
+
+
+def test_summary_separates_browser_html_from_pdf_and_strips_source_queries():
+    from hypoloom.institutional_instructions import render_results
+    from hypoloom.document_fallback import public_url
+    source = public_url('https://publisher.example/paper?token=PRIVATE#secret')
+    assert source == 'https://publisher.example/paper'
+    text = render_results([{'provider': 'Springer', 'state': 'sample_verified', 'samples': [
+        {'state': 'sample_verified', 'media_type': 'text/plain', 'source_url': source,
+         'page_count': 1, 'acquisition_source': 'browser'}]}])
+    assert '网页全文，不代表已下载 PDF' in text and 'PRIVATE' not in text
+
+
 def test_mixed_sample_results_explain_document_identity_without_claiming_download(monkeypatch):
     from hypoloom.cli import build_parser
     from hypoloom.institutional_access import publisher

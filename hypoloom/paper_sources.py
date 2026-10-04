@@ -518,6 +518,14 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                     result = read_document(web, item["url"], deadline, http_calls)
                 if publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"} and not public_full_text(result):
                     raise GroundingWebError("full_text_unconfirmed", "Publisher HTML is not confirmed full text")
+                if (api is None and publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"}
+                        and identity not in located):
+                    # Keep readable HTML if no PDF is available; prefer actual PDF
+                    # bytes without extending this request's existing work budget.
+                    events = []
+                    pdf = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls)
+                    if events: observations.append({"bibliographic_identity": identity, "events": events})
+                    if pdf is not None: return pdf
                 return result
             except GroundingWebError as exc:
                 if api is None and exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:

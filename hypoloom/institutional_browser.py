@@ -424,6 +424,30 @@ class PlaywrightInstitutionalBrowser:
                 self._wait(page)
         return finish({'state': 'fetch_unavailable', 'reason': reason or 'pdf_response_not_pdf'})
 
+    def fetch_sample(self, url, *, force=False, focus=False, timeout_seconds=120):
+        """Try the runtime public PDF path before checking the existing browser."""
+        from .document_fallback import acquire_public_pdf
+        from .grounding_web import GroundingWeb
+        from .institutional_access import MAX_DOCUMENT_BYTES, identity_from_url
+        from .literature import SemanticScholarPdfLocator
+        deadline = monotonic() + timeout_seconds
+        web = GroundingWeb(max_response_bytes=MAX_DOCUMENT_BYTES)
+        locator = SemanticScholarPdfLocator(timeout_seconds=5)
+        identity = identity_from_url(url)
+        # Reserve time for the browser; this never extends the queue's deadline.
+        document, title = acquire_public_pdf(web, identity,
+            deadline=min(deadline, monotonic() + min(web.max_seconds, timeout_seconds / 2)),
+            http_calls=[12], events=[],
+            locate=lambda remaining: locator.locate_doi(identity[4:], timeout_seconds=remaining))
+        if document is not None:
+            return {"state": "available", "document": document, "title": title,
+                    "acquisition_source": "public_pdf"}
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return {"state": "acquisition_timeout"}
+        result = self.fetch(url, force=force, focus=focus, timeout_seconds=remaining)
+        return {**result, "acquisition_source": "browser"}
+
     def fetch(self, url, *, force=False, focus=False, timeout_seconds=120):
         self._deadline = monotonic() + timeout_seconds
         try:

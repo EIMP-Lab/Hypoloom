@@ -92,9 +92,52 @@ Fixture/browser tests do not qualify a school's real subscription or guarantee
 unattended access. Real institutional verification needs a user-provided entry
 URL and an entitled article.
 
+## Shared PDF acquisition through Host and init (2026-10-04)
+
+The operator authorized continuing from the independent experiment through Host
+integration and fresh-init acceptance. A focused red regression reproduces a
+runtime gap: the independent probe downloads an exact-DOI public PDF while the
+Host goes directly to browser waiting without querying those metadata sources.
+Reuse `document_fallback.py` for exact OpenAlex/Crossref DOI discovery and bounded
+PDF admission; both the development runner and production callers use it. The
+existing OA parser now tries HTTPS for exact HTTP PDF locations. No HTTP admission,
+new registry, schema, access receipt or independent validator is introduced.
+
+Host document requests retain existing slots, work/HTTP bounds, rejected-source
+rules, DOI/title checks, locator cooldown and ordinary source/archive admission.
+A readable publisher HTML response may still have an accessible PDF: try the same
+public PDF path within the remaining budget, preserving valid HTML if it fails.
+The returned media type always records what was actually obtained. Metadata URLs,
+OA flags and successful page navigation do not establish a downloaded document.
+
+Preparation still offers the requested manual login opportunity first. On sample
+completion, the same public PDF path gets at most 25 seconds and no more than half
+the remaining acquisition time; then the existing browser uses the remainder.
+Only the first acquisition attempts public discovery; browser polling does not
+repeat it. Ordinary transient status adds source URL without query/fragment, media
+type, source route and page count before discarding sample bytes. These observations
+are not persisted access proof and never change provider preferences or admission.
+
+Fixed catalog samples measure automatic acquisition: challenge/sign-in results
+finish that sample and remove it from the disposable queue before progressing.
+They do not silently continue background CAPTCHA retries or ask for a per-paper
+manual download. A different explicitly selected sample keeps optional manual
+recovery within its original deadline. Program-rendered instructions and runtime
+init guidance distinguish public PDF, browser PDF and HTML; public success cannot
+be interpreted as verified login or platform-wide subscription.
+
+The integration does not solve publisher access restrictions. Live ACM 403 and
+Semantic Scholar 429 remain failures, and the ScienceDirect sample lacks an
+accessible public PDF in these checks. No hardcoded author-copy URL, API key,
+CAPTCHA bypass or modified paper identity is used to turn the cohort green.
+Existing research runs, preparation replies, Windows helper and user browser
+remain untouched. See [qualification](../qualification.md#shared-pdf-acquisition-through-host-and-init-2026-10-04)
+for actual transfer, Host/reader/archive and fresh preparation evidence.
+
 ## Unattended publisher acquisition review (2026-10-04)
 
-The operator subsequently changed the development sequence: isolate acquisition
+This records the earlier standalone stage, superseded by the integration above.
+The operator initially changed the development sequence: isolate acquisition
 development and tests before returning to init or full research integration. The
 repository-only `scripts/probe_literature.py` is the independent experiment entry.
 It runs without a model, preparation batch or research database, using existing

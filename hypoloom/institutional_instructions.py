@@ -51,8 +51,14 @@ def render_results(rows):
             detail += "。这是论文身份未确认，不是机构账号身份未确认；重复登录不保证解决"
         elif state == "sample_verified":
             detail = "只证明该样本当前可读，不证明机构登录成功或平台整体订阅权限"
+            for sample in row.get("samples", ()):
+                if sample.get("media_type") == "application/pdf":
+                    origin = "公开来源" if sample.get("acquisition_source") == "public_pdf" else "浏览器"
+                    detail += f"；已从{origin}取得并校验 PDF（{sample['page_count']} 页）"
+                elif sample.get("media_type"):
+                    detail += "；取得的是网页全文，不代表已下载 PDF"
         elif state == "verification_required":
-            detail = "检测到人机验证，全文未通过校验；在浏览器中手动处理，自动重试不保证解决"
+            detail = "检测到人机验证，自动获取未通过；重复 init 或重试不保证解决，可接受未验证并继续"
         else:
             detail = "未验证样本可读性或机构权限，以本次状态为准"
         lines.append(f"{row['provider']}：{state} — {detail}。")
@@ -137,6 +143,7 @@ def render(view):
             lines.append("回复完成后，程序自动获取并校验以下全文样本，无需另外寻找 DOI：")
             lines.extend(view["completion_samples"])
             lines.append("默认固定样本为公开全文，可用验证样本另提供 DOI；通过仅证明该篇当前可读，不代表登录或订阅已验证。验证失败会保留具体状态，允许重试或接受未验证。")
+            lines.append("固定样本复用运行时的公开 PDF 获取与校验，未取得时再检查专用浏览器；结果区分公开 PDF、浏览器 PDF 与网页全文。遇到验证码直接报告自动获取失败，不要求逐篇人工验证。")
         else:
             lines.append("完成表示结束此平台的人工准备；未验证样本时，不代表登录或订阅已验证。")
     elif state in {"preparing_platform", "processing"}:

@@ -2,6 +2,55 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Shared PDF acquisition through Host and init (2026-10-04)
+
+The operator authorized proceeding beyond the standalone experiment to fresh init
+acceptance. The runner, Host public fallback and init probes now use one production
+exact-DOI/PDF acquisition path. Red cases reproduced a missing Host metadata route
+and readable publisher HTML preventing an available PDF from being fetched. The
+same validators, source rejection, HTTP/work bounds and source/archive ownership
+remain; valid HTML survives a failed attempt to prefer PDF. Default sample
+challenges terminate automatically; other explicit samples retain optional manual
+recovery. New sample observations distinguish public/browser source and PDF/HTML.
+
+Actual anonymous network observations, without publisher keys or a user browser:
+
+| Check | Observed result |
+| --- | --- |
+| Shared acquisition, four catalog DOIs, two fresh rounds | IEEE repository and Springer publisher each 2/2 validated PDFs; ACM and ScienceDirect each 0/2; 4/8 overall, exit 2 |
+| Shared keyword search | Springer DOI resolved and 32-page PDF saved, exit 0 |
+| First real Host source/archive check | IEEE 6-page PDF; Springer readable HTML; ACM/ScienceDirect unavailable |
+| Host after PDF-preference repair | Springer 32-page PDF archived with original bytes and source_ref reuse; IEEE unavailable on repeat; ACM/ScienceDirect unavailable |
+
+IEEE's repeated Host failure retains an HTTP 202 from the initial publisher path;
+that outward error alone does not establish which later fallback failed. Do not
+claim continuous availability from the standalone successes. ACM publisher 403,
+missing ScienceDirect public PDF and Semantic Scholar 429 remain live gaps.
+Neither CAPTCHA automation nor complete unattended publisher coverage is claimed.
+
+The native isolated Host test uses the real installed CC executable, local scripted
+provider, broker/source tools, three concurrent reader processes, original-byte
+archives, CPU experiment/collection and the existing Oracle. Both the established
+locator path and new public metadata path close normally without a browser call.
+It checks terminal Attempts, reader/Process counts, empty staging and process-group
+cleanup. Synthetic source bytes do not prove real publisher entitlement. A prior
+run of this test correctly rejected source edits made during execution; subsequent
+checks keep runtime code fixed. No retained research run or user browser was changed.
+
+Focused tests also cover wrong-paper rejection, source/redirect rejection, HTTPS
+candidate conversion, budget expiry before admission, failure preservation, format
+reporting and disposal of challenged fixed samples before the next platform.
+Installed wheel, CLI preparation/control cleanup, MCP initialization and a fresh
+runtime bundle match all 175 package files. These prepare the new-init acceptance
+path; native Windows/SSO behavior and paid/GPU/full release qualification are not
+claimed. Final related selection: **455 passed**; separate native Host/CC selection:
+**2 passed**. Seven saved PDFs from the shared probe/query and Host archives were
+independently re-extracted and identity-checked. Static checks and compilation pass.
+Evidence: `.local/qualification/literature-init-integration-20261004/`.
+
+[Fresh-init steps](guides/institutional-access.md#fresh-init-acceptance) ·
+[Design](design/institutional-literature-access.md#shared-pdf-acquisition-through-host-and-init-2026-10-04).
+
 ## Standalone literature acquisition experiment (2026-10-04)
 
 The user now prefers independent acquisition development before Host/init

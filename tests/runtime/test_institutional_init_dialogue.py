@@ -135,7 +135,8 @@ def test_sample_challenge_waits_for_user_without_restarting_acquisition(tmp_path
         if v.startswith('{') and 'state_root' in json.loads(v)), None))
     try:
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'complete'}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'verify',
+            'sample': '10.1016/explicit.manual.sample'}).status == 'accepted'
         def sample_wait():
             if not worker.is_alive(): return None
             view = request(root).result
@@ -210,7 +211,8 @@ def test_sample_skip_prevents_later_platform_ticks_from_fetching_it_again(tmp_pa
         if v.startswith('{') and 'state_root' in json.loads(v)), None))
     try:
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'complete'}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'verify',
+            'sample': '10.1016/explicit.manual.sample'}).status == 'accepted'
         eventually(lambda: request(root).result.get('sample_url'))
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': action}).status == 'accepted'
         eventually(lambda: request(root).result.get('provider') == 'Springer'
@@ -221,6 +223,40 @@ def test_sample_skip_prevents_later_platform_ticks_from_fetching_it_again(tmp_pa
         assert len(attempts) == 1, 'a skipped sample was fetched while preparing another platform'
         assert json.loads(output[-1])['preparation_summary'][1]['state'] == 'sample_verified'
         assert backend.closed and not root.exists()
+    finally:
+        if worker.is_alive(): request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(4)
+
+
+def test_fixed_sample_challenge_advances_without_manual_download_or_background_retries(tmp_path, monkeypatch):
+    from hypoloom.institutional_access import publisher
+    access, backend, _ = ready_access(monkeypatch)
+    access.poll_seconds = .01
+    fetch = backend.fetch; attempts = []
+    def challenged(url, **kwargs):
+        if publisher(url) == 'ScienceDirect':
+            attempts.append(url)
+            return {'state': 'verification_required'}
+        return fetch(url, **kwargs)
+    backend.fetch = challenged
+    output, results = [], []
+    worker = threading.Thread(target=lambda: results.append(run(arguments('--agent-session',
+        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer'), output=output.append)))
+    worker.start()
+    root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+        if v.startswith('{') and 'state_root' in json.loads(v)), None))
+    try:
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'complete'}).status == 'accepted'
+        eventually(lambda: request(root).result.get('provider') == 'Springer'
+            and request(root).result.get('state') == 'waiting_for_user')
+        time.sleep(.1)
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'action': 'complete'}).status == 'accepted'
+        worker.join(4)
+        assert not worker.is_alive() and results == [1]
+        rows = json.loads(output[-1])['preparation_summary']
+        assert [r['state'] for r in rows] == ['verification_required', 'sample_verified']
+        assert len(attempts) == 1 and backend.closed and not root.exists()
+        assert not list(tmp_path.rglob('state.sqlite'))
     finally:
         if worker.is_alive(): request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(4)
 

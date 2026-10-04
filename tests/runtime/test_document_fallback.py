@@ -15,6 +15,7 @@ from test_literature import FakeFetcher
 
 OA = "https://repository.example.edu/accepted.pdf"
 DOI = "10.1038/" + URL.rsplit("/", 1)[-1]
+LOOKUPS = ["https://api.openalex.org/works/https://doi.org/" + DOI, "https://api.crossref.org/works/" + DOI]
 
 
 class Metadata:
@@ -60,9 +61,9 @@ def test_public_only_platform_still_fetches_exact_doi_oa_and_preserves_origin(sy
     assert result["status"] == "available"
     assert result["url"] == OA and result["requested_url"] == URL
     assert "publisher version of record is not established" in result["version_note"]
-    assert public.calls == [URL, OA] and len(metadata.calls) == 1 and not backend.calls
+    assert public.calls == [URL, *LOOKUPS, OA] and len(metadata.calls) == 1 and not backend.calls
     assert web_tool(host, request, "web_fetch", args) == result
-    assert public.calls == [URL, OA] and len(papers.sources) == 1
+    assert public.calls == [URL, *LOOKUPS, OA] and len(papers.sources) == 1
     archive = tmp_path / "archive"; archive.mkdir()
     papers.archive(archive)
     assert (archive / result["original_path"].lstrip("/")).read_bytes() == document()["content"]
@@ -80,7 +81,7 @@ def test_oa_identity_mismatch_is_not_admitted_and_repeat_does_not_relookup(syste
         result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
         assert result["status"] == "unavailable" and result["reason"] == "public_only"
     assert len(metadata.calls) == 1 and not papers.sources and not backend.calls
-    assert public.calls == [URL, OA]
+    assert public.calls == [URL, *LOOKUPS, OA]
 
 
 def test_original_source_security_rejection_precedes_oa_lookup(system):
@@ -103,3 +104,67 @@ def test_shared_pdf_slots_and_locator_rate_limit_do_not_start_more_work(system):
     host.literature_io._fallback_retry_at = host.literature_io._clock() + 60
     assert web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})["reason"] == "public_only"
     assert not metadata.calls and not backend.calls
+
+
+def test_host_discovers_public_pdf_without_locator_and_archives_exact_bytes(system, tmp_path):
+    from tests.runtime.test_literature_probe import system as public_system, DOI as sample, PDF
+    from tests.runtime.test_grounding_web import _response
+    from tests.runtime.test_institutional_browser import _pdf
+    host, request, _, _, backend, papers = system
+    web, transport, _ = public_system(locations=(PDF.replace('https:', 'http:'),))
+    url = 'https://doi.org/' + sample
+    original = _pdf(sample)
+    transport.responses[url] = _response(url, b'', status_code=403)
+    transport.responses[PDF] = _response(PDF, original, media_type='application/pdf')
+    host.grounding_web, host.literature_io = web, None
+    result = web_tool(host, request, 'web_fetch', {'mode': 'document', 'url': url})
+    assert result['status'] == 'available' and result['url'] == PDF
+    assert result['requested_url'] == url and result['media_type'] == 'application/pdf'
+    assert not backend.calls and len(papers.sources) == 1
+    archive = tmp_path / 'public-archive'; archive.mkdir()
+    papers.archive(archive)
+    assert (archive / result['original_path'].lstrip('/')).read_bytes() == original
+    assert sample in (archive / result['text_path'].lstrip('/')).read_text()
+    before = list(transport.calls)
+    assert web_tool(host, request, 'web_fetch', {'mode': 'document', 'url': url}) == result
+    assert transport.calls == before
+
+
+@pytest.mark.parametrize('redirected', [False, True])
+def test_public_discovery_cannot_readmit_rejected_source(redirected):
+    from time import monotonic
+    from hypoloom.document_fallback import acquire_public_pdf
+    from tests.runtime.test_literature_probe import system, DOI, PDF
+    from tests.runtime.test_grounding_web import _response
+    from tests.runtime.test_institutional_browser import _pdf
+    web, transport, locator = system()
+    rejected = 'https://repository.example.edu/rejected.pdf' if redirected else PDF
+    transport.responses[PDF] = _response(PDF, b'', status_code=302, location=rejected) if redirected else _response(
+        PDF, _pdf(DOI), media_type='application/pdf')
+    transport.responses[rejected] = _response(rejected, _pdf(DOI), media_type='application/pdf')
+    document, _ = acquire_public_pdf(web, 'doi:' + DOI, events=[], deadline=monotonic() + 5,
+        http_calls=[12], reject=lambda url: url == rejected)
+    assert document is None and not locator.calls
+    if not redirected:
+        assert all(call[1] != PDF for call in transport.calls)
+
+
+@pytest.mark.parametrize('pdf_available', [True, False])
+def test_readable_publisher_html_prefers_verified_pdf_but_survives_pdf_failure(system, pdf_available):
+    from tests.runtime.test_literature_probe import system as public_system, DOI as sample, PDF
+    from tests.runtime.test_grounding_web import _response
+    from tests.runtime.test_institutional_browser import _pdf
+    host, request, _, _, backend, papers = system
+    web, transport, _ = public_system()
+    url = 'https://doi.org/' + sample
+    html = (f'<meta name="citation_doi" content="{sample}"><article><h2>Methods</h2>'
+            + 'Detailed scientific method. ' * 200 + '<h2>References</h2></article>').encode()
+    transport.responses[url] = _response(url, html)
+    transport.responses[PDF] = _response(PDF, _pdf(sample) if pdf_available else b'',
+        status_code=200 if pdf_available else 403, media_type='application/pdf')
+    host.grounding_web, host.literature_io = web, None
+    result = web_tool(host, request, 'web_fetch', {'mode': 'document', 'url': url})
+    assert result['status'] == 'available'
+    assert result['media_type'] == ('application/pdf' if pdf_available else 'text/html')
+    assert result['url'] == (PDF if pdf_available else url)
+    assert result['requested_url'] == url and len(papers.sources) == 1 and not backend.calls

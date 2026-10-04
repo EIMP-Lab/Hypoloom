@@ -9,117 +9,21 @@ import argparse
 import json
 import math
 from pathlib import Path
-import re
 import sys
 from time import monotonic
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from hypoloom.document_fallback import read_document
+from hypoloom.document_fallback import acquire_public_pdf, error_event, public_url, read_json
 from hypoloom.grounding_web import GroundingWeb, GroundingWebError
 from hypoloom.institutional_access import (
     MAX_DOCUMENT_BYTES, PREPARATION_SAMPLES, pdf_identity, publisher, validate_document,
 )
 from hypoloom.literature import (
-    LiteratureError, SemanticScholarPdfLocator, _identity, _openalex_pdf_uris, _uri_parts,
+    LiteratureError, SemanticScholarPdfLocator, _identity, _uri_parts,
 )
-
-
-def public_url(url):
-    parts = urlsplit(url)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-
-
-def read_json(web, url, deadline, calls):
-    document = read_document(web, url, deadline, calls)
-    if document["media_type"] != "application/json":
-        raise ValueError("metadata_not_json")
-    result = json.loads(document["content"])
-    if not isinstance(result, dict):
-        raise ValueError("invalid_metadata")
-    return result
-
-
-def work_details(work, identity):
-    if _identity("doi:" + str(work.get("doi", ""))) != identity:
-        raise ValueError("metadata_identity_mismatch")
-    title = work.get("display_name")
-    if not isinstance(title, str) or not title.strip():
-        raise ValueError("metadata_title_missing")
-    candidates = list(_openalex_pdf_uris(work))
-    # Experiment only: try HTTPS for exact HTTP PDF locations, never HTTP itself.
-    # Content still crosses the same public transport and article identity checks.
-    locations = work.get("locations")
-    if locations is not None and not isinstance(locations, list):
-        raise ValueError("invalid_locations")
-    locations = [work.get("best_oa_location"), work.get("primary_location"), *(locations or [])]
-    for location in locations:
-        if not isinstance(location, dict) or location.get("is_oa") is not True:
-            continue
-        url = location.get("pdf_url")
-        if isinstance(url, str) and url.startswith("http://"):
-            secure = "https://" + url[7:]
-            try:
-                _uri_parts(secure, "OA PDF URL")
-            except LiteratureError:
-                continue
-            if secure not in candidates:
-                candidates.append(secure)
-    return title[:1024], candidates[:16]
-
-
-def error_event(stage, error, url=None):
-    code = getattr(error, "code", None)
-    # Exceptions can contain URLs or browser details; never export their text.
-    event = {"stage": stage, "reason": getattr(code, "value", code) or type(error).__name__}
-    if url:
-        event["url"] = public_url(url)
-    if getattr(error, "http_status", None) is not None:
-        event["http_status"] = error.http_status
-    return event
-
-
-def discover(web, identity, deadline, calls, events):
-    doi = identity[4:]
-    title = ""
-    try:
-        work = read_json(web, "https://api.openalex.org/works/https://doi.org/" + quote(doi, safe="/"), deadline, calls)
-        title, candidates = work_details(work, identity)
-        if candidates:
-            return title, candidates
-    except (GroundingWebError, LiteratureError, ValueError) as exc:
-        events.append(error_event("openalex", exc))
-    try:
-        payload = read_json(web, "https://api.crossref.org/works/" + quote(doi, safe="/"), deadline, calls)
-        work = payload.get("message", {})
-        if not isinstance(work, dict) or _identity("doi:" + str(work.get("DOI", ""))) != identity:
-            raise ValueError("metadata_identity_mismatch")
-        titles = work.get("title")
-        if not isinstance(titles, list) or not titles or not isinstance(titles[0], str) or not titles[0].strip():
-            raise ValueError("metadata_title_missing")
-        candidates = []
-        links = work.get("link")
-        if links is not None and not isinstance(links, list):
-            raise ValueError("invalid_links")
-        for link in (links or [])[:16]:
-            if not isinstance(link, dict):
-                continue
-            url = link.get("URL")
-            if not isinstance(url, str) or not (link.get("content-type") == "application/pdf"
-                    or re.search(r"\.pdf(?:[?#]|$)|/doi/pdf/", url)):
-                continue
-            try:
-                _uri_parts(url, "Crossref PDF URL")
-            except LiteratureError:
-                continue
-            if url not in candidates:
-                candidates.append(url)
-        return title or titles[0][:1024], candidates
-    except (GroundingWebError, LiteratureError, ValueError) as exc:
-        events.append(error_event("crossref", exc))
-        return title, []
 
 
 def acquire(doi, output, *, web, locator, seconds=45, deadline=None, supplied_url=None, browser=None):
@@ -129,11 +33,10 @@ def acquire(doi, output, *, web, locator, seconds=45, deadline=None, supplied_ur
     calls, events = [12], []
     row = {"doi": identity[4:], "provider": publisher("https://doi.org/" + identity[4:]),
            "state": "unavailable", "events": events}
-    title, candidates = discover(web, identity, deadline, calls, events)
+    document, title = acquire_public_pdf(web, identity, deadline=deadline, http_calls=calls,
+        events=events, supplied_urls=([supplied_url] if supplied_url else ()),
+        locate=lambda remaining: locator.locate_doi(identity[4:], timeout_seconds=remaining))
     row["title"] = title
-    if supplied_url:
-        candidates.insert(0, supplied_url)
-    seen = set()
 
     def accept(document, source):
         if document.get("media_type") != "application/pdf":
@@ -150,28 +53,9 @@ def acquire(doi, output, *, web, locator, seconds=45, deadline=None, supplied_ur
                    version_note="PDF from the recorded source URL; publisher version of record is not established.")
         return True
 
-    def attempt(url, source):
-        if url in seen or monotonic() >= deadline or calls[0] <= 0:
-            return False
-        seen.add(url)
-        try:
-            return accept(read_document(web, url, deadline, calls), source)
-        except (GroundingWebError, LiteratureError, ValueError) as exc:
-            events.append(error_event(source, exc, url))
-            return False
-
-    for url in candidates:
-        if attempt(url, "supplied" if url == supplied_url else "metadata"):
-            break
-    if row["state"] != "pdf_verified" and monotonic() < deadline and calls[0] > 0:
-        calls[0] -= 1
-        try:
-            urls = locator.locate_doi(identity[4:], timeout_seconds=max(.001, deadline - monotonic()))
-            for url in urls:
-                if attempt(url, "semantic_scholar"):
-                    break
-        except LiteratureError as exc:
-            events.append(error_event("semantic_scholar", exc))
+    if document is not None:
+        source = document["acquisition_source"]
+        accept(document, "semantic_scholar" if source == "fallback" else source)
     if row["state"] != "pdf_verified" and browser is not None and monotonic() < deadline:
         result = browser.fetch("https://doi.org/" + identity[4:], timeout_seconds=deadline - monotonic())
         if result.get("state") == "available":

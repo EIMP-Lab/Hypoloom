@@ -1968,7 +1968,7 @@ def test_openalex_exact_host_bearer_bounds_and_existing_bundle_conversion() -> N
             1_025,
         ),
         (
-            "https://arxiv.org/pdf/0801.01234v3",
+            "https://papers.example.org/not-https.pdf",
             (PUBLIC_A,),
             1_025,
         ),

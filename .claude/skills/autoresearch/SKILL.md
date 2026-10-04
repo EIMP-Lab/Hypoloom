@@ -134,9 +134,9 @@ watches or infer answers. Ending preparation cancels the batch; it is not needed
 For ended batches see [details](references/init-details.md); never invent commands or use stdin.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
-Show `preparation_summary`: opened pages without samples remain not_checked;
-sample_verified proves only that paper's current readability, not platform-wide
-authorization or institutional login. Missing access never blocks research startup.
+Show `preparation_summary`: no sample means not_checked; sample_verified proves
+only that paper's readability, not login or subscription. Missing access never blocks research.
+Report public PDF, browser PDF or HTML. Fixed-sample challenges fail and advance; never require per-paper solving or claim HTML is PDF. See details.
 Merge returned `provider_modes` by platform into launch choices, replacing old values,
 then re-inspect and review. Retain completed/skipped preparation in this interaction;
 do not rerun a batch merely because its command still appears. Review auto/public_only

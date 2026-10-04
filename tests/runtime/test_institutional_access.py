@@ -299,7 +299,8 @@ def test_rejected_public_packet_never_reenters_browser_queue_or_cache(tmp_path, 
         assert not public_calls and len(backend.calls) == before
         unrelated = "https://link.springer.com/article/10.1007/example"
         assert web_tool(host, request, "web_fetch", {"mode": "document", "url": unrelated})["status"] == "pending"
-        assert public_calls == [unrelated]
+        assert public_calls == [unrelated, 'https://api.openalex.org/works/https://doi.org/10.1007/example',
+                                'https://api.crossref.org/works/10.1007/example']
     finally:
         if hasattr(workspace, "papers"): workspace.papers.close()
         access.close()

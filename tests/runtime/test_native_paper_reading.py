@@ -128,8 +128,8 @@ class ReadingScenario(_FinalReportHostScenario):
 
 @pytest.mark.parametrize("end_run,batch_documents,correct_errors,institutional_oa", [
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
-    (False, False, True, False), (False, False, False, True)],
-    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa"])
+    (False, False, True, False), (False, False, False, True), (False, False, False, "metadata")],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata"])
 def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
     if institutional_oa:
         import sys
@@ -156,7 +156,14 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         host.configuration["literature"] = host.literature_io.configuration
         # Finish isolated launch configuration before the first run/version is persisted.
         host.version = host._runtime_version()
+        lookup = "https://api.openalex.org/works/https://doi.org/" + DOI
+        crossref = "https://api.crossref.org/works/" + DOI
+        work = {"doi": DOI, "display_name": "Original method for independent reading",
+                "locations": [{"is_oa": True, "pdf_url": OA.replace("https:", "http:")}]}
         host.grounding_web = GroundingWeb(Transport({DOC: _response(DOC, b"Denied", status_code=403),
+            lookup: _response(lookup, json.dumps(work).encode(), media_type="application/json",
+                              status_code=200 if institutional_oa == "metadata" else 404),
+            crossref: _response(crossref, b"Not found", status_code=404),
             OA: _response(OA, _pdf(DOI + " " + scenario.nonce), media_type="application/pdf")}))
     run_id = "native-paper-reading"
     max_readers = 0; stopped = False
@@ -196,7 +203,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         if not end_run: assert len(scenario.readers) == 3
         if institutional_oa:
             assert not backend.calls
-            assert len(metadata.calls) == 1
+            assert len(metadata.calls) == (0 if institutional_oa == "metadata" else 1)
             assert all(source["url"] == OA for sources in scenario.sources.values() for source in sources)
             assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
             assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 1

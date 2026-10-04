@@ -90,7 +90,12 @@ def _verify(access, provider, samples, output, *, cancelled=lambda: False, dialo
         deadline = monotonic() + access.acquisition_seconds
         access.control("preparation", provider, "verify", url=url)
         observed = _observe(access, provider, cancelled=cancelled, output=output)
-        if dialogue and observed["state"] in {"verification_required", "login_required"}:
+        if url == default and observed["state"] in {"verification_required", "login_required"}:
+            access.discard_preparation("preparation", provider)
+        # Fixed samples test unattended acquisition after setup. A challenge is
+        # a result, not a request to manually download every paper. Explicit
+        # alternative samples retain the optional manual recovery dialogue.
+        if dialogue and url != default and observed["state"] in {"verification_required", "login_required"}:
             output(json.dumps({"provider": provider, **observed}, ensure_ascii=False))
             try:
                 answer = dialogue.wait(provider=provider, reason_code=observed["state"], sample_url=url,

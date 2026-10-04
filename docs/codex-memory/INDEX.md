@@ -1,7 +1,14 @@
 # Development memory index
 
+- [Shared acquisition in Host/init](../qualification.md#shared-pdf-acquisition-through-host-and-init-2026-10-04):
+  production DOI/PDF path, format/source observations, automatic fixed-sample
+  challenge termination and PDF preference over readable HTML. Real Host/CC readers,
+  CPU closure, archive/installation checks and live successes/failures establish
+  the next fresh-init acceptance step, not universal publisher access.
+  [Operator steps](../guides/institutional-access.zh-CN.md#新-init-实测).
+
 - [Standalone acquisition first](../qualification.md#standalone-literature-acquisition-experiment-2026-10-04):
-  new operator development preference postpones Host/init integration. Independent
+  earlier standalone stage before the now-authorized Host/init integration. Independent
   DOI/query/CDP experiment reuses existing validators; real four-platform results
   distinguish automatic discovery, supplied URLs, PDF and unsupported access.
   [Commands](../guides/institutional-access.md#independent-acquisition-development).

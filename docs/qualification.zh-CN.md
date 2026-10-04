@@ -2,6 +2,34 @@
 
 [English](qualification.md) · 简体中文
 
+## 公共 PDF 路径接入 Host 与 init（2026-10-04）
+
+用户已授权继续独立开发之后的阶段，直至可通过新 init 实测。独立入口、Host 公开
+回退及 init 样本现共用精确 DOI 查询与 PDF 校验。两个失败用例分别复现了 Host
+缺少元数据候选查询，以及出版社 HTML 可读时不再尝试 PDF；修复保留现有获取预算、
+来源拒绝、身份校验和论文归档。PDF 失败时仍可使用已确认可读的 HTML。
+
+- 公开网络四平台两轮：IEEE、Springer 各 2/2 取得 PDF，ACM、ScienceDirect 各 0/2，
+  合计 4/8，正确退出 2。ACM 403、ScienceDirect 缺少可用 PDF、后备服务 429 仍存在。
+- 真实 Host 首轮：IEEE 取得 6 页 PDF，Springer 为可读 HTML。修复 PDF 优先后，
+  Springer 取得并归档 32 页 PDF；IEEE 复测未取得。初始出版社返回 202，单凭最终
+  错误不能确定后续回退失败阶段，不据单次成功宣称持续稳定。
+- 隔离的真实 CC/Host 检查覆盖原回退与新元数据路径：三个阅读器、原文字节归档、
+  CPU 实验和收集、Oracle 审计、进程与暂存清理。合成论文不代表真实订阅权限。
+- 固定样本验证码会作为自动获取失败结束，不再要求逐篇人工点击；主动选择其他
+  样本仍可人工恢复。结果区分公开／浏览器来源以及 PDF／网页全文。
+- 安装包、CLI 准备及清理、MCP 初始化、新运行 bundle 的 175 个包文件一致性通过。
+  一次测试因开发期间修改运行代码被版本保护正确拒绝，后续保持代码固定再验证。
+
+最终相关回归 **455 项通过**，另有 **2 项真实 Host/CC 集成通过**。新的关键词检索
+取得 Springer 32 页 PDF；七份探测／Host 归档 PDF 经独立重解析和身份校验通过。
+静态检查及编译通过。
+
+证据：`.local/qualification/literature-init-integration-20261004/`。不宣称已通过全量
+G1、付费／GPU 或用户 Windows 登录实测；现有科研运行和用户浏览器未改动。
+[新 init 步骤](guides/institutional-access.zh-CN.md#新-init-实测)，
+[设计](design/institutional-literature-access.md#shared-pdf-acquisition-through-host-and-init-2026-10-04)。
+
 ## 独立文献获取实验（2026-10-04）
 
 用户改为先独立开发、测试获取能力，再验收 Host／init 集成。新增仓库开发入口

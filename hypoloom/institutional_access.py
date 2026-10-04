@@ -228,6 +228,7 @@ class Acquisition:
     started: bool = False
     manual: bool = False
     preparation: str | None = None
+    verification: dict | None = None
 
 
 class InstitutionalAccess:
@@ -390,7 +391,8 @@ class InstitutionalAccess:
                 if item.preparation:
                     group["preparation"] = {"state": item.state, "last_checked_at": item.last_checked_at,
                         "reason_code": item.reason_code,
-                        "sample_url": item.url if item.preparation == "verify" else None}
+                        "sample_url": item.url if item.preparation == "verify" else None,
+                        **(item.verification or {})}
                     continue
                 # Different experts may request the same source. Show it once to the operator.
                 if any(p["url"] == item.url for p in group["papers"]):
@@ -491,6 +493,8 @@ class InstitutionalAccess:
             result = (self.backend.prepare(item.provider, focus=focus, timeout_seconds=remaining)
                       if item.preparation in {"open", "retry"} else
                       self.backend.import_pdf(import_path, item.url, item.title, timeout_seconds=remaining) if import_path
+                      else getattr(self.backend, "fetch_sample", self.backend.fetch)(
+                          item.url, force=force, focus=focus, timeout_seconds=remaining) if item.preparation == "verify" and force
                       else self.backend.fetch(item.url, force=force, focus=focus, timeout_seconds=remaining))
             if result.get("state") != "available":
                 state = result.get("state", "failed")
@@ -502,7 +506,11 @@ class InstitutionalAccess:
                 text = " ".join(re.findall(r"\w+", " ".join(result["document"]["pages"])[:24000].lower()))
                 if len(words) < 4 or " ".join(words) not in text:
                     raise ValueError("identity_unconfirmed")
-            document = validate_document(result["document"], title=item.title, identity=item.identity)
+            public = item.preparation == "verify" and result.get("acquisition_source") == "public_pdf"
+            document = validate_document(result["document"], title=result.get("title", "") if public else item.title,
+                                         identity=item.identity)
+            if item.preparation == "verify":
+                document["acquisition_source"] = "public_pdf" if public else "browser"
             return "available", document, "document_verified"
         except ValueError as exc:
             state = "identity_unconfirmed" if str(exc) == "identity_unconfirmed" else "failed"
@@ -542,6 +550,10 @@ class InstitutionalAccess:
                     if cache_size + size > MAX_CACHE_BYTES:
                         state, document, reason = "failed", None, "cache_limit"
                     if item.preparation and state == "available":
+                        from .document_fallback import public_url
+                        item.verification = {"media_type": document["media_type"],
+                            "source_url": public_url(document["url"]), "page_count": len(document["pages"]),
+                            "acquisition_source": document["acquisition_source"]}
                         state, document = "sample_verified", None
                     item.document = document
                     item.last_checked_at = datetime.now(timezone.utc).isoformat()

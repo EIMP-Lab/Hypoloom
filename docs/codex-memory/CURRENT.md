@@ -1,6 +1,27 @@
 # Current Hypoloom development state
 
-- October 4 development workflow change: user now wants acquisition developed
+- October 4 Host/init integration: operator authorizes proceeding beyond the
+  standalone stage to a fresh-init acceptance version. Reuse document_fallback
+  exact-DOI discovery/PDF validation in probe, Host and initial sample acquisition;
+  normalize advertised HTTP PDF candidates to HTTPS only. Red cases show missing
+  Host discovery and readable HTML bypassing an available PDF; both repaired.
+  Preserve source rejection, deadlines, locator cooldown and ordinary archives.
+  Samples report public/browser route, source, media type and page count; no login
+  or subscription proof. Fixed-sample challenges end and leave the queue before
+  the next platform; different explicit samples retain optional manual recovery.
+  Final related 455 pass; separate native real CC/Host 2 pass. Both locator and
+  metadata paths close three readers, CPU
+  collection and Oracle, with staging/process cleanup. Installed CLI/MCP/fresh
+  bundle matches 175 package files. Live shared path: IEEE/Springer each 2/2 PDFs,
+  ACM/ScienceDirect 0/2; keyword-to-Springer PDF passes. Live Host: IEEE PDF then
+  unavailable on repeat; Springer HTML then PDF after repair. Seven actual PDFs
+  independently reread; no all-publisher or continuous-availability claim.
+  Existing research/preparation/client/browser untouched; no helper update needed.
+  Fresh init is now the operator acceptance step, not another debugging prerequisite.
+  [Evidence and limits](../qualification.md#shared-pdf-acquisition-through-host-and-init-2026-10-04):
+  `.local/qualification/literature-init-integration-20261004/`.
+
+- Earlier October 4 standalone stage: user wanted acquisition developed
   and tested independently before Host/init integration; repeated fresh init is
   no longer the debugging prerequisite. Added repository-only
   `scripts/probe_literature.py`, reusing production transport/OA/locator/PDF/CDP

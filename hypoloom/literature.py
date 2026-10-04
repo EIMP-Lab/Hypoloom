@@ -3184,7 +3184,12 @@ def _openalex_pdf_uris(work: Mapping[str, Any]) -> tuple[str, ...]:
     for location in (best, primary, *(locations if isinstance(locations, list) else ())):
         if not isinstance(location, Mapping) or location.get("is_oa") is not True:
             continue
-        uri = _location_https(location, "pdf_url")
+        # Metadata sometimes advertises a working HTTPS repository as HTTP.
+        # Try only its exact HTTPS form; ordinary transport/identity checks apply.
+        pdf_location = dict(location)
+        if isinstance(pdf_location.get("pdf_url"), str) and pdf_location["pdf_url"].startswith("http://"):
+            pdf_location["pdf_url"] = "https://" + pdf_location["pdf_url"][7:]
+        uri = _location_https(pdf_location, "pdf_url")
         if uri is not None and uri not in candidates:
             candidates.append(uri)
         if len(candidates) == 16:
