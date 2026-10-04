@@ -152,6 +152,10 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 客户端接入后由程序自动检测。程序提供的 `watch_argv` 最多等待 30 秒，到需人工操作
 的阶段或批次结束便返回当前说明；只观察、不代答。CC 使用这个命令，不自行拼接
 sleep 或轮询循环。
+不要给 `watch_argv` 再套 `timeout 30`：它在自身期限结束时才输出当前说明，外层
+同长度期限可能抢先终止它；无输出不能解释为“没有新事件”。工具应给进程启动和
+输出留出余量。若接入期间已完成浏览器登录，进入平台阶段后直接回复 **完成**，
+无需重新登录。连接阶段的旧回复失效时，按程序最新提示回答，不替用户自动确认完成。
 助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台任务完成通知
 不是用户回答。批次结束后会明确提示 **重新准备**，先读取原摘要并保留已完成的平台
 和模式，再原样执行摘要中的 `remaining_preparation_argv`；其中包含失败及未回答的平台，
@@ -178,6 +182,8 @@ sleep 或轮询循环。
 目标关闭，`browser_operation_timeout` 表示页面操作超时，`browser_operation_failed`
 表示未分类的页面操作失败。笼统的 `browser_unavailable` 不能证明用户关闭了 Edge 或
 SSH 任务退出。重试沿用原有有界队列；窗口仍开着不等于控制连接一直可用。
+样本获取阶段同样保留这些安全错误码。`acquisition_timeout` 只能表示本次验证未完成，
+不证明样本可读、登录失败或浏览器已关闭；成功必须有 `sample_verified` 结果。
 
 
 `complete` 按程序显示的样本自动检查；既无固定也无自选样本时仍是未验证。

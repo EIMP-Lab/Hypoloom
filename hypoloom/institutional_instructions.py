@@ -90,6 +90,7 @@ def render(view):
                          "完成所选浏览器的连接准备后回复：继续连接。")
     elif state == "waiting_for_user":
         lines.append(f"{view['provider']} 页面已打开。需要登录时，仅在浏览器完成学校认证和 MFA。")
+        lines.append("如果刚才已在该专用浏览器完成登录，无需重新登录，直接回复：完成。连接会自动检测，连接完成不等于平台准备已完成。")
         if view.get("reason_code") == "verification_required":
             lines.append("页面打开时检测到人机验证；这不是连接失败，也不代表机构登录已完成。")
             lines.append("仅在浏览器手动完成验证；若验证反复出现，可回复：跳过此平台。程序不会代做验证码、自动刷新或重开页面，等待期限不延长。")

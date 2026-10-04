@@ -97,8 +97,17 @@ answer waiting has its own deadline; checks, retry replies and polling do not ex
 the connection deadline. Expiry ends the batch and emits its latest connection result.
 No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
+Execute `watch_argv` unchanged: do not prefix `timeout 30` (or a shorter timeout).
+The watch buffers its final observation until its own deadline, then prints current
+instructions; it is not an event stream. Allow process startup/response overhead
+in the tool timeout. If an external timeout kills it, no output is not evidence of
+unchanged state. Read status/instructions once and relay them; do not start a polling loop.
 `waiting_for_user` supplies the current provider in its generated reply command.
 Keep it unchanged. Ask within this init conversation using the offered fixed choices.
+If the user has already logged in while connection checks advanced, explain that
+they can reply 完成 immediately; do not ask them to log in again. A connection reply
+may be stale by then: re-read instructions, never submit the old reply to a new stage
+and never translate connection confirmation into platform completion on their behalf.
 If its `reason_code` is `verification_required`, relay the generated challenge
 instructions. This records detection when the page opened, not a connection failure
 or proof that verification passed. Keep the same page and answer deadline; never
@@ -118,6 +127,8 @@ not_checked. Use each live process's generated instructions. Answer waiting
 uses the existing manual timeout; expiry or finish cleans resources. Read the
 background command's final summary and merge modes even when some platforms fail.
 The command's nonzero exit is a preparation result, not a failed research run.
+Only a sample_verified result supports a readability claim. acquisition_timeout,
+browser_unavailable or any other failure proves neither readability nor login.
 For a failed platform, report its intermediate safe `reason_code` from the task
 output when available. `browser_unavailable` alone does not establish that Edge,
 SSH or the client task exited; page operations can fail with a live connection.

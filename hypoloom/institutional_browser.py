@@ -194,6 +194,13 @@ def _login_url(url):
                 or re.search(r"/(?:oauth2?|oidc)/authorize(?:/|$)", path))
 
 
+def _operation_reason(error):
+    # A lost page/context is not proof that the browser process or SSH exited.
+    if type(error).__name__ == 'TargetClosedError': return 'browser_target_closed'
+    if isinstance(error, TimeoutError) or type(error).__name__ == 'TimeoutError': return 'browser_operation_timeout'
+    return 'browser_operation_failed'
+
+
 class PlaywrightInstitutionalBrowser:
     def __init__(self, endpoint, *, library_url=None, ui_url=None, extractor=None):
         parts = urlsplit(endpoint)
@@ -336,10 +343,7 @@ class PlaywrightInstitutionalBrowser:
         except Exception as exc:
             # A page/context failure is not proof that the browser or SSH exited.
             # Keep the queue's existing bounded retry, and export no exception text.
-            reason = ("browser_target_closed" if type(exc).__name__ == "TargetClosedError" else
-                      "browser_operation_timeout" if isinstance(exc, TimeoutError) or type(exc).__name__ == "TimeoutError"
-                      else "browser_operation_failed")
-            return {"state": "browser_unavailable", "reason": reason}
+            return {"state": "browser_unavailable", "reason": _operation_reason(exc)}
         finally:
             self._deadline = None
 
@@ -427,6 +431,8 @@ class PlaywrightInstitutionalBrowser:
             return self._fetch(url, force=force, focus=focus)
         except TimeoutError:
             return {"state": "fetch_unavailable", "reason": "navigation_timeout"}
+        except Exception as exc:
+            return {"state": "browser_unavailable", "reason": _operation_reason(exc)}
         finally:
             self._deadline = None
 
@@ -434,7 +440,10 @@ class PlaywrightInstitutionalBrowser:
         provider = publisher(url)
         if provider is None:
             return {"state": "failed"}
-        context = self._connect()
+        try:
+            context = self._connect()
+        except Exception as exc:
+            return {"state": "browser_unavailable", "reason": _connection_reason(exc)}
         prior = self._tabs.get(provider)
         if prior is None or prior[0].is_closed():
             if not self._room_for_tab():

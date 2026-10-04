@@ -334,3 +334,24 @@ def test_preparation_reports_safe_intermediate_failure_before_timeout(monkeypatc
     assert failures[0]["provider"] == "ScienceDirect"
     assert events[-1]["preparation_summary"][0]["state"] == "acquisition_timeout"
     assert "never-export-this" not in "\n".join(output) and backend.closed
+
+
+def test_automatic_sample_retains_cdp_failure_through_queue_and_retry_summary(monkeypatch):
+    from hypoloom.cli import build_parser
+    browser = PlaywrightInstitutionalBrowser('http://127.0.0.1:9222')
+    def disconnected(): raise RuntimeError('Unexpected status 503 SECRET')
+    browser._connect = disconnected
+    backend = PreparationBackend()
+    backend.fetch = browser.fetch
+    access = InstitutionalAccess(backend, clock=lambda: monotonic() * 100, acquisition_seconds=30, poll_seconds=1)
+    monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
+    output = []; parser = build_parser()
+    assert run(parser.parse_args(['institutional', 'prepare', '--provider', 'IEEE']),
+               input_fn=lambda _: '', output=output.append) == 1
+    events = [json.loads(v) for v in output if v.startswith('{')]
+    errors = [v for v in events if v.get('state') == 'browser_unavailable']
+    assert len(errors) == 1 and errors[0]['reason_code'] == 'cdp_endpoint_unavailable'
+    assert errors[0]['sample_url'].startswith('https://doi.org/10.1109/')
+    assert events[-1]['preparation_summary'][0]['state'] == 'acquisition_timeout'
+    assert parser.parse_args(events[-1]['remaining_preparation_argv'][4:]).provider == ['IEEE']
+    assert 'SECRET' not in '\n'.join(output) and backend.closed

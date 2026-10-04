@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 4 sample-stage disconnect: fresh MERC init opened IEEE, then all four
+  platforms timed out. Operator confirms Edge remains usable while its Windows
+  discovery task is Ready / exit 2 (started 10:10:50); exact fatal reason awaits
+  foreground Run plus an operator-requested preparation retry. Do not blame login
+  or closed Edge. Ten red cases reproduce fetch losing safe CDP/page causes;
+  reuse existing classifiers/whitelist and keep original deadlines/retries. Fixed
+  instructions avoid repeated login; runtime guidance forbids wrapping watch in
+  an equal outer timeout or treating timeout as sample readability. Related 227
+  pass / one opt-in skip, docs/Profile 7 pass, installed CLI/MCP/bundle 175-file
+  checks pass. This improves diagnostics, not a claimed Windows root-cause repair.
+  [Design](../design/institutional-access-preparation.md#样本阶段断连诊断与已登录提示2026-10-04).
+  Evidence: `.local/qualification/institutional-fetch-diagnostics-20261004/`.
+
 - October 4 automatic preparation samples: common-platform completion previously
   stopped at not_checked without a user DOI. Existing catalog now owns fixed public
   IEEE/ScienceDirect/Springer and optional ACM probes; manual completion calls the

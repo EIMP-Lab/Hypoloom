@@ -2,6 +2,37 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Sample-stage disconnect diagnostics (2026-10-04)
+
+Fresh init MERC-causal-202610041002 opened IEEE at 10:11 local time. Its first
+sample check returned generic browser_unavailable; IEEE, ScienceDirect, Springer
+and ACM eventually timed out. The operator confirms Edge/IEEE remained usable
+but the Windows task (last started 10:10:50) is Ready with LastTaskResult 2.
+This establishes helper exit, not its specific cause. Foreground diagnostics are
+requested; no browser, helper, research run or preparation answer is changed here.
+
+Ten red cases reproduce lost connection/page reasons in fetch. The adapter now
+reuses the existing connection and page classifiers; the queue still filters safe
+codes and applies its original finite retry/deadline behavior. An integration
+regression verifies the default DOI check emits cdp_endpoint_unavailable, remains
+acquisition_timeout and stays in the generated retry command, without raw exception
+text or a readability claim. Fixed text tells an already authenticated user to
+complete directly. Runtime guidance addresses observed stale connection replies
+and CC's incorrect `timeout 30` wrapper around a watch that emits at its own deadline.
+
+Focused navigation/preparation/instructions/browser/access/native/runtime tests:
+**227 passed / 1 skipped**. This includes native Chromium/PDF/relay progression and
+cleanup, along with actual PowerShell instruction checks. Documentation/Profile:
+**7 passed**. Isolated wheel, CLI preparation/cleanup, MCP and fresh runtime bundle
+checks pass with **175 equal package files**. No new state authority, schema or
+recovery gate; no full G1/promotion claim. This is a diagnostic/interaction repair,
+not evidence that the operator's Windows helper exit has been fixed.
+
+Evidence: `.local/qualification/institutional-fetch-diagnostics-20261004/` retains
+the source-log observations, Windows facts, red/green tests and installation checks.
+The original preparation log remains at
+`.local/institutional-prepare-MERC-causal-202610041002.log`.
+
 ## Automatic preparation samples (2026-10-04)
 
 Preparation without an explicit DOI previously recorded manual completion as

@@ -177,6 +177,7 @@ def test_watch_waits_for_program_progress_and_never_submits_a_reply(tmp_path, mo
         watcher.join(3)
         assert not watcher.is_alive() and watch_codes == [0]
         assert "IEEE 页面已打开" in watched[-1]
+        assert '无需重新登录，直接回复：完成' in watched[-1]
         assert worker.is_alive() and codes == [], "watch must never complete manual preparation"
         assert request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "reply": "完成"}).status == "accepted"
         worker.join(3)

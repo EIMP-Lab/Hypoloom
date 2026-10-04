@@ -2,6 +2,18 @@
 
 [English](qualification.md) · 简体中文
 
+## 样本阶段断连诊断（2026-10-04）
+
+新批次 IEEE 打开后样本验证失败，四平台最终均超时。用户确认专用 Edge 正常、
+Windows 连接任务 Ready／退出码 2；已确认助手退出，具体原因仍待前台错误码。
+十个红回归复现 fetch 丢失连接／页面原因，修复复用原分类与安全码白名单，不更改
+获取期限或重试策略。固定提示避免已登录用户重复登录；运行指令禁止给 30 秒 watch
+再套同长 timeout，也禁止把超时说成样本可读。
+
+相关 **227 项通过／1 项跳过**，文档/Profile **7 项通过**，独立安装、CLI/MCP 和
+新副本 **175 个包文件一致**。这是诊断与交互修复，未宣称 Windows 退出已根治。
+[完整证据与范围](qualification.md#sample-stage-disconnect-diagnostics-2026-10-04)。
+
 ## 配置后的固定全文样本（2026-10-04）
 
 常规 init 的人工“完成”现在自动检查目录中 IEEE、ScienceDirect、Springer 和可选

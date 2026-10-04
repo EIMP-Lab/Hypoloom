@@ -51,11 +51,29 @@ def test_local_check_deadline_does_not_erase_last_endpoint_failure(monkeypatch, 
     (RuntimeError("Unexpected status 503 SECRET"), "cdp_endpoint_unavailable"),
     (ValueError("authenticated browser context is unavailable"), "cdp_context_unavailable"),
 ])
-def test_platform_connection_errors_keep_the_same_safe_diagnostics(failure, reason):
+@pytest.mark.parametrize('operation', ['prepare', 'fetch'])
+def test_platform_connection_errors_keep_the_same_safe_diagnostics(failure, reason, operation):
     browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
     def fail(): raise failure
     browser._connect = fail
-    assert browser.prepare("Springer") == {"state": "browser_unavailable", "reason": reason}
+    result = browser.prepare("Springer") if operation == 'prepare' else browser.fetch(URL)
+    assert result == {"state": "browser_unavailable", "reason": reason}
+    assert 'SECRET' not in str(result) and browser._deadline is None
+
+
+@pytest.mark.parametrize('operation', ['new_page', 'bring_to_front'])
+@pytest.mark.parametrize('failure,reason', [
+    (type('TargetClosedError', (Exception,), {})('closed SECRET'), 'browser_target_closed'),
+    (type('TimeoutError', (Exception,), {})('page timed out SECRET'), 'browser_operation_timeout'),
+    (RuntimeError('page operation SECRET'), 'browser_operation_failed'),
+])
+def test_sample_page_failures_keep_safe_diagnostics(operation, failure, reason):
+    browser = PlaywrightInstitutionalBrowser('http://127.0.0.1:9222')
+    def fail(*args): raise failure
+    page = SimpleNamespace(set_default_timeout=lambda *a: None, bring_to_front=fail)
+    browser._connect = lambda: SimpleNamespace(new_page=fail if operation == 'new_page' else lambda: page)
+    assert browser.fetch(URL, focus=True) == {'state': 'browser_unavailable', 'reason': reason}
+    assert browser._deadline is None
 
 
 @pytest.mark.parametrize("operation", ["new_page", "bring_to_front"])

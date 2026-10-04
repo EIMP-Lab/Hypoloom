@@ -144,6 +144,12 @@ After local setup, the program detects connection readiness automatically. Its
 generated `watch_argv` waits at most 30 seconds for a user-action stage or batch exit,
 then prints current instructions. It is read-only and never answers for you; CC must
 use this command instead of writing sleep/poll loops.
+Do not wrap `watch_argv` in `timeout 30`: its final observation is printed when its
+own deadline ends, so an equal outer deadline can kill it before output. Allow
+startup/response overhead in the tool timeout; empty output is not evidence that
+no events occurred. If you already authenticated while connection checks advanced,
+reply `完成` at the platform stage without logging in again. Follow the current
+choices if a connection reply is now stale; do not infer platform completion.
 Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `结束准备`
 (complete, verify a separately supplied sample, skip this platform, public only, finish).
 The agent passes the exact choice to `reply_argv --text`; the process validates
@@ -158,6 +164,9 @@ completion. No new CC session or research run is needed.
 If a selected platform times out, init offers `重新准备` (retry the remaining platforms)
 or `接受未验证状态，继续检查启动配置` (accept unverified access and continue to launch
 review). Optional preparation failures do not block research, but do not mean success.
+Sample acquisition preserves the same safe CDP/page failure reasons as platform
+opening. `acquisition_timeout` does not establish readability, failed login or a
+closed browser; only `sample_verified` establishes that sample's readability.
 For an older summary with failures and an empty retry vector, init regenerates the
 preparation command using read-only bootstrap inspection for just those platforms,
 preserving the other choices and launch identity. Keep the dedicated browser open.

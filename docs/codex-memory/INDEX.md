@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Sample-stage disconnect diagnostics](../design/institutional-access-preparation.md#样本阶段断连诊断与已登录提示2026-10-04):
+  real preparation timed out after opening IEEE; Windows task exited 2 while Edge
+  remained usable. Fetch now retains the existing safe CDP/page causes; no repeated
+  login or equal outer watch timeout. Exact Windows fatal reason remains pending.
+  [Qualification](../qualification.md#sample-stage-disconnect-diagnostics-2026-10-04).
+
 - [Automatic preparation samples](../design/institutional-access-preparation.md#配置完成后的固定全文样本2026-10-04):
   fixed public DOI catalog, automatic checks after manual completion, user overrides,
   bounded failure/retry and sample-only claims. [Sources and operator flow](../guides/institutional-access.zh-CN.md#固定全文样本);
