@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 4 unattended publisher review: user requires automatic search/PDFs,
+  not per-paper CAPTCHA intervention. Manual init recovery is not that guarantee.
+  Anonymous metadata found all four samples; targeted production downloads and
+  identity validation succeeded for IEEE repository (6 pages), ACM author copy
+  (15 pages/title fallback) and Springer (32 pages/DOI). Springer also returned
+  400; publisher IEEE/ACM/ScienceDirect requests failed. Not discovery-to-archive,
+  subscription or Windows identity qualification. Reproduced stale GroundingWeb
+  DNS cap rejecting 12 public addresses; reuse literature's existing 32 cap,
+  preserving all public/peer checks and deadlines. Focused 206 plus disjoint 65
+  pass. Guides clarify PDF versus full text and optional manual recovery; no
+  retained runs, client, browser or credentials changed. With no publisher keys,
+  legitimate public copies plus explicit gaps cannot guarantee all SD PDFs.
+  [Design](../design/institutional-literature-access.md#unattended-publisher-acquisition-review-2026-10-04).
+  Evidence: `.local/qualification/publisher-automation-feasibility-20261004/`.
+
 - October 4 preparation result interpretation: user now requires a fresh CC/init
   acceptance test after each repair, not old-batch recovery. Existing client/login
   reuse is not proof of first-install success. New 14:19 init's first batch waited

@@ -230,6 +230,30 @@ def test_unsafe_url_rejected_before_dns_or_http(url: str):
     assert transport.calls == []
 
 
+@pytest.mark.parametrize("count", [12, 32])
+def test_document_accepts_public_cdn_address_sets(count):
+    transport = Transport({DOC: _response(DOC, b"article text", media_type="text/plain")})
+    transport.dns = tuple(f"8.8.8.{index}" for index in range(1, count + 1))
+    document = GroundingWeb(transport).document(DOC)
+    assert document["content"] == b"article text"
+    assert transport.calls[1][2]["approved_addresses"] == tuple(sorted(transport.dns))
+
+
+@pytest.mark.parametrize("damage", ["too-many", "mixed-dns", "changed-peer"])
+def test_large_cdn_address_sets_keep_dns_and_peer_checks(damage):
+    transport = Transport({DOC: _response(DOC, b"article text", media_type="text/plain")})
+    transport.dns = tuple(f"8.8.8.{index}" for index in range(1, 33))
+    if damage == "too-many":
+        transport.dns += ("8.8.8.33",)
+    elif damage == "mixed-dns":
+        transport.dns = (*transport.dns[:-1], "127.0.0.1")
+    else:
+        transport.responses[DOC] = replace(transport.responses[DOC], peer_address="1.1.1.1")
+    with pytest.raises(GroundingWebError, match="unsafe_url"):
+        GroundingWeb(transport).document(DOC)
+    assert len([call for call in transport.calls if call[0] == "fetch"]) == (damage == "changed-peer")
+
+
 @pytest.mark.parametrize("damage", ["private-dns", "mixed-dns", "private-peer", "changed-peer", "changed-url", "length", "bytes"])
 def test_dns_peer_identity_and_transport_bounds_fail_closed(damage: str):
     response = _response(DOC)

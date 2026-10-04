@@ -2,6 +2,20 @@
 
 [English](qualification.md) · 简体中文
 
+## 无人值守文献获取分析（2026-10-04）
+
+四个固定 DOI 的公开 Crossref／OpenAlex 元数据查询均成功。使用实际匿名下载器、
+Poppler 和文档身份校验器取得 IEEE 格拉斯哥仓储 PDF（6 页）、ACM 作者机构副本
+（15 页）、Springer 出版社 PDF（32 页）；Springer 第二次请求返回 400。
+IEEE 出版社、ACM 出版社和 ScienceDirect 本次直连未成功。这是定向公开下载，
+不等于自动发现到 Host 归档全链路、订阅权限或 Windows 浏览器验收通过。
+
+复现 GroundingWeb 遗留的 8 个 DNS 地址上限误拒 IEEE／Google 的 12 个公网地址；
+修复为复用文献下载器现有 32 上限，保留全部地址公网性、连接目标和工作期限检查。
+定向回归 **206 项通过**，独立的 Host／文档／机构访问／新运行副本／文档检查
+**65 项通过**；不是完整 G1 或原生 Windows 资格通过。没有更改现存研究或用户浏览器。
+[逐源结果、失败记录和证据](qualification.md#unattended-publisher-acquisition-review-2026-10-04)。
+
 ## 样本验证交接与论文身份诊断（2026-10-04）
 
 新 init 首批等待客户端超时，用户选择重试后四平台依次打开；结果为 IEEE／ACM

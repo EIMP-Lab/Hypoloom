@@ -92,6 +92,64 @@ Fixture/browser tests do not qualify a school's real subscription or guarantee
 unattended access. Real institutional verification needs a user-provided entry
 URL and an entitled article.
 
+## Unattended publisher acquisition review (2026-10-04)
+
+The requested outcome is setup-time authentication followed by automatic search
+and PDF retrieval, without per-paper CAPTCHA interaction. The normal background
+queue already ends authentication/challenge requests as unavailable and shares
+the provider's intervention-needed state; the explicit init/manual dialogue is
+not an unattended acquisition guarantee. Do not promote the recent manual sample
+continuation repair as a solution to publisher automation restrictions.
+
+OpenAlex discovery already supplies multiple OA PDF locations. The configured
+Semantic Scholar or Unpaywall locator supplies exact-DOI fallbacks. Keep those
+existing paths and ordinary source admission; a second resolver registry, access
+receipt or platform-wide success marker would not solve missing bytes. Metadata
+OA flags and URLs are leads, not evidence of a successful transfer. The ACM sample
+has a public Google Research copy even though the observed OpenAlex record says
+closed; that record alone cannot establish that no public copy exists.
+
+The bounded anonymous checks used all four fixed preparation DOIs. Actual PDFs
+passed the existing extractor/identity validator for an IEEE university-repository
+copy (six pages), an ACM author-institution copy (15 pages, existing first-page
+title fallback) and Springer publisher content (32 pages, DOI match). Springer
+also returned HTTP 400 on the second request. IEEE publisher and ACM/ScienceDirect
+public requests failed with HTTP errors. These are targeted server downloads,
+not proof of automatic discovery-to-archive closure, institutional entitlement,
+continuous availability or the user's authenticated Windows acquisition path.
+IEEE's working repository URL used HTTPS for a metadata location advertised as
+HTTP; this experiment did not change production URL discovery or admit HTTP.
+
+One reproducible framework defect blocked valid public downloads before HTTP:
+GroundingWeb allowed only eight DNS addresses although the literature downloader's
+existing limit is 32. IEEE and Google Storage returned 12 public A/AAAA records.
+Reuse `MAX_ADDRESSES_PER_HOST` for GroundingWeb. Every address must still be public;
+the connected peer must match the approved set. The finite address count, total
+request deadline, redirects, byte bounds and identity checks remain. No new
+assurance mechanism or exception for a specific publisher is needed. After this
+repair, the Google Research PDF passed the real document validator. This is not
+the cause established for the historical Windows `identity_unconfirmed` failures.
+
+Next acceptance should exercise multiple DOI selections through the actual Host
+document/reader path, retaining source URL, PDF versus HTML/XML representation,
+identity result, unavailable reason and whether intervention occurred. Reuse
+existing traces and archives, and include publisher and public-copy successes,
+repeated acquisition, and a challenge that ends unavailable without repeated
+manual prompts. The current one-paper preparation sample establishes readability
+only; it is not that broader qualification. Fresh init acceptance remains the
+operator's preference; existing runs and browser state remain untouched.
+
+Primary constraints: [IEEE separates metadata/OA/full-text access](https://developer.ieee.org/docs);
+[ACM's OA announcement](https://www.acm.org/diversity-inclusion/equity-through-oa)
+does not establish unrestricted automated transport;
+[Springer separates metadata and available full text](https://support.springernature.com/en/support/solutions/articles/6000195668-springer-nature-link-api-details).
+For ScienceDirect, [clearance can expire or be reevaluated](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/)
+and [Elsevier directs TDM retrieval to its API](https://www.elsevier.com/about/policies-and-standards/text-and-data-mining/faq).
+The existing optional API adapter still needs actual entitlement validation;
+an API key or XML response does not prove a PDF can be downloaded. Under the
+operator's no-publisher-key preference, retain legitimate public copies and
+explicit gaps; do not promise comprehensive unattended ScienceDirect coverage.
+
 ## Elsevier official article API (2026-10-04)
 
 Observed failure: the operator completes a Cloudflare challenge in an ordinary

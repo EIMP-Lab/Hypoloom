@@ -143,6 +143,18 @@ Open access，ACM 按上述 2026 公告开放研究内容。固定 DOI 属于代
 状态，不能记作成功；可以重试失败平台或接受未验证状态继续审阅启动配置。
 不会自动修改现有研究运行，检查字节释放、不进入科研论文归档。
 
+`sample_verified` 接受已核对身份的 PDF 或正向识别的 HTML 全文，**不单独证明
+PDF 下载成功或后续可以无人值守批量下载**。PDF 验收应另检查实际文件、解析页数和
+论文身份；详情页、摘要页和 HTML/XML 全文不能当作 PDF。
+
+无人值守运行优先使用现有公开检索、PDF 候选和精确 DOI 的公开副本回退，再尝试
+有效机构会话。后台遇到登录或验证码会返回不可用，保留全文缺口并继续研究；人工
+处理仅是主动选择的恢复方式。ScienceDirect 的一次验证码通过不能保证后续免验证，
+[Cloudflare 放行范围和有效期由站点决定](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/)。
+不使用出版社 API 时，只能自动取得当前可访问的出版社文件或合法公开副本，不能
+保证每篇论文成功。[Elsevier 官方 TDM 通道](https://www.elsevier.com/about/policies-and-standards/text-and-data-mining/faq)
+是可选的自动全文路径，仍须验证实际权限；XML 全文不等于出版社 PDF。
+
 正常 init 中，若样本检查又遇到验证码或登录页，CC 会显示**样本页面需要人工处理**。
 在专用浏览器手动通过后回 CC 回复 **完成**，程序继续检查同一个样本；这不是要求
 重新登录机构入口。也可跳过、仅公开或结束准备。这里沿用样本原获取期限（默认

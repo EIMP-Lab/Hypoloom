@@ -638,6 +638,21 @@ and identity failures retain their actual states; retry failed platforms or acce
 unverified access before launch review. Sample bytes are released after checking
 and never enter a research archive. Existing runs are unchanged.
 
+`sample_verified` accepts an identity-checked PDF or positively identified HTML
+full text. It does **not separately establish PDF downloading or unattended batch
+access**. PDF acceptance needs actual bytes, parsed pages and article identity;
+an abstract/detail page or HTML/XML full text is not a PDF.
+
+Unattended research uses existing public search, PDF candidates and exact-DOI OA
+fallback before an available institutional session. Background login/challenge
+outcomes return unavailable; research proceeds with an explicit full-text gap.
+Manual intervention is an optional recovery path. A successful ScienceDirect
+challenge does not guarantee later downloads: [clearance depends on the website](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/).
+Without publisher APIs, only currently accessible publisher files or legitimate
+public copies can be downloaded automatically; per-paper success is not guaranteed.
+The optional [Elsevier TDM channel](https://www.elsevier.com/about/policies-and-standards/text-and-data-mining/faq)
+requires verified access, and XML full text is not the publisher PDF.
+
 During a run, use the TUI **i** panel or an authorized Web literature panel. Both show
 the complete catalog even without pending papers. The TUI's bottom **Close** button
 or **Esc** returns to the research view without stopping research or skipping papers.

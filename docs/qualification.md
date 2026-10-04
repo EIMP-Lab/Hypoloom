@@ -2,6 +2,43 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Unattended publisher acquisition review (2026-10-04)
+
+Read-only public checks queried Crossref and OpenAlex for the four existing init
+DOIs without publisher credentials. Both services returned all four metadata
+records. Targeted downloads used the production GroundingWeb transport, Poppler
+and institutional document validator, without a retained run or user browser.
+
+| Provider/source | Observed result |
+| --- | --- |
+| IEEE publisher | 12 public DNS addresses rejected before HTTP; after repair HTTP 502 |
+| IEEE Manchester repository | HTTP 403 |
+| IEEE Glasgow repository | 6,647,378-byte PDF, six pages, exact first-page DOI |
+| ACM publisher | HTTP 403 |
+| ACM Google Research copy | 12 public DNS addresses rejected before HTTP; after repair 275,941-byte PDF, 15 pages, existing first-page title validation |
+| Springer publisher | First check: 1,477,135-byte PDF, 32 pages, exact DOI; second check: HTTP 400 |
+| ScienceDirect publisher | HTTP 403; no automatic PDF success observed |
+
+IEEE's working repository URL was an HTTPS form of an HTTP location in metadata;
+ACM's author copy was selected from the official Google Research publication page.
+Thus these establish targeted public PDF acquisition, not automatic discovery
+coverage, publisher-version equivalence or Host-to-archive closure. No recent
+Windows browser identity failure is attributed to these server observations.
+Springer's mixed responses are preserved; one success is not stable availability.
+
+The reproduced framework fault was a stale eight-address limit in GroundingWeb,
+while literature already allows 32. Both now use the existing constant. Three red
+regressions cover rejection of valid sets and failure to reach the peer check;
+negative cases preserve rejection of mixed/private DNS, excess addresses and
+unapproved peers. Focused downloader/OA/API checks: **206 passed**. Host/document,
+institutional access, runtime bundle and documentation/Profile checks:
+**65 passed**, disjoint from the first set. An initial selector named a nonexistent
+test file and collected no tests; its error is preserved separately. This is
+focused qualification, not full G1, native Windows or subscription acceptance.
+
+Evidence: `.local/qualification/publisher-automation-feasibility-20261004/`.
+[Design and source constraints](design/institutional-literature-access.md#unattended-publisher-acquisition-review-2026-10-04).
+
 ## Preparation sample challenge and identity diagnostics (2026-10-04)
 
 The fresh 14:19 init first timed out waiting for a client. Its operator-requested

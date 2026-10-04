@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Unattended publisher acquisition](../design/institutional-literature-access.md#unattended-publisher-acquisition-review-2026-10-04):
+  public search/PDF feasibility, per-paper challenge limits and strict distinction
+  between readable text, actual PDF and unattended coverage. Reuses literature's
+  DNS bound for GroundingWeb; [real observations](../qualification.md#unattended-publisher-acquisition-review-2026-10-04)
+  include IEEE/ACM public copies and mixed Springer responses, not Windows proof.
+
 - [Paper identity result diagnostics](../design/institutional-access-preparation.md#论文身份失败的阶段与结果解释2026-10-04):
   mixed fresh-init results; distinguish paper identity from account authentication,
   expose existing validation stage through safe reasons and fixed final output.

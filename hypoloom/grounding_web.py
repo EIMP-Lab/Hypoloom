@@ -17,7 +17,8 @@ from html.parser import HTMLParser
 from typing import Any, Callable, Protocol, Sequence
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 
-from .literature import FetchResponse, LiteratureError, PdfDocument, PopplerPdfExtractor, _public_address, _uri_parts
+from .literature import (MAX_ADDRESSES_PER_HOST, FetchResponse, LiteratureError, PdfDocument,
+                         PopplerPdfExtractor, _public_address, _uri_parts)
 
 
 class GroundingWebError(ValueError):
@@ -245,8 +246,9 @@ class GroundingWeb:
                 if isinstance(resolved, (str, bytes)):
                     raise GroundingWebError("unsafe_url", "DNS must return an address array")
                 addresses = tuple(sorted({_public_address(value, "web DNS address") for value in resolved}))
-                if not 1 <= len(addresses) <= 8:
-                    raise GroundingWebError("unsafe_url", "DNS must resolve 1..8 public addresses")
+                if not 1 <= len(addresses) <= MAX_ADDRESSES_PER_HOST:
+                    raise GroundingWebError("unsafe_url",
+                        f"DNS must resolve 1..{MAX_ADDRESSES_PER_HOST} public addresses")
                 if self.clock() >= deadline:
                     raise GroundingWebError("timed_out", "web work window expired")
                 bounds = {"timeout_seconds": deadline - self.clock()} if isinstance(self.transport, PublicHttpsTransport) else {}
