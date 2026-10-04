@@ -289,25 +289,41 @@ function Get-RunConnections {
         '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
         (Remote-Command @('connections', '--runs-root', $RunsRoot)))
     try {
-        if (-not $child.Process.WaitForExit(15000) -or $child.Process.ExitCode -ne 0) { throw 'run_discovery_unavailable' }
-        @((($child.Out.GetAwaiter().GetResult() | ConvertFrom-Json).connections) | Where-Object { $_.mode -eq 'client' -and $_.socket_path })
+        if (-not $child.Process.WaitForExit(15000)) { throw 'run_discovery_timeout' }
+        if ($child.Process.ExitCode -eq 255) { throw 'run_discovery_ssh_failed' }
+        if ($child.Process.ExitCode -ne 0) { throw 'run_discovery_command_failed' }
+        try { $result = $child.Out.GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable }
+        catch { throw 'run_discovery_invalid_response' }
+        if ($result -isnot [System.Collections.IDictionary] -or $result.connections -isnot [array]) {
+            throw 'run_discovery_invalid_response'
+        }
+        @($result.connections | Where-Object { $_.mode -eq 'client' -and $_.socket_path })
     } finally { Stop-Child $child }
 }
 
 function Watch-Runs {
-    $children = @{}; $failures = @{}; $retryAt = @{}; $discoveryFailures = 0
+    $children = @{}; $failures = @{}; $retryAt = @{}; $discoveryDelay = 5
+    $discoveryNotice = ''
     $idle = $false
     try {
         while ($true) {
-            try { $entries = @(Get-RunConnections); $discoveryFailures = 0 }
+            try { $entries = @(Get-RunConnections) }
             catch {
-                $discoveryFailures++
-                if ($discoveryFailures -ge 3) { throw 'run_discovery_unavailable' }
-                # Existing forwards retain their independent remote watch. A
-                # failed listing never authorizes creating a stale connection.
-                Start-Sleep -Seconds 5
+                $reason = $_.Exception.Message
+                if ($reason -notin @('run_discovery_timeout', 'run_discovery_ssh_failed',
+                        'run_discovery_command_failed', 'run_discovery_invalid_response')) { throw }
+                # Discovery is a long-lived service. An unavailable listing is
+                # not an empty list and must not tear down healthy forwards.
+                # Each existing forward still has its independent remote watch;
+                # only a fresh successful listing may authorize new connections.
+                $notice = "${reason}; retry_in_seconds=$discoveryDelay; existing_connections_preserved"
+                if ($notice -ne $discoveryNotice) { Write-Output $notice; $discoveryNotice = $notice }
+                Start-Sleep -Seconds $discoveryDelay
+                $discoveryDelay = [Math]::Min(30, $discoveryDelay * 2)
                 continue
             }
+            if ($discoveryNotice) { Write-Output 'run_discovery_recovered' }
+            $discoveryNotice = ''; $discoveryDelay = 5
             if (-not $entries.Count -and -not $idle) {
                 Write-Output 'waiting_for_preparation_or_run; foreground_Run_uses_Ctrl+C'
             }

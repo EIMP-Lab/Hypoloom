@@ -94,7 +94,8 @@ def test_private_discovery_and_watch_exit_when_operation_ends(tmp_path):
 
 
 @pytest.mark.skipif(os.environ.get("HYPOLOOM_INSTITUTIONAL_SSH_TEST") != "1", reason="isolated real-SSH opt-in")
-def test_real_ssh_unix_forward_exits_on_run_end_and_reconnects(tmp_path):
+@pytest.mark.parametrize("discovery_outage", [False, True])
+def test_real_ssh_unix_forward_exits_on_run_end_and_reconnects(tmp_path, discovery_outage):
     """Ephemeral sshd/keys only; never reads or modifies the user's SSH identity."""
     import getpass
     from hypoloom.institutional_client import PreparationControl, prepare_forward
@@ -133,6 +134,11 @@ LogLevel ERROR
         eventually(listening)
         browser = access.instances["a"].backend
         with backend() as endpoint:
+            if discovery_outage:
+                _check_powershell_discovery_outage(tmp_path, port, known, root, endpoint, browser)
+                access.sync(set())
+                assert_free(browser.endpoint)
+                return
             watch = shlex.join([sys.executable, "-m", "hypoloom", "institutional", "watch", "--state-root", str(root),
                 "--run-id", "a", "--socket-path", str(browser.socket_path), "--browser-path", "/devtools/browser/fixture"])
             remote = "cd " + shlex.quote(str(Path.cwd())) + " && " + watch
@@ -158,6 +164,65 @@ LogLevel ERROR
         if child and child.poll() is None: child.kill(); child.communicate()
         control.close(); access.close()
         server.terminate(); server.communicate(timeout=5)
+
+
+def _check_powershell_discovery_outage(tmp_path, port, known, root, endpoint, browser):
+    from hypoloom.institutional_client import prepare_forward
+    pwsh = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
+    if not pwsh: pytest.skip("PowerShell required for real discovery loop")
+    outage = tmp_path / "discovery-down"
+    stop = tmp_path / "stop-fixture"
+    wrapper = tmp_path / "ssh-fixture"
+    # Fail only list requests. Forward-ready and remote identity/lifetime watch
+    # continue through the real isolated SSH service with ephemeral identities.
+    options = ["ssh", "-F", "/dev/null", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+               "-o", "UserKnownHostsFile=" + str(known), "-p", str(port), "-i", str(tmp_path / "client")]
+    wrapper.write_text(f'''#!{sys.executable}
+import os, sys
+from pathlib import Path
+if "'connections'" in sys.argv[-1] and Path({str(outage)!r}).exists():
+    sys.exit(255)
+args = sys.argv[1:]
+args[-2] = '127.0.0.1'
+os.execvp('ssh', {options!r} + args)
+''')
+    wrapper.chmod(0o700)
+    project = Path(__file__).resolve().parents[2]
+    process = subprocess.Popen([pwsh, "-NoProfile", "-File",
+        str(project / "tests/runtime/fixtures/institutional_discovery_ssh.ps1"),
+        "-Connector", str(project / "hypoloom/connection_assets/institutional-connect.ps1"),
+        "-Ssh", str(wrapper), "-Repository", str(project), "-PythonExecutable", sys.executable,
+        "-RunsRoot", str(root.parent), "-LocalPort", str(urlsplit(endpoint).port), "-StopFile", str(stop)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines = []
+    # Read incrementally so test observations never block on a long-lived helper.
+    def read():
+        for line in process.stdout: lines.append(line.strip())
+    reader = threading.Thread(target=read, daemon=True); reader.start()
+    try:
+        eventually(lambda: browser.socket_path.exists())
+        eventually(lambda: get(browser.endpoint, browser.relay.token)[0] == 200)
+        outage.touch()
+        eventually(lambda: any("retry_in_seconds=30" in line for line in lines) or process.poll() is not None)
+        assert process.poll() is None, lines
+        assert get(browser.endpoint, browser.relay.token)[0] == 200
+        outage.unlink()
+        eventually(lambda: "run_discovery_recovered" in lines)
+        assert sum(line.startswith("run_connection_started;") for line in lines) == 1, lines
+        assert get(browser.endpoint, browser.relay.token)[0] == 200
+        stop.touch()
+        assert process.wait(timeout=10) == 0, lines
+        reader.join(timeout=2)
+        assert "fixture_stopped" in lines
+        eventually(lambda: prepare_forward(str(root), "a", str(browser.socket_path)))
+        assert not browser.socket_path.exists()
+    finally:
+        if process.poll() is None:
+            stop.touch()
+            try: process.wait(timeout=20)
+            except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
+        reader.join(timeout=2)
+        process.stdout.close()
 
 
 @pytest.mark.parametrize("kill", [False, True])

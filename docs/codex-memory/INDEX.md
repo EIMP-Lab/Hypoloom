@@ -1,9 +1,17 @@
 # Development memory index
 
+- [Windows discovery recovery](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04):
+  reported run_discovery_unavailable reproduces the three-query-failure exit and
+  teardown of healthy forwards. Long-lived discovery now backs off, preserves
+  independent remote watches, rejects stale creation and reports safe query causes.
+  [Qualification](../qualification.md#windows-discovery-recovery-2026-10-04)
+  covers real PowerShell/SSH retention, recovery and cleanup; native Windows
+  deployment and the original underlying query failure remain separate limits.
+
 - [Sample-stage disconnect diagnostics](../design/institutional-access-preparation.md#样本阶段断连诊断与已登录提示2026-10-04):
   real preparation timed out after opening IEEE; Windows task exited 2 while Edge
   remained usable. Fetch now retains the existing safe CDP/page causes; no repeated
-  login or equal outer watch timeout. Exact Windows fatal reason remains pending.
+  login or equal outer watch timeout. Subsequent discovery exit evidence is above.
   [Qualification](../qualification.md#sample-stage-disconnect-diagnostics-2026-10-04).
 
 - [Automatic preparation samples](../design/institutional-access-preparation.md#配置完成后的固定全文样本2026-10-04):

@@ -311,6 +311,27 @@ Only a foreground `-Action Run` diagnostic needs an open terminal. Its
 `waiting_for_preparation_or_run` message means no active connection target was found;
 keep the server CC preparation active as well. It is not a connection success.
 
+An older entry may exit 2 with `run_discovery_unavailable` after three failed
+server-list queries, even while Edge remains usable. The updated helper retains
+existing forwards and retries discovery after 5, 10, 20, then every 30 seconds.
+Each query still has a 15-second limit; preparation and acquisition deadlines do
+not extend. Foreground output distinguishes `run_discovery_timeout`,
+`run_discovery_ssh_failed` (SSH exit 255), `run_discovery_command_failed` (remote
+command failure) and `run_discovery_invalid_response`, with the retry interval.
+Recovery prints `run_discovery_recovered`. Leave a foreground diagnostic open;
+repeated connection replies are unnecessary. Persistent SSH errors require checking
+noninteractive login; command/response errors require checking server paths and
+installation. Failed discovery never authorizes new forwards from cached entries.
+Each existing forward still has its independent remote lifetime/identity watch;
+retention does not guarantee that a network outage leaves the forward alive.
+
+For this old exit reason, download the original file again and run Setup. An
+already exited task can start the updated entry directly. If an older foreground
+Run or background task is still running, stop it first with Ctrl+C or `-Action Stop`
+using its original options, then run Setup to load the new file. Keep the dedicated
+Edge/profile. Return to the same CC session: a waiting batch detects the connection
+automatically; choose “重新准备” only if that batch has ended. A new init is unnecessary.
+
 Windows may report a task principal as a short username while the current session
 uses a computer-qualified name. The connector resolves account names through
 Windows and compares SIDs. If an older entry rejects this with
@@ -457,7 +478,9 @@ The helper starts forwards only for active runs; with no run it starts no browse
 and holds no research port. Remote targets are private per-run Unix sockets, so
 there is no `-RemotePort`. Before reconnecting it verifies the current run and
 removes only a refused stale socket pathname, never a live listener. Forwarding
-retries are limited to three, 30 seconds apart; discovery retries are also bounded.
+retries are limited to three, 30 seconds apart. The long-lived discovery loop retries
+failed listings with capped backoff without closing healthy forwards. Fresh successful
+lists and each remote watch still control connection creation and retirement.
 Ctrl+C stops the helper's own SSH children. Remote watch exits when its run ends or
 Host disappears; automatic reconnect cannot resurrect terminal runs.
 

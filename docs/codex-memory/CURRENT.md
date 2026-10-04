@@ -1,9 +1,25 @@
 # Current Hypoloom development state
 
+- October 4 discovery recovery: foreground output now identifies
+  run_discovery_unavailable / exit 2. A red PowerShell regression confirms the
+  old three-failure exit closed every forward even with usable Edge. Discovery
+  now retains independently watched forwards and retries at 5/10/20/30-second
+  capped intervals; only fresh lists authorize new connections. Safe query codes
+  distinguish timeout, SSH, command and response errors. Platform deadlines,
+  per-forward retries and ownership checks remain. Isolated real SSH confirms
+  retained CDP access, recovery without duplicates and stop cleanup. Historical
+  underlying query failures remain unknown; live local queries took ~0.28 s.
+  Windows must download the original file and restart the helper via Setup;
+  preserve Edge/profile and reuse the original CC preparation. No retained run
+  or preparation answer changed. Related 136 pass / no skips, docs/Profile 7 pass,
+  installed CLI/MCP/fresh bundle 175-file checks pass; Windows deployment remains
+  operator validation. [Design](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04).
+  Evidence: `.local/qualification/institutional-discovery-recovery-20261004/`.
+
 - October 4 sample-stage disconnect: fresh MERC init opened IEEE, then all four
   platforms timed out. Operator confirms Edge remains usable while its Windows
-  discovery task is Ready / exit 2 (started 10:10:50); exact fatal reason awaits
-  foreground Run plus an operator-requested preparation retry. Do not blame login
+  discovery task is Ready / exit 2 (started 10:10:50); subsequent foreground
+  discovery failure and repair are recorded above. Do not blame login
   or closed Edge. Ten red cases reproduce fetch losing safe CDP/page causes;
   reuse existing classifiers/whitelist and keep original deadlines/retries. Fixed
   instructions avoid repeated login; runtime guidance forbids wrapping watch in

@@ -2,14 +2,49 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows discovery recovery (2026-10-04)
+
+The operator's foreground helper printed run_connection_started followed by
+run_discovery_unavailable and exit 2. A red real-PowerShell regression reproduces
+the old three-listing-failure exit, which closes all forwards in finally. Edge
+can remain usable throughout. Three current server-local discovery queries return
+normally in approximately 0.28 seconds; the historical underlying query failure
+cannot be distinguished from the old aggregated error.
+
+The long-lived helper now backs off at 5/10/20/30 seconds while preserving existing
+independently watched forwards. Failed listings authorize no new connections;
+fresh successful lists reset the backoff and retire ended targets. Per-query limits,
+platform deadlines, per-forward retry limits and ownership checks remain. Safe
+codes distinguish timeout, SSH exit 255, remote command failure and invalid
+response; unchanged capped failures do not flood output. Unknown faults still
+exit with owned-child cleanup. No new persistent connection authority is added.
+
+Focused connection/runtime/instructions/preparation/dialogue/native selection:
+**136 passed, no skips**. PowerShell tests cover six consecutive failures, capped
+backoff/reset, fresh retirement, an independently ended forward, initial outage,
+unknown-fault cleanup, valid/invalid responses and safe diagnostics. An isolated
+real SSH service with ephemeral keys exercises the shipped discovery loop: after
+four injected list failures, CDP still responds through the original forward;
+recovery creates no duplicate, and stopping cleans the owned SSH connection.
+Existing real SSH reconnect/terminal-watch and native Chromium preparation checks
+also pass. Windows browser APIs are substituted in these Linux PowerShell tests.
+
+Documentation/Profile: **7 passed**. Wheel/isolated install/CLI preparation cleanup,
+MCP initialize and fresh bundle checks match **175 package files**. Native Windows
+deployment and real publisher full-text success still require operator validation.
+No retained research run, live preparation reply, browser profile or Windows task
+was changed here. This is focused repair qualification, not full G1/promotion.
+Evidence: `.local/qualification/institutional-discovery-recovery-20261004/`.
+
 ## Sample-stage disconnect diagnostics (2026-10-04)
 
 Fresh init MERC-causal-202610041002 opened IEEE at 10:11 local time. Its first
 sample check returned generic browser_unavailable; IEEE, ScienceDirect, Springer
 and ACM eventually timed out. The operator confirms Edge/IEEE remained usable
 but the Windows task (last started 10:10:50) is Ready with LastTaskResult 2.
-This establishes helper exit, not its specific cause. Foreground diagnostics are
-requested; no browser, helper, research run or preparation answer is changed here.
+This initially established helper exit, not its specific cause. Subsequent foreground
+discovery evidence and repair are recorded above; this earlier change did not modify
+the browser, helper, research run or preparation answers.
 
 Ten red cases reproduce lost connection/page reasons in fetch. The adapter now
 reuses the existing connection and page classifiers; the queue still filters safe
