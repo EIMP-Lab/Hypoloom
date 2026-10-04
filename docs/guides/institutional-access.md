@@ -140,16 +140,23 @@ never a research run. Read the background command's final summary after it exits
 Normal init runs the generated `instructions_argv` and displays its output verbatim:
 the Windows file location, fixed Setup entry, input values, remaining time and replies.
 Connection replies are `继续连接` (retry connection) and `跳过准备` (skip preparation).
-After local setup, the program detects connection readiness automatically. Its
-generated `watch_argv` waits at most 30 seconds for a user-action stage or batch exit,
-then prints current instructions. It is read-only and never answers for you; CC must
-use this command instead of writing sleep/poll loops.
-Do not wrap `watch_argv` in `timeout 30`: its final observation is printed when its
-own deadline ends, so an equal outer deadline can kill it before output. Allow
-startup/response overhead in the tool timeout; empty output is not evidence that
-no events occurred. If you already authenticated while connection checks advanced,
+The program detects readiness automatically. Immediately after displaying connection
+instructions, CC starts one generated `watch_argv` in the background instead of
+waiting for a separate "connected" reply. It includes `--wait-seconds 3600`, exits
+early at a user-action stage or batch end, and prints current instructions. Its task
+completion wakes CC to show the current platform choices. After a platform reply,
+CC arms one observer for the next stage; never run overlapping observers or custom
+sleep/poll loops. This read-only limit does not extend connection, answer or sample
+deadlines. A direct `watch` without the option still defaults to 30 seconds.
+Do not wrap the generated command in a shorter timeout; empty interim output is
+not evidence of unchanged state. If you already authenticated while checks advanced,
 reply `完成` at the platform stage without logging in again. Follow the current
 choices if a connection reply is now stale; do not infer platform completion.
+**结束准备 / 跳过准备 cancels the batch**; it does not mean "connected" or restart
+preparation automatically. A fresh batch does not need cancellation before testing.
+Read status to refresh progress. Windows `run_discovery_recovered` means listing
+queries recovered, not that the browser is verified; `waiting_for_preparation_or_run`
+means no active target was found and the foreground helper is still waiting.
 Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `结束准备`
 (complete, verify a separately supplied sample, skip this platform, public only, finish).
 The agent passes the exact choice to `reply_argv --text`; the process validates

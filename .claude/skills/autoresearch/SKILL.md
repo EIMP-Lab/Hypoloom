@@ -120,17 +120,17 @@ identity. Only use the returned `launch_argv` once missing choices are resolved.
 Explicit off keeps public/OA retrieval and disables the institutional panel. A supplied
 legacy browser URL already answers this choice and retains its unmanaged behavior.
 
-**Optional institutional preparation.** Enabled previews expose `institutional_preparation`.
-Show its common catalog and default selection: IEEE, ScienceDirect and Springer;
-ACM is public-first with optional login. Offer defaults, custom platforms or skip.
-Reuse prior choices; repeated `--institutional-prepare-provider` replaces the list,
-and `none` skips preparation without limiting research. Re-inspect with the same
-launch identity. Run the complete `institutional_preparation_argv` with its
+**Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
+Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip.
+Reuse choices; repeated `--institutional-prepare-provider` replaces the list, and `none` skips
+preparation without limiting research. Re-inspect with the same identity. Run `institutional_preparation_argv` with
 `--agent-session` in the background; run its flushed `instructions_argv` and show
 the returned instructions/code block verbatim. Use `status_argv` for the current
 `reply_argv`; append `--text` with the exact offered user reply, and `--sample` only
-for sample verification. Connection checks advance automatically; retries never extend
-the deadline. Use `watch_argv` (at most 30 seconds), not custom polling or inferred answers.
+for sample verification. Connection checks advance automatically; retries never extend deadlines.
+Immediately arm one generated `watch_argv` in the background after connection instructions and
+platform replies; its completion supplies current choices. Do not wait for "connected", overlap
+watches or infer answers. Ending preparation cancels the batch; it is not needed before testing.
 For ended batches see [details](references/init-details.md); never invent commands or use stdin.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.

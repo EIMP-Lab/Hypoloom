@@ -2,6 +2,43 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Late-client init handoff (2026-10-04)
+
+New MERC-causal-202610041222 preparation opened IEEE at 12:31:18 local time.
+The later read-only status showed waiting_for_user with 543 seconds remaining,
+but CC had not armed an observer after its 12:28 connection instructions. User
+finish at 12:31:53 was accepted at 12:33:07, explicitly ending the batch with all
+four platforms not_checked. Earlier maintenance advice to end before retrying
+failed to distinguish an old batch from an already fresh one. No automated login
+skip or discovery-caused batch termination is established.
+
+The Windows log narrows discovery failure to its 15-second command timeout,
+followed by recovery and an empty target list. Current local queries return in
+~0.286 seconds; historical Windows SSH/network/remote execution timing cannot be
+separated. Existing retained state was inspected only; no restart or deletion.
+
+A red delayed-attachment test demonstrates the short observation gap. The existing
+watch now accepts a finite positive wait limit up to 3600 seconds; generated argv
+uses that limit for one background observer, exiting early at a user-action stage
+or batch end. Direct watch still defaults to 30 seconds. Runtime instructions arm
+the observer immediately after connection instructions and after platform replies;
+explicit finish is still cancellation, never an implicit restart. No new state
+authority, notification channel or preparation deadline is introduced.
+
+Tests cover late attachment without a connection reply, observation expiry with
+unchanged manual state, invalid limits before socket access and explicit finish
+cleanup. Real Chromium/relay/private-control preparation uses separate CLI observer
+processes for all four platform prompts, with actual sample checks, late connection,
+user-tab retention and owned resource cleanup. This validates program delivery,
+not a guarantee that every model follows its runtime instructions. Real Windows
+latency and publisher subscription remain outside these synthetic tests.
+Related focused regressions **129 pass**, operator skill contracts **37 pass** and
+docs/Profile checks **7 pass**. The final wheel, isolated installation and fresh
+bundle match **175 package files**; installed CLI preparation/control cleanup and
+MCP initialization pass. This focused repair did not run full G1, paid or GPU
+qualification and does not claim those gates.
+Evidence: `.local/qualification/institutional-init-handoff-20261004/`.
+
 ## Publisher preparation entry (2026-10-04)
 
 The operator confirms Windows now opens successive publisher pages after the

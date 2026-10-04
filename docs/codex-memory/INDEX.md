@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Late-client init handoff](../design/institutional-access-preparation.md#延迟连接后的-init-提示交接2026-10-04):
+  new batch opened IEEE before the user's explicit finish, while CC showed stale
+  connection instructions with no observer running. Generated background watch
+  spans late attachment and returns at user action/end; cancellation and operation
+  deadlines remain authoritative. [Qualification](../qualification.md#late-client-init-handoff-2026-10-04).
+
 - [Publisher entry and PDF challenges](../design/institutional-access-preparation.md#出版社入口与下载验证的区别2026-10-04):
   operator confirms Windows progression; retry3 records IEEE identity_unconfirmed
   and ScienceDirect verification_required. Springer now opens its official

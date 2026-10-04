@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from copy import copy
 from pathlib import Path
@@ -35,6 +36,8 @@ def add_parser(subparsers):
     dialogue.add_argument("--provider")
     dialogue.add_argument("--sample")
     dialogue.add_argument("--text", help="exact user reply from the program's current instructions")
+    dialogue.add_argument("--wait-seconds", type=float,
+                          help="watch only: observation limit up to 3600 seconds (default 30); never extends preparation deadlines")
     connect = commands.add_parser("connect", help="inspect, start or stop an operator-owned browser connection")
     connect.add_argument("connection_action", choices=("status", "start", "stop"))
     connect.add_argument("--repository")
@@ -199,6 +202,9 @@ def _answer(args, output):
     from .institutional_instructions import render
     root = Path(args.state_root)
     watching = args.preparation_action == "watch"
+    wait_seconds = args.wait_seconds
+    if wait_seconds is not None and (not watching or not math.isfinite(wait_seconds) or not 0 < wait_seconds <= 3600):
+        raise ValueError("wait-seconds is only valid for watch and must be finite, positive and at most 3600")
     instructions = args.preparation_action in {"instructions", "watch"}
     status = args.preparation_action in {"status", "instructions", "watch"}
     if status and (args.provider or args.sample or args.text): raise ValueError("status/instructions do not take answers")
@@ -209,7 +215,7 @@ def _answer(args, output):
         from .institutional_access import provider_name
         payload["provider"] = provider_name(args.provider)
     if args.sample: payload["sample"] = args.sample
-    deadline = monotonic() + _WATCH_SECONDS
+    deadline = monotonic() + (_WATCH_SECONDS if wait_seconds is None else wait_seconds)
     response = None
     while True:
         if watching and response is not None and monotonic() >= deadline: break
@@ -293,7 +299,10 @@ def run(args, *, input_fn=input, output=print):
                 "connection": access.status("preparation").get("connection", {"mode": "existing", "state": "unchecked"}),
                 "status_argv": [*command, "status", "--state-root", directory.name],
                 "instructions_argv": [*command, "instructions", "--state-root", directory.name],
-                "watch_argv": [*command, "watch", "--state-root", directory.name],
+                # One background observer survives a late client attachment.
+                # Actual operation/answer deadlines still end the preparation;
+                # this upper bound belongs only to the read-only observer.
+                "watch_argv": [*command, "watch", "--state-root", directory.name, "--wait-seconds", "3600"],
                 "answer_argv": [*command, "<action>", "--state-root", directory.name]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         while True:

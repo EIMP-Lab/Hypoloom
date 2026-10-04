@@ -78,19 +78,29 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
             '--provider', 'Springer', '--provider', 'ACM'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
-    root = None
+    root = None; observer = None
     try:
-        root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
+        first = eventually(lambda: next((json.loads(v) for v in output
             if v.startswith('{') and 'state_root' in json.loads(v)), None))
+        root = Path(first['state_root'])
+        def observe():
+            return subprocess.Popen(first['watch_argv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        observer = observe()
         if delayed_connection:
             eventually(lambda: request(root).result.get('state') == 'waiting_for_connection')
             assert request(root).result['connection']['reason_code'] == 'cdp_endpoint_unavailable'
+            assert observer.poll() is None
             reachable.set()  # No retry reply: the program must discover recovery itself.
         for provider in ('IEEE', 'ScienceDirect', 'Springer', 'ACM'):
-            eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
-                and request(root).result.get('provider') == provider)
+            text, error = observer.communicate(timeout=15)
+            assert observer.returncode == 0, error
+            assert provider + ' 页面已打开' in text
+            assert '固定回复：完成 / 验证样本' in text
+            view = request(root).result
+            assert view['state'] == 'waiting_for_user' and view['provider'] == provider
             if provider == 'IEEE': time.sleep(6)  # Beyond relay's per-I/O timeout.
             assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
+            if provider != 'ACM': observer = observe()
         thread.join(10)
         assert not thread.is_alive() and not errors and codes == [0]
         summary = json.loads(output[-1])
@@ -103,6 +113,8 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     finally:
         if thread.is_alive() and root is not None:
             request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); thread.join(10)
+        if observer is not None and observer.poll() is None:
+            observer.terminate(); observer.communicate(timeout=5)
         backend.release()
         fixture.close()
     assert_free(relay_endpoint)

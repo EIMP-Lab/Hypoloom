@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 4 late-client init handoff: new 12:22 init opened IEEE at 12:31:18 and
+  waited for the user, but CC had armed no observer after its connection message.
+  User replied finish at 12:31:53; accepted at 12:33, leaving all four not_checked.
+  Earlier advice to end before testing was too broad; never cancel a fresh batch
+  merely to test it. Windows discovery timeouts recovered; the underlying SSH
+  latency remains unknown, local queries now ~0.286 s. Reuse watch with an optional
+  bounded wait; generated argv observes in background up to one hour, returning
+  early for user action/end. Direct watch still defaults to 30 s. Runtime instructions
+  arm one observer immediately and after replies; original operation deadlines and
+  explicit finish remain. No retained answers, runs, client or browser changed.
+  Related regressions 129 pass, operator skills 37 pass, docs/Profile 7 pass;
+  installed CLI/MCP/fresh bundle checks match 175 package files. These validate
+  program handoff, not all model behavior or the historical Windows SSH latency.
+  [Design](../design/institutional-access-preparation.md#延迟连接后的-init-提示交接2026-10-04).
+  Evidence: `.local/qualification/institutional-init-handoff-20261004/`.
+
 - October 4 publisher preparation follow-up: operator confirms Windows now opens
   publishers sequentially after discovery repair. Retry3 still records IEEE
   identity_unconfirmed and ScienceDirect verification_required; page opening is

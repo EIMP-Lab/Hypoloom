@@ -156,9 +156,12 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
 
 
 def test_watch_waits_for_program_progress_and_never_submits_a_reply(tmp_path, monkeypatch):
-    from hypoloom import institutional_dialogue
+    from hypoloom import institutional_dialogue, institutional_prepare
     from concurrent.futures import Future
     monkeypatch.setattr(institutional_dialogue, "CONNECTION_RETRY_SECONDS", .05)
+    # A client can attach after the short foreground observation has elapsed.
+    # The generated background watch must still deliver the platform prompt.
+    monkeypatch.setattr(institutional_prepare, "_WATCH_SECONDS", .05)
     access, backend, _ = ready_access(monkeypatch)
     connected = threading.Event()
     def check(*_, **kwargs):
@@ -177,6 +180,8 @@ def test_watch_waits_for_program_progress_and_never_submits_a_reply(tmp_path, mo
     try:
         eventually(lambda: request(root).result.get("state") == "waiting_for_connection")
         watcher.start()
+        watcher.join(.2)
+        assert watcher.is_alive(), "generated watch returned before the delayed client attached"
         connected.set()
         watcher.join(3)
         assert not watcher.is_alive() and watch_codes == [0]
@@ -194,7 +199,8 @@ def test_watch_waits_for_program_progress_and_never_submits_a_reply(tmp_path, mo
         if watcher.is_alive(): watcher.join(3)
 
 
-def test_watch_returns_latest_instructions_at_its_wallclock_limit(tmp_path, monkeypatch):
+@pytest.mark.parametrize('explicit', [False, True])
+def test_watch_returns_latest_instructions_at_its_wallclock_limit(tmp_path, monkeypatch, explicit):
     from hypoloom import institutional_prepare
     from hypoloom.institutional_client import PreparationControl
     from time import monotonic
@@ -208,12 +214,56 @@ def test_watch_returns_latest_instructions_at_its_wallclock_limit(tmp_path, monk
     output = []
     start = monotonic()
     try:
-        assert run(build_parser().parse_args(["institutional", "preparation", "watch", "--state-root", str(root)]), output=output.append) == 0
+        assert run(build_parser().parse_args(["institutional", "preparation", "watch", "--state-root", str(root),
+            *(['--wait-seconds', '.15'] if explicit else [])]), output=output.append) == 0
         assert .1 <= monotonic() - start < 1
         assert "自动重检连接" in output[-1] and "cdp_timeout" in output[-1]
         assert dialogue.answer is None and not dialogue.finished
     finally:
         control.close(); access.close()
+
+
+@pytest.mark.parametrize('action,seconds', [('watch', 'nan'), ('watch', 'inf'), ('watch', '0'),
+    ('watch', '-1'), ('watch', '3601'), ('status', '60'), ('finish', '60')])
+def test_invalid_watch_budget_is_rejected_before_control_access(tmp_path, monkeypatch, action, seconds):
+    monkeypatch.setattr('hypoloom.control_protocol.request_over_socket',
+                        lambda *a, **k: pytest.fail('invalid observation accessed control socket'))
+    args = build_parser().parse_args(['institutional', 'preparation', action,
+        '--state-root', str(tmp_path / 'absent'), '--wait-seconds', seconds])
+    with pytest.raises(ValueError, match='wait-seconds'):
+        run(args)
+
+
+def test_background_watch_exits_on_explicit_finish_without_answering(tmp_path, monkeypatch):
+    from concurrent.futures import Future
+    access, _, _ = ready_access(monkeypatch)
+    def check(*_, **kwargs):
+        future = Future(); future.set_result({'state': 'waiting_for_client'}); return future
+    access.check_connection = check
+    output, codes, watched, watch_codes = [], [], [], []
+    worker = threading.Thread(target=lambda: codes.append(run(
+        arguments('--agent-session', '--repository', str(tmp_path), '--provider', 'IEEE'), output=output.append)))
+    worker.start()
+    first = eventually(lambda: next((json.loads(v) for v in output if v.startswith('{') and 'state_root' in json.loads(v)), None))
+    root = Path(first['state_root'])
+    watcher = threading.Thread(target=lambda: watch_codes.append(run(
+        build_parser().parse_args(first['watch_argv'][4:]), output=watched.append)))
+    try:
+        eventually(lambda: request(root).result.get('state') == 'waiting_for_connection')
+        watcher.start(); watcher.join(.2)
+        assert watcher.is_alive()
+        view = request(root).result
+        assert '终止本批次' in render(view) and '不会自动重新准备' in render(view)
+        assert request(root, 'PREPARATION_ANSWER', {'action': 'finish'}).status == 'accepted'
+        worker.join(3); watcher.join(3)
+        assert not worker.is_alive() and not watcher.is_alive()
+        assert codes == [0] and watch_codes[0] in (0, 1)
+        assert '结束' in watched[-1]
+        assert json.loads(output[-1])['preparation_state'] == 'finished'
+        assert not root.exists()
+    finally:
+        if worker.is_alive(): request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(3)
+        if watcher.is_alive(): watcher.join(3)
 
 
 def test_client_entry_delivers_a_file_launch_and_values_without_installation_source(tmp_path):

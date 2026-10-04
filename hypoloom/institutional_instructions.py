@@ -50,6 +50,7 @@ def render(view):
         lines.append("浏览器连接尚未验证成功；本次检查未进入平台操作。")
         if automatic:
             lines.append("程序会在同一期限内自动重检连接，成功后自动打开平台；无需反复执行接入代码或等待助手发起重试。")
+            lines.append("连接助手已运行时保留它和专用浏览器；连接成功后按当前平台提示操作，无需先回复‘已连接’。")
             lines.append("继续连接仅提前下一次检查，不延长等待期限；状态查询也不会延长期限。")
         connection = view.get("connection", {})
         reasons = {
@@ -113,6 +114,8 @@ def render(view):
     choices = reply_choices(view)
     if choices:
         lines.append("固定回复：" + " / ".join(choices) + "。")
+        if '结束准备' in choices or '跳过准备' in choices:
+            lines.append("结束准备／跳过准备会终止本批次，不表示连接完成，也不会自动重新准备；仅在确实要停止时选择。")
     if "验证样本" in choices:
         lines.append("选择验证样本时另提供一条该平台 DOI 或论文 URL；不要提供密码、Cookie 或验证码。")
     return "\n".join(lines)

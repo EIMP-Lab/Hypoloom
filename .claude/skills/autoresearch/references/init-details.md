@@ -82,12 +82,22 @@ window, using the existing single browser worker. A late client needs no agent r
 to advance. `继续连接` only expedites a check; it never extends the deadline or stacks
 concurrent checks. Render the latest `connection.reason_code` when present; never
 infer that the browser opened from a socket, task start or an expired observation.
-Use `watch_argv` for one bounded observation after client setup or a platform reply.
-The command stops at a user-action stage, an ended batch, or 30 seconds of wall time
-and prints current instructions. It never sends replies. If still waiting for client
-setup, relay those instructions and leave automatic checks to the program; do not
-invent a shell loop, ask the user to reinstall solely because a check failed, or
-claim a cached result proves the client remained disconnected for the whole wait.
+Immediately after relaying connection instructions, start exactly one `watch_argv`
+in the background, including when the client has not attached yet. Do not end the
+turn waiting for the user to say "connected" with no observer running: connection
+checks can advance and open a platform without a reply. The generated command adds
+`--wait-seconds 3600`; it exits early at a user-action stage or batch end and prints
+current instructions. This is an observation limit, not a new preparation deadline.
+On its background completion, read current instructions and offer the current
+platform's fixed replies promptly. If the batch ended, read its final summary.
+After submitting a platform reply, re-arm one background watch for the next stage.
+If an observer reaches its limit while preparation is still progressing, relay its
+current result and re-arm one observer; never overlap them or repeat the same user
+question on every notification. An already waiting_for_user stage needs a user
+answer, not another watch. The observer never sends replies. Do not invent a shell
+loop, ask for reinstall solely because a check failed, or claim a cached connection
+result is still current. A direct watch without the option remains a short 30-second
+diagnostic; it is not a substitute for the generated background observer.
 After an actual user reply, append `--text` containing that exact offered reply;
 for 验证样本 append `--sample` with the supplied DOI/URL. Invalid/stale replies are
 rejected by the process. A tool/background completion is never a user reply.
@@ -97,11 +107,11 @@ answer waiting has its own deadline; checks, retry replies and polling do not ex
 the connection deadline. Expiry ends the batch and emits its latest connection result.
 No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
-Execute `watch_argv` unchanged: do not prefix `timeout 30` (or a shorter timeout).
-The watch buffers its final observation until its own deadline, then prints current
-instructions; it is not an event stream. Allow process startup/response overhead
-in the tool timeout. If an external timeout kills it, no output is not evidence of
-unchanged state. Read status/instructions once and relay them; do not start a polling loop.
+Execute `watch_argv` unchanged in background mode, with no shorter external timeout.
+It prints on reaching a user-action stage, batch end or its observation limit; it
+is not an event stream. A foreground/tool timeout must not kill it before that
+result. If an external timeout does kill it, empty output is not evidence of
+unchanged state. Read status/instructions and restore one observer if needed.
 `waiting_for_user` supplies the current provider in its generated reply command.
 Keep it unchanged. Ask within this init conversation using the offered fixed choices.
 If the user has already logged in while connection checks advanced, explain that
@@ -150,8 +160,11 @@ other choices/identity; use its generated preparation command after the user's
 retry choice. Never replay successful/manual-complete platforms to repair this omission.
 Retain completed results and the same launch identity. Do not hand-build a restart,
 replay completed logins, restart CC or create a run.
-Do not launch polling tasks or repeatedly ask the same question on background
-notifications; use the program's watch once and then relay the current instructions.
+Do not launch custom polling tasks or repeatedly ask the same question on background
+notifications; use one program-generated observer and relay the current instructions.
+Never recommend 结束准备 merely because the client connected or the user started a
+fresh init to test the feature. It cancels the batch and does not mean "connected"
+or "continue". Honor an explicit finish answer; restart only on the user's retry.
 
 For Windows client mode, `institutional_client_entry` supplies `script_source`,
 `setup_inputs` and a single fixed file-launch command in `powershell`. The user
