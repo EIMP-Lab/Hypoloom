@@ -44,6 +44,7 @@ _ASSETS: Mapping[str, tuple[str, str]] = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/assets/style.css": ("style.css", "text/css; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/assets/messages.json": ("messages.json", "application/json; charset=utf-8"),
 }
 _SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
     ("Cache-Control", "no-store"),

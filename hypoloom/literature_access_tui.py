@@ -1,6 +1,8 @@
 """Read-only publisher access observations from the existing Host status."""
 from __future__ import annotations
 
+from .ui_i18n import tr
+
 from rich import box
 from rich.table import Table
 from rich.text import Text
@@ -34,14 +36,14 @@ REASON_LABELS = {
 def access_summary(status):
     access = status.get("literature_access")
     if not isinstance(access, dict) or "enabled" not in access:
-        return "Institutional status unknown: no current Host observation."
+        return tr("Institutional status unknown: no current Host observation.")
     if not access["enabled"]:
-        return "Institutional browser disabled for this run. Public retrieval remains available."
+        return tr("Institutional browser disabled for this run. Public retrieval remains available.")
     groups = access.get("groups", [])
     automatic = sum(g.get("mode") == "auto" for g in groups)
     public = sum(g.get("mode") == "public_only" for g in groups)
     disabled = sum(g.get("mode") == "disabled" for g in groups)
-    return f"Publishers: {automatic} institutional · {public} public only · {disabled} disabled."
+    return tr("Publishers: {0} institutional · {1} public only · {2} disabled.", automatic, public, disabled)
 
 
 def connection_summary(status):
@@ -49,28 +51,28 @@ def connection_summary(status):
     if not access.get("enabled"):
         return ""
     connection = access.get("connection") or {}
-    mode = {"client": "Windows client", "local": "Linux desktop", "server": "Server browser",
-            "existing": "External browser"}.get(connection.get("mode"), "Configured browser")
+    mode = {"client": tr("Windows client"), "local": tr("Linux desktop"), "server": tr("Server browser"),
+            "existing": tr("External browser")}.get(connection.get("mode"), tr("Configured browser"))
     state = connection.get("state")
     detail = {
-        "allocated": "Connection allocated; browser availability unconfirmed",
-        "waiting_for_client": "Waiting for client connection",
-        "client_socket_present": "Client endpoint present; browser availability unconfirmed",
-        "ready": "Connection check passed", "unavailable": "Connection unavailable",
-        "closed": "Run connection closed", "inactive": "Run connection inactive",
-    }.get(state, "Live connection status unknown")
+        "allocated": tr("Connection allocated; browser availability unconfirmed"),
+        "waiting_for_client": tr("Waiting for client connection"),
+        "client_socket_present": tr("Client endpoint present; browser availability unconfirmed"),
+        "ready": tr("Connection check passed"), "unavailable": tr("Connection unavailable"),
+        "closed": tr("Run connection closed"), "inactive": tr("Run connection inactive"),
+    }.get(state, tr("Live connection status unknown"))
     if status.get("run_state") in {"COMPLETED", "FAILED", "CANCELLED"}:
-        return "Run ended. Queue counts are not download history."
+        return tr("Run ended. Queue counts are not download history.")
     return f"{mode} · {detail}"
 
 
 def publisher_table(status):
     """Format live queue observations; no probes, commands or new stored counters."""
     table = Table(box=box.SIMPLE, expand=True, padding=(0, 1), pad_edge=False)
-    table.add_column("Publisher", min_width=8, max_width=17, ratio=2, overflow="fold")
-    table.add_column("Policy", min_width=8, max_width=20, ratio=2, overflow="fold")
-    table.add_column("Work\nA / R / G", width=9, no_wrap=True)
-    table.add_column("Latest observation", min_width=16, ratio=3, overflow="fold")
+    table.add_column(tr("Publisher"), min_width=8, max_width=17, ratio=2, overflow="fold")
+    table.add_column(tr("Policy"), min_width=8, max_width=20, ratio=2, overflow="fold")
+    table.add_column(tr("Work\nA / R / G"), width=9, no_wrap=True)
+    table.add_column(tr("Latest observation"), min_width=16, ratio=3, overflow="fold")
     access = status.get("literature_access") or {}
     if not access.get("enabled"):
         return table
@@ -92,18 +94,20 @@ def publisher_table(status):
         if latest:
             state = latest.get("state", "unchecked")
             reason = latest.get("reason_code")
-            recent = REASON_LABELS.get(reason, LABELS.get(state, state))
+            recent = tr(REASON_LABELS.get(reason, LABELS.get(state, state)))
         elif pending:
-            recent = "Waiting for first result"
+            recent = tr("Waiting for first result")
         elif papers:
-            recent = "Observation time unknown"
+            recent = tr("Observation time unknown")
         else:
-            recent = "No institutional requests"
-        mode = {"auto": "Public + institution", "public_only": "Public only", "disabled": "Disabled"}.get(group.get("mode"), "Policy unknown")
+            recent = tr("No institutional requests")
+        mode = {"auto": tr("Public + institution"), "public_only": tr("Public only"), "disabled": tr("Disabled")}.get(group.get("mode"), tr(
+            "Policy unknown"
+        ))
         history = access.get("history") or {}
         if history.get("state") == "observed":
             count = history.get("document_verified", {}).get(group["provider"], 0)
-            recent += f"; {count} verified in log" if count else "; no verification in log"
+            recent += tr("; {0} verified in log", count) if count else tr("; no verification in log")
         table.add_row(Text(group["provider"]), Text(mode), Text(f"{pending} / {ready} / {gaps}"), Text(recent))
     return table
 
@@ -126,17 +130,22 @@ class LiteratureAccessScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="literature-access-form"):
             with VerticalScroll(id="literature-access-scroll"):
-                yield Static("Institutional access · Read only · Refreshes with the main view", markup=False)
+                yield Static(tr("Institutional access · Read only · Refreshes with the main view"), markup=False)
                 yield Static("", markup=False, id="literature-summary")
                 yield Static("", markup=False, id="literature-connection")
                 yield Static("", id="literature-publishers")
-                yield Static("Policies describe allowed routes, not verified login or subscription. Disabled publishers do not use the institutional browser; public retrieval remains independent.\n"
-                    "A / R / G = Active / Ready / Gaps in the current queue only. An empty cache does not mean no past success. "
-                    "Log verifications cover at most the latest 1 MiB; missing history is unknown. "
-                    "Verification does not prove PDF archival or reading. Gaps do not block other research.",
+                yield Static(tr(
+                    "Policies describe allowed routes, not verified login or subscription. Disabled "
+                    "publishers do not use the institutional browser; public retrieval remains "
+                    "independent.\n"
+                    "A / R / G = Active / Ready / Gaps in the current queue only. An empty cache does not "
+                    "mean no past success. Log verifications cover at most the latest 1 MiB; missing history "
+                    "is unknown. Verification does not prove PDF archival or reading. Gaps do not block "
+                    "other research."
+                ),
                     markup=False, id="literature-scope")
             with Horizontal(id="literature-access-footer"):
-                yield Button("Close", id="literature-close", variant="primary")
+                yield Button(tr("Close"), id="literature-close", variant="primary")
 
     def on_mount(self):
         self.update_status(self.status)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .ui_i18n import tr
+
 import base64
 import math
 import os
@@ -10,6 +12,7 @@ import sys
 import threading
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from rich.console import Group, RenderableType
@@ -240,10 +243,19 @@ def _reliability_lines(reliability: Mapping[str, object] | None, *, details: boo
     counts, costs = reliability.get("counts", {}), reliability.get("costs", {})
     return lines + [f"⌛ TO {_count(counts.get('timed_out_attempts'))} · ⊘ CX {_count(counts.get('cancelled_attempts'))} "
         f"· 🛠 TE {_count(counts.get('tool_errors'))}/{_count(counts.get('tool_calls'))} ?{_count(counts.get('trace_unknown_attempts'))}",
-        f"🔁 Retry ≥{_compact(costs.get('retry_reported_tokens'))} tok · res {_compact(costs.get('retry_reserved_tokens'))} "
-        f"· closed ?{_count(costs.get('retry_unknown_closed_attempts'))}",
-        f"Retry nodes ?{_count(costs.get('retry_unknown_nodes'))} · tok ?{_count(costs.get('retry_unavailable_token_attempts'))} "
-        f"· elapsed {_duration(costs.get('retry_elapsed_seconds'))} ?{_count(costs.get('retry_elapsed_unknown_attempts'))}"]
+        tr(
+            "🔁 Retry ≥{0} tok · res {1} · closed ?{2}",
+            _compact(costs.get('retry_reported_tokens')),
+            _compact(costs.get('retry_reserved_tokens')),
+            _count(costs.get('retry_unknown_closed_attempts')),
+        ),
+        tr(
+            "Retry nodes ?{0} · tok ?{1} · elapsed {2} ?{3}",
+            _count(costs.get('retry_unknown_nodes')),
+            _count(costs.get('retry_unavailable_token_attempts')),
+            _duration(costs.get('retry_elapsed_seconds')),
+            _count(costs.get('retry_elapsed_unknown_attempts')),
+        )]
 
 
 def _metric_lines(metrics: Mapping[str, object]) -> list[str]:
@@ -252,19 +264,40 @@ def _metric_lines(metrics: Mapping[str, object]) -> list[str]:
     skills = metrics.get("skills", {})
     evolution = metrics.get("evolutions", {})
     return [
-        f"Experiments {_count(experiments.get('total'))} · hypotheses {_count(metrics.get('hypotheses'))} · "
-        f"chains {_count(metrics.get('chains'))} / active {_count(metrics.get('active_chains'))}",
-        f"Literature {_count(literature.get('retrieved'))} · PDF {_count(literature.get('pdf_available'))} "
-        f"({_value(literature.get('coverage', 'unknown'))}) · Skills {_count(skills.get('count'))} "
-        f"({_value(skills.get('coverage', 'unknown'))})",
-        f"Self-evolution completed {_count(evolution.get('completed'))} · effective evolution {_count(evolution.get('changed'))} "
-        f"· failed Attempts {_count(evolution.get('failed'))}",
+        tr(
+            "Experiments {0} · hypotheses {1} · chains {2} / active {3}",
+            _count(experiments.get('total')),
+            _count(metrics.get('hypotheses')),
+            _count(metrics.get('chains')),
+            _count(metrics.get('active_chains')),
+        ),
+        tr(
+            "Literature {0} · PDF {1} ({2}) · Skills {3} ({4})",
+            _count(literature.get('retrieved')),
+            _count(literature.get('pdf_available')),
+            _value(literature.get('coverage', 'unknown')),
+            _count(skills.get('count')),
+            _value(skills.get('coverage', 'unknown')),
+        ),
+        tr(
+            "Self-evolution completed {0} · effective evolution {1} · failed Attempts {2}",
+            _count(evolution.get('completed')),
+            _count(evolution.get('changed')),
+            _count(evolution.get('failed')),
+        ),
     ]
 
 
 def _interaction_line(name: str, metrics: Mapping[str, object]) -> str:
-    return (f"{name}: started {_count(metrics.get('started'))} · active {_count(metrics.get('active'))} · "
-        f"completed {_count(metrics.get('completed'))} · aborted {_count(metrics.get('aborted'))} · failed {_count(metrics.get('failed'))}")
+    return (tr(
+        "{0}: started {1} · active {2} · completed {3} · aborted {4} · failed {5}",
+        name,
+        _count(metrics.get('started')),
+        _count(metrics.get('active')),
+        _count(metrics.get('completed')),
+        _count(metrics.get('aborted')),
+        _count(metrics.get('failed')),
+    ))
 
 
 def _goal_objective(snapshot: MonitorSnapshot) -> str:
@@ -279,7 +312,7 @@ def _goal_objective(snapshot: MonitorSnapshot) -> str:
 
 def _phase_label(phase: str) -> str:
     parts = phase.split("+")
-    return " + ".join(_PHASE_LABELS.get(part, part.replace("_", " ")) for part in parts)
+    return " + ".join(tr(_PHASE_LABELS.get(part, part.replace("_", " "))) for part in parts)
 
 
 def _component_progress(state: str) -> str:
@@ -312,32 +345,34 @@ def _revision_warning_badge(component: ComponentView) -> str | None:
         return None
     color = _REVISION_WARNING_COLORS.get(component.revision_warning, "#c8d7e3")
     revisions = (
-        f"{component.cycle_revisions} revisions in cycle {component.current_cycle}"
+        tr("{0} revisions in cycle {1}", component.cycle_revisions, component.current_cycle)
     )
     if component.revision_warning == "general":
-        text = f"⚠️ repeated revisions without convergence: {revisions}; cause unverified"
+        text = tr("⚠️ repeated revisions without convergence: {0}; cause unverified", revisions)
     elif component.revision_warning == "severe":
         text = (
-            f"🛑 repeated revisions without convergence: {revisions}; cause unverified; "
-            "this lineage self-terminates after 30 single-point failures"
+            tr(
+                "🛑 repeated revisions without convergence: {0}; cause unverified; this lineage "
+                "self-terminates after 30 single-point failures",
+                revisions,
+            )
         )
     else:
         text = (
-            f"⛔ revision circuit breaker tripped: {revisions}; "
-            "further revisions and cycles are suppressed"
+            tr("⛔ revision circuit breaker tripped: {0}; further revisions and cycles are suppressed", revisions)
         )
     return f"[b {color}]{escape(text)}[/]"
 
 
 def _due_label(due_at: float | None, observed_at: float) -> str:
     if due_at is None:
-        return "not scheduled"
+        return tr("not scheduled")
     delta = due_at - observed_at
     if abs(delta) < 1:
-        return "due now"
+        return tr("due now")
     if delta < 0:
-        return f"overdue by {abs(delta):.0f}s"
-    return f"due in {delta:.0f}s"
+        return tr("overdue by {0}s", f'{abs(delta):.0f}')
+    return tr("due in {0}s", f'{delta:.0f}')
 
 
 def _has_host_status(snapshot: MonitorSnapshot) -> bool:
@@ -349,13 +384,21 @@ def _agent_usage_lines(status: Mapping[str, object], accounting=None) -> tuple[s
     # emoji as one cell while Rich reserves two, shifting the panel borders.
     accounting = accounting or {}
     extra = accounting.get("observed_unsettled_tokens", 0)
-    observed_note = (f" · +≥{_compact(extra)} observed, unsettled" if extra else "")
+    observed_note = (tr(" · +≥{0} observed, unsettled", _compact(extra)) if extra else "")
     usage = status.get("agent_usage")
     if not isinstance(usage, Mapping):
         accounting = accounting or {}
-        return (f"🔢 ≥{_compact(accounting.get('reported_tokens'))} tok{observed_note} · res {_compact(accounting.get('reserved_tokens'))}",
-            f"Closed ?{_count(accounting.get('unknown_closed_attempts'))} · tok ?{_count(accounting.get('unavailable_token_attempts'))} "
-            "· limits: Host STATUS unavailable")
+        return (tr(
+            "🔢 ≥{0} tok{1} · res {2}",
+            _compact(accounting.get('reported_tokens')),
+            observed_note,
+            _compact(accounting.get('reserved_tokens')),
+        ),
+            tr(
+                "Closed ?{0} · tok ?{1} · limits: Host STATUS unavailable",
+                _count(accounting.get('unknown_closed_attempts')),
+                _count(accounting.get('unavailable_token_attempts')),
+            ))
     observed = usage.get("observed_lower_bound")
     observed = observed if isinstance(observed, Mapping) else {}
     cumulative = usage.get("profile_cumulative")
@@ -374,19 +417,34 @@ def _agent_usage_lines(status: Mapping[str, object], accounting=None) -> tuple[s
     raw_modes = enforcement.get("modes")
     modes = tuple(str(item) for item in raw_modes) if isinstance(raw_modes, list) else ()
     mode = "+".join(modes) if modes else "unknown"
-    token_limit_label = "Tok ref" if modes == ("observe",) else "Tok limit"
+    token_limit_label = tr("Tok ref") if modes == ("observe",) else tr("Tok limit")
     token_limit = tokens.get("limit")
     turn_limit = turns.get("limit")
-    lines = [f"🔢 ≥{_compact(observed.get('tokens'))} tok{observed_note} · {_compact(observed.get('turns'))} turns",
+    lines = [tr(
+        "🔢 ≥{0} tok{1} · {2} turns",
+        _compact(observed.get('tokens')),
+        observed_note,
+        _compact(observed.get('turns')),
+    ),
         _limit_line(token_limit_label, tokens.get('charged_or_reserved'), token_limit, known='limit' in tokens),
         _limit_line("Turns", turns.get('charged_or_reserved'), turn_limit, known='limit' in turns),
-        f"Res ≤{_compact(open_declared.get('tokens'))} tok ({_count(open_declared.get('attempts'))} open) "
-        f"· closed ?{_count(usage.get('unobserved_closed_attempts'))} ≤{_compact(closed_unknown.get('tokens'))} tok"]
+        tr(
+            "Res ≤{0} tok ({1} open) · closed ?{2} ≤{3} tok",
+            _compact(open_declared.get('tokens')),
+            _count(open_declared.get('attempts')),
+            _count(usage.get('unobserved_closed_attempts')),
+            _compact(closed_unknown.get('tokens')),
+        )]
     # Limits above retain overage percentages. Only surface extra policy detail
     # when it has something to explain; the legend defines the admission bars.
     if enforcement.get('observed_overage_attempts') or usage.get('budget_rejected_attempts'):
-        lines.append(f"{_value(mode)}: call overages {_count(enforcement.get('observed_overage_attempts'))} "
-            f"(+{_compact(enforcement.get('overage_tokens'))} tok) · rejected {_count(usage.get('budget_rejected_attempts'))}")
+        lines.append(tr(
+            "{0}: call overages {1} (+{2} tok) · rejected {3}",
+            _value(mode),
+            _count(enforcement.get('observed_overage_attempts')),
+            _compact(enforcement.get('overage_tokens')),
+            _count(usage.get('budget_rejected_attempts')),
+        ))
     return tuple(lines)
 
 
@@ -435,26 +493,24 @@ class FreshnessBanner(Static):
         age = max(0, int(time.time() - snapshot.observed_at))
         self.remove_class("stale")
         if _has_host_status(snapshot):
-            source = "[b #70e1c1]READ-ONLY / HOST STATUS[/]"
-            note = "Host answered this poll · not continuous liveness"
+            source = tr("[b #70e1c1]READ-ONLY / HOST STATUS[/]")
+            note = tr("Host answered this poll · not continuous liveness")
         else:
-            source = "[b #70e1c1]READ-ONLY / OFFLINE[/]"
-            note = "polling observation · not a receipt or Host-liveness signal"
+            source = tr("[b #70e1c1]READ-ONLY / OFFLINE[/]")
+            note = tr("polling observation · not a receipt or Host-liveness signal")
         self.update(
-            f"{source}  [b]SNAPSHOT[/] {age}s old  [dim]{note}[/dim]"
+            tr("{0}  [b]SNAPSHOT[/] {1}s old  [dim]{2}[/dim]", source, age, note)
         )
 
     def show_failure(self, exc: Exception, *, has_snapshot: bool) -> None:
         retained = (
-            "showing last successful snapshot"
+            tr("showing last successful snapshot")
             if has_snapshot
-            else "no successful snapshot available"
+            else tr("no successful snapshot available")
         )
         self.add_class("stale")
         self.update(
-            "[b #ffb86b]STALE · READ-ONLY[/]  "
-            f"refresh failed: {_value(exc)}  "
-            f"[dim]{retained}[/dim]"
+            tr("[b #ffb86b]STALE · READ-ONLY[/]  refresh failed: {0}  [dim]{1}[/dim]", _value(exc), retained)
         )
 
 
@@ -552,12 +608,12 @@ class WebAccessScreen(ModalScreen[None]):
             with Horizontal(id="web-access-actions"):
                 if self._access_url is not None:
                     label = (
-                        "Copy URL via tmux"
+                        tr("Copy URL via tmux")
                         if self._inside_tmux
-                        else "Copy browser URL"
+                        else tr("Copy browser URL")
                     )
                     yield Button(label, id="copy-web-url")
-                yield Button("Close", id="close-web-access", variant="primary")
+                yield Button(tr("Close"), id="close-web-access", variant="primary")
 
     def action_close(self) -> None:
         self.dismiss()
@@ -580,20 +636,26 @@ class WebAccessScreen(ModalScreen[None]):
                 transport = None
             if transport == "tmux":
                 self.app.notify(
-                    "Clipboard request sent through tmux; paste to verify. "
-                    "If empty, use Shift+drag and the SSH client's Copy action.",
+                    tr(
+                        "Clipboard request sent through tmux; paste to verify. If empty, use Shift+drag and the "
+                        "SSH client's Copy action."
+                    ),
                     timeout=10,
                 )
             elif transport == "terminal":
                 self.app.notify(
-                    "Clipboard request sent to the terminal; paste to verify. "
-                    "If empty, use terminal text selection.",
+                    tr(
+                        "Clipboard request sent to the terminal; paste to verify. If empty, use terminal text "
+                        "selection."
+                    ),
                     timeout=10,
                 )
             else:
                 self.app.notify(
-                    "Clipboard request unavailable; use Shift+drag and the "
-                    "SSH client's Copy action on the displayed URL.",
+                    tr(
+                        "Clipboard request unavailable; use Shift+drag and the SSH client's Copy action on the "
+                        "displayed URL."
+                    ),
                     severity="warning",
                     timeout=10,
                 )
@@ -602,7 +664,7 @@ class WebAccessScreen(ModalScreen[None]):
 def _oracle_observation_label(oracle):
     status = oracle.get('observation', {})
     if oracle.get('ok') is None:
-        return '[b #f5c36b]' + ('AUDIT ERROR' if status.get('state') == 'error' else 'AUDIT PENDING') + '[/]'
+        return '[b #f5c36b]' + (tr("AUDIT ERROR") if status.get('state') == 'error' else tr("AUDIT PENDING")) + '[/]'
     label = 'CLEAN' if oracle.get('ok') else 'ISSUES'
     if status:
         stamp = status.get('audited_at')
@@ -614,90 +676,136 @@ class SummaryPanel(CockpitPanel):
     def update_snapshot(self, snapshot: MonitorSnapshot) -> None:
         status, overview = snapshot.status, snapshot.overview or {}
         run_state = str(status.get("run_state") or "UNKNOWN")
-        state_label = _RUN_STATE_LABELS.get(run_state, run_state.replace("_", " ").title())
+        state_label = tr(_RUN_STATE_LABELS.get(run_state, run_state.replace("_", " ").title()))
         host = overview.get("host_observation", {})
         if run_state not in {"COMPLETED", "CANCELLED", "FAILED"}:
             if host.get("availability") == "absent":
-                state_label += " · HOST ABSENT (orphaned)"
+                state_label += tr(" · HOST ABSENT (orphaned)")
             if status.get("dispatch_error"):
-                state_label += " · DISPATCH PAUSED (Host error)"
+                state_label += tr(" · DISPATCH PAUSED (Host error)")
             provider_retry = status.get("provider_retry") or {}
             if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
                 state_label += " · API " + str(provider_retry.get("state", "cooldown")).replace("_", " ").upper()
-        lines = ["[b #78dcff]RUN AT A GLANCE[/]  [dim]? legend · d details[/dim]",
+        lines = [tr("[b #78dcff]RUN AT A GLANCE[/]  [dim]? legend · d details[/dim]"),
             f"[b]{_value(state_label)}[/]",
-            f"Goal: {_goal_objective(snapshot)}",
-            f"Verdict {_assessment_badge(str(status.get('goal_verdict') or 'PENDING'))} · "
-            f"{sum(item.assessment is not None for item in snapshot.hypotheses)}/{len(snapshot.hypotheses)} assessed"]
+            tr("Goal: {0}", _goal_objective(snapshot)),
+            tr(
+                "Verdict {0} · {1}/{2} assessed",
+                _assessment_badge(str(status.get('goal_verdict') or 'PENDING')),
+                sum((item.assessment is not None for item in snapshot.hypotheses)),
+                len(snapshot.hypotheses),
+            )]
         failures = [item for item in snapshot.attempts if item.operational_status == "recovery_exhausted"]
         if failures:
             codes = list(dict.fromkeys(item.operational_reason or "agent_final_failure" for item in failures))
-            label = "BUDGET LIMIT" if "error_max_budget_usd" in codes else "AGENT FINAL FAILURE"
-            lines.insert(2, f"[b #ff6b7a]⚠ {label} · {len(failures)}次调用终止 · "
-                + escape(", ".join(codes[-3:])) + " · d 查看调用[/]")
+            label = tr("BUDGET LIMIT") if "error_max_budget_usd" in codes else tr("AGENT FINAL FAILURE")
+            lines.insert(2, tr("[b #ff6b7a]⚠ {0} · {1} calls terminated · ", label, len(failures))
+                + escape(", ".join(codes[-3:])) + tr(" · d inspect calls[/]"))
         activity, budget_lines, reliability = [], [], []
         if overview:
             totals = overview.get("totals", {})
             budget = snapshot.goal.get("research_contract", {}).get("budget", {})
             hours = budget.get("wallclock_hours")
             if isinstance(hours, (int, float)) and not isinstance(hours, bool) and hours > 0:
-                budget_lines.append(_limit_line("⏱ Hours", overview.get("elapsed_seconds", 0) / 3600
+                budget_lines.append(_limit_line(tr("⏱ Hours"), overview.get("elapsed_seconds", 0) / 3600
                     if overview.get("elapsed_seconds") is not None else None, hours))
             else:
                 budget_lines.append(f"⏱ {_duration(overview.get('elapsed_seconds'))}")
             if overview.get("waiting_human_seconds"):
-                budget_lines.append(f"Human wait {_duration(overview['waiting_human_seconds'])} (included)")
+                budget_lines.append(tr("Human wait {0} (included)", _duration(overview['waiting_human_seconds'])))
             experiments = totals.get("experiments", {}).get("total")
-            activity.append(f"🧪 Exp {_count(experiments)} · chains {_count(totals.get('chains'))} "
-                f"/ {_count(totals.get('active_chains'))} open")
+            activity.append(tr(
+                "🧪 Exp {0} · chains {1} / {2} open",
+                _count(experiments),
+                _count(totals.get('chains')),
+                _count(totals.get('active_chains')),
+            ))
             if budget.get("max_experiments") is not None:
-                budget_lines.append(_limit_line("🧪 Exp", experiments, budget['max_experiments']))
+                budget_lines.append(_limit_line(tr("🧪 Exp"), experiments, budget['max_experiments']))
             reliability.extend(_reliability_lines(overview.get("reliability")))
             retry = overview.get("reliability", {}).get("costs", {})
             if retry.get("retry_attempts") != 0 or retry.get("retry_unknown_nodes"):
-                reliability.append(f"🔁 Retry ≥{_compact(retry.get('retry_reported_tokens'))} tok "
-                    f"· res {_compact(retry.get('retry_reserved_tokens'))} · closed ?{_count(retry.get('retry_unknown_closed_attempts'))}")
-            activity.append(f"📚 Lit {_count(totals.get('literature', {}).get('retrieved'))} "
-                f"/ PDF {_count(totals.get('literature', {}).get('pdf_available'))} · "
-                f"Skills {_count(totals.get('skills', {}).get('count'))} · EVO {_count(totals.get('evolutions', {}).get('changed'))}")
+                reliability.append(tr(
+                    "🔁 Retry ≥{0} tok · res {1} · closed ?{2}",
+                    _compact(retry.get('retry_reported_tokens')),
+                    _compact(retry.get('retry_reserved_tokens')),
+                    _count(retry.get('retry_unknown_closed_attempts')),
+                ))
+            activity.append(tr(
+                "📚 Lit {0} / PDF {1} · Skills {2} · EVO {3}",
+                _count(totals.get('literature', {}).get('retrieved')),
+                _count(totals.get('literature', {}).get('pdf_available')),
+                _count(totals.get('skills', {}).get('count')),
+                _count(totals.get('evolutions', {}).get('changed')),
+            ))
             if totals.get('leader', {}).get('started') or totals.get('debate', {}).get('started'):
-                activity.append(f"Leader {_count(totals.get('leader', {}).get('completed'))}/{_count(totals.get('leader', {}).get('started'))} "
-                    f"· Debate {_count(totals.get('debate', {}).get('completed'))}/{_count(totals.get('debate', {}).get('started'))}")
+                activity.append(tr(
+                    "Leader {0}/{1} · Debate {2}/{3}",
+                    _count(totals.get('leader', {}).get('completed')),
+                    _count(totals.get('leader', {}).get('started')),
+                    _count(totals.get('debate', {}).get('completed')),
+                    _count(totals.get('debate', {}).get('started')),
+                ))
         budget_lines.extend(_agent_usage_lines(status, overview.get("accounting")))
         health = [f"OPEN {_count(status.get('open_attempts'))} · Oracle {_oracle_observation_label(snapshot.oracle)}"]
         pending = sum(item.get("state") == "OPEN" for item in status.get("grounding_dialogue", []))
         if pending:
-            health.append(f"[yellow]Grounding: {pending} questions pending · w Web[/]")
+            health.append(tr("[yellow]Grounding: {0} questions pending · w Web[/]", pending))
         for process in (status.get("process_activity") or [])[:5]:
-            alive = "alive" if process.get("process_alive") is True else "exited" if process.get("process_alive") is False else "liveness unknown"
-            grant = (process.get("resource_grant") or {}).get("kind", "resource unknown")
+            alive = "alive" if process.get("process_alive") is True else "exited" if process.get("process_alive") is False else tr(
+                "liveness unknown"
+            )
+            grant = (process.get("resource_grant") or {}).get("kind", tr("resource unknown"))
             log_bytes = sum(row.get("bytes", 0) for row in process.get("logs", []))
-            health.append(escape(f"Process {process['experiment_id']}: {grant} · {alive} · logs {log_bytes} bytes · scientific progress unknown"))
+            health.append(escape(tr(
+                "Process {0}: {1} · {2} · logs {3} bytes · scientific progress unknown",
+                process['experiment_id'],
+                grant,
+                alive,
+                log_bytes,
+            )))
         blocks = status.get("resource_blocked") or []
-        if blocks: health.append("[yellow]GPU infrastructure blocked · " + escape(", ".join(str(b["code"]) for b in blocks)) + " · g GPU recheck[/]")
+        if blocks: health.append(tr("[yellow]GPU infrastructure blocked · ") + escape(", ".join(str(b["code"]) for b in blocks)) + tr(
+            " · g GPU recheck[/]"
+        ))
         provider_retry = status.get("provider_retry") or {}
         if provider_retry.get("pending") or provider_retry.get("state") == "recovering":
             from .provider_observation import provider_status_text
-            health.append("[yellow]" + escape(provider_status_text(provider_retry)) + " · p API recovery[/]")
+            health.append("[yellow]" + escape(provider_status_text(provider_retry, language=self.app.ui_language)) + tr(
+                " · p API recovery[/]"
+            ))
         literature = status.get("literature_retry") or {}
         if literature.get("state") in {"cooldown", "waiting_operator", "recovering"}:
-            health.append(escape(f"OpenAlex: {literature['state']} · {literature.get('reason')} · next retry {_service_time(literature.get('next_retry_at'))} · l Literature retry"))
+            health.append(escape(tr(
+                "OpenAlex: {0} · {1} · next retry {2} · l Literature retry",
+                literature['state'],
+                literature.get('reason'),
+                _service_time(literature.get('next_retry_at')),
+            )))
         notifications = status.get("notifications")
         if not notifications or notifications.get("state") == "unavailable":
-            health.append("Notifications: delivery status unknown")
+            health.append(tr("Notifications: delivery status unknown"))
         elif notifications.get("error"):
-            health.append(escape("Notifications: " + notifications["error"]))
+            health.append(escape(tr("Notifications: ") + notifications["error"]))
         else:
             for sink, item in notifications.get("sinks", {}).items():
                 if sink == "log": continue
                 failure = item.get("failure") or {}
-                health.append(escape(f"{sink}: {item.get('state', 'unverified')} · pending {item.get('pending', '?')} · last success {_service_time(item.get('last_success_at'))} · {failure.get('code', '')} · next retry {_service_time(item.get('next_retry_at'))} · n Telegram retry"))
+                health.append(escape(tr(
+                    "{0}: {1} · pending {2} · last success {3} · {4} · next retry {5} · n Telegram retry",
+                    sink,
+                    item.get('state', 'unverified'),
+                    item.get('pending', '?'),
+                    _service_time(item.get('last_success_at')),
+                    failure.get('code', ''),
+                    _service_time(item.get('next_retry_at')),
+                )))
         literature_access = status.get("literature_access") or {}
         if literature_access:
             from .literature_access_tui import access_summary
-            health.append(escape("Institutional access: " + access_summary(status) + " · i Status"))
-        for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
-                ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
+            health.append(escape(tr("Institutional access: ") + access_summary(status) + tr(" · i Status")))
+        for title, section in ((tr("RESEARCH ACTIVITY"), activity), (tr("BUDGET & TOKENS"), budget_lines),
+                (tr("EXECUTION RELIABILITY"), reliability), (tr("RUN HEALTH"), health)):
             if section:
                 lines.extend(("", f"[#24566a]──[/] [b #9ab0bf]{title}[/]", *section))
         self.update("\n".join(lines))
@@ -708,37 +816,50 @@ class ExpertsPanel(CockpitPanel):
         lines = []
         cards = []
         overview = snapshot.overview or {}
-        for key, title in (("global_tasks", "GLOBAL TASKS"), ("unknown_tasks", "OWNERSHIP UNKNOWN")):
+        for key, title in (("global_tasks", tr("GLOBAL TASKS")), ("unknown_tasks", tr("OWNERSHIP UNKNOWN"))):
             group = overview.get(key, {})
             if not group.get("stages"):
                 continue
             usage = group.get("accounting", {})
-            lines.append(f"[b #78dcff]{title}[/] · ≥{_compact(usage.get('reported_tokens'))} tok "
-                         f"· res {_compact(usage.get('reserved_tokens'))} · d details / w history")
+            lines.append(tr(
+                "[b #78dcff]{0}[/] · ≥{1} tok · res {2} · d details / w history",
+                title,
+                _compact(usage.get('reported_tokens')),
+                _compact(usage.get('reserved_tokens')),
+            ))
             for stage in group.get("activity", []):
                 lines.append(f"  {_value(stage.get('node'))} · {_stage_badge(stage, overview.get('host_observation', {}).get('availability', 'unconfirmed'))} "
                              f"· {_duration(stage.get('elapsed_seconds'))}")
         sharing = overview.get("grounding_sharing", {})
         if sharing.get("state") == "accepted":
             supplied = sum(item.get("provided", False) for item in sharing.get("experts", []))
-            lines.append(f"Grounding accepted · supplied to {supplied}/{len(sharing.get('experts', []))} experts' task inputs")
+            lines.append(tr(
+                "Grounding accepted · supplied to {0}/{1} experts' task inputs",
+                supplied,
+                len(sharing.get('experts', [])),
+            ))
         elif sharing.get("state") == "waiting_human":
-            lines.append("[yellow]Grounding awaiting clarification · h decisions[/]")
-        lines.append("\n[b #78dcff]EXPERT LANES[/]  [dim]current work · ? legend[/dim]")
+            lines.append(tr("[yellow]Grounding awaiting clarification · h decisions[/]"))
+        lines.append(tr("\n[b #78dcff]EXPERT LANES[/]  [dim]current work · ? legend[/dim]"))
         host = overview.get("host_observation", {}).get("availability", "unconfirmed")
         if _has_host_status(snapshot):
             host = "responded"
         if host != "responded":
-            lines.append(f"[yellow]Host {_value(host)} · OPEN? = unconfirmed activity[/]")
+            lines.append(tr("[yellow]Host {0} · OPEN? = unconfirmed activity[/]", _value(host)))
         experts = overview.get("experts", [])
         if not experts:
             for expert in snapshot.experts:
                 if role_filter and expert.role != role_filter:
                     continue
-                cards.append(f"[b]{_role(snapshot, expert.role)}[/]\n{len(expert.open_attempt_ids)} OPEN · "
-                    f"{expert.agent_attempts} agent / {expert.process_attempts} process")
+                cards.append(tr(
+                    "[b]{0}[/]\n{1} OPEN · {2} agent / {3} process",
+                    _role(snapshot, expert.role),
+                    len(expert.open_attempt_ids),
+                    expert.agent_attempts,
+                    expert.process_attempts,
+                ))
             if not snapshot.experts:
-                lines.append("[dim]No frozen roster found[/dim]")
+                lines.append(tr("[dim]No frozen roster found[/dim]"))
         for expert in experts:
             role = expert["role"]
             if role_filter and role != role_filter:
@@ -746,34 +867,51 @@ class ExpertsPanel(CockpitPanel):
             stages = expert.get("activity", expert.get("stages", []))
             opened = sum(stage.get("state") == "OPEN" for stage in stages)
             exhausted = any(stage.get("operational_status") == "recovery_exhausted" for stage in stages)
-            label = f"{opened} OPEN" if opened else "automatic recovery ended" if exhausted else "last recorded" if stages else "not started"
+            label = f"{opened} OPEN" if opened else tr("automatic recovery ended") if exhausted else tr(
+                "last recorded"
+            ) if stages else tr(
+                "not started"
+            )
             card = [f"[b]{_role(snapshot, role)}[/] · C{_count(expert.get('cycle'))} · {label}",
                 _lane_line(stages, host)]
             for stage in stages:
                 node = dict(_LANE_STAGES).get(stage.get("node"), _short_text(stage.get("node"), limit=30))
                 if stage.get("failure_stage") == "literature_retrieval":
-                    node = "Literature preparation"
+                    node = tr("Literature preparation")
                 scope = stage.get("chain") or stage.get("experiment_id") or stage.get("subkind") or "—"
                 kind = " job" if stage.get("kind") == "PROCESS" else ""
                 card.append(f"  {node}{kind} · {_short_text(scope, limit=28)} · {_stage_badge(stage, host)} "
                     f"· {_duration(stage.get('elapsed_seconds'))}")
                 if stage.get("operational_status") == "recovery_exhausted":
-                    card.append(f"  {_count(stage.get('attempts'))} attempts · automatic recovery ended · d details")
+                    card.append(tr(
+                        "  {0} attempts · automatic recovery ended · d details",
+                        _count(stage.get('attempts')),
+                    ))
                 if stage.get("failure_code"):
                     card.append(f"  {_value(stage['failure_code'])}")
             card.extend(("", *_reliability_lines(expert.get("reliability"))))
             accounting = expert.get("accounting", {})
             recovery = expert.get("context_recovery", {})
             if recovery.get("context_failure_attempts"):
-                card.append(f"Context recovery: {_count(recovery.get('recovery_attempts'))} attempts · reported ≥{_compact(recovery.get('recovery_reported_tokens'))} tokens · usage unknown {_count(recovery.get('recovery_unknown_token_attempts'))}")
+                card.append(tr(
+                    "Context recovery: {0} attempts · reported ≥{1} tokens · usage unknown {2}",
+                    _count(recovery.get('recovery_attempts')),
+                    _compact(recovery.get('recovery_reported_tokens')),
+                    _count(recovery.get('recovery_unknown_token_attempts')),
+                ))
             extra = accounting.get("observed_unsettled_tokens", 0)
             if extra:
-                card.append(f"+≥{_compact(extra)} observed tokens, unsettled")
-            card.append(f"🔢 ≥{_compact(accounting.get('reported_tokens'))} tok · res {_compact(accounting.get('reserved_tokens'))} "
-                f"· closed ?{_count(accounting.get('unknown_closed_attempts'))} · tok ?{_count(accounting.get('unavailable_token_attempts'))}")
+                card.append(tr("+≥{0} observed tokens, unsettled", _compact(extra)))
+            card.append(tr(
+                "🔢 ≥{0} tok · res {1} · closed ?{2} · tok ?{3}",
+                _compact(accounting.get('reported_tokens')),
+                _compact(accounting.get('reserved_tokens')),
+                _count(accounting.get('unknown_closed_attempts')),
+                _count(accounting.get('unavailable_token_attempts')),
+            ))
             cards.append("\n".join(card))
         if role_filter and not cards:
-            lines.append("[dim]No experts match this filter[/dim]")
+            lines.append(tr("[dim]No experts match this filter[/dim]"))
         rendered = [Text.from_markup("\n".join(lines))]
         for card in cards:
             rendered.extend((Text(""), Panel(Text.from_markup(card), border_style="#24566a", padding=(0, 1))))
@@ -784,9 +922,9 @@ class ExpertsPanel(CockpitPanel):
 
 class ComponentsPanel(CockpitPanel):
     def update_snapshot(self, snapshot: MonitorSnapshot) -> None:
-        lines = ["[b #78dcff]COMPONENT WORKFLOWS[/]  [dim]independent lanes[/dim]"]
+        lines = [tr("[b #78dcff]COMPONENT WORKFLOWS[/]  [dim]independent lanes[/dim]")]
         if not snapshot.components:
-            lines.append("[dim]No frozen components found[/dim]")
+            lines.append(tr("[dim]No frozen components found[/dim]"))
         for component in snapshot.components:
             blocked = (
                 f"[yellow]{_value(', '.join(component.blocked_reasons))}[/yellow]"
@@ -798,16 +936,21 @@ class ComponentsPanel(CockpitPanel):
                 f"[b]{_value(component.component_id)}[/b]  [dim]{_value(component.tier)}[/dim]"
             )
             lines.append(
-                f"   [b]{_value(_phase_label(component.phase))}[/b]  "
-                f"[dim]durable state={_value(component.state)}[/dim]"
+                tr(
+                    "   [b]{0}[/b]  [dim]durable state={1}[/dim]",
+                    _value(_phase_label(component.phase)),
+                    _value(component.state),
+                )
             )
             lines.append(
-                f"   owner={_role(snapshot, component.owner_role)}  "
-                "proposers="
-                f"{', '.join(_role(snapshot, role) for role in component.proposer_roles)}  "
-                f"blocked={blocked}"
+                tr(
+                    "   owner={0}  proposers={1}  blocked={2}",
+                    _role(snapshot, component.owner_role),
+                    ', '.join((_role(snapshot, role) for role in component.proposer_roles)),
+                    blocked,
+                )
             )
-            lines.append(f"   open={_value(open_attempts)}")
+            lines.append(tr("   open={0}", _value(open_attempts)))
             warning = _revision_warning_badge(component)
             if warning is not None:
                 lines.append(f"   {warning}")
@@ -816,7 +959,7 @@ class ComponentsPanel(CockpitPanel):
 
 class HypothesesPanel(CockpitPanel):
     def __init__(self, **kwargs) -> None:
-        self.chain_tree = Tree("Experts → chains → hypotheses / stages", id="hypothesis-tree")
+        self.chain_tree = Tree(tr("Experts → chains → hypotheses / stages"), id="hypothesis-tree")
         self._tree_rows = None
         super().__init__(extra_children=(self.chain_tree,), **kwargs)
 
@@ -831,8 +974,13 @@ class HypothesesPanel(CockpitPanel):
             placed = set()
             for chain in expert.get("chains", []):
                 key = ("chain", role, chain.get("component_id"), chain.get("cycle"), chain.get("chain"))
-                rows.append((key, expert_key, f"{_value(chain.get('chain'))} · {_value(chain.get('component_id'))} "
-                    f"· C{_count(chain.get('cycle'))} · {len(chain.get('nodes', []))} nodes", False))
+                rows.append((key, expert_key, tr(
+                    "{0} · {1} · C{2} · {3} nodes",
+                    _value(chain.get('chain')),
+                    _value(chain.get('component_id')),
+                    _count(chain.get('cycle')),
+                    len(chain.get('nodes', [])),
+                ), False))
                 for node in chain.get("nodes", []):
                     placed.add(node["hypothesis_id"])
                     label = f"{_value(node['hypothesis_id'])} · {_assessment_badge(node.get('assessment'))}"
@@ -841,13 +989,17 @@ class HypothesesPanel(CockpitPanel):
                     rows.append((("hypothesis", node["hypothesis_id"]), key, label, False))
                 for stage in chain.get("stages", []):
                     rows.append((("stage", stage["attempt_id"]), key,
-                        f"{_value(stage.get('node'))}/{_value(stage.get('subkind'))} · "
-                        f"{_attempt_badge(str(stage.get('terminal_reason') or stage.get('state')))} "
-                        f"· {_count(stage.get('attempts'))} Attempts", False))
+                        tr(
+                            "{0}/{1} · {2} · {3} Attempts",
+                            _value(stage.get('node')),
+                            _value(stage.get('subkind')),
+                            _attempt_badge(str(stage.get('terminal_reason') or stage.get('state'))),
+                            _count(stage.get('attempts')),
+                        ), False))
             unplaced = [item for item in hypotheses if item.proposer_role == role and item.hypothesis_id not in placed]
             if unplaced:
                 unknown = ("unassigned", role)
-                rows.append((unknown, expert_key, "Accepted nodes · chain evidence unavailable", True))
+                rows.append((unknown, expert_key, tr("Accepted nodes · chain evidence unavailable"), True))
                 for item in unplaced:
                     rows.append((("hypothesis", item.hypothesis_id), unknown,
                         f"{_value(item.hypothesis_id)} · {_assessment_badge(item.assessment)}", False))
@@ -885,20 +1037,28 @@ class HypothesesPanel(CockpitPanel):
 
     def update_snapshot(self, snapshot: MonitorSnapshot, role_filter: str = "") -> None:
         self.chain_tree.display = bool(snapshot.overview)
+        self.chain_tree.root.set_label(tr("Experts → chains → hypotheses / stages"))
         if snapshot.overview:
             totals = snapshot.overview.get("totals", {})
-            self.update("[b #78dcff]HYPOTHESIS CHAINS[/] · Left/Right expand · Web for claims/evidence\n"
-                + ("No hypotheses proposed yet" if not snapshot.hypotheses else
-                   f"{len(snapshot.hypotheses)} accepted nodes · chain coverage {_value(totals.get('chain_coverage', 'unknown'))}"))
+            self.update(tr("[b #78dcff]HYPOTHESIS CHAINS[/] · Left/Right expand · Web for claims/evidence\n")
+                + (tr("No hypotheses proposed yet") if not snapshot.hypotheses else
+                   tr(
+                       "{0} accepted nodes · chain coverage {1}",
+                       len(snapshot.hypotheses),
+                       _value(totals.get('chain_coverage', 'unknown')),
+                   )))
             self._update_tree(snapshot.overview, role_filter, snapshot.hypotheses)
             return
         assessed = sum(item.assessment is not None for item in snapshot.hypotheses)
         lines = [
-            "[b #78dcff]HYPOTHESES / ASSESSMENTS[/]  "
-            f"[dim]{assessed}/{len(snapshot.hypotheses)} assessed · latest 12[/dim]"
+            tr(
+                "[b #78dcff]HYPOTHESES / ASSESSMENTS[/]  [dim]{0}/{1} assessed · latest 12[/dim]",
+                assessed,
+                len(snapshot.hypotheses),
+            )
         ]
         if not snapshot.hypotheses:
-            lines.append("[dim]No hypotheses proposed yet[/dim]")
+            lines.append(tr("[dim]No hypotheses proposed yet[/dim]"))
         for hypothesis in snapshot.hypotheses[-12:]:
             lines.append(
                 f"{_assessment_badge(hypothesis.assessment)}  "
@@ -906,21 +1066,23 @@ class HypothesesPanel(CockpitPanel):
                 f"[dim]{_value(hypothesis.component_id)}[/dim]"
             )
             lines.append(
-                f"   {_role(snapshot, hypothesis.proposer_role)} · "
-                f"method={_value(hypothesis.method_family_id)}"
+                tr(
+                    "   {0} · method={1}",
+                    _role(snapshot, hypothesis.proposer_role),
+                    _value(hypothesis.method_family_id),
+                )
             )
             lines.append(f"   {_short_text(hypothesis.claim, limit=220)}")
             if hypothesis.parent_hypothesis_id is not None:
                 lines.append(
-                    f"   lineage={_value(hypothesis.relation)} "
-                    f"{_value(hypothesis.parent_hypothesis_id)}"
+                    tr("   lineage={0} {1}", _value(hypothesis.relation), _value(hypothesis.parent_hypothesis_id))
                 )
             if hypothesis.evidence_ids:
                 lines.append(
-                    f"   evidence={_value(', '.join(hypothesis.evidence_ids))}"
+                    tr("   evidence={0}", _value(', '.join(hypothesis.evidence_ids)))
                 )
             elif hypothesis.assessment is not None:
-                lines.append("   [dim]assessment has no displayed evidence IDs[/dim]")
+                lines.append(tr("   [dim]assessment has no displayed evidence IDs[/dim]"))
         self.update("\n".join(lines))
 
 
@@ -930,42 +1092,52 @@ class WorkflowsPanel(CockpitPanel):
             item.next_command is not None for item in snapshot.workflows
         )
         lines = [
-            "[b #78dcff]NEXT DURABLE COMMANDS[/]  "
-            f"[dim]{with_next_command}/{len(snapshot.workflows)} expose a next command[/dim]"
+            tr(
+                "[b #78dcff]NEXT DURABLE COMMANDS[/]  [dim]{0}/{1} expose a next command[/dim]",
+                with_next_command,
+                len(snapshot.workflows),
+            )
         ]
         if not snapshot.workflows:
-            lines.append("[dim]No workflow heads found[/dim]")
+            lines.append(tr("[dim]No workflow heads found[/dim]"))
         ordered = sorted(
             snapshot.workflows,
             key=lambda item: (
                 item.next_command is None,
-                item.kind != "RUN",
+                item.kind != tr("RUN"),
                 item.component_id or item.workflow_id,
             ),
         )
         for workflow in ordered[:12]:
             subject = workflow.component_id or workflow.workflow_id
-            command = workflow.next_command or "no command"
+            command = workflow.next_command or tr("no command")
             lines.append(
-                f"[b]{_value(workflow.kind)}[/b] {_value(subject)}  "
-                f"[dim]{_value(workflow.state)} · rev {workflow.revision}[/dim]"
+                tr(
+                    "[b]{0}[/b] {1}  [dim]{2} · rev {3}[/dim]",
+                    _value(workflow.kind),
+                    _value(subject),
+                    _value(workflow.state),
+                    workflow.revision,
+                )
             )
             lines.append(
-                f"   next={_value(command)}  ·  "
-                f"{_value(_due_label(workflow.due_at, snapshot.observed_at))}"
+                tr("   next={0}  ·  {1}", _value(command), _value(_due_label(workflow.due_at, snapshot.observed_at)))
             )
         if len(ordered) > 12:
-            lines.append(f"[dim]… {len(ordered) - 12} more workflow heads[/dim]")
+            lines.append(tr("[dim]… {0} more workflow heads[/dim]", len(ordered) - 12))
         open_rendezvous = sum(item.status != "RESOLVED" for item in snapshot.rendezvous)
         lines.extend((
             "",
-            "[b #78dcff]PEER RENDEZVOUS[/]  "
-            f"[dim]{open_rendezvous}/{len(snapshot.rendezvous)} unresolved · latest 6[/dim]",
+            tr(
+                "[b #78dcff]PEER RENDEZVOUS[/]  [dim]{0}/{1} unresolved · latest 6[/dim]",
+                open_rendezvous,
+                len(snapshot.rendezvous),
+            ),
         ))
         if not snapshot.rendezvous:
-            lines.append("[dim]No typed peer rendezvous recorded[/dim]")
+            lines.append(tr("[dim]No typed peer rendezvous recorded[/dim]"))
         for rendezvous in snapshot.rendezvous[-6:]:
-            target = rendezvous.target_role or "no target"
+            target = rendezvous.target_role or tr("no target")
             lines.append(
                 f"{_rendezvous_badge(rendezvous.status)}  "
                 f"[b]{_value(rendezvous.kind)}[/b] · {_value(_phase_label(rendezvous.phase))}"
@@ -976,23 +1148,27 @@ class WorkflowsPanel(CockpitPanel):
             )
             lines.append(f"   {_short_text(rendezvous.question, limit=180)}")
             if rendezvous.disposition is not None:
-                responder = rendezvous.responder_role or "unknown responder"
+                responder = rendezvous.responder_role or tr("unknown responder")
                 lines.append(
-                    f"   {_value(rendezvous.disposition)} by {_role(snapshot, responder)} · "
-                    f"{_short_text(rendezvous.summary, limit=160)}"
+                    tr(
+                        "   {0} by {1} · {2}",
+                        _value(rendezvous.disposition),
+                        _role(snapshot, responder),
+                        _short_text(rendezvous.summary, limit=160),
+                    )
                 )
         waits = snapshot.status.get("resource_waits")
-        lines.extend(("", "[b #78dcff]LIVE RESOURCE WAITS[/]"))
+        lines.extend(("", tr("[b #78dcff]LIVE RESOURCE WAITS[/]")))
         binding = snapshot.status.get("gpu_pool")
         if isinstance(binding, Mapping):
-            lines.append(f"Shared GPU pool: {_value(binding.get('socket_path'))}")
-            lines.append(f"Namespace: {_value(binding.get('namespace'))}")
+            lines.append(tr("Shared GPU pool: {0}", _value(binding.get('socket_path'))))
+            lines.append(tr("Namespace: {0}", _value(binding.get('namespace'))))
         elif "gpu_pool" in snapshot.status:
-            lines.append("[dim]Shared GPU pool: not configured for this run[/dim]")
+            lines.append(tr("[dim]Shared GPU pool: not configured for this run[/dim]"))
         if waits is None:
-            lines.append("[dim]Host STATUS unavailable[/dim]")
+            lines.append(tr("[dim]Host STATUS unavailable[/dim]"))
         elif not waits:
-            lines.append("[dim]No resource wait reported by this Host poll[/dim]")
+            lines.append(tr("[dim]No resource wait reported by this Host poll[/dim]"))
         else:
             for wait in waits:
                 if not isinstance(wait, Mapping):
@@ -1004,16 +1180,19 @@ class WorkflowsPanel(CockpitPanel):
                 planning = wait.get("resource_planning") or {}
                 intent = planning.get("resource_intent") or {}
                 if intent:
-                    lines.append(f"   GPU budget {_value(intent.get('workload_memory_mib'))} MiB + "
-                                 f"reserve {_value(intent.get('reserve_memory_mib'))} MiB")
+                    lines.append(tr(
+                        "   GPU budget {0} MiB + reserve {1} MiB",
+                        _value(intent.get('workload_memory_mib')),
+                        _value(intent.get('reserve_memory_mib')),
+                    ))
         self.update("\n".join(lines))
 
 
 class AttemptsPanel(CockpitPanel):
     def update_snapshot(self, snapshot: MonitorSnapshot) -> None:
-        lines = ["[b #78dcff]ATTEMPT TELEMETRY[/]  [dim]latest 12 durable records[/dim]"]
+        lines = [tr("[b #78dcff]ATTEMPT TELEMETRY[/]  [dim]latest 12 durable records[/dim]")]
         if not snapshot.attempts:
-            lines.append("[dim]No attempts recorded[/dim]")
+            lines.append(tr("[dim]No attempts recorded[/dim]"))
         now = snapshot.observed_at
         for attempt in snapshot.attempts[-12:]:
             end = attempt.ended_at if attempt.ended_at is not None else now
@@ -1024,15 +1203,23 @@ class AttemptsPanel(CockpitPanel):
                 f"{_value(attempt.component_id or attempt.workflow_id)}"
             )
             lines.append(
-                f"   {elapsed:.1f}s · scope={_value(attempt.task_scope)} · "
-                f"execution role={_value(attempt.role)} · "
-                f"phase={_value(_phase_label(attempt.phase))} · "
-                f"attempt={_value(attempt.attempt_id)}#{attempt.attempt_ordinal}"
+                tr(
+                    "   {0}s · scope={1} · execution role={2} · phase={3} · attempt={4}#{5}",
+                    f'{elapsed:.1f}',
+                    _value(attempt.task_scope),
+                    _value(attempt.role),
+                    _value(_phase_label(attempt.phase)),
+                    _value(attempt.attempt_id),
+                    attempt.attempt_ordinal,
+                )
             )
             if attempt.failure_code is not None or attempt.returncode is not None:
                 lines.append(
-                    f"   [red]failure={_value(attempt.failure_code)}[/red] · "
-                    f"returncode={_value(attempt.returncode)}"
+                    tr(
+                        "   [red]failure={0}[/red] · returncode={1}",
+                        _value(attempt.failure_code),
+                        _value(attempt.returncode),
+                    )
                 )
             if attempt.diagnostic_summary is not None:
                 lines.append(
@@ -1041,40 +1228,86 @@ class AttemptsPanel(CockpitPanel):
             if attempt.kind == "AGENT":
                 context = attempt.context or {}
                 if "current_request_exchange" in context:
-                    lines.append(f"   current request exchange={_value(context.get('current_request_exchange'))} · provider input={_value(attempt.context_tokens)} "
-                        f"· source={_value(attempt.context_source)}")
+                    lines.append(tr(
+                        "   current request exchange={0} · provider input={1} · source={2}",
+                        _value(context.get('current_request_exchange')),
+                        _value(attempt.context_tokens),
+                        _value(attempt.context_source),
+                    ))
                     earlier = context.get("last_observed_exchange") != context.get("current_request_exchange")
-                    lines.append(f"   last measured input={_value(context.get('last_observed_input_tokens'))} · exchange={_value(context.get('last_observed_exchange'))}"
-                        + (" (earlier request)" if earlier and context.get("last_observed_input_tokens") is not None else ""))
-                    lines.append(f"   current request estimate={_value(context.get('current_request_estimated_input_tokens'))} "
-                        f"· source={_value(context.get('current_request_estimate_source'))} · fits={_value(context.get('current_request_fits'))} "
-                        f"· basis={_value(context.get('current_request_estimate_reason'))}")
+                    lines.append(tr(
+                        "   last measured input={0} · exchange={1}",
+                        _value(context.get('last_observed_input_tokens')),
+                        _value(context.get('last_observed_exchange')),
+                    )
+                        + (tr(" (earlier request)") if earlier and context.get("last_observed_input_tokens") is not None else ""))
+                    lines.append(tr(
+                        "   current request estimate={0} · source={1} · fits={2} · basis={3}",
+                        _value(context.get('current_request_estimated_input_tokens')),
+                        _value(context.get('current_request_estimate_source')),
+                        _value(context.get('current_request_fits')),
+                        _value(context.get('current_request_estimate_reason')),
+                    ))
                 else:
-                    lines.append(f"   last input={_value(attempt.context_tokens)} · source={_value(attempt.context_source)}")
-                    lines.append(f"   estimated input={_value(context.get('estimated_input_tokens'))} · source={_value(context.get('estimate_source'))}")
-                lines.append(f"   working limit={_value(attempt.context_window_tokens)} ({_value(attempt.context_window_source)}) "
-                    f"· cumulative tokens={_value(attempt.cumulative_tokens)}")
+                    lines.append(tr(
+                        "   last input={0} · source={1}",
+                        _value(attempt.context_tokens),
+                        _value(attempt.context_source),
+                    ))
+                    lines.append(tr(
+                        "   estimated input={0} · source={1}",
+                        _value(context.get('estimated_input_tokens')),
+                        _value(context.get('estimate_source')),
+                    ))
+                lines.append(tr(
+                    "   working limit={0} ({1}) · cumulative tokens={2}",
+                    _value(attempt.context_window_tokens),
+                    _value(attempt.context_window_source),
+                    _value(attempt.cumulative_tokens),
+                ))
                 metrics = attempt.context_observation or {}
                 if "native_compaction_count" in metrics:
-                    lines.append(f"   native compactions={_count(metrics.get('native_compaction_count'))} · duration={_count(metrics.get('native_compaction_duration_ms'))} ms · unknown durations={_count(metrics.get('native_compaction_duration_unknown'))} · coverage={_value(metrics.get('coverage', 'unavailable'))}")
+                    lines.append(tr(
+                        "   native compactions={0} · duration={1} ms · unknown durations={2} · coverage={3}",
+                        _count(metrics.get('native_compaction_count')),
+                        _count(metrics.get('native_compaction_duration_ms')),
+                        _count(metrics.get('native_compaction_duration_unknown')),
+                        _value(metrics.get('coverage', 'unavailable')),
+                    ))
                     compact = metrics.get("last_native_compaction")
                     if compact:
-                        lines.append(f"   last native compaction input={_value(compact.get('pre_tokens'))} → {_value(compact.get('post_tokens'))} · {_value(compact.get('duration_ms'))} ms")
+                        lines.append(tr(
+                            "   last native compaction input={0} → {1} · {2} ms",
+                            _value(compact.get('pre_tokens')),
+                            _value(compact.get('post_tokens')),
+                            _value(compact.get('duration_ms')),
+                        ))
                 if metrics:
                     # Stream events can precede the transcript; read counts are
                     # independently observed and must not default to zero.
-                    lines.append(f"   successful Read={_count(metrics.get('read_calls'))} · exact frozen-input rereads={_count(metrics.get('exact_reread_calls'))} (shell reads excluded)")
-                lines.append(f"   declared window={_value(context.get('declared_context_tokens'))} "
-                    f"· cache read/create={_value(context.get('cache_read_input_tokens'))}/{_value(context.get('cache_creation_input_tokens'))} "
-                    f"· session scope={_value(attempt.session_scope)}")
+                    lines.append(tr(
+                        "   successful Read={0} · exact frozen-input rereads={1} (shell reads excluded)",
+                        _count(metrics.get('read_calls')),
+                        _count(metrics.get('exact_reread_calls')),
+                    ))
+                lines.append(tr(
+                    "   declared window={0} · cache read/create={1}/{2} · session scope={3}",
+                    _value(context.get('declared_context_tokens')),
+                    _value(context.get('cache_read_input_tokens')),
+                    _value(context.get('cache_creation_input_tokens')),
+                    _value(attempt.session_scope),
+                ))
                 if attempt.operational_reason:
-                    lines.append(f"   operational reason={_value(attempt.operational_reason)}")
+                    lines.append(tr("   operational reason={0}", _value(attempt.operational_reason)))
                 if attempt.operational_status:
-                    lines.append(f"   {_value(attempt.operational_status)}" + (" · API retry does not reopen a terminal node" if attempt.operational_status == "recovery_exhausted" else " · last recorded CLI status"))
+                    lines.append(f"   {_value(attempt.operational_status)}" + (tr(
+                        " · API retry does not reopen a terminal node"
+                    ) if attempt.operational_status == "recovery_exhausted" else tr(
+                        " · last recorded CLI status"
+                    )))
             if attempt.stdout_path is not None or attempt.stderr_path is not None:
                 lines.append(
-                    f"   logs: stdout={_value(attempt.stdout_path)} · "
-                    f"stderr={_value(attempt.stderr_path)}"
+                    tr("   logs: stdout={0} · stderr={1}", _value(attempt.stdout_path), _value(attempt.stderr_path))
                 )
             devices = attempt.gpu_usage or (() if attempt.gpu_uuid is None else ({
                 "gpu_uuid": attempt.gpu_uuid,
@@ -1085,62 +1318,93 @@ class AttemptsPanel(CockpitPanel):
             },))
             for device in devices:
                 pressure = (
-                    " [red]reserve pressure[/red]"
+                    tr(" [red]reserve pressure[/red]")
                     if device.get("pressure_exceeded")
                     else ""
                 )
                 lines.append(
-                    f"   gpu={_value(device.get('gpu_uuid'))} "
-                    f"min/latest-free={_value(device.get('minimum_free_memory_mib'))}/"
-                    f"{_value(device.get('latest_free_memory_mib'))} MiB "
-                    f"util={_value(device.get('latest_utilization_percent'))}%{pressure}"
+                    tr(
+                        "   gpu={0} min/latest-free={1}/{2} MiB util={3}%{4}",
+                        _value(device.get('gpu_uuid')),
+                        _value(device.get('minimum_free_memory_mib')),
+                        _value(device.get('latest_free_memory_mib')),
+                        _value(device.get('latest_utilization_percent')),
+                        pressure,
+                    )
                 )
                 owned = device.get("owned_memory")
                 if isinstance(owned, Mapping):
                     lines.append(
-                        f"      own sampled latest/peak={_value(owned.get('latest_sample_memory_mib'))}/"
-                        f"{_value(owned.get('sampled_peak_memory_mib'))} MiB · coverage={_value(owned.get('coverage'))} · "
-                        f"unknown samples={_value(owned.get('unknown_sample_count'))}/{_value(owned.get('sample_count'))}"
+                        tr(
+                            "      own sampled latest/peak={0}/{1} MiB · coverage={2} · unknown samples={3}/{4}",
+                            _value(owned.get('latest_sample_memory_mib')),
+                            _value(owned.get('sampled_peak_memory_mib')),
+                            _value(owned.get('coverage')),
+                            _value(owned.get('unknown_sample_count')),
+                            _value(owned.get('sample_count')),
+                        )
                     )
         self.update("\n".join(lines))
 
 
 class EvidencePanel(CockpitPanel):
     def update_snapshot(self, snapshot: MonitorSnapshot) -> None:
-        lines = ["[b #78dcff]CANONICAL FACTS / ORACLE[/]"]
+        lines = [tr("[b #78dcff]CANONICAL FACTS / ORACLE[/]")]
         status, overview = snapshot.status, snapshot.overview or {}
         lines.extend(_reliability_lines(overview.get("reliability"), details=True))
-        lines.extend(("[dim]TO timeout · CX cancelled · TE tool errors/calls (? traces). Correction-only tokens unavailable.[/dim]",
-            f"Required assessed {_count(status.get('required_assessment_count'))}/{_count(status.get('required_component_count'))}",
-            f"State-root OPEN {snapshot.durable_open_attempts_state_root} · backup {_count(status.get('quiescent_for_backup'))}",
-            f"Observation: {'Host STATUS' if _has_host_status(snapshot) else 'offline state store'}"))
+        lines.extend((tr(
+            "[dim]TO timeout · CX cancelled · TE tool errors/calls (? traces). Correction-only "
+            "tokens unavailable.[/dim]"
+        ),
+            tr(
+                "Required assessed {0}/{1}",
+                _count(status.get('required_assessment_count')),
+                _count(status.get('required_component_count')),
+            ),
+            tr(
+                "State-root OPEN {0} · backup {1}",
+                snapshot.durable_open_attempts_state_root,
+                _count(status.get('quiescent_for_backup')),
+            ),
+            tr("Observation: {0}", tr('Host STATUS') if _has_host_status(snapshot) else tr('offline state store'))))
         if overview:
             lines.extend(_metric_lines(overview.get("totals", {})))
             if overview.get("stage_accounting"):
-                lines.append("[b]Stage tokens (reported lower bounds; failed/recovery subsets may overlap)[/b]")
+                lines.append(tr("[b]Stage tokens (reported lower bounds; failed/recovery subsets may overlap)[/b]"))
                 for stage in overview["stage_accounting"]:
                     usage, recovery = stage.get("accounting", {}), stage.get("context_recovery", {})
                     label = str(stage.get("node", "unknown")) + ("/" + stage["subkind"] if stage.get("subkind") else "")
-                    lines.append(f"{_value(label)}: reported {_count(usage.get('reported_tokens'))} · failed {_count(usage.get('failed_reported_tokens'))} "
-                        f"· recovery {_count(recovery.get('recovery_reported_tokens'))} · open observed {_count(usage.get('observed_unsettled_tokens'))} "
-                        f"· reserved {_count(usage.get('reserved_tokens'))} · unknown closed {_count(usage.get('unknown_closed_attempts'))}")
-                lines.append("[dim]Open observed usage is unsettled; reserved tokens are not consumption.[/dim]")
+                    lines.append(tr(
+                        "{0}: reported {1} · failed {2} · recovery {3} · open observed {4} · reserved {5} · "
+                        "unknown closed {6}",
+                        _value(label),
+                        _count(usage.get('reported_tokens')),
+                        _count(usage.get('failed_reported_tokens')),
+                        _count(recovery.get('recovery_reported_tokens')),
+                        _count(usage.get('observed_unsettled_tokens')),
+                        _count(usage.get('reserved_tokens')),
+                        _count(usage.get('unknown_closed_attempts')),
+                    ))
+                lines.append(tr("[dim]Open observed usage is unsettled; reserved tokens are not consumption.[/dim]"))
             for name in ("leader", "debate"):
                 lines.append(_interaction_line(name.title(), overview.get("totals", {}).get(name, {})))
             for notice in overview.get("notices", []):
                 lines.append(_value(notice))
             last_error = overview.get("host_observation", {}).get("last_recorded_exception") or {}
             if last_error:
-                lines.append(f"Historical Host exception: {_value(last_error.get('exception_type'))} "
-                    f"at {_value(last_error.get('timestamp'))} · diagnostics/host.jsonl")
+                lines.append(tr(
+                    "Historical Host exception: {0} at {1} · diagnostics/host.jsonl",
+                    _value(last_error.get('exception_type')),
+                    _value(last_error.get('timestamp')),
+                ))
         facts = "  ".join(f"{name}={count}" for name, count in snapshot.fact_counts.items())
-        lines.append(_value(facts or "No facts recorded"))
+        lines.append(_value(facts or tr("No facts recorded")))
         issues = snapshot.oracle.get("issues", ())
         lines.extend(
             (
                 "",
-                _oracle_observation_label(snapshot.oracle) + " integrity/residue checks",
-                "[dim]Oracle CLEAN is not a scientific-success verdict.[/dim]",
+                _oracle_observation_label(snapshot.oracle) + tr(" integrity/residue checks"),
+                tr("[dim]Oracle CLEAN is not a scientific-success verdict.[/dim]"),
             )
         )
         if issues:
@@ -1212,7 +1476,7 @@ class HypoloomVNextMonitor(App):
     }
 
     #observer-bar {
-        height: 3;
+        height: auto;
         background: #0a2530;
         border-bottom: solid #24566a;
     }
@@ -1230,7 +1494,7 @@ class HypoloomVNextMonitor(App):
         background: #352519;
     }
 
-    #help-button, #support-help-button, #end-run-button {
+    #language-button, #help-button, #support-help-button, #end-run-button {
         width: auto;
         height: 3;
         min-width: 8;
@@ -1241,11 +1505,15 @@ class HypoloomVNextMonitor(App):
         color: #a9efff;
     }
 
+    #language-button { width: 6; min-width: 6; }
+    #language-button:focus { text-style: bold; }
     #end-run-button { color: #ffb86b; }
     #monitor-exit-help { height: 1; padding: 0 1; color: #9ab0bf; }
 
     #human-decision-button { display: none; width: 1fr; height: 3; background: #513519; color: #ffdb9e; }
 
+    #language-button:hover,
+    #language-button:focus,
     #help-button:hover,
     #help-button:focus,
     #support-help-button:hover,
@@ -1351,6 +1619,8 @@ class HypoloomVNextMonitor(App):
         gpu_pool_server_uid: int | None = None,
     ) -> None:
         super().__init__()
+        self.ui_language = "en"
+        self._last_refresh_error: Exception | None = None
         self.state_root = state_root.expanduser().resolve()
         self.run_id = run_id
         self.interval = interval
@@ -1377,18 +1647,23 @@ class HypoloomVNextMonitor(App):
         yield Header()
         with Horizontal(id="observer-bar"):
             yield FreshnessBanner(
-                "[b #70e1c1]READ-ONLY / OFFLINE[/]  [dim]waiting for snapshot[/dim]",
+                tr("[b #70e1c1]READ-ONLY / OFFLINE[/]  [dim]waiting for snapshot[/dim]"),
                 id="freshness",
             )
-            yield Button("Help", id="help-button", tooltip="Window guide and execution reliability (?)")
-            yield Button("Report Issue", id="support-help-button", tooltip="Preview and export a support bundle (b)")
-            yield Button("End run", id="end-run-button", tooltip="Review cancellation (x); q only leaves the monitor")
-        yield Static("q: leave monitor; Host and tasks continue. x: end run…", markup=False, id="monitor-exit-help")
+            yield Button("CN", id="language-button", tooltip="Switch to Chinese")
+            yield Button(tr("Help"), id="help-button", tooltip=tr("Window guide and execution reliability (?)"))
+            yield Button(tr("Report Issue"), id="support-help-button", tooltip=tr(
+                "Preview and export a support bundle (b)"
+            ))
+            yield Button(tr("End run"), id="end-run-button", tooltip=tr(
+                "Review cancellation (x); q only leaves the monitor"
+            ))
+        yield Static(tr("q: leave monitor; Host and tasks continue. x: end run…"), markup=False, id="monitor-exit-help")
         legend = HelpLegend(id="help-legend")
-        legend.update(_HELP_TEXT)
+        legend.update(tr(_HELP_TEXT))
         yield legend
-        yield Button("Waiting for your decision · press h", id="human-decision-button")
-        yield Select([("All experts · run totals remain global", "")], value="", allow_blank=False, id="expert-filter")
+        yield Button(tr("Waiting for your decision · press h"), id="human-decision-button")
+        yield Select([(tr("All experts · run totals remain global"), "")], value="", allow_blank=False, id="expert-filter")
         with Grid(id="cockpit"):
             yield SummaryPanel(id="summary", classes="cockpit-panel")
             yield ExpertsPanel(id="experts", classes="cockpit-panel")
@@ -1403,7 +1678,7 @@ class HypoloomVNextMonitor(App):
         self._accept_refreshes = True
         self._start_web_observer()
         self._set_responsive_layout(self.size.width)
-        self.sub_title = f"{self.run_id} | read-only/offline | {self.state_root}"
+        self.sub_title = tr("{0} | read-only/offline | {1}", self.run_id, self.state_root)
         if self._initial_snapshot is not None:
             self._render(self._initial_snapshot)
             self._initial_snapshot = None
@@ -1429,7 +1704,7 @@ class HypoloomVNextMonitor(App):
         pending = [item for item in snapshot.status.get("grounding_dialogue", []) if item.get("state") == "OPEN"]
         human_button = self.query_one("#human-decision-button", Button)
         human_button.display = bool(pending)
-        human_button.label = f"{len(pending)} decision pending · Review and answer · h"
+        human_button.label = tr("{0} decision pending · Review and answer · h", len(pending))
         from .human_decision_tui import HumanDecisionScreen
         from .end_run_tui import EndRunScreen
         from .provider_resume_tui import ProviderResumeScreen
@@ -1441,7 +1716,7 @@ class HypoloomVNextMonitor(App):
         roles = tuple(item["role"] for item in snapshot.overview.get("experts", []))
         if roles != self._expert_roles:
             previous = selector.value
-            selector.set_options([("All experts · run totals remain global", ""), *((role, role) for role in roles)])
+            selector.set_options([(tr("All experts · run totals remain global"), ""), *((role, role) for role in roles)])
             selector.value = previous if previous in roles else ""
             self._expert_roles = roles
         role_filter = selector.value if isinstance(selector.value, str) else ""
@@ -1457,8 +1732,13 @@ class HypoloomVNextMonitor(App):
         age = max(0, int(time.time() - snapshot.observed_at))
         observation = "host-status" if _has_host_status(snapshot) else "offline"
         self.sub_title = (
-            f"{snapshot.run_id} | {snapshot.status.get('run_state')} | "
-            f"read-only/{observation} | snapshot {age}s old"
+            tr(
+                "{0} | {1} | read-only/{2} | snapshot {3}s old",
+                snapshot.run_id,
+                snapshot.status.get('run_state'),
+                observation,
+                age,
+            )
         )
 
     def on_select_changed(self, event: Select.Changed) -> None:
@@ -1467,6 +1747,50 @@ class HypoloomVNextMonitor(App):
 
     def action_toggle_diagnostics(self) -> None:
         self.screen.toggle_class("diagnostics")
+
+    def action_toggle_language(self) -> None:
+        """Redraw the retained observation; changing language sends no request."""
+        self.ui_language = "zh-CN" if self.ui_language == "en" else "en"
+        self.title = tr(self.TITLE)
+        button = self.query_one("#language-button", Button)
+        button.label = "EN" if self.ui_language == "zh-CN" else "CN"
+        button.tooltip = tr("Switch to English" if self.ui_language == "zh-CN" else "Switch to Chinese")
+        button.refresh(layout=True)
+        for name, label, tooltip in (
+            ("help-button", "Help", "Window guide and execution reliability (?)"),
+            ("support-help-button", "Report Issue", "Preview and export a support bundle (b)"),
+            ("end-run-button", "End run", "Review cancellation (x); q only leaves the monitor"),
+        ):
+            control = self.query_one(f"#{name}", Button)
+            control.label, control.tooltip = tr(label), tr(tooltip)
+            control.refresh(layout=True)
+        for binding in self.BINDINGS:
+            # Update the existing binding instead of appending a duplicate that
+            # leaves the first (English) description authoritative in Footer.
+            bindings = self._bindings.key_to_bindings.get(binding.key, [])
+            bindings[:] = [replace(item, description=tr(binding.description))
+                          if item.action == binding.action else item for item in bindings]
+        self.refresh_bindings()
+        self.query_one("#monitor-exit-help", Static).update(tr(
+            "q: leave monitor; Host and tasks continue. x: end run…"
+        ))
+        self.query_one("#help-legend", HelpLegend).update(tr(_HELP_TEXT))
+        with self.prevent(Select.Changed):
+            selector = self.query_one("#expert-filter", Select)
+            previous = selector.value
+            selector.set_options([(tr("All experts · run totals remain global"), ""),
+                                  *((role, role) for role in self._expert_roles)])
+            selector.value = previous
+            selector.mutate_reactive(Select.value)
+            if self._last_snapshot is not None:
+                self._render(self._last_snapshot)
+        if self._last_refresh_error is not None:
+            self.query_one("#freshness", FreshnessBanner).show_failure(
+                self._last_refresh_error, has_snapshot=self._has_snapshot)
+            self.sub_title = tr("{0} | STALE | read-only", self.run_id)
+        elif self._last_snapshot is None:
+            self.query_one("#freshness", FreshnessBanner).update(
+                tr("[b #70e1c1]READ-ONLY / OFFLINE[/]  [dim]waiting for snapshot[/dim]"))
 
     def _load_snapshot(self) -> None:
         try:
@@ -1489,13 +1813,14 @@ class HypoloomVNextMonitor(App):
         if not self._accept_refreshes:
             return
         self._refresh_thread = None
+        self._last_refresh_error = message.error
         if message.error is not None:
             self.query_one("#freshness", FreshnessBanner).show_failure(
                 message.error, has_snapshot=self._has_snapshot,
             )
-            self.sub_title = f"{self.run_id} | STALE | read-only"
+            self.sub_title = tr("{0} | STALE | read-only", self.run_id)
             self.notify(
-                f"Refresh failed: {message.error}", severity="error", timeout=10,
+                tr("Refresh failed: {0}", message.error), severity="error", timeout=10,
             )
         elif message.snapshot is not None:
             self._render(message.snapshot)
@@ -1564,7 +1889,7 @@ class HypoloomVNextMonitor(App):
                 server.server_close()
             self._web_error = str(exc)
             self.notify(
-                f"Web observer unavailable: {exc}. Press w for access help.",
+                tr("Web observer unavailable: {0}. Press w for access help.", exc),
                 severity="warning",
                 timeout=12,
             )
@@ -1601,43 +1926,58 @@ class HypoloomVNextMonitor(App):
                 f"ssh -N -L <local-port>:127.0.0.1:{port} "
                 "<ssh-user>@<research-server>"
             )
-            port_help = "OS-selected port; the address may change after restart.\n\n" if self.web_port == 0 else ""
+            port_help = tr("OS-selected port; the address may change after restart.\n\n") if self.web_port == 0 else ""
             clipboard_help = (
-                "Clipboard: the button sends one explicit tmux passthrough "
-                "request and does not change tmux settings. Paste to verify; "
-                "terminals do not acknowledge OSC 52 delivery. If the SSH "
-                "client blocks it, hold Shift while dragging over the URL and "
-                "use the client's Copy action. tmux copy-mode alone guarantees "
-                "only a tmux paste buffer, not the workstation clipboard.\n\n"
+                tr(
+                    "Clipboard: the button sends one explicit tmux passthrough request and does not change "
+                    "tmux settings. Paste to verify; terminals do not acknowledge OSC 52 delivery. If the "
+                    "SSH client blocks it, hold Shift while dragging over the URL and use the client's Copy "
+                    "action. tmux copy-mode alone guarantees only a tmux paste buffer, not the workstation "
+                    "clipboard.\n\n"
+                )
                 if inside_tmux
                 else
-                "Clipboard: the button sends an unconfirmed terminal request. "
-                "Paste to verify; if the terminal blocks it, select the URL "
-                "and use the terminal's Copy action.\n\n"
+                tr(
+                    "Clipboard: the button sends an unconfirmed terminal request. Paste to verify; if the "
+                    "terminal blocks it, select the URL and use the terminal's Copy action.\n\n"
+                )
             )
             return (
-                "[b #78dcff]WEB OBSERVER READY[/]  "
-                "[dim]TUI-owned · loopback-only · read-only[/dim]\n\n"
-                f"{port_help}"
-                f"Browser URL (contains the ephemeral token):\n{escape(url)}\n\n"
-                "Run this on your local workstation:\n"
-                f"{escape(tunnel)}\n\n"
-                "Then open the exact Browser URL locally. The Web observer stays "
-                "available while this TUI is running and stops when the TUI exits.\n\n"
-                f"{clipboard_help}"
-                "If that local port is already occupied, use:\n"
-                f"{escape(alternate)}\n"
-                "and replace only the port in the Browser URL with <local-port>.\n\n"
-                "[dim]Do not share the token URL. The SSH tunnel must be started "
-                "on the browser workstation; the server cannot create that local "
-                "tunnel for you.[/dim]"
+                tr(
+                    "[b #78dcff]WEB OBSERVER READY[/]  [dim]TUI-owned · loopback-only · "
+                    "read-only[/dim]\n"
+                    "\n"
+                    "{0}Browser URL (contains the ephemeral token):\n"
+                    "{1}\n"
+                    "\n"
+                    "Run this on your local workstation:\n"
+                    "{2}\n"
+                    "\n"
+                    "Then open the exact Browser URL locally. The Web observer stays available while this "
+                    "TUI is running and stops when the TUI exits.\n"
+                    "\n"
+                    "{3}If that local port is already occupied, use:\n"
+                    "{4}\n"
+                    "and replace only the port in the Browser URL with <local-port>.\n"
+                    "\n"
+                    "[dim]Do not share the token URL. The SSH tunnel must be started on the browser "
+                    "workstation; the server cannot create that local tunnel for you.[/dim]",
+                    port_help,
+                    escape(url),
+                    escape(tunnel),
+                    clipboard_help,
+                    escape(alternate),
+                )
             )
         if not self.web_enabled:
             return (
-                "[b #ffb86b]WEB OBSERVER DISABLED[/]\n\n"
-                "This TUI was started with --no-web. Restart monitor without "
-                "--no-web to couple the loopback Web observer to the TUI, or run "
-                "the standalone `hypoloom.cli web` command for a Web-only view."
+                tr(
+                    "[b #ffb86b]WEB OBSERVER DISABLED[/]\n"
+                    "\n"
+                    "This TUI was started with --no-web. Restart monitor without --no-web to couple the "
+                    "loopback Web observer to the TUI, or run the standalone `hypoloom.cli web` command for "
+                    "a Web-only view."
+                )
             )
         restart = shlex.join((
             sys.executable,
@@ -1652,11 +1992,15 @@ class HypoloomVNextMonitor(App):
             "0",
         ))
         return (
-            "[b #ff6b7a]WEB OBSERVER UNAVAILABLE[/]\n\n"
-            f"Requested loopback port: {self.web_port}\n"
-            f"Start error: {escape(self._web_error or 'unknown error')}\n\n"
-            "The TUI remains usable. Restart with an OS-selected free port:\n"
-            f"{escape(restart)}"
+            tr(
+                "[b #ff6b7a]WEB OBSERVER UNAVAILABLE[/]\n"
+                "\n"
+                "Requested loopback port: {0}\n"
+                "Start error: {1}\n\nThe TUI remains usable. Restart with an OS-selected free port:\n{2}",
+                self.web_port,
+                escape(self._web_error or tr('unknown error')),
+                escape(restart),
+            )
         )
 
     def action_web_access(self) -> None:
@@ -1672,14 +2016,26 @@ class HypoloomVNextMonitor(App):
         url = None if self.web_access_url is None else self.web_access_url + "&support=1"
         command = shlex.join((sys.executable, "-m", "hypoloom.cli", "debug", "export",
             "--state-root", str(self.state_root), "--run-id", self.run_id, "--support-bundle", "--recent-failures", "--preview"))
-        content = ("[b #78dcff]REPORT AN ISSUE[/]\n\n"
-            "Open the browser link to preview evidence and download a ZIP. Nothing is uploaded.\n"
-            "Default copies omit research bodies and local paths. Private attachments require explicit selection.\n\n"
+        content = (tr(
+            "[b #78dcff]REPORT AN ISSUE[/]\n"
+            "\n"
+            "Open the browser link to preview evidence and download a ZIP. Nothing is "
+            "uploaded.\n"
+            "Default copies omit research bodies and local paths. Private attachments require "
+            "explicit selection.\n"
+            "\n"
             "Preview shows run state/revision, failure groups, evidence scope and omissions.\n"
-            "The browser also accepts an optional issue description; CLI: --issue-actual, --issue-expected, --issue-steps, --issue-occurred-at.\n"
-            "Descriptions are included in public copies too; review them before sharing.\n\n"
-            f"Offline preview command:\n{escape(command)}\n\n"
-            "To save it, replace --preview with --archive --output /absolute/private/path/new-support.zip.\n\n"
+            "The browser also accepts an optional issue description; CLI: --issue-actual, "
+            "--issue-expected, --issue-steps, --issue-occurred-at.\n"
+            "Descriptions are included in public copies too; review them before sharing.\n"
+            "\n"
+            "Offline preview command:\n"
+            "{0}\n"
+            "\n"
+            "To save it, replace --preview with --archive --output "
+            "/absolute/private/path/new-support.zip.\n\n",
+            escape(command),
+        )
             + self._web_access_content())
         if url is not None:
             content = content.replace(escape(self.web_access_url), escape(url))
@@ -1688,7 +2044,7 @@ class HypoloomVNextMonitor(App):
     def action_end_run(self) -> None:
         from .end_run_tui import EndRunScreen
         if self._last_snapshot is None:
-            self.notify("Wait for a current snapshot, then press x.")
+            self.notify(tr("Wait for a current snapshot, then press x."))
             return
         if not isinstance(self.screen, EndRunScreen):
             self.push_screen(EndRunScreen(self._last_snapshot.status, self._end_run_draft))
@@ -1696,13 +2052,13 @@ class HypoloomVNextMonitor(App):
     def action_human_decision(self) -> None:
         from .human_decision_tui import HumanDecisionScreen
         if self._last_snapshot is None:
-            self.notify("Wait for a current snapshot, then press h.")
+            self.notify(tr("Wait for a current snapshot, then press h."))
             return
         status = self._last_snapshot.status
         history = list(status.get("grounding_dialogue", []))
         pending = [item for item in history if item["state"] == "OPEN"]
         if not history:
-            self.notify("No human decisions have been recorded.")
+            self.notify(tr("No human decisions have been recorded."))
             return
         decision = pending[0] if pending else history[-1]
         self.push_screen(HumanDecisionScreen(decision, status,
@@ -1713,7 +2069,7 @@ class HypoloomVNextMonitor(App):
         from .resource_recheck_tui import ResourceRecheckScreen
         if (self._last_snapshot is None or self._last_snapshot.status.get("run_state") != "ACTIVE"
                 or not self._last_snapshot.status.get("resource_blocked")):
-            self.notify("No blocked GPU node is visible. Refresh after repairing the pool.")
+            self.notify(tr("No blocked GPU node is visible. Refresh after repairing the pool."))
             return
         if not hasattr(self, "_resource_recheck_draft"): self._resource_recheck_draft = {}
         if not isinstance(self.screen, ResourceRecheckScreen):
@@ -1722,7 +2078,7 @@ class HypoloomVNextMonitor(App):
     def action_literature_access(self) -> None:
         from .literature_access_tui import LiteratureAccessScreen
         if self._last_snapshot is None:
-            self.notify("等待当前Host状态后再按i。")
+            self.notify(tr("Wait for current Host status, then press i."))
             return
         if not isinstance(self.screen, LiteratureAccessScreen):
             self.push_screen(LiteratureAccessScreen(self._last_snapshot.status))
@@ -1730,11 +2086,11 @@ class HypoloomVNextMonitor(App):
     def action_provider_resume(self) -> None:
         from .provider_resume_tui import ProviderResumeScreen
         if self._last_snapshot is None:
-            self.notify("Wait for a current snapshot, then press p.")
+            self.notify(tr("Wait for a current snapshot, then press p."))
             return
         status = self._last_snapshot.status
         if not status.get("provider_retry"):
-            self.notify("Provider cooldown state needs a live Host answer; the offline view cannot confirm it.")
+            self.notify(tr("Provider cooldown state needs a live Host answer; the offline view cannot confirm it."))
             return
         if not isinstance(self.screen, ProviderResumeScreen):
             self.push_screen(ProviderResumeScreen(status, self._provider_resume_draft))
@@ -1744,7 +2100,7 @@ class HypoloomVNextMonitor(App):
         status = {} if self._last_snapshot is None else self._last_snapshot.status
         available = status.get("literature_retry") if service == "openalex" else (status.get("notifications") or {}).get("sinks", {}).get("telegram")
         if not available or status.get("run_state") != "ACTIVE":
-            self.notify("A live active Host with this service is required."); return
+            self.notify(tr("A live active Host with this service is required.")); return
         if not hasattr(self, "_dependency_drafts"): self._dependency_drafts = {}
         if not isinstance(self.screen, ResourceRecheckScreen):
             self.push_screen(ResourceRecheckScreen(status, self._dependency_drafts.setdefault(service, {}), service=service))
@@ -1758,25 +2114,34 @@ class HypoloomVNextMonitor(App):
     def action_provider_browser(self) -> None:
         server = self._web_server
         if server is None:
-            self.notify("Web is unavailable. Use API recovery in this TUI.")
+            self.notify(tr("Web is unavailable. Use API recovery in this TUI."))
             return
         url = server.provider_control_url()
-        content = ("[b #ffb86b]OPERATOR API LINK[/]\nThis link permits API retry, connection switching, GPU recheck, literature and notification retry. Keep it private.\n\n"
+        content = (tr(
+            "[b #ffb86b]OPERATOR API LINK[/]\n"
+            "This link permits API retry, connection switching, GPU recheck, literature and "
+            "notification retry. Keep it private.\n\n"
+        )
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 
     def action_human_browser(self) -> None:
         server = self._web_server
         if server is None:
-            self.notify("Web is unavailable. You can answer directly in this TUI.")
+            self.notify(tr("Web is unavailable. You can answer directly in this TUI."))
             return
         url = server.human_answer_url()
-        content = ("[b #ffb86b]OPERATOR ANSWER LINK[/]\nThis link permits reviewed Grounding answers for this run. Keep it private.\n\n"
+        content = (tr(
+            "[b #ffb86b]OPERATOR ANSWER LINK[/]\n"
+            "This link permits reviewed Grounding answers for this run. Keep it private.\n\n"
+        )
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))
         self.push_screen(WebAccessScreen(content, access_url=url, inside_tmux=bool(os.environ.get("TMUX"))))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "help-button":
+        if event.button.id == "language-button":
+            self.action_toggle_language()
+        elif event.button.id == "help-button":
             self.action_toggle_help()
         elif event.button.id == "support-help-button":
             self.action_support_export()

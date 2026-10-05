@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 5 observer language: TUI and Web toolbars switch English/Chinese using
+  one packaged catalog; default English. TUI choice is session-local; Web retains
+  explicit browser-origin preference. Redraw preserves filters, drafts, stale
+  observation and original research/log values without issuing controls.
+  Final focused coverage: 166 distinct passes; wheel/isolated install includes
+  catalog. Guides updated; retained research/client untouched.
+  Style follow-up: TUI uses fixed-width CN/EN without reversed focus text;
+  Web uses theme blue. Twelve focused language/docs tests and rendered checks pass.
+  [Validation](../qualification.md#observer-language-switch-2026-10-05).
+
+- October 5 TUI toolbar alignment: fixed three-row buttons clipped by a
+  three-row toolbar including its bottom border. Toolbar height now follows
+  its children; four terminal sizes and two existing monitor tests pass.
+  [Validation](../qualification.md#tui-toolbar-alignment-2026-10-05).
+
 - October 5 publisher selection/TUI: unconfigured publishers now default to
   disabled institutional access. Existing provider_modes carries selected auto,
   public_only and disabled choices through preparation/retry/launch/Host; public

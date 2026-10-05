@@ -79,6 +79,10 @@ TUI 的 `h` 动作和显式授予的 Web 操作员链接会向待处理的 Groun
 人工答复。只读分享链接不能提交。Help、Report Issue 与 Web 访问是不同的界面
 用途。
 
+TUI 工具栏的 **CN / EN** 与 Web 的 **中文 / English** 可切换界面语言，
+首次默认英文；Web 记住当前浏览器的选择。切换不改变研究数据或操作权限。
+详见[监控界面语言说明](../USAGE.zh-CN.md#tuiweb-与人工决策)。
+
 Web 的 **Hypothesis lineage** 中，实线箭头表示父假设到派生假设，虚线箭头表示
 胜出假设到被剪枝假设。**Hide pruning links (N)** / **Show pruning links (N)**
 表示点击后隐藏或显示剪枝连线，N 为连线数量。隐藏连线后，假设节点及其状态仍然

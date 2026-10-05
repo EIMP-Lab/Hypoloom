@@ -74,6 +74,14 @@ confirmed Start now. Nothing starts the monitor automatically. Completion
 covers the skill name, not dynamic run IDs or gray prompt suggestions; no CC
 history/settings or separate active-run registry is modified.
 
+Both TUI and Web start in English. Use **CN** (TUI) or **中文** (Web) in the toolbar
+to switch to Chinese, then **EN** (TUI) or **English** (Web) to switch back. The TUI
+choice lasts for the current monitor session. Web remembers an explicit choice in browser
+storage for that address; if storage is unavailable, it lasts only for the page.
+Language changes update interface labels and guidance while preserving filters,
+drafts and research state. Research prose, logs, identifiers and commands retain
+their original contents. Each viewer chooses its own language independently.
+
 - **q / Leave monitor**: leaves the current monitor window; the background
   Host and tasks continue.
 - **x / End run**: opens an explicit cancellation confirmation; wait for task

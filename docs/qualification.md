@@ -7742,6 +7742,62 @@ an actual authorized PDF download, identity validation and archive; opening its
 viewer or finding a repository sample is insufficient. That bounded acceptance
 check can run independently of a fresh research init.
 
+## TUI toolbar alignment (2026-10-05)
+
+Evidence: `.local/qualification/tui-toolbar-alignment-20261005/`. The toolbar's
+fixed height of three rows included its bottom border, clipping the last row
+of Help, Report Issue and End run. Automatic toolbar height now accommodates
+the three-row buttons and divider. Before/after rendered cells and screenshots
+cover 50×16, 80×24, 120×40 and 237×52; every label has a blank row above and below.
+The existing headless monitor and narrow-layout tests both pass (`focused.xml`).
+This is a display-only change; retained research runs remain untouched.
+
+## Observer language switch (2026-10-05)
+
+Evidence: `.local/qualification/observer-language-20261005/`. TUI and Web now
+share a packaged English-to-Chinese interface catalog and expose a toolbar
+switch. Initial language is English regardless of browser locale. TUI choice
+lasts for the monitor session; Web remembers an explicit choice in the browser's
+origin-local storage. Denied storage still permits switching in the current
+page; an unavailable catalog leaves English observation operational.
+
+Translation applies to interface templates before inserting values. Research
+content, identifiers, commands, logs and durable records retain their original
+values. Switching redraws the existing observation without issuing controls or
+new refresh requests. Tests preserve filters, human drafts, stale-connection
+indicators, institutional observations and exact operator command semantics.
+TUI rendering covers 50×16, 80×24, 120×40 and 237×52; browser checks include a
+390-pixel viewport and repeated switching of cached workbench panels.
+
+The final results contain **166 distinct passing test identities**, zero failures
+and zero skips, including 143 existing monitor/Web/support regressions. Original
+red results remain in the evidence directory: a missing resource-modal import
+was repaired and an incorrect Chinese-label expectation was corrected. Focused
+reruns pass; no acceptance check was weakened. JavaScript syntax, Python 3.10
+parsing, changed-module undefined names and diff whitespace checks pass.
+
+An isolated wheel installation contains all 1,248 catalog entries and serves
+the catalog through the existing static-asset route/security headers. Catalog,
+translation helper, TUI and Web script bytes match source, wheel and installation.
+English/Chinese usage and operator guides describe preference lifetime and
+unchanged research content. Retained runs, Hosts and Windows helpers were not
+changed; no native research closure, paid-model or GPU qualification is claimed
+for this presentation-only change. Reopen the monitor (including the standalone
+Web listener) to load the new code; research does not require reinitialization.
+
+Button-style follow-up: the default TUI focus style reversed the label against
+white, and the Chinese label wrapped because button padding left only two text
+cells. The compact label now uses CN/EN with bold, non-reversed focus text;
+the existing whole-button focus color remains. Web uses the theme's blue accent
+instead of inheriting the amber Help style. Twelve existing language/docs cases
+pass. Rendered checks cover both labels at four TUI sizes and normal/hover/focus
+Web states at 1440/390 pixels; TUI button dimensions remain constant, text is
+centered on one line, and Web colors match the existing accent. An initial manual
+probe incorrectly required an unchanged horizontal position when neighboring
+translated labels resized; the final probe checks button dimensions instead.
+Evidence: `.local/qualification/language-button-style-20261005/`. This styling
+follow-up was checked from source; the earlier wheel predates these cosmetic edits.
+
 ## Same-title arXiv fallback (2026-10-04)
 
 Evidence: `.local/qualification/arxiv-fallback-20261004/`. The operator requests

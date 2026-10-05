@@ -19,12 +19,15 @@ INPUT_TOO_LONG_PHRASES = (
 PROVIDER_UNAVAILABLE = frozenset({"auth_failed", "rate_limited", "quota_exhausted"})
 
 
-def provider_status_text(status):
+def provider_status_text(status, *, language="en"):
+    from functools import partial
+    from .ui_i18n import translate
+    tr = partial(translate, language=language)
     if not status:
-        return "API status unknown: a live Host observation is required."
+        return tr("API status unknown: a live Host observation is required.")
     state = status.get("state", "cooldown" if status.get("pending") else "ready")
-    if state == "ready": return "API dispatch available."
-    if state == "recovering": return "Trying API recovery with one pending task; access is not yet confirmed."
+    if state == "ready": return tr("API dispatch available.")
+    if state == "recovering": return tr("Trying API recovery with one pending task; access is not yet confirmed.")
     reason = {"auth_failed": "authentication rejected", "rate_limited": "rate limit (quota cause unconfirmed)",
         "quota_exhausted": "quota exhausted", "connection_configuration": "connection configuration unavailable"}.get(status.get("reason"), "provider rejected access")
     until = status.get("next_retry_at")
@@ -32,7 +35,7 @@ def provider_status_text(status):
         until = max((g["until"] for g in status.get("gates", []) if type(g.get("until")) in (int, float)), default=None)
     when = (datetime.fromtimestamp(until, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         if until is not None and not status.get("requires_operator") else "operator action required")
-    return f"API unavailable: {reason}. New Agent dispatch paused. Next attempt: {when}. Submitted experiments continue."
+    return tr("API unavailable: {0}. New Agent dispatch paused. Next attempt: {1}. Submitted experiments continue.", tr(reason), tr(when))
 
 
 class ProviderObservation:

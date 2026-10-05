@@ -515,6 +515,13 @@ def test_static_get_routes_lifecycle_and_security_headers(tmp_path: Path) -> Non
         assert b"Authorization" in script
         assert b"innerHTML" not in script
 
+        status, headers, catalog = _request(server, "GET", "/assets/messages.json")
+        assert status == 200
+        assert headers["content-type"] == "application/json; charset=utf-8"
+        _assert_security_headers(headers)
+        assert json.loads(catalog)["Help"] == "帮助"
+        assert _TOKEN.encode() not in catalog
+
         for path in ("/missing", "/assets/missing.js", "/assets/../web_observer.py"):
             status, headers, body = _request(server, "GET", path)
             assert status == 404

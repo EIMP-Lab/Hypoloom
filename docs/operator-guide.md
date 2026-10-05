@@ -101,6 +101,11 @@ The TUI's `h` action and the explicitly granted Web operator link submit real
 human answers to pending Grounding decisions. Read-only share links cannot do so.
 Help, Report Issue and Web access are separate UI purposes.
 
+Use the toolbar's **CN / EN** in TUI or **中文 / English** in Web to change
+interface language. English is the initial default; Web remembers a browser-local
+choice. This does not change research data or operator permissions. See
+[monitor language behavior](../USAGE.md#tui-web-and-human-decisions).
+
 In the Web **Hypothesis lineage** view, solid arrows connect parents to derived
 hypotheses; dashed arrows connect winners to pruned hypotheses. **Hide pruning
 links (N)** / **Show pruning links (N)** names the next display action; N counts

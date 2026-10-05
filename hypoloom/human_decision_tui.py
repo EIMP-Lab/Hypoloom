@@ -1,6 +1,8 @@
 """An explicit operator answer form; polling and drafts never submit a decision."""
 from __future__ import annotations
 
+from .ui_i18n import tr
+
 import asyncio
 import uuid
 
@@ -40,29 +42,32 @@ class HumanDecisionScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="human-form"):
             with VerticalScroll(id="human-form-scroll"):
-                yield Static(f"Human decision · question {self.decision['ordinal']}\n{self.app.run_id}", markup=False)
+                yield Static(tr("Human decision · question {0}\n{1}", self.decision['ordinal'], self.app.run_id), markup=False)
                 yield Static(self.decision["question"], markup=False, id="human-question")
                 yield Static(self.decision["rationale"], markup=False)
                 for index, option in enumerate(self.decision.get("options", [])):
                     yield Static(option, markup=False)
-                    yield Button(f"Use option {index + 1}", id=f"human-option-{index}", classes="human-option", disabled=not self.writable or self.reviewed)
-                yield Static("Your answer · choose an option or write your own; nothing is preselected.", markup=False)
+                    yield Button(tr("Use option {0}", index + 1), id=f"human-option-{index}", classes="human-option", disabled=not self.writable or self.reviewed)
+                yield Static(tr("Your answer · choose an option or write your own; nothing is preselected."), markup=False)
                 yield TextArea(self.draft.get("text", self.decision.get("answer") or ""), id="human-answer", read_only=not self.writable or self.reviewed)
-                yield Static("Review your answer before submitting. Submission continues this run.", markup=False, id="human-form-status")
+                yield Static(tr("Review your answer before submitting. Submission continues this run."), markup=False, id="human-form-status")
                 if self.history:
-                    yield Static("Previous decisions\n\n" + "\n\n".join(
+                    yield Static(tr("Previous decisions\n\n") + "\n\n".join(
                         f"{item['ordinal']}. {item['question']}\n{item.get('answer') or item.get('resolution') or item['state']}"
                         for item in self.history), markup=False, id="human-history")
             with Horizontal(id="human-actions"):
-                yield Button("Retry same answer" if self.draft.get("pending") else "Review answer", id="human-submit", variant="primary", disabled=not self.writable)
-                yield Button("Edit", id="human-edit", disabled=True)
-                yield Button("Browser", id="human-browser", disabled=self.app._web_server is None)
-                yield Button("Close", id="human-close")
+                yield Button(tr("Retry same answer") if self.draft.get("pending") else tr("Review answer"), id="human-submit", variant="primary", disabled=not self.writable)
+                yield Button(tr("Edit"), id="human-edit", disabled=True)
+                yield Button(tr("Browser"), id="human-browser", disabled=self.app._web_server is None)
+                yield Button(tr("Close"), id="human-close")
 
     def on_mount(self):
         self._buttons()
         if self.draft.get("pending"):
-            self._status("Previous delivery was not confirmed. Retry the same answer or inspect the recorded history.")
+            self._status(tr(
+                "Previous delivery was not confirmed. Retry the same answer or inspect the recorded "
+                "history."
+            ))
 
     def _status(self, message):
         self.query_one("#human-form-status", Static).update(message)
@@ -84,10 +89,13 @@ class HumanDecisionScreen(ModalScreen):
         if current is None or current["state"] != "OPEN" or status.get("run_state") != "WAITING_HUMAN":
             self.writable = False
             self.draft.pop("pending", None)
-            self._status("Decision is no longer pending. Recorded answer: " + str((current or {}).get("answer") or (current or {}).get("resolution") or "unavailable"))
+            self._status(tr("Decision is no longer pending. Recorded answer: ") + str((current or {}).get("answer") or (current or {}).get("resolution") or "unavailable"))
         elif status.get("run_revision") != self.revision and not self.draft.get("pending"):
             self.writable = False
-            self._status("The run changed. Close and reopen this form to review the current decision. Your draft is retained.")
+            self._status(tr(
+                "The run changed. Close and reopen this form to review the current decision. Your draft "
+                "is retained."
+            ))
         self._buttons()
 
     async def on_button_pressed(self, event):
@@ -105,8 +113,8 @@ class HumanDecisionScreen(ModalScreen):
             editor.scroll_visible()
         elif selected == "human-edit" and not self.busy and not self.draft.get("pending"):
             self.reviewed = False
-            self.query_one("#human-submit", Button).label = "Review answer"
-            self._status("Edit your answer, then review it again.")
+            self.query_one("#human-submit", Button).label = tr("Review answer")
+            self._status(tr("Edit your answer, then review it again."))
             self._buttons()
         elif selected == "human-submit" and self.writable and not self.busy:
             text = self.query_one("#human-answer", TextArea).text
@@ -114,8 +122,11 @@ class HumanDecisionScreen(ModalScreen):
                 return
             if not self.reviewed:
                 self.reviewed = True
-                self.query_one("#human-submit", Button).label = "Submit answer"
-                self._status("Review the answer above. Submit answer records it and continues this run; Edit returns to the draft.")
+                self.query_one("#human-submit", Button).label = tr("Submit answer")
+                self._status(tr(
+                    "Review the answer above. Submit answer records it and continues this run; Edit returns "
+                    "to the draft."
+                ))
                 self._buttons()
                 self.query_one("#human-answer", TextArea).scroll_visible()
                 return
@@ -123,12 +134,15 @@ class HumanDecisionScreen(ModalScreen):
                 "expected_revision": self.revision, "request_id": "human-ui-" + str(uuid.uuid4())})
             self.busy = True
             self._buttons()
-            self._status("Submitting to Host…")
+            self._status(tr("Submitting to Host…"))
             try:
                 response = await asyncio.to_thread(submit_answer, self.app.state_root, self.app.run_id, values)
             except (OSError, ProtocolError):
-                self._status("Host reply not confirmed. Retry sends the same answer safely; no Host is started automatically.")
-                self.query_one("#human-submit", Button).label = "Retry same answer"
+                self._status(tr(
+                    "Host reply not confirmed. Retry sends the same answer safely; no Host is started "
+                    "automatically."
+                ))
+                self.query_one("#human-submit", Button).label = tr("Retry same answer")
             except ValueError as exc:
                 self.draft.pop("pending", None)
                 self._status(str(exc))
@@ -136,14 +150,16 @@ class HumanDecisionScreen(ModalScreen):
                 if response.status == "accepted":
                     self.draft.pop("pending", None)
                     self.writable = False
-                    self._status("Answer recorded. The Host can continue this run.")
+                    self._status(tr("Answer recorded. The Host can continue this run."))
                 elif response.status in {"conflict", "rejected"}:
                     self.draft.pop("pending", None)
                     self.writable = False
-                    self._status("Answer not accepted: " + str((response.error or {}).get("message", response.status)) + ". Close and reopen to review current state.")
+                    self._status(tr("Answer not accepted: ") + str((response.error or {}).get("message", response.status)) + ". Close and reopen to review current state.")
                 else:
-                    self._status("Host reply did not confirm acceptance. Retry the same answer or inspect current state.")
-                    self.query_one("#human-submit", Button).label = "Retry same answer"
+                    self._status(tr(
+                        "Host reply did not confirm acceptance. Retry the same answer or inspect current state."
+                    ))
+                    self.query_one("#human-submit", Button).label = tr("Retry same answer")
                 self.app.action_refresh()
             finally:
                 self.busy = False
@@ -151,7 +167,7 @@ class HumanDecisionScreen(ModalScreen):
 
     def action_close(self):
         if self.busy:
-            self._status("Waiting for the Host reply…")
+            self._status(tr("Waiting for the Host reply…"))
             return
         self.draft["text"] = self.query_one("#human-answer", TextArea).text
         self.dismiss()

@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Observer language switch](../qualification.md#observer-language-switch-2026-10-05):
+  shared English/Chinese catalog, independent observer preferences, preserved
+  data/controls and installed-package checks; compact CN/EN and blue button styling.
+
+- [TUI toolbar alignment](../qualification.md#tui-toolbar-alignment-2026-10-05):
+  automatic toolbar height preserves the buttons' centered labels and divider.
+
 - [Publisher selection and English TUI](../design/institutional-access-preparation.md#出版社选择与英文-tui2026-10-05):
   selected modes survive generated launch arguments; other institutional routes
   are disabled, public retrieval stays independent. English read-only TUI and

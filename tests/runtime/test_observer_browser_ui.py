@@ -535,6 +535,7 @@ def browser(tmp_path: Path, request):
     # behavior independent of that host transport; actual Python HTTP auth,
     # scoping and immutable state are covered in test_web_observer.py.
     payloads = {
+        "messages": json.loads((_ASSETS / "messages.json").read_text()),
         "snapshot": _snapshot(),
         "activity": _activity(),
         "details": {
@@ -563,7 +564,8 @@ def browser(tmp_path: Path, request):
       if (query.pathname === '/api/refresh' && window.fixtureDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureDelay));
       if (['/api/events','/api/experiments'].includes(query.pathname) && window.fixtureHistoryDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureHistoryDelay));
       if (query.pathname === '/api/refresh' && window.fixtureError) return {ok:false, status:503};
-      const data = query.pathname === '/api/refresh' ? {snapshot: fixture.snapshot, activity: fixture.activity}
+      const data = query.pathname === '/assets/messages.json' ? fixture.messages
+        : query.pathname === '/api/refresh' ? {snapshot: fixture.snapshot, activity: fixture.activity}
         : query.pathname === '/api/events' ? {events:[{type:'OLDER_EVENT', event_id:'old-event', payload:{}}], events_page:{offset:100, limit:100,total:101,has_more:false}}
         : query.pathname === '/api/experiments' ? {experiments:[{experiment_id:'old-experiment',state:'CLOSED'}], experiments_page:{offset:50,limit:50,total:51,has_more:false}}
         : query.pathname === '/api/snapshot' ? fixture.snapshot

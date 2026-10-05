@@ -1,6 +1,8 @@
 """Explicit run cancellation through the existing Host control protocol."""
 from __future__ import annotations
 
+from .ui_i18n import tr
+
 import asyncio
 import sqlite3
 import uuid
@@ -38,24 +40,30 @@ class EndRunScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="end-run-form"):
             with VerticalScroll(id="end-run-scroll"):
-                yield Static(f"End run\n{self.app.run_id}\nReviewed state: {self.status['run_state']}",
+                yield Static(tr("End run\n{0}\nReviewed state: {1}", self.app.run_id, self.status['run_state']),
                     markup=False, id="end-run-target")
-                yield Static("End this run cancels remaining tasks and preserves recorded results. "
-                    "The Host then finishes cleanup and the final report; this can take time.", markup=False)
-                yield Static("A managed Host exits once all its runs and tasks have finished. "
-                    "A manually resident Host must be stopped separately.", markup=False)
-                yield Static("To leave only the monitor, close this form and press q. "
-                    "The Host and its tasks will continue.", markup=False)
-                yield Static("Confirm only if you want to end this run.", markup=False, id="end-run-status")
+                yield Static(tr(
+                    "End this run cancels remaining tasks and preserves recorded results. The Host then "
+                    "finishes cleanup and the final report; this can take time."
+                ), markup=False)
+                yield Static(tr(
+                    "A managed Host exits once all its runs and tasks have finished. A manually resident "
+                    "Host must be stopped separately."
+                ), markup=False)
+                yield Static(tr(
+                    "To leave only the monitor, close this form and press q. The Host and its tasks will "
+                    "continue."
+                ), markup=False)
+                yield Static(tr("Confirm only if you want to end this run."), markup=False, id="end-run-status")
             with Horizontal(id="end-run-actions"):
-                yield Button("Keep monitoring", id="end-run-close")
-                yield Button("Retry same request" if self.draft.get("pending") else "End this run",
+                yield Button(tr("Keep monitoring"), id="end-run-close")
+                yield Button(tr("Retry same request") if self.draft.get("pending") else tr("End this run"),
                     id="end-run-confirm", variant="error")
 
     def on_mount(self) -> None:
         self.update_status(self.status)
         if self.draft.get("pending"):
-            self._message("Previous Host reply was not confirmed. Retry sends the same request.")
+            self._message(tr("Previous Host reply was not confirmed. Retry sends the same request."))
         self.query_one("#end-run-close", Button).focus()
 
     def _message(self, text: str) -> None:
@@ -89,7 +97,7 @@ class EndRunScreen(ModalScreen):
                 head = transaction.latest_transition(self.app.run_id)
                 if (
                     head is None
-                    or head["workflow_kind"] != "RUN"
+                    or head["workflow_kind"] != tr("RUN")
                     or int(head["revision"]) < accepted_revision
                     or not (head["state"] == RunState.STOPPING
                         or is_terminal(Machine.RUN_WORKFLOW, head["state"]))
@@ -105,16 +113,21 @@ class EndRunScreen(ModalScreen):
         if is_terminal(Machine.RUN_WORKFLOW, state):
             self.writable = False
             self.draft.pop("pending", None)
-            self._message(f"Run is {state}. No further cancellation is needed. "
-                "Host has not been confirmed stopped by this monitor.")
+            self._message(tr(
+                "Run is {0}. No further cancellation is needed. Host has not been confirmed stopped by "
+                "this monitor.",
+                state,
+            ))
         elif state == RunState.STOPPING or self.draft.get("accepted_revision") is not None:
             self.writable = False
             self.draft.pop("pending", None)
-            self._message("STOPPING: waiting for task cleanup and the final report. "
-                "Host has not been confirmed stopped.")
+            self._message(tr(
+                "STOPPING: waiting for task cleanup and the final report. Host has not been confirmed "
+                "stopped."
+            ))
         elif status["run_revision"] != self.revision and not self.draft.get("pending") and not self.draft.get("rejection"):
             self.writable = False
-            self._message("The run changed. Close and reopen this form to review its current state.")
+            self._message(tr("The run changed. Close and reopen this form to review its current state."))
         self._buttons()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -129,24 +142,28 @@ class EndRunScreen(ModalScreen):
             {"run_id": self.app.run_id, "cause": "operator_request_from_tui"}))
         self.busy = True
         self._buttons()
-        self._message("Requesting cancellation from Host…")
+        self._message(tr("Requesting cancellation from Host…"))
         try:
             response = await asyncio.to_thread(request_over_socket,
                 self.app.state_root / "control.sock", request, timeout=30)
         except (OSError, ProtocolError):
             accepted_revision = await asyncio.to_thread(self._durable_acceptance, request)
             if accepted_revision is None:
-                self._message("Host reply not confirmed. The run may still be active or already stopping. "
-                    "Retry sends the same request; refresh to inspect progress.")
-                self.query_one("#end-run-confirm", Button).label = "Retry same request"
+                self._message(tr(
+                    "Host reply not confirmed. The run may still be active or already stopping. Retry sends "
+                    "the same request; refresh to inspect progress."
+                ))
+                self.query_one("#end-run-confirm", Button).label = tr("Retry same request")
             else:
                 self.draft.pop("pending", None)
                 self.draft["accepted_revision"] = accepted_revision
                 self.writable = False
                 self.update_status(self.status)
                 if not is_terminal(Machine.RUN_WORKFLOW, self.status["run_state"]):
-                    self._message("The Host durably accepted this cancellation; its reply arrived after the timeout. "
-                        "Waiting for task cleanup and the final report; the Host has not been confirmed stopped.")
+                    self._message(tr(
+                        "The Host durably accepted this cancellation; its reply arrived after the timeout. "
+                        "Waiting for task cleanup and the final report; the Host has not been confirmed stopped."
+                    ))
         else:
             if response.status == "accepted":
                 self.draft.pop("pending", None)
@@ -156,11 +173,14 @@ class EndRunScreen(ModalScreen):
             elif response.status in {"conflict", "rejected"}:
                 self.draft.pop("pending", None)
                 self.writable = False
-                self.draft["rejection"] = "Cancellation not accepted: " + str((response.error or {}).get("message", response.status))
+                self.draft["rejection"] = tr("Cancellation not accepted: ") + str((response.error or {}).get("message", response.status))
                 self._message(self.draft["rejection"] + ". Close and reopen to review current state.")
             else:
-                self._message("Host reply did not confirm acceptance. Retry the same request or refresh to inspect progress.")
-                self.query_one("#end-run-confirm", Button).label = "Retry same request"
+                self._message(tr(
+                    "Host reply did not confirm acceptance. Retry the same request or refresh to inspect "
+                    "progress."
+                ))
+                self.query_one("#end-run-confirm", Button).label = tr("Retry same request")
         finally:
             self.busy = False
             self._buttons()
@@ -168,6 +188,6 @@ class EndRunScreen(ModalScreen):
 
     def action_close(self) -> None:
         if self.busy:
-            self._message("Waiting for the Host reply…")
+            self._message(tr("Waiting for the Host reply…"))
         else:
             self.dismiss()

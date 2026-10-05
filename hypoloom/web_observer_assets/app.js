@@ -6,6 +6,17 @@
   const REQUEST_TIMEOUT_MS = 8000;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const SESSION_TOKEN_KEY = "hypoloom-observer-token";
+  const LANGUAGE_STORAGE_KEY = "hypoloom.language";
+  let uiLanguage = "en";
+  let messages = {};
+
+  // Translate authored templates before inserting record values. Never translate
+  // research prose, identifiers, log contents, commands or protocol payloads.
+  function t(message, ...values) {
+    const template = uiLanguage === "zh-CN" && Object.hasOwn(messages, message) ? messages[message] : message;
+    return values.length ? template.replace(/\{\{(.*?)\}\}|\{(\d+)\}/g,
+      (match, literal, index) => index === undefined ? `{${literal}}` : String(values[Number(index)])) : template;
+  }
 
   const byId = (id) => document.getElementById(id);
   const connection = byId("connection");
@@ -23,6 +34,10 @@
   const helpDialog = byId("help-dialog");
   const supportDialog = byId("support-dialog");
   const filterIds = ["filter-search", "filter-component", "filter-expert", "filter-kind", "filter-state"];
+  const staticMessages = Array.from(document.querySelectorAll("[data-i18n]"), node => ({node, source: node.textContent, rendered: node.textContent}));
+  const staticAttributes = Array.from(document.querySelectorAll("[title], [aria-label], [placeholder]"))
+    .flatMap(node => ["title", "aria-label", "placeholder"].filter(name => node.hasAttribute(name))
+      .map(name => ({node, name, source: node.getAttribute(name)})));
 
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const fragmentToken = fragment.get("token");
@@ -136,7 +151,9 @@
   }
 
   function setText(id, value) {
-    byId(id).textContent = value === undefined || value === null || value === "" ? "—" : String(value);
+    const node = byId(id);
+    node.removeAttribute("data-i18n");
+    node.textContent = value === undefined || value === null || value === "" ? "—" : String(value);
   }
 
   function list(value) {
@@ -153,8 +170,8 @@
 
   function renderObjective(snapshot) {
     const contract = object(object(snapshot.goal).research_contract);
-    const objective = String(object(contract.goal).objective || object(snapshot.goal).objective || "Research objective unavailable");
-    setText("mission-title", sharedGoal(snapshot) ? "Shared research goal" : "Research objective");
+    const objective = String(object(contract.goal).objective || object(snapshot.goal).objective || t("Research objective unavailable"));
+    setText("mission-title", sharedGoal(snapshot) ? t("Shared research goal") : t("Research objective"));
     setText("mission-summary", compact(objective.split(/\n/).find((line) => line.trim()) || objective, 220));
     const prose = byId("mission-objective");
     if (prose.dataset.objective === objective) return;
@@ -242,7 +259,7 @@
     connectionText.textContent = message;
     providerButtons();
     if (kind !== "live" && state.snapshot) {
-      setText("provider-title", "API status unconfirmed · observation stale");
+      setText("provider-title", t("API status unconfirmed · observation stale"));
     }
   }
 
@@ -366,15 +383,15 @@
     const shared = sharedGoal(snapshot);
     byId("filter-component-label").hidden = shared;
     byId("filter-component-label").parentElement.classList.toggle("shared-goal", shared);
-    updateSelect("filter-component", shared ? [] : list(snapshot.components).map((item) => item.component_id).sort(), "All components");
-    updateSelect("filter-expert", list(snapshot.experts).map((item) => item.role).sort(), "All experts");
+    updateSelect("filter-component", shared ? [] : list(snapshot.components).map((item) => item.component_id).sort(), t("All components"));
+    updateSelect("filter-expert", list(snapshot.experts).map((item) => item.role).sort(), t("All experts"));
     updateSelect(
       "filter-kind",
       Array.from(new Set([
         ...list(snapshot.attempts).map((item) => item.kind),
         ...list(snapshot.rendezvous).map((item) => item.kind),
       ])).sort(),
-      "All kinds",
+      t("All kinds"),
     );
     updateSelect(
       "filter-state",
@@ -384,7 +401,7 @@
         ...list(snapshot.rendezvous).map((item) => item.status),
         ...list(snapshot.attempts).map((item) => item.state),
       ])).sort(),
-      "All states",
+      t("All states"),
     );
   }
 
@@ -416,43 +433,43 @@
     byId("provider-retry").disabled = providerBusy || !providerWritable();
     byId("provider-switch").disabled = providerBusy || !providerWritable() || Boolean(providerPending);
     byId("provider-settings").disabled = providerBusy || Boolean(providerPending);
-    byId("provider-retry").textContent = providerPending ? "Retry same request" : "Try current API";
+    byId("provider-retry").textContent = providerPending ? t("Retry same request") : t("Try current API");
   }
   function renderProvider(snapshot) {
     const retry = snapshot.status?.provider_retry;
     const terminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(snapshot.status?.run_state);
-    const labels = {ready: "API dispatch available", cooldown: "API cooling down", waiting_operator: "API waiting for operator", recovering: "Trying API recovery"};
-    setText("provider-title", terminal ? "Run ended" : retry ? labels[retry.state] || "API status" : "API status unknown");
-    const reasons = {auth_failed: "Authentication rejected", rate_limited: "Rate limit; quota cause unconfirmed", quota_exhausted: "Quota exhausted", connection_configuration: "Connection configuration unavailable"};
-    setText("provider-description", terminal ? "No API recovery is available for an ended run."
-      : !retry ? "Live Host status is unavailable. API availability cannot be confirmed."
-      : retry.state === "ready" ? "Normal dispatch is allowed, subject to task and budget limits."
-      : retry.state === "recovering" ? "One pending task may try the API. Access is not yet confirmed."
-      : `${reasons[retry.reason] || "API unavailable"}. New Agent dispatch paused; submitted experiments continue. ${retry.requires_operator ? "Operator action required." : `Next attempt: ${formatTimestamp(retry.next_retry_at)}.`} Quota reset time: unknown.`);
+    const labels = {ready: t("API dispatch available"), cooldown: t("API cooling down"), waiting_operator: t("API waiting for operator"), recovering: t("Trying API recovery")};
+    setText("provider-title", terminal ? t("Run ended") : retry ? labels[retry.state] || t("API status") : t("API status unknown"));
+    const reasons = {auth_failed: t("Authentication rejected"), rate_limited: t("Rate limit; quota cause unconfirmed"), quota_exhausted: t("Quota exhausted"), connection_configuration: t("Connection configuration unavailable")};
+    setText("provider-description", terminal ? t("No API recovery is available for an ended run.")
+      : !retry ? t("Live Host status is unavailable. API availability cannot be confirmed.")
+      : retry.state === "ready" ? t("Normal dispatch is allowed, subject to task and budget limits.")
+      : retry.state === "recovering" ? t("One pending task may try the API. Access is not yet confirmed.")
+      : t("{0}. New Agent dispatch paused; submitted experiments continue. {1} Quota reset time: unknown.", reasons[retry.reason] || t("API unavailable"), retry.requires_operator ? t("Operator action required.") : t("Next attempt: {0}.", formatTimestamp(retry.next_retry_at))));
     setText("provider-access", providerToken
-      ? "Operator recovery access includes GPU recheck, literature and notification retry. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here."
-      : "Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control.");
+      ? t("Operator recovery access includes GPU recheck, literature and notification retry. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here.")
+      : t("Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control."));
     const blocks = snapshot.status?.resource_blocked || [];
-    setText("resource-blocked", blocks.length ? `GPU infrastructure blocked: ${blocks.map(b => `${b.role}: ${b.code}`).join(" · ")}. Submitted experiments continue; affected nodes await repair and recheck.` : "");
-    if (terminal && blocks.length) setText("resource-blocked", "Run ended; GPU fault history is retained. No resource recovery is available.");
+    setText("resource-blocked", blocks.length ? t("GPU infrastructure blocked: {0}. Submitted experiments continue; affected nodes await repair and recheck.", blocks.map(b => `${b.role}: ${b.code}`).join(" · ")) : "");
+    if (terminal && blocks.length) setText("resource-blocked", t("Run ended; GPU fault history is retained. No resource recovery is available."));
     const recheck = byId("resource-recheck");
     recheck.hidden = terminal || !providerToken || (!blocks.length && !resourcePending);
     recheck.disabled = resourceBusy || !providerWritable();
-    recheck.textContent = resourcePending ? "Retry same resource recheck" : "Recheck GPU resources";
+    recheck.textContent = resourcePending ? t("Retry same resource recheck") : t("Recheck GPU resources");
     const literature = snapshot.status?.literature_retry;
-    setText("literature-status", !literature ? "Literature service status unknown."
-      : `OpenAlex: ${literature.state === "ready" && !literature.recovered_at ? "retrieval allowed; access unverified" : literature.state.replaceAll("_", " ")}${literature.reason ? ` · ${literature.reason}` : ""}. ${literature.requires_operator ? "Operator action required." : literature.next_retry_at ? `Next attempt: ${formatTimestamp(literature.next_retry_at)}.` : ""} ${list(literature.affected_roles).join(", ")}`);
+    setText("literature-status", !literature ? t("Literature service status unknown.")
+      : t("OpenAlex: {0}{1}. {2} {3}", literature.state === "ready" && !literature.recovered_at ? t("retrieval allowed; access unverified") : literature.state.replaceAll("_", " "), literature.reason ? ` · ${literature.reason}` : "", literature.requires_operator ? t("Operator action required.") : literature.next_retry_at ? t("Next attempt: {0}.", formatTimestamp(literature.next_retry_at)) : "", list(literature.affected_roles).join(", ")));
     const notifications = snapshot.status?.notifications;
     const sinks = Object.entries(notifications?.sinks || {}).filter(([name]) => name !== "log");
-    setText("notification-status", !notifications || notifications.state === "unavailable" ? "Notification delivery status unknown; owning service unavailable."
-      : notifications.error ? `Notification service: ${notifications.error}`
-      : !sinks.length ? "No remote notification delivery has been observed."
-      : sinks.map(([name, h]) => `${name}: ${(h.state || "unverified").replaceAll("_", " ")} · pending ${h.pending ?? "unknown"} · last success ${formatTimestamp(h.last_success_at)}${h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : ""}${h.next_retry_at ? ` · next retry ${formatTimestamp(h.next_retry_at)}` : ""}`).join(" | "));
+    setText("notification-status", !notifications || notifications.state === "unavailable" ? t("Notification delivery status unknown; owning service unavailable.")
+      : notifications.error ? t("Notification service: {0}", notifications.error)
+      : !sinks.length ? t("No remote notification delivery has been observed.")
+      : sinks.map(([name, h]) => t("{0}: {1} · pending {2} · last success {3}{4}{5}", name, (h.state || "unverified").replaceAll("_", " "), h.pending ?? "unknown", formatTimestamp(h.last_success_at), h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : "", h.next_retry_at ? t(" · next retry {0}", formatTimestamp(h.next_retry_at)) : "")).join(" | "));
     for (const kind of ["literature", "notification"]) {
       const button = byId(`${kind}-retry`);
       button.hidden = !providerToken || terminal || (kind === "notification" ? !notifications?.sinks?.telegram : !literature);
       button.disabled = dependencyBusy || !providerWritable();
-      button.textContent = dependencyPending[kind] ? "Retry same request" : kind === "literature" ? "Retry literature service" : "Retry Telegram delivery";
+      button.textContent = dependencyPending[kind] ? t("Retry same request") : kind === "literature" ? t("Retry literature service") : t("Retry Telegram delivery");
     }
     providerButtons();
   }
@@ -467,8 +484,8 @@
         headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"}, body: JSON.stringify(dependencyPending[kind])});
       const result = await response.json();
       if (["accepted", "rejected", "conflict"].includes(result.status)) delete dependencyPending[kind];
-      setText("dependency-operation", result.status === "accepted" ? "Retry requested. Recovery is confirmed only after an actual successful response." : "Retry not accepted; inspect current status.");
-    } catch (_) { setText("dependency-operation", "Host reply not confirmed. Retry sends the same request."); }
+      setText("dependency-operation", result.status === "accepted" ? t("Retry requested. Recovery is confirmed only after an actual successful response.") : t("Retry not accepted; inspect current status."));
+    } catch (_) { setText("dependency-operation", t("Host reply not confirmed. Retry sends the same request.")); }
     finally { clearTimeout(timer); dependencyBusy = false; renderProvider(state.snapshot); }
   }
   byId("literature-retry").addEventListener("click", () => requestDependency("literature"));
@@ -477,7 +494,7 @@
     if (resourceBusy || !providerWritable()) return;
     resourcePending ||= {request_id: `web-resource-${crypto.randomUUID()}`};
     resourceBusy = true; byId("resource-recheck").disabled = true;
-    setText("resource-operation", "Rechecking the bound GPU pool…");
+    setText("resource-operation", t("Rechecking the bound GPU pool…"));
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -485,11 +502,11 @@
         headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"}, body: JSON.stringify(resourcePending)});
       const result = await response.json();
       if (result.status === "accepted") {
-        resourcePending = null; setText("resource-operation", "GPU pool rechecked. Existing retry and task budgets remain in effect.");
+        resourcePending = null; setText("resource-operation", t("GPU pool rechecked. Existing retry and task budgets remain in effect."));
       } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
-        resourcePending = null; setText("resource-operation", `Not accepted: ${result.error?.message || result.message || "check operator access"}`);
+        resourcePending = null; setText("resource-operation", t("Not accepted: {0}", result.error?.message || result.message || t("check operator access")));
       } else throw new Error("unconfirmed");
-    } catch (_error) { setText("resource-operation", "Host reply not confirmed. Retry sends the same resource recheck."); }
+    } catch (_error) { setText("resource-operation", t("Host reply not confirmed. Retry sends the same resource recheck.")); }
     finally { clearTimeout(timer); resourceBusy = false; renderProvider(state.snapshot); }
   }
   byId("resource-recheck").addEventListener("click", requestResources);
@@ -498,13 +515,13 @@
     if (!providerPending) {
       const settings = byId("provider-settings").value.trim();
       if (switchConnection && !settings.startsWith("/")) {
-        setText("provider-operation", "Select an absolute Host-side connection file path."); return;
+        setText("provider-operation", t("Select an absolute Host-side connection file path.")); return;
       }
       providerPending = {request_id: `web-provider-${crypto.randomUUID()}`,
         ...(switchConnection ? {settings_path: settings} : {})};
     }
     providerBusy = true; providerButtons();
-    setText("provider-operation", "Requesting API recovery…");
+    setText("provider-operation", t("Requesting API recovery…"));
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -514,13 +531,13 @@
       const result = await response.json();
       if (result.status === "accepted") {
         providerPending = null;
-        setText("provider-operation", "Recovery requested. Awaiting a successful API response; existing results and budgets are preserved.");
+        setText("provider-operation", t("Recovery requested. Awaiting a successful API response; existing results and budgets are preserved."));
       } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
         providerPending = null;
-        setText("provider-operation", `Not accepted: ${result.error?.message || result.message || "check operator access and connection file"}`);
+        setText("provider-operation", t("Not accepted: {0}", result.error?.message || result.message || t("check operator access and connection file")));
       } else throw new Error("unconfirmed");
     } catch (_error) {
-      setText("provider-operation", "Host reply not confirmed. Retry sends the same request; inspect current state before another operation.");
+      setText("provider-operation", t("Host reply not confirmed. Retry sends the same request; inspect current state before another operation."));
     } finally { clearTimeout(timer); providerBusy = false; providerButtons(); }
   }
   byId("provider-retry").addEventListener("click", () => requestProvider(false));
@@ -538,8 +555,8 @@
     const literaturePending = object(status.literature_access).pending;
     const failures = list(snapshot.attempts).filter(item => item.operational_status === "recovery_exhausted");
     const codes = [...new Set(failures.map(item => item.operational_reason || "agent_final_failure"))];
-    const warning = failures.length ? ` · ⚠ ${codes.includes("error_max_budget_usd") ? "BUDGET LIMIT" : "AGENT FINAL FAILURE"} (${failures.length}): ${codes.slice(-3).join(", ")}` : "";
-    setText("run-state", `${status.run_state}${hostAbsent ? " · HOST ABSENT (orphaned)" : ""}${active && status.dispatch_error ? " · DISPATCH PAUSED (Host error)" : ""}${warning}${literaturePending ? ` · 机构全文 ${literaturePending} 篇待处理` : ""}`);
+    const warning = failures.length ? ` · ⚠ ${codes.includes("error_max_budget_usd") ? t("BUDGET LIMIT") : t("AGENT FINAL FAILURE")} (${failures.length}): ${codes.slice(-3).join(", ")}` : "";
+    setText("run-state", `${status.run_state}${hostAbsent ? t(" · HOST ABSENT (orphaned)") : ""}${active && status.dispatch_error ? t(" · DISPATCH PAUSED (Host error)") : ""}${warning}${literaturePending ? t(" · Institutional full text: {0} pending", literaturePending) : ""}`);
     byId("run-state").classList.toggle("blocked", failures.length > 0 || Boolean(active && status.dispatch_error));
     setText("goal-verdict", status.goal_verdict || "PENDING");
     setText(
@@ -550,11 +567,11 @@
     setText("observed-at", formatTimestamp(snapshot.observed_at));
     const runOpen = status.open_attempts;
     const rootOpen = snapshot.durable_open_attempts_state_root;
-    setText("open-attempts", `${runOpen ?? "?"} run / ${rootOpen ?? "?"} root`);
+    setText("open-attempts", t("{0} run / {1} root", runOpen ?? "?", rootOpen ?? "?"));
     const audit = object(oracle.observation);
-    setText("oracle-state", audit.state === "pending" ? "AUDIT PENDING" : audit.state === "error" ? "AUDIT UNAVAILABLE"
-      : oracle.ok === true ? "LAST CLEAN" : oracle.ok === false ? "LAST ISSUES" : "UNKNOWN");
-    byId("oracle-state").title = audit.audited_at ? `Historical audit from ${formatTimestamp(audit.audited_at)}${audit.refreshing ? "; refresh pending" : ""}` : "No completed audit time available";
+    setText("oracle-state", audit.state === "pending" ? t("AUDIT PENDING") : audit.state === "error" ? t("AUDIT UNAVAILABLE")
+      : oracle.ok === true ? t("LAST CLEAN") : oracle.ok === false ? t("LAST ISSUES") : "UNKNOWN");
+    byId("oracle-state").title = audit.audited_at ? t("Historical audit from {0}{1}", formatTimestamp(audit.audited_at), audit.refreshing ? t("; refresh pending") : "") : t("No completed audit time available");
   }
 
   function renderMission(snapshot) {
@@ -564,21 +581,21 @@
     renderObjective(snapshot);
     const schema = contract.schema_version === undefined ? "?" : contract.schema_version;
     byId("mission-meta").textContent =
-      `${snapshot.status_source || "offline projection"} · contract schema ${schema} · ` +
-      (answerToken ? "operator answers require review and explicit submission" : "read-only observation; operator link required to submit answers");
+      t("{0} · contract schema {1} · ", snapshot.status_source || t("offline projection"), schema) +
+      (answerToken ? t("operator answers require review and explicit submission") : t("read-only observation; operator link required to submit answers"));
     const dialogue = list(status.grounding_dialogue);
     byId("grounding-dialogue-panel").hidden = dialogue.length === 0;
     const history = byId("grounding-dialogue-list");
     history.replaceChildren();
     dialogue.forEach((item) => {
       const card = element("article", "panel");
-      card.append(element("h3", "", `Round ${item.ordinal} · ${item.state}`),
+      card.append(element("h3", "", t("Round {0} · {1}", item.ordinal, item.state)),
         element("p", "", item.question), element("p", "", item.rationale),
-        element("p", "", `Decision: ${item.decision_id}`));
-      if (list(item.options).length) card.append(element("p", "", `Suggestions: ${item.options.join(" / ")}`));
-      if (item.answer !== null) card.append(element("p", "", `Answer: ${item.answer}`));
-      else card.append(element("p", "", item.state === "OPEN" ? "Waiting for your answer; no model invocation remains open." : `Closed: ${item.resolution}`));
-      const review = element("button", "", item.state === "OPEN" ? "Review and answer" : "View decision");
+        element("p", "", t("Decision: {0}", item.decision_id)));
+      if (list(item.options).length) card.append(element("p", "", t("Suggestions: {0}", item.options.join(" / "))));
+      if (item.answer !== null) card.append(element("p", "", t("Answer: {0}", item.answer)));
+      else card.append(element("p", "", item.state === "OPEN" ? t("Waiting for your answer; no model invocation remains open.") : t("Closed: {0}", item.resolution)));
+      const review = element("button", "", item.state === "OPEN" ? t("Review and answer") : t("View decision"));
       review.type = "button";
       review.addEventListener("click", () => openHuman(item.decision_id));
       card.append(review);
@@ -607,45 +624,45 @@
       details.append(element("summary", "", title), element("pre", "", JSON.stringify(value, null, 2)));
       return details;
     };
-    panel.append(element("h2", "", "Shared acceptance"),
-      element("p", "prose", acceptance.summary || "Accepted criteria unavailable."),
-      element("p", "", acceptance.rule === "ALL" ? "All conditions must hold (ALL)"
-        : acceptance.rule === "ANY" ? "Any condition may hold (ANY)" : "Acceptance rule unavailable"),
-      element("p", "", `Grounding source Attempt: ${common.source_attempt_id}`),
-      element("p", "panel-copy", "Accepted declaration and published observations only. The recorded goal verdict remains authoritative; expert values are not merged or compared here."));
+    panel.append(element("h2", "", t("Shared acceptance")),
+      element("p", "prose", acceptance.summary || t("Accepted criteria unavailable.")),
+      element("p", "", acceptance.rule === "ALL" ? t("All conditions must hold (ALL)")
+        : acceptance.rule === "ANY" ? t("Any condition may hold (ANY)") : t("Acceptance rule unavailable")),
+      element("p", "", t("Grounding source Attempt: {0}", common.source_attempt_id)),
+      element("p", "panel-copy", t("Accepted declaration and published observations only. The recorded goal verdict remains authoritative; expert values are not merged or compared here.")));
     const criteria = element("ul", "acceptance-conditions");
-    const operators = {GT: ">", GE: "≥", LT: "<", LE: "≤", EQ: "=", IS_TRUE: "must be true"};
+    const operators = {GT: ">", GE: "≥", LT: "<", LE: "≤", EQ: "=", IS_TRUE: t("must be true")};
     list(acceptance.criteria).forEach((criterion) => criteria.append(element("li", "",
       `${criterion.name} ${operators[criterion.operator] || criterion.operator}${criterion.operator === "IS_TRUE" ? "" : ` ${criterion.target}`}`)));
-    panel.append(criteria, element("h3", "", "Required validity checks"));
+    panel.append(criteria, element("h3", "", t("Required validity checks")));
     const validity = element("ul", "acceptance-validity");
-    list(acceptance.validity_checks).forEach((name) => validity.append(element("li", "", `${name} must be true`)));
-    if (!list(acceptance.validity_checks).length) validity.append(element("li", "", "No separate validity checks declared."));
-    panel.append(validity, rawDetails("Technical source · declaration and parser", acceptance));
+    list(acceptance.validity_checks).forEach((name) => validity.append(element("li", "", t("{0} must be true", name))));
+    if (!list(acceptance.validity_checks).length) validity.append(element("li", "", t("No separate validity checks declared.")));
+    panel.append(validity, rawDetails(t("Technical source · declaration and parser"), acceptance));
     renderMetricTrends(panel, common, snapshot);
     const outcomes = list(common.outcomes);
-    if (!outcomes.length) panel.append(element("p", "", "No published experiment outcomes yet."));
+    if (!outcomes.length) panel.append(element("p", "", t("No published experiment outcomes yet.")));
     const records = element("details", "acceptance-records");
-    records.append(element("summary", "", `Published experiment records · ${outcomes.length}`));
+    records.append(element("summary", "", t("Published experiment records · {0}", outcomes.length)));
     outcomes.forEach((item) => {
       const card = element("article", "panel");
-      card.append(element("h3", "", `${item.experiment_id} · ${item.scope || "scope unavailable"}`),
-        element("p", "", `Component: ${item.component_id} · candidate: ${item.method_family_id}`),
-        element("p", "", `Outcome: ${item.outcome_id} · artifact: ${item.artifact_id}`),
-        element("p", "", `Preregistered source Attempt: ${item.source_attempt_id}`),
-        element("p", "", `Execution: ${item.execution_terminal_reason || "unknown"} · source Process only`),
-        element("p", "", `Recorded outcome: ${item.local_outcome} · local metric: ${item.local_metric_value ?? "none"}`),
-        element("p", "", `LOCAL criterion: ${!item.local_measurement ? "not declared" : item.local_outcome === "SUCCESS" ? "passed" : item.local_outcome === "CLEAN_REFUTATION" ? "not met" : `unavailable (${item.local_outcome || "unknown outcome"})`}. Shared GOAL verdict: ${status.goal_verdict || "PENDING"} (run-wide).`));
+      card.append(element("h3", "", `${item.experiment_id} · ${item.scope || t("scope unavailable")}`),
+        element("p", "", t("Component: {0} · candidate: {1}", item.component_id, item.method_family_id)),
+        element("p", "", t("Outcome: {0} · artifact: {1}", item.outcome_id, item.artifact_id)),
+        element("p", "", t("Preregistered source Attempt: {0}", item.source_attempt_id)),
+        element("p", "", t("Execution: {0} · source Process only", item.execution_terminal_reason || "unknown")),
+        element("p", "", t("Recorded outcome: {0} · local metric: {1}", item.local_outcome, item.local_metric_value ?? "none")),
+        element("p", "", t("LOCAL criterion: {0}. Shared GOAL verdict: {1} (run-wide).", !item.local_measurement ? t("not declared") : item.local_outcome === "SUCCESS" ? "passed" : item.local_outcome === "CLEAN_REFUTATION" ? t("not met") : t("unavailable ({0})", item.local_outcome || t("unknown outcome")), status.goal_verdict || "PENDING")));
       if (item.goal_evaluation) {
-        card.append(element("h4", "", "Published observations"));
+        card.append(element("h4", "", t("Published observations")));
         const observations = element("dl", "acceptance-observations");
         Object.entries(item.goal_evaluation.measurements || {}).forEach(([name, value]) => observations.append(element("dt", "", name), element("dd", "", value)));
         Object.entries(item.goal_evaluation.checks || {}).forEach(([name, value]) => observations.append(element("dt", "", name), element("dd", "", String(value))));
-        card.append(observations, rawDetails("Technical source · recorded outcome", item.goal_evaluation));
+        card.append(observations, rawDetails(t("Technical source · recorded outcome"), item.goal_evaluation));
       }
       else card.append(element("p", "", item.scope === "LOCAL"
-        ? "LOCAL: not a common-goal evaluation."
-        : "No accepted common observations published for this outcome."));
+        ? t("LOCAL: not a common-goal evaluation.")
+        : t("No accepted common observations published for this outcome.")));
       records.append(card);
     });
     if (outcomes.length) panel.append(records);
@@ -721,9 +738,9 @@
       if (!series.has(key)) {
         series.set(key, {
           key,
-          label: rootId || `${outcome.component_id || "unknown"} (no recorded hypothesis)`,
+          label: rootId || t("{0} (no recorded hypothesis)", outcome.component_id || "unknown"),
           title: root ? (root.claim || rootId)
-            : "These outcomes are not linked to a recorded hypothesis; they are grouped by component.",
+            : t("These outcomes are not linked to a recorded hypothesis; they are grouped by component."),
           accent: expertClass(snapshot, root ? root.proposer_role : ownerOf(outcome.component_id)),
         });
       }
@@ -782,7 +799,7 @@
         labels.set(key, metric.name);
         series.set(key, {key, label: metric.name,
           context: [role, compact(hypothesis?.claim || hypothesisId || outcome.experiment_id, 64)].filter(Boolean).join(" · "),
-          comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? "Delta from baseline" : measurement.comparison === "RELATIVE_DELTA_FROM_BASELINE" ? "Relative delta from baseline" : measurement.comparison === "VALUE" ? "Value" : "Local measurement",
+          comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? t("Delta from baseline") : measurement.comparison === "RELATIVE_DELTA_FROM_BASELINE" ? t("Relative delta from baseline") : measurement.comparison === "VALUE" ? "Value" : t("Local measurement"),
           criterion: `${metric.direction === 'MAXIMIZE' ? '≥' : metric.direction === 'MINIMIZE' ? '≤' : metric.direction} ${metric.target ?? '?'}`,
 
           title: [hypothesisId || outcome.experiment_id, hypothesis?.claim, measurement.comparison, measurement.parse_rule].filter(Boolean).join("\n"),
@@ -819,7 +836,7 @@
     const y = (value) => margin.top + innerHeight - ((value - low) / (high - low)) * innerHeight;
     const maxLength = Math.max(1, ...visible.map((item) => item.points.length));
     const x = (index) => margin.left + (maxLength === 1 ? innerWidth / 2 : (index / (maxLength - 1)) * innerWidth);
-    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "metric-svg", role: "img", "aria-label": `${label} trend`});
+    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "metric-svg", role: "img", "aria-label": t("{0} trend", label)});
     for (let step = 0; step <= 3; step += 1) {
       const value = low + ((high - low) * step) / 3;
       const top = y(value);
@@ -839,7 +856,7 @@
       const top = y(target.value);
       svg.append(svgElement("line", {class: "metric-target-line", x1: margin.left, x2: width - margin.right, y1: top, y2: top}));
       const label = svgElement("text", {class: "metric-target-label", x: width - margin.right, y: top - 5, "text-anchor": "end"});
-      label.textContent = `target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}`;
+      label.textContent = t("target {0} {1}", METRIC_OPERATORS[target.operator], formatMetric(target.value));
       svg.append(label);
     }
     visible.forEach(({series, points}) => {
@@ -848,12 +865,12 @@
       points.forEach((point, index) => {
         const dot = svgElement("circle", {class: `metric-point ${series.accent}`, cx: x(index).toFixed(1), cy: y(point.value).toFixed(1), r: 3.4});
         const tooltip = svgElement("title");
-        tooltip.textContent = `${point.outcome.experiment_id}\n${label} = ${point.raw}\n${point.hypothesisId ? `hypothesis ${point.hypothesisId}` : "no recorded hypothesis"}`;
+        tooltip.textContent = `${point.outcome.experiment_id}\n${label} = ${point.raw}\n${point.hypothesisId ? t("hypothesis {0}", point.hypothesisId) : t("no recorded hypothesis")}`;
         dot.append(tooltip);
         svg.append(dot);
       });
     });
-    figure.append(element("figcaption", "", target ? `${label} · target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}` : label), svg);
+    figure.append(element("figcaption", "", target ? t("{0} · target {1} {2}", label, METRIC_OPERATORS[target.operator], formatMetric(target.value)) : label), svg);
     return figure;
   }
 
@@ -865,27 +882,27 @@
     card.dataset.metric = metric;
     if (single) {
       const value = element("strong", "metric-single-value", formatMetric(points[0].value));
-      value.title = `Recorded value: ${points[0].raw}`;
+      value.title = t("Recorded value: {0}", points[0].raw);
       card.append(element("h5", "", series.label), value);
     }
     const context = element("p", "metric-local-context", series.context);
     context.title = series.title;
     const latest = points[points.length - 1].outcome;
-    const localStatus = latest.local_outcome === "SUCCESS" ? "passed" : latest.local_outcome === "CLEAN_REFUTATION" ? "not met" : "unavailable";
-    card.append(context, element("p", "panel-copy", `${points.length} published observation${single ? "" : "s"} · ${series.comparison}`),
-      element("p", "metric-local-criterion", `Declared LOCAL criterion: ${series.criterion} · last recorded ${localStatus}`));
+    const localStatus = latest.local_outcome === "SUCCESS" ? "passed" : latest.local_outcome === "CLEAN_REFUTATION" ? t("not met") : "unavailable";
+    card.append(context, element("p", "panel-copy", t("{0} published observation{1} · {2}", points.length, single ? "" : "s", series.comparison)),
+      element("p", "metric-local-criterion", t("Declared LOCAL criterion: {0} · last recorded {1}", series.criterion, localStatus)));
     return card;
   }
 
   function renderMetricTrends(panel, common, snapshot) {
     const model = metricTrendModel(common, snapshot);
     const section = element("section", "metric-trends");
-    section.append(element("h3", "", "Metric trends"), element("h4", "", "GOAL evaluation"),
-      element("p", "panel-copy", "Published observations connected per initial-hypothesis chain, in each chain's experiment order. Click a legend entry to hide or show that chain."));
+    section.append(element("h3", "", t("Metric trends")), element("h4", "", t("GOAL evaluation")),
+      element("p", "panel-copy", t("Published observations connected per initial-hypothesis chain, in each chain's experiment order. Click a legend entry to hide or show that chain.")));
     if (!model.series.size) section.append(element("p", "metric-empty panel-copy",
       list(common.outcomes).some((outcome) => outcome.goal_evaluation)
-        ? "No numeric GOAL measurements are available. See published experiment records for checks and other results."
-        : "Waiting for published GOAL measurements. Local screening and running experiments do not produce a final GOAL score."));
+        ? t("No numeric GOAL measurements are available. See published experiment records for checks and other results.")
+        : t("Waiting for published GOAL measurements. Local screening and running experiments do not produce a final GOAL score.")));
     const legend = element("div", "metric-legend");
     model.series.forEach((item) => {
       const hidden = hiddenMetricSeries.has(item.key);
@@ -909,8 +926,8 @@
         card.dataset.metric = metric;
         const target = model.targets.get(metric);
         card.append(element("h5", "", metric),
-          element("p", "", `Target ${METRIC_OPERATORS[target.operator]} ${formatMetric(target.value)}`),
-          element("p", "panel-copy", "No published measurement"));
+          element("p", "", t("Target {0} {1}", METRIC_OPERATORS[target.operator], formatMetric(target.value))),
+          element("p", "panel-copy", t("No published measurement")));
         grid.append(card);
       }
     });
@@ -919,9 +936,9 @@
       ...list(common.acceptance?.criteria).filter((c) => c.operator === "IS_TRUE").map((c) => c.name)]));
     if (checkNames.length) {
       const checks = element("details", "metric-checks");
-      checks.append(element("summary", "", "GOAL checks · per experiment"));
+      checks.append(element("summary", "", t("GOAL checks · per experiment")));
       const evaluated = list(common.outcomes).filter((item) => item.goal_evaluation);
-      if (!evaluated.length) checks.append(element("p", "panel-copy", checkNames.map((name) => `${name}: unknown`).join(" · ")));
+      if (!evaluated.length) checks.append(element("p", "panel-copy", checkNames.map((name) => t("{0}: unknown", name)).join(" · ")));
       evaluated.forEach((item) => {
         const observed = object(item.goal_evaluation.checks);
         checks.append(element("p", "panel-copy", `${item.experiment_id}: ${checkNames.map((name) =>
@@ -933,11 +950,11 @@
     const localCount = list(common.outcomes).filter((outcome) => outcome.scope === "LOCAL").length;
     if (localCount) {
       const localSection = element("section", "metric-local");
-      localSection.append(element("h4", "", "LOCAL screening"), element("p", "panel-copy",
-        "Single observations appear as results; multiple observations form a trend only within one hypothesis and the same measurement definition. Local scores are not GOAL scores and may use different baselines or scales."));
+      localSection.append(element("h4", "", t("LOCAL screening")), element("p", "panel-copy",
+        t("Single observations appear as results; multiple observations form a trend only within one hypothesis and the same measurement definition. Local scores are not GOAL scores and may use different baselines or scales.")));
       const localGrid = element("div", "metric-grid-charts");
       local.metrics.forEach((bucket, metric) => localGrid.append(renderLocalMetric(metric, local)));
-      if (!local.metrics.size) localSection.append(element("p", "metric-empty panel-copy", "Local records exist; numeric values or measurement definitions are unavailable."));
+      if (!local.metrics.size) localSection.append(element("p", "metric-empty panel-copy", t("Local records exist; numeric values or measurement definitions are unavailable.")));
       localSection.append(localGrid);
       section.append(localSection);
     }
@@ -949,23 +966,23 @@
     const source = String(snapshot.status_source || "");
     const hasHostStatus = source.endsWith("+resident-host-status");
     setText("observer-boundary", providerToken
-      ? `◉ OPERATOR API CONTROL${answerToken ? " / ANSWERS" : ""} · ${hasHostStatus ? "HOST STATUS ENRICHED" : "OFFLINE PROJECTION"}`
+      ? t("◉ OPERATOR API CONTROL{0} · {1}", answerToken ? " / ANSWERS" : "", hasHostStatus ? t("HOST STATUS ENRICHED") : t("OFFLINE PROJECTION"))
       : answerToken
-      ? `◉ OPERATOR ANSWERS · ${hasHostStatus ? "HOST STATUS ENRICHED" : "OFFLINE PROJECTION"}`
-      : hasHostStatus ? "◉ READ-ONLY · HOST STATUS ENRICHED" : "◉ READ-ONLY · OFFLINE PROJECTION");
-    setText("runtime-source", hasHostStatus ? "HOST STATUS" : "OFFLINE");
+      ? t("◉ OPERATOR ANSWERS · {0}", hasHostStatus ? t("HOST STATUS ENRICHED") : t("OFFLINE PROJECTION"))
+      : hasHostStatus ? t("◉ READ-ONLY · HOST STATUS ENRICHED") : t("◉ READ-ONLY · OFFLINE PROJECTION"));
+    setText("runtime-source", hasHostStatus ? t("HOST STATUS") : t("OFFLINE"));
 
     const authority = byId("authority-note");
-    const authorityLabel = element("strong", "", "Authority boundary: ");
+    const authorityLabel = element("strong", "", t("Authority boundary: "));
     const authorityText = hasHostStatus
-      ? "The resident Host answered this poll, so quiescence, Agent usage, and resource waits below reflect that response. OPEN remains durable state, not process liveness; STATUS is not a continuous liveness signal. COMPLETED means lifecycle settlement, not GOAL_MET. Polls may straddle a commit, and Oracle CLEAN is not a scientific-success verdict."
-      : "OPEN means durably open in the state store; it does not prove host, worker, or process liveness. Host quiescence, Agent usage, and live resource waits are unavailable offline. COMPLETED means lifecycle settlement, not GOAL_MET. Polls may straddle a commit, and Oracle CLEAN is not a scientific-success verdict.";
+      ? t("The resident Host answered this poll, so quiescence, Agent usage, and resource waits below reflect that response. OPEN remains durable state, not process liveness; STATUS is not a continuous liveness signal. COMPLETED means lifecycle settlement, not GOAL_MET. Polls may straddle a commit, and Oracle CLEAN is not a scientific-success verdict.")
+      : t("OPEN means durably open in the state store; it does not prove host, worker, or process liveness. Host quiescence, Agent usage, and live resource waits are unavailable offline. COMPLETED means lifecycle settlement, not GOAL_MET. Polls may straddle a commit, and Oracle CLEAN is not a scientific-success verdict.");
     authority.replaceChildren(authorityLabel, document.createTextNode(authorityText));
 
     if (!hasHostStatus) {
-      setText("backup-quiescence", "Host STATUS unavailable");
-      setText("agent-observed", "Host STATUS unavailable");
-      setText("agent-budget", "Host STATUS unavailable");
+      setText("backup-quiescence", t("Host STATUS unavailable"));
+      setText("agent-observed", t("Host STATUS unavailable"));
+      setText("agent-budget", t("Host STATUS unavailable"));
     } else {
       const quiescent = status.quiescent_for_backup;
       setText("backup-quiescence", quiescent === true ? "true" : quiescent === false ? "false" : "unknown");
@@ -973,7 +990,7 @@
       const observed = object(usage.observed_lower_bound);
       setText(
         "agent-observed",
-        `tokens ${observed.tokens ?? "?"} · turns ${observed.turns ?? "?"}`,
+        t("tokens {0} · turns {1}", observed.tokens ?? "?", observed.turns ?? "?"),
       );
       const hasCumulative = usage.profile_cumulative !== null &&
         typeof usage.profile_cumulative === "object" && !Array.isArray(usage.profile_cumulative);
@@ -991,17 +1008,17 @@
       const turnLimit = !hasCumulative || !("limit" in turns) ? "unknown" : turns.limit ?? "unbounded";
       setText(
         "agent-budget",
-        `admission total (actual + conservative bounds): ` +
-          `tokens ${tokens.charged_or_reserved ?? "?"}/${tokenLimit} (${tokenLimitLabel}; ` +
-          `aggregate overage +${tokens.overage ?? 0}) · policy ${modes} · ` +
-          `per-call overages ${enforcement.observed_overage_attempts ?? "?"}` +
+        t("admission total (actual + conservative bounds): ") +
+          t("tokens {0}/{1} ({2}; ", tokens.charged_or_reserved ?? "?", tokenLimit, tokenLimitLabel) +
+          t("aggregate overage +{0}) · policy {1} · ", tokens.overage ?? 0, modes) +
+          t("per-call overages {0}", enforcement.observed_overage_attempts ?? "?") +
           `/+${enforcement.overage_tokens ?? "?"} tokens · ` +
-          `turns ${turns.charged_or_reserved ?? "?"}/${turnLimit} · ` +
-          `open reserve ${openDeclared.attempts ?? "?"} attempts / ` +
-          `≤${openDeclared.tokens ?? "?"} tokens / ≤${openDeclared.turns ?? "?"} turns · ` +
-          `closed accounting unknown ${usage.unobserved_closed_attempts ?? "?"} attempts / ` +
-          `≤${closedUnknown.tokens ?? "?"} tokens / ≤${closedUnknown.turns ?? "?"} turns · ` +
-          `local budget rejection ${usage.budget_rejected_attempts ?? "?"} attempts / zero charge`,
+          t("turns {0}/{1} · ", turns.charged_or_reserved ?? "?", turnLimit) +
+          t("open reserve {0} attempts / ", openDeclared.attempts ?? "?") +
+          t("≤{0} tokens / ≤{1} turns · ", openDeclared.tokens ?? "?", openDeclared.turns ?? "?") +
+          t("closed accounting unknown {0} attempts / ", usage.unobserved_closed_attempts ?? "?") +
+          t("≤{0} tokens / ≤{1} turns · ", closedUnknown.tokens ?? "?", closedUnknown.turns ?? "?") +
+          t("local budget rejection {0} attempts / zero charge", usage.budget_rejected_attempts ?? "?"),
       );
     }
 
@@ -1011,42 +1028,42 @@
       const grant = process.resource_grant || {};
       const bytes = (process.logs || []).reduce((sum, row) => sum + row.bytes, 0);
       const ages = (process.logs || []).filter(row => row.bytes > 0).map(row => row.age_seconds);
-      waitsContainer.append(element("p", "panel-copy", `${process.experiment_id}: ${grant.kind || "resource unknown"} ${(grant.gpu_uuids || []).join(", ")} · process ${process.process_alive === true ? "alive" : process.process_alive === false ? "exited, collection pending" : "liveness unknown"} · logs ${bytes} bytes${ages.length ? ` · last write ${Math.round(Math.min(...ages))} s ago` : " · no output observed"}. Scientific progress unknown; OPEN records ownership.`));
+      waitsContainer.append(element("p", "panel-copy", t("{0}: {1} {2} · process {3} · logs {4} bytes{5}. Scientific progress unknown; OPEN records ownership.", process.experiment_id, grant.kind || t("resource unknown"), (grant.gpu_uuids || []).join(", "), process.process_alive === true ? "alive" : process.process_alive === false ? t("exited, collection pending") : t("liveness unknown"), bytes, ages.length ? t(" · last write {0} s ago", Math.round(Math.min(...ages))) : t(" · no output observed"))));
     }
     const waits = status.resource_waits;
     if (!hasHostStatus || !Array.isArray(waits)) {
-      waitsContainer.append(element("p", "empty-copy", "Host STATUS unavailable; live GPU/capacity waits are unknown."));
+      waitsContainer.append(element("p", "empty-copy", t("Host STATUS unavailable; live GPU/capacity waits are unknown.")));
     } else if (!waits.length) {
-      waitsContainer.append(element("p", "empty-copy", "No resource wait reported by this Host poll."));
+      waitsContainer.append(element("p", "empty-copy", t("No resource wait reported by this Host poll.")));
     } else {
       waits.forEach((value) => {
         const wait = object(value);
         const row = element("div", "resource-wait");
         row.append(
-          element("strong", "", wait.experiment_id || "unnamed workflow"),
-          element("span", "", wait.message || wait.reason || "unspecified resource wait"),
+          element("strong", "", wait.experiment_id || t("unnamed workflow")),
+          element("span", "", wait.message || wait.reason || t("unspecified resource wait")),
         );
         const planning = object(wait.resource_planning);
         const intent = object(planning.resource_intent);
         if (Number.isFinite(intent.workload_memory_mib)) {
           const budget = object(planning.budget);
-          row.append(element("span", "", `GPU budget ${intent.workload_memory_mib} MiB + reserve ${intent.reserve_memory_mib} MiB` +
+          row.append(element("span", "", t("GPU budget {0} MiB + reserve {1} MiB", intent.workload_memory_mib, intent.reserve_memory_mib) +
             (Number.isFinite(budget.sample_peak_mib) && Number.isFinite(budget.headroom_percent)
-              ? ` · measured headroom ${budget.headroom_percent}% · ${intent.sharing}`
-              : intent.sharing ? ` · ${intent.sharing} · no complete measurement` : "")));
+              ? t(" · measured headroom {0}% · {1}", budget.headroom_percent, intent.sharing)
+              : intent.sharing ? t(" · {0} · no complete measurement", intent.sharing) : "")));
         }
         waitsContainer.append(row);
       });
     }
   }
 
-  const EXPERT_STAGES = [
-    ["LITERATURE_REVIEW", "LIT", "Literature review"], ["HYPOTHESIS_PROPOSAL", "HYP", "Hypothesis proposal"],
-    ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", "RUN", "Experiment execution"],
-    ["RESULT_ANALYSIS", "ANA", "Result analysis"], ["HYPOTHESIS_UPDATE", "UPD", "Hypothesis update"],
-    ["CYCLE_REPORT", "REP", "Cycle report"], ["ADJUDICATE", "JDG", "Adjudication"], ["SELF_EVOLVE", "EVO", "Self-evolution"],
-    ["DEBATE", "DEB", "Debate round"], ["DEBATE_JUDGE", "JUD", "Debate judge"], ["LEADER", "LEAD", "Leader advice"],
-  ];
+  const EXPERT_STAGES = () => ([
+    ["LITERATURE_REVIEW", "LIT", t("Literature review")], ["HYPOTHESIS_PROPOSAL", "HYP", t("Hypothesis proposal")],
+    ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", t("RUN"), t("Experiment execution")],
+    ["RESULT_ANALYSIS", "ANA", t("Result analysis")], ["HYPOTHESIS_UPDATE", "UPD", t("Hypothesis update")],
+    ["CYCLE_REPORT", "REP", t("Cycle report")], ["ADJUDICATE", "JDG", "Adjudication"], ["SELF_EVOLVE", "EVO", "Self-evolution"],
+    ["DEBATE", "DEB", t("Debate round")], ["DEBATE_JUDGE", "JUD", t("Debate judge")], ["LEADER", "LEAD", t("Leader advice")],
+  ]);
 
   function compactNumber(value) {
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "?";
@@ -1078,17 +1095,17 @@
       (String(snapshot.status_source || "").endsWith("+resident-host-status") ? "responded" : "unconfirmed");
     const opened = stages.filter((stage) => stage.state === "OPEN");
     const exhausted = stages.some((stage) => stage.operational_status === "recovery_exhausted");
-    const status = opened.length ? `${opened.length} OPEN · Host ${host}` : exhausted ? "Automatic recovery ended" : stages.length ? "Last recorded work" : "No recorded work";
-    parent.append(element("p", `expert-work-status ${opened.length && host !== "responded" ? "stage-unconfirmed" : ""}`, `Cycle ${summary.cycle ?? "—"} · ${status}`));
-    if (snapshot.status?.dispatch_error) parent.append(element("p", "blocked", "Dispatch paused · admitted work may still finish"));
+    const status = opened.length ? t("{0} OPEN · Host {1}", opened.length, host) : exhausted ? t("Automatic recovery ended") : stages.length ? t("Last recorded work") : t("No recorded work");
+    parent.append(element("p", `expert-work-status ${opened.length && host !== "responded" ? "stage-unconfirmed" : ""}`, t("Cycle {0} · {1}", summary.cycle ?? "—", status)));
+    if (snapshot.status?.dispatch_error) parent.append(element("p", "blocked", t("Dispatch paused · admitted work may still finish")));
     const lane = element("div", "expert-stage-lane");
-    lane.setAttribute("aria-label", "Research stages; highlighted stages are current records, not completion percentage");
-    EXPERT_STAGES.forEach(([node, short, name]) => {
+    lane.setAttribute("aria-label", t("Research stages; highlighted stages are current records, not completion percentage"));
+    EXPERT_STAGES().forEach(([node, short, name]) => {
       const matches = stages.filter((stage) => stage.node === node);
       const active = matches.filter((stage) => stage.state === "OPEN");
       const recent = active[0] || matches[matches.length - 1];
       const chip = element("span", `stage-chip stage-${recent ? stageState(recent, host) : "pending"}`, `${short}${active.length > 1 ? ` ×${active.length}` : ""}`);
-      chip.title = `${name}: ${recent ? recent.terminal_reason || recent.state : "no current record"}`;
+      chip.title = `${name}: ${recent ? recent.terminal_reason || recent.state : t("no current record")}`;
       chip.setAttribute("aria-label", chip.title);
       chip.dataset.stage = node;
       lane.append(chip);
@@ -1096,19 +1113,19 @@
     parent.append(lane);
     const activity = element("div", "expert-current-work");
     stages.forEach((stage) => {
-      const phase = stage.failure_stage === "literature_retrieval" ? "Literature preparation"
-        : EXPERT_STAGES.find(([node]) => node === stage.node)?.[2] || stage.node || "Unknown stage";
+      const phase = stage.failure_stage === "literature_retrieval" ? t("Literature preparation")
+        : EXPERT_STAGES().find(([node]) => node === stage.node)?.[2] || stage.node || t("Unknown stage");
       const scope = [stage.kind === "PROCESS" ? "process" : stage.subkind, stage.chain || stage.experiment_id].filter(Boolean).join(" · ");
       const status = stage.terminal_reason || stage.state || "UNKNOWN";
       const row = element("p", `expert-stage-detail stage-${stageState(stage, host)}`);
       row.append(element("strong", "", phase), document.createTextNode(` · ${scope ? `${scope} · ` : ""}${status} · ${stage.elapsed_seconds == null ? "elapsed ?" : formatDuration(0, stage.elapsed_seconds)}`));
-      if (stage.operational_status === "recovery_exhausted") row.append(document.createTextNode(` · ${stage.attempts ?? "?"} attempts · automatic recovery ended`));
+      if (stage.operational_status === "recovery_exhausted") row.append(document.createTextNode(t(" · {0} attempts · automatic recovery ended", stage.attempts ?? "?")));
       if (stage.failure_code) row.append(document.createTextNode(` · ${stage.failure_code}`));
       else if (stage.operational_status && stage.operational_status !== "recovery_exhausted") row.append(document.createTextNode(` · ${stage.operational_status}`));
       if (stage.recovery_note) row.title = stage.recovery_note;
       activity.append(row);
     });
-    if (!stages.length) activity.append(element("p", "panel-copy", "Current stage unavailable; open the expert history for retained evidence."));
+    if (!stages.length) activity.append(element("p", "panel-copy", t("Current stage unavailable; open the expert history for retained evidence.")));
     parent.append(activity);
   }
 
@@ -1116,35 +1133,35 @@
     const parallel = object(summary.parallel_activity);
     if (Object.keys(parallel).length) {
       const counts = element("div", "expert-parallel-work");
-      counts.setAttribute("aria-label", "Hypotheses, proposal tasks and reading assistants");
-      counts.append(element("p", "panel-copy", `Active research chains: ${summary.active_chains ?? "?"} / ${parallel.chain_limit ?? "?"}`));
+      counts.setAttribute("aria-label", t("Hypotheses, proposal tasks and reading assistants"));
+      counts.append(element("p", "panel-copy", t("Active research chains: {0} / {1}", summary.active_chains ?? "?", parallel.chain_limit ?? "?")));
       list(parallel.proposals).forEach((proposal) => {
-        const admitted = `${proposal.accepted_candidates ?? "?"} accepted`;
-        counts.append(element("p", "panel-copy", `${proposal.component_id} · cycle ${proposal.cycle} · hypotheses: ${admitted} / limit ${proposal.candidate_limit ?? "?"}`));
+        const admitted = t("{0} accepted", proposal.accepted_candidates ?? "?");
+        counts.append(element("p", "panel-copy", t("{0} · cycle {1} · hypotheses: {2} / limit {3}", proposal.component_id, proposal.cycle, admitted, proposal.candidate_limit ?? "?")));
         if (!list(proposal.stages).length) return;
         const wings = element("p", "panel-copy proposal-wings");
         ["FORWARD", "BACKWARD", "SYNTHESIS"].forEach((name, index) => {
           const stage = list(proposal.stages).find((item) => item.subkind === name);
-          const value = !stage ? "not dispatched" : stage.terminal_reason === "SUCCEEDED" ? "accepted"
-            : stage.operational_status === "recovery_exhausted" ? "failed · recovery ended" : stage.terminal_reason || stage.state;
+          const value = !stage ? t("not dispatched") : stage.terminal_reason === "SUCCEEDED" ? "accepted"
+            : stage.operational_status === "recovery_exhausted" ? t("failed · recovery ended") : stage.terminal_reason || stage.state;
           if (index) wings.append(document.createTextNode(" · "));
-          wings.append(element("span", "", `${name}: ${value}${stage?.attempts > 1 ? ` (${stage.attempts} attempts)` : ""}`));
+          wings.append(element("span", "", `${name}: ${value}${stage?.attempts > 1 ? t(" ({0} attempts)", stage.attempts) : ""}`));
         });
         counts.append(wings);
       });
       const readers = object(parallel.readers), statuses = object(readers.states), calls = object(readers.calls);
-      counts.append(element("p", "panel-copy", `Reading assistants: ${readers.tasks ?? "?"} tasks · ${readers.attempts ?? "?"} attempts · queued ${statuses.queued ?? "?"} · running ${statuses.running ?? "?"} · completed ${statuses.completed ?? "?"} · failed ${statuses.failed ?? "?"} · cancelled ${statuses.cancelled ?? "?"}${statuses.unknown ? ` · unknown ${statuses.unknown}` : ""}`));
+      counts.append(element("p", "panel-copy", t("Reading assistants: {0} tasks · {1} attempts · queued {2} · running {3} · completed {4} · failed {5} · cancelled {6}{7}", readers.tasks ?? "?", readers.attempts ?? "?", statuses.queued ?? "?", statuses.running ?? "?", statuses.completed ?? "?", statuses.failed ?? "?", statuses.cancelled ?? "?", statuses.unknown ? t(" · unknown {0}", statuses.unknown) : "")));
       const prefix = calls.unknown_attempts ? "≥" : "";
-      counts.append(element("p", "panel-copy reading-tool-observation", `Reading tool: ${prefix}${calls.calls ?? "?"} calls · ${prefix}${calls.rejected ?? "?"} rejected${calls.unknown_attempts ? ` · ${calls.unknown_attempts} attempt traces incomplete/unavailable` : ""}${calls.unanswered ? ` · ${calls.unanswered} results unobserved` : ""}`));
-      list(calls.observed_wait_reasons).forEach((reason) => counts.append(element("p", "panel-copy", `Recorded reading wait: ${reason} · may have changed`)));
+      counts.append(element("p", "panel-copy reading-tool-observation", t("Reading tool: {0}{1} calls · {2}{3} rejected{4}{5}", prefix, calls.calls ?? "?", prefix, calls.rejected ?? "?", calls.unknown_attempts ? t(" · {0} attempt traces incomplete/unavailable", calls.unknown_attempts) : "", calls.unanswered ? t(" · {0} results unobserved", calls.unanswered) : "")));
+      list(calls.observed_wait_reasons).forEach((reason) => counts.append(element("p", "panel-copy", t("Recorded reading wait: {0} · may have changed", reason))));
       parent.append(counts);
-    } else parent.append(element("p", "panel-copy", "Proposal and reading activity is unavailable in the current observation."));
+    } else parent.append(element("p", "panel-copy", t("Proposal and reading activity is unavailable in the current observation.")));
   }
 
   function renderStageTokens(parent, values) {
     const table = element("table", "stage-token-table");
     const heading = element("tr", "");
-    ["Stage", "Reported", "Failed calls", "Recovery calls", "Open observed", "Reserved"].forEach((name) => heading.append(element("th", "", name)));
+    ["Stage", "Reported", t("Failed calls"), t("Recovery calls"), t("Open observed"), "Reserved"].forEach((name) => heading.append(element("th", "", name)));
     table.append(heading);
     list(values).forEach((stage) => {
       const row = element("tr", "");
@@ -1153,29 +1170,29 @@
         usage.reported_tokens, usage.failed_reported_tokens, recovery.recovery_reported_tokens,
         usage.observed_unsettled_tokens, usage.reserved_tokens].forEach((value, index) =>
           row.append(element("td", "", index ? (Number.isInteger(value) ? compactNumber(value) : "unknown") : value)));
-      row.title = `Usage lower bounds; unknown closed calls: ${usage.unknown_closed_attempts ?? '?'}; unavailable token records: ${usage.unavailable_token_attempts ?? '?'}`;
+      row.title = t("Usage lower bounds; unknown closed calls: {0}; unavailable token records: {1}", usage.unknown_closed_attempts ?? '?', usage.unavailable_token_attempts ?? '?');
       table.append(row);
     });
     if (list(values).length) parent.append(table);
-    else parent.append(element("p", "panel-copy", "Stage token accounting unavailable."));
-    parent.append(element("p", "panel-copy", "Failed and recovery calls are subsets of reported usage and may overlap. Open observations and reserves are separate; reserves are not consumption. Missing usage is unknown."));
+    else parent.append(element("p", "panel-copy", t("Stage token accounting unavailable.")));
+    parent.append(element("p", "panel-copy", t("Failed and recovery calls are subsets of reported usage and may overlap. Open observations and reserves are separate; reserves are not consumption. Missing usage is unknown.")));
   }
 
   function renderExpertDetails(parent, role) {
     const snapshot = state.snapshot || {};
     const summary = object(list(object(snapshot.overview || state.product?.summary).experts)
       .find((item) => item.role === role));
-    parent.append(element("h3", "", "Current work"));
+    parent.append(element("h3", "", t("Current work")));
     renderExpertActivity(parent, summary, snapshot);
     list(summary.activity).filter((stage) => stage.operational_status === "recovery_exhausted").forEach((stage) => {
-      parent.append(element("p", "panel-copy", stage.recovery_note || "Automatic recovery ended for this node."));
-      parent.append(actionButton("Failure details", () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link"));
+      parent.append(element("p", "panel-copy", stage.recovery_note || t("Automatic recovery ended for this node.")));
+      parent.append(actionButton(t("Failure details"), () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link"));
     });
-    parent.append(element("h3", "", "Tokens by stage"));
+    parent.append(element("h3", "", t("Tokens by stage")));
     renderStageTokens(parent, summary.stage_accounting);
-    parent.append(element("h3", "", "Research chains, proposals and reading"));
+    parent.append(element("h3", "", t("Research chains, proposals and reading")));
     renderExpertParallelActivity(parent, summary);
-    parent.append(actionButton("Browse expert history", () => {
+    parent.append(actionButton(t("Browse expert history"), () => {
       byId("filter-expert").value = role;
       closeDrawer();
       renderFilteredViews();
@@ -1185,14 +1202,14 @@
 
   function taskScopeLabel(record) {
     return record.task_scope === "run" ? "Global" : record.task_scope === "expert"
-      ? `Expert · ${record.owner_role || "unavailable"}` : "Ownership unknown";
+      ? t("Expert · {0}", record.owner_role || "unavailable") : t("Ownership unknown");
   }
 
   function renderGlobalTasks(snapshot) {
     const container = byId("global-task-list");
     container.replaceChildren();
     const overview = object(snapshot.overview);
-    [["run", "global_tasks", "Global"], ["unknown", "unknown_tasks", "Ownership unknown"]].forEach(([scope, key, title]) => {
+    [["run", "global_tasks", "Global"], ["unknown", "unknown_tasks", t("Ownership unknown")]].forEach(([scope, key, title]) => {
       const group = object(overview[key]);
       if (!list(group.stages).length) return;
       const row = element("article", "global-task-summary");
@@ -1201,19 +1218,19 @@
       stages.forEach((stage) => {
         const button = actionButton(`${stage.node || "Task"} · ${stage.state === "OPEN" ? "OPEN" : stage.terminal_reason || stage.state} · ${compactDuration(stage.elapsed_seconds)}`,
           () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link global-task-attempt");
-        button.title = `${title} task · OPEN is durable state, not process liveness`;
+        button.title = t("{0} task · OPEN is durable state, not process liveness", title);
         row.append(button);
       });
       const usage = object(group.accounting);
-      row.append(element("span", "panel-copy", ` ${title} · ≥${compactNumber(usage.reported_tokens)} tokens · reserved ${compactNumber(usage.reserved_tokens)} `));
-      row.append(actionButton("Details & history", () => openLocalDetail("global_tasks", {task_scope: scope, name: `${title} tasks`}), "detail-link"));
+      row.append(element("span", "panel-copy", t(" {0} · ≥{1} tokens · reserved {2} ", title, compactNumber(usage.reported_tokens), compactNumber(usage.reserved_tokens))));
+      row.append(actionButton("Details & history", () => openLocalDetail("global_tasks", {task_scope: scope, name: t("{0} tasks", title)}), "detail-link"));
       container.append(row);
     });
     const sharing = object(overview.grounding_sharing);
     if (sharing.state === "accepted") container.append(element("p", "panel-copy grounding-sharing",
-      `Grounding accepted · supplied to ${list(sharing.experts).filter((item) => item.provided).length}/${list(sharing.experts).length} experts' task inputs`));
-    else if (sharing.state === "waiting_human") container.append(element("p", "panel-copy", "Grounding awaiting clarification · review the questions above."));
-    if (!container.children.length) container.append(element("p", "empty-copy", "No global task evidence yet."));
+      t("Grounding accepted · supplied to {0}/{1} experts' task inputs", list(sharing.experts).filter((item) => item.provided).length, list(sharing.experts).length)));
+    else if (sharing.state === "waiting_human") container.append(element("p", "panel-copy", t("Grounding awaiting clarification · review the questions above.")));
+    if (!container.children.length) container.append(element("p", "empty-copy", t("No global task evidence yet.")));
   }
 
   function renderGlobalDetails(parent, scope) {
@@ -1221,22 +1238,22 @@
     const group = object(overview[scope === "run" ? "global_tasks" : "unknown_tasks"]);
     if (scope === "run") {
       const sharing = object(overview.grounding_sharing);
-      parent.append(element("h3", "", "Grounding sharing"), element("p", "panel-copy",
-        sharing.state === "accepted" ? "Accepted result available to subsequent tasks. Input delivery does not establish reading or understanding."
-          : sharing.state === "waiting_human" ? "Awaiting clarification; no final accepted result."
-          : "No final accepted Grounding result available."));
-      if (sharing.source_attempt_id) parent.append(actionButton("Grounding source", () => openRemoteDetail("attempt", {attempt_id: sharing.source_attempt_id}), "detail-link"));
+      parent.append(element("h3", "", t("Grounding sharing")), element("p", "panel-copy",
+        sharing.state === "accepted" ? t("Accepted result available to subsequent tasks. Input delivery does not establish reading or understanding.")
+          : sharing.state === "waiting_human" ? t("Awaiting clarification; no final accepted result.")
+          : t("No final accepted Grounding result available.")));
+      if (sharing.source_attempt_id) parent.append(actionButton(t("Grounding source"), () => openRemoteDetail("attempt", {attempt_id: sharing.source_attempt_id}), "detail-link"));
       list(sharing.experts).forEach((expert) => parent.append(element("p", "panel-copy",
-        `${expert.role} · ${expert.provided ? "provided in task inputs" : "delivery not yet observed"}`)));
+        `${expert.role} · ${expert.provided ? t("provided in task inputs") : t("delivery not yet observed")}`)));
     }
     parent.append(element("h3", "", "Usage & recovery"));
     structuredDetail(parent, {tokens: group.accounting, context_recovery: Object.fromEntries(
       Object.entries(object(group.context_recovery)).filter(([key]) => !/cost|pricing|usd/i.test(key)))});
     compactReliability(parent, object(group.reliability).metrics, {expanded: true, taskScope: scope});
-    parent.append(element("h3", "", "Recorded tasks"));
-    list(group.stages).slice(-20).forEach((stage) => parent.append(actionButton(`${stage.node} · ${stage.terminal_reason || stage.state} · execution role ${stage.role || "unknown"}`,
+    parent.append(element("h3", "", t("Recorded tasks")));
+    list(group.stages).slice(-20).forEach((stage) => parent.append(actionButton(t("{0} · {1} · execution role {2}", stage.node, stage.terminal_reason || stage.state, stage.role || "unknown"),
       () => openRemoteDetail("attempt", {attempt_id: stage.attempt_id}), "detail-link")));
-    parent.append(actionButton("Browse task history", () => {
+    parent.append(actionButton(t("Browse task history"), () => {
       closeDrawer(); openWorkbench("sessions", {task_scope: scope});
     }));
   }
@@ -1288,41 +1305,41 @@
     const priorKnown = separatedContext && Number.isInteger(context.last_observed_input_tokens) && context.last_observed_input_tokens >= 0;
     const limit = Number.isInteger(attempt.context_window_tokens) && attempt.context_window_tokens > 0 ? attempt.context_window_tokens : null;
     const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens)
-      : priorKnown ? `last ${compactNumber(context.last_observed_input_tokens)}` : "—";
+      : priorKnown ? t("last {0}", compactNumber(context.last_observed_input_tokens)) : "—";
     value.textContent = attempt.operational_status === "compacting" ? `↻ ${valueText}` : valueText;
     fill.style.width = known && limit ? `${Math.min(100, Math.round((attempt.context_tokens / limit) * 1000) / 10)}%` : "0%";
-    const lines = [`${label} · attempt ${attempt.attempt_id}`];
+    const lines = [t("{0} · attempt {1}", label, attempt.attempt_id)];
     if (isProcess) {
-      lines.push(`elapsed ${compactDuration(elapsed)} · OPEN is durable state, not process liveness`);
+      lines.push(t("elapsed {0} · OPEN is durable state, not process liveness", compactDuration(elapsed)));
     } else {
       if (separatedContext) {
         const currentExchange = context.current_request_exchange ?? "unknown";
-        lines.push(`Current request: exchange ${currentExchange} · ${known ? `${compactNumber(attempt.context_tokens)} input tokens · ${attempt.context_source || "unknown source"}` : "no provider input usage"}`);
-        lines.push(priorKnown ? `Last measured input: ${compactNumber(context.last_observed_input_tokens)} tokens · exchange ${context.last_observed_exchange ?? "unknown"}${context.last_observed_exchange !== context.current_request_exchange ? " (earlier request)" : ""}` : "Last measured input: unavailable");
+        lines.push(t("Current request: exchange {0} · {1}", currentExchange, known ? t("{0} input tokens · {1}", compactNumber(attempt.context_tokens), attempt.context_source || t("unknown source")) : t("no provider input usage")));
+        lines.push(priorKnown ? t("Last measured input: {0} tokens · exchange {1}{2}", compactNumber(context.last_observed_input_tokens), context.last_observed_exchange ?? "unknown", context.last_observed_exchange !== context.current_request_exchange ? t(" (earlier request)") : "") : t("Last measured input: unavailable"));
         const estimate = context.current_request_estimated_input_tokens;
-        const estimateSources = {provider_count_tokens: "provider token count", provider_usage_plus_delta_estimate: "prior measured usage plus estimated added input", utf8_bytes_conservative_estimate: "conservative UTF-8 byte estimate"};
-        lines.push(`Current request estimate: ${Number.isInteger(estimate) ? compactNumber(estimate) : "unknown"} · ${estimateSources[context.current_request_estimate_source] || context.current_request_estimate_source || "unknown source"}`);
-        if (typeof context.current_request_fits === "boolean") lines.push(`Current request capacity check: ${context.current_request_fits ? "within" : "exceeds"} input allowance`);
-        if (context.current_request_estimate_reason) lines.push(`Estimate basis: ${context.current_request_estimate_reason}`);
+        const estimateSources = {provider_count_tokens: t("provider token count"), provider_usage_plus_delta_estimate: t("prior measured usage plus estimated added input"), utf8_bytes_conservative_estimate: t("conservative UTF-8 byte estimate")};
+        lines.push(t("Current request estimate: {0} · {1}", Number.isInteger(estimate) ? compactNumber(estimate) : "unknown", estimateSources[context.current_request_estimate_source] || context.current_request_estimate_source || t("unknown source")));
+        if (typeof context.current_request_fits === "boolean") lines.push(t("Current request capacity check: {0} input allowance", context.current_request_fits ? "within" : "exceeds"));
+        if (context.current_request_estimate_reason) lines.push(t("Estimate basis: {0}", context.current_request_estimate_reason));
       } else {
-        lines.push(!known ? "no context reading yet"
-          : `last input ${compactNumber(attempt.context_tokens)}${limit ? ` / ${compactNumber(limit)} working context limit` : " · context window unknown"} · ${attempt.context_source || "unknown source"}`);
-        if (Number.isInteger(context.estimated_input_tokens)) lines.push(`Estimated input: ${compactNumber(context.estimated_input_tokens)} (conservative UTF-8 byte estimate, separate from provider usage)`);
+        lines.push(!known ? t("no context reading yet")
+          : t("last input {0}{1} · {2}", compactNumber(attempt.context_tokens), limit ? t(" / {0} working context limit", compactNumber(limit)) : t(" · context window unknown"), attempt.context_source || t("unknown source")));
+        if (Number.isInteger(context.estimated_input_tokens)) lines.push(t("Estimated input: {0} (conservative UTF-8 byte estimate, separate from provider usage)", compactNumber(context.estimated_input_tokens)));
       }
-      if (attempt.context_window_source === "working_limit_only") lines.push("Provider window unconfirmed; limit is the framework working estimate.");
-      if (Number.isInteger(attempt.cumulative_tokens)) lines.push(`Cumulative invocation usage: ${compactNumber(attempt.cumulative_tokens)} tokens`);
-      if (Number.isInteger(context.available_input_tokens)) lines.push(`Admission input allowance: ${compactNumber(context.available_input_tokens)} · output reserve ${context.output_reserve_tokens ?? "?"} · tools ${context.tool_reserve_tokens ?? "?"} · margin ${context.estimate_margin_tokens ?? "?"}`);
-      if (Number.isInteger(context.declared_context_tokens)) lines.push(`Configured provider window: ${compactNumber(context.declared_context_tokens)} tokens`);
-      if (Number.isInteger(context.cache_read_input_tokens)) lines.push(`Cache read: ${compactNumber(context.cache_read_input_tokens)} input tokens`);
-      if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(`Cache creation: ${compactNumber(context.cache_creation_input_tokens)} input tokens`);
-      if (attempt.session_scope) lines.push(`Session scope: ${attempt.session_scope}`);
+      if (attempt.context_window_source === "working_limit_only") lines.push(t("Provider window unconfirmed; limit is the framework working estimate."));
+      if (Number.isInteger(attempt.cumulative_tokens)) lines.push(t("Cumulative invocation usage: {0} tokens", compactNumber(attempt.cumulative_tokens)));
+      if (Number.isInteger(context.available_input_tokens)) lines.push(t("Admission input allowance: {0} · output reserve {1} · tools {2} · margin {3}", compactNumber(context.available_input_tokens), context.output_reserve_tokens ?? "?", context.tool_reserve_tokens ?? "?", context.estimate_margin_tokens ?? "?"));
+      if (Number.isInteger(context.declared_context_tokens)) lines.push(t("Configured provider window: {0} tokens", compactNumber(context.declared_context_tokens)));
+      if (Number.isInteger(context.cache_read_input_tokens)) lines.push(t("Cache read: {0} input tokens", compactNumber(context.cache_read_input_tokens)));
+      if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(t("Cache creation: {0} input tokens", compactNumber(context.cache_creation_input_tokens)));
+      if (attempt.session_scope) lines.push(t("Session scope: {0}", attempt.session_scope));
       const observation = attempt.context_observation || {};
-      if (Number.isInteger(observation.native_compaction_count)) lines.push(`Native compactions completed: ${observation.native_compaction_count} · explicit starts ${observation.native_compaction_started_count ?? "unknown"} · completion unobserved ${observation.native_compaction_completion_unobserved ?? "unknown"} · observed duration ${observation.native_compaction_duration_ms} ms · unknown durations ${observation.native_compaction_duration_unknown} · transcript coverage ${observation.coverage} · start-event coverage ${observation.native_compaction_start_coverage ?? "unavailable"}`);
+      if (Number.isInteger(observation.native_compaction_count)) lines.push(t("Native compactions completed: {0} · explicit starts {1} · completion unobserved {2} · observed duration {3} ms · unknown durations {4} · transcript coverage {5} · start-event coverage {6}", observation.native_compaction_count, observation.native_compaction_started_count ?? "unknown", observation.native_compaction_completion_unobserved ?? "unknown", observation.native_compaction_duration_ms, observation.native_compaction_duration_unknown, observation.coverage, observation.native_compaction_start_coverage ?? "unavailable"));
       const compact = observation.last_native_compaction;
-      if (compact) lines.push(`Last native compaction: ${compact.pre_tokens ?? "?"} → ${compact.post_tokens ?? "?"} input tokens · ${compact.duration_ms ?? "?"} ms`);
-      if (Number.isInteger(observation.read_calls)) lines.push(`Successful Read calls: ${observation.read_calls} · exact frozen-input rereads ${observation.exact_reread_calls} (shell reads excluded)`);
-      if (attempt.operational_status === "compacting") lines.push("Native CLI last reported: compacting");
-      lines.push(`elapsed ${compactDuration(elapsed)}${hasWall ? ` of ${compactDuration(attempt.wall_seconds)} wall budget${overdue ? " · exceeded" : ""}` : ""} · OPEN is durable state, not process liveness`);
+      if (compact) lines.push(t("Last native compaction: {0} → {1} input tokens · {2} ms", compact.pre_tokens ?? "?", compact.post_tokens ?? "?", compact.duration_ms ?? "?"));
+      if (Number.isInteger(observation.read_calls)) lines.push(t("Successful Read calls: {0} · exact frozen-input rereads {1} (shell reads excluded)", observation.read_calls, observation.exact_reread_calls));
+      if (attempt.operational_status === "compacting") lines.push(t("Native CLI last reported: compacting"));
+      lines.push(t("elapsed {0}{1} · OPEN is durable state, not process liveness", compactDuration(elapsed), hasWall ? t(" of {0} wall budget{1}", compactDuration(attempt.wall_seconds), overdue ? " · exceeded" : "") : ""));
     }
     tile.title = lines.join("\n");
     tile.setAttribute("aria-label", `${label}: ${valueText}`);
@@ -1336,14 +1353,14 @@
     const notice = element("div", `pause-notice${active ? " in-debate" : debatePause ? "" : " neutral"}`);
     const title = element("p", "pause-title");
     title.append(element("span", "pause-glyph", active ? "⚔" : "⏸"),
-      document.createTextNode(active ? "Debate in progress · this expert is a debater"
-        : debatePause ? "Debate proposed · dispatch paused" : "Dispatch paused"));
-    notice.append(title, element("p", "pause-scope", `${scope ? `${scope} · ` : ""}admitted work may finish`));
+      document.createTextNode(active ? t("Debate in progress · this expert is a debater")
+        : debatePause ? t("Debate proposed · dispatch paused") : t("Dispatch paused")));
+    notice.append(title, element("p", "pause-scope", t("{0}admitted work may finish", scope ? `${scope} · ` : "")));
     if (active) notice.append(actionButton("Leader & Debate →", () => openWorkbench("interactions"), "detail-link pause-link"));
     notice.title = [
-      `Pause reason: ${reason || "unspecified"}`,
-      scope ? `Scope: ${scope}` : "Scope: all admitted work of this expert",
-      "Pause blocks new design / experiment / literature dispatch only; OPEN remains durable state, not process liveness.",
+      t("Pause reason: {0}", reason || "unspecified"),
+      scope ? t("Scope: {0}", scope) : t("Scope: all admitted work of this expert"),
+      t("Pause blocks new design / experiment / literature dispatch only; OPEN remains durable state, not process liveness."),
     ].join("\n");
     return notice;
   }
@@ -1359,7 +1376,7 @@
     byId("experts-panel").classList.toggle("shared-goal-experts", sharedGoal(snapshot));
     setText("expert-count", experts.length);
     if (!experts.length) {
-      container.append(element("p", "empty-copy", "No expert projection."));
+      container.append(element("p", "empty-copy", t("No expert projection.")));
       return;
     }
     const summaries = list(object(snapshot.overview || object(state.product).summary).experts);
@@ -1369,81 +1386,81 @@
       card.dataset.expertRole = expert.role;
       const identity = element("div", "expert-identity");
       const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN").length;
-      const heading = element("h3", "", expert.role || "unnamed role");
+      const heading = element("h3", "", expert.role || t("unnamed role"));
       if (openAttempts) {
         const confirmed = object(snapshot.overview).host_observation?.availability === "responded";
         const breath = element("span", `breath-dot${confirmed ? " host-confirmed" : " host-unconfirmed"}`);
-        breath.title = `${openAttempts} durably open attempt${openAttempts === 1 ? "" : "s"} · ${confirmed ? "Host responded this poll" : "Host contact unconfirmed"} · OPEN is durable state, not process liveness`;
-        breath.setAttribute("aria-label", confirmed ? "Open work; Host responded" : "Open work; activity unknown");
+        breath.title = t("{0} durably open attempt{1} · {2} · OPEN is durable state, not process liveness", openAttempts, openAttempts === 1 ? "" : "s", confirmed ? t("Host responded this poll") : t("Host contact unconfirmed"));
+        breath.setAttribute("aria-label", confirmed ? t("Open work; Host responded") : t("Open work; activity unknown"));
         heading.prepend(breath);
       }
-      identity.append(element("p", "eyebrow", `EXPERT ${String(expert.slot_ordinal ?? "?").padStart(2, "0")}`), heading);
+      identity.append(element("p", "eyebrow", t("EXPERT {0}", String(expert.slot_ordinal ?? "?").padStart(2, "0"))), heading);
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (object(summary.leader).active > 0) {
         const crown = element("span", "leader-crown", "♛");
-        crown.title = "Active Leader coordination · open details for advice or retained round semantics";
-        crown.setAttribute("aria-label", "Active Leader");
+        crown.title = t("Active Leader coordination · open details for advice or retained round semantics");
+        crown.setAttribute("aria-label", t("Active Leader"));
         heading.append(crown);
       }
       if (working.length) {
-        const stageByCommand = new Map(EXPERT_STAGES.map(([command, short, label]) => [command, label]));
+        const stageByCommand = new Map(EXPERT_STAGES().map(([command, short, label]) => [command, label]));
         const observedAt = Number(snapshot.observed_at) || Date.now() / 1000;
         const hostResponded = object(snapshot.overview).host_observation?.availability === "responded";
         const sorted = [...working].sort((a, b) => (Number(a.started_at) - Number(b.started_at))
           || String(a.attempt_id).localeCompare(String(b.attempt_id)));
         const wrap = element("div", "working-agents");
-        wrap.append(element("p", "subagent-title", `Working · ${working.length}`));
+        wrap.append(element("p", "subagent-title", t("Working · {0}", working.length)));
         const tiles = element("div", "agent-tile-list");
         sorted.slice(0, 6).forEach((attempt) => {
           const entry = workingTile(attempt, expert.role);
           seenTiles.add(attempt.attempt_id);
-          const label = attempt.kind === "PROCESS" ? "Experiment process"
+          const label = attempt.kind === "PROCESS" ? t("Experiment process")
             : stageByCommand.get(attempt.command) || attempt.command || "unknown";
           updateWorkingTile(entry, attempt, label, hostResponded, observedAt);
           tiles.append(entry.tile);
         });
-        if (working.length > 6) tiles.append(element("span", "agent-tile more", `+${working.length - 6} more`));
+        if (working.length > 6) tiles.append(element("span", "agent-tile more", t("+{0} more", working.length - 6)));
         wrap.append(tiles);
         identity.append(wrap);
         tileLists.set(expert.role, tiles);
       }
       if (sharedGoal(snapshot)) {
         list(snapshot.components).filter((component) => component.owner_role === expert.role).forEach((component) => {
-          identity.append(element("p", "expert-progress", `Progress: ${component.phase || "not started"} · ${component.state || "unavailable"}`));
-          if (component.blocked) identity.append(element("p", "blocked", `Blocked: ${list(component.blocked_reasons).join("; ") || "unspecified"}`));
-          if (component.revision_warning) identity.append(element("p", "blocked", `Repeated revisions without convergence; cause unverified · ${component.cycle_revisions ?? 0} revisions in cycle ${component.current_cycle || "—"}`));
+          identity.append(element("p", "expert-progress", t("Progress: {0} · {1}", component.phase || t("not started"), component.state || "unavailable")));
+          if (component.blocked) identity.append(element("p", "blocked", t("Blocked: {0}", list(component.blocked_reasons).join("; ") || "unspecified")));
+          if (component.revision_warning) identity.append(element("p", "blocked", t("Repeated revisions without convergence; cause unverified · {0} revisions in cycle {1}", component.cycle_revisions ?? 0, component.current_cycle || "—")));
         });
       } else {
-        identity.append(element("p", "", `owns: ${list(expert.owned_component_ids).join(", ") || "—"}`));
-        identity.append(element("p", "", `proposes: ${list(expert.proposing_component_ids).join(", ") || "—"}`));
+        identity.append(element("p", "", t("owns: {0}", list(expert.owned_component_ids).join(", ") || "—")));
+        identity.append(element("p", "", t("proposes: {0}", list(expert.proposing_component_ids).join(", ") || "—")));
       }
       list(expert.pause_requested).forEach((pause) => {
         identity.append(pauseNotice(pause, working.some((attempt) => attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE")));
       });
-      const inspect = actionButton("Expert details", () =>
-        openLocalDetail("expert", {role: expert.role, name: `Expert · ${expert.role}`}));
+      const inspect = actionButton(t("Expert details"), () =>
+        openLocalDetail("expert", {role: expert.role, name: t("Expert · {0}", expert.role)}));
       inspect.dataset.expertDetails = expert.role;
       identity.append(inspect);
       const work = element("div", "expert-work");
       renderExpertActivity(work, summary, snapshot);
       const preview = element("div", "reliability-preview");
-      preview.setAttribute("aria-label", `${expert.role} cumulative execution reliability`);
+      preview.setAttribute("aria-label", t("{0} cumulative execution reliability", expert.role));
       compactReliability(preview, object(summary.reliability).metrics, {role: expert.role});
       work.append(preview);
       const accounting = object(summary.accounting);
       if (accounting.observed_unsettled_tokens > 0) {
-        work.append(element("p", "expert-token-usage", `+≥${compactNumber(accounting.observed_unsettled_tokens)} observed tokens · unsettled calls; included separately from reported usage and reserves`));
+        work.append(element("p", "expert-token-usage", t("+≥{0} observed tokens · unsettled calls; included separately from reported usage and reserves", compactNumber(accounting.observed_unsettled_tokens))));
       }
-      work.append(element("p", "expert-token-usage", `🔢 ≥${compactNumber(accounting.reported_tokens)} tok · reserve ${compactNumber(accounting.reserved_tokens)} · unknown closed ${accounting.unknown_closed_attempts ?? "?"} · unavailable token records ${accounting.unavailable_token_attempts ?? "?"}`));
+      work.append(element("p", "expert-token-usage", t("🔢 ≥{0} tok · reserve {1} · unknown closed {2} · unavailable token records {3}", compactNumber(accounting.reported_tokens), compactNumber(accounting.reserved_tokens), accounting.unknown_closed_attempts ?? "?", accounting.unavailable_token_attempts ?? "?")));
       const recovery = object(summary.context_recovery);
       if (recovery.context_failure_attempts > 0) {
         const retries = recovery.recovery_attempts || 0;
-        const detail = element("p", "expert-token-usage", `Context recovery: ${retries} attempts · reported ≥${compactNumber(recovery.recovery_reported_tokens)} tokens · usage unknown ${recovery.recovery_unknown_token_attempts ?? "?"}`);
-        detail.title = "Subsequent attempts after the first context failure, including successful recovery. Initial failures are separate in command accounting. Unknown usage is not zero; observed usage is not measured savings.";
+        const detail = element("p", "expert-token-usage", t("Context recovery: {0} attempts · reported ≥{1} tokens · usage unknown {2}", retries, compactNumber(recovery.recovery_reported_tokens), recovery.recovery_unknown_token_attempts ?? "?"));
+        detail.title = t("Subsequent attempts after the first context failure, including successful recovery. Initial failures are separate in command accounting. Unknown usage is not zero; observed usage is not measured savings.");
         work.append(detail);
       }
-      work.append(element("p", "panel-copy", `${displayValue(object(summary.experiments).total)} experiments · ${displayValue(object(summary.literature).retrieved)} papers · ${displayValue(object(summary.skills).count)} skills · ${displayValue(object(summary.evolutions).changed)} effective evolutions`));
+      work.append(element("p", "panel-copy", t("{0} experiments · {1} papers · {2} skills · {3} effective evolutions", displayValue(object(summary.experiments).total), displayValue(object(summary.literature).retrieved), displayValue(object(summary.skills).count), displayValue(object(summary.evolutions).changed))));
       card.append(identity, work);
       container.append(card);
     });
@@ -1477,7 +1494,7 @@
     container.replaceChildren();
     setText("component-count", components.length);
     if (!components.length) {
-      container.append(element("p", "empty-copy", "No component projection."));
+      container.append(element("p", "empty-copy", t("No component projection.")));
       return;
     }
     components.forEach((component) => {
@@ -1486,7 +1503,7 @@
         `entity-card expert-accent ${expertClass(snapshot, component.owner_role)}`,
       );
       card.type = "button";
-      card.setAttribute("aria-label", `Inspect component ${component.component_id}`);
+      card.setAttribute("aria-label", t("Inspect component {0}", component.component_id));
       const stateLine = element("p", "state-line");
       stateLine.append(
         element("span", "", compact(component.tier, 24)),
@@ -1494,14 +1511,14 @@
       );
       card.append(stateLine);
       card.append(element("h3", "", component.component_id));
-      card.append(element("p", "", `owner ${component.owner_role || "—"} · phase ${component.phase || "—"}`));
+      card.append(element("p", "", t("owner {0} · phase {1}", component.owner_role || "—", component.phase || "—")));
       if (component.blocked) {
-        card.append(element("p", "blocked", `blocked: ${list(component.blocked_reasons).join("; ") || "unspecified"}`));
+        card.append(element("p", "blocked", t("blocked: {0}", list(component.blocked_reasons).join("; ") || "unspecified")));
       } else {
-        card.append(element("p", "", `${list(component.open_attempt_ids).length} durably open attempts`));
+        card.append(element("p", "", t("{0} durably open attempts", list(component.open_attempt_ids).length)));
       }
       if (component.revision_warning) {
-        card.append(element("p", "blocked", `repeated revisions without convergence; cause unverified · circuit breaker ${component.revision_warning}: ${component.cycle_revisions ?? 0} revisions in cycle ${component.current_cycle || "—"}`));
+        card.append(element("p", "blocked", t("repeated revisions without convergence; cause unverified · circuit breaker {0}: {1} revisions in cycle {2}", component.revision_warning, component.cycle_revisions ?? 0, component.current_cycle || "—")));
       }
       card.addEventListener("click", () => selectByComponent(component.component_id));
       container.append(card);
@@ -1516,7 +1533,7 @@
     container.replaceChildren();
     setText("activity-count", openAttempts.length);
     if (!openAttempts.length) {
-      container.append(element("p", "empty-copy", "No matching durable OPEN activity."));
+      container.append(element("p", "empty-copy", t("No matching durable OPEN activity.")));
       return;
     }
     const groups = new Map();
@@ -1548,23 +1565,23 @@
     container.replaceChildren();
     setText("rendezvous-count", records.length);
     if (!records.length) {
-      container.append(element("p", "empty-copy", "No matching durable rendezvous records."));
+      container.append(element("p", "empty-copy", t("No matching durable rendezvous records.")));
       return;
     }
     records.forEach((record) => {
       const card = element("article", "activity-card rendezvous-card");
       const heading = element("div", "activity-heading-row");
       heading.append(
-        element("h3", "", record.rendezvous_id || "unnamed rendezvous"),
+        element("h3", "", record.rendezvous_id || t("unnamed rendezvous")),
         element("span", `status-label ${statusClass(record.status)}`, record.status || "—"),
       );
-      const target = record.responder_role || record.target_role || "unassigned target";
+      const target = record.responder_role || record.target_role || t("unassigned target");
       card.append(heading);
       card.append(element("p", "relation-line", `${record.requester_role || "—"} → ${target}`));
       card.append(element("p", "", `${record.kind || "—"} · ${record.component_id || "—"} · ${record.phase || "—"}`));
-      card.append(element("p", "", record.question || "No question projected."));
+      card.append(element("p", "", record.question || t("No question projected.")));
       if (record.disposition || record.summary) {
-        card.append(element("p", "resolution-line", `${record.disposition || "resolved"} · ${record.summary || "no summary"}`));
+        card.append(element("p", "resolution-line", `${record.disposition || "resolved"} · ${record.summary || t("no summary")}`));
       }
       container.append(card);
     });
@@ -1578,22 +1595,22 @@
   }
 
   function appendHypothesisComparison(grid, hypothesis, parent) {
-    appendDefinition(grid, "lineage", hypothesis.parent_hypothesis_id ? "Derived hypothesis" : "Root hypothesis");
+    appendDefinition(grid, "lineage", hypothesis.parent_hypothesis_id ? t("Derived hypothesis") : t("Root hypothesis"));
     if (hypothesis.parent_hypothesis_id) {
-      appendDefinition(grid, "parent claim", parent?.claim || "Parent record unavailable");
-      appendDefinition(grid, "parent method family", parent?.method_family_id || "Unavailable");
-      appendDefinition(grid, "parent scientific assessment", parent ? parent.assessment || "Not assessed" : "Unavailable");
+      appendDefinition(grid, t("parent claim"), parent?.claim || t("Parent record unavailable"));
+      appendDefinition(grid, t("parent method family"), parent?.method_family_id || "Unavailable");
+      appendDefinition(grid, t("parent scientific assessment"), parent ? parent.assessment || t("Not assessed") : "Unavailable");
     }
   }
 
   function graphStatus(item) {
     if (item.kind !== "hypothesis") return {label: item.state, className: statusClass(item.state)};
     const failure = hypothesisFailure(item);
-    if (failure) return {label: failure === "Refuted" ? "Refuted" : "Execution failed", className: "state-blocked", failure};
+    if (failure) return {label: failure === "Refuted" ? "Refuted" : t("Execution failed"), className: "state-blocked", failure};
     const assessment = item.raw.assessment || item.raw.state;
     if (assessment === "SUPPORTED") return {label: "Supported", className: "state-accepted"};
     if (assessment === "INCONCLUSIVE") return {label: "Inconclusive", className: "state-other"};
-    return {label: "Not assessed", className: "state-pending"};
+    return {label: t("Not assessed"), className: "state-pending"};
   }
 
   function isPruned(item) {
@@ -1605,14 +1622,14 @@
     return state.topology.flatMap((item) => [
       ...item.dependencies.map((source) => ({source, target: item.id,
         kind: item.kind === "hypothesis" ? "lineage" : "dependency",
-        relation: item.kind === "hypothesis" ? item.raw.relation || "parent to child" : "dependency"})),
+        relation: item.kind === "hypothesis" ? item.raw.relation || t("parent to child") : "dependency"})),
       ...(includePruning ? list(item.pruningRelations).map((edge) => ({...edge, kind: "pruning"})) : []),
     ]).filter((edge) => visible.has(edge.source) && visible.has(edge.target));
   }
 
   function relationLabel(edge) {
-    return edge.kind === "pruning" ? "Winner → pruned hypothesis"
-      : edge.kind === "lineage" ? "Parent → derived hypothesis" : "Dependency → dependent";
+    return edge.kind === "pruning" ? t("Winner → pruned hypothesis")
+      : edge.kind === "lineage" ? t("Parent → derived hypothesis") : "Dependency → dependent";
   }
 
   function inspectRelation(edge, source, target) {
@@ -1643,8 +1660,8 @@
           dependencies: parent ? [hypothesis.parent_hypothesis_id] : [],
           pruningRelations: incoming.filter((edge) => edge.relation === "pruned_by"),
           title: hypothesis.claim || hypothesis.hypothesis_id,
-          subtitle: `${hypothesis.proposer_role || "unknown proposer"} · ${hypothesis.chain || hypothesis.method_family_id || "method ?"}`,
-          detail: [hypothesis.cycle ? `cycle ${hypothesis.cycle}` : "", hypothesis.selected_tip ? "selected" : "", componentId || "component ?"].filter(Boolean).join(" · "),
+          subtitle: `${hypothesis.proposer_role || t("unknown proposer")} · ${hypothesis.chain || hypothesis.method_family_id || "method ?"}`,
+          detail: [hypothesis.cycle ? t("cycle {0}", hypothesis.cycle) : "", hypothesis.selected_tip ? "selected" : "", componentId || "component ?"].filter(Boolean).join(" · "),
           state: hypothesis.state || hypothesis.assessment || component.state || "proposed",
           accentClass: expertClass(snapshot, hypothesis.proposer_role),
           role: hypothesis.proposer_role,
@@ -1668,8 +1685,8 @@
         componentId: component.id,
         dependencies: list(component.dependencies).map(String),
         title: component.id,
-          subtitle: component.name || `${component.tier || "component"} contract`,
-        detail: `${view.phase || "not started"} · owner ${view.owner_role || component.owner || "—"}`,
+          subtitle: component.name || t("{0} contract", component.tier || "component"),
+        detail: t("{0} · owner {1}", view.phase || t("not started"), view.owner_role || component.owner || "—"),
         state: view.state || "pending",
         accentClass: expertClass(snapshot, view.owner_role || component.owner),
         role: view.owner_role || component.owner,
@@ -1754,17 +1771,17 @@
     renderGraph();
     renderDrawer();
     openDrawer();
-    announce(`Selected ${item.kind} ${item.id}`);
+    announce(t("Selected {0} {1}", item.kind, item.id));
   }
 
   function renderFallback(positioned, edges) {
     topologyList.replaceChildren();
     positioned.forEach((item) => {
       const parent = item.kind === "hypothesis"
-        ? `parent: ${item.raw.parent_hypothesis_id || "none (root hypothesis)"}`
-        : `depends on ${item.dependencies.join(", ") || "nothing"}`;
+        ? t("parent: {0}", item.raw.parent_hypothesis_id || t("none (root hypothesis)"))
+        : t("depends on {0}", item.dependencies.join(", ") || "nothing");
       const listItem = element("li");
-      const button = element("button", "", `${item.id} — ${item.title}; ${parent}; ${graphStatus(item).label}${isPruned(item) ? "; pruned (control decision)" : ""}`);
+      const button = element("button", "", `${item.id} — ${item.title}; ${parent}; ${graphStatus(item).label}${isPruned(item) ? t("; pruned (control decision)") : ""}`);
       button.type = "button";
       button.addEventListener("click", () => selectTopology(item));
       listItem.append(button);
@@ -1817,7 +1834,7 @@
     });
     highlightConnected(connected);
     const count = connected.size - 1;
-    relationTooltip.textContent = `${item.id} · ${count} directly connected node${count === 1 ? "" : "s"}`;
+    relationTooltip.textContent = t("{0} · {1} directly connected node{2}", item.id, count, count === 1 ? "" : "s");
     relationTooltip.hidden = false;
   }
 
@@ -1853,12 +1870,12 @@
       const item = element("span", "legend-item");
       const sample = svgElement("svg", {class: "pruned-key", viewBox: "0 0 32 18", "aria-hidden": "true"});
       sample.append(svgElement("rect", {x: 1, y: 1, width: 30, height: 16, rx: 3}));
-      item.append(sample, document.createTextNode("Pruned (control, not refutation)"));
+      item.append(sample, document.createTextNode(t("Pruned (control, not refutation)")));
       controls.push(item);
     }
     group("Control", controls);
-    group("Experts", Array.from(new Set(state.topology.map((item) => item.role))).map((role) =>
-      element("span", `legend-item expert-key ${expertClass(snapshot, role)}`, role || "Unknown expert")));
+    group(t("Experts"), Array.from(new Set(state.topology.map((item) => item.role))).map((role) =>
+      element("span", `legend-item expert-key ${expertClass(snapshot, role)}`, role || t("Unknown expert"))));
   }
 
   function edgeGeometry(source, target, pruning, index) {
@@ -1916,7 +1933,7 @@
       const edge = svgElement("path", {
         class: `graph-edge ${pruning ? "pruning-edge" : ""}`, d: geometry.path,
         tabindex: "0", role: "img", ...attributes,
-        "aria-label": `${source.id} to ${target.id}, ${relationLabel(record)}`,
+        "aria-label": t("{0} to {1}, {2}", source.id, target.id, relationLabel(record)),
       });
       const edgeTitle = svgElement("title");
       edgeTitle.textContent = `${source.id} → ${target.id} · ${relationLabel(record)}`;
@@ -1935,7 +1952,7 @@
     positioned.forEach((item) => {
       const status = graphStatus(item);
       const failure = status.failure;
-      const lineage = item.kind === "hypothesis" ? (item.raw.parent_hypothesis_id ? "Derived hypothesis" : "Root hypothesis") : "";
+      const lineage = item.kind === "hypothesis" ? (item.raw.parent_hypothesis_id ? t("Derived hypothesis") : t("Root hypothesis")) : "";
       const control = isPruned(item) ? " · pruned" : "";
       const group = svgElement("g", {
         class: `graph-node ${item.accentClass} ${status.className}${isPruned(item) ? " is-pruned" : ""}${state.selectedKey === item.key ? " selected" : ""}`,
@@ -2003,19 +2020,19 @@
     const pruningControl = byId("toggle-pruning");
     pruningControl.hidden = !hypothesisMode;
     pruningControl.disabled = !pruningCount;
-    pruningControl.textContent = `${state.showPruning ? "Hide" : "Show"} pruning links (${pruningCount})`;
+    pruningControl.textContent = t("{0} pruning links ({1})", state.showPruning ? t("Hide") : t("Show"), pruningCount);
     byId("show-components").classList.toggle("active", !hypothesisMode);
     byId("show-components").setAttribute("aria-pressed", String(!hypothesisMode));
     byId("show-hypotheses").classList.toggle("active", hypothesisMode);
     byId("show-hypotheses").setAttribute("aria-pressed", String(hypothesisMode));
-    byId("graph-heading").textContent = hypothesisMode ? "Hypothesis lineage" : "Component dependencies";
+    byId("graph-heading").textContent = hypothesisMode ? t("Hypothesis lineage") : t("Component dependencies");
     const filterNote = state.topology.length < allItems.length
-      ? " Filtered endpoints and their edges are omitted."
+      ? t(" Filtered endpoints and their edges are omitted.")
       : "";
     byId("graph-summary").textContent = hypothesisMode
-      ? `${state.topology.length} of ${allItems.length} durable hypotheses shown. Solid arrows: parent → derived hypothesis. Dashed arrows: winner → pruned hypothesis (${state.showPruning ? "shown" : "hidden"}). Pruning does not change ancestry or scientific assessment. Select a node or link for recorded revision details.${filterNote}`
-      : `${state.topology.length} of ${allItems.length} contract components shown. Edges point from dependency to dependent.${filterNote}`;
-    byId("graph-title").textContent = hypothesisMode ? "Hypothesis lineage graph" : "Component dependency graph";
+      ? t("{0} of {1} durable hypotheses shown. Solid arrows: parent → derived hypothesis. Dashed arrows: winner → pruned hypothesis ({2}). Pruning does not change ancestry or scientific assessment. Select a node or link for recorded revision details.{3}", state.topology.length, allItems.length, state.showPruning ? "shown" : "hidden", filterNote)
+      : t("{0} of {1} contract components shown. Edges point from dependency to dependent.{2}", state.topology.length, allItems.length, filterNote);
+    byId("graph-title").textContent = hypothesisMode ? t("Hypothesis lineage graph") : t("Component dependency graph");
     const selectedExists = state.topology.some((item) => item.key === state.selectedKey);
     if (state.selectedKey && state.selectedKey.startsWith(`${state.topologyMode}:`) && !selectedExists) {
       state.selectedKey = null;
@@ -2046,11 +2063,11 @@
 
   function renderSelection(selection) {
     const container = byId("selection-detail");
-    const heading = element("h3", "", "Selection");
+    const heading = element("h3", "", t("Selection"));
     heading.id = "selection-heading";
     container.replaceChildren(heading);
     if (!selection) {
-      container.append(element("p", "", "Select a graph node or component to narrow the durable record."));
+      container.append(element("p", "", t("Select a graph node or component to narrow the durable record.")));
       return;
     }
     const grid = element("dl", "selection-grid");
@@ -2061,10 +2078,10 @@
     if (selection.kind === "hypothesis") {
       const hypothesis = object(selection.raw);
       appendHypothesisComparison(grid, hypothesis, selection.parent);
-      appendDefinition(grid, "scientific assessment", hypothesis.assessment || "Not assessed");
+      appendDefinition(grid, t("scientific assessment"), hypothesis.assessment || t("Not assessed"));
       appendDefinition(grid, "claim", hypothesis.claim || "—");
       appendDefinition(grid, "proposer", hypothesis.proposer_role || "—");
-      appendDefinition(grid, "method family", hypothesis.method_family_id || "—");
+      appendDefinition(grid, t("method family"), hypothesis.method_family_id || "—");
       appendDefinition(grid, "relation", hypothesis.relation || "root");
       appendDefinition(grid, "parent", hypothesis.parent_hypothesis_id || "—");
       appendDefinition(grid, "assessment", hypothesis.assessment_id || "—");
@@ -2079,7 +2096,7 @@
       appendDefinition(grid, "blocked", view.blocked ? list(view.blocked_reasons).join("; ") || "yes" : "no");
     }
     container.append(grid);
-    const sessions = element("button", "detail-link", "Browse related sessions");
+    const sessions = element("button", "detail-link", t("Browse related sessions"));
     sessions.type = "button";
     sessions.addEventListener("click", () => {
       closeDrawer();
@@ -2099,45 +2116,45 @@
     const container = byId("attempt-list");
     container.replaceChildren();
     if (!attempts.length) {
-      container.append(element("p", "empty-copy", "No durable attempts in this scope."));
+      container.append(element("p", "empty-copy", t("No durable attempts in this scope.")));
       return;
     }
     attempts.forEach((attempt) => {
       const card = element("article", "attempt-card");
-      card.append(element("h4", "", attempt.attempt_id || "unnamed attempt"));
+      card.append(element("h4", "", attempt.attempt_id || t("unnamed attempt")));
       const grid = element("dl");
-      appendDefinition(grid, "state", attempt.state === "OPEN" ? "OPEN (durable; liveness unknown)" : attempt.state || "—");
+      appendDefinition(grid, "state", attempt.state === "OPEN" ? t("OPEN (durable; liveness unknown)") : attempt.state || "—");
       appendDefinition(grid, "kind / phase", `${attempt.kind || "—"} / ${attempt.phase || "—"}`);
-      appendDefinition(grid, "task ownership", taskScopeLabel(attempt));
-      appendDefinition(grid, "execution role", attempt.role || "—");
+      appendDefinition(grid, t("task ownership"), taskScopeLabel(attempt));
+      appendDefinition(grid, t("execution role"), attempt.role || "—");
       appendDefinition(grid, "ordinal", attempt.attempt_ordinal ?? "—");
       appendDefinition(grid, "workflow", attempt.workflow_id || "—");
       appendDefinition(grid, "started", formatTimestamp(attempt.started_at));
       appendDefinition(grid, "duration", formatDuration(attempt.started_at, attempt.ended_at));
-      appendDefinition(grid, "terminal reason", attempt.terminal_reason || "—");
-      appendDefinition(grid, "failure code", attempt.failure_code || "—");
-      appendDefinition(grid, "return code", attempt.returncode ?? "—");
+      appendDefinition(grid, t("terminal reason"), attempt.terminal_reason || "—");
+      appendDefinition(grid, t("failure code"), attempt.failure_code || "—");
+      appendDefinition(grid, t("return code"), attempt.returncode ?? "—");
       appendDefinition(grid, "diagnostic", attempt.diagnostic_summary || "—");
-      appendDefinition(grid, "stdout log", attempt.stdout_path || "—");
-      appendDefinition(grid, "stderr log", attempt.stderr_path || "—");
+      appendDefinition(grid, t("stdout log"), attempt.stdout_path || "—");
+      appendDefinition(grid, t("stderr log"), attempt.stderr_path || "—");
       const devices = list(attempt.gpu_usage).length ? list(attempt.gpu_usage)
         : attempt.gpu_uuid ? [{...attempt, pressure_exceeded: attempt.resource_pressure_exceeded}] : [];
       devices.forEach((device) => {
         appendDefinition(grid, "GPU", device.gpu_uuid);
-        appendDefinition(grid, "minimum free VRAM", `${device.minimum_free_memory_mib ?? "?"} MiB`);
-        appendDefinition(grid, "latest free VRAM", `${device.latest_free_memory_mib ?? "?"} MiB`);
-        appendDefinition(grid, "latest utilization", `${device.latest_utilization_percent ?? "?"}%`);
+        appendDefinition(grid, t("minimum free VRAM"), `${device.minimum_free_memory_mib ?? "?"} MiB`);
+        appendDefinition(grid, t("latest free VRAM"), `${device.latest_free_memory_mib ?? "?"} MiB`);
+        appendDefinition(grid, t("latest utilization"), `${device.latest_utilization_percent ?? "?"}%`);
         if (device.owned_memory) {
           const own = object(device.owned_memory);
-          appendDefinition(grid, "own sampled latest / peak", `${own.latest_sample_memory_mib ?? "?"} / ${own.sampled_peak_memory_mib ?? "?"} MiB`);
-          appendDefinition(grid, "own sample coverage", `${own.coverage ?? "unknown"}; unknown ${own.unknown_sample_count ?? "?"} / ${own.sample_count ?? "?"} samples`);
+          appendDefinition(grid, t("own sampled latest / peak"), `${own.latest_sample_memory_mib ?? "?"} / ${own.sampled_peak_memory_mib ?? "?"} MiB`);
+          appendDefinition(grid, t("own sample coverage"), t("{0}; unknown {1} / {2} samples", own.coverage ?? "unknown", own.unknown_sample_count ?? "?", own.sample_count ?? "?"));
         }
         appendDefinition(
           grid,
-          "reserve pressure",
+          t("reserve pressure"),
           device.pressure_exceeded === true
             ? "EXCEEDED"
-            : device.pressure_exceeded === false ? "not exceeded" : "unknown",
+            : device.pressure_exceeded === false ? t("not exceeded") : "unknown",
         );
         if (device.pressure_exceeded === true) card.classList.add("pressure-exceeded");
       });
@@ -2155,7 +2172,7 @@
     Object.entries(object(state.snapshot && state.snapshot.fact_counts))
       .sort(([left], [right]) => left.localeCompare(right))
       .forEach(([factType, count]) => appendDefinition(container, factType, count));
-    if (!container.childElementCount) appendDefinition(container, "durable facts", "none projected");
+    if (!container.childElementCount) appendDefinition(container, t("durable facts"), t("none projected"));
   }
 
   function renderOracle(container) {
@@ -2164,24 +2181,24 @@
     container.replaceChildren();
     container.className = `oracle-detail ${oracle.ok === true ? "ok" : "issue"}`;
     if (audit.state === "pending" || audit.state === "error") {
-      container.append(element("strong", "", audit.state === "pending" ? "Independent oracle: audit pending" : "Independent oracle: audit unavailable"));
-      container.append(element("p", "", "No current audit result is available. This does not establish integrity or scientific success."));
+      container.append(element("strong", "", audit.state === "pending" ? t("Independent oracle: audit pending") : t("Independent oracle: audit unavailable")));
+      container.append(element("p", "", t("No current audit result is available. This does not establish integrity or scientific success.")));
       return;
     }
-    container.append(element("p", "panel-copy", `Historical audit: ${formatTimestamp(audit.audited_at)}${audit.refreshing ? " · refresh pending" : ""}. Audits describe their read and do not establish current integrity.`));
+    container.append(element("p", "panel-copy", t("Historical audit: {0}{1}. Audits describe their read and do not establish current integrity.", formatTimestamp(audit.audited_at), audit.refreshing ? t(" · refresh pending") : "")));
     if (oracle.ok === true) {
-      container.append(element("strong", "", "Independent oracle: last audit clean"));
-      container.append(element("p", "", "No integrity issues were projected for this run. CLEAN is not a scientific-success verdict."));
+      container.append(element("strong", "", t("Independent oracle: last audit clean")));
+      container.append(element("p", "", t("No integrity issues were projected for this run. CLEAN is not a scientific-success verdict.")));
       return;
     }
     const issues = list(oracle.issues);
-    container.append(element("strong", "", `Independent oracle: ${issues.length} issue${issues.length === 1 ? "" : "s"}`));
+    container.append(element("strong", "", t("Independent oracle: {0} issue{1}", issues.length, issues.length === 1 ? "" : "s")));
     const issueList = element("ul", "evidence-list");
     issues.forEach((issue) => {
       const record = object(issue);
       issueList.append(element("li", "", record.message || record.code || compact(issue, 120)));
     });
-    if (!issues.length) issueList.append(element("li", "", "Oracle status is unavailable."));
+    if (!issues.length) issueList.append(element("li", "", t("Oracle status is unavailable.")));
     container.append(issueList);
   }
 
@@ -2195,14 +2212,14 @@
     hypothesisEvidence.replaceChildren();
     if (selection && selection.kind === "hypothesis") {
       const hypothesis = object(selection.raw);
-      const title = element("p", "", `Hypothesis evidence · assessment ${hypothesis.assessment_id || "not recorded"}`);
+      const title = element("p", "", t("Hypothesis evidence · assessment {0}", hypothesis.assessment_id || t("not recorded")));
       hypothesisEvidence.append(title);
       const evidenceIds = list(hypothesis.evidence_ids);
       const evidenceList = element("ul", "evidence-list");
       if (evidenceIds.length) {
         evidenceIds.forEach((evidenceId) => evidenceList.append(element("li", "", evidenceId)));
       } else {
-        evidenceList.append(element("li", "", "No evidence IDs projected."));
+        evidenceList.append(element("li", "", t("No evidence IDs projected.")));
       }
       const assessment = hypothesis.assessment;
       if (assessment !== undefined && assessment !== null) {
@@ -2211,12 +2228,12 @@
           try {
             assessmentText = JSON.stringify(assessment);
           } catch (_error) {
-            assessmentText = "Assessment object is not displayable.";
+            assessmentText = t("Assessment object is not displayable.");
           }
         } else {
           assessmentText = String(assessment);
         }
-        evidenceList.append(element("li", "", `Assessment: ${assessmentText}`));
+        evidenceList.append(element("li", "", t("Assessment: {0}", assessmentText)));
       }
       hypothesisEvidence.append(evidenceList);
     }
@@ -2254,10 +2271,10 @@
     const attemptCount = list(snapshot.attempts).filter((attempt) => attemptMatches(attempt)).length;
     const rendezvousCount = list(snapshot.rendezvous).filter((record) => rendezvousMatches(record)).length;
     byId("filter-summary").textContent =
-      (sharedGoal(snapshot) ? "One shared goal · " : `${componentCount}/${list(snapshot.components).length} components · `) +
-      `${expertCount}/${list(snapshot.experts).length} experts · ` +
-      `${attemptCount}/${list(snapshot.attempts).length} Attempts · ` +
-      `${rendezvousCount}/${list(snapshot.rendezvous).length} rendezvous match. Filters affect cards, activity, map nodes, and drawer Attempts.`;
+      (sharedGoal(snapshot) ? t("One shared goal · ") : t("{0}/{1} components · ", componentCount, list(snapshot.components).length)) +
+      t("{0}/{1} experts · ", expertCount, list(snapshot.experts).length) +
+      t("{0}/{1} Attempts · ", attemptCount, list(snapshot.attempts).length) +
+      t("{0}/{1} rendezvous match. Filters affect cards, activity, map nodes, and drawer Attempts.", rendezvousCount, list(snapshot.rendezvous).length);
   }
 
   function renderFilteredViews() {
@@ -2312,7 +2329,7 @@
     } else if (state.activeView === "evidence") {
       renderChanged("evidence", [snapshot.fact_counts, snapshot.oracle], renderEvidenceOverview);
     } else if (state.activeView === "activity" && state.product) {
-      setText("product-status", `Observed ${product.run_id} · ${formatTimestamp(product.observed_at)}`);
+      setText("product-status", t("Observed {0} · {1}", product.run_id, formatTimestamp(product.observed_at)));
       renderChanged("product", [product.experiments, product.events, product.final_report, product.experiments_page, product.events_page, state.history], () => renderProduct(product));
     } else if (state.activeView === "workbench" && state.workbenchKind === "reliability") {
       renderChanged("reliability", snapshot.overview?.reliability, renderWorkbench);
@@ -2345,7 +2362,7 @@
     if (name !== "activity" && state.logSocket) {
       state.logSocket.close(); state.logSocket = null;
     } else if (name === "activity" && state.selectedExperiment) openExperimentLog(state.selectedExperiment);
-    announce(`Showing ${name === "map" ? "Research Map" : name} view`);
+    announce(t("Showing {0} view", name === "map" ? t("Research Map") : name));
   }
 
   function setTopologyMode(mode) {
@@ -2358,7 +2375,7 @@
     renderVisibleViews();
     renderDrawer();
     window.requestAnimationFrame(fitGraph);
-    announce(`Showing ${mode} topology`);
+    announce(t("Showing {0} topology", mode));
   }
 
   function render(snapshot, product) {
@@ -2379,27 +2396,28 @@
     url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url, ["hypoloom.logs", `bearer.${accessToken}`]);
     state.logSocket = socket;
-    setText("log-connection", `Connecting to ${identity} / ${stream}…`);
+    setText("log-connection", t("Connecting to {0} / {1}…", identity, stream));
     socket.onmessage = (event) => {
       if (state.logSocket !== socket) return;
       try {
         const log = JSON.parse(event.data);
         const panel = byId("live-log-text");
+        panel.removeAttribute("data-i18n");
         const follow = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 32;
-        panel.textContent = log.available ? log.text || "(empty log)" : "Log is not available yet; waiting for the Process Attempt.";
+        panel.textContent = log.available ? log.text || t("(empty log)") : t("Log is not available yet; waiting for the Process Attempt.");
         if (follow) panel.scrollTop = panel.scrollHeight;
-        setText("log-connection", `${identity} · ${stream} · ${log.size || 0} bytes${log.truncated ? " · showing bounded tail" : ""}`);
-      } catch (_error) { setText("log-connection", "Invalid log message; reconnect to retry."); }
+        setText("log-connection", t("{0} · {1} · {2} bytes{3}", identity, stream, log.size || 0, log.truncated ? t(" · showing bounded tail") : ""));
+      } catch (_error) { setText("log-connection", t("Invalid log message; reconnect to retry.")); }
     };
-    socket.onclose = () => { if (state.logSocket === socket) setText("log-connection", "Log connection closed. Select the experiment to reconnect."); };
-    socket.onerror = () => { if (state.logSocket === socket) setText("log-connection", "Log subscription unavailable; check authentication and experiment state."); };
+    socket.onclose = () => { if (state.logSocket === socket) setText("log-connection", t("Log connection closed. Select the experiment to reconnect.")); };
+    socket.onerror = () => { if (state.logSocket === socket) setText("log-connection", t("Log subscription unavailable; check authentication and experiment state.")); };
   }
 
-  const WORKBENCH_TITLES = {
-    skills: "Skills & evolution", literature: "Literature", sessions: "Sessions & tools",
-    interactions: "Leader & Debate", resources: "Experiments & resources",
-    reliability: "Execution reliability", institutional: "机构全文 / Institutional access",
-  };
+  const WORKBENCH_TITLES = () => ({
+    skills: t("Skills & evolution"), literature: t("Literature"), sessions: t("Sessions & tools"),
+    interactions: t("Leader & Debate"), resources: t("Experiments & resources"),
+    reliability: t("Execution reliability"), institutional: t("Institutional access"),
+  });
   const WORKBENCH_KEYS = {skills: "skills", literature: "papers", sessions: "sessions", interactions: "interactions", resources: "experiments"};
   const DETAIL_PAGE_SIZE = 50;
 
@@ -2417,13 +2435,13 @@
     });
     const totals = object(summary.totals);
     const cards = [
-      ["experiments", "Experiments", object(totals.experiments).total, "resources", "Distinct experiment IDs"],
-      ["hypotheses", "Hypotheses", totals.hypotheses, "map", "Accepted hypothesis identities"],
-      ["literature", "Literature", object(totals.literature).retrieved, "literature", `${displayValue(object(totals.literature).pdf_available)} PDFs with extracted evidence`],
-      ["skills", "Skills", object(totals.skills).count, "skills", `${object(totals.skills).coverage || "unavailable"} accepted/bound catalog`],
-      ["evolutions", "Effective evolution", object(totals.evolutions).changed, "skills", `${displayValue(object(totals.evolutions).completed)} completed / ${displayValue(object(totals.evolutions).failed)} failed; changed commits only`],
-      ["leader", "Leader", object(totals.leader).started, "interactions", `${displayValue(object(totals.leader).active)} active logical occurrences`],
-      ["debate", "Debate", object(totals.debate).started, "interactions", `${displayValue(object(totals.debate).active)} active logical occurrences`],
+      ["experiments", t("Experiments"), object(totals.experiments).total, "resources", t("Distinct experiment IDs")],
+      ["hypotheses", t("Hypotheses"), totals.hypotheses, "map", t("Accepted hypothesis identities")],
+      ["literature", t("Literature"), object(totals.literature).retrieved, "literature", t("{0} PDFs with extracted evidence", displayValue(object(totals.literature).pdf_available))],
+      ["skills", t("Skills"), object(totals.skills).count, "skills", t("{0} accepted/bound catalog", object(totals.skills).coverage || "unavailable")],
+      ["evolutions", t("Effective evolution"), object(totals.evolutions).changed, "skills", t("{0} completed / {1} failed; changed commits only", displayValue(object(totals.evolutions).completed), displayValue(object(totals.evolutions).failed))],
+      ["leader", "Leader", object(totals.leader).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.leader).active))],
+      ["debate", "Debate", object(totals.debate).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.debate).active))],
     ];
     const container = byId("research-totals");
     // Update persistent controls in place so polling never steals keyboard focus.
@@ -2441,49 +2459,53 @@
         container.append(button);
       }
       button.children[1].textContent = value === undefined || value === null ? "?" : String(value);
+      button.children[0].textContent = title;
       button.children[2].textContent = note;
     });
     const elapsed = summary.elapsed_seconds;
     const wait = summary.waiting_human_seconds;
     const host = object(object(state.snapshot && state.snapshot.overview).host_observation || summary.host_observation);
     const halt = object(host.last_recorded_exception);
-    setText("research-summary-source", `All-run totals · elapsed ${elapsed == null ? "unavailable" : formatDuration(0, elapsed)} · human wait ${wait == null ? "unavailable" : formatDuration(0, wait)} · observed ${formatTimestamp(summary.observed_at)}. Host contact: ${host.availability || "unconfirmed"}; OPEN is not liveness. ${halt.exception_type ? `Historical Host exception: ${halt.exception_type} at ${halt.timestamp}; diagnostics/host.jsonl. ` : ""}Filters and event pagination do not change these totals.`);
+    setText("research-summary-source", t("All-run totals · elapsed {0} · human wait {1} · observed {2}. Host contact: {3}; OPEN is not liveness. {4}Filters and event pagination do not change these totals.", elapsed == null ? "unavailable" : formatDuration(0, elapsed), wait == null ? "unavailable" : formatDuration(0, wait), formatTimestamp(summary.observed_at), host.availability || "unconfirmed", halt.exception_type ? t("Historical Host exception: {0} at {1}; diagnostics/host.jsonl. ", halt.exception_type, halt.timestamp) : ""));
     let costs = byId("command-retry-costs");
     if (!costs) {
-      costs = actionButton("Command retries / token usage", () => {
+      costs = actionButton(t("Command retries / token usage"), () => {
         const current = object(state.snapshot && state.snapshot.overview);
         const usageFields = (value) => Object.fromEntries(Object.entries(object(value))
           .filter(([key]) => !/cost|pricing|usd/i.test(key)));
         const commands = list(current.stages).map((stage) => ({...stage,
           accounting: usageFields(stage.accounting), context_recovery: usageFields(stage.context_recovery)}));
-        openLocalDetail("command_accounting", {notice: "Observed token lower bounds only; reservations and unknown usage are not measured consumption.", commands});
+        openLocalDetail("command_accounting", {notice: t("Observed token lower bounds only; reservations and unknown usage are not measured consumption."), commands});
       });
       costs.id = "command-retry-costs";
       container.append(costs);
     }
     if (!byId("stage-token-usage")) {
-      const button = actionButton("Tokens by stage", () => {
+      const button = actionButton(t("Tokens by stage"), () => {
         const current = object(state.snapshot?.overview || state.product?.summary);
         openLocalDetail("stage_accounting", {stages: current.stage_accounting});
       });
       button.id = "stage-token-usage"; container.append(button);
     }
     if (!byId("execution-reliability")) {
-      const button = actionButton("Execution reliability", () => openWorkbench("reliability"));
+      const button = actionButton(t("Execution reliability"), () => openWorkbench("reliability"));
       button.id = "execution-reliability"; container.append(button);
     }
+    setText("command-retry-costs", t("Command retries / token usage"));
+    setText("stage-token-usage", t("Tokens by stage"));
+    setText("execution-reliability", t("Execution reliability"));
   }
 
-  const RELIABILITY_METRICS = [
-    ["output_first_pass", "First output pass"], ["correction_recovery", "Correction recovery"],
-    ["node_retry", "Nodes needing retry"], ["node_delivery", "Final delivery"],
-    ["required_actions", "Required actions"],
-  ];
+  const RELIABILITY_METRICS = () => ([
+    ["output_first_pass", t("First output pass")], ["correction_recovery", t("Correction recovery")],
+    ["node_retry", t("Nodes needing retry")], ["node_delivery", t("Final delivery")],
+    ["required_actions", t("Required actions")],
+  ]);
 
   const RELIABILITY_SHORT = ["🎯 FP", "🔧 CR", "🔁 RT", "📦 DL", "🧰 RA"];
 
   function compactReliability(parent, metrics, {role = "", expanded = false, taskScope = ""} = {}) {
-    RELIABILITY_METRICS.forEach(([key, label], index) => {
+    RELIABILITY_METRICS().forEach(([key, label], index) => {
       const metric = object(object(metrics)[key]);
       const rate = typeof metric.rate === "number" ? `${(metric.rate * 100).toFixed(0)}%` : "—";
       const coverage = [["unknown", "?"], ["excluded", "−"]].filter(([name]) => metric[name] !== 0)
@@ -2494,7 +2516,7 @@
         openWorkbench("reliability");
       }, "reliability-mini");
       button.dataset.previewMetric = key;
-      button.title = `${label}${key === "node_retry" ? " (lower is better)" : ""}: ${reliabilityMetricText(metric)}. Cumulative within this run; click for denominators and evidence.`;
+      button.title = t("{0}{1}: {2}. Cumulative within this run; click for denominators and evidence.", label, key === "node_retry" ? t(" (lower is better)") : "", reliabilityMetricText(metric));
       button.setAttribute("aria-label", button.title);
       button.append(element("span", "mini-label", RELIABILITY_SHORT[index]));
       if (expanded) button.append(element("span", "mini-name", label));
@@ -2507,11 +2529,11 @@
   function reliabilityMetricText(metric) {
     const value = object(metric);
     const rate = typeof value.rate === "number" ? `${(value.rate * 100).toFixed(1)}%` : "unavailable";
-    return `${displayValue(value.numerator)}/${displayValue(value.denominator)} · ${rate} · unknown ${displayValue(value.unknown)} · excluded ${displayValue(value.excluded)}`;
+    return t("{0}/{1} · {2} · unknown {3} · excluded {4}", displayValue(value.numerator), displayValue(value.denominator), rate, displayValue(value.unknown), displayValue(value.excluded));
   }
 
   function reliabilityMetrics(parent, metrics, scope = null) {
-    RELIABILITY_METRICS.forEach(([key, label]) => {
+    RELIABILITY_METRICS().forEach(([key, label]) => {
       const button = actionButton(`${label}: ${reliabilityMetricText(object(metrics)[key])}`, () => {
         state.reliabilityMetric = key;
         if (scope) state.reliabilityFilters = {role: scope.role || "", task_scope: scope.task_scope || "", owner_role: scope.owner_role || "", node: scope.node || "", model: scope.model || ""};
@@ -2525,8 +2547,8 @@
 
   function reliabilityCosts(parent, costs) {
     const value = object(costs);
-    parent.append(element("p", "reliability-costs panel-copy", `Retry overhead: ${displayValue(value.retry_attempts)} extra Attempts · reported ≥${displayValue(value.retry_reported_tokens)} tokens · reserve ${displayValue(value.retry_reserved_tokens)} tokens · unavailable token records ${displayValue(value.retry_unavailable_token_attempts)} · unknown closed ${displayValue(value.retry_unknown_closed_attempts)} · elapsed ${value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds)}. Correction-only tokens: unavailable. Unknown does not mean zero; reserves are not measured usage.`));
-    parent.append(element("p", "panel-copy", `unknown retry nodes ${displayValue(value.retry_unknown_nodes)} · unavailable reserves ${displayValue(value.retry_unavailable_reservations)} · unknown elapsed ${displayValue(value.retry_elapsed_unknown_attempts)} Attempts.`));
+    parent.append(element("p", "reliability-costs panel-copy", t("Retry overhead: {0} extra Attempts · reported ≥{1} tokens · reserve {2} tokens · unavailable token records {3} · unknown closed {4} · elapsed {5}. Correction-only tokens: unavailable. Unknown does not mean zero; reserves are not measured usage.", displayValue(value.retry_attempts), displayValue(value.retry_reported_tokens), displayValue(value.retry_reserved_tokens), displayValue(value.retry_unavailable_token_attempts), displayValue(value.retry_unknown_closed_attempts), value.retry_elapsed_seconds == null ? "unavailable" : formatDuration(0, value.retry_elapsed_seconds))));
+    parent.append(element("p", "panel-copy", t("unknown retry nodes {0} · unavailable reserves {1} · unknown elapsed {2} Attempts.", displayValue(value.retry_unknown_nodes), displayValue(value.retry_unavailable_reservations), displayValue(value.retry_elapsed_unknown_attempts))));
   }
 
   function renderReliability() {
@@ -2534,26 +2556,26 @@
     const groups = list(source.groups), nodes = list(source.nodes);
     const filters = state.reliabilityFilters;
     const container = byId("workbench-list");
-    const renderedKey = JSON.stringify(["reliability", source, filters, state.reliabilityMetric]);
-    setText("workbench-scope", "All-run metrics use recorded denominators. Task ownership, execution role, node and model filters narrow evidence below; they do not recalculate rates.");
-    setText("workbench-status", Object.keys(source).length ? "Execution reliability, not a model capability score. Read-only recorded evidence." : "Reliability unavailable for this snapshot; missing evidence is unknown.");
-    setText("workbench-page", "Recorded node evidence; no event-pagination denominator");
+    const renderedKey = JSON.stringify([uiLanguage, "reliability", source, filters, state.reliabilityMetric]);
+    setText("workbench-scope", t("All-run metrics use recorded denominators. Task ownership, execution role, node and model filters narrow evidence below; they do not recalculate rates."));
+    setText("workbench-status", Object.keys(source).length ? t("Execution reliability, not a model capability score. Read-only recorded evidence.") : t("Reliability unavailable for this snapshot; missing evidence is unknown."));
+    setText("workbench-page", t("Recorded node evidence; no event-pagination denominator"));
     byId("workbench-previous").disabled = true; byId("workbench-next").disabled = true;
     if (container.dataset.renderedKey === renderedKey) return;
     container.dataset.renderedKey = renderedKey; container.replaceChildren();
     const summary = element("section", "detail-card"); summary.id = "reliability-summary";
-    summary.append(element("h3", "", "All-run execution reliability"));
+    summary.append(element("h3", "", t("All-run execution reliability")));
     reliabilityMetrics(summary, source.metrics);
     reliabilityCosts(summary, source.costs);
     const counts = object(source.counts);
-    summary.append(element("p", "panel-copy", `Timeouts ${displayValue(counts.timed_out_attempts)} · cancelled ${displayValue(counts.cancelled_attempts)} · tool errors ${displayValue(counts.tool_errors)}/${displayValue(counts.tool_calls)}${counts.trace_unknown_attempts === 0 ? "" : " (observed lower bounds)"} · unknown traces ${displayValue(counts.trace_unknown_attempts)}. Scientific refutation and expected test failures are not model failures.`));
+    summary.append(element("p", "panel-copy", t("Timeouts {0} · cancelled {1} · tool errors {2}/{3}{4} · unknown traces {5}. Scientific refutation and expected test failures are not model failures.", displayValue(counts.timed_out_attempts), displayValue(counts.cancelled_attempts), displayValue(counts.tool_errors), displayValue(counts.tool_calls), counts.trace_unknown_attempts === 0 ? "" : t(" (observed lower bounds)"), displayValue(counts.trace_unknown_attempts))));
     list(source.notices).forEach((notice) => summary.append(element("p", "panel-copy", displayValue(notice))));
     container.append(summary);
     const controls = element("div", "filter-grid");
     ["task_scope", "owner_role", "role", "node", "model"].forEach((key) => {
-      const label = element("label", "", ({role: "Execution role", owner_role: "Owning expert", task_scope: "Task scope"})[key] || key);
+      const label = element("label", "", ({role: t("Execution role"), owner_role: t("Owning expert"), task_scope: t("Task scope")})[key] || key);
       const select = element("select"); select.id = `reliability-${key}`;
-      const all = element("option", "", `All ${key}s`); all.value = ""; select.append(all);
+      const all = element("option", "", t("All {0}s", key)); all.value = ""; select.append(all);
       const values = new Set([...groups, ...nodes].map((row) => row[key] || "unknown"));
       if (filters[key]) values.add(filters[key]);
       [...values].sort().forEach((value) => { const option = element("option", "", value); option.value = value; select.append(option); });
@@ -2561,21 +2583,21 @@
       select.addEventListener("change", () => { state.reliabilityFilters[key] = select.value; renderReliability(); byId(`reliability-${key}`).focus({preventScroll: true}); });
       label.append(select); controls.append(label);
     });
-    controls.append(actionButton("All metric evidence", () => { state.reliabilityMetric = ""; renderReliability(); }));
+    controls.append(actionButton(t("All metric evidence"), () => { state.reliabilityMetric = ""; renderReliability(); }));
     container.append(controls);
     const matches = (row) => Object.entries(filters).every(([key, value]) => !value || (row[key] || "unknown") === value);
     const groupList = element("section"); groupList.id = "reliability-groups";
     groups.filter(matches).forEach((group) => {
       const card = element("article", "detail-card");
       card.append(element("h3", "", `${taskScopeLabel(group)} · ${group.node || "unknown"} · ${group.model || "unknown"}`));
-      card.append(element("p", "panel-copy", `Execution role: ${group.role || "unknown"}`));
+      card.append(element("p", "panel-copy", t("Execution role: {0}", group.role || "unknown")));
       reliabilityMetrics(card, group.metrics, group); reliabilityCosts(card, group.costs);
       groupList.append(card);
     });
-    if (!groupList.children.length) groupList.append(element("p", "empty-copy", "No recorded groups match these filters."));
+    if (!groupList.children.length) groupList.append(element("p", "empty-copy", t("No recorded groups match these filters.")));
     container.append(groupList);
     const selectedMetric = state.reliabilityMetric;
-    const label = element("h3", "", selectedMetric ? `${RELIABILITY_METRICS.find(([key]) => key === selectedMetric)[1]}: denominator and unknown node evidence` : "All logical nodes and their Attempts");
+    const label = element("h3", "", selectedMetric ? t("{0}: denominator and unknown node evidence", RELIABILITY_METRICS().find(([key]) => key === selectedMetric)[1]) : t("All logical nodes and their Attempts"));
     label.id = "reliability-list-label"; container.append(label);
     const nodeList = element("section"); nodeList.id = "reliability-nodes";
     nodes.filter(matches).filter((node) => {
@@ -2583,12 +2605,12 @@
       return !selectedMetric || !metric || metric.denominator > 0 || metric.unknown > 0;
     }).forEach((node) => {
       const card = element("article", "detail-card reliability-node");
-      card.append(actionButton(`${node.node || "unknown"} · ${node.command_id || "unknown command"}`, () => openLocalDetail("reliability_node", node), "record-title"));
-      card.append(element("p", "panel-copy", `${taskScopeLabel(node)} · execution role ${node.role || "unknown"} · ${node.model || "unknown"} · ${node.status || "unknown"} · ${list(node.attempts).length} recorded Attempts`));
+      card.append(actionButton(`${node.node || "unknown"} · ${node.command_id || t("unknown command")}`, () => openLocalDetail("reliability_node", node), "record-title"));
+      card.append(element("p", "panel-copy", t("{0} · execution role {1} · {2} · {3} · {4} recorded Attempts", taskScopeLabel(node), node.role || "unknown", node.model || "unknown", node.status || "unknown", list(node.attempts).length)));
       if (selectedMetric) card.append(element("p", "panel-copy", reliabilityMetricText(object(node.metrics)[selectedMetric])));
       nodeList.append(card);
     });
-    if (!nodeList.children.length) nodeList.append(element("p", "empty-copy", "No recorded nodes match this metric and filter. Excluded nodes do not enter its denominator."));
+    if (!nodeList.children.length) nodeList.append(element("p", "empty-copy", t("No recorded nodes match this metric and filter. Excluded nodes do not enter its denominator.")));
     container.append(nodeList);
   }
 
@@ -2599,18 +2621,18 @@
       const card = element("article", "detail-card");
       card.append(element("h4", "", `${attempt.attempt_id} · ${attempt.terminal_reason || "OPEN"}`));
       const attribution = object(attempt.attribution);
-      card.append(element("p", "panel-copy", `Failure: ${attempt.failure_code || "not recorded"} · stage ${attempt.failure_stage || "unknown"} · retry class ${attempt.retry_class || "unknown"}`));
-      card.append(element("p", "panel-copy", `Attribution: ${attribution.category || "unverified"} · confidence ${attribution.confidence || "unknown"} · ${attribution.reason || "Cause not established"}`));
+      card.append(element("p", "panel-copy", t("Failure: {0} · stage {1} · retry class {2}", attempt.failure_code || t("not recorded"), attempt.failure_stage || "unknown", attempt.retry_class || "unknown")));
+      card.append(element("p", "panel-copy", t("Attribution: {0} · confidence {1} · {2}", attribution.category || "unverified", attribution.confidence || "unknown", attribution.reason || t("Cause not established"))));
       const observations = element("ul", "reliability-observations");
       list(attempt.observations).forEach((item) => observations.append(element("li", "panel-copy",
         [String(item.kind || "observation").replaceAll("_", " "), item.code, item.stage, item.name,
-          item.count == null ? null : `count ${item.count}`, item.cause ? `cause ${item.cause}` : null].filter((value) => value != null).join(" · "))));
+          item.count == null ? null : t("count {0}", item.count), item.cause ? t("cause {0}", item.cause) : null].filter((value) => value != null).join(" · "))));
       if (observations.children.length) card.append(observations);
       structuredDetail(card, {corrections: attempt.corrections ?? "unavailable", trace: attempt.trace ?? "unavailable", started_at: attempt.started_at, ended_at: attempt.ended_at});
-      if (attempt.attempt_id) card.append(actionButton("Open Attempt / tools / corrections", () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id}), "detail-link reliability-attempt-link"));
+      if (attempt.attempt_id) card.append(actionButton(t("Open Attempt / tools / corrections"), () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id}), "detail-link reliability-attempt-link"));
       parent.append(card);
     });
-    if (!list(node.attempts).length) parent.append(element("p", "empty-copy", "Attempt evidence unavailable."));
+    if (!list(node.attempts).length) parent.append(element("p", "empty-copy", t("Attempt evidence unavailable.")));
   }
 
   function workbenchQuery() {
@@ -2643,7 +2665,7 @@
         method: "GET", headers: {Authorization: `Bearer ${accessToken}`},
         cache: "no-store", credentials: "same-origin", signal: controller.signal,
       });
-      if (!response.ok) throw new Error(response.status === 401 ? "Detail access was not authorized." : "Detail evidence is unavailable for this selection.");
+      if (!response.ok) throw new Error(response.status === 401 ? t("Detail access was not authorized.") : t("Detail evidence is unavailable for this selection."));
       return await response.json();
     } finally { window.clearTimeout(timeout); }
   }
@@ -2673,7 +2695,7 @@
       state.workbenchData = data;
       if (changed && state.activeView === "workbench" && !document.hidden) renderWorkbench();
     } catch (error) {
-      if (request === state.workbenchRequest) setText("workbench-status", `${error.message} Retained rows may be stale.`);
+      if (request === state.workbenchRequest) setText("workbench-status", t("{0} Retained rows may be stale.", error.message));
     } finally { if (state.workbenchPending === pending) state.workbenchPending = null; }
   }
 
@@ -2706,60 +2728,60 @@
 
   function renderResourceTrace(parent, experiment, includeRaw = false) {
     const estimate = object(experiment.estimate);
-    const context = element("p", "panel-copy", `${experiment.role || "Expert unavailable"} · ${experiment.component_id || "Component unavailable"}`);
+    const context = element("p", "panel-copy", `${experiment.role || t("Expert unavailable")} · ${experiment.component_id || t("Component unavailable")}`);
     parent.append(context);
-    if (estimate.basis) parent.append(element("p", "resource-basis", `Estimate basis: ${estimate.basis}`));
+    if (estimate.basis) parent.append(element("p", "resource-basis", t("Estimate basis: {0}", estimate.basis)));
     const attempts = list(experiment.attempts);
     if (!attempts.length) {
-      parent.append(element("p", "empty-copy", `Requested estimate: ${memoryLabel(estimate.peak_memory_mib)}. No Process Attempt is recorded yet.`));
+      parent.append(element("p", "empty-copy", t("Requested estimate: {0}. No Process Attempt is recorded yet.", memoryLabel(estimate.peak_memory_mib))));
     }
     attempts.forEach((attempt) => {
       const process = element("section", "resource-process");
       const heading = element("div", "resource-process-heading");
-      heading.append(element("h4", "", `Process · ${attempt.attempt_id}`), element("span", `counter ${statusClass(attempt.state)}`, `${attempt.state || "unavailable"} · ${attempt.terminal_reason || "terminal result unavailable"}`));
+      heading.append(element("h4", "", t("Process · {0}", attempt.attempt_id)), element("span", `counter ${statusClass(attempt.state)}`, `${attempt.state || "unavailable"} · ${attempt.terminal_reason || t("terminal result unavailable")}`));
       process.append(heading);
       const measured = object(attempt.measured);
       const metrics = element("dl", "resource-metrics");
-      resourceMetric(metrics, "Requested estimate", memoryLabel(estimate.peak_memory_mib));
-      resourceMetric(metrics, "Admitted workload", memoryLabel(attempt.admitted));
+      resourceMetric(metrics, t("Requested estimate"), memoryLabel(estimate.peak_memory_mib));
+      resourceMetric(metrics, t("Admitted workload"), memoryLabel(attempt.admitted));
       const qualifiedPeak = measured.measurement_status === "complete" && typeof measured.sample_peak_bytes === "number"
         ? memoryLabel(Math.ceil(measured.sample_peak_bytes / 1048576)) : "unknown";
-      resourceMetric(metrics, "Qualified measurement", qualifiedPeak, qualifiedPeak === "unknown" ? "resource-unknown" : "");
+      resourceMetric(metrics, t("Qualified measurement"), qualifiedPeak, qualifiedPeak === "unknown" ? "resource-unknown" : "");
       process.append(metrics);
       const grant = object(attempt.grant);
       const granted = list(grant.gpu_uuids).length ? grant.gpu_uuids : grant.gpu_uuid ? [grant.gpu_uuid] : [];
-      process.append(element("p", "resource-device", `Granted GPU UUID: ${granted.join(" · ") || (grant.kind === "CPU" ? "CPU only" : "unavailable")}`));
+      process.append(element("p", "resource-device", t("Granted GPU UUID: {0}", granted.join(" · ") || (grant.kind === "CPU" ? t("CPU only") : "unavailable"))));
       const devices = list(attempt.usage);
       devices.forEach((device) => {
         const owned = object(device.owned_memory);
         const samples = element("dl", "resource-metrics resource-samples");
-        if (devices.length > 1) process.append(element("p", "resource-device", `Observed device: ${device.gpu_uuid}`));
-        resourceMetric(samples, "Own sampled peak", memoryLabel(owned.sampled_peak_memory_mib));
+        if (devices.length > 1) process.append(element("p", "resource-device", t("Observed device: {0}", device.gpu_uuid)));
+        resourceMetric(samples, t("Own sampled peak"), memoryLabel(owned.sampled_peak_memory_mib));
         resourceMetric(samples, "Samples / unknown", `${displayValue(owned.sample_count)} / ${displayValue(owned.unknown_sample_count)}`, owned.unknown_sample_count === 0 ? "" : "resource-unknown");
         resourceMetric(samples, "Coverage", owned.coverage || "unknown", owned.coverage === "complete" ? "" : "resource-unknown");
         process.append(samples);
       });
-      if (!devices.length) process.append(element("p", "panel-copy", "Per-device sampled peak, sample count and coverage are unavailable."));
+      if (!devices.length) process.append(element("p", "panel-copy", t("Per-device sampled peak, sample count and coverage are unavailable.")));
       parent.append(process);
     });
     const sources = element("section", "resource-sources");
-    sources.append(element("h4", "", "Used by later estimates"));
+    sources.append(element("h4", "", t("Used by later estimates")));
     const next = list(experiment.next_estimate_sources);
     next.forEach((source) => {
       const link = actionButton(source.experiment_id, () => openRemoteDetail("resources", {experiment_id: source.experiment_id}), "detail-link resource-next-link");
-      sources.append(link, element("p", "panel-copy", `Measurement source: ${list(source.measurement_attempt_ids).join(", ") || "unavailable"}`));
+      sources.append(link, element("p", "panel-copy", t("Measurement source: {0}", list(source.measurement_attempt_ids).join(", ") || "unavailable")));
     });
-    if (!next.length) sources.append(element("p", "panel-copy", "No later experiment cites these measurements yet."));
+    if (!next.length) sources.append(element("p", "panel-copy", t("No later experiment cites these measurements yet.")));
     parent.append(sources);
     const inputSources = list(estimate.measurement_attempt_ids);
     if (inputSources.length) {
-      const references = element("p", "panel-copy", `This estimate cites: ${inputSources.join(", ")}`);
+      const references = element("p", "panel-copy", t("This estimate cites: {0}", inputSources.join(", ")));
       parent.append(references);
     }
     if (includeRaw) {
-      parent.append(element("p", "panel-copy", "Owned sampled peaks remain separate from qualified measurements. Unknown samples prevent a complete measurement; device occupancy is not attributed experiment memory."));
+      parent.append(element("p", "panel-copy", t("Owned sampled peaks remain separate from qualified measurements. Unknown samples prevent a complete measurement; device occupancy is not attributed experiment memory.")));
       const raw = element("details", "resource-raw");
-      raw.append(element("summary", "", "Raw accepted resource evidence"), element("pre", "detail-code", displayValue(experiment)));
+      raw.append(element("summary", "", t("Raw accepted resource evidence")), element("pre", "detail-code", displayValue(experiment)));
       parent.append(raw);
     }
   }
@@ -2768,24 +2790,24 @@
     const evidence = element("details", "download-evidence");
     const attempts = list(paper.download_attempts);
     evidence.append(element("summary", "", paper.download_coverage === "recorded"
-      ? `Download evidence · ${attempts.length} recorded Attempt${attempts.length === 1 ? "" : "s"}`
-      : "Download history unavailable · older evidence is unknown"));
+      ? t("Download evidence · {0} recorded Attempt{1}", attempts.length, attempts.length === 1 ? "" : "s")
+      : t("Download history unavailable · older evidence is unknown")));
     attempts.forEach((attempt) => {
       const row = element("article", "detail-card");
-      row.append(element("h4", "", `${attempt.role || "Role unavailable"} · ${attempt.attempt_id}`),
-        element("p", "", `Recorded disposition: ${attempt.retrieval_disposition || "unavailable"}`));
+      row.append(element("h4", "", `${attempt.role || t("Role unavailable")} · ${attempt.attempt_id}`),
+        element("p", "", t("Recorded disposition: {0}", attempt.retrieval_disposition || "unavailable")));
       if (attempt.retrieval_disposition === "PDF_UNAVAILABLE" && list(attempt.events).some((event) => event.outcome === "EXTRACTION_FAILURE")) {
-        row.append(element("p", "panel-copy", "PDF downloaded, but evidence extraction failed. This paper has no accepted full-text evidence."));
+        row.append(element("p", "panel-copy", t("PDF downloaded, but evidence extraction failed. This paper has no accepted full-text evidence.")));
       }
       if (list(attempt.events).some((event) => ["landing_uri", "source_uri"].includes(event.stage) && event.outcome === "VALIDATION_FAILURE")) {
-        row.append(element("p", "panel-copy", "Source address rejected. Metadata retained; this Attempt supplied no full-text evidence for this paper."));
+        row.append(element("p", "panel-copy", t("Source address rejected. Metadata retained; this Attempt supplied no full-text evidence for this paper.")));
       }
       const events = element("ul", "evidence-list");
       list(attempt.events).forEach((event) => events.append(element("li", "",
         [event.stage, event.outcome, event.source_host, event.failure_code, event.http_status ? `HTTP ${event.http_status}` : null].filter(Boolean).join(" · "))));
-      if (!list(attempt.events).length) events.append(element("li", "", "No download steps retained for this Attempt."));
+      if (!list(attempt.events).length) events.append(element("li", "", t("No download steps retained for this Attempt.")));
       row.append(events);
-      if (attempt.attempt_id) row.append(actionButton("Inspect source Attempt", () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id})));
+      if (attempt.attempt_id) row.append(actionButton(t("Inspect source Attempt"), () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id})));
       evidence.append(row);
     });
     parent.append(evidence);
@@ -2796,7 +2818,7 @@
     try { host = new URL(value).hostname.toLowerCase().replace(/\.$/, ""); } catch (_) { return; }
     const rejected = list(paper.download_attempts).some((attempt) => list(attempt.events).some((event) =>
       ["landing_uri", "source_uri"].includes(event.stage) && event.outcome === "VALIDATION_FAILURE" && event.source_host === host));
-    if (rejected) parent.append(element("p", "panel-copy", "Source link withheld: this host has a recorded address rejection. See download history."));
+    if (rejected) parent.append(element("p", "panel-copy", t("Source link withheld: this host has a recorded address rejection. See download history.")));
     else safeExternalLink(parent, label, value);
   }
 
@@ -2805,80 +2827,80 @@
     const grid = element("dl", "selection-grid");
     const field = (name, value) => appendDefinition(grid, name, displayValue(value));
     if (kind === "skills") {
-      card.append(actionButton(item.name || "Unnamed skill", () => openRemoteDetail("skill", {role: item.role, name: item.name, commit: item.commit}), "record-title"));
-      field("expert", item.role); field("accepted / bound version", item.commit);
-      field("current accepted / bound", item.current); field("description", item.description);
-      field("request bindings", list(item.bindings).length);
-      card.append(element("p", "panel-copy", "Publication and request binding do not prove a native Skill was loaded. Open adoption evidence for actual loads."));
+      card.append(actionButton(item.name || t("Unnamed skill"), () => openRemoteDetail("skill", {role: item.role, name: item.name, commit: item.commit}), "record-title"));
+      field("expert", item.role); field(t("accepted / bound version"), item.commit);
+      field(t("current accepted / bound"), item.current); field("description", item.description);
+      field(t("request bindings"), list(item.bindings).length);
+      card.append(element("p", "panel-copy", t("Publication and request binding do not prove a native Skill was loaded. Open adoption evidence for actual loads.")));
     } else if (kind === "literature") {
-      card.append(actionButton(item.title || item.bibliographic_identity || "Literature record", () => openLocalDetail("literature", item), "record-title"));
+      card.append(actionButton(item.title || item.bibliographic_identity || t("Literature record"), () => openLocalDetail("literature", item), "record-title"));
       field("identity", item.bibliographic_identity || item.identity); field("experts", item.roles);
       field("year / venue", `${displayValue(item.year || item.publication_year)} / ${displayValue(item.venue)}`);
-      field("PDF evidence", item.retrieval_disposition ?? item.pdf_available ?? item.pdf_status ?? "unavailable");
-      if (item.pdf_available_roles) field("PDF available to", item.pdf_available_roles);
-      field("accepted reviews", item.review_attempt_ids || item.accepted_review_attempt_ids || "unavailable");
+      field(t("PDF evidence"), item.retrieval_disposition ?? item.pdf_available ?? item.pdf_status ?? "unavailable");
+      if (item.pdf_available_roles) field(t("PDF available to"), item.pdf_available_roles);
+      field(t("accepted reviews"), item.review_attempt_ids || item.accepted_review_attempt_ids || "unavailable");
       paperSourceLink(card, "Paper / DOI ↗", item.landing_uri || item.url || item.doi_url || (item.doi ? `https://doi.org/${item.doi}` : null), item);
-      paperSourceLink(card, "PDF / retrieval source ↗", item.source_uri || item.pdf_url, item);
+      paperSourceLink(card, t("PDF / retrieval source ↗"), item.source_uri || item.pdf_url, item);
       renderDownloadEvidence(card, item);
     } else if (kind === "sessions") {
-      card.append(element("h3", "", item.session_id || "Session identity unavailable"));
-      field("task ownership", taskScopeLabel(item)); field("execution role", item.role); field("component", item.component_id);
+      card.append(element("h3", "", item.session_id || t("Session identity unavailable")));
+      field(t("task ownership"), taskScopeLabel(item)); field(t("execution role"), item.role); field("component", item.component_id);
       field("scope / chain", `${displayValue(item.scope)} / ${displayValue(item.chain)}`);
       field("cycle / branch", `${displayValue(item.cycle)} / ${displayValue(item.branch)}`);
-      field("observed launch modes", list(item.launch_modes).join(" → ") || "unknown");
+      field(t("observed launch modes"), list(item.launch_modes).join(" → ") || "unknown");
       card.append(grid);
-      if (item.parent_session_id) card.append(actionButton(`Parent session: ${item.parent_session_id}`,
+      if (item.parent_session_id) card.append(actionButton(t("Parent session: {0}", item.parent_session_id),
         () => openWorkbench("sessions", {session_id: item.parent_session_id}), "detail-link session-parent"));
-      else card.append(element("p", "panel-copy", "Parent session: not recorded."));
+      else card.append(element("p", "panel-copy", t("Parent session: not recorded.")));
       list(item.attempts).forEach((attempt) => {
         const button = actionButton("", () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id}), "session-attempt");
         const mode = ["new", "fork", "resume"].includes(attempt.launch_mode) ? attempt.launch_mode : "unknown";
-        button.append(element("span", "session-attempt-name", attempt.command || attempt.phase || "Attempt"),
+        button.append(element("span", "session-attempt-name", attempt.command || attempt.phase || t("Attempt")),
           element("span", "counter session-launch", mode), element("span", "panel-copy", `${attempt.state} · ${attempt.attempt_id}`));
         card.append(button);
       });
-      if (!list(item.attempts).length) card.append(element("p", "panel-copy", "No attempts in this session page."));
+      if (!list(item.attempts).length) card.append(element("p", "panel-copy", t("No attempts in this session page.")));
       return card;
     } else if (kind === "interactions") {
       card.append(actionButton(`${item.kind} · ${item.interaction_id || item.command_id || "interaction"}`, () => openLocalDetail("interaction", item), "record-title"));
       field("state", item.state); field("participants", item.participants);
       if (item.kind === "leader") {
-        field("mode", item.mode === "experience_sharing" ? "Experience sharing · peers continue independently" : "Retained exclusive round");
+        field("mode", item.mode === "experience_sharing" ? t("Experience sharing · peers continue independently") : t("Retained exclusive round"));
         if (item.guidance) {
-          field("advice author", item.guidance.author); field("advice", item.guidance.summary);
-          field("supporting inputs", item.guidance.supporting_refs);
-          field("provided to proposals", item.provided_to);
-          card.append(element("p", "panel-copy", "Provided means included in the recorded task input. It does not establish adoption, understanding or scientific validation."));
+          field(t("advice author"), item.guidance.author); field("advice", item.guidance.summary);
+          field(t("supporting inputs"), item.guidance.supporting_refs);
+          field(t("provided to proposals"), item.provided_to);
+          card.append(element("p", "panel-copy", t("Provided means included in the recorded task input. It does not establish adoption, understanding or scientific validation.")));
         }
       }
-      field("verdict", item.verdict); field("source Attempts", item.source_attempt_ids);
-      card.append(element("p", "panel-copy", "Aborted coordination is closed control work; it does not create a scientific refutation."));
+      field("verdict", item.verdict); field(t("source Attempts"), item.source_attempt_ids);
+      card.append(element("p", "panel-copy", t("Aborted coordination is closed control work; it does not create a scientific refutation.")));
     } else if (kind === "resources") {
       card.append(actionButton(item.experiment_id, () => openLocalDetail("resource", item), "record-title"));
       renderResourceTrace(card, item);
-      card.append(actionButton("Open experiment logs", () => { setActiveView("activity"); openExperimentLog(item.experiment_id); }));
+      card.append(actionButton(t("Open experiment logs"), () => { setActiveView("activity"); openExperimentLog(item.experiment_id); }));
     }
     card.append(grid);
     return card;
   }
 
-  const LITERATURE_STATE_LABELS = {
-    queued: "等待获取", checking: "检查中", login_required: "需要浏览器登录",
-    verification_required: "需要浏览器验证", browser_unavailable: "浏览器未连接",
-    fetch_unavailable: "加载失败，等待自动重试", access_required: "页面提示需订阅或机构访问",
-    available: "全文已就绪", access_denied: "当前机构无权限", no_full_text: "未找到全文",
-    identity_unconfirmed: "论文对应关系未确认", failed: "文件获取或解析失败",
-    sample_verified: "样本全文已验证", opened: "准备页已打开，请在浏览器完成登录",
-    unchecked: "未检查", tab_limit: "标签页已满，请分批准备", skipped: "已跳过此篇", public_only: "仅公开途径", disabled: "未启用", queue_timeout: "排队超时",
-    acquisition_timeout: "获取超时", manual_timeout: "主动登录等待已结束",
-  };
-  const LITERATURE_REASON_LABELS = {
-    network_changed: "网络发生变化", network_error: "网络错误", dns_failed: "域名解析失败",
-    connection_failed: "连接失败", navigation_timeout: "加载超时", redirect_unresolved: "重定向未完成",
-    http_server_error: "网站服务暂时异常", http_rate_limited: "网站限制请求频率",
-    request_blocked: "请求被拦截", http_error: "HTTP请求失败",
-    pdf_response_not_pdf: "PDF入口返回非PDF内容",
-  };
+  const LITERATURE_STATE_LABELS = () => ({
+    queued: t("Queued for acquisition"), checking: t("Checking"), login_required: t("Browser login required"),
+    verification_required: t("Browser verification required"), browser_unavailable: t("Browser disconnected"),
+    fetch_unavailable: t("Load failed; awaiting automatic retry"), access_required: t("Subscription or institutional access required"),
+    available: t("Full text ready"), access_denied: t("Current institution has no access"), no_full_text: t("No full text found"),
+    identity_unconfirmed: t("Paper identity unconfirmed"), failed: t("File acquisition or parsing failed"),
+    sample_verified: t("Sample full text verified"), opened: t("Preparation page opened; log in in the browser"),
+    unchecked: t("Not checked"), tab_limit: t("Browser tab limit reached; prepare in batches"), skipped: t("Paper skipped"), public_only: t("Public only"), disabled: t("Disabled"), queue_timeout: t("Queue timed out"),
+    acquisition_timeout: t("Acquisition timed out"), manual_timeout: t("Active login wait ended"),
+  });
+  const LITERATURE_REASON_LABELS = () => ({
+    network_changed: t("Network changed"), network_error: t("Network error"), dns_failed: t("DNS resolution failed"),
+    connection_failed: t("Connection failed"), navigation_timeout: t("Load timed out"), redirect_unresolved: t("Redirect unresolved"),
+    http_server_error: t("Publisher temporarily unavailable"), http_rate_limited: t("Publisher rate limited"),
+    request_blocked: t("Request blocked"), http_error: t("HTTP request failed"),
+    pdf_response_not_pdf: t("PDF endpoint returned non-PDF content"),
+  });
 
   function literatureWritable(access) {
     const status = object(state.snapshot && state.snapshot.status);
@@ -2891,7 +2913,7 @@
     const access = object(object(state.snapshot && state.snapshot.status).literature_access);
     if (!literatureWritable(access)) return;
     if (action === "import" && !String(path || "").startsWith("/")) {
-      state.literatureMessage = "导入需要服务器上的 PDF 绝对路径。";
+      state.literatureMessage = t("Import requires an absolute server-side PDF path.");
       renderInstitutional();
       return;
     }
@@ -2910,7 +2932,7 @@
       }
     }
     state.literatureBusy = true;
-    state.literatureMessage = action === "open" ? "正在请求打开登录标签页…" : action === "retry" ? "正在安排检查重试…" : action === "verify" ? "正在验证样本…" : "正在提交操作…";
+    state.literatureMessage = action === "open" ? t("Requesting a login tab…") : action === "retry" ? t("Scheduling a retry…") : action === "verify" ? t("Verifying sample…") : t("Submitting operation…");
     renderInstitutional();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -2921,16 +2943,16 @@
       const result = await response.json();
       if (result.status === "accepted") {
         if (durable) state.literatureUnconfirmed = null;
-        state.literatureMessage = durable ? "设置已保存到本次运行；公开来源与已接纳原文仍可使用。" : action === "open"
-          ? "已请求打开连接的浏览器标签页。请在那里完成登录；系统会检查并重试，其他研究继续。"
-          : action === "retry" ? "已安排检查。全文通过验证后，研究 Agent 可通过原文工具读取。"
-          : action === "verify" ? "已安排样本验证；它只证明此篇当时可读，不进入科研归档。" : "已安排导入PDF。通过文件和论文身份校验后可供研究Agent读取。";
+        state.literatureMessage = durable ? t("Preferences saved for this run; public sources and admitted documents remain available.") : action === "open"
+          ? t("Requested a tab in the connected browser. Complete login there; checks and retries continue while other research proceeds.")
+          : action === "retry" ? t("Check scheduled. After full-text validation, research Agents can read it through the document tool.")
+          : action === "verify" ? t("Sample verification scheduled; it proves only this paper's current readability and does not enter the research archive.") : t("PDF import scheduled. It becomes available to research Agents after file and paper-identity validation.");
       } else if (["rejected", "conflict"].includes(result.status) || [400, 403].includes(response.status)) {
         if (durable) state.literatureUnconfirmed = null;
-        state.literatureMessage = `未被接受：${result.error?.message || result.message || "检查操作员权限与运行状态"}`;
+        state.literatureMessage = t("Not accepted: {0}", result.error?.message || result.message || t("Check operator access and run state"));
       } else throw new Error("unconfirmed");
     } catch (_error) {
-      state.literatureMessage = "Host 响应未确认。刷新后可重试；这不会修改已经完成的研究结果。";
+      state.literatureMessage = t("Host reply unconfirmed. Refresh before retrying; completed research results remain unchanged.");
     } finally {
       clearTimeout(timer);
       state.literatureBusy = false;
@@ -2943,22 +2965,22 @@
     const access = object(status.literature_access);
     const groups = list(access.groups);
     const container = byId("workbench-list");
-    setText("workbench-scope", "按出版商分组的机构全文请求。登录永远在你自己的浏览器里完成；这里只触发打开标签页或导入。");
+    setText("workbench-scope", t("Institutional full-text requests grouped by publisher. Log in only in your own browser; this panel requests tabs or imports."));
     setText("workbench-status", state.literatureMessage || (access.enabled
-      ? `待处理 ${displayValue(access.pending)} · 已就绪 ${displayValue(access.available)}。`
-      : "Host 未启用机构访问。启动新任务时配置 --institutional-browser-url；此处不填写登录凭据。"));
-    setText("workbench-page", "机构全文请求 · 无分页");
+      ? t("Pending {0} · Ready {1}.", displayValue(access.pending), displayValue(access.available))
+      : t("Host has not enabled institutional access. Configure --institutional-browser-url for a new run; do not enter credentials here.")));
+    setText("workbench-page", t("Institutional full-text requests · no pagination"));
     byId("workbench-previous").disabled = true; byId("workbench-next").disabled = true;
-    const renderedKey = JSON.stringify(["institutional", access, state.literatureMessage, state.literatureBusy]);
+    const renderedKey = JSON.stringify([uiLanguage, "institutional", access, state.literatureMessage, state.literatureBusy]);
     if (container.dataset.renderedKey === renderedKey) return;
     container.dataset.renderedKey = renderedKey;
     container.replaceChildren();
     if (!access.enabled) {
-      container.append(element("p", "empty-copy", "Host 未启用机构访问。启动新任务时配置 --institutional-browser-url；此处不填写登录凭据。"));
+      container.append(element("p", "empty-copy", t("Host has not enabled institutional access. Configure --institutional-browser-url for a new run; do not enter credentials here.")));
       return;
     }
     if (!literatureToken) {
-      container.append(element("p", "empty-copy", "只读列表。触发动作需要操作员链接：在TUI的i面板点「Web面板链接」，或以--allow-literature-control启动web。"));
+      container.append(element("p", "empty-copy", t("Read-only list. Actions require an operator link from Web launched with --allow-literature-control.")));
     }
     let endpointPort = "";
     try { endpointPort = String(new URL(String(access.browser_endpoint || "")).port || ""); } catch (_error) { /* endpoint unavailable */ }
@@ -2972,34 +2994,34 @@
     } catch (_error) { /* laptop browser or invalid GUI origin */ }
     if (access.connection) {
       const connection = access.connection;
-      guide.append(element("p", "", "连接随本次运行分配，运行结束后释放；专用浏览器登录目录保留。"));
+      guide.append(element("p", "", t("Connections are allocated per run and released when it ends; the dedicated browser profile is retained.")));
       const instructions = {
-        client: "保持 Windows 专用连接脚本运行，它会发现本次运行并自动建立隧道，无需填写服务器端口。连接后选平台 → 打开登录，在浏览器完成学校登录。",
-        local: "在运行项目的 Linux 桌面上选平台 → 打开登录，使用弹出的专用浏览器。相同登录目录同时只允许一个运行使用。",
-        server: "在服务器终端运行 hypoloom institutional connections --state-root <运行目录> --include-ui-credentials 获取本次 GUI 入口及访问凭据，再转发显示的 GUI 端口。学校账号只在浏览器中输入。",
-        existing: "在已配置的外部浏览器中完成登录；项目只释放自己的运行连接，外部浏览器仍由你管理。"
+        client: t("Keep the Windows connector running. It discovers the run and opens a tunnel automatically; no server port entry is needed. Then select a publisher and Open login; complete institution login in the browser."),
+        local: t("On the Linux desktop running the project, select a publisher and Open login. Use the dedicated browser that opens. Only one run can use the same profile at a time."),
+        server: t("In a server terminal, run hypoloom institutional connections --state-root <state-root> --include-ui-credentials to obtain this run's GUI entry and credentials, then forward the displayed GUI port. Enter institution credentials only in the browser."),
+        existing: t("Log in in the configured external browser; the project releases only its own run connection. You continue to manage the external browser.")
       };
-      guide.append(element("p", "", instructions[connection.mode] || "请查看机构访问指南。"));
-      guide.append(element("p", "", `连接状态：${displayValue(connection.state)}。此状态不代表学校订阅权限已验证。`));
+      guide.append(element("p", "", instructions[connection.mode] || t("See the institutional access guide.")));
+      guide.append(element("p", "", t("Connection state: {0}. This does not verify institution subscription rights.", displayValue(connection.state))));
       if (connection.reason) guide.append(element("p", "", connection.reason === "port_in_use"
-        ? "所选固定端口被占用；释放后可重试，其他研究工作继续。" : "连接资源暂不可用，可稍后重试；其他研究工作继续。"));
+        ? t("The selected fixed port is occupied. Release it before retrying; other research continues.") : t("Connection resources are temporarily unavailable. Retry later; other research continues.")));
     } else if (serverUi) {
-      guide.append(element("p", "", "服务器浏览器：登录状态保存在服务器，同平台后续论文和新run复用仍有效的登录。"));
-      guide.append(element("p", "", `仅首次登录或会话过期时，在你的电脑执行：ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${serverUi.port}:${serverUi.hostname}:${serverUi.port} <ssh-user>@<research-server>`));
-      const openBrowser = element("a", "detail-link", "打开服务器浏览器，完成学校登录");
+      guide.append(element("p", "", t("Server browser: login state stays on the server and may be reused for later papers and new runs while valid.")));
+      guide.append(element("p", "", t("Only for first login or an expired session, run on your computer: ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:{0}:{1}:{2} <ssh-user>@<research-server>", serverUi.port, serverUi.hostname, serverUi.port)));
+      const openBrowser = element("a", "detail-link", t("Open server browser to log in to your institution"));
       openBrowser.href = `${serverUi.protocol}//127.0.0.1:${serverUi.port}/`;
       openBrowser.target = "_blank"; openBrowser.rel = "noopener noreferrer";
-      guide.append(openBrowser, element("p", "", "完成后可断开SSH、关闭笔记本，服务器继续下载。账号密码只在远程浏览器页面输入，本面板不收集凭据。"));
+      guide.append(openBrowser, element("p", "", t("After login, you may disconnect SSH and close your laptop; the server continues downloading. Enter credentials only in the remote browser. This panel does not collect them.")));
     } else {
-    guide.append(element("h3", "", "连接浏览器后才能登录（在学校网络的电脑上本地执行）"));
-    guide.append(element("pre", "panel-copy", access.windows_setup_command || "启动专用 Chrome/Edge，使用实际安装路径与独立 --user-data-dir；见机构访问指南。"));
-    guide.append(element("p", "panel-copy", `2) 同一台电脑建立SSH反向隧道：ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:${endpointPort || "<端口>"}:127.0.0.1:${endpointPort || "<端口>"} <ssh-user>@<research-server>`));
-    guide.append(element("p", "panel-copy", "3) 然后点「打开登录」，在浏览器弹出的页面完成学校 SSO/MFA。账号密码与验证码只在浏览器页面填写，本面板不收集凭据。"));
-    if (!endpointPort) guide.append(element("p", "panel-copy", "端口以 Host 启动参数 --institutional-browser-url 为准；替换上面命令中的 <端口>。"));
+    guide.append(element("h3", "", t("Connect the browser before login (run locally on a computer on your institution network)")));
+    guide.append(element("pre", "panel-copy", access.windows_setup_command || t("Start dedicated Chrome/Edge using its actual installation path and a separate --user-data-dir; see the institutional access guide.")));
+    guide.append(element("p", "panel-copy", t("2) On the same computer, open an SSH reverse tunnel: ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -R 127.0.0.1:{0}:127.0.0.1:{1} <ssh-user>@<research-server>", endpointPort || t("<port>"), endpointPort || t("<port>"))));
+    guide.append(element("p", "panel-copy", t("3) Select Open login, then complete institution SSO/MFA in the browser. Enter credentials and codes only there; this panel does not collect them.")));
+    if (!endpointPort) guide.append(element("p", "panel-copy", t("Use the port in the Host --institutional-browser-url argument; replace <port> in the commands above.")));
     }
     container.append(guide);
     if (!groups.length) {
-      container.append(element("p", "empty-copy", "目前没有待处理的机构全文请求。"));
+      container.append(element("p", "empty-copy", t("No institutional full-text requests are pending.")));
       return;
     }
     const writable = literatureWritable(access);
@@ -3008,24 +3030,24 @@
       const section = element("section", "detail-card institutional-group");
       const heading = element("div", "institutional-heading");
       heading.append(element("h3", "", displayValue(providerName)));
-      const open = actionButton("打开登录", () => requestLiterature(providerName, "open", "", ""), "detail-link");
-      const retry = actionButton("检查并重试", () => requestLiterature(providerName, "retry", "", ""), "detail-link");
+      const open = actionButton(t("Open login"), () => requestLiterature(providerName, "open", "", ""), "detail-link");
+      const retry = actionButton(t("Check and retry"), () => requestLiterature(providerName, "retry", "", ""), "detail-link");
       open.disabled = !writable; retry.disabled = !writable;
-      const modeButton = actionButton(group.mode !== "auto" ? "启用机构访问" : "仅公开途径",
+      const modeButton = actionButton(group.mode !== "auto" ? t("Enable institutional access") : t("Public only"),
         () => requestLiterature(providerName, "mode", "", "", group.mode !== "auto" ? "auto" : "public_only"), "detail-link");
       modeButton.disabled = !writable;
       open.disabled ||= group.mode !== "auto"; retry.disabled ||= group.mode !== "auto";
       heading.append(open, retry, modeButton);
-      section.append(element("p", "panel-copy", `${({auto: "使用现有机构会话", public_only: "仅公开途径", disabled: "未启用机构渠道"})[group.mode] || "策略未知"} · 主动等待剩余 ${group.manual_remaining_seconds || 0} 秒`));
+      section.append(element("p", "panel-copy", t("{0} · active wait: {1} seconds remaining", ({auto: t("Use existing institutional session"), public_only: t("Public only"), disabled: t("Institutional route disabled")})[group.mode] || t("Policy unknown"), group.manual_remaining_seconds || 0)));
       section.append(heading);
       const prep = object(group.preparation);
-      section.append(element("p", "panel-copy", `${LITERATURE_STATE_LABELS[prep.state] || prep.state || "未检查"}${prep.last_checked_at ? " · " + prep.last_checked_at : ""}`));
+      section.append(element("p", "panel-copy", `${LITERATURE_STATE_LABELS()[prep.state] || prep.state || t("Not checked")}${prep.last_checked_at ? " · " + prep.last_checked_at : ""}`));
       const sample = element("input", "institutional-sample");
-      sample.placeholder = "样本 DOI 或规范论文 URL";
-      const sampleKey = `sample ${providerName}`;
+      sample.placeholder = t("Sample DOI or canonical article URL");
+      const sampleKey = t("sample {0}", providerName);
       sample.value = state.literatureDraft.get(sampleKey) || "";
       sample.addEventListener("input", () => state.literatureDraft.set(sampleKey, sample.value));
-      const verify = actionButton("验证样本", () => {
+      const verify = actionButton(t("Verify sample"), () => {
         let url = (state.literatureDraft.get(sampleKey) || "").trim().replace(/^doi:/i, "");
         if (url.startsWith("10.")) url = "https://doi.org/" + url;
         requestLiterature(providerName, "verify", url);
@@ -3035,7 +3057,7 @@
       list(group.papers).forEach((paper) => {
         const row = element("div", "institutional-paper");
         const title = element("div", "institutional-paper-title");
-        const label = paper.title || paper.url || "论文 unavailable";
+        const label = paper.title || paper.url || t("Paper unavailable");
         let linked = false;
         try {
           const parsed = new URL(String(paper.url));
@@ -3047,26 +3069,26 @@
           }
         } catch (_error) { /* fall back to plain text */ }
         if (!linked) title.append(element("span", "", label));
-        const stateLabel = LITERATURE_STATE_LABELS[paper.state] || paper.state || "未知";
+        const stateLabel = LITERATURE_STATE_LABELS()[paper.state] || paper.state || t("Unknown");
         row.append(title, element("span", `counter${paper.state === "available" ? " institutional-ready" : ""}`, stateLabel));
         if (paper.reason_code) {
-          const reason = LITERATURE_REASON_LABELS[paper.reason_code];
-          row.append(element("span", "", `原因：${reason ? `${reason}（${paper.reason_code}）` : paper.reason_code}`));
+          const reason = LITERATURE_REASON_LABELS()[paper.reason_code];
+          row.append(element("span", "", t("Reason: {0}", reason ? `${reason}（${paper.reason_code}）` : paper.reason_code)));
         }
-        if (Number.isFinite(paper.retry_in_seconds)) row.append(element("span", "", `下次检查约${paper.retry_in_seconds}秒后`));
-        if (paper.last_checked_at) row.append(element("span", "", `上次检查：${formatTimestamp(Date.parse(paper.last_checked_at) / 1000)}`));
+        if (Number.isFinite(paper.retry_in_seconds)) row.append(element("span", "", t("Next check in about {0} seconds", paper.retry_in_seconds)));
+        if (paper.last_checked_at) row.append(element("span", "", t("Last checked: {0}", formatTimestamp(Date.parse(paper.last_checked_at) / 1000))));
         const draftKey = `${providerName} ${paper.url}`;
         const importRow = element("div", "institutional-import");
         const input = element("input", "institutional-import-path");
         input.type = "text";
-        input.placeholder = "已传到服务器的 PDF 绝对路径（导入时填写）";
+        input.placeholder = t("Absolute path to a PDF already on the server (for import)");
         input.value = state.literatureDraft.get(draftKey) || "";
         input.addEventListener("input", () => state.literatureDraft.set(draftKey, input.value));
-        const importButton = actionButton("导入PDF", () => {
+        const importButton = actionButton(t("Import PDF"), () => {
           requestLiterature(providerName, "import", paper.url || "", (state.literatureDraft.get(draftKey) || "").trim());
         }, "detail-link");
         importButton.disabled = !writable;
-        const skipButton = actionButton(paper.skipped ? "恢复此篇" : "跳过此篇",
+        const skipButton = actionButton(paper.skipped ? t("Resume paper") : t("Skip paper"),
           () => requestLiterature(providerName, paper.skipped ? "restore" : "skip", paper.url), "detail-link");
         skipButton.disabled = !writable;
         importRow.append(input, importButton, skipButton);
@@ -3081,50 +3103,50 @@
     const kind = state.workbenchKind;
     const data = object(state.workbenchData);
     byId("workbench-list").classList.toggle("execution-reliability", kind === "reliability");
-    setText("workbench-title", WORKBENCH_TITLES[kind]);
+    setText("workbench-title", WORKBENCH_TITLES()[kind]);
     document.querySelectorAll("[data-workbench]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.workbench === kind)));
     if (kind === "reliability") { renderReliability(); return; }
     if (kind === "institutional") { renderInstitutional(); return; }
     const filters = selectedFilters();
     const context = state.workbenchContext;
-    const scope = kind === "sessions" && context.task_scope ? `${taskScopeLabel(context)} tasks; expert/component filters retained for other views`
-      : kind === "sessions" && context.session_id ? `Exact session ${context.session_id}; expert/component filters retained for other views`
-      : `${filters.expert || "All experts"}${context.component_id ? ` · component ${context.component_id}` : ""}`;
-    setText("workbench-scope", `${scope}. Search narrows the current page; totals count the complete run.`);
+    const scope = kind === "sessions" && context.task_scope ? t("{0} tasks; expert/component filters retained for other views", taskScopeLabel(context))
+      : kind === "sessions" && context.session_id ? t("Exact session {0}; expert/component filters retained for other views", context.session_id)
+      : `${filters.expert || t("All experts")}${context.component_id ? t(" · component {0}", context.component_id) : ""}`;
+    setText("workbench-scope", t("{0}. Search narrows the current page; totals count the complete run.", scope));
     const all = list(data[WORKBENCH_KEYS[kind]] || data.items);
     const items = all.filter((item) => !filters.search || searchable(item).includes(filters.search));
     const container = byId("workbench-list");
     // The evidence payload is already bounded by the server; do not rebuild unchanged rows on polls.
     const pool = object(data.shared_pool);
-    const renderedKey = JSON.stringify([kind, items, filters.expert, filters.search, pool.devices, pool.available, pool.reason]);
+    const renderedKey = JSON.stringify([uiLanguage, kind, items, filters.expert, filters.search, pool.devices, pool.available, pool.reason]);
     if (container.dataset.renderedKey !== renderedKey) {
       container.dataset.renderedKey = renderedKey;
       container.replaceChildren();
       if (kind === "resources" && pool.available === true) {
         const capacity = element("article", "detail-card pool-capacity");
-        capacity.append(element("h3", "", "Authorized shared capacity"), element("p", "panel-copy", "Aggregate device capacity from the explicitly configured pool. No other run's private research is exposed."));
+        capacity.append(element("h3", "", t("Authorized shared capacity")), element("p", "panel-copy", t("Aggregate device capacity from the explicitly configured pool. No other run's private research is exposed.")));
         list(pool.devices).forEach((device) => {
           const row = element("div", "resource-trace");
           const grid = element("dl", "selection-grid");
           appendDefinition(grid, "GPU", device.gpu_uuid);
-          appendDefinition(grid, "free / allocatable MiB", `${displayValue(device.free_memory_mib)} / ${displayValue(device.allocatable_memory_mib)}`);
-          appendDefinition(grid, "outstanding / reserve MiB", `${displayValue(device.outstanding_memory_mib)} / ${displayValue(device.reserve_memory_mib)}`);
-          appendDefinition(grid, "active / unknown attribution", `${displayValue(device.active_commitments)} / ${displayValue(device.unknown_attribution_commitments)}`);
+          appendDefinition(grid, t("free / allocatable MiB"), `${displayValue(device.free_memory_mib)} / ${displayValue(device.allocatable_memory_mib)}`);
+          appendDefinition(grid, t("outstanding / reserve MiB"), `${displayValue(device.outstanding_memory_mib)} / ${displayValue(device.reserve_memory_mib)}`);
+          appendDefinition(grid, t("active / unknown attribution"), `${displayValue(device.active_commitments)} / ${displayValue(device.unknown_attribution_commitments)}`);
           row.append(grid); capacity.append(row);
         });
-        if (pool.truncated) capacity.append(element("p", "panel-copy", "Device list truncated at the observation limit."));
+        if (pool.truncated) capacity.append(element("p", "panel-copy", t("Device list truncated at the observation limit.")));
         container.append(capacity);
       }
       items.forEach((item) => container.append(detailCard(kind, item)));
-      if (!items.length) container.append(element("p", "empty-copy", state.workbenchData ? "No matching records in this page. Missing retained evidence remains unavailable." : "Loading selected evidence…"));
+      if (!items.length) container.append(element("p", "empty-copy", state.workbenchData ? t("No matching records in this page. Missing retained evidence remains unavailable.") : t("Loading selected evidence…")));
     }
-    const available = data.available === false ? "unavailable" : data.coverage || "read-only evidence";
-    let note = `${available} · ${items.length} matching rows on this page.`;
-    if (data.unknown_versions) note += ` ${data.unknown_versions} plugin versions unavailable.`;
-    if (kind === "resources") note += ` Shared pool: ${pool.available ? `observed ${formatTimestamp(pool.sampled_at)}` : pool.reason || "unavailable; no live pool observation"}.`;
+    const available = data.available === false ? "unavailable" : data.coverage || t("read-only evidence");
+    let note = t("{0} · {1} matching rows on this page.", available, items.length);
+    if (data.unknown_versions) note += t(" {0} plugin versions unavailable.", data.unknown_versions);
+    if (kind === "resources") note += t(" Shared pool: {0}.", pool.available ? t("observed {0}", formatTimestamp(pool.sampled_at)) : pool.reason || t("unavailable; no live pool observation"));
     setText("workbench-status", note);
     const total = data.total;
-    setText("workbench-page", `${all.length ? state.workbenchOffset + 1 : 0}–${state.workbenchOffset + all.length} of ${displayValue(total)} records`);
+    setText("workbench-page", t("{0}–{1} of {2} records", all.length ? state.workbenchOffset + 1 : 0, state.workbenchOffset + all.length, displayValue(total)));
     byId("workbench-previous").disabled = state.workbenchOffset === 0;
     byId("workbench-next").disabled = typeof total !== "number" || state.workbenchOffset + DETAIL_PAGE_SIZE >= total;
   }
@@ -3135,7 +3157,7 @@
     byId("research-detail").hidden = mode !== "detail";
     byId("drawer-evidence-tab").setAttribute("aria-pressed", String(mode === "evidence"));
     byId("drawer-detail-tab").setAttribute("aria-pressed", String(mode === "detail"));
-    setText("drawer-title", mode === "evidence" ? "Attempts & evidence" : "Research detail");
+    setText("drawer-title", mode === "evidence" ? t("Attempts & evidence") : t("Research detail"));
   }
 
   function openLocalDetail(kind, data) {
@@ -3149,13 +3171,13 @@
     if (!refresh) { state.detail = {kind, parameters, data: null}; state.detailTab = "overview"; }
     setDrawerMode("detail");
     if (!refresh) { renderResearchDetail(); openDrawer(); }
-    setText("research-detail-status", "Reading run-bound evidence…");
+    setText("research-detail-status", t("Reading run-bound evidence…"));
     try {
       let data = await fetchDetail({kind, ...parameters, limit: DETAIL_PAGE_SIZE});
       if (request !== state.detailRequest) return;
       if (kind === "resources") {
         data = list(data.experiments)[0];
-        if (!data) throw new Error("Resource evidence is unavailable for this experiment.");
+        if (!data) throw new Error(t("Resource evidence is unavailable for this experiment."));
       }
       state.detail = {kind: kind === "resources" ? "resource" : kind, requestKind: kind, parameters, data};
       const top = drawer.scrollTop;
@@ -3185,17 +3207,17 @@
     const previousText = content.querySelector(".skill-body, .skill-diff");
     const textScroll = previousText && content.dataset.detailTab === state.detailTab ? previousText.scrollTop : 0;
     content.dataset.detailTab = state.detailTab;
-    if (!selected) { content.replaceChildren(element("p", "empty-copy", "Select a skill, paper, session Attempt, interaction or experiment.")); return; }
+    if (!selected) { content.replaceChildren(element("p", "empty-copy", t("Select a skill, paper, session Attempt, interaction or experiment."))); return; }
     const data = object(selected.data);
     const kind = selected.kind;
     setText("research-detail-title", data.name || object(data.attempt).attempt_id || data.title || data.experiment_id || data.interaction_id || kind);
     const evidenceStatus = data.available === false ? kind === "attempt" && data.attempt?.failure_code
-      ? "Recorded failure · session trace unavailable" : "Evidence unavailable" : "Read-only evidence";
-    setText("research-detail-status", selected.data ? `${evidenceStatus}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? " · bounded response; more evidence exists" : ""}` : "Reading run-bound evidence…");
-    const names = kind === "skill" ? [["overview", "Version"], ["body", "Skill content"], ["diff", "Recent diff"], ["adoption", "Adoption"], ["files", "Supporting files"]]
-      : kind === "attempt" ? [["overview", "Attempt"], ["timeline", "Session / tools"], ["corrections", "Corrections"], ["execution", "Execution evidence"]]
+      ? t("Recorded failure · session trace unavailable") : t("Evidence unavailable") : t("Read-only evidence");
+    setText("research-detail-status", selected.data ? `${evidenceStatus}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? t(" · bounded response; more evidence exists") : ""}` : t("Reading run-bound evidence…"));
+    const names = kind === "skill" ? [["overview", "Version"], ["body", t("Skill content")], ["diff", t("Recent diff")], ["adoption", "Adoption"], ["files", t("Supporting files")]]
+      : kind === "attempt" ? [["overview", t("Attempt")], ["timeline", "Session / tools"], ["corrections", "Corrections"], ["execution", t("Execution evidence")]]
         : kind === "interaction" ? [["overview", "Overview"], ["timeline", "Stages / verdict"]]
-          : [["overview", kind === "resource" ? "Estimate → admission → measured" : "Evidence"]];
+          : [["overview", kind === "resource" ? "Estimate → admission → measured" : t("Evidence")]];
     const existingFocus = document.activeElement && document.activeElement.dataset.detailTab;
     tabs.replaceChildren();
     names.forEach(([key, label]) => {
@@ -3205,7 +3227,7 @@
       tabs.append(button);
       if (existingFocus === key) button.focus({preventScroll: true});
     });
-    if (selected.parameters) tabs.append(actionButton("Refresh", () => openRemoteDetail(selected.requestKind || kind, state.detail.parameters, true)));
+    if (selected.parameters) tabs.append(actionButton(t("Refresh"), () => openRemoteDetail(selected.requestKind || kind, state.detail.parameters, true)));
     const top = content.scrollTop;
     content.replaceChildren();
     if (!selected.data) return;
@@ -3222,57 +3244,57 @@
       appendDefinition(grid, "from", data.from);
       appendDefinition(grid, "to", data.to);
       appendDefinition(grid, "relationship", relationLabel(data));
-      appendDefinition(grid, "recorded relation", data.relation);
+      appendDefinition(grid, t("recorded relation"), data.relation);
       if (data.kind === "pruning") {
-        appendDefinition(grid, "meaning", "Pruning is a control decision; it does not refute the scientific claim.");
-        appendDefinition(grid, "winner claim", object(data.source).claim || "—");
-        appendDefinition(grid, "pruned claim", object(data.target).claim || "—");
-        appendDefinition(grid, "pruned scientific assessment", object(data.target).assessment || "Not assessed");
+        appendDefinition(grid, "meaning", t("Pruning is a control decision; it does not refute the scientific claim."));
+        appendDefinition(grid, t("winner claim"), object(data.source).claim || "—");
+        appendDefinition(grid, t("pruned claim"), object(data.target).claim || "—");
+        appendDefinition(grid, t("pruned scientific assessment"), object(data.target).assessment || t("Not assessed"));
       } else if (data.kind === "lineage") {
         appendHypothesisComparison(grid, data.target, data.source);
-        appendDefinition(grid, "child claim", object(data.target).claim || "—");
-        appendDefinition(grid, "child method family", object(data.target).method_family_id || "—");
-        appendDefinition(grid, "child scientific assessment", object(data.target).assessment || "Not assessed");
+        appendDefinition(grid, t("child claim"), object(data.target).claim || "—");
+        appendDefinition(grid, t("child method family"), object(data.target).method_family_id || "—");
+        appendDefinition(grid, t("child scientific assessment"), object(data.target).assessment || t("Not assessed"));
       }
       content.append(grid);
       const raw = element("details", "raw-evidence");
-      raw.append(element("summary", "", "Raw relationship evidence"));
+      raw.append(element("summary", "", t("Raw relationship evidence")));
       structuredDetail(raw, {relationship: data.recorded, source: data.source, target: data.target});
       content.append(raw);
     } else if (state.detailTab === "execution") {
-      structuredDetail(content, data.trace_evidence || {coverage: "unavailable", notice: "No retained execution trace evidence."});
+      structuredDetail(content, data.trace_evidence || {coverage: "unavailable", notice: t("No retained execution trace evidence.")});
       list(data.related_attempts || data.attempt_links).forEach((attempt) => {
         const id = typeof attempt === "string" ? attempt : attempt.attempt_id;
         if (id) content.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}), "detail-link reliability-attempt-link"));
       });
     } else if (state.detailTab === "body") {
-      if (data.body_truncated) content.append(element("p", "panel-copy", "Skill body truncated at the response limit."));
-      content.append(element("pre", "detail-code skill-body", data.body ?? "Skill content unavailable for this accepted version."));
+      if (data.body_truncated) content.append(element("p", "panel-copy", t("Skill body truncated at the response limit.")));
+      content.append(element("pre", "detail-code skill-body", data.body ?? t("Skill content unavailable for this accepted version.")));
     }
     else if (state.detailTab === "diff") {
       const diff = object(data.diff);
-      content.append(element("p", "panel-copy", `${diff.base_commit || "No accepted base"} → ${diff.commit || data.commit || "unknown"}${diff.truncated ? " · truncated" : ""}`));
+      content.append(element("p", "panel-copy", `${diff.base_commit || t("No accepted base")} → ${diff.commit || data.commit || "unknown"}${diff.truncated ? " · truncated" : ""}`));
       const code = element("pre", "detail-code skill-diff");
-      const text = diff.available === false ? "Diff unavailable." : diff.text ?? "No accepted evolution diff.";
+      const text = diff.available === false ? t("Diff unavailable.") : diff.text ?? t("No accepted evolution diff.");
       text.split("\n").forEach((line) => code.append(element("span", line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-remove" : "", `${line}\n`)));
       content.append(code);
     } else if (state.detailTab === "adoption") {
-      content.append(element("p", "panel-copy", "Published commit → later request binding → native Skill load. These are separate observations; an unavailable transcript cannot prove a load."));
+      content.append(element("p", "panel-copy", t("Published commit → later request binding → native Skill load. These are separate observations; an unavailable transcript cannot prove a load.")));
       const adoption = list(data.adoption);
-      if (!adoption.length) content.append(element("p", "empty-copy", "No later adoption evidence recorded."));
+      if (!adoption.length) content.append(element("p", "empty-copy", t("No later adoption evidence recorded.")));
       adoption.forEach((item) => {
         const row = element("article", "detail-card"); structuredDetail(row, item);
-        if (item.attempt_id) row.append(actionButton("Inspect native session", () => openRemoteDetail("attempt", {attempt_id: item.attempt_id})));
+        if (item.attempt_id) row.append(actionButton(t("Inspect native session"), () => openRemoteDetail("attempt", {attempt_id: item.attempt_id})));
         content.append(row);
       });
     } else if (state.detailTab === "files") {
-      if (data.supporting_files_truncated) content.append(element("p", "panel-copy", "Only the first 100 supporting files are shown."));
+      if (data.supporting_files_truncated) content.append(element("p", "panel-copy", t("Only the first 100 supporting files are shown.")));
       list(data.supporting_files).forEach((file) => {
         const section = element("details");
-        section.append(element("summary", "", `${file.path} · ${file.size ?? "?"} bytes${file.truncated ? " · truncated" : ""}`),
-          element("pre", "detail-code", file.text ?? "Binary or unavailable supporting asset.")); content.append(section);
+        section.append(element("summary", "", t("{0} · {1} bytes{2}", file.path, file.size ?? "?", file.truncated ? " · truncated" : "")),
+          element("pre", "detail-code", file.text ?? t("Binary or unavailable supporting asset."))); content.append(section);
       });
-      if (!list(data.supporting_files).length) content.append(element("p", "empty-copy", "No supporting files projected."));
+      if (!list(data.supporting_files).length) content.append(element("p", "empty-copy", t("No supporting files projected.")));
     } else if (state.detailTab === "timeline") {
       const events = kind === "interaction" ? list(data.stages) : list(data.events);
       events.forEach((event, index) => {
@@ -3280,12 +3302,12 @@
         row.append(element("h4", "", `${(data.offset || 0) + index + 1}. ${event.type || event.action || "event"}${event.name ? ` · ${event.name}` : ""}`));
         structuredDetail(row, event); content.append(row);
       });
-      if (!events.length) content.append(element("p", "empty-copy", "No archived timeline available in this page."));
+      if (!events.length) content.append(element("p", "empty-copy", t("No archived timeline available in this page.")));
       if (kind === "attempt") {
         const offset = data.offset || 0;
         const controls = element("div", "pagination");
-        if (offset > 0) controls.append(actionButton("Earlier events", () => openRemoteDetail("attempt", {...state.detail.parameters, offset: Math.max(0, offset - DETAIL_PAGE_SIZE)}, true)));
-        if (typeof data.total === "number" && offset + events.length < data.total) controls.append(actionButton("Later events", () => openRemoteDetail("attempt", {...state.detail.parameters, offset: offset + DETAIL_PAGE_SIZE}, true)));
+        if (offset > 0) controls.append(actionButton(t("Earlier events"), () => openRemoteDetail("attempt", {...state.detail.parameters, offset: Math.max(0, offset - DETAIL_PAGE_SIZE)}, true)));
+        if (typeof data.total === "number" && offset + events.length < data.total) controls.append(actionButton(t("Later events"), () => openRemoteDetail("attempt", {...state.detail.parameters, offset: offset + DETAIL_PAGE_SIZE}, true)));
         content.append(controls);
       }
     } else if (state.detailTab === "corrections") {
@@ -3296,23 +3318,23 @@
       structuredDetail(content, data, ["body", "supporting_files", "diff", "events", "corrections", "adoption", "stages", "download_attempts", "download_coverage"]);
       if (kind === "skill") {
         const versions = element("div", "version-list");
-        versions.append(element("p", "panel-copy", "Accepted / bound versions (concurrent bindings may differ):"));
+        versions.append(element("p", "panel-copy", t("Accepted / bound versions (concurrent bindings may differ):")));
         list(data.versions).forEach((version) => versions.append(actionButton(
           `${compact(version.commit, 18)}${version.current ? " · current/bound" : ""}`,
           () => openRemoteDetail("skill", {role: data.role, name: data.name, commit: version.commit}))));
         content.append(versions);
       }
       if (kind === "attempt") {
-        if (data.attempt?.failure_stage === "literature_retrieval") content.append(element("p", "panel-copy", "Literature preparation failed before model invocation. Missing session/tool traces do not hide the recorded failure diagnostics."));
-        content.append(element("p", "panel-copy", "Normalized turns and raw provider counters may use different units. OPEN is durable state; current live subphase is unknown here."));
+        if (data.attempt?.failure_stage === "literature_retrieval") content.append(element("p", "panel-copy", t("Literature preparation failed before model invocation. Missing session/tool traces do not hide the recorded failure diagnostics.")));
+        content.append(element("p", "panel-copy", t("Normalized turns and raw provider counters may use different units. OPEN is durable state; current live subphase is unknown here.")));
       }
       if (kind === "literature") {
-        paperSourceLink(content, "Open paper ↗", data.landing_uri || data.url || data.doi_url, data);
-        paperSourceLink(content, "Open PDF / retrieval source ↗", data.source_uri || data.pdf_url, data);
+        paperSourceLink(content, t("Open paper ↗"), data.landing_uri || data.url || data.doi_url, data);
+        paperSourceLink(content, t("Open PDF / retrieval source ↗"), data.source_uri || data.pdf_url, data);
         renderDownloadEvidence(content, data);
       }
-      list(data.source_attempt_ids).forEach((attempt_id) => content.append(actionButton(`Source Attempt ${attempt_id}`, () => openRemoteDetail("attempt", {attempt_id}))));
-      if (data.update_attempt && data.update_attempt.attempt_id) content.append(actionButton("Inspect evolution session", () => openRemoteDetail("attempt", {attempt_id: data.update_attempt.attempt_id})));
+      list(data.source_attempt_ids).forEach((attempt_id) => content.append(actionButton(t("Source Attempt {0}", attempt_id), () => openRemoteDetail("attempt", {attempt_id}))));
+      if (data.update_attempt && data.update_attempt.attempt_id) content.append(actionButton(t("Inspect evolution session"), () => openRemoteDetail("attempt", {attempt_id: data.update_attempt.attempt_id})));
     }
     content.scrollTop = top;
     const nextText = content.querySelector(".skill-body, .skill-diff");
@@ -3320,7 +3342,7 @@
   }
 
   function renderProduct(product) {
-    setText("product-status", `Observed ${product.run_id} · ${formatTimestamp(product.observed_at)}`);
+    setText("product-status", t("Observed {0} · {1}", product.run_id, formatTimestamp(product.observed_at)));
     const experimentPage = state.history.experiments || product;
     const eventPage = state.history.events || product;
     setText("experiment-total", object(object(object(product.summary).totals).experiments).total ?? "unavailable");
@@ -3330,17 +3352,17 @@
         const button = element("button", "experiment-row");
         button.type = "button";
         button.append(element("strong", "", experiment.experiment_id), element("span", "counter", experiment.state),
-          element("span", "panel-copy", object(experiment.outcome).outcome || "No accepted outcome"));
+          element("span", "panel-copy", object(experiment.outcome).outcome || t("No accepted outcome")));
         button.addEventListener("click", () => openExperimentLog(experiment.experiment_id));
         queue.append(button);
       });
-      if (!queue.children.length) queue.append(element("p", "empty-copy", "No experiments submitted yet."));
+      if (!queue.children.length) queue.append(element("p", "empty-copy", t("No experiments submitted yet.")));
       renderHistoryControls("experiments", experimentPage);
     });
     const report = object(product.final_report);
     renderChanged("report", report, () => {
-      setText("final-report-source", report.attempt_id ? `As-of report from ${report.attempt_id} · ${report.verdict || "NO_ACCEPTED_VERDICT"}. ${report.stop_reason} Later stop controls remain in the event history.` : "No accepted report yet. A report is a narrative, not a new scientific verdict.");
-      setText("final-report-text", report.markdown || "No accepted report yet.");
+      setText("final-report-source", report.attempt_id ? t("As-of report from {0} · {1}. {2} Later stop controls remain in the event history.", report.attempt_id, report.verdict || "NO_ACCEPTED_VERDICT", report.stop_reason) : t("No accepted report yet. A report is a narrative, not a new scientific verdict."));
+      setText("final-report-text", report.markdown || t("No accepted report yet."));
     });
     renderChanged("product-events", [eventPage.events, eventPage.events_page], () => {
       const events = byId("product-events"); events.replaceChildren();
@@ -3358,7 +3380,7 @@
   function renderHistoryControls(kind, data) {
     const page = object(data[`${kind}_page`]);
     const count = list(data[kind]).length;
-    setText(`${kind}-page`, `${page.offset ? "Retained older page" : "Latest page"} · ${count} of ${page.total ?? count} · offset ${page.offset || 0}`);
+    setText(`${kind}-page`, t("{0} · {1} of {2} · offset {3}", page.offset ? t("Retained older page") : t("Latest page"), count, page.total ?? count, page.offset || 0));
     byId(`${kind}-older`).disabled = page.has_more !== true;
     byId(`${kind}-latest`).disabled = !state.history[kind];
   }
@@ -3376,14 +3398,14 @@
         method: "GET", cache: "no-store", credentials: "same-origin",
         headers: {Authorization: `Bearer ${accessToken}`}, signal: controller.signal,
       });
-      if (!response.ok) throw new Error("History page unavailable");
+      if (!response.ok) throw new Error(t("History page unavailable"));
       const data = await response.json();
       if (request !== state.historyRequests[kind]) return;
       state.history[kind] = data;
       if (state.activeView === "activity") renderProduct(state.product);
     } catch (_error) {
       if (request === state.historyRequests[kind]) {
-        setText(`${kind}-page`, "History page unavailable; retained rows remain visible.");
+        setText(`${kind}-page`, t("History page unavailable; retained rows remain visible."));
         byId(`${kind}-older`).disabled = false;
       }
     } finally { window.clearTimeout(timeout); }
@@ -3407,15 +3429,15 @@
         signal: controller.signal,
       });
       if (response.status === 401) {
-        setConnection("error", accessToken ? "TOKEN REJECTED" : "TOKEN REQUIRED");
-        announce("Snapshot access was not authorized. Open the startup URL containing its token fragment.");
+        setConnection("error", accessToken ? t("TOKEN REJECTED") : t("TOKEN REQUIRED"));
+        announce(t("Snapshot access was not authorized. Open the startup URL containing its token fragment."));
         return;
       }
-      if (!response.ok) throw new Error(`snapshot endpoint returned ${response.status}`);
+      if (!response.ok) throw new Error(t("snapshot endpoint returned {0}", response.status));
       const refresh = await response.json();
       const snapshot = refresh.snapshot;
       if (!snapshot || typeof snapshot !== "object" || typeof snapshot.run_id !== "string") {
-        throw new Error("snapshot response has an invalid shape");
+        throw new Error(t("snapshot response has an invalid shape"));
       }
       state.lastSuccessAt = Date.now();
       state.pollFailures = 0;
@@ -3429,14 +3451,14 @@
         }
       }
       if (document.hidden) return;
-      setConnection("live", "CONNECTED");
-      announce(`Observed run ${snapshot.run_id} at revision ${object(snapshot.status).run_revision ?? "unknown"}`);
+      setConnection("live", t("CONNECTED"));
+      announce(t("Observed run {0} at revision {1}", snapshot.run_id, object(snapshot.status).run_revision ?? "unknown"));
     } catch (error) {
       if (document.hidden) return;
       state.pollFailures += 1;
-      const message = error && error.name === "AbortError" ? "POLL TIMEOUT" : "RECONNECTING";
+      const message = error && error.name === "AbortError" ? t("POLL TIMEOUT") : "RECONNECTING";
       setConnection(state.snapshot ? "stale" : "error", message);
-      announce("Snapshot poll failed; the last successful read remains visible and may be stale.");
+      announce(t("Snapshot poll failed; the last successful read remains visible and may be stale."));
     } finally {
       window.clearTimeout(timeout);
       state.polling = false;
@@ -3525,7 +3547,7 @@
   byId("toggle-pruning").addEventListener("click", () => {
     state.showPruning = !state.showPruning;
     renderVisibleViews();
-    announce(`Pruning links ${state.showPruning ? "shown" : "hidden"}; hypothesis nodes and their statuses remain visible`);
+    announce(t("Pruning links {0}; hypothesis nodes and their statuses remain visible", state.showPruning ? "shown" : "hidden"));
   });
   byId("open-drawer").addEventListener("click", () => {
     setDrawerMode("evidence");
@@ -3606,16 +3628,16 @@
     if (!humanDrafts.has(id)) humanDrafts.set(id, {text: decision.answer || ""});
     humanReviewed = Boolean(humanDraft().pending);
     setText("human-run", state.snapshot.run_id);
-    setText("human-title", `Human decision · question ${decision.ordinal}`);
+    setText("human-title", t("Human decision · question {0}", decision.ordinal));
     setText("human-question", decision.question);
     setText("human-rationale", decision.rationale);
-    setText("human-access", answerToken ? "Operator answer access. Review and submit to continue this run."
-      : "This link is read-only. In TUI press h to answer directly or choose Browser for an operator link. For standalone Web, launch with --allow-human-answers.");
+    setText("human-access", answerToken ? t("Operator answer access. Review and submit to continue this run.")
+      : t("This link is read-only. In TUI press h to answer directly or choose Browser for an operator link. For standalone Web, launch with --allow-human-answers."));
     byId("human-answer").value = humanDraft().text;
     byId("human-options").replaceChildren();
     list(decision.options).forEach((option, index) => {
       const card = element("article", "");
-      const button = element("button", "", `Use option ${index + 1}`);
+      const button = element("button", "", t("Use option {0}", index + 1));
       button.type = "button";
       button.addEventListener("click", () => {
         byId("human-answer").value = option; humanDraft().text = option; humanButtons();
@@ -3623,9 +3645,9 @@
       });
       card.append(element("p", "", option), button); byId("human-options").append(card);
     });
-    byId("submit-human").textContent = humanDraft().pending ? "Retry same answer" : "Submit answer";
-    setText("human-status", humanDraft().pending ? "Previous delivery was not confirmed. Retry preserves the exact answer."
-      : "Choose a suggestion or write your own answer, then review. Nothing is sent until you submit.");
+    byId("submit-human").textContent = humanDraft().pending ? t("Retry same answer") : t("Submit answer");
+    setText("human-status", humanDraft().pending ? t("Previous delivery was not confirmed. Retry preserves the exact answer.")
+      : t("Choose a suggestion or write your own answer, then review. Nothing is sent until you submit."));
     renderHumanDecisions(state.snapshot);
     humanButtons();
   }
@@ -3637,7 +3659,7 @@
     const selector = byId("human-select");
     selector.replaceChildren();
     decisions.forEach(item => {
-      const option = element("option", "", `Question ${item.ordinal} · ${item.state === "OPEN" ? "Pending" : item.resolution || "Answered"}`);
+      const option = element("option", "", t("Question {0} · {1}", item.ordinal, item.state === "OPEN" ? t("Pending") : item.resolution || t("Answered")));
       option.value = item.decision_id; selector.append(option);
     });
     selector.value = chosen;
@@ -3652,11 +3674,11 @@
     for (const item of decisions) {
       let option = Array.from(selector.options).find(option => option.value === item.decision_id);
       if (!option) { option = document.createElement("option"); option.value = item.decision_id; selector.append(option); }
-      option.textContent = `Question ${item.ordinal} · ${item.state === "OPEN" ? "Pending" : item.resolution || "Answered"}`;
+      option.textContent = t("Question {0} · {1}", item.ordinal, item.state === "OPEN" ? t("Pending") : item.resolution || t("Answered"));
     }
     byId("human-pending").hidden = !pending.length;
     if (pending.length) {
-      setText("human-pending-title", `${pending.length} decision pending · waiting for you`);
+      setText("human-pending-title", t("{0} decision pending · waiting for you", pending.length));
       setText("human-pending-question", compact(pending[0].question, 240));
     }
     if (humanCurrent) {
@@ -3664,11 +3686,11 @@
       const resolved = !selected || selected.state !== "OPEN";
       byId("human-recorded").hidden = !resolved;
       if (resolved) {
-        setText("human-recorded", `Recorded answer: ${selected?.answer || selected?.resolution || "unavailable"}`);
+        setText("human-recorded", t("Recorded answer: {0}", selected?.answer || selected?.resolution || "unavailable"));
         humanDraft().pending = null;
-        setText("human-status", "This decision is no longer pending. View its recorded answer or select another question.");
+        setText("human-status", t("This decision is no longer pending. View its recorded answer or select another question."));
       } else if (humanCurrent.revision >= 0 && status.run_revision !== humanCurrent.revision && !humanDraft().pending) {
-        setText("human-status", "The run changed. Close and reopen to review the current decision; your draft is retained.");
+        setText("human-status", t("The run changed. Close and reopen to review the current decision; your draft is retained."));
       }
       humanButtons();
     }
@@ -3683,7 +3705,7 @@
     if (!humanWritable() || !byId("human-answer").value.trim()) return;
     humanReviewed = true; humanButtons();
     byId("human-answer").scrollIntoView({block: "center"});
-    setText("human-status", "Review the answer above. Submit answer records it and continues this run; Edit returns to the draft.");
+    setText("human-status", t("Review the answer above. Submit answer records it and continues this run; Edit returns to the draft."));
   });
   byId("edit-human").addEventListener("click", () => { humanReviewed = false; humanButtons(); });
   byId("submit-human").addEventListener("click", async () => {
@@ -3691,7 +3713,7 @@
     const draft = humanDraft();
     if (!draft.pending) draft.pending = {decision_id: humanCurrent.decision_id, answer: draft.text,
       expected_revision: humanCurrent.revision, request_id: `human-ui-${window.crypto.randomUUID()}`};
-    humanBusy = true; humanButtons(); setText("human-status", "Submitting to Host…");
+    humanBusy = true; humanButtons(); setText("human-status", t("Submitting to Host…"));
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10000);
     try {
@@ -3702,20 +3724,20 @@
       if (response.ok && reply.status === "accepted") {
         draft.pending = null;
         humanCurrent.revision = -1;
-        setText("human-status", "Answer recorded. The Host can continue this run.");
+        setText("human-status", t("Answer recorded. The Host can continue this run."));
       } else if ([400, 401, 403, 409].includes(response.status)) {
         draft.pending = null;
         humanCurrent.revision = -1;
-        setText("human-status", `Answer not accepted: ${object(reply.error).message || reply.message || reply.error || response.status}. Refresh the observer or reopen an operator link before reviewing again.`);
+        setText("human-status", t("Answer not accepted: {0}. Refresh the observer or reopen an operator link before reviewing again.", object(reply.error).message || reply.message || reply.error || response.status));
       } else {
-        setText("human-status", "Host reply not confirmed. Retry the same answer or inspect recorded state.");
+        setText("human-status", t("Host reply not confirmed. Retry the same answer or inspect recorded state."));
       }
       poll();
     } catch (_error) {
-      setText("human-status", "Host reply not confirmed. Retry sends the same answer safely; nothing is automatically resent.");
+      setText("human-status", t("Host reply not confirmed. Retry sends the same answer safely; nothing is automatically resent."));
     } finally {
       window.clearTimeout(timer); humanBusy = false;
-      byId("submit-human").textContent = draft.pending ? "Retry same answer" : "Submit answer";
+      byId("submit-human").textContent = draft.pending ? t("Retry same answer") : t("Submit answer");
       humanButtons();
     }
   });
@@ -3735,13 +3757,13 @@
     byId("support-preview").hidden = true;
     byId("download-support").disabled = true;
     byId("preview-support").disabled = false;
-    setText("support-status", "Selection changed. Preview this package before downloading.");
+    setText("support-status", t("Selection changed. Preview this package before downloading."));
   }
   function openSupport() {
     const scope = byId("support-scope");
     Array.from(scope.querySelectorAll("[data-attempt-option]")).forEach(option => option.remove());
     list(state.snapshot?.attempts).slice(-100).reverse().forEach(attempt => {
-      const option = element("option", "", `${attempt.role || attempt.kind || "Attempt"} · ${attempt.command || attempt.phase || attempt.attempt_id} · ${attempt.terminal_reason || attempt.state || "unknown"}`);
+      const option = element("option", "", `${attempt.role || attempt.kind || t("Attempt")} · ${attempt.command || attempt.phase || attempt.attempt_id} · ${attempt.terminal_reason || attempt.state || "unknown"}`);
       option.value = `attempt:${attempt.attempt_id}`;
       option.dataset.attemptOption = "true";
       scope.append(option);
@@ -3757,15 +3779,15 @@
     const timer = window.setTimeout(() => controller.abort(), 90000);
     byId("preview-support").disabled = true;
     byId("download-support").disabled = true;
-    setText("support-status", format === "zip" ? "Preparing download…" : "Reading available diagnostic evidence…");
+    setText("support-status", format === "zip" ? t("Preparing download…") : t("Reading available diagnostic evidence…"));
     try {
       const response = await window.fetch(`/api/support?${supportOptions(format)}`, {
         method: "POST", headers: {Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json"},
         body: JSON.stringify(Object.fromEntries(["actual", "expected", "steps", "occurred_at"]
           .map(key => [key, byId(`support-${key}`).value]).filter(([, value]) => value))),
         cache: "no-store", signal: controller.signal});
-      if (!response.ok) throw new Error(response.status === 401 ? "Open the authenticated observer URL first."
-        : response.status === 429 ? "Another package is being prepared. Try again shortly." : "Could not prepare this selection. Try a different scope or use the CLI.");
+      if (!response.ok) throw new Error(response.status === 401 ? t("Open the authenticated observer URL first.")
+        : response.status === 429 ? t("Another package is being prepared. Try again shortly.") : t("Could not prepare this selection. Try a different scope or use the CLI."));
       if (format === "zip") {
         const blob = await response.blob();
         if (request !== supportRequest) return;
@@ -3775,7 +3797,7 @@
         link.download = byId("support-private").checked ? "hypoloom-support-private.zip" : "hypoloom-support.zip";
         document.body.append(link); link.click(); link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setText("support-status", "Download requested. Inspect README.md and the files locally before sharing; nothing was uploaded.");
+        setText("support-status", t("Download requested. Inspect README.md and the files locally before sharing; nothing was uploaded."));
       } else {
         const preview = await response.json();
         if (request !== supportRequest) return;
@@ -3787,12 +3809,12 @@
         const selection = object(report.selection);
         const coverage = object(report.coverage);
         const counts = object(coverage.attachment_status_counts);
-        setText("support-status", `${selection.selected_detail_count ?? 0} selected + ${selection.supporting_detail_count ?? 0} supporting details / ${selection.run_attempt_count ?? "?"} recorded attempts. ${report.exported_file_count ?? "?"} files · ${compactNumber(report.exported_payload_bytes)} bytes before report metadata. ${report.limited ? `Limited: ${list(coverage.limiting_reasons).join(", ") || "see inventory"}. ` : ""}${counts.not_inspected ? `${counts.not_inspected} scopes/files not inspected; their contents are unknown. ` : ""}${object(report.diagnosis).available ? "" : "Run diagnosis unavailable; available fallback evidence is included. "}${list(coverage.next_steps).join(" ")} Download reads current evidence with these options.`);
+        setText("support-status", t("{0} selected + {1} supporting details / {2} recorded attempts. {3} files · {4} bytes before report metadata. {5}{6}{7}{8} Download reads current evidence with these options.", selection.selected_detail_count ?? 0, selection.supporting_detail_count ?? 0, selection.run_attempt_count ?? "?", report.exported_file_count ?? "?", compactNumber(report.exported_payload_bytes), report.limited ? t("Limited: {0}. ", list(coverage.limiting_reasons).join(", ") || t("see inventory")) : "", counts.not_inspected ? t("{0} scopes/files not inspected; their contents are unknown. ", counts.not_inspected) : "", object(report.diagnosis).available ? "" : t("Run diagnosis unavailable; available fallback evidence is included. "), list(coverage.next_steps).join(" ")));
       }
       byId("download-support").disabled = false;
     } catch (error) {
       if (request !== supportRequest) return;
-      setText("support-status", error?.name === "AbortError" ? "Preparation timed out. Try a smaller scope or use the CLI." : error.message);
+      setText("support-status", error?.name === "AbortError" ? t("Preparation timed out. Try a smaller scope or use the CLI.") : error.message);
     } finally {
       window.clearTimeout(timer);
       if (request === supportRequest) byId("preview-support").disabled = false;
@@ -3819,6 +3841,54 @@
     if (event.target === helpDialog && typeof helpDialog.close === "function") helpDialog.close();
   });
 
+  function applyLanguage(language) {
+    const connectionState = connection.dataset.state;
+    const connectionMessage = connectionText.textContent;
+    uiLanguage = language === "zh-CN" ? "zh-CN" : "en";
+    document.documentElement.lang = uiLanguage;
+    const localize = source => uiLanguage === "en" ? source : t(source.trim().replace(/\s+/g, " "));
+    staticMessages.forEach(entry => {
+      const {node, source, rendered} = entry;
+      // A snapshot, log stream or operator response may have replaced an initial
+      // placeholder. Never restore that placeholder over the current content.
+      if (node.isConnected && node.hasAttribute("data-i18n") && node.textContent === rendered) {
+        node.textContent = entry.rendered = localize(source);
+      }
+    });
+    staticAttributes.forEach(({node, name, source}) => node.setAttribute(name, localize(source)));
+    const button = byId("language-toggle");
+    button.textContent = uiLanguage === "en" ? "中文" : "English";
+    button.lang = uiLanguage === "en" ? "zh-CN" : "en";
+    button.title = t(uiLanguage === "en" ? "Switch to Chinese" : "Switch to English");
+    state.renderInputs.clear();
+    if (state.snapshot) render(state.snapshot, state.product);
+    if (!drawer.hidden && state.drawerMode === "detail") renderResearchDetail();
+    setConnection(connectionState, connectionState === "live" ? t("CONNECTED")
+      : connectionState === "connecting" ? t("CONNECTING")
+      : connectionState === "stale" && state.lastSuccessAt ? t("STALE {0}s · RETRYING", Math.floor((Date.now() - state.lastSuccessAt) / 1000))
+      : connectionMessage);
+    // Keep operator drafts, reviewed answers, pending request IDs and current
+    // tab/filter selections. Language selection never sends an operation.
+    humanButtons();
+  }
+  const languageButton = byId("language-toggle");
+  languageButton.addEventListener("click", () => {
+    applyLanguage(uiLanguage === "en" ? "zh-CN" : "en");
+    try { window.localStorage.setItem(LANGUAGE_STORAGE_KEY, uiLanguage); } catch (_) { /* Session-only when storage is unavailable. */ }
+  });
+  // Loading translations must not delay or disable ordinary English observation.
+  window.fetch("/assets/messages.json", {cache: "no-store"}).then(response => {
+    if (!response.ok) throw new Error("translation unavailable");
+    return response.json();
+  }).then(catalog => {
+    if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) throw new Error("translation unavailable");
+    messages = catalog;
+    let savedLanguage;
+    try { savedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY); } catch (_) { /* Default English. */ }
+    applyLanguage(savedLanguage);
+    languageButton.disabled = false;
+  }).catch(() => { languageButton.title = "Translation unavailable; English remains available."; });
+
   const TEXT_SIZE_STORAGE_KEY = "hypoloom.text-size";
   const TEXT_SIZES = ["87.5", "100", "112.5", "125"];
   const textSizeSelect = byId("text-size");
@@ -3835,7 +3905,7 @@
     const size = applyTextSize(textSizeSelect.value);
     try { window.localStorage.setItem(TEXT_SIZE_STORAGE_KEY, size); } catch { /* preference stays session-only */ }
     const label = textSizeSelect.selectedOptions.length ? textSizeSelect.selectedOptions[0].textContent : size;
-    setText("screen-status", `Text size set to ${label}.`);
+    setText("screen-status", t("Text size set to {0}.", label));
   });
 
   window.addEventListener("keydown", (event) => {
@@ -3848,7 +3918,7 @@
     if (document.hidden) {
       if (state.pollController) state.pollController.abort();
       if (state.logSocket) { state.logSocket.close(); state.logSocket = null; }
-      setConnection("stale", "PAUSED · TAB HIDDEN");
+      setConnection("stale", t("PAUSED · TAB HIDDEN"));
     } else {
       renderVisibleViews();
       if (state.activeView === "activity" && state.selectedExperiment) openExperimentLog(state.selectedExperiment);
@@ -3860,12 +3930,12 @@
     if (document.hidden) return;
     if (state.lastSuccessAt && Date.now() - state.lastSuccessAt > STALE_AFTER_MS) {
       const seconds = Math.floor((Date.now() - state.lastSuccessAt) / 1000);
-      setConnection("stale", `STALE ${seconds}s · RETRYING`);
+      setConnection("stale", t("STALE {0}s · RETRYING", seconds));
     }
   }, 1000);
 
   if (!accessToken) {
-    setConnection("error", "TOKEN REQUIRED");
+    setConnection("error", t("TOKEN REQUIRED"));
   }
   setActiveView("operations");
   poll();
