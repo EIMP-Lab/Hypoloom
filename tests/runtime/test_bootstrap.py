@@ -610,6 +610,9 @@ def test_relative_browser_path_survives_launch_working_directory_change(checkout
 def test_real_missing_external_browser_does_not_prevent_host_owned_launch(checkout, capsys):
     import socket
     repo, overrides = checkout
+    # Managed launch deliberately ignores inherited PYTHONPATH. Its checkout
+    # must contain this candidate, rather than an older editable installation.
+    shutil.copytree(ROOT / "hypoloom", repo / "hypoloom", ignore=shutil.ignore_patterns("__pycache__"))
     assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
     capsys.readouterr()
     with socket.socket() as occupied:

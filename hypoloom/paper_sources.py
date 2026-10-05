@@ -423,7 +423,9 @@ def web_tool(host, request, tool, arguments, *, defer=False):
     allowed = {"query", "max_results", "scope"} if tool == "web_search" else {"url", "max_chars"}
     if document and request.schema_version >= 20: allowed = {"mode", "url", "paper_ref", "sources"}
     if set(arguments) - allowed: raise AgentACIError("tool_arguments", "web arguments differ from their closed schema")
-    if host.grounding_web is None: host.grounding_web = GroundingWeb()
+    if host.grounding_web is None:
+        host.grounding_web = GroundingWeb(proxy_router=getattr(
+            getattr(getattr(host, "literature_io", None), "fetcher", None), "_proxy_router", None))
     web = host.grounding_web
     access = getattr(host, "institutional_access", None)
     from .institutional_access import scope_for, publisher, public_full_text, identity_from_url
@@ -513,7 +515,7 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                     if pdf is not None: return pdf
                 return result
             except GroundingWebError as exc:
-                if api is None and exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
+                if api is None and exc.code not in {"http_error", "transport_failed", "proxy_unavailable", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
                     return {"error": {"code": exc.code, "message": str(exc)[:1024]}}
                 if exc.code == "challenge":
                     from .literature import LiteratureError, LiteratureFailureCode, _download_event

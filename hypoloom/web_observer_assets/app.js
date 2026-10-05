@@ -442,7 +442,9 @@
     const reasons = {openalex_timeout: t("Request timed out"), openalex_rate_limit: t("Rate limited"),
       openalex_auth: t("Authentication rejected"), openalex_http: t("HTTP request failed")};
     const lines = [t("OpenAlex: {0}.", terminal ? t("Run ended") : labels[value.state] || t("Status unknown"))];
-    if (value.reason) lines.push(t("Last failure: {0}{1}.", reasons[value.reason] || value.reason,
+    if (value.active_service === "crossref") lines[0] = t("Literature: Crossref fallback; OpenAlex recovery unconfirmed.");
+    const reason = value.reason || value.primary_failure;
+    if (reason) lines.push(t("Last failure: {0}{1}.", reasons[reason] || reason,
       value.http_status == null ? "" : ` · HTTP ${value.http_status}`));
     if (terminal) lines.push(t("Run ended; no further automatic retry."));
     else if (value.requires_operator || value.state === "waiting_operator") lines.push(t("Automatic retry is paused; operator action is required."));

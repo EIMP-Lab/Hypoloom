@@ -994,6 +994,7 @@ class FetchResponse:
     content_length: int | None
     location: str | None
     body: bytes
+    proxy_tunnel_address: str | None = None
 
     def __post_init__(self) -> None:
         _uri_parts(self.requested_uri, "fetch response requested_uri")
@@ -1004,6 +1005,8 @@ class FetchResponse:
         ):
             raise LiteratureValidationError("fetch response status_code is invalid")
         _text(self.peer_address, "fetch response peer_address", maximum=64)
+        if self.proxy_tunnel_address is not None:
+            _public_address(self.proxy_tunnel_address, "fetch response proxy tunnel destination")
         if self.media_type is not None:
             _text(self.media_type, "fetch response media_type", maximum=256)
         if self.content_length is not None and (
@@ -1519,6 +1522,9 @@ class OpenAlexTransport(Protocol):
 class StdlibOpenAlexTransport:
     """Small real HTTPS transport restricted to the one OpenAlex API host."""
 
+    def __init__(self, *, proxy_router=None):
+        self._proxy_router = proxy_router
+
     def get(
         self,
         *,
@@ -1546,11 +1552,14 @@ class StdlibOpenAlexTransport:
                 code=LiteratureFailureCode.OPENALEX_RESPONSE_INVALID,
             )
         return _metadata_https_get("OpenAlex", host, target, headers, timeout_seconds,
-                                   max_bytes, cancel_event=cancel_event)
+                                   max_bytes, cancel_event=cancel_event, proxy_router=self._proxy_router)
 
 
 class StdlibSemanticScholarTransport:
     """Bounded exact-host transport for DOI-only open-PDF metadata lookup."""
+
+    def __init__(self, *, proxy_router=None):
+        self._proxy_router = proxy_router
 
     def get(
         self,
@@ -1573,25 +1582,27 @@ class StdlibSemanticScholarTransport:
             or "\n" in target
         ):
             raise LiteratureFetchError("Semantic Scholar target is invalid")
-        return _pdf_locator_get("Semantic Scholar", host, target, headers, timeout_seconds, max_bytes, cancel_event=cancel_event)
+        return _pdf_locator_get("Semantic Scholar", host, target, headers, timeout_seconds, max_bytes,
+            cancel_event=cancel_event, proxy_router=self._proxy_router)
 
 
 def _network_http_get(uri, headers, timeout_seconds, max_bytes, *,
-                      approved_addresses=None, cancel_event=None):
+                      approved_addresses=None, cancel_event=None, proxy_router=None):
     from .network_io import run_network_operation
     deadline = time.monotonic() + timeout_seconds
     return run_network_operation("hypoloom.grounding_web:_fetch_in_process", {
         "uri": uri, "headers": dict(headers), "deadline": deadline,
         "approved_addresses": approved_addresses, "max_bytes": max_bytes,
+        "proxy_url": None if proxy_router is None else proxy_router.for_url(uri),
     }, deadline=deadline, max_output_bytes=4 * ((max_bytes + 2) // 3) + 65536,
        cancel_event=cancel_event)
 
 
-def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_bytes, *, cancel_event=None):
+def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_bytes, *, cancel_event=None, proxy_router=None):
     from .network_io import NetworkOperationError
     try:
         value = _network_http_get(f"https://{host}{target}", headers,
-                                 timeout_seconds, max_bytes, cancel_event=cancel_event)
+                                 timeout_seconds, max_bytes, cancel_event=cancel_event, proxy_router=proxy_router)
         return OpenAlexResponse(status_code=value["status_code"], media_type=value["media_type"],
             content_length=value["content_length"], body=base64.b64decode(value["body_b64"], validate=True),
             retry_after=value["retry_after"])
@@ -1612,10 +1623,10 @@ def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_by
 
 
 def _pdf_locator_get(provider: str, host: str, target: str, headers: Mapping[str, str],
-                     timeout_seconds: float, max_bytes: int, *, cancel_event=None) -> OpenAlexResponse:
+                     timeout_seconds: float, max_bytes: int, *, cancel_event=None, proxy_router=None) -> OpenAlexResponse:
     """Same cancellable HTTP reader, after a locator's exact-host/target check."""
     return _metadata_https_get(provider, host, target, headers, timeout_seconds,
-                               max_bytes, cancel_event=cancel_event)
+                               max_bytes, cancel_event=cancel_event, proxy_router=proxy_router)
 
 
 class PdfFallbackLocator(Protocol):
@@ -1637,6 +1648,7 @@ class SemanticScholarPdfLocator:
         api_key: str | None = None,
         api_key_loader: Callable[[], str | None] | None = None,
         transport: OpenAlexTransport | None = None,
+        proxy_router=None,
         timeout_seconds: float = DEFAULT_OPENALEX_TIMEOUT_SECONDS,
         max_response_bytes: int = 64 * 1024,
         clock: Callable[[], float] = time.monotonic,
@@ -1661,8 +1673,9 @@ class SemanticScholarPdfLocator:
         ):
             raise ValueError("max_response_bytes must be within 1024..1048576")
         self._transport = (
-            StdlibSemanticScholarTransport() if transport is None else transport
+            StdlibSemanticScholarTransport(proxy_router=proxy_router) if transport is None else transport
         )
+        self._proxy_router = proxy_router
         self.timeout_seconds = float(timeout_seconds)
         self.max_response_bytes = max_response_bytes
         self._api_key = self._clean_key(api_key)
@@ -1829,6 +1842,9 @@ UNPAYWALL_API_HOST = "api.unpaywall.org"
 class StdlibUnpaywallTransport:
     """Contact email is sent only to the fixed DOI endpoint, with no redirects."""
 
+    def __init__(self, *, proxy_router=None):
+        self._proxy_router = proxy_router
+
     def get(self, *, host: str, target: str, headers: Mapping[str, str],
             timeout_seconds: float, max_bytes: int, cancel_event: Event | None = None) -> OpenAlexResponse:
         if host != UNPAYWALL_API_HOST:
@@ -1844,7 +1860,8 @@ class StdlibUnpaywallTransport:
             _unpaywall_email(query["email"][0], None)
         except ValueError as exc:
             raise LiteratureFetchError("Unpaywall target is invalid") from exc
-        return _pdf_locator_get("Unpaywall", host, target, headers, timeout_seconds, max_bytes, cancel_event=cancel_event)
+        return _pdf_locator_get("Unpaywall", host, target, headers, timeout_seconds, max_bytes,
+            cancel_event=cancel_event, proxy_router=self._proxy_router)
 
 
 def _unpaywall_email(email: str | None, email_file: str | Path | None) -> str:
@@ -1870,13 +1887,15 @@ class UnpaywallPdfLocator:
 
     def __init__(self, *, email: str | None = None, email_file: str | Path | None = None,
                  transport: OpenAlexTransport | None = None,
+                 proxy_router=None,
                  timeout_seconds: float = 5.0, max_response_bytes: int = 64 * 1024) -> None:
         self._email = _unpaywall_email(email, email_file)
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not 0.1 <= timeout_seconds <= 60:
             raise ValueError("timeout_seconds must be within 0.1..60")
         if type(max_response_bytes) is not int or not 1024 <= max_response_bytes <= 1024 * 1024:
             raise ValueError("max_response_bytes must be within 1024..1048576")
-        self._transport = StdlibUnpaywallTransport() if transport is None else transport
+        self._transport = StdlibUnpaywallTransport(proxy_router=proxy_router) if transport is None else transport
+        self._proxy_router = proxy_router
         self.timeout_seconds = float(timeout_seconds)
         self.max_response_bytes = max_response_bytes
         self._email_source = "file" if email_file is not None else "explicit"
@@ -2213,6 +2232,8 @@ class OpenAlexLiteratureFetcher:
         timeout_seconds: float = DEFAULT_OPENALEX_TIMEOUT_SECONDS,
         max_response_bytes: int = DEFAULT_OPENALEX_RESPONSE_BYTES,
         max_search_seconds: float = DEFAULT_OPENALEX_SEARCH_SECONDS,
+        search_fallback=None,
+        proxy_router=None,
         max_retries: int = DEFAULT_OPENALEX_MAX_RETRIES,
         retry_backoff_seconds: float = DEFAULT_OPENALEX_RETRY_BACKOFF_SECONDS,
         clock: Callable[[], float] = time.monotonic,
@@ -2271,7 +2292,13 @@ class OpenAlexLiteratureFetcher:
             raise TypeError("clock must be callable")
         if not callable(sleeper):
             raise TypeError("sleeper must be callable")
-        self._transport = StdlibOpenAlexTransport() if transport is None else transport
+        self._proxy_router = proxy_router
+        self._search_fallback = search_fallback
+        self.last_search_observation: dict[str, object] = {}
+        self._primary_retry_at = 0.0
+        self._primary_failure = None
+        self._primary_failure_rounds = 0
+        self._transport = StdlibOpenAlexTransport(proxy_router=proxy_router) if transport is None else transport
         self._resolver = self._resolve_host if resolver is None else resolver
         self._pdf_fetcher = self._fetch_pdf_https if pdf_fetcher is None else pdf_fetcher
         self._pdf_extractor = (
@@ -2347,6 +2374,8 @@ class OpenAlexLiteratureFetcher:
             "host": OPENALEX_API_HOST,
             "timeout_seconds": self.timeout_seconds,
             "search_wall_seconds": self.max_search_seconds,
+            "search_fallback": "crossref" if self._search_fallback is not None else "none",
+            **(self._proxy_router.configuration if self._proxy_router is not None else {}),
             "max_response_bytes": self.max_response_bytes,
             "max_retries": self.max_retries,
             "retry_backoff_seconds": self.retry_backoff_seconds,
@@ -2361,6 +2390,8 @@ class OpenAlexLiteratureFetcher:
             "adapter": "openalex",
             "host": OPENALEX_API_HOST,
             "credential_source": self._api_key_source,
+            "search_fallback": "crossref" if self._search_fallback is not None else "none",
+            **(self._proxy_router.configuration if self._proxy_router is not None else {}),
             "timeout_seconds": self.timeout_seconds,
             "search_wall_seconds": self.max_search_seconds,
             "max_response_bytes": self.max_response_bytes,
@@ -2381,6 +2412,55 @@ class OpenAlexLiteratureFetcher:
         )
 
     def search(self, query: LiteratureQuery) -> Iterable[SearchPaper]:
+        self.last_search_observation = {}
+        self._last_retry_trace = ()
+        deadline = self._clock() + self.max_search_seconds
+        from .literature_recovery import service_failure
+        # Credential loss must remain visible, including during primary cooldown.
+        if self.api_key_loader is not None:
+            try: self._api_key = _clean_api_key(self.api_key_loader(), allow_file_newline=False)
+            except Exception:
+                raise LiteratureFetchError("OpenAlex credential source is unavailable", code=LiteratureFailureCode.OPENALEX_AUTH) from None
+        if not isinstance(query, LiteratureQuery):
+            raise LiteratureQueryError("query must be LiteratureQuery")
+        fallback = self._search_fallback
+        error = self._primary_failure if fallback is not None and self._clock() < self._primary_retry_at else None
+        if error is None:
+            primary_deadline = deadline if fallback is None else self._clock() + self.max_search_seconds / 2
+            try:
+                papers = self._search_openalex(query, deadline=primary_deadline)
+            except LiteratureError as exc:
+                failure = service_failure(exc)
+                if fallback is None or failure is None or exc.code is LiteratureFailureCode.OPENALEX_AUTH:
+                    raise
+                error = exc
+                self._primary_failure = exc
+                self._primary_failure_rounds += 1
+                delay = 900 if self._primary_failure_rounds >= 6 else min(30 * 2 ** (self._primary_failure_rounds - 1), 300)
+                self._primary_retry_at = self._clock() + max(delay, exc.retry_after_seconds or 0)
+            else:
+                self._primary_failure = None
+                self._primary_failure_rounds = 0
+                self._primary_retry_at = 0.0
+                self.last_search_observation = {"service": "openalex", "available": True}
+                return papers
+        primary = {**service_failure(error), "retry_after_seconds": max(0.0, self._primary_retry_at - self._clock())}
+        self.last_search_observation = {**primary, "fallback_service": "crossref", "fallback_available": False}
+        # All waits and both backends share one absolute operation deadline.
+        try:
+            papers = fallback.search(query, deadline=deadline, cancel_event=self._cancel_event)
+        except LiteratureError as exc:
+            self.last_search_observation.update(fallback_reason=exc.code.value.lower(), fallback_http_status=exc.http_status)
+            if exc.code in {LiteratureFailureCode.NETWORK_CLEANUP_FAILED, LiteratureFailureCode.PDF_DEADLINE}:
+                raise
+            raise LiteratureFetchError("primary and backup literature search unavailable",
+                code=error.code, http_status=error.http_status, attempt_count=error.attempt_count,
+                retry_after_seconds=max(max(0.0, self._primary_retry_at - self._clock()), exc.retry_after_seconds or 0),
+                transport_phase=error.transport_phase, received_bytes=error.received_bytes) from None
+        self.last_search_observation["fallback_available"] = True
+        return papers
+
+    def _search_openalex(self, query: LiteratureQuery, *, deadline: float) -> Iterable[SearchPaper]:
         if self.api_key_loader is not None:
             try: self._api_key = _clean_api_key(self.api_key_loader(), allow_file_newline=False)
             except Exception:
@@ -2390,7 +2470,6 @@ class OpenAlexLiteratureFetcher:
         self._last_retry_trace = ()
         ranges = _openalex_year_ranges(query)
         quotas = _stratum_quotas(query.max_items)
-        deadline = self._clock() + self.max_search_seconds
         strata_plan = tuple(zip(LITERATURE_STRATA, ranges, quotas, strict=True))
         broad_by_stratum: list[tuple[SearchPaper, ...]] = []
         for stratum, years, quota in strata_plan:
@@ -2813,11 +2892,13 @@ class OpenAlexLiteratureFetcher:
         try:
             value = _network_http_get(canonical,
                 {"Accept": "application/pdf", "User-Agent": "Hypoloom-Hypoloom-literature/1"},
-                timeout, max_bytes, approved_addresses=approved_addresses, cancel_event=self._cancel_event)
+                timeout, max_bytes, approved_addresses=approved_addresses, cancel_event=self._cancel_event,
+                proxy_router=getattr(self, "_proxy_router", None))
             return FetchResponse(requested_uri=value["requested_uri"], status_code=value["status_code"],
                 peer_address=value["peer_address"], media_type=value["media_type"],
                 content_length=value["content_length"], location=value["location"],
-                body=base64.b64decode(value["body_b64"], validate=True))
+                body=base64.b64decode(value["body_b64"], validate=True),
+                proxy_tunnel_address=value.get("proxy_tunnel_address"))
         except NetworkOperationError as exc:
             code = {"timed_out": LiteratureFailureCode.PDF_TIMEOUT,
                     "cancelled": LiteratureFailureCode.PDF_DEADLINE,
@@ -3546,6 +3627,8 @@ class FixedLiteratureIO:
                 diagnostics = {
                     **({"literature_retry_trace": [dict(item) for item in trace]} if trace else {}),
                     **({"literature_download_trace": [dict(item) for item in downloads]} if downloads else {}),
+                    **({"literature_search": dict(self.fetcher.last_search_observation)}
+                       if isinstance(self.fetcher, OpenAlexLiteratureFetcher) and self.fetcher.last_search_observation else {}),
                 }
             return {"value": value, "error": error, "diagnostics": diagnostics,
                     "started_at": started_at, "seconds": max(0.0, time.monotonic() - started)}
@@ -3631,6 +3714,7 @@ class FixedLiteratureIO:
             "max_response_bytes", "max_retries", "retry_backoff_seconds",
             "poppler_timeout_seconds", "poppler_max_pdf_bytes",
             "poppler_max_text_bytes", "poppler_max_summary_chars",
+            "search_fallback", "proxy_domains", "proxy_policy",
         }
         if set(raw) - allowed:
             raise LiteratureValidationError(
@@ -4227,11 +4311,10 @@ class FixedLiteratureIO:
                 raise LiteratureFetchError("PDF fetch returned a non-FetchResponse value")
             if response.requested_uri != uri:
                 raise LiteratureFetchError("PDF fetch response changed requested_uri")
-            peer = _public_address(response.peer_address, "PDF peer_address")
-            if peer not in addresses:
-                raise LiteratureFetchError(
-                    "PDF fetch peer_address was not one of the approved DNS addresses"
-                )
+            from .literature_proxy import validate_response_peer
+            router = getattr(self.fetcher, "_proxy_router", None)
+            validate_response_peer(response, addresses,
+                proxy_expected=router is not None and router.routes(uri))
             if response.status_code in _REDIRECT_STATUSES:
                 if response.location is None:
                     raise LiteratureFetchError("PDF redirect omitted Location")
@@ -4281,6 +4364,9 @@ def build_openalex_literature_io(
     pdf_work_window_seconds: float = DEFAULT_PDF_WORK_WINDOW_SECONDS,
     pdf_workers: int = 2,
     transport: OpenAlexTransport | None = None,
+    search_fallback: str = "crossref",
+    crossref_transport: OpenAlexTransport | None = None,
+    proxy_router=None,
     semantic_scholar_transport: OpenAlexTransport | None = None,
     semantic_scholar_api_key: str | None = None,
     semantic_scholar_api_key_loader: Callable[[], str | None] | None = None,
@@ -4294,14 +4380,17 @@ def build_openalex_literature_io(
 
     if pdf_fallback not in {"semantic-scholar", "unpaywall"}:
         raise ValueError("unknown PDF fallback")
+    if search_fallback not in {"crossref", "none"}:
+        raise ValueError("unknown keyword search fallback")
+    from .crossref_search import CrossrefSearch
     if pdf_fallback != "unpaywall" and (unpaywall_email is not None or unpaywall_email_file is not None
                                         or unpaywall_transport is not None):
         raise ValueError("Unpaywall options require pdf_fallback='unpaywall'")
     fallback = (UnpaywallPdfLocator(email=unpaywall_email, email_file=unpaywall_email_file, transport=unpaywall_transport,
-                    timeout_seconds=min(float(timeout_seconds), 5.0)) if pdf_fallback == "unpaywall" else
+                    timeout_seconds=min(float(timeout_seconds), 5.0), proxy_router=proxy_router) if pdf_fallback == "unpaywall" else
                 SemanticScholarPdfLocator(transport=semantic_scholar_transport,
                     api_key=semantic_scholar_api_key, api_key_loader=semantic_scholar_api_key_loader,
-                    timeout_seconds=min(float(timeout_seconds), 5.0)))
+                    timeout_seconds=min(float(timeout_seconds), 5.0), proxy_router=proxy_router))
     extractor = PopplerPdfExtractor(
         pdfinfo_path=pdfinfo_path,
         pdftotext_path=pdftotext_path,
@@ -4313,6 +4402,8 @@ def build_openalex_literature_io(
         api_key=api_key,
         api_key_file=api_key_file,
         transport=transport,
+        search_fallback=CrossrefSearch(transport=crossref_transport, proxy_router=proxy_router) if search_fallback == "crossref" else None,
+        proxy_router=proxy_router,
         pdf_extractor=extractor,
         timeout_seconds=timeout_seconds,
         max_response_bytes=max_response_bytes,

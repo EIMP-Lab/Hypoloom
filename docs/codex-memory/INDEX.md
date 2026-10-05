@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Independent search, optional routing and accounting](../qualification.md#independent-search-optional-routing-and-accounting-2026-10-05):
+  bounded Crossref keyword fallback, exact-domain private proxy configuration,
+  truthful primary/backup observations, corroborated CC fallback usage and G1
+  workstealing. Native reader/CPU/accounting closure and complete-selection
+  reconciliation; [configuration](../guides/institutional-access.md).
+
 - [Network deadlines and unattended recovery](../qualification.md#network-deadlines-and-unattended-recovery-2026-10-05):
   disposable DNS/HTTPS workers, cancellation/reaping, retained successful PDFs,
   shared coverage/retrieval cooldown and automatic 15-minute transient recovery.

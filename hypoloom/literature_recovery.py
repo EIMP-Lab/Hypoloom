@@ -39,7 +39,7 @@ def points(attempts, transitions):
         if not isinstance(value, dict) or value.get("service") != "openalex": continue
         at = value.get("observed_at", row.get("ended_at"))
         if type(at) not in (int, float) or not math.isfinite(at): continue
-        if value.get("available") is False and row.get("state") != "CLOSED": continue
+        if value.get("available") is False and not value.get("fallback_available") and row.get("state") != "CLOSED": continue
         result.append({**value, "at": at, "started_at": row.get("started_at", at),
             "identity": row["attempt_id"], "kind": "observation", "role": observation.get("request", {}).get("role")})
     for row in transitions:
@@ -53,13 +53,20 @@ def points(attempts, transitions):
 
 def reduce_availability(history, *, now, attempt_limit=6):
     boundary = float("-inf"); failures = []; recovered_at = None; cleared_at = None
+    active_service = "openalex"
+    fallback_primary_failure = None
     for item in history:
         if item["kind"] == "clear":
             failures = []; boundary = item["at"]; cleared_at = item["at"]; recovered_at = None
+            active_service = "openalex"; fallback_primary_failure = None
         elif item["started_at"] >= boundary:
-            if item.get("available") is True:
+            if item.get("available") is True or item.get("fallback_available") is True:
                 boundary = item["started_at"]; failures = []; recovered_at = item["at"]
-            else: failures.append(item)
+                active_service = "crossref" if item.get("fallback_available") is True else "openalex"
+                fallback_primary_failure = item if active_service == "crossref" else None
+            else:
+                failures.append(item)
+                active_service = "openalex"; fallback_primary_failure = None
     rounds = 0; last_end = float("-inf")
     for item in failures:
         if item["started_at"] >= last_end: rounds += 1
@@ -76,6 +83,8 @@ def reduce_availability(history, *, now, attempt_limit=6):
     state = ("waiting_operator" if operator else "cooldown" if retry_at is not None and retry_at > now
              else "recovering" if last or cleared_at is not None and recovered_at is None else "ready")
     return {"service": "openalex", "state": state, "pending": state in {"cooldown", "waiting_operator"},
+        "active_service": active_service,
+        "primary_failure": None if fallback_primary_failure is None else fallback_primary_failure.get("reason"),
         "requires_operator": operator, "reason": None if last is None else last["reason"],
         "http_status": None if last is None else last.get("http_status"), "next_retry_at": retry_at,
         "recovery_attempts": rounds, "attempt_limit": attempt_limit, "recovered_at": recovered_at,

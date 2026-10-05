@@ -112,16 +112,19 @@ def _pdf_locator(args):
     from .credentials import (SEMANTIC_SCHOLAR_API_KEY_KEY, UNPAYWALL_EMAIL_KEY,
         credential, optional_credential_loader, read_credentials_file)
     from .literature import SemanticScholarPdfLocator, UnpaywallPdfLocator
+    from .literature_proxy import proxy_router_from_args
+    router = proxy_router_from_args(args)
     source = getattr(args, "credentials_file", None)
     if getattr(args, "literature_pdf_fallback", "semantic-scholar") == "unpaywall":
         email_file = getattr(args, "unpaywall_email_file", None)
         if source and email_file:
             raise ValueError("use exactly one of --unpaywall-email-file or UNPAYWALL_EMAIL in --credentials-file")
         return UnpaywallPdfLocator(email=credential(read_credentials_file(source), UNPAYWALL_EMAIL_KEY)
-            if source else None, email_file=email_file, timeout_seconds=5)
+            if source else None, email_file=email_file, timeout_seconds=5, proxy_router=router)
     if getattr(args, "unpaywall_email_file", None) is not None:
         raise ValueError("Unpaywall options require pdf_fallback='unpaywall'")
     return SemanticScholarPdfLocator(timeout_seconds=5,
+        proxy_router=router,
         api_key_loader=optional_credential_loader(source, SEMANTIC_SCHOLAR_API_KEY_KEY))
 
 
@@ -132,7 +135,8 @@ def preparation_literature_arguments(args):
         value = getattr(args, name, None)
         if value is not None:
             result += ["--" + name.replace("_", "-"), str(value)]
-    return result
+    return result + [value for domain in getattr(args, "literature_proxy_domain", ())
+                     for value in ("--literature-proxy-domain", domain)]
 
 
 def preview(args, repository=None):

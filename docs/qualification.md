@@ -7719,6 +7719,25 @@ python scripts/qualify.py g1 --junitxml .local/qualification/g1.xml
 python -m build --outdir .local/dist
 ```
 
+When `pytest-xdist` is installed, G1 defaults to `worksteal` scheduling with
+at most eight workers, capped by the reported CPU count. This lets idle workers
+take queued tests when native integration cases run longer than unit tests.
+Without xdist, G1 runs serially. Collection and the other stages keep their
+existing scheduling.
+
+Any nonempty `PYTEST_ADDOPTS` or extra pytest arguments replace these automatic
+scheduling defaults; the selector passes them through without rewriting them.
+Use explicit settings when sharing a busy server, for example:
+
+```bash
+python scripts/qualify.py g1 --junitxml .local/qualification/g1.xml -- -n 4 --dist=worksteal
+PYTEST_ADDOPTS='-n 0' python scripts/qualify.py g1 --junitxml .local/qualification/g1-serial.xml
+```
+
+Both examples require xdist for its `-n` option. Keep the candidate unchanged
+while qualification runs; preserve interrupted results and account for every
+collected test identity when completing a remaining selection.
+
 Also install the wheel into a separate environment and run its CLI/MCP and a
 fresh disposable bundle from outside the checkout. Check migrations, native
 Skills/plugins and Web assets are present. Source tests deliberately remain
@@ -8078,3 +8097,80 @@ Windows helper/browser or credentials are changed.
 This resolves the selected-paper recovery gap and demonstrates the formerly
 timed-out paper's current arXiv availability. It is an author/preprint source,
 not proof that the IEEE publisher subscription PDF channel is available.
+
+
+## Independent search, optional routing and accounting (2026-10-05)
+
+Evidence: `.local/worktrees/literature-resilience-stage2-20261005/.local/qualification/literature-resilience-stage2-20261005/`
+from the main checkout (the inner `.local/qualification/` path in the isolated
+worktree). Scope is the remaining independent-search, opt-in proxy, CC usage
+compatibility and qualification scheduling work. Retained research runs, private
+credentials, actual proxy settings and Windows helpers/browsers are unchanged.
+
+- OpenAlex transient failures may use anonymous Crossref within the original
+  deadline. Bounded candidate filtering preserves the admitted Boolean expression,
+  DOI/metadata/language/date/source classes and three-stratum coverage; missing
+  metadata is not fabricated. Authentication repair remains separate. Existing
+  observations identify backup use without claiming primary recovery. Default
+  direct access and the existing OpenAlex credential prerequisite remain.
+- Optional exact-domain routing uses the existing private Profile/dotenv source,
+  rereads credentials and never consumes ambient proxy variables. Selected domains
+  are proxy-only; redirects are independently routed. Real local CONNECT/TLS tests
+  retain public destination checks, hostname verification, deadline/cancellation
+  and secret boundaries. IP CONNECT can differ from a proxy's domain-routing
+  rules; no exit-node rotation, challenge bypass or universal reachability claim.
+- Repair CC 2.1.289 interrupted-stream/fallback double counting only when the
+  complete single-model ledger and cost agree with completed wire usage. Native
+  accounting now records 40 tokens instead of the duplicated 65, with unchanged
+  synthetic reported cost 0.00024075. Missing/ambiguous evidence retains the
+  conservative accounting path; explicit totals and budgets remain protected.
+  `accounting-native.xml` and its independent census have 11 successful Agents,
+  one expected rejected Agent and one successful CPU Process; all 13 Attempts
+  close, Oracle passes and no live process/socket/staging residue remains.
+- Default G1 uses at most eight xdist workers with workstealing; explicit pytest
+  options or `PYTEST_ADDOPTS` retain their scheduling, and no-xdist remains serial.
+  Live-resource/paid opt-ins retain their existing checks.
+- Complete G1 collected 7,417 cases: 7,305 passed, 110 skipped and two failed in
+  1,428.62 seconds (`g1-final.xml`). One failure exceeded the existing Host LOC
+  allocation by one line; remove a redundant dictionary copy without changing
+  behavior or the allocation. The other used a 108-byte AF_UNIX fixture path
+  after xdist added its worker directory; shorten the fixture socket basename.
+  The final affected selection passes all 30 cases under xdist
+  (`g1-corrections.xml`). Unique complete-selection reconciliation is therefore
+  **7,307 pass / 110 skip**, not a claim that the first full execution was green.
+- The earlier interrupted G1 retained 1,384 passes, two skips and four failures
+  (`g1-interrupted.xml`). It exposed coverage diagnostics at the wrong observation
+  level: move the new search observation inside the existing diagnostics field;
+  leave the Oracle allowlist unchanged. An outdated preflight expectation and
+  isolated checkout fixture import were corrected separately. Earlier red tests
+  and native failures remain in the evidence directory.
+- Final G1 independent census reads 12,973 Attempt rows from 1,201 databases:
+  12,850 CLOSED and 123 OPEN, including deliberately unfinished fixtures. All
+  2,352 recorded process-group IDs are absent, with zero live/zombie groups or
+  bound Unix sockets. Fifteen unbound fixture socket files remain untouched;
+  19 deliberately invalid/non-SQLite fixture databases are listed separately.
+  Open fixture rows are not presented as live processes (`g1-final-residue.json`).
+- Native Crossref-outage qualification runs installed CC, the real Host, a local
+  deterministic provider, three readers and a CPU experiment. One primary 503
+  with Retry-After 900 is retained; four three-stratum backup searches and three
+  fixture PDF transfers close with 18 successful Agents plus one Process, one
+  canonical outcome and a passing independent Oracle. All 75 logical archive
+  references resolve to nine physical, byte-identical original PDFs; these are
+  distinct counts. No open Attempts, pending effects, manual literature controls,
+  live groups, sockets or staging remain (`crossref-native-final-*`).
+- Separately, real anonymous direct Crossref API access returns HTTP 200 for all
+  three strata and six admitted papers in 8.668 seconds (`crossref-live.json`).
+  This is real metadata evidence, not a publisher PDF or subscription test.
+  Focused Crossref, proxy, accounting, observer and configuration tests supplement
+  the full selection; overlapping counts are not added to its unique total.
+- Final wheel, isolated installation and fresh runtime bundle match all 181
+  package files byte-for-byte (`installation.json`). CLI/MCP and imports outside
+  the checkout pass. Installed and bundled network workers perform local DNS,
+  are reaped, and leave zero file-descriptor/thread growth. Earlier package
+  results remain under `packaging-first/` and `packaging-before-loc-fix/`.
+
+New init/Host launches use the implementation; existing frozen runtimes are not
+migrated. Crossref ranking/coverage can differ from OpenAlex, and unavailable
+full text still follows the existing public-source fallback with explicit gaps.
+No new real Windows/SSO, publisher entitlement, paid-model, GPU or soak
+qualification is claimed.

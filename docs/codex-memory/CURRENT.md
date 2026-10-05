@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- October 5 independent search/optional routing: new Hosts use anonymous Crossref
+  keyword fallback after transient OpenAlex failure, within the same deadline and
+  existing query/metadata/coverage validation. Auth errors retain their repair
+  path; backup success does not claim OpenAlex recovery. Default remains direct;
+  optional exact-domain proxy routing reuses private credentials and bounded
+  workers, with no ambient proxy, route switching or CAPTCHA bypass. Bilingual
+  guides/observers expose actual behavior. Fix CC partial-stream fallback token
+  overcount only when complete model usage/cost agrees with completed wire usage.
+  G1 defaults to bounded xdist workstealing; explicit scheduling remains respected.
+  Full selection plus two focused corrections reconciles to 7,307 pass/110 skip;
+  original failures and the earlier observation-placement repair remain recorded.
+  Native search/three-reader/CPU and accounting closures pass; real anonymous
+  Crossref returns six admitted papers across three strata. PDF closure uses
+  fixtures, not a new publisher entitlement claim. No retained-run/client or
+  private proxy configuration changes.
+  [Design](../design/institutional-literature-access.md#independent-search-and-optional-routing--2026-10-05)
+  / [qualification](../qualification.md#independent-search-optional-routing-and-accounting-2026-10-05).
+
 - October 5 network deadlines/unattended recovery: direct DNS/HTTPS operations
   run in disposable, bounded children, with parent-EOF cleanup and existing
   public-address/TLS/byte validators. One caller deadline covers startup, DNS,

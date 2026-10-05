@@ -455,7 +455,8 @@ class NotificationTailer:
             if event["type"] == "provider_recovered":
                 text += "\n✅ API response received; provider availability recovered. Research progress remains subject to task and budget limits."
             if event["type"].startswith("literature_"):
-                text += f"\nLiterature service: {payload.get('service', 'openalex')}; {payload.get('reason') or event['type']}."
+                text += f"\nLiterature service: {payload.get('active_service', payload.get('service', 'openalex'))}; {payload.get('reason') or event['type']}."
+                if payload.get("active_service") == "crossref": text += "\nCrossref fallback succeeded; OpenAlex recovery remains unconfirmed."
                 if payload.get("requires_operator"):
                     text += "\nOperator action required. Repair the literature connection, then use Literature retry in Web/TUI or provider-retry-clear --service openalex."
                 elif payload.get("next_retry_at") is not None:

@@ -8,6 +8,7 @@ import pytest
 from hypoloom.claude_agent_host import _provider_response, _session_usage_view
 from tests.runtime.test_claude_agent_host import _host, _provider_ndjson, _start
 from tests.runtime.test_partial_cli_accounting import _charge, _messages, _request, _result
+from tests.runtime.test_partial_cli_accounting import _assistant
 from tests.runtime.test_rejected_workspace_accounting import (
     _assert_rejected, _charge as _workspace_charge, _observe, _output,
 )
@@ -20,6 +21,107 @@ def _ledger_result(subtype="success"):
         "cacheReadInputTokens": 40, "outputTokens": 19, "costUSD": "0.0100",
     }}
     return result
+
+
+def _duplicated_fallback_usage(subtype="success"):
+    # CC 2.1.289 counts the interrupted stream-start input in outer usage,
+    # then counts the fallback JSON again. Its model ledger bills it once.
+    result = _ledger_result(subtype)
+    result["usage"] = {"input_tokens": 38, "cache_creation_input_tokens": 6,
+        "cache_read_input_tokens": 10, "output_tokens": 11}
+    result["modelUsage"]["stub-model"].update(inputTokens=21,
+        cacheCreationInputTokens=3, cacheReadInputTokens=5, outputTokens=11)
+    ordinary = {"input_tokens": 1, "output_tokens": 1}
+    fallback = {"input_tokens": 17, "cache_creation_input_tokens": 3,
+        "cache_read_input_tokens": 5, "output_tokens": 7}
+    messages = [_assistant(str(i), ordinary) for i in range(4)] + [_assistant("fallback", fallback)]
+    exchanges = [{"request_path": "/v1/messages", "upstream_status": 200,
+        "message_complete": True, "response_body_complete": True,
+        "usage_valid": True, "served_models": ["stub-model"], "usage": dict(usage)}
+        for usage in [ordinary] * 4 + [fallback, fallback]]
+    exchanges[-2]["message_complete"] = False
+    exchanges[-2]["usage"]["output_tokens"] = 0
+    return result, messages, exchanges
+
+
+@pytest.mark.parametrize("subtype", ["success", "error_max_structured_output_retries"])
+def test_wire_corroborated_model_ledger_removes_duplicate_partial_stream_input(subtype):
+    result, messages, exchanges = _duplicated_fallback_usage(subtype)
+    request = _request()
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*messages, result), observed_wire_exchanges=exchanges)
+    assert failure == (None if subtype == "success" else "provider_not_success")
+    assert diagnostics["provider_observed_input_tokens_lower_bound"] == 29
+    assert diagnostics["provider_usage_normalization"] == {
+        "source": "modelUsage", "outer_input_tokens": 54, "outer_output_tokens": 11,
+        "selected_input_tokens": 29, "selected_output_tokens": 11,
+        "corroborated_by": "complete_wire_exchanges"}
+    assert diagnostics["provider_accounting"]["token_usage"] == {
+        "input_tokens": 29, "output_tokens": 11, "total_tokens": 40}
+    charge = _charge(request, response, diagnostics)
+    assert (charge.source, charge.tokens, charge.cost) == (
+        "response" if subtype == "success" else "provider", 40, Decimal("0.01"))
+    if response is not None:
+        assert response.token_usage == diagnostics["provider_accounting"]["token_usage"]
+        assert [response.diagnostics[key] for key in (
+            "uncached_input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")] == [21, 3, 5]
+
+
+@pytest.mark.parametrize("damage", ["absent", "different-model", "multiple-models", "incomplete",
+    "invalid-usage", "different-cache-semantics", "invalid-context", "different-input", "different-output",
+    "different-cache", "ledger-cost", "explicit-total"])
+def test_duplicate_input_correction_requires_exact_wire_corroboration_and_preserves_total(damage):
+    result, messages, exchanges = _duplicated_fallback_usage()
+    if damage == "absent": exchanges = None
+    elif damage == "different-model": exchanges[-1]["served_models"] = ["another-model"]
+    elif damage == "multiple-models": exchanges[-1]["served_models"] += ["another-model"]
+    elif damage == "incomplete": exchanges[-1]["response_body_complete"] = False
+    elif damage == "invalid-usage": exchanges[-1]["usage_valid"] = False
+    elif damage == "different-cache-semantics":
+        exchanges[-1]["context_capacity"] = {"input_usage_semantics": "input_includes_cache"}
+    elif damage == "invalid-context": exchanges[-1]["context_capacity"] = "unknown"
+    elif damage == "different-input": exchanges[-1]["usage"]["input_tokens"] += 1
+    elif damage == "different-output": exchanges[-1]["usage"]["output_tokens"] += 1
+    elif damage == "different-cache":
+        exchanges[-1]["usage"]["input_tokens"] += 1
+        exchanges[-1]["usage"]["cache_read_input_tokens"] -= 1
+    elif damage == "ledger-cost": result["modelUsage"]["stub-model"]["costUSD"] = "0.02"
+    else: result["usage"]["total_tokens"] = 65
+    response, failure, diagnostics = _provider_response(_request(), "stub-model",
+        _provider_ndjson(*messages, result), observed_wire_exchanges=exchanges)
+    if damage == "explicit-total":
+        assert response is None and failure == "invalid_token_usage"
+        assert diagnostics["provider_accounting"]["token_usage"] == {
+            "input_tokens": 29, "output_tokens": 11, "total_tokens": 65}
+    else:
+        assert failure is None and response is not None
+        assert "provider_usage_normalization" not in diagnostics
+        assert response.token_usage == {"input_tokens": 54, "output_tokens": 11, "total_tokens": 65}
+
+
+def test_wire_corroboration_does_not_release_an_unaccounted_assistant_reservation():
+    result, messages, exchanges = _duplicated_fallback_usage()
+    messages.append(_assistant("unaccounted", {"input_tokens": 30, "output_tokens": 1}))
+    request = _request()
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*messages, result), observed_wire_exchanges=exchanges)
+    assert response is None and failure == "invalid_provider_metadata"
+    assert diagnostics["provider_observed_input_tokens_lower_bound"] == 59
+    assert "provider_accounting" not in diagnostics
+    assert diagnostics["provider_reported_lower_bound"]["token_usage"]["total_tokens"] == 40
+    assert _charge(request, response, diagnostics).source == "declared"
+
+
+@pytest.mark.parametrize("maximum", [39, 40])
+def test_corrected_model_bill_remains_subject_to_exact_token_budget(maximum):
+    result, messages, exchanges = _duplicated_fallback_usage()
+    request = _request()
+    request = replace(request, budget=replace(request.budget, max_tokens=maximum))
+    response, failure, diagnostics = _provider_response(request, "stub-model",
+        _provider_ndjson(*messages, result), observed_wire_exchanges=exchanges)
+    assert failure == ("token_budget_exceeded" if maximum == 39 else None)
+    assert (response is None) == (maximum == 39)
+    assert diagnostics["provider_accounting"]["token_usage"]["total_tokens"] == 40
 
 
 @pytest.mark.parametrize("subtype", ["success", "error_max_structured_output_retries"])

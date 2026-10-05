@@ -26,12 +26,14 @@ ELSEVIER_INSTTOKEN = "ELSEVIER_INSTTOKEN"
 WEBHOOK_URL_KEY = "HYPOLOOM_WEBHOOK_URL"
 WEBHOOK_TOKEN_KEY = "HYPOLOOM_WEBHOOK_TOKEN"
 NOTIFICATION_PROXY_KEY = "HYPOLOOM_NOTIFICATION_PROXY"
+LITERATURE_PROXY_KEY = "HYPOLOOM_LITERATURE_PROXY"
 
 # Authoring fields only: projection removes them before any durable/Agent input.
 PROFILE_CREDENTIAL_FIELDS = {
     "methodology.yaml": {("literature",): {
         "openalex_api_key": OPENALEX_API_KEY_KEY, "unpaywall_email": UNPAYWALL_EMAIL_KEY,
         "semantic_scholar_api_key": SEMANTIC_SCHOLAR_API_KEY_KEY,
+        "proxy_url": LITERATURE_PROXY_KEY,
         "elsevier_api_key": ELSEVIER_API_KEY, "elsevier_insttoken": ELSEVIER_INSTTOKEN}},
     "notify.yaml": {
         (): {"proxy_url": NOTIFICATION_PROXY_KEY},

@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 from .literature import (MAX_ADDRESSES_PER_HOST, FetchResponse, LiteratureError, PdfDocument,
                          PopplerPdfExtractor, _public_address, _uri_parts)
 from .network_io import NetworkOperationError, report_network_progress, run_network_operation
+from .literature_proxy import LiteratureProxyRouter, connect_tunnel, validate_response_peer
 
 
 class GroundingWebError(ValueError):
@@ -43,10 +44,11 @@ class WebTransport(Protocol):
 class PublicHttpsTransport:
     """Credential-free HTTPS GET with the literature transport's peer check."""
 
-    def __init__(self, timeout_seconds: float = 15.0) -> None:
+    def __init__(self, timeout_seconds: float = 15.0, *, proxy_router: LiteratureProxyRouter | None = None) -> None:
         if isinstance(timeout_seconds, bool) or not 0.1 <= timeout_seconds <= 60:
             raise ValueError("web timeout must be within 0.1..60 seconds")
         self.timeout_seconds = timeout_seconds
+        self.proxy_router = proxy_router
 
     def resolve(self, hostname: str, *, timeout_seconds: float | None = None,
                 cancel_event: Any = None) -> tuple[str, ...]:
@@ -71,7 +73,8 @@ class PublicHttpsTransport:
         try:
             result = run_network_operation("hypoloom.grounding_web:_fetch_in_process",
                 {"uri": canonical, "approved_addresses": list(approved_addresses), "max_bytes": max_bytes,
-                 "headers": self.request_headers(canonical), "deadline": deadline},
+                 "headers": self.request_headers(canonical), "deadline": deadline,
+                 "proxy_url": None if self.proxy_router is None else self.proxy_router.for_url(canonical)},
                 deadline=deadline, max_output_bytes=(max_bytes * 4 // 3) + 65536, cancel_event=cancel_event)
         except NetworkOperationError as error:
             raise _network_error(error) from None
@@ -82,16 +85,18 @@ class PublicHttpsTransport:
         """Socket implementation seam for injected HTTP tests; production uses fetch."""
         timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
         return _fetch_response(self._request_in_process(uri, approved_addresses=approved_addresses,
-            max_bytes=max_bytes, deadline=time.monotonic() + max(0, timeout), headers=self.request_headers(uri)))
+            max_bytes=max_bytes, deadline=time.monotonic() + max(0, timeout), headers=self.request_headers(uri),
+            proxy_url=None if self.proxy_router is None else self.proxy_router.for_url(uri)))
 
     def _request_in_process(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
-                            deadline: float, headers: dict[str, str]) -> dict[str, Any]:
+                            deadline: float, headers: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
         canonical, host = _uri_parts(uri, "web URL")
         parsed = urlsplit(canonical)
         timeout = deadline - time.monotonic()
         if timeout <= 0: raise GroundingWebError("timed_out", "web request wall bound expired")
         connection = http.client.HTTPSConnection(host, 443, timeout=timeout)
         phase, size, status = "tcp_connect", 0, None
+        tunnel_address, proxy_peer = None, None
         def progress(value: str) -> None:
             nonlocal phase
             phase = value
@@ -105,7 +110,15 @@ class PublicHttpsTransport:
             if value <= 0: raise timed_out()
             return value
         def connect_approved(_address, _timeout, source_address=None):
-            nonlocal phase
+            nonlocal phase, tunnel_address, proxy_peer
+            if proxy_url is not None:
+                if not approved_addresses:
+                    raise GroundingWebError("unsafe_url", "no approved public web address")
+                tunnel_address = _public_address(approved_addresses[0], "proxy tunnel destination")
+                progress("tcp_connect")
+                stream, proxy_peer = connect_tunnel(proxy_url, tunnel_address, remaining=remaining)
+                progress("tls_handshake")
+                return stream
             # Do not repeat DNS or grant each address a fresh full timeout.
             last_error = None
             for address in approved_addresses:
@@ -131,8 +144,11 @@ class PublicHttpsTransport:
             connection.connect()
             if connection.sock is None:
                 raise GroundingWebError("transport_failed", "HTTPS connection has no socket")
-            peer = _public_address(str(connection.sock.getpeername()[0]), "web peer")
-            if peer not in approved_addresses:
+            peer = str(connection.sock.getpeername()[0])
+            if proxy_url is not None:
+                if peer != proxy_peer:
+                    raise GroundingWebError("unsafe_url", "HTTPS proxy peer changed after CONNECT")
+            elif _public_address(peer, "web peer") not in approved_addresses:
                 raise GroundingWebError("unsafe_url", "HTTPS peer differs from approved DNS addresses")
             progress("request_send")
             connection.sock.settimeout(remaining())
@@ -169,7 +185,7 @@ class PublicHttpsTransport:
                 "peer_address": peer, "media_type": response.getheader("Content-Type"),
                 "content_length": length, "location": response.getheader("Location"),
                 "body_b64": base64.b64encode(b"".join(chunks)).decode("ascii"),
-                "retry_after": response.getheader("Retry-After")}
+                "retry_after": response.getheader("Retry-After"), "proxy_tunnel_address": tunnel_address}
         except (TimeoutError, socket.timeout) as exc:
             raise timed_out() from exc
         finally:
@@ -185,7 +201,8 @@ def _network_error(error: NetworkOperationError, *, phase: str | None = None) ->
 def _fetch_response(value: dict[str, Any]) -> FetchResponse:
     return FetchResponse(requested_uri=value["requested_uri"], status_code=value["status_code"],
         peer_address=value["peer_address"], media_type=value["media_type"], content_length=value["content_length"],
-        location=value["location"], body=base64.b64decode(value["body_b64"], validate=True))
+        location=value["location"], body=base64.b64decode(value["body_b64"], validate=True),
+        proxy_tunnel_address=value.get("proxy_tunnel_address"))
 
 
 def _resolve_in_process(payload: dict[str, Any]) -> dict[str, Any]:
@@ -204,7 +221,8 @@ def _fetch_in_process(payload: dict[str, Any]) -> dict[str, Any]:
     if not 1 <= len(addresses) <= MAX_ADDRESSES_PER_HOST:
         raise GroundingWebError("unsafe_url", "DNS returned an invalid public address count")
     return PublicHttpsTransport()._request_in_process(uri, approved_addresses=addresses,
-        max_bytes=payload["max_bytes"], deadline=payload["deadline"], headers=payload["headers"])
+        max_bytes=payload["max_bytes"], deadline=payload["deadline"], headers=payload["headers"],
+        proxy_url=payload.get("proxy_url"))
 
 
 def _link(base: str, href: str) -> str | None:
@@ -297,6 +315,7 @@ class GroundingWeb:
                  pdf_extractor: Any = None, max_response_bytes: int = 8 * 1024 * 1024,
                  max_redirects: int = 5, max_seconds: float = 25.0,
                  search_fallback: Any = None, academic_search: Any = None,
+                 proxy_router: LiteratureProxyRouter | None = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         if type(max_response_bytes) is not int or not 1 <= max_response_bytes <= 64 * 1024 * 1024:
             raise ValueError("web response byte bound must be within 1..64 MiB")
@@ -304,7 +323,9 @@ class GroundingWeb:
             raise ValueError("web redirect bound must be within 0..10")
         if isinstance(max_seconds, bool) or not 0.1 <= max_seconds <= 120:
             raise ValueError("web work window must be within 0.1..120 seconds")
-        self.transport = transport or PublicHttpsTransport(min(15, max_seconds))
+        if transport is not None and proxy_router is not None:
+            raise ValueError("supply the transport or its proxy router, not both")
+        self.transport = transport or PublicHttpsTransport(min(15, max_seconds), proxy_router=proxy_router)
         self.pdf_extractor = pdf_extractor or PopplerPdfExtractor(max_pdf_bytes=max_response_bytes)
         self.max_response_bytes, self.max_redirects = max_response_bytes, max_redirects
         self.max_seconds, self.clock = max_seconds, clock
@@ -313,10 +334,12 @@ class GroundingWeb:
 
     @property
     def configuration(self) -> dict[str, Any]:
+        router = getattr(self.transport, "proxy_router", None)
         return {"search_provider": "duckduckgo-html", "max_seconds": self.max_seconds,
                 "max_response_bytes": self.max_response_bytes, "max_redirects": self.max_redirects,
                 "academic_provider": None if self.academic_search is None else "openalex",
-                "search_fallback": None if self.search_fallback is None else "openalex"}
+                "search_fallback": None if self.search_fallback is None else "openalex",
+                **({} if router is None else router.configuration)}
 
     def _read(self, url: str, *, max_seconds: float | None = None, http_calls: list[int] | None = None) -> tuple[str, FetchResponse]:
         visited = set()
@@ -358,8 +381,9 @@ class GroundingWeb:
                     response = self.transport.fetch(uri, approved_addresses=addresses, max_bytes=self.max_response_bytes, **bounds)
                 if not isinstance(response, FetchResponse) or response.requested_uri != uri:
                     raise GroundingWebError("transport_failed", "web response does not bind its requested URL")
-                if _public_address(response.peer_address, "web peer") not in addresses:
-                    raise GroundingWebError("unsafe_url", "web response peer was not DNS-approved")
+                router = getattr(self.transport, "proxy_router", None)
+                validate_response_peer(response, addresses,
+                    proxy_expected=router is not None and router.routes(uri))
                 if self.clock() >= deadline:
                     raise GroundingWebError("timed_out", "web work window expired")
                 if len(response.body) > self.max_response_bytes:

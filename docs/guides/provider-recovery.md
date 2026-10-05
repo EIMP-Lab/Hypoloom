@@ -154,6 +154,11 @@ automatic restart or rewrite of historical failures is performed.
 
 ## Literature service recovery
 
+New online Hosts first try [Crossref keyword backup](institutional-access.md#search-backup-and-optional-server-proxy)
+after transient primary failures. A valid backup packet permits work to proceed
+without claiming OpenAlex recovered. The waits below apply when no backup packet
+is available. Authentication failures still require repair.
+
 OpenAlex authentication, rate limiting, timeouts and temporary HTTP failures have
 independent availability recovery. The Host derives it from existing retrieval
 Attempt observations and the existing operator-command journal. It affects
@@ -190,7 +195,7 @@ hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID -
 ```
 
 OpenAlex reloads the selected original credential source before search. This
-command does not switch the model API, select a new provider or change the model.
+command does not switch the model API or change the configured search policy.
 Requesting retry is not recovery; a successfully retrieved literature packet
 establishes recovery even if the subsequent model task fails. Telegram can report
 waiting, operator retry and recovery using the same product-event projection.

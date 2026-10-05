@@ -40,6 +40,46 @@ papers remain available. This does not require a proxy or an extra init step.
 Search-provider outages use [automatic literature recovery](provider-recovery.md#literature-service-recovery);
 they are distinct from a single unavailable publisher PDF.
 
+## Search backup and optional server proxy
+
+New online Hosts automatically try anonymous Crossref keyword discovery after
+transient OpenAlex failures. Both share the search deadline. Existing metadata,
+language, source-type and three-period coverage checks still apply; sparse backup
+results can require query revision. OpenAlex authentication failures remain visible.
+This backs up the initial literature packet search; it does not promise identical
+ranking, publisher search, full text or a replacement for all web-search tools.
+The observer identifies Crossref use without claiming OpenAlex recovered. To opt
+out, pass `--literature-search-fallback none` at initialization.
+Crossref's [public API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)
+requires no extra key.
+
+Routing stays direct unless explicitly configured. If a tested server-side HTTP
+CONNECT proxy improves a particular endpoint, add these fields to the existing
+private `methodology.yaml` literature section (replace the example port):
+
+```yaml
+literature:
+  # Keep the section's existing fields and credentials.
+  proxy_domains: [ieeexplore.ieee.org]
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+Keep that file at mode `0600`. Legacy dotenv users can instead put
+`HYPOLOOM_LITERATURE_PROXY` in their existing private credentials file and pass
+`--literature-proxy-domain ieeexplore.ieee.org`; repeat for each exact hostname.
+Domains do not include subdomains automatically. Init/retry/Host commands carry
+the domain list and credential-file path, never the endpoint. A changed endpoint
+is reread on the next selected request; changing domains requires a new run.
+
+Selected domains use only this proxy, including metadata and public PDF requests;
+each redirect is selected separately. Other domains stay direct. `HTTP_PROXY` and
+`HTTPS_PROXY` are ignored. A failed configured proxy does not silently switch
+routes, solve CAPTCHA, change nodes or establish subscription access. Browser
+traffic on Windows is still governed by that machine. CONNECT uses an approved
+destination IP and normal hostname TLS verification, so the proxy's domain rules
+may not select the intended node: test its exit configuration separately. All
+existing time, size, cancellation and private-address restrictions still apply.
+
 ## Elsevier API
 
 ScienceDirect can use the official Article Retrieval API independently of the

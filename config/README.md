@@ -17,6 +17,7 @@ No separate `.env` is required. Start from the existing six-file
 |---|---|
 | OpenAlex API key / 文献密钥 | `methodology.yaml` → `literature.openalex_api_key` |
 | Optional Semantic Scholar key / 可选 DOI 后备查询密钥 | `methodology.yaml` → `literature.semantic_scholar_api_key` |
+| Optional literature HTTP proxy / 可选文献 HTTP 代理 | `methodology.yaml` → private `literature.proxy_url` + public `literature.proxy_domains`; [English](../docs/guides/institutional-access.md#search-backup-and-optional-server-proxy) / [中文](../docs/guides/institutional-access.zh-CN.md#检索后备与可选服务器代理) |
 | Unpaywall contact / PDF 后备联系方式 | `methodology.yaml` → `literature.unpaywall_email` |
 | Elsevier article API key / ScienceDirect 全文接口 | `methodology.yaml` → `literature.elsevier_api_key` |
 | Optional Elsevier institution token / 可选机构令牌 | `methodology.yaml` → `literature.elsevier_insttoken` |

@@ -434,10 +434,11 @@ class PlaywrightInstitutionalBrowser:
         from .institutional_access import MAX_DOCUMENT_BYTES, identity_from_url
         from .literature import SemanticScholarPdfLocator
         deadline = monotonic() + timeout_seconds
-        web = GroundingWeb(max_response_bytes=MAX_DOCUMENT_BYTES)
         if self._pdf_locator is None:
             self._pdf_locator = SemanticScholarPdfLocator(timeout_seconds=5)
         locator = self._pdf_locator
+        web = GroundingWeb(max_response_bytes=MAX_DOCUMENT_BYTES,
+                           proxy_router=getattr(locator, "_proxy_router", None))
         identity = identity_from_url(url)
         # Reserve time for the browser; this never extends the queue's deadline.
         document, title = acquire_public_pdf(web, identity,

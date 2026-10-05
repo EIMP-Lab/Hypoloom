@@ -81,7 +81,8 @@ def _invoke(tmp_path, executable, workspace, scenario, base_url, host_key):
     logs = tmp_path / (scenario.stage + "-" + (scenario.chain or "parent"))
     logs.mkdir()
     scenario.step = 0
-    relay = ProviderRelay(logs / "provider.sock", base_url=base_url,
+    # Keep the socket basename short enough for pytest-xdist's worker directory.
+    relay = ProviderRelay(logs / "p.sock", base_url=base_url,
         provider_environment={"ANTHROPIC_API_KEY": host_key}, model=_MODEL,
         max_request_bytes=4*1024*1024, max_response_bytes=1024*1024,
         max_requests=8, deadline_at=time.monotonic()+40)

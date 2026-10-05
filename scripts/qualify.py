@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -31,11 +32,15 @@ SELECTIONS = {
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
+        epilog="Additional pytest arguments can follow --; explicit pytest options replace G1 scheduling defaults.")
     parser.add_argument("stage", choices=SELECTIONS)
     parser.add_argument("--collect-only", action="store_true")
     parser.add_argument("--junitxml", type=Path)
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    separator = arguments.index("--") if "--" in arguments else len(arguments)
+    args = parser.parse_args(arguments[:separator])
+    pytest_args = arguments[separator + 1:]
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     if not args.collect_only and args.stage in {"g1", "g2", "g3"}:
         # An inherited paid/GPU opt-in must not change an offline/CPU selection.
@@ -61,10 +66,15 @@ def main(argv=None):
         print("Resource/paid lanes require their documented opt-ins. A skipped case "
               "is not qualification evidence.", flush=True)
     command = [sys.executable, "-B", "-m", "pytest", "-q", "-ra", *SELECTIONS[args.stage]]
+    if (args.stage == "g1" and not args.collect_only and not pytest_args
+            and not environment.get("PYTEST_ADDOPTS", "").strip()
+            and importlib.util.find_spec("xdist") is not None):
+        command += ["-n", str(min(8, max(1, os.cpu_count() or 1))), "--dist=worksteal"]
     if args.collect_only:
         command.append("--collect-only")
     if args.junitxml:
         command += ["--junitxml", str(args.junitxml.resolve())]
+    command += pytest_args
     return subprocess.run(command, cwd=ROOT, env=environment).returncode
 
 

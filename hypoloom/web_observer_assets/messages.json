@@ -1262,5 +1262,6 @@
   "Run ended; no further automatic retry.": "运行已结束，不再自动重试。",
   "Affected roles: {0}.": "受影响角色：{0}。",
   " · l Literature retry": " · l 文献重试",
-  "Status unknown": "状态未知"
+  "Status unknown": "状态未知",
+  "Literature: Crossref fallback; OpenAlex recovery unconfirmed.": "文献：使用 Crossref 后备检索；OpenAlex 尚未确认恢复。"
 }

@@ -160,6 +160,10 @@ TUI **l**，或：
 hypoloom provider-retry-clear --state-root /absolute/state/run --run-id RUN_ID --service openalex
 ```
 
-搜索前重新读取原凭据来源。此操作不切换模型 API、不改变模型、不自动换文献供应商。
+新 Host 会先在主源临时失败时尝试 [Crossref 关键词后备](institutional-access.zh-CN.md#检索后备与可选服务器代理)。
+后备文献包通过现有校验即可继续工作，不代表 OpenAlex 已恢复；上述等待适用于
+后备也未能提供文献包的情况。认证错误仍需修复。
+
+搜索前重新读取原凭据来源。此操作不切换模型 API、不改变模型或已配置的检索策略。
 “请求重试”与“实际恢复”分开显示，并可通过现有 Telegram 事件推送。
 代码更新不迁移、不重开已冻结的旧运行。

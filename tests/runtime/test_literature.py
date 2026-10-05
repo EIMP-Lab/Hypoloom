@@ -2483,6 +2483,7 @@ def test_openalex_factory_preflight_checks_key_and_poppler_without_network(
         "adapter": "openalex",
         "host": OPENALEX_API_HOST,
         "credential_source": "file",
+        "search_fallback": "crossref",
         "timeout_seconds": 4.0,
         "search_wall_seconds": 60.0,
         "max_response_bytes": 4_096,

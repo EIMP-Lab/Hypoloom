@@ -503,3 +503,34 @@ Use local fault injection; existing research runs, credentials and Windows clien
 remain untouched. Freeze a candidate only after focused tests, then run the full
 offline selection and isolated installation checks; record baseline failures
 separately rather than weakening unrelated assertions.
+
+## Independent search and optional routing — 2026-10-05
+
+The remaining reproducible availability gap is OpenAlex-only keyword discovery:
+PDF fallbacks cannot help when no papers have been selected. Add anonymous Crossref
+keyword discovery after transient primary failures, within the same search deadline
+(reserve half for the backup). Authentication and invalid-query failures still
+require their existing repair. Crossref relevance search is not Boolean-equivalent:
+filter its bounded candidates locally against the admitted expression, and retain
+the existing DOI, metadata, language, source-class and all-strata checks. Incomplete
+coverage remains an explicit gap. Do not fabricate OpenAlex venue identities or
+claim that a discovered PDF URL grants access. Existing Attempt diagnostics identify
+the backend actually used; backup success must not claim primary recovery.
+
+Optional exact-domain HTTP CONNECT routing reuses the private Profile/dotenv
+credential source and per-request reread. No ambient proxy variables or compulsory
+proxy are introduced. Explicitly selected domains use only their configured route;
+redirects are selected again, and authentication/challenge responses do not switch
+routes. CONNECT names the approved public destination IP; TLS still checks the
+original hostname. The observed socket peer remains the proxy, never a fabricated
+destination peer. This also means a proxy's domain-based node rules may not match;
+the operator owns its exit configuration. All existing deadlines and cancellation
+apply, including proxy DNS, connection and tunnel setup.
+
+Use ordinary transient adapter state, existing observations and validators; no
+new durable availability store or qualification gate. Separately, repair the
+observed Claude Code partial-stream/fallback double count only when the complete
+single-model ledger agrees with completed wire usage and existing cost/budget
+checks. Missing evidence retains the conservative accounting path. Default G1
+scheduling uses bounded workstealing when xdist exists, while explicit pytest
+scheduling and serial environments remain supported.

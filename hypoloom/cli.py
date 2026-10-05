@@ -74,6 +74,9 @@ def _add_literature_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--credentials-file",
                         help="private Profile or dotenv providing OPENALEX_API_KEY, optional SEMANTIC_SCHOLAR_API_KEY, or UNPAYWALL_EMAIL for the selected fallback")
     parser.add_argument("--literature-pdf-fallback", choices=("semantic-scholar", "unpaywall"), default="semantic-scholar")
+    parser.add_argument("--literature-search-fallback", choices=("crossref", "none"), default="crossref")
+    parser.add_argument("--literature-proxy-domain", action="append", default=[],
+                        help="exact HTTPS hostname routed through private HYPOLOOM_LITERATURE_PROXY; default direct")
     parser.add_argument("--unpaywall-email-file", help="existing contact-email file for explicitly selected Unpaywall PDF fallback")
     parser.add_argument("--literature-pdfinfo", default="/usr/bin/pdfinfo")
     parser.add_argument("--literature-pdftotext", default="/usr/bin/pdftotext")
@@ -96,7 +99,13 @@ def _profile_literature_source(args, report) -> None:
     if args.literature_adapter != "openalex" or not report.admitted:
         return
     product = report.create_run_payload["research_contract"]["methodology"]["controls"].get("product", {})
-    source = product.get("methodology", {}).get("literature", {}).get("credentials_file")
+    settings = product.get("methodology", {}).get("literature", {})
+    domains = settings.get("proxy_domains")
+    if domains is not None:
+        if getattr(args, "literature_proxy_domain", None) and tuple(args.literature_proxy_domain) != tuple(domains):
+            raise ValueError("literature proxy domains conflict with the Profile")
+        args.literature_proxy_domain = list(domains)
+    source = settings.get("credentials_file")
     if source is None:
         return
     if (args.credentials_file is not None and args.credentials_file != source) or args.openalex_api_key_file is not None:
@@ -106,6 +115,8 @@ def _profile_literature_source(args, report) -> None:
 
 def _literature_adapter(args: argparse.Namespace) -> object | None:
     if args.literature_adapter == "offline":
+        if getattr(args, "literature_proxy_domain", None):
+            raise ValueError("literature proxy routing requires the online literature adapter")
         if args.literature_pdf_fallback != "semantic-scholar" or args.unpaywall_email_file is not None:
             raise ValueError("Unpaywall requires --literature-adapter openalex and explicit PDF fallback selection")
         if args.openalex_api_key_file is not None or args.credentials_file is not None:
@@ -132,6 +143,7 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
             unpaywall_email = credential(entries, UNPAYWALL_EMAIL_KEY)
     from .literature import build_openalex_literature_io
     from .credentials import SEMANTIC_SCHOLAR_API_KEY_KEY, optional_credential_loader
+    from .literature_proxy import proxy_router_from_args
 
     adapter = build_openalex_literature_io(
         api_key=api_key,
@@ -142,6 +154,8 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
         max_response_bytes=args.literature_max_response_bytes,
         max_pdf_bytes=args.literature_max_pdf_bytes,
         max_pdf_pages=args.literature_max_pdf_pages,
+        search_fallback=getattr(args, "literature_search_fallback", "crossref"),
+        proxy_router=proxy_router_from_args(args),
         pdf_fallback=args.literature_pdf_fallback,
         unpaywall_email=unpaywall_email,
         unpaywall_email_file=args.unpaywall_email_file,
@@ -156,7 +170,8 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
             raise ValueError("Elsevier institutional token requires an Elsevier API key in the same private source")
         if entries.get(ELSEVIER_API_KEY):
             adapter.article_api = ElsevierArticleAPI(args.credentials_file,
-                max_bytes=args.literature_max_pdf_bytes, timeout_seconds=args.literature_timeout)
+                max_bytes=args.literature_max_pdf_bytes, timeout_seconds=args.literature_timeout,
+                proxy_router=adapter.fetcher._proxy_router)
     return adapter
 
 
@@ -642,6 +657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if literature_io is not None:
                 from .grounding_web import GroundingWeb
                 web_options["grounding_web"] = GroundingWeb(academic_search=literature_io.fetcher,
+                    proxy_router=getattr(literature_io.fetcher, "_proxy_router", None),
                     search_fallback=literature_io.fetcher if args.web_search_fallback is not None else None)
             from .notification_tailer import notification_environment
             notification_env = notification_environment(args.notification_credentials_file)

@@ -957,6 +957,7 @@ class ClaudeAgentHost:
                 _, _, parsed_diagnostics = _provider_response(
                     handle.request, handle.model, output, final_text_output=final_text_output,
                     observed_wire_input_floor=wire_input_floor,
+                    observed_wire_exchanges=exchanges,
                     session_usage_baseline=handle._session_usage_baseline,
                 )
                 diagnostics.update(parsed_diagnostics)
@@ -976,6 +977,7 @@ class ClaudeAgentHost:
                     _, failure_code, parsed_diagnostics = _provider_response(
                         handle.request, handle.model, output or b"", final_text_output=True,
                         observed_wire_input_floor=wire_input_floor,
+                        observed_wire_exchanges=exchanges,
                         session_usage_baseline=handle._session_usage_baseline,
                     )
                     diagnostics.update(parsed_diagnostics)
@@ -1039,6 +1041,7 @@ class ClaudeAgentHost:
                                 observed_turn_count=stream_diagnostics.get("provider_observed_turn_count")
                                     if final_text_output else None,
                                 observed_wire_input_floor=wire_input_floor,
+                                observed_wire_exchanges=exchanges,
                             ))
         if reason is None:
             output = _read_bounded(handle._stdout_file, output_limit)
@@ -1053,6 +1056,7 @@ class ClaudeAgentHost:
                     workspace_artifacts=workspace_artifacts,
                     final_text_output=final_text_output,
                     observed_wire_input_floor=wire_input_floor,
+                    observed_wire_exchanges=exchanges,
                     session_usage_baseline=handle._session_usage_baseline,
                 )
                 diagnostics.update(parsed_diagnostics)
@@ -1443,6 +1447,7 @@ def _provider_response(
     workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None,
     final_text_output: bool = False,
     observed_wire_input_floor: object = None,
+    observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
     session_usage_baseline: Mapping[str, object] | None = None,
 ) -> tuple[AgentResponse | None, str | None, Mapping[str, object]]:
     outer, stream_failure, stream_diagnostics = _unpack_provider_stream(raw)
@@ -1469,6 +1474,7 @@ def _provider_response(
             observed_turn_count=stream_diagnostics.get("provider_observed_turn_count")
                 if final_text_output else None,
             observed_wire_input_floor=observed_wire_input_floor,
+            observed_wire_exchanges=observed_wire_exchanges,
         )
     )
     if isinstance(subtype, str):
@@ -1580,6 +1586,7 @@ def _provider_response(
             outer,
             model,
             allow_model_usage_fallback=False,
+            observed_wire_exchanges=observed_wire_exchanges,
         )
         cost = _cost(outer.get("total_cost_usd"))
         model_identity = _model_identity(outer.get("modelUsage"), model)
@@ -1989,6 +1996,7 @@ def _provider_accounting(
     observed_input_tokens_lower_bound: object = 0,
     observed_turn_count: object = None,
     observed_wire_input_floor: object = None,
+    observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
 ) -> Mapping[str, object]:
     normalization: dict[str, object] = {}
     try:
@@ -2004,6 +2012,7 @@ def _provider_accounting(
             model,
             allow_model_usage_fallback=allow_model_usage_fallback,
             diagnostics=normalization,
+            observed_wire_exchanges=observed_wire_exchanges,
         )
         turns = _nonnegative_int(outer.get("num_turns"), "num_turns")
         if observed_turn_count is not None:
@@ -2051,6 +2060,7 @@ def _normalized_provider_usage(
     *,
     allow_model_usage_fallback: bool,
     diagnostics: dict[str, object] | None = None,
+    observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
 ) -> tuple[int, int, int, int, int, int]:
     usage_value = outer.get("usage")
     if usage_value is not None:
@@ -2080,15 +2090,29 @@ def _normalized_provider_usage(
             matching_cost = Decimal(_cost(exact.get("costUSD"))) == Decimal(_cost(outer.get("total_cost_usd")))
         except (AgentACIError, TypeError, ValueError):
             complete, matching_cost = None, False
-        if (complete is not None and matching_cost
-                and all(new >= old for new, old in zip(
+        dominates_outer = complete is not None and all(new >= old for new, old in zip(
                     (complete[0], complete[1], complete[2], complete[4]),
-                    (uncached, cache_creation, cache_read, output_tokens)))):
+                    (uncached, cache_creation, cache_read, output_tokens)))
+        # CC can instead add an interrupted stream-start input to the JSON
+        # fallback a second time. Permit a downward input correction only when
+        # the exact ledger/cost is independently corroborated by complete wire
+        # exchanges; observations alone never become a bill. Other ledger
+        # regressions, unknown cache semantics and explicit total_tokens retain
+        # the existing conservative validation.
+        corroborated = (complete is not None and matching_cost and not dominates_outer
+            and complete[4] == output_tokens
+            and all(new <= old for new, old in zip(complete[:3], (uncached, cache_creation, cache_read)))
+            and _wire_corroborates_model_usage(observed_wire_exchanges, model, complete))
+        if complete is not None and matching_cost and (dominates_outer or corroborated):
             if diagnostics is not None:
                 diagnostics["provider_usage_normalization"] = {
                     "source": "modelUsage", "outer_input_tokens": input_tokens,
                     "outer_output_tokens": output_tokens,
                     "selected_input_tokens": complete[3], "selected_output_tokens": complete[4]}
+                if corroborated:
+                    diagnostics["provider_usage_normalization"]["corroborated_by"] = "complete_wire_exchanges"
+            if corroborated:
+                return (*complete[:5], max(complete[5], _nonnegative_int(usage.get("total_tokens", 0), "total_tokens")))
             return (*complete[:5], max(total_tokens, complete[5]))
         if total_tokens or not allow_model_usage_fallback:
             return (
@@ -2112,6 +2136,26 @@ def _normalized_provider_usage(
             "source": "modelUsage_legacy", "selected_input_tokens": normalized[3],
             "selected_output_tokens": normalized[4]}
     return normalized
+
+
+def _wire_corroborates_model_usage(
+    exchanges: Sequence[Mapping[str, object]] | None,
+    model: str,
+    complete: tuple[int, int, int, int, int, int],
+) -> bool:
+    from .provider_observation import summarize_exchanges
+    generations = [item for item in exchanges or () if item.get("request_path") == "/v1/messages"]
+    if not generations or any(item.get("served_models") != [model]
+        or item.get("usage_valid") is not True
+        or not isinstance(item.get("context_capacity") or {}, Mapping)
+        or (item.get("context_capacity") or {}).get("input_usage_semantics", "separate_cache") != "separate_cache"
+        for item in generations):
+        return False
+    observed = summarize_exchanges(generations)
+    return observed["completed_requests"] > 0 and (
+        observed["input_tokens"], observed["cache_creation_input_tokens"],
+        observed["cache_read_input_tokens"], observed["output_tokens"]
+    ) == (complete[0], complete[1], complete[2], complete[4])
 
 
 def _model_usage_tokens(

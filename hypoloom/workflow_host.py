@@ -2188,7 +2188,9 @@ class WorkflowHost:
                 literature_failure = ("literature_adapter_failed", {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}, True)
             else:
                 preflight_diagnostics["literature_retrieval_seconds"] = read["seconds"]
-                preflight_diagnostics["literature_service"] = {"service": "openalex", "available": True, "observed_at": time.time()}
+                preflight_diagnostics["literature_service"] = {
+                    **preflight_diagnostics.get("literature_search", {"service": "openalex", "available": True}),
+                    "observed_at": time.time()}
                 packet_input = EmbeddedInput.from_bytes(f"{task.command_id}--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes())
                 inputs = (*inputs, packet_input); immutable_context_refs = (*immutable_context_refs, packet_input.ref)
         if coverage_failure and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING:
@@ -2554,6 +2556,8 @@ class WorkflowHost:
                         return
                     if read["error"] is not None: raise read["error"]
                     literature_diagnostics = dict(read["diagnostics"])
+                    if "literature_search" in literature_diagnostics:
+                        diagnostics = dict(diagnostics or {}, literature_search=literature_diagnostics.pop("literature_search"))
             except (LiteratureError, StopIteration) as exc:
                 raise AgentACIError("invalid_candidate", str(exc)) from exc
         synthesis = (isinstance(task, ResearchNodeTask)

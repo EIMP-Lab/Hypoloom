@@ -85,7 +85,7 @@ def _model(v: _Validator, value: Mapping[str, Any], location: str) -> None:
 
 def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
     definitions = {
-        "literature": {"enabled", "tools", "max_sources", "credentials_file"},
+        "literature": {"enabled", "tools", "max_sources", "credentials_file", "proxy_domains"},
         "inner_loop": {"max_iterations_per_hypothesis", "repair_attempts"},
         "graph_evolution": {"enabled", "stagnation_rounds"},
         "memory": {"max_transcript_bytes", "max_plugin_bytes", "max_memory_bytes", "retention",
@@ -99,6 +99,11 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
         for key, item in selected.items():
             location = f"methodology.yaml.{section}.{key}"
             if key == "enabled": v.boolean(item, location)
+            elif key == "proxy_domains":
+                from .literature_proxy import LiteratureProxyRouter
+                domains = v.strings(item, location)
+                try: LiteratureProxyRouter.validate_domains(tuple(domains))
+                except ValueError: v.error(location, "expected unique exact public HTTPS hostnames, without wildcards, ports or paths")
             elif key == "tools":
                 if any(tool not in {"web_search", "web_fetch", "read_papers"} for tool in v.strings(item, location)):
                     v.error(location, "literature tools must be web_search, web_fetch or read_papers")

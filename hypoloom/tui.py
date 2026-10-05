@@ -1427,9 +1427,12 @@ def _literature_status_lines(value, *, terminal=False):
     reasons = {"openalex_timeout": "Request timed out", "openalex_rate_limit": "Rate limited",
         "openalex_auth": "Authentication rejected", "openalex_http": "HTTP request failed"}
     lines = [tr("OpenAlex: {0}.", tr("Run ended" if terminal else labels.get(state, "Status unknown")))]
-    if value.get("reason"):
+    if value.get("active_service") == "crossref":
+        lines = [tr("Literature: Crossref fallback; OpenAlex recovery unconfirmed.")]
+    reason = value.get("reason") or value.get("primary_failure")
+    if reason:
         http = "" if value.get("http_status") is None else f" · HTTP {value['http_status']}"
-        lines.append(tr("Last failure: {0}{1}.", tr(reasons.get(value["reason"], value["reason"])), http))
+        lines.append(tr("Last failure: {0}{1}.", tr(reasons.get(reason, reason)), http))
     if terminal:
         lines.append(tr("Run ended; no further automatic retry."))
     elif value.get("requires_operator") or state == "waiting_operator":

@@ -129,6 +129,24 @@ class ReadingScenario(_FinalReportHostScenario):
         return super()._unscoped_tool_calls(number)
 
 
+class CrossrefReadingScenario(ReadingScenario):
+    """Select the actual backup packet's first PDF for the ordinary readers."""
+    def __init__(self, root, **kwargs):
+        super().__init__(root, **kwargs)
+        self.catalog_packets = {}
+
+    def _unscoped_tool_calls(self, number):
+        if self.current is not None and _main(self.current) and self.steps[self.current.attempt_id] == 1:
+            from hypoloom.literature import LiteraturePacket
+            packet = LiteraturePacket.from_bytes(next(item.content_bytes() for item in self.current.input_artifacts
+                if item.ref.endswith('--literature-packet')))
+            self.catalog_packets[self.current.attempt_id] = packet
+            assert all(paper.pdf_trace is not None for paper in packet.papers)
+            return (('prepare_source', 'mcp__host-tools__web_fetch',
+                {'mode': 'document', 'url': packet.papers[0].pdf_trace.final_uri}),)
+        return super()._unscoped_tool_calls(number)
+
+
 @pytest.mark.parametrize("end_run,batch_documents,correct_errors,institutional_oa", [
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
     (False, False, True, False), (False, False, False, True), (False, False, False, "metadata"),
@@ -136,17 +154,60 @@ class ReadingScenario(_FinalReportHostScenario):
     (False, False, False, "arxiv"), (False, False, False, "arxiv-timeout"),
     (False, False, False, "arxiv-challenge")],
     ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback", "arxiv-timeout", "challenge-and-quota"])
-def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa, service_recovery=False):
+def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa, service_recovery=False, catalog_fallback=False):
     arxiv_oa = institutional_oa in {'arxiv', 'arxiv-timeout', 'arxiv-challenge'}
     if institutional_oa:
         import sys
         monkeypatch.setattr(sys.modules[__name__], "DOC", "https://www.nature.com/articles/s41586-026-00001-1")
-    scenario = ReadingScenario(tmp_path, batch_documents=batch_documents, correct_errors=correct_errors)
+    scenario_type = CrossrefReadingScenario if catalog_fallback else ReadingScenario
+    scenario = scenario_type(tmp_path, batch_documents=batch_documents, correct_errors=correct_errors)
     secret = "isolated-script-only-" + secrets.token_hex(12)
     provider, thread = _start_provider(scenario, secret)
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}\n"); settings_file.chmod(0o600)
     host = _new_host(tmp_path, _installed_claude(), f"http://127.0.0.1:{provider.server_port}", secret)
+    if catalog_fallback:
+        from urllib.parse import parse_qs, urlsplit
+        from hypoloom.crossref_search import CrossrefSearch
+        from hypoloom.literature import FetchResponse, OpenAlexResponse
+        from test_institutional_browser import _pdf
+        catalog_requests, primary_requests, pdf_bytes, pdf_requests = [], [], {}, []
+
+        class CrossrefCatalog:
+            def get(self, **arguments):
+                catalog_requests.append(arguments)
+                assert arguments['host'] == 'api.crossref.org'
+                assert set(arguments['headers']) == {'Accept', 'User-Agent'}
+                params = parse_qs(urlsplit(arguments['target']).query)
+                year = int(params['filter'][0].split('from-pub-date:')[1][:4])
+                doi = f'10.1234/crossref-native.{year}'
+                uri = f'https://papers.example.org/crossref-native-{year}.pdf'
+                pdf_bytes.setdefault(uri, _pdf(doi + ' ' + scenario.nonce))
+                host.grounding_web.transport.responses[uri] = _response(uri, pdf_bytes[uri], media_type='application/pdf')
+                work = {'DOI': doi, 'type': 'journal-article', 'title': [params['query.bibliographic'][0]],
+                    'author': [{'given': 'Ada', 'family': 'Lovelace'}], 'language': 'en',
+                    'published': {'date-parts': [[year, 1, 1]]},
+                    'link': [{'URL': uri, 'content-type': 'application/pdf'}]}
+                body = json.dumps({'status': 'ok', 'message-type': 'work-list', 'message': {'items': [work]}}).encode()
+                return OpenAlexResponse(status_code=200, media_type='application/json', content_length=len(body), body=body)
+
+        def unavailable_primary(**arguments):
+            primary_requests.append(arguments)
+            return OpenAlexResponse(status_code=503, media_type='application/json',
+                content_length=2, body=b'{}', retry_after='900')
+
+        def public_pdf(uri, *, approved_addresses, max_bytes):
+            assert approved_addresses == ('8.8.8.8',)
+            pdf_requests.append(uri)
+            body = pdf_bytes[uri]
+            assert len(body) <= max_bytes
+            return FetchResponse(requested_uri=uri, status_code=200, peer_address='8.8.8.8',
+                media_type='application/pdf', content_length=len(body), location=None, body=body)
+
+        host.literature_io.fetcher._transport.get = unavailable_primary
+        host.literature_io.fetcher.max_retries = 0
+        host.literature_io.fetcher._search_fallback = CrossrefSearch(transport=CrossrefCatalog())
+        host.literature_io.fetcher._pdf_fetcher = public_pdf
     if service_recovery:
         from hypoloom.literature import OpenAlexResponse
         from hypoloom.literature_recovery import status as service_status
@@ -271,7 +332,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                                 transport_phase='response_body', received_bytes=1378)
                     return fetch(url, **kwargs)
                 host.grounding_web.transport.fetch = interrupted_once
-    if service_recovery:
+    if service_recovery or catalog_fallback:
         host.configuration["literature"] = host.literature_io.configuration
         host.version = host._runtime_version()
     run_id = "native-paper-reading"
@@ -389,6 +450,45 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                 "continuation": [row["attempt_id"] for row in continuation], "grounding_query_plans": len(plans),
                 "literature_waiting_events": events.count("literature_waiting"),
                 "literature_recovered_events": events.count("literature_recovered")}, indent=2))
+        if catalog_fallback:
+            from hypoloom.literature_recovery import status as service_status
+            assert len(primary_requests) == 1, 'primary Retry-After must prevent repeated outage probes'
+            assert len(catalog_requests) >= 6 and len(catalog_requests) % 3 == 0
+            assert pdf_requests and scenario.catalog_packets
+            for packet in scenario.catalog_packets.values():
+                assert len(packet.papers) == 3
+                assert all(paper.source_uri.startswith('https://api.crossref.org/works/')
+                    and paper.venue is None and paper.pdf_trace is not None for paper in packet.papers)
+            status = service_status(host.store, run_id)
+            assert status['state'] == 'ready' and status['active_service'] == 'crossref'
+            assert status['primary_failure'] == 'openalex_http'
+            service = [json.loads(row['observation_json']).get('preflight_diagnostics', {}).get('literature_service')
+                for row in attempts]
+            service = [value for value in service if value is not None]
+            assert service and all(value['available'] is False and value['fallback_available'] is True
+                and value['http_status'] == 503 for value in service)
+            assert not host.store.inspect("SELECT command_id FROM workflow_transitions WHERE json_type(payload_json,'$.literature_retry_clear')='object'")
+            assert not host.store.inspect("SELECT command_id FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")
+            original_count = 0
+            reader_originals = []
+            for row in attempts:
+                session = json.loads(row['observation_json']).get('session', {})
+                for source in session.get('paper_sources', []):
+                    assert source['url'] in pdf_bytes
+                    from hypoloom.paper_sources import published_source, source_paths
+                    original_source, archive_root, _owner = published_source(host, row, source['source_ref'])
+                    original = archive_root / source_paths(original_source)[0]
+                    assert original.read_bytes() == pdf_bytes[source['url']]
+                    original_count += 1
+                    if row['attempt_id'] in scenario.readers:
+                        reader_originals.append(original.read_bytes())
+            assert original_count >= 6 and len(reader_originals) == 3
+            assert len(set(reader_originals)) == 1
+            (tmp_path / 'crossref-fallback-evidence.json').write_text(json.dumps({
+                'paid_model': False, 'gpu': False, 'primary_requests': len(primary_requests),
+                'crossref_requests': len(catalog_requests), 'pdf_requests': len(pdf_requests),
+                'catalog_packet_count': len(scenario.catalog_packets), 'archived_originals': original_count,
+                'matching_reader_originals': len(reader_originals), 'literature_service': status}, indent=2))
         assert len([row for row in attempts if row["kind"] == "PROCESS"]) == (0 if end_run else 1)
         for row in attempts:
             observed = json.loads(row["observation_json"])
@@ -419,6 +519,11 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
 def test_native_six_catalog_failures_recover_without_operator_then_readers_and_cpu_close(tmp_path, monkeypatch):
     test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch,
         False, False, False, "arxiv", service_recovery=True)
+
+
+def test_native_crossref_outage_fallback_delivers_packet_pdfs_to_readers_and_cpu(tmp_path, monkeypatch):
+    test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch,
+        False, False, False, False, catalog_fallback=True)
 
 
 @pytest.mark.parametrize("stage", ["execution", "readers"])

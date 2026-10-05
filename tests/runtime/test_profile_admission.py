@@ -1320,6 +1320,7 @@ def test_profile_check_openalex_preflight_reads_explicit_key_and_tools_only(
     assert report["literature_preflight"] == {
         "adapter": "openalex",
         "credential_source": "file",
+        "search_fallback": "crossref",
             "host": "api.openalex.org",
             "max_response_bytes": 2 * 1024 * 1024,
             "max_retries": 2,

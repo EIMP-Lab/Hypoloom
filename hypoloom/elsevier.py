@@ -58,8 +58,8 @@ def _headers(source: str) -> dict[str, str]:
 
 
 class ElsevierTransport(PublicHttpsTransport):
-    def __init__(self, source: str, target: str, timeout_seconds: float):
-        super().__init__(timeout_seconds)
+    def __init__(self, source: str, target: str, timeout_seconds: float, *, proxy_router=None):
+        super().__init__(timeout_seconds, proxy_router=proxy_router)
         self.source, self.target = source, target
         self.accept = "application/pdf"
 
@@ -108,12 +108,13 @@ def _xml_document(result, target, url, identity, title):
 
 class ElsevierArticleAPI:
     def __init__(self, credentials_file: str, *, max_bytes: int = 16 * 1024 * 1024,
-                 timeout_seconds: float = 15, pdf_extractor=None, transport_factory=ElsevierTransport):
+                 timeout_seconds: float = 15, pdf_extractor=None, transport_factory=ElsevierTransport, proxy_router=None):
         self.credentials_file = credentials_file
         self.max_bytes = max_bytes
         self.timeout_seconds = timeout_seconds
         self.pdf_extractor = pdf_extractor
         self.transport_factory = transport_factory
+        self.proxy_router = proxy_router
         # Configuration errors fail at review, without making a network request.
         _headers(credentials_file)
 
@@ -137,7 +138,9 @@ class ElsevierArticleAPI:
         target, identity = selected
         if deadline <= monotonic():
             raise GroundingWebError("timed_out", "document work window expired")
-        web = GroundingWeb(self.transport_factory(self.credentials_file, target, self.timeout_seconds),
+        transport = self.transport_factory(self.credentials_file, target, self.timeout_seconds,
+            **({"proxy_router": self.proxy_router} if self.transport_factory is ElsevierTransport else {}))
+        web = GroundingWeb(transport,
             pdf_extractor=self.pdf_extractor, max_response_bytes=self.max_bytes,
             max_seconds=min(120, max(.1, deadline - monotonic())))
         try:
@@ -155,7 +158,7 @@ class ElsevierArticleAPI:
             except GroundingWebError as exc:
                 # PDF and text-mining representations may have different entitlements.
                 # This is one bounded representation fallback, not an authentication retry.
-                if exc.http_status not in {403, 406}:
+                if exc.code == "challenge" or exc.http_status not in {403, 406}:
                     raise
                 web.transport.accept = "text/xml"
                 result = web.document(target, max_seconds=deadline - monotonic(), http_calls=http_calls)
@@ -171,8 +174,9 @@ class ElsevierArticleAPI:
             return {**verified, "requested_url": url, "url": target, "title": title or result["title"],
                     "version_note": "Article PDF retrieved through Elsevier API; access verified for this document only."}
         except GroundingWebError as exc:
-            code = {401: "elsevier_authentication_failed", 403: "elsevier_access_denied",
-                    404: "elsevier_not_found", 429: "elsevier_rate_limited"}.get(exc.http_status, exc.code)
+            code = ("challenge" if exc.code == "challenge" else
+                {401: "elsevier_authentication_failed", 403: "elsevier_access_denied",
+                 404: "elsevier_not_found", 429: "elsevier_rate_limited"}.get(exc.http_status, exc.code))
             raise GroundingWebError(code, "Elsevier article retrieval did not yield verified full text",
                                    http_status=exc.http_status) from None
         except (ValueError, LiteratureError):

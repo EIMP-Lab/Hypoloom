@@ -29,6 +29,39 @@ Semantic Scholar 按精确 DOI 查找公开副本。init 在各样本间复用�
 无需代理或额外 init 步骤。检索入口故障采用[文献服务自动恢复](provider-recovery.zh-CN.md#文献服务恢复)，
 与单篇出版社 PDF 无法获取分别处理。
 
+## 检索后备与可选服务器代理
+
+新建在线 Host 在 OpenAlex 临时失败后，会自动尝试匿名 Crossref 关键词检索，
+两者共用原有检索期限。论文身份、语言、来源类型和三个年代层的检查仍然有效；
+后备结果不足时仍可能要求修改查询。OpenAlex 认证错误不会被后备掩盖。
+此后备覆盖初始文献包检索，不保证排序相同、出版社站内搜索、全文可得，也不替代
+所有 Web 搜索工具。观察界面会显示 Crossref，而不会误报 OpenAlex 已恢复。
+如需关闭，在初始化时传入 `--literature-search-fallback none`。
+Crossref 的[公共 API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)
+不需要额外密钥。
+
+未配置代理时继续直连。如果实测服务器上的 HTTP CONNECT 代理能够改善某个端点，
+在现有私有 `methodology.yaml` 的 `literature` 节中添加以下字段，端口换成实际值：
+
+```yaml
+literature:
+  # 保留本节原有字段和凭据。
+  proxy_domains: [ieeexplore.ieee.org]
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+文件保持 `0600`。使用旧 dotenv 配置时，可在原有私有凭据文件中加入
+`HYPOLOOM_LITERATURE_PROXY`，初始化时传入
+`--literature-proxy-domain ieeexplore.ieee.org`；多个域名重复传参。
+域名精确匹配，不自动包含子域名。init、重试和 Host 命令只携带域名及凭据文件路径，
+不会写入代理地址。地址更新在下一个选中请求时重读；修改域名列表需要新建运行。
+
+选中域名的元数据和公开 PDF 请求仅走该代理；每次重定向重新匹配，其余域名直连。
+程序不读取 `HTTP_PROXY`／`HTTPS_PROXY`。代理失败不会静默改路、解决验证码或
+切换节点，也不证明订阅授权。Windows 浏览器仍使用本机网络设置。
+CONNECT 连接经过校验的目标公网 IP，TLS 仍验证原域名，因此代理的域名规则未必
+命中预期节点，需要单独确认出口配置。原有超时、大小、取消和私网地址限制继续有效。
+
 ## Elsevier API
 
 ScienceDirect 专用浏览器反复出现人机验证时，可配置官方 Article Retrieval API。

@@ -156,7 +156,13 @@ def _assert_closed_billing(tmp_path: Path):
             # Native versions/session paths differ in whether outer usage folds
             # the fallback JSON. The complete per-Attempt model ledger and wire
             # evidence must include it in either representation.
-            assert _normalized_input(outer["usage"]) in {4, 29}
+            # 2.1.289 additionally double-counts the partial stream-start input.
+            # Exact raw-wire equality below must explain any downward change;
+            # the accepted per-Attempt bill remains exactly 29 + 11, not 65.
+            if _normalized_input(outer["usage"]) > model_input:
+                assert diagnostics["provider_usage_normalization"]["corroborated_by"] == "complete_wire_exchanges"
+            else:
+                assert _normalized_input(outer["usage"]) in {4, 29}
             accounting = diagnostics["provider_accounting"]
             assert charge.source == "response"
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
@@ -179,7 +185,6 @@ def _assert_closed_billing(tmp_path: Path):
         model["cacheCreationInputTokens"] - outer["usage"].get("cache_creation_input_tokens", 0),
         model["cacheReadInputTokens"] - outer["usage"].get("cache_read_input_tokens", 0),
         model["outputTokens"] - outer["usage"]["output_tokens"])
-    assert outer_omission in {(17, 3, 5, 7), (0, 0, 0, 0)}
     assert (model["inputTokens"], model["cacheCreationInputTokens"],
         model["cacheReadInputTokens"], model["outputTokens"]) == (21, 3, 5, 11)
     accepted_root = tmp_path / "state/diagnostics/agents" / _RUN / accepted[0]["attempt_id"]
@@ -187,6 +192,14 @@ def _assert_closed_billing(tmp_path: Path):
     assert len(responses) == 6
     partial = responses[-2].read_text()
     assert "event: message_start" in partial and "event: message_stop" not in partial
+    partial_start = next(json.loads(line[5:])["message"]["usage"]
+        for line in partial.splitlines() if line.startswith("data:")
+        and json.loads(line[5:]).get("type") == "message_start")
+    assert partial_start == {"input_tokens": 17, "cache_creation_input_tokens": 3,
+        "cache_read_input_tokens": 5, "output_tokens": 0}
+    duplicated_start = tuple(-partial_start[key] for key in (
+        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+    assert outer_omission in {(17, 3, 5, 7), (0, 0, 0, 0), duplicated_start}
     complete = json.loads(responses[-1].read_text())
     assert complete["usage"] == {"input_tokens": 17, "cache_creation_input_tokens": 3,
                                  "cache_read_input_tokens": 5, "output_tokens": 7}
