@@ -112,7 +112,12 @@ control root/helper waits at most 600 seconds for this run. Failed platforms use
 returned `remaining_preparation_argv` to retry in that root; successful results are
 retained. Prepare only/cancel executes `finish_argv`; Start now still needs explicit
 authorization. Expiry never starts research. Explicit finish/skip during preparation
-exits directly and leaves its result in the background output.
+exits directly and leaves its result in the background output. The final
+`preparation_lifecycle` event records handoff, review expiry or explicit finish
+separately from publisher sample results; a summary is not proof of helper liveness.
+If the Windows helper exits, use its [local Status check](institutional-access.md#manual-connection-diagnostics)
+first. It reads safe reasons without SSH, restarting the browser or foreground replay;
+300-second control-check expiry does not itself mean the publisher page failed.
 
 The helper closes its own SSH/browser on run termination or `STOPPING`, preserving
 login data. Short disconnection can recover only to the same run; continuous lost

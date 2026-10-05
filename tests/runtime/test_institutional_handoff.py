@@ -112,6 +112,8 @@ def test_handoff_and_abandonment_release_without_creating_research(tmp_path, mon
         elif ending == "cancel": answer(root, "finish")
         thread.join(4)
         assert not thread.is_alive() and not errors and codes == [0]
+        reason = {"launch": "run_handoff", "cancel": "operator_finished", "expire": "launch_review_expired"}[ending]
+        assert json.loads(output[-1]) == {"preparation_lifecycle": {"state": "finished", "reason": reason}}
         assert not root.exists() and not Path(scope["state_root"]).exists()
         assert all(target == scope for target in observed["targets"])
     finally: cleanup(root, thread)
@@ -122,6 +124,26 @@ def test_client_preparation_rejects_implicit_target_before_browser_creation(monk
     args = build_parser().parse_args(["institutional", "prepare", "--agent-session", "--institutional-browser-mode", "client"])
     with pytest.raises(ValueError, match="exact"):
         run(args)
+
+
+def test_normal_review_expiry_preserves_failed_sample_and_exit_code(tmp_path, monkeypatch):
+    from hypoloom import institutional_handoff
+    monkeypatch.setattr(institutional_handoff, "HANDOFF_SECONDS", .2)
+    root, scope, observed, output, codes, errors, thread = start(tmp_path, monkeypatch, fail_second=True)
+    try:
+        wait(root, "waiting_for_user", "IEEE")
+        answer(root, "skip", "IEEE")
+        view = wait(root, "awaiting_launch")
+        assert view["summary"]["remaining_providers"] == ["Springer"]
+        thread.join(4)
+        assert not thread.is_alive() and not errors and codes == [1]
+        events = [json.loads(line) for line in output if line.startswith("{")]
+        summaries = [event for event in events if "preparation_summary" in event]
+        assert len(summaries) == 1
+        assert [row["state"] for row in summaries[0]["preparation_summary"]] == ["skipped", "failed"]
+        assert events[-1] == {"preparation_lifecycle": {"state": "finished", "reason": "launch_review_expired"}}
+        assert not root.exists() and not Path(scope["state_root"]).exists()
+    finally: cleanup(root, thread)
 
 
 def test_program_generated_windows_entry_quotes_exact_scope():
@@ -154,7 +176,8 @@ def test_preparation_hands_off_to_real_host_and_terminal_survives_host_exit(tmp_
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         eventually(lambda: (final / "control.sock").exists())
         before = connections(final, scope["run_id"], scope["request_id"], preparation_root=root)
-        assert before["lifecycle"] == "pending" and before["connections"] == []
+        assert before["lifecycle"] == "awaiting_launch"
+        assert before["connections"][0]["state_root"] == str(root)
         assert thread.is_alive(), "a live but empty Host must not claim a created run"
         inputs = tmp_path / "profile-inputs"; inputs.mkdir()
         with tempfile.TemporaryDirectory(prefix="handoff-target-", dir="/var/tmp") as target:
@@ -165,6 +188,7 @@ def test_preparation_hands_off_to_real_host_and_terminal_survives_host_exit(tmp_
             assert result.status == "accepted", result
             thread.join(5)
             assert not thread.is_alive() and not errors and codes == [0] and not root.exists()
+            assert json.loads(output[-1])["preparation_lifecycle"]["reason"] == "run_handoff"
             def connected():
                 selected = connections(final, scope["run_id"], scope["request_id"])
                 return selected if selected["connections"] else None

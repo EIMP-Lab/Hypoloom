@@ -19,6 +19,152 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function Get-SafeClientReason([string]$Reason) {
+    $known = @(
+        'absolute_dedicated_profile_required', 'absolute_normalized_state_path_required', 'absolute_repository_path_required',
+        'absolute_server_paths_required', 'browser_endpoint_not_owned_by_this_connection', 'browser_endpoint_ownership_mismatch',
+        'browser_executable_missing', 'browser_listener_must_be_loopback', 'browser_profile_already_in_use_close_previous_dedicated_window',
+        'browser_profile_custom_path_requires_manual_permissions', 'browser_profile_directory_required',
+        'browser_profile_explicit_access_requires_manual_permissions', 'browser_profile_must_be_private', 'browser_profile_owner_mismatch',
+        'browser_profile_permissions_not_applied', 'browser_profile_permissions_write_failed', 'browser_start_failed_check_profile_and_desktop',
+        'child_cleanup_failed', 'client_process_ownership_unavailable', 'client_setup_connection_failed', 'empty_client_entry',
+        'explicit_run_scope_required', 'init_claude_command_unavailable', 'init_control_python_unavailable', 'init_repository_unavailable',
+        'init_ssh_connection_timeout', 'init_ssh_connection_unavailable_check_key_and_known_host', 'invalid_remote_argument',
+        'invalid_run_identity', 'invalid_ssh_target', 'legacy_task_ownership_mismatch', 'owned_browser_cdp_unavailable',
+        'personal_browser_profile_forbidden', 'repository_root_not_allowed', 'run_connection_expired', 'run_discovery_command_failed',
+        'run_discovery_invalid_response', 'run_discovery_ssh_failed', 'run_discovery_timeout', 'run_forward_unavailable',
+        'run_not_launched', 'run_scope_mismatch', 'scheduled_task_ownership_mismatch', 'scoped_task_name_too_long',
+        'server_and_repository_required', 'windows_desktop_required', 'launch_review_expired', 'run_terminal', 'client_interrupted',
+        'connection_target_unavailable', 'connection_scope_rejected', 'cdp_connection_failed', 'cdp_endpoint_unavailable',
+        'cdp_response_invalid', 'cdp_identity_mismatch', 'connection_watch_output_unavailable', 'watch_exited', 'connection_verified', 'connection_recovered', 'client_started')
+    if ($Reason -cin $known) { $Reason } else { 'connector_unavailable_check_local_dependencies_and_permissions' }
+}
+
+function Diagnostic-Path {
+    if ($Server -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$' -or
+        $RequestId -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$' -or $RequestId -in @('.', '..')) { throw 'explicit_run_scope_required' }
+    Join-Path (Join-Path $env:LOCALAPPDATA ('Hypoloom/ConnectionLogs-' + $Server)) ($RequestId + '.jsonl')
+}
+
+function Initialize-ClientDiagnostic {
+    try {
+        $path = Diagnostic-Path; $directory = Split-Path $path
+        if (-not (Test-Path -LiteralPath $directory)) { $null = New-Item -ItemType Directory -Path $directory -Force }
+        Assert-ProfilePrivacy -Directory $directory -DefaultDirectory $directory -RepairInherited
+        $script:DiagnosticPath = $path
+        $script:DiagnosticStarted = [Environment]::TickCount64
+    } catch { if (-not $script:DiagnosticWarning) { [Console]::Error.WriteLine('client_diagnostic_unavailable'); $script:DiagnosticWarning=$true } }
+}
+
+function Read-ClientDiagnostic([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.Length -gt 65536 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'client_diagnostic_invalid' }
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        if (-not $line) { continue }
+        $entry = $line | ConvertFrom-Json -AsHashtable
+        if ($entry.timestamp -is [datetime]) { $entry.timestamp=$entry.timestamp.ToUniversalTime().ToString('o') }
+        if ($entry.event -cnotin @('client_started','connection_started','connection_retry','connection_recovered','connection_ended','cleanup_failed','connection_watch_failed') -or
+            $entry.stage -cnotin @('startup','discovery','forward_ready','browser','watch','cleanup','lifetime') -or
+            $entry.reason -cne (Get-SafeClientReason $entry.reason) -or
+            $entry.timestamp -notmatch '^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$' -or
+            $entry.elapsed_ms -isnot [ValueType] -or $entry.elapsed_ms -is [bool] -or $entry.elapsed_ms -lt 0 -or
+            ($null -ne $entry.exit_code -and ($entry.exit_code -isnot [int] -and $entry.exit_code -isnot [long]))) { throw 'client_diagnostic_invalid' }
+        # Project only these fields even if a local file contains extra content.
+        @{event=$entry.event;stage=$entry.stage;reason=$entry.reason;timestamp=$entry.timestamp;elapsed_ms=$entry.elapsed_ms;exit_code=$entry.exit_code}
+    }
+}
+
+function Write-ClientDiagnostic([string]$Event, [string]$Reason, [string]$Stage = $script:ClientStage, $ExitCode = $null) {
+    if ($Event -eq 'connection_ended') { $script:EndRecorded=$true }
+    if (-not $script:DiagnosticPath) { return }
+    try {
+        $directory = Split-Path $script:DiagnosticPath
+        Assert-ProfilePrivacy -Directory $directory -DefaultDirectory $directory
+        if ($Stage -notin @('startup','discovery','forward_ready','browser','watch','cleanup','lifetime')) { $Stage='startup' }
+        if ($Event -notin @('client_started','connection_started','connection_retry','connection_recovered','connection_ended','cleanup_failed','connection_watch_failed')) { return }
+        $entry = @{timestamp=[DateTime]::UtcNow.ToString('o');event=$Event;stage=$Stage;reason=(Get-SafeClientReason $Reason);
+            elapsed_ms=[Math]::Max(0, [Environment]::TickCount64 - $script:DiagnosticStarted);exit_code=$ExitCode}
+        $prior = @(Read-ClientDiagnostic $script:DiagnosticPath | Select-Object -Last 127)
+        $lines = @(@($prior) + @($entry) | ForEach-Object { $_ | ConvertTo-Json -Compress })
+        while ([Text.Encoding]::UTF8.GetByteCount(($lines -join "`n")) -gt 65535) { $lines = @($lines | Select-Object -Skip 1) }
+        $temporary = Join-Path $directory ([IO.Path]::GetRandomFileName())
+        try {
+            [IO.File]::WriteAllText($temporary, ($lines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $temporary -Destination $script:DiagnosticPath -Force
+        } finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
+        # Only this helper's dedicated directory and valid request filenames.
+        Get-ChildItem -LiteralPath $directory -File -Filter '*.jsonl' | Where-Object {
+            $_.BaseName -match '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+        } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 8 | ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+    } catch { if (-not $script:DiagnosticWarning) { [Console]::Error.WriteLine('client_diagnostic_unavailable'); $script:DiagnosticWarning=$true } }
+}
+
+function Show-ClientStatus {
+    $path = Diagnostic-Path
+    $taskName = "Hypoloom-Run-$Server-$RequestId-$script:userSid"
+    $view = @{task=$null;diagnostic_path=$path;recent_events=@();local_status_reason='task_not_found'}
+    try {
+        $task = Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -ceq $taskName }
+        if ($task) {
+            $info = $task | Get-ScheduledTaskInfo
+            $view.task = @{state=[string]$task.State;last_run_time=$info.LastRunTime.ToUniversalTime().ToString('o');last_task_result=$info.LastTaskResult}
+            $view.local_status_reason='local_status_available'
+        }
+    } catch { $view.local_status_reason='task_status_unavailable' }
+    try {
+        $directory = Split-Path $path
+        if (Test-Path -LiteralPath $directory) {
+            Assert-ProfilePrivacy -Directory $directory -DefaultDirectory $directory
+            $view.recent_events = @(Read-ClientDiagnostic $path | Select-Object -Last 12)
+        }
+    } catch { $view.diagnostic_reason='client_diagnostic_unavailable' }
+    $view | ConvertTo-Json -Depth 5
+}
+
+function Read-WatchFailure($Child) {
+    $reason = 'watch_exited'
+    # An exited process may finish its asynchronous stderr drain just afterwards.
+    # Never wait for a live watch or let diagnostic capture extend reconnection.
+    if ($Child.Process.HasExited -and $Child.Err -and -not $Child.Err.IsCompleted) {
+        try { $null = $Child.Err.Wait(100) } catch { }
+    }
+    if ($Child.Err -and $Child.Err.IsCompletedSuccessfully) {
+        try {
+            $raw = $Child.Err.GetAwaiter().GetResult()
+            if ($raw.Length -le 4096) {
+                foreach ($line in ($raw -split "`n")) {
+                    try { $event = $line | ConvertFrom-Json -AsHashtable } catch { continue }
+                    if ($event.event -ceq 'connection_watch_failed' -and $event.reason -cin @(
+                        'connection_target_unavailable','connection_scope_rejected','cdp_connection_failed',
+                        'cdp_endpoint_unavailable','cdp_response_invalid','cdp_identity_mismatch','connection_watch_output_unavailable')) { $reason=$event.reason }
+                }
+            }
+        } catch { }
+    }
+    $exitCode = if ($Child.Process.HasExited) { $Child.Process.ExitCode } else { $null }
+    if ($reason -ne 'watch_exited' -or $exitCode -ne 0) { Write-ClientDiagnostic 'connection_watch_failed' $reason 'watch' $exitCode }
+}
+
+function Clear-OwnedProcesses([array]$Children, [switch]$Browser) {
+    $failure = $null
+    foreach ($child in $Children) {
+        try { Stop-Child $child } catch {
+            $script:OwnedCleanupFailed=$true
+            if (-not $failure) { $failure=$_ }
+            Write-ClientDiagnostic 'cleanup_failed' 'child_cleanup_failed' 'cleanup'
+        }
+    }
+    if ($Browser) {
+        try { Stop-OwnedBrowser } catch {
+            $script:OwnedCleanupFailed=$true
+            if (-not $failure) { $failure=$_ }
+            Write-ClientDiagnostic 'cleanup_failed' 'child_cleanup_failed' 'cleanup'
+        }
+    }
+    $failure
+}
+
 function Quote-Native([string]$Value) {
     # CommandLineToArgvW quoting; never construct a PowerShell expression.
     '"' + [regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"'
@@ -38,12 +184,15 @@ function Start-Captured([string]$Executable, [string[]]$Values, [switch]$Handsha
 
 function Stop-Child($Child) {
     if ($null -ne $Child) {
+        $failure = $null
         try {
             if (-not $Child.Process.HasExited) {
                 $Child.Process.Kill($true)
                 if (-not $Child.Process.WaitForExit(5000)) { throw 'child_cleanup_failed' }
             }
-        } finally { $Child.Process.Dispose() }
+        } catch { $failure=$_ }
+        finally { try { $Child.Process.Dispose() } catch { if (-not $failure) { $failure=$_ } } }
+        if ($failure) { throw $failure }
     }
 }
 
@@ -116,7 +265,11 @@ function Get-RemainingMilliseconds([int]$Maximum = 15000) {
     if ($null -ne $script:AwaitingDeadline) {
         $remaining = [Math]::Min($remaining, $script:AwaitingDeadline - (Get-ElapsedMilliseconds))
     }
-    if ($remaining -le 0) { throw 'run_connection_expired' }
+    if ($remaining -le 0) {
+        if ((Get-ElapsedMilliseconds) - $since -lt 300000 -and $null -ne $script:AwaitingDeadline -and
+            (Get-ElapsedMilliseconds) -ge $script:AwaitingDeadline) { throw 'launch_review_expired' }
+        throw 'run_connection_expired'
+    }
     [int][Math]::Min($Maximum, $remaining)
 }
 
@@ -189,8 +342,8 @@ function Assert-LocalOwner {
     $true
 }
 
-function Assert-ProfilePrivacy([switch]$RepairInherited) {
-    $acl = Get-Acl -LiteralPath $BrowserProfile
+function Assert-ProfilePrivacy([switch]$RepairInherited, [string]$Directory = $BrowserProfile, [string]$DefaultDirectory = $script:DefaultBrowserProfile) {
+    $acl = Get-Acl -LiteralPath $Directory
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $script:userSid) { throw 'browser_profile_owner_mismatch' }
     $allowed = @($script:userSid, 'S-1-5-18', 'S-1-5-32-544')
     $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
@@ -199,14 +352,14 @@ function Assert-ProfilePrivacy([switch]$RepairInherited) {
     })
     if (-not $unexpected.Count) { return }
     if (-not $RepairInherited) { throw 'browser_profile_must_be_private' }
-    if ($BrowserProfile -ne $script:DefaultBrowserProfile) {
+    if ($Directory -ne $DefaultDirectory) {
         throw 'browser_profile_custom_path_requires_manual_permissions'
     }
     if (@($unexpected | Where-Object { -not $_.IsInherited }).Count) {
         throw 'browser_profile_explicit_access_requires_manual_permissions'
     }
-    $directory = Get-Item -LiteralPath $BrowserProfile -Force
-    if (-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    $directoryInfo = Get-Item -LiteralPath $Directory -Force
+    if (-not $directoryInfo.PSIsContainer -or ($directoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw 'browser_profile_directory_required'
     }
     # Restrict only this owned default profile. Preserve allowed identities and
@@ -222,9 +375,9 @@ function Assert-ProfilePrivacy([switch]$RepairInherited) {
             $acl.AddAccessRule($copy)
         }
     }
-    try { Set-Acl -LiteralPath $BrowserProfile -AclObject $acl }
+    try { Set-Acl -LiteralPath $Directory -AclObject $acl }
     catch { throw 'browser_profile_permissions_write_failed' }
-    try { Assert-ProfilePrivacy }
+    try { Assert-ProfilePrivacy -Directory $Directory -DefaultDirectory $DefaultDirectory }
     catch {
         if ($_.Exception.Message -eq 'browser_profile_must_be_private') { throw 'browser_profile_permissions_not_applied' }
         throw
@@ -333,6 +486,7 @@ function Init-Command([switch]$Check) {
 function Check-InitConnection {
     $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
         '-o', 'ConnectionAttempts=1', $Server, (Init-Command -Check))
+    $primary = $null
     try {
         if (-not $child.Process.WaitForExit(15000)) { throw 'init_ssh_connection_timeout' }
         switch ($child.Process.ExitCode) {
@@ -342,7 +496,11 @@ function Check-InitConnection {
             42 { throw 'init_repository_unavailable' }
             default { throw 'init_ssh_connection_unavailable_check_key_and_known_host' }
         }
-    } finally { Stop-Child $child }
+    } catch { $primary=$_; throw }
+    finally {
+        $cleanup = Clear-OwnedProcesses @($child)
+        if ($cleanup -and -not $primary) { throw $cleanup }
+    }
 }
 
 function Start-ClientConnection([string]$TaskName) {
@@ -404,6 +562,7 @@ function Get-RunConnections {
     $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
         '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
         (Remote-Command (@('connections') + @(Scope-Arguments))))
+    $primary = $null
     try {
         if (-not $child.Process.WaitForExit($wait)) { throw 'run_discovery_timeout' }
         if ($child.Process.ExitCode -eq 255) { throw 'run_discovery_ssh_failed' }
@@ -412,11 +571,16 @@ function Get-RunConnections {
         catch { throw 'run_discovery_invalid_response' }
         Assert-RunStatus $result
         $result
-    } finally { Stop-Child $child }
+    } catch { $primary=$_; throw }
+    finally {
+        $cleanup = Clear-OwnedProcesses @($child)
+        if ($cleanup -and -not $primary) { throw $cleanup }
+    }
 }
 
 function Watch-Runs {
-    $children = @{}; $delay = 5; $notice = ''
+    $children = @{}; $delay = 5; $notice = ''; $primary = $null; $ended = $false
+    $script:OwnedCleanupFailed=$false
     $script:UnhealthySince = $null; $script:LastScopeContact = Get-ElapsedMilliseconds
     $script:AwaitingDeadline = $null
     try {
@@ -426,10 +590,14 @@ function Watch-Runs {
             Assert-ConnectionDeadline
             $started = Get-ElapsedMilliseconds
             try {
+                $script:ClientStage = 'discovery'
                 $status = Get-RunConnections
                 Assert-ConnectionDeadline
                 Assert-RunStatus $status
-                if ($status.lifecycle -eq 'terminal') { Write-Output 'run_terminal; connection_closed'; return }
+                if ($status.lifecycle -eq 'terminal') {
+                    $ended=$true; Write-ClientDiagnostic 'connection_ended' 'run_terminal' 'lifetime'
+                    Write-Output 'run_terminal; connection_closed'; return
+                }
                 if ($status.lifecycle -eq 'pending') { throw 'run_not_launched' }
                 $entries = @($status.connections)
                 if ($status.lifecycle -eq 'awaiting_launch') {
@@ -445,6 +613,7 @@ function Watch-Runs {
                 $paths = @($entries | ForEach-Object { $_.socket_path })
                 foreach ($path in @($children.Keys)) {
                     if ($path -notin $paths -or $children[$path].Process.HasExited) {
+                        if ($children[$path].Process.HasExited) { Read-WatchFailure $children[$path] }
                         Stop-Child $children[$path]; $children.Remove($path)
                     }
                 }
@@ -452,16 +621,24 @@ function Watch-Runs {
                     $path = [string]$entry.socket_path
                     if ($children.ContainsKey($path)) { continue }
                     $wait = Get-RemainingMilliseconds
+                    $script:ClientStage = 'forward_ready'
                     $ready = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
                         '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
                         (Remote-Command (@('forward-ready') + @(Scope-Arguments) + @('--socket-path', $path))))
-                    try { $available = $ready.Process.WaitForExit($wait) -and $ready.Process.ExitCode -eq 0 }
-                    finally { Stop-Child $ready }
+                    $readyError = $null
+                    try {
+                        if (-not ($ready.Process.WaitForExit($wait) -and $ready.Process.ExitCode -eq 0)) { throw 'run_forward_unavailable' }
+                    } catch { $readyError=$_; throw }
+                    finally {
+                        $cleanup = Clear-OwnedProcesses @($ready)
+                        if ($cleanup -and -not $readyError) { throw $cleanup }
+                    }
                     Assert-ConnectionDeadline
-                    if (-not $available) { throw 'run_forward_unavailable' }
+                    $script:ClientStage = 'browser'
                     $local = Ensure-Browser
                     Assert-ConnectionDeadline
                     $identity = ([uri]$local.webSocketDebuggerUrl).AbsolutePath
+                    $script:ClientStage = 'watch'
                     $watch = Remote-Command (@('watch') + @(Scope-Arguments) + @('--socket-path', $path, '--browser-path', $identity))
                     $children[$path] = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
                         '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
@@ -475,28 +652,43 @@ function Watch-Runs {
                         Assert-RunStatus @{scope=$attached.scope;lifecycle=$attached.lifecycle;connections=@()}
                         Assert-ConnectionDeadline
                     } catch {
-                        Stop-Child $children[$path]; $children.Remove($path)
-                        throw
+                        $handshakeError = $_
+                        Read-WatchFailure $children[$path]
+                        $cleanup = Clear-OwnedProcesses @($children[$path])
+                        if (-not $cleanup) { $children.Remove($path) }
+                        throw $handshakeError
                     }
+                    Write-ClientDiagnostic 'connection_started' 'connection_verified' 'watch'
                     Write-Output 'run_connection_started; server verifies browser identity'
                 }
-                if ($notice) { Write-Output 'run_discovery_recovered' }
+                if ($notice) { Write-ClientDiagnostic 'connection_recovered' 'connection_recovered'; Write-Output 'run_discovery_recovered' }
                 $notice = ''; $delay = 5
                 $script:UnhealthySince = $null; $script:LastScopeContact = Get-ElapsedMilliseconds
             } catch {
                 $reason = $_.Exception.Message
+                if ($script:OwnedCleanupFailed) { throw }
                 if ($reason -notin @('run_discovery_timeout', 'run_discovery_ssh_failed', 'run_discovery_command_failed',
                     'run_discovery_invalid_response', 'run_not_launched', 'run_forward_unavailable', 'owned_browser_cdp_unavailable')) { throw }
                 if ($null -eq $script:UnhealthySince) { $script:UnhealthySince = $started }
                 $next = "${reason}; retry_in_seconds=$delay; connection_deadline_not_extended"
-                if ($next -ne $notice) { Write-Output $next; $notice = $next }
+                if ($next -ne $notice) { Write-ClientDiagnostic 'connection_retry' $reason; Write-Output $next; $notice = $next }
             }
             Start-Sleep -Milliseconds (Get-RemainingMilliseconds ($delay * 1000))
             if ($notice) { $delay = [Math]::Min(30, $delay * 2) }
         }
+    } catch {
+        if ($_.Exception.Message -eq 'launch_review_expired') {
+            $ended=$true; Write-ClientDiagnostic 'connection_ended' 'launch_review_expired' 'lifetime'
+            Write-Output 'launch_review_expired; connection_closed'
+        } else {
+            $primary=$_; $ended=$true
+            Write-ClientDiagnostic 'connection_ended' $_.Exception.Message
+            throw
+        }
     } finally {
-        try { foreach ($child in $children.Values) { Stop-Child $child } }
-        finally { Stop-OwnedBrowser }
+        if (-not $ended) { Write-ClientDiagnostic 'connection_ended' 'client_interrupted' 'lifetime' }
+        $cleanup = Clear-OwnedProcesses @($children.Values) -Browser
+        if ($cleanup -and -not $primary) { throw $cleanup }
     }
 }
 
@@ -584,10 +776,15 @@ function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$Po
 
 function Connector-Main {
     if (-not $IsWindows) { throw 'windows_desktop_required' }
+    $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($Action -eq 'Status') { Show-ClientStatus; return }
+    if ($Action -eq 'Run') {
+        $script:ClientStage='startup'; Initialize-ClientDiagnostic
+        Write-ClientDiagnostic 'client_started' 'client_started' 'startup'
+    }
     $script:ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
     if ($Action -eq 'Setup') { Setup-ClientEntry $PSCommandPath; return }
     if (-not $Server -or -not $Repository) { throw 'server_and_repository_required' }
-    $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $powershell = (Get-Process -Id $PID).Path
     $legacyRemoved = $false
     if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) { $legacyRemoved = Retire-LegacyTask $powershell $PSCommandPath }
@@ -633,20 +830,14 @@ function Connector-Main {
         Invoke-ClientTask $taskName $taskValues $powershell
         return
     }
-    if ($Action -eq 'Status') {
-        Initialize-ClientNative
-        $status = Get-RunConnections
-        Write-Output ("run_lifecycle=" + $status.lifecycle + "; connections=" + $status.connections.Count)
-        return
-    }
     Initialize-OwnedJob
     Watch-Runs
 }
 
 try { Connector-Main } catch {
     # No raw SSH/browser diagnostics, callback URLs, or credentials in logs.
-    $reason = $_.Exception.Message
-    if ($reason -notmatch '^[a-z][a-z0-9_]+$') { $reason = 'connector_unavailable_check_local_dependencies_and_permissions' }
+    $reason = Get-SafeClientReason $_.Exception.Message
+    if (-not $script:EndRecorded) { Write-ClientDiagnostic 'connection_ended' $reason }
     Write-Output $reason
     exit 2
 }

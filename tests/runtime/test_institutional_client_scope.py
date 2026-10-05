@@ -3,6 +3,8 @@ from contextlib import contextmanager
 import json
 from pathlib import Path
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -283,3 +285,193 @@ def test_watch_announces_only_after_actual_cdp_identity_match(tmp_path, browser_
             assert not thread.is_alive() and not failures
             assert announced == ([{"scope": scope, "lifecycle": "preparing", "connected": True}]
                                  if expected_code == 0 else [])
+
+
+@contextmanager
+def cdp_response(tmp_path, raw, *, status=200, protocol=None):
+    path = tmp_path / "browser.sock"
+    with socket.socket(socket.AF_UNIX) as listener:
+        listener.bind(str(path)); listener.listen(1); listener.settimeout(5)
+        failures = []
+        def serve():
+            try:
+                peer, _ = listener.accept()
+                with peer:
+                    peer.settimeout(3)
+                    assert peer.recv(65536).startswith(b"GET /json/version HTTP/1.1")
+                    peer.sendall(protocol if protocol is not None else
+                        f"HTTP/1.1 {status} Fixture\r\nConnection: close\r\nContent-Length: {len(raw)}\r\n\r\n".encode() + raw)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # A rejected response may close before the fixture body finishes.
+            except Exception as exc:
+                failures.append(exc)
+        thread = threading.Thread(target=serve, daemon=True); thread.start()
+        try:
+            yield
+        finally:
+            thread.join(timeout=6)
+            path.unlink(missing_ok=True)
+            assert not thread.is_alive() and not failures
+
+
+def watch_args(scope, root):
+    return SimpleNamespace(institutional_action="watch", **scope, preparation_root=str(root),
+        socket_path=str(root.parent / "browser.sock"), browser_path="/devtools/browser/expected")
+
+
+@pytest.mark.parametrize("error,reason", [
+    (OSError("sensitive-control-location"), "connection_target_unavailable"),
+    (ValueError("sensitive-control-scope"), "connection_scope_rejected"),
+])
+def test_watch_control_failure_uses_static_stderr_only(tmp_path, monkeypatch, capsys, error, reason):
+    def unavailable(*a, **kw):
+        raise error
+    monkeypatch.setattr(client, "connections", unavailable)
+    output = []
+    assert client.run(watch_args(target(tmp_path / "final"), tmp_path / "prep"), output=output.append) == 2
+    captured = capsys.readouterr()
+    assert not output and not captured.out
+    assert captured.err == json.dumps({"event": "connection_watch_failed", "reason": reason}) + "\n"
+    assert "sensitive" not in captured.err
+
+
+def test_watch_missing_cdp_transport_is_distinct_from_control_failure(tmp_path, capsys):
+    with preparation(tmp_path) as (root, _, scope):
+        assert client.run(watch_args(scope, root)) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert json.loads(captured.err) == {"event": "connection_watch_failed", "reason": "cdp_connection_failed"}
+
+
+@pytest.mark.parametrize("raw,status,protocol,reason", [
+    (b"sensitive-response-body", 403, None, "cdp_endpoint_unavailable"),
+    (b"", 200, b"sensitive-invalid-status-line\r\n\r\n", "cdp_endpoint_unavailable"),
+    (b"sensitive-non-json", 200, None, "cdp_response_invalid"),
+    (b"[]", 200, None, "cdp_response_invalid"),
+    (b'{"webSocketDebuggerUrl":3}', 200, None, "cdp_response_invalid"),
+    (b'{"sensitive-missing-field":true}', 200, None, "cdp_response_invalid"),
+    (b"x" * ((1 << 20) + 1), 200, None, "cdp_response_invalid"),
+    (b'{"webSocketDebuggerUrl":"ws://sensitive-host/devtools/browser/other"}', 200, None, "cdp_identity_mismatch"),
+], ids=["http-status", "http-protocol", "invalid-json", "array", "field-type", "missing-field", "byte-limit", "wrong-browser"])
+def test_watch_cdp_failure_never_copies_response_into_diagnostic(tmp_path, capsys, raw, status, protocol, reason):
+    with preparation(tmp_path) as (root, _, scope), cdp_response(tmp_path, raw, status=status, protocol=protocol):
+        assert client.run(watch_args(scope, root)) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err == json.dumps({"event": "connection_watch_failed", "reason": reason}) + "\n"
+    assert "sensitive" not in captured.err
+
+
+def test_real_cli_watch_keeps_safe_failure_on_stderr(tmp_path):
+    raw = b'{"webSocketDebuggerUrl":"ws://private-canary/devtools/browser/wrong"}'
+    with preparation(tmp_path) as (root, _, scope), cdp_response(tmp_path, raw):
+        arguments = watch_args(scope, root)
+        argv = [sys.executable, "-m", "hypoloom", "institutional", "watch"]
+        for name in ("state_root", "run_id", "request_id", "preparation_root", "socket_path", "browser_path"):
+            argv.extend(["--" + name.replace("_", "-"), getattr(arguments, name)])
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=7)
+    assert result.returncode == 2 and result.stdout == ""
+    assert result.stderr == json.dumps({"event": "connection_watch_failed", "reason": "cdp_identity_mismatch"}) + "\n"
+    assert "private-canary" not in result.stderr
+
+
+@contextmanager
+def formal_control_response(final, scope, monkeypatch):
+    final.mkdir(mode=0o700)
+    result = {"scope": scope, "lifecycle": "pending", "connections": []}
+    ordinary_request = client.request_over_socket
+    def query_formal(path, request, **kwargs):
+        if Path(path) == final / "control.sock":
+            return ControlResponse.accepted(request.request_id, None, result)
+        return ordinary_request(path, request, **kwargs)
+    monkeypatch.setattr(client, "request_over_socket", query_formal)
+    with socket.socket(socket.AF_UNIX) as listener:
+        listener.bind(str(final / "control.sock"))
+        try:
+            yield result
+        finally:
+            (final / "control.sock").unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("state,lifecycle", [("waiting_for_user", "preparing"), ("awaiting_launch", "awaiting_launch")])
+def test_pending_host_keeps_exact_preparation_until_formal_identity_is_active(tmp_path, monkeypatch, state, lifecycle):
+    with preparation(tmp_path, state=state) as (root, final, scope):
+        with formal_control_response(final, scope, monkeypatch) as response:
+            result = client.connections(final, "alpha", "create-alpha", preparation_root=root)
+            assert result["scope"] == scope and result["lifecycle"] == lifecycle
+            assert result["connections"][0]["state_root"] == str(root)
+            assert result["remaining_seconds"] == 27
+            response.update(lifecycle="active", connections=[{
+                "run_id": "alpha", "socket_path": str(tmp_path / "formal-browser.sock")}])
+            result = client.connections(final, "alpha", "create-alpha", preparation_root=root)
+            assert result["lifecycle"] == "active"
+            assert result["connections"][0]["state_root"] == str(final)
+            response.update(lifecycle="terminal", connections=[])
+            assert client.connections(final, "alpha", "create-alpha", preparation_root=root) == response
+
+
+@pytest.mark.parametrize("preparation_kind", ["not_supplied", "missing", "socket_missing"])
+def test_pending_host_with_no_reachable_preparation_stays_pending(tmp_path, monkeypatch, preparation_kind):
+    final = tmp_path / "final"; scope = target(final)
+    root = tmp_path / "absent-preparation"
+    if preparation_kind == "socket_missing": root.mkdir(mode=0o700)
+    with formal_control_response(final, scope, monkeypatch) as response:
+        result = client.connections(final, "alpha", "create-alpha",
+            preparation_root=None if preparation_kind == "not_supplied" else root)
+        assert result == response and result["connections"] == []
+
+
+@pytest.mark.parametrize("failure", ["wrong_scope", "public_root"])
+def test_pending_host_never_suppresses_preparation_identity_or_privacy_rejection(tmp_path, monkeypatch, failure):
+    with preparation(tmp_path) as (root, final, scope):
+        if failure == "wrong_scope": scope = target(final, "wrong-run", "wrong-create")
+        else: root.chmod(0o755)
+        try:
+            with formal_control_response(final, scope, monkeypatch):
+                with pytest.raises(ValueError):
+                    client.connections(final, scope["run_id"], scope["request_id"], preparation_root=root)
+        finally:
+            root.chmod(0o700)
+
+
+
+def test_watch_keeps_prior_stdout_handshake_separate_from_later_control_error(tmp_path, capsys):
+    endpoints = []
+    raw = b'{"webSocketDebuggerUrl":"ws://127.0.0.1/devtools/browser/expected"}'
+    with preparation(tmp_path, endpoint_out=endpoints) as (root, _, scope), cdp_response(tmp_path, raw):
+        output = []
+        def accepted(value):
+            output.append(json.loads(value))
+            endpoints[0].close()
+        assert client.run(watch_args(scope, root), output=accepted) == 2
+    assert output == [{"scope": scope, "lifecycle": "preparing", "connected": True}]
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert json.loads(captured.err) == {"event": "connection_watch_failed", "reason": "connection_target_unavailable"}
+
+
+def test_watch_invalid_scope_has_safe_diagnostic_without_query(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(client, "connections", lambda *a, **kw: pytest.fail("invalid scope was queried"))
+    args = watch_args(target(tmp_path / "final", "sensitive/invalid-run"), tmp_path / "prep")
+    assert client.run(args) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert json.loads(captured.err) == {"event": "connection_watch_failed", "reason": "connection_scope_rejected"}
+    assert "sensitive" not in captured.err
+
+
+
+@pytest.mark.parametrize("failed_operation", ["output", "flush"])
+def test_watch_handshake_output_failure_remains_safe_exit_two(tmp_path, capsys, monkeypatch, failed_operation):
+    raw = b'{"webSocketDebuggerUrl":"ws://127.0.0.1/devtools/browser/expected"}'
+    def broken(*args, **kwargs):
+        raise BrokenPipeError("sensitive-output-consumer-detail")
+    with preparation(tmp_path) as (root, _, scope), cdp_response(tmp_path, raw):
+        output = []
+        with monkeypatch.context() as patch:
+            if failed_operation == "flush": patch.setattr(sys.stdout, "flush", broken)
+            assert client.run(watch_args(scope, root), output=broken if failed_operation == "output" else output.append) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err == json.dumps({"event": "connection_watch_failed", "reason": "connection_watch_output_unavailable"}) + "\n"
+    assert "sensitive" not in captured.err

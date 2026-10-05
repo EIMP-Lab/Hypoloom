@@ -2,6 +2,80 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Windows helper exit diagnostics (2026-10-06)
+
+The reported hidden Windows task exited with code 2 after IEEE preparation, but
+its original reason was not retained. A successful later foreground connection
+and an empty Application-event query cannot recover or exclude the first cause.
+The separate preparation controller subsequently exhausted its normal 600-second
+launch review. No existing research run was created, resumed, stopped or migrated
+by this repair. Baseline: dev `7754bfa`; see the
+[design and diagnostic-storage justification](design/institutional-access-preparation.md#单运行助手退出诊断与交接修复2026-10-06).
+
+Reproductions establish two framework defects: cleanup can replace the primary
+failure, and an empty formal Host's `pending` response hides its still-valid,
+explicitly scoped preparation endpoint. Cleanup now attempts every owned resource,
+retains both causes and stops retrying if cleanup fails. Connection selection
+retains that exact preparation until accepted CREATE; active/terminal or rejected
+identity never falls back. The existing 300-second outage/sleep bound remains.
+Normal local review expiry returns 0. Publisher result/exit code stays separate
+from the controller's fixed `preparation_lifecycle` ending event.
+
+The hidden helper writes bounded private safe diagnostics, using the existing ACL
+validator and request identity, without storing raw errors, URLs or credentials.
+Local `Status` needs only Server/RequestId and neither SSH nor a browser. Seven
+fixed watch reasons use stderr while the initial stdout handshake stays unchanged.
+The output-pipe error regression introduced during this refactor was reproduced
+and corrected before full qualification. The bilingual guides and init reference
+describe these observations without treating them as connection authority.
+
+With the implementation held fixed, complete G1 passes **7,444 tests / 100 skips**
+in **1,403.01 seconds**, with 30 multiprocessing fork warnings and no failures.
+Static compilation, Ruff and whitespace checks pass. Final focused Python scope,
+CLI and safe-output checks pass **53 tests**; earlier **four isolated real-SSH
+cases** verify immediate handshake, scoped forwarding/recovery and safe failure
+stderr. Two SSH probes remain local evidence scripts; repository CLI regressions
+retain the output checks. These overlapping results are not additive totals.
+
+The separate real Host/Chromium selection passes **12 tests**. Independent census
+of `/var/tmp/hd6-native` finds one real Host ending CANCELLED, one successful CLOSED
+Agent Attempt, zero open Attempts, associated processes, socket nodes/listeners,
+preparation directories or staging residue. Three recorded browser ports no
+longer listen. This small handoff fixture does not claim a new reader/CPU science
+closure; the Attempt has no recorded process-group ID.
+
+A local PowerShell counterexample confirms `Status` was swallowing permission/CIM
+errors as `task_not_found`. After G1, the final correction uses an ordinary
+terminating task query plus exact-name filtering, preserving absent-task behavior.
+It does not change forwarding, cleanup or authorization. Final diagnostics/scope
+checks pass **39 tests / two Windows-kernel skips**, including both new error
+counterexamples. Documentation/operator checks pass **41 tests**. The rebuilt
+wheel, independent installation and fresh bundle match **182 package files** byte
+for byte; outside-checkout CLI/MCP and local worker cleanup checks pass. The
+preceding G1 result is not represented as a second full run after this
+diagnostic-only change.
+
+Independent full-G1 census reads 1,206 SQLite files: 1,159 have Attempt tables,
+43 have partial fixture schemas and four are deliberately invalid SQLite fixtures.
+It observes **11,554 CLOSED / 113 OPEN** Attempt rows, preserving the intermediate
+fixtures rather than reporting every row as a finished research operation. All
+**2,351 recorded process groups** are absent, with no matching process or bound
+Unix socket. Twenty unbound socket pathnames remain in the fixture tree and are
+recorded separately. This census describes G1, not the subsequent local Status
+checks or any retained research run.
+
+Evidence: `.local/qualification/client-exit-diagnostics-20261006/`,
+`.local/qualification/client-watch-diagnostics-20261006/` and
+`.local/qualification/institutional-client-diagnostics-20261006/`; the final
+rebuilt installation and documentation checks are in
+`.local/qualification/client-exit-diagnostics-final-20261006/`. Original
+diagnosis remains under `.local/analysis/windows-edge-exit-20261006/` and
+`.local/analysis/institutional-edge-exit-20261006/`. Linux PowerShell exercises
+actual script/file behavior with controlled Windows APIs; the two real Windows
+Job Object cases remain skipped. No physical Windows scheduler, ACL, desktop or
+power-cut acceptance is claimed. Update the original Windows script and use a
+fresh init for that acceptance; the old incident's primary cause remains unknown.
+
 ## Single-run Windows client lifetime (2026-10-05)
 
 An old Windows A discovery task attached to a new init launched from Windows B.

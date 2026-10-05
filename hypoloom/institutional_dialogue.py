@@ -95,7 +95,8 @@ class PreparationDialogue:
                          "remaining_preparation_argv": summary["remaining_preparation_argv"]}
         while True:
             with self.condition:
-                if self.finished or monotonic() >= self.deadline: return "finished"
+                if self.finished: return "operator_finished"
+                if monotonic() >= self.deadline: return "launch_review_expired"
                 if self.answer == "retry":
                     self.answer = None
                     self.view = {"state": "checking_connection", "actions": ["finish"]}
@@ -103,7 +104,7 @@ class PreparationDialogue:
                     return "retry"
             # The formal Host's existing command and transition are the authority.
             # This read cannot create, resume or cancel research.
-            if check(): return "handoff"
+            if check(): return "run_handoff"
             with self.condition:
                 if self.deadline is not None:
                     self.condition.wait(min(.5, max(0, self.deadline - monotonic())))

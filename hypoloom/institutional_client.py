@@ -109,10 +109,18 @@ def _durable_lifecycle(root, scope):
 def connections(root, run_id=None, request_id=None, *, preparation_root=None):
     scope = validate_target(root, run_id, request_id)
     final = Path(scope["state_root"])
+    def query_preparation():
+        if not Path(preparation_root).is_absolute():
+            raise ValueError("absolute_preparation_root_required")
+        return _query(Path(preparation_root).resolve(), scope, preparation=True)
     if final.exists():
         _private_root(final)
         try:
-            return _query(final, scope)
+            selected = _query(final, scope)
+            if selected["lifecycle"] == "pending" and preparation_root is not None:
+                try: return query_preparation()
+                except OSError: pass  # The formal Host still truthfully reports pending.
+            return selected
         except OSError:
             lifecycle = _durable_lifecycle(final, scope)
             if lifecycle == "terminal":
@@ -120,14 +128,45 @@ def connections(root, run_id=None, request_id=None, *, preparation_root=None):
             if lifecycle == "active":
                 raise ConnectionError("connection_host_unavailable") from None
     if preparation_root is not None:
-        if not Path(preparation_root).is_absolute():
-            raise ValueError("absolute_preparation_root_required")
-        return _query(Path(preparation_root).resolve(), scope, preparation=True)
+        return query_preparation()
     raise ConnectionError("connection_target_unavailable")
 
 
+def _watch_failure(reason):
+    # Callers supply only the fixed codes below; never copy peer/error text.
+    print(json.dumps({"event": "connection_watch_failed", "reason": reason}), file=sys.stderr, flush=True)
+    return 2
+
+
+def _watch_cdp(socket_path, browser_path):
+    from .institutional_relay import unix_backend
+    try:
+        with unix_backend(socket_path) as peer:
+            peer.sendall(b"GET /json/version HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            response = http.client.HTTPResponse(peer); response.begin()
+            if response.status != 200: return "cdp_endpoint_unavailable"
+            raw = response.read((1 << 20) + 1)
+    except http.client.HTTPException:
+        return "cdp_endpoint_unavailable"
+    except OSError:
+        return "cdp_connection_failed"
+    if len(raw) > 1 << 20: return "cdp_response_invalid"
+    try:
+        document = json.loads(raw)
+        value = document.get("webSocketDebuggerUrl") if isinstance(document, dict) else None
+        if not isinstance(value, str) or not value: return "cdp_response_invalid"
+        identity = urlsplit(value).path
+    except ValueError:
+        return "cdp_response_invalid"
+    return None if identity == browser_path else "cdp_identity_mismatch"
+
+
 def run(args, *, output=print):
-    scope = validate_target(args.state_root, getattr(args, "run_id", None), getattr(args, "request_id", None))
+    try:
+        scope = validate_target(args.state_root, getattr(args, "run_id", None), getattr(args, "request_id", None))
+    except ValueError:
+        if args.institutional_action == "watch": return _watch_failure("connection_scope_rejected")
+        raise
     preparation_root = getattr(args, "preparation_root", None)
     def current():
         return connections(scope["state_root"], scope["run_id"], scope["request_id"], preparation_root=preparation_root)
@@ -141,22 +180,22 @@ def run(args, *, output=print):
         while True:
             try:
                 selected = current()
-                if not any(c.get("socket_path") == args.socket_path for c in selected["connections"]): return 0
-                if time.monotonic() - checked > 5:
-                    from .institutional_relay import unix_backend
-                    with unix_backend(args.socket_path) as peer:
-                        peer.sendall(b"GET /json/version HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-                        response = http.client.HTTPResponse(peer); response.begin()
-                        raw = response.read((1 << 20) + 1)
-                        if response.status != 200 or len(raw) > 1 << 20: return 2
-                        identity = urlsplit(json.loads(raw)["webSocketDebuggerUrl"]).path
-                        if identity != args.browser_path: return 2
-                    if not announced:
+            except OSError:
+                return _watch_failure("connection_target_unavailable")
+            except ValueError:
+                return _watch_failure("connection_scope_rejected")
+            if not any(c.get("socket_path") == args.socket_path for c in selected["connections"]): return 0
+            if time.monotonic() - checked > 5:
+                failure = _watch_cdp(args.socket_path, args.browser_path)
+                if failure: return _watch_failure(failure)
+                if not announced:
+                    try:
                         output(json.dumps({"scope": scope, "lifecycle": selected["lifecycle"], "connected": True}))
                         sys.stdout.flush()
-                        announced = True
-                    checked = time.monotonic()
-            except (OSError, ValueError, KeyError, http.client.HTTPException): return 2
+                    except OSError:
+                        return _watch_failure("connection_watch_output_unavailable")
+                    announced = True
+                checked = time.monotonic()
             time.sleep(.5)
     selected = current()
     if not getattr(args, "include_ui_credentials", False):

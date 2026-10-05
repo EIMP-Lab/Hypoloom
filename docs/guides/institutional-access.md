@@ -215,6 +215,10 @@ while you review launch choices. **Start now** still requires your explicit choi
 For **Prepare only** or cancellation, execute the returned `finish_argv` to release
 this authorization. Expiry also releases it; it never starts research. An explicit
 finish/skip during preparation exits directly; read that background result instead.
+The final `preparation_lifecycle` event separately records `run_handoff`,
+`launch_review_expired` or `operator_finished`. A publisher summary describes its
+samples; it does not prove that the preparation controller or Windows helper is
+still running. Preserve both observations when diagnosing an exit.
 
 `identity_unconfirmed` concerns the **requested paper**, not the user's institutional
 account. It does not prove a PDF was downloaded. CC relays the program's fixed result
@@ -608,38 +612,53 @@ Publisher login on the new PC happens separately in the dedicated browser.
 
 #### Manual connection diagnostics
 
-Prefer the exact generated Setup/Connect entry. For a foreground diagnosis, stop
-the matching background helper first and copy **all** scope values from this init
-into the example below. Omit `PreparationRoot` only when the generated entry omits
-it. Never run with only a server/repository or scan the parent runs directory.
+With the updated local script, first read **Status** on Windows. It reads the local
+scheduled task and recent safe diagnostic events; it does not contact SSH, open a
+browser, restart the helper or create a directory. There is no need to stop the
+background task and reproduce the failure in foreground Run. Use the exact Server
+and RequestId from this init's generated entry; RequestId is the create request ID,
+not the run ID. This read does not require Repository, StateRoot or PreparationRoot.
 
 ```powershell
-$researchServer = 'research-server' # user@host or SSH alias
-$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
-New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
-scp "${researchServer}:/path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
-$researchConnection = @{
-    Server = $researchServer
-    Repository = '/path/to/Hypoloom'
-    PythonExecutable = '/path/to/Hypoloom/.conda/envs/hypoloom/bin/python'
-    StateRoot = '/path/to/Hypoloom/state/RUN-ID' # exact init state_root
-    RunId = 'RUN-ID' # exact init run_id
-    RequestId = 'CREATE-REQUEST-ID' # exact init create request ID
-    PreparationRoot = '/path/to/Hypoloom/state/institutional-prepare-EXAMPLE' # when supplied
+& {
+    $ErrorActionPreference = 'Stop'
+    $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+    $researchServer = (Read-Host 'Exact Server value from this init entry (not a password)').Trim()
+    $researchRequest = (Read-Host 'Exact RequestId value from this init entry').Trim()
+    & pwsh -NoProfile -File $researchConnector -Action Status -Server $researchServer -RequestId $researchRequest
+    if ($LASTEXITCODE -ne 0) { throw 'Status failed; retain the diagnostic above.' }
 }
-& $researchConnector @researchConnection -Action Run
-# Same scope for diagnostics and explicit cleanup; no logon task is installed.
-& $researchConnector @researchConnection -Action Status
-& $researchConnector @researchConnection -Action Stop
-& $researchConnector @researchConnection -Action Uninstall
 ```
+
+The result reports task state/last result, `diagnostic_path` and `recent_events`.
+Events are under `%LOCALAPPDATA%\Hypoloom\ConnectionLogs-<Server>\<RequestId>.jsonl`;
+retention is bounded. These are diagnostic observations, not connection authority
+or a promise of current browser health. A Ready task or LastTaskResult alone cannot
+identify the reason it stopped. Missing logs, an old helper or a failed local read
+leave that reason unknown; inspect `local_status_reason` and any `diagnostic_reason`,
+then retain the safe output.
+
+| Status observation | Meaning and next step |
+| --- | --- |
+| `run_terminal` | The server retired this connection scope, including stopping/terminal research. Normal helper exit; it does not prove publisher verification. |
+| `launch_review_expired` | The bounded pre-launch review expired. Normal helper exit; research was not started by this event. |
+| `run_connection_expired` | Connection/control checks could not remain confirmed for 300 seconds, including elapsed sleep. It does not establish that an open publisher page stopped working. Read preceding safe reasons before reconnecting the same intended run. |
+| `cleanup_failed` event | Resource cleanup failed. Keep this event and the original exit/failure reason; neither should replace the other. Do not assume every child/browser closed. |
+
+`run_terminal` and `launch_review_expired` are normal exits; connection expiry and
+identity/privacy errors remain failures. A support check should begin with this
+Status output, rather than repeatedly reinstalling or opening another foreground
+helper. Foreground Run remains an explicit diagnostic only, with the original scope
+and no matching background instance running. Never stop processes by name or adopt
+another run's browser.
 
 The helper finds Edge before Chrome. Default `-LocalPort 0` asks the helper to
 allocate an available loopback port through the OS, then launch the browser with
 that actual nonzero port. Passing debugging port 0 directly to Chromium enables
 its webdriver flag, so new launches no longer use it. Listener ownership and
 loopback checks still apply after allocation. Profiles remain under
-`%LOCALAPPDATA%\Hypoloom\Institutional-msedge` or `Institutional-chrome`; use
+`%LOCALAPPDATA%\Hypoloom\Institutional-<Server>-msedge` (or the corresponding
+Chrome directory), separated by server account; use
 `-BrowserExecutable` / `-BrowserProfile` to retain your previously authenticated
 dedicated profile. Only its user, SYSTEM and administrators may access it. Cookies
 are not exported or copied. The helper owns the browser it starts for this scope;

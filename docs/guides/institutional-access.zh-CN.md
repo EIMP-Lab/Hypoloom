@@ -273,7 +273,10 @@ init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接�
 `summary`，不用等后台进程退出。同一临时控制目录最多保留 600 秒，供审阅并向正式
 运行交接；Start now 仍需明确选择。选择 Prepare only／取消时执行返回的 `finish_argv`
 撤销本次连接授权；到期也会清理，不自动启动研究。准备中主动结束／跳过则直接退出，
-从后台最终结果读取摘要。已完成结果保留，启动身份不变。
+从后台最终结果读取摘要。已完成结果保留，启动身份不变。最终独立的
+`preparation_lifecycle` 事件记录 `run_handoff`、`launch_review_expired` 或
+`operator_finished`；出版社摘要只说明样本结果，不证明准备控制器或 Windows 助手
+此刻仍存活。排障时应同时保留这两类观察。
 独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
 
 手动诊断对话准备时，使用首次输出的 `status_argv` / `answer_argv`；例如：
@@ -687,30 +690,40 @@ pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
 
 #### 手动连接诊断
 
-优先使用程序生成的 Setup／Connect 入口。需要前台诊断时，先停止相同范围的后台
-助手，再把本次 init 的**全部范围值**填入下例；只有生成入口未含 `PreparationRoot`
-时才省略它。不可只传服务器和仓库，也不扫描整个运行目录。
+使用新版本地脚本时，先在 Windows 读取 **Status**。它只读本机计划任务和最近的安全
+诊断事件，不连接 SSH、不打开浏览器、不重启助手或创建目录；无需先停后台任务，
+再用前台 Run 反复复现。复制本次 init 生成入口中的准确 Server 和 RequestId；
+RequestId 是创建请求 ID，不是运行 ID。此只读操作不需要 Repository、StateRoot
+或 PreparationRoot。
 
 ```powershell
-$researchServer = 'research-server' # user@host or SSH alias
-$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
-New-Item -ItemType Directory -Force (Split-Path $researchConnector) | Out-Null
-scp "${researchServer}:/path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1" $researchConnector
-$researchConnection = @{
-    Server = $researchServer
-    Repository = '/path/to/Hypoloom'
-    PythonExecutable = '/path/to/Hypoloom/.conda/envs/hypoloom/bin/python'
-    StateRoot = '/path/to/Hypoloom/state/RUN-ID' # init 的准确 state_root
-    RunId = 'RUN-ID' # init 的准确 run_id
-    RequestId = 'CREATE-REQUEST-ID' # init 的准确创建请求 ID
-    PreparationRoot = '/path/to/Hypoloom/state/institutional-prepare-EXAMPLE' # 按生成值提供
+& {
+    $ErrorActionPreference = 'Stop'
+    $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+    $researchServer = (Read-Host '本次 init 入口中的准确 Server 值（不是密码）').Trim()
+    $researchRequest = (Read-Host '本次 init 入口中的准确 RequestId 值').Trim()
+    & pwsh -NoProfile -File $researchConnector -Action Status -Server $researchServer -RequestId $researchRequest
+    if ($LASTEXITCODE -ne 0) { throw '读取 Status 失败，请保留上方诊断输出。' }
 }
-& $researchConnector @researchConnection -Action Run
-# 诊断和明确停止使用同一范围；不安装登录自启任务。
-& $researchConnector @researchConnection -Action Status
-& $researchConnector @researchConnection -Action Stop
-& $researchConnector @researchConnection -Action Uninstall
 ```
+
+结果包括任务状态／最近结果、`diagnostic_path` 和 `recent_events`。安全事件位于
+`%LOCALAPPDATA%\Hypoloom\ConnectionLogs-<Server>\<RequestId>.jsonl`，保留量有上限。
+日志是排障观察，不是连接授权，也不能保证浏览器当前健康。仅看任务 Ready 或
+LastTaskResult 无法确定退出原因。日志不存在、旧助手未记录或本地读取失败时，
+原因仍属未知；检查 `local_status_reason` 及提供时的 `diagnostic_reason`，保留安全输出。
+
+| Status 观察 | 含义与处理 |
+| --- | --- |
+| `run_terminal` | 服务器已结束该连接范围，包括科研停止中／终态。属于正常退出，不代表出版社验证成功。 |
+| `launch_review_expired` | 启动前审阅窗口到期，助手正常退出；该事件没有启动科研。 |
+| `run_connection_expired` | 连续 300 秒未能确认连接／控制检查正常，计入睡眠时间；不等于仍打开的出版社页面已坏。先看之前的安全原因，再决定是否重连原目标运行。 |
+| `cleanup_failed` 事件 | 资源清理失败，应同时保留该事件和原始退出／失败原因，不相互覆盖；不能据此声称浏览器及全部子进程已关闭。 |
+
+`run_terminal` 和 `launch_review_expired` 属于正常退出；连接过期和身份／隐私错误
+仍属于失败。排障优先读取上述 Status，不反复重装或启动第二个前台助手。确有需要
+时才以原范围执行前台 Run，并确保相同范围的后台实例已停止；不按进程名批量终止，
+也不接管其他运行的浏览器。
 
 Setup／Connect 在启动本次范围的助手前准备目录权限，失败会直接显示在当前终端。对于当前
 用户拥有的默认专用目录，额外的**继承 Allow**（例如其他本地组的读取权限）会在
@@ -732,8 +745,8 @@ Setup／Connect 在启动本次范围的助手前准备目录权限，失败会�
 脚本优先查找 Edge，再查找 Chrome。默认 `-LocalPort 0` 表示由连接器向 OS 申请
 可用端口，启动浏览器时传入实际非零端口。直接给 Chromium 传调试端口 0 会启用
 webdriver 标志，因此不再使用这种启动方式。端口接管仍校验回环地址和进程归属。
-使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，
-可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。
+默认目录为 `%LOCALAPPDATA%\Hypoloom\Institutional-<Server>-msedge`（Chrome 同理），
+按服务器账户隔离；可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。
 不导出 Cookie，不复制登录凭据；目录权限限于当前用户、SYSTEM 和管理员。
 助手仅拥有自己为本次范围启动的浏览器，不接管已运行的手工浏览器或旧运行浏览器。
 

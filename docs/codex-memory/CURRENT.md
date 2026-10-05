@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 6 Windows exit diagnostics: preserve primary/cleanup causes and stop
+  retries after failed cleanup; keep the exact preparation endpoint while the
+  formal Host is pending CREATE. Bounded private logs and offline Status make
+  hidden exits inspectable; normal review expiry is distinct from 300-second
+  connection loss. Safe stderr watch reasons preserve the stdout handshake.
+  Full G1: 7,444 pass / 100 skip; subsequent local Status query-error correction
+  passes 39 focused tests / two Windows skips. Final install/bundle: 182 matching
+  files. Actual Windows acceptance remains distinct,
+  and the first reported exit cannot be retroactively diagnosed.
+  [Design](../design/institutional-access-preparation.md#单运行助手退出诊断与交接修复2026-10-06)
+  / [qualification](../qualification.md#windows-helper-exit-diagnostics-2026-10-06).
+
 - October 5 run-scoped Windows clients: explicit final state root/run/create
   identity replaces global discovery; old unscoped clients cannot obtain new
   endpoints. Preparation retries keep one private owner through a bounded

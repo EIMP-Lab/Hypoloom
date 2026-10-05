@@ -177,7 +177,10 @@ def test_real_background_client_failure_is_single_and_finish_releases_resources(
         assert process.returncode == 0, errors
         rows = [json.loads(line) for line in output.splitlines() if line.startswith('{')]
         assert not any('provider' in row for row in rows)
-        assert {p['state'] for p in rows[-1]['preparation_summary']} == {'not_checked'}
+        summaries = [row for row in rows if 'preparation_summary' in row]
+        assert len(summaries) == 1
+        assert {p['state'] for p in summaries[0]['preparation_summary']} == {'not_checked'}
+        assert rows[-1] == {'preparation_lifecycle': {'state': 'finished', 'reason': 'operator_finished'}}
         assert not root.exists() and not Path(allocated['socket_path']).parent.exists()
         assert_free(allocated['endpoint'])
         assert not list(tmp_path.rglob('state.sqlite'))

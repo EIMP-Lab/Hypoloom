@@ -9,10 +9,10 @@ import pytest
 
 
 @pytest.mark.parametrize("scenario", [
-    "terminal", "outage", "recover", "sleep", "wrong_scope", "pending",
+    "terminal", "outage", "recover", "sleep", "sleep_review", "review_lost_connection", "wrong_scope", "pending",
     "handoff", "deadline_wait", "owned_cleanup", "task_ownership", "legacy_task",
     "wrong_entry", "handshake_scope", "handshake_failure", "empty_active",
-    "empty_preparing", "awaiting_launch", "retry_preparation", "fast_retry", "review_reconnect", "interrupt", "native_compile",
+    "empty_preparing", "awaiting_launch", "pending_does_not_extend_review", "retry_preparation", "fast_retry", "review_reconnect", "interrupt", "native_compile",
 ])
 def test_windows_run_scoped_helper(scenario):
     root = Path(__file__).resolve().parents[2]

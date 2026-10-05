@@ -143,7 +143,18 @@ function Get-RunConnections {
         'terminal' { if ($script:Polls -eq 1) { New-Status active @($script:FinalEntry) } else { New-Status terminal } }
         'outage' { throw 'run_discovery_ssh_failed' }
         'pending' { New-Status pending }
+        'pending_does_not_extend_review' {
+            if ($script:Polls -eq 1) { $result=New-Status awaiting_launch; $result.remaining_seconds=10; $result }
+            elseif ($script:Polls -eq 2) { New-Status pending }
+            elseif ($script:Polls -eq 3) { New-Status active @($script:FinalEntry) }
+            else { New-Status terminal }
+        }
         'sleep' { New-Status active @($script:FinalEntry) }
+        'sleep_review' { $result=New-Status awaiting_launch; $result.remaining_seconds=600; $result }
+        'review_lost_connection' {
+            if ($script:Polls -eq 1) { $result=New-Status awaiting_launch; $result.remaining_seconds=600; $result }
+            else { throw 'run_discovery_ssh_failed' }
+        }
         'empty_active' { New-Status active }
         'empty_preparing' { New-Status preparing }
         'awaiting_launch' { $result=New-Status awaiting_launch; $result.remaining_seconds=600-$script:Now/1000; $result }
@@ -198,7 +209,7 @@ function Stop-Child($Child) { if ($Child.Label -ne 'ready') { $script:Stopped+=$
 function Start-Sleep {
     param($Seconds,$Milliseconds)
     if ($Scenario -eq 'review_reconnect' -and $script:Polls -eq 1) { $script:LatestForward.HasExited=$true }
-    $script:Now+=if ($Scenario -eq 'sleep') { 301000 } elseif ($Scenario -eq 'retry_preparation' -and $script:Polls -eq 2) { 20000 } elseif ($Scenario -eq 'fast_retry' -and $script:Polls -eq 3) { 10000 } elseif ($Milliseconds) { $Milliseconds } else { $Seconds*1000 }
+    $script:Now+=if ($Scenario -in @('sleep','sleep_review')) { 301000 } elseif ($Scenario -eq 'retry_preparation' -and $script:Polls -eq 2) { 20000 } elseif ($Scenario -eq 'fast_retry' -and $script:Polls -eq 3) { 10000 } elseif ($Milliseconds) { $Milliseconds } else { $Seconds*1000 }
     Assert ($script:Polls -lt 200) 'loop had no bounded exit'
 }
 $caught=''; $messages=@(try { Watch-Runs } catch { $caught=$_.Exception.Message })
@@ -207,12 +218,15 @@ switch ($Scenario) {
     'pending' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 300000 -and $Browsers -eq 0) 'pending renewed its deadline' }
     'empty_active' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 300000 -and $Browsers -eq 0) 'active with no endpoint renewed deadline' }
     'empty_preparing' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 300000 -and $Browsers -eq 0) 'preparing with no endpoint renewed deadline' }
-    'awaiting_launch' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 600000 -and $Browsers -eq 0) 'awaiting launch deadline was extended' }
+    'awaiting_launch' { Assert (-not $caught -and $messages -contains 'launch_review_expired; connection_closed' -and $Now -eq 600000 -and $Browsers -eq 0) 'awaiting launch deadline was extended' }
+    'pending_does_not_extend_review' { Assert (-not $caught -and $messages -contains 'launch_review_expired; connection_closed' -and $Now -eq 10000 -and $Polls -eq 2 -and $Browsers -eq 0) 'pending extended expired preparation authority' }
     'handshake_scope' { Assert ($caught -eq 'run_scope_mismatch') 'different-run handshake accepted' }
     'handshake_failure' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 300000) 'unsuccessful handshake renewed deadline' }
     'wrong_entry' { Assert ($caught -eq 'run_scope_mismatch' -and $Browsers -eq 0) 'different-run entry accepted' }
     'interrupt' { Assert ($caught -eq 'fixture_interrupted') 'interruption was swallowed' }
     'wrong_scope' { Assert ($caught -eq 'run_scope_mismatch' -and $Browsers -eq 0) 'another run authorized browser startup' }
+    'sleep_review' { Assert ($caught -eq 'run_connection_expired' -and $Polls -eq 1 -and $Browsers -eq 0) 'wake reclassified lost control as ordinary review expiry' }
+    'review_lost_connection' { Assert ($caught -eq 'run_connection_expired' -and $Now -eq 305000 -and $Browsers -eq 0) 'review hid continuous control outage' }
     'sleep' { Assert ($caught -eq 'run_connection_expired' -and $Polls -eq 1 -and $Browsers -eq 1) 'wake contacted server or reopened browser after expiry' }
     default { Assert (-not $caught) "unexpected loop failure $caught"; Assert ($messages -contains 'run_terminal; connection_closed') 'terminal did not exit' }
 }

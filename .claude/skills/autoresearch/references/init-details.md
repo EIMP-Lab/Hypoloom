@@ -169,6 +169,10 @@ uses the existing manual timeout. Scoped Windows init completion/non-manual time
 control root retains the helper for at most 600 seconds, then releases it without
 starting research. Explicit finish/skip during preparation releases it immediately;
 read that command's final background summary instead. Merge modes even on failure.
+On background exit, read the separate `preparation_lifecycle` event: its reason is
+`run_handoff`, `launch_review_expired` or `operator_finished`; the sample summary
+does not establish controller/helper liveness. Preserve both; this exit observation
+never authorizes launch or changes the sample result.
 The command's nonzero exit is a preparation result, not a failed research run.
 Relay the program's final human-readable preparation results verbatim before
 offering retry/continue; the returned summary remains the source of states and commands.

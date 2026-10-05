@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Windows helper exit diagnostics](../qualification.md#windows-helper-exit-diagnostics-2026-10-06):
+  private bounded local logs/Status, primary and cleanup causes, review/outage
+  distinction, exact preparation-to-CREATE handoff and safe watch stderr.
+  [Design](../design/institutional-access-preparation.md#单运行助手退出诊断与交接修复2026-10-06)
+  keeps the original single-run authority; first incident attribution and physical
+  Windows acceptance remain explicitly unproven.
+
 - [Single-run clients and power-loss cleanup](../design/institutional-access-preparation.md#单运行客户端与断电退出2026-10-05):
   exact existing run/create scope, legacy discovery refusal, in-memory preparation
   retry/handoff, one-shot Windows ownership and bounded offline exit. Operators

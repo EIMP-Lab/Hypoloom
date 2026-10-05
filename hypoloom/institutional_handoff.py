@@ -52,13 +52,16 @@ def batches(args, access, dialogue, selected, modes, output, input_fn, root, tar
         summary["scope"] = target
         output(render_results(summary["preparation_summary"], modes))
         output(json.dumps(summary, ensure_ascii=False))
-        outcome = ("finished" if dialogue.cancelled() else
+        outcome = ("operator_finished" if dialogue.cancelled() else
                    dialogue.await_launch(summary, lambda: _launched(target), seconds=HANDOFF_SECONDS))
         if outcome != "retry":
             dialogue.update(state="finishing", actions=[])
             # Leave the existing endpoint available for one ordinary client poll
             # to observe revocation. Offline clients retain their local 300s bound.
-            if outcome == "finished": sleep(RELEASE_SECONDS)
+            if outcome != "run_handoff": sleep(RELEASE_SECONDS)
+            # Controller lifetime is independent of the publisher sample result
+            # and its exit code. Emit only the bounded, fixed ending reason.
+            output(json.dumps({"preparation_lifecycle": {"state": "finished", "reason": outcome}}))
             return code
         # Discard only the retried publishers' temporary acquisitions. The same
         # browser owner, control root and accepted results survive this batch.
