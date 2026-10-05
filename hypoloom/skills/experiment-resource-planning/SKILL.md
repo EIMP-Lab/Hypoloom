@@ -50,6 +50,19 @@ one transient sample, or an unsupported guess into a precise requirement. When
 the evidence is insufficient, say so and prefer a bounded measurement rather
 than fabricating precision.
 
+New templates use `gpu_vram_reserve_percent: 5` and an absolute reserve floor of
+512 MiB. The Host calculates the reserve from the final admitted workload budget,
+rounding up to 64 MiB; a larger configured floor or pool floor still applies.
+An omitted/zero percentage retains the Profile's fixed reserve. This separate
+device reserve does not replace workload uncertainty headroom: do not add it to
+`peak_memory_mib`, subtract it from measured peaks, or change it to fit live free
+memory. Actual OOM raises the next comparable workload budget by at least 25%,
+so a proportional reserve grows too. Pressure cancellation, script errors and
+external occupancy are not OOM. A sampled partial peak is only a lower-bound
+observation, never a complete maximum or evidence for reducing an estimate.
+Keep same-run FIFO: waiting behind a larger request is not a reason to resubmit
+smaller declarations or spend retries polling. Use the existing wait/handoff.
+
 ## Respect shared GPU ownership
 
 Retained nonpooled execution uses fixed grants: the Host observes

@@ -9,9 +9,7 @@ argument-hint: "[init|monitor|status|oracle|cancel] [run-id]"
 Use this skill only for the independent `hypoloom` runtime. The user
 invokes `/autoresearch <subcommand> [args]`. If the subcommand or an exact
 target is missing, show the supported operations and stop, except that `monitor`
-uses the read-only chooser below; do not infer a run
-from a legacy active pointer. `init` is Claude Code bootstrap orchestration;
-all other subcommands route to the existing Hypoloom CLI.
+uses the read-only chooser below; do not infer a run from a legacy active pointer. `init` is Claude Code bootstrap orchestration; all other subcommands route to the existing Hypoloom CLI.
 
 ## Runtime boundary
 

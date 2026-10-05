@@ -81,6 +81,18 @@ storage for that address; if storage is unavailable, it lasts only for the page.
 Language changes update interface labels and guidance while preserving filters,
 drafts and research state. Research prose, logs, identifiers and commands retain
 their original contents. Each viewer chooses its own language independently.
+Web expert stage badges retain abbreviations such as LIT, HYP, DES and RUN in both languages.
+The top-right run summary shows elapsed wall time (including waits) and observed
+token usage (`≥`, with K/M/B/T abbreviations). Durations of at least 24 hours use
+days and hours, for example `1d 1h`. Tokens include reported usage and
+observed unsettled calls, exclude reservations, and cover the whole run regardless
+of filters. Hover for the breakdown. Missing data shows `—`; stale observations
+retain the last values, and elapsed time stops at the run's recorded end.
+TUI shows reported tokens and observed unsettled tokens separately; add these
+to compare with the Web header at the same observation time. `≥` denotes known
+usage as a lower bound, not an estimate with a known error margin: missing usage
+cannot be inferred, so `≈` would be misleading. Budget bars include reservations
+and are not consumption counters.
 
 - **q / Leave monitor**: leaves the current monitor window; the background
   Host and tasks continue.
@@ -96,7 +108,9 @@ their original contents. Each viewer chooses its own language independently.
   Host-observed resource blocks. See [runtime recovery](docs/guides/runtime-recovery.md).
 
 - **l / Literature retry**: retry OpenAlex after repair; this is separate from model API recovery.
-- **n / Telegram retry**: inspect and retry managed delivery. See [notifications](docs/guides/notifications.md) for access checks and explicit test messages.
+- **n / Telegram retry**: inspect and retry managed delivery using its current proxy;
+  this does not reload proxy settings. See [notifications](docs/guides/notifications.md)
+  for proxy setup, access checks and explicit test messages.
 
 Web / local access sits in its own connection-information area. Start the
 Web observer:

@@ -266,7 +266,7 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     if args.allow_gpu:
         if not args.gpu_device_uuid or not args.gpu_runtime_prefix:
             raise ValueError("GPU launch needs the exact approved UUIDs and runtime prefix")
-        from .compute_resources import LocalComputeResources, ComputeResourceError
+        from .compute_resources import LocalComputeResources, ComputeResourceError, gpu_memory_reserve_mib
         from .profile_v4 import restrict_profile_capabilities, validate_gpu_pool_budget
         prefix = Path(args.gpu_runtime_prefix)
         if not prefix.is_absolute() or str(prefix.resolve()) != payload["execution"]["runtime_prefix"]:
@@ -285,6 +285,17 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         review["gpu"] = {"host_authorized_uuids": list(resources.allowed_gpu_uuids),
                          "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
                          "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
+        budget = contract["budget"]
+        workload = max(budget.get("min_vram_per_experiment", 0), budget.get("initial_vram_per_experiment", 0))
+        reserve = gpu_memory_reserve_mib(budget, workload)
+        review["gpu"]["memory_budget"] = {
+            "workload_floor_mib": budget.get("min_vram_per_experiment", 0),
+            "initial_workload_mib": workload,
+            "reserve_floor_mib": gpu_memory_reserve_mib(budget, 0),
+            "reserve_percent": budget.get("gpu_vram_reserve_percent", 0),
+            "initial_reserve_mib": reserve,
+            "initial_request_required_free_mib": workload + reserve,
+        }
         if args.gpu_pool_socket is not None:
             if getattr(args, "managed_pool", False):
                 from . import managed_gpu_pool
@@ -340,10 +351,11 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
 
 
 def _pool_arguments(args, repository: Path, contract: dict):
+    from .compute_resources import gpu_memory_reserve_mib
     return argparse.Namespace(repository=str(repository),
         pool_root=str(repository / ".local/gpu-pools/shared"), socket_path=args.gpu_pool_socket,
         member=[f"{os.geteuid()}=" + ",".join(sorted(args.pool_device_uuid or args.gpu_device_uuid or ()))],
-        reserve_mib=args.pool_reserve_mib if args.pool_reserve_mib is not None else contract["budget"].get("gpu_vram_reserve_mb", 0),
+        reserve_mib=args.pool_reserve_mib if args.pool_reserve_mib is not None else gpu_memory_reserve_mib(contract["budget"], 0),
         ready_timeout=min(args.ready_timeout, 60), reviewed_action=args.pool_action)
 
 
@@ -360,7 +372,11 @@ def _external_pool_review(args, selected, review):
             "status": "blocked", "code": exc.code, "reason": str(exc), "start_ready": False}
     else:
         review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
-            "status": "compatible", "capabilities": snapshot.get("capabilities", []), "start_ready": True}
+            "status": "compatible", "capabilities": snapshot.get("capabilities", []), "start_ready": True,
+            "device_reserves": [{"gpu_uuid": device["gpu_uuid"],
+                "pool_reserve_memory_mib": device.get("pool_reserve_memory_mib"),
+                "reserve_memory_mib": device.get("reserve_memory_mib")}
+                for device in snapshot["devices"] if device["gpu_uuid"] in {gpu.uuid for gpu in selected.gpus}]}
 
 
 def _launch_commands(args, repository, report, review, python, state, request_id, real):

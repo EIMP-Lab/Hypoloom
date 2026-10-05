@@ -161,7 +161,7 @@ does not require termination or prove goal success; continue useful local work
 or submit a complete GOAL experiment against the accepted common evaluator.
 For
 `DRAFT_EXPERIMENT_SPEC`, the Host renders one packaged, role-parameterized
-`experiment-resource-planning/5` compatibility guidance (not a callable native
+`experiment-resource-planning/6` compatibility guidance (not a callable native
 Skill; use the request-bound plugin's advertised entrypoint) and one bounded
 `resource-experience/1` summary as advisory inputs. For that component's bounded
 preflight `ANSWER_RENDEZVOUS`, the Host performs allow-listed deterministic
@@ -190,7 +190,14 @@ and uses the maximum of Profile floor, estimate and measured/OOM lower bound wit
 headroom for real admission. An optional Profile `initial_vram_per_experiment`
 also remains binding until a comparable CLOSED Process has SUCCEEDED with
 complete attributed samples. The next submission may then decrease its estimate
-without changing the Profile minimum or device reserve. Missing estimates use
+without changing the Profile minimum or reserve policy. With a positive
+`gpu_vram_reserve_percent`, the Host computes device reserve from the final
+admitted workload, at least 512 MiB and the configured absolute floor, rounded
+up to 64 MiB. New templates use 5%; omitted/zero retains a fixed reserve. Actual
+OOM growth raises the comparable workload and proportional reserve; protection
+cancellation, external pressure and script errors are not OOM. Keep same-run
+FIFO and use existing wait/handoff rather than resubmitting to jump the queue.
+Missing estimates use
 the initial value (or floor when absent) and stay unestimated; partial samples
 stay unknown. Never use another run's private research or device deltas as own use.
 Only SELF_EVOLVE's writable native plugin can update stable resource strategy;

@@ -693,6 +693,51 @@ def test_browser_host_absence_dispatch_pause_and_terminal_labels(browser):
     page.wait("document.querySelector('#run-state').textContent === 'CANCELLED'")
 
 
+def test_browser_run_hud_uses_observed_totals_without_reserves_or_filtering(browser, tmp_path):
+    page = browser
+    assert page.text('#run-tokens') == '—'
+    # A compact lower bound must never round upward past known consumption.
+    for reported, label in ((1559, '≥1.55K'), (2559000, '≥2.55M'), (999999, '≥999.99K')):
+        page.evaluate(f"fixture.snapshot.overview.accounting={{reported_tokens:{reported},observed_unsettled_tokens:0}}")
+        page.wait(f"document.querySelector('#run-tokens').textContent === '{label}'")
+    page.evaluate("""Object.assign(fixture.snapshot.overview, {
+      elapsed_seconds: 90061,
+      accounting: {reported_tokens: 2500000, observed_unsettled_tokens: 50000,
+        reserved_tokens: 9000000, failed_reported_tokens: 400000, unknown_closed_attempts: 1}
+    })""")
+    page.wait("document.querySelector('#run-tokens').textContent === '≥2.55M'")
+    assert page.text('#run-elapsed') == '1d 1h'
+    assert '2500000 reported + 50000' in page.evaluate("document.querySelector('#run-tokens').title")
+    page.evaluate("document.querySelector('#filter-search').value='no matching expert'; document.querySelector('#filter-search').dispatchEvent(new Event('input'))")
+    for language in ('zh-CN', 'en'):
+        page.click('#language-toggle')
+        page.wait(f"document.documentElement.lang === '{language}'")
+        assert page.text('#run-tokens') == '≥2.55M'
+        assert page.text('#run-elapsed') == '1d 1h'
+        assert page.evaluate("document.querySelector('#run-elapsed').previousElementSibling.textContent") == ('已运行' if language == 'zh-CN' else 'ELAPSED')
+        for width in (1440, 768, 390, 320):
+            page.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 1000,
+                'deviceScaleFactor': 1, 'mobile': False})
+            assert page.evaluate("['run-elapsed','run-tokens'].every(id => { const e=document.getElementById(id),r=e.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth && e.scrollWidth<=e.clientWidth; })")
+            if width in (1440, 390):
+                page.screenshot(tmp_path / f'hud-{language}-{width}.png')
+    # The backend's elapsed observation remains frozen for a terminal run.
+    page.evaluate("fixture.snapshot.status.run_state='COMPLETED'; fixture.snapshot.overview.elapsed_seconds=90062; fixture.snapshot.overview.accounting={reported_tokens:2550000,observed_unsettled_tokens:0}")
+    page.wait("document.querySelector('#run-state').textContent === 'COMPLETED'")
+    assert page.text('#run-tokens') == '≥2.55M'  # Settlement does not double count.
+    page.evaluate("window.fixtureError=true")
+    page.wait("document.querySelector('#connection').dataset.state === 'stale'")
+    assert page.text('#run-elapsed') == '1d 1h'
+    assert page.text('#run-tokens') == '≥2.55M'
+    page.evaluate("window.fixtureError=false; fixture.snapshot.overview.elapsed_seconds=null; fixture.snapshot.overview.accounting={}")
+    page.wait("document.querySelector('#connection').dataset.state === 'live' && document.querySelector('#run-tokens').textContent === '—'")
+    assert page.text('#run-elapsed') == '—'
+    page.evaluate("fixture.snapshot.overview.elapsed_seconds=0; fixture.snapshot.overview.accounting={reported_tokens:0,observed_unsettled_tokens:0}")
+    page.wait("document.querySelector('#run-tokens').textContent === '≥0'")
+    assert page.text('#run-elapsed') == '0.0s'
+    assert page.evaluate("fixtureRequests.every(item=>item[0]==='GET')")
+
+
 def test_browser_resource_wait_explains_budget_and_does_not_invent_measurement(browser, tmp_path):
     page = browser
     page.evaluate("fixture.snapshot.status_source='sqlite+resident-host-status'")

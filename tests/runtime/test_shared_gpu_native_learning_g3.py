@@ -240,7 +240,7 @@ def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_pa
             host.initialize()
             payload = _pilot_payload(trial, Path(mount), run_id)
             payload["research_contract"]["budget"].update(min_vram_per_experiment=1024,
-                initial_vram_per_experiment=8192, gpu_vram_reserve_mb=4096)
+                initial_vram_per_experiment=8192, gpu_vram_reserve_mb=512, gpu_vram_reserve_percent=5)
             created = host.handle(ControlRequest(schema_version=1, request_id="create-native-learning", expected_revision=0,
                 command="CREATE_RUN", payload=payload))
             assert created.status == "accepted", created

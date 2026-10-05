@@ -1,5 +1,8 @@
 # Development memory index
 
+- [Combined GPU, observer and tutorial integration](../qualification.md#gpu-reserve-observer-and-tutorial-integration-2026-10-05):
+  current-source integration checks and compact token lower-bound rounding repair.
+
 - [Independent search, optional routing and accounting](../qualification.md#independent-search-optional-routing-and-accounting-2026-10-05):
   bounded Crossref keyword fallback, exact-domain private proxy configuration,
   truthful primary/backup observations, corroborated CC fallback usage and G1
@@ -16,6 +19,30 @@
   early challenge closure, preserved direct/fallback reasons, per-locator pacing,
   init/runtime cooldown reuse and optional private S2 credentials. Native
   challenge/429/arXiv/reader/CPU closure; [configuration](../../config/README.md).
+
+- [Literature proxy comparison](../qualification.md#literature-proxy-comparison-2026-10-05):
+  distinguish existing Clash DIRECT rules from a real-node comparison; verified
+  IEEE OA improvement supports optional per-domain routing, not universal access.
+  Full request evidence stays in `.local/analysis/literature-proxy-20261005/`.
+  [Endpoint diagnosis](../qualification.md#publisher-challenge-and-semantic-scholar-diagnosis-2026-10-05)
+  distinguishes explicit Cloudflare challenges from anonymous S2 API quota;
+  identifies dropped headers and init/runtime cooldown differences without
+  claiming a publisher-access repair.
+
+- [Telegram server proxy setup](../guides/notifications.md#server-side-clash-proxy--服务器-clash-代理):
+  explicit HTTP CONNECT endpoint before init, TLS/access/delivery distinctions,
+  and existing-run proxy binding/retry limits. Local network diagnosis remains in
+  `.local/analysis/telegram-20261005/` without public credentials or recipient data.
+
+- [Web run summary counters](../qualification.md#web-run-summary-counters-2026-10-05):
+  elapsed wall time and observed token totals in the header, using the existing
+  all-run summary; reservations excluded, missing/stale values preserved.
+
+- [Workload-relative GPU reserve](../design/gpu-capacity-and-resource-replanning.md#8-按工作负载保留显存2026-10-05):
+  optional percentage, fixed-policy compatibility, shared resolver and accepted
+  request protection; FIFO and higher pool floors retained. [Guide](../guides/gpu-resource-planning.md#device-reserve)
+  and [validation](../qualification.md#workload-relative-gpu-reserve-2026-10-05)
+  cover scoped OOM feedback, native Skill evolution and isolated installation.
 
 - [Observer language switch](../qualification.md#observer-language-switch-2026-10-05):
   shared English/Chinese catalog, independent observer preferences, preserved

@@ -19,10 +19,30 @@ from typing import Any
 from .domain import ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, validate_physical_gpu_uuid
 
 
-COMPUTE_RESOURCES_VERSION = "local-compute/7"
+COMPUTE_RESOURCES_VERSION = "local-compute/8"
 COMPUTE_CAPABILITIES_SCHEMA_VERSION = 3
 COMPUTE_CAPABILITIES_MEDIA_TYPE = "application/json"
 _MIB = 1024 * 1024
+
+
+def gpu_memory_reserve_mib(budget: Mapping[str, Any], workload_memory_mib: int) -> int:
+    """Resolve the per-device reserve from an admitted workload, never live free VRAM.
+
+    Missing/zero percent preserves the historical absolute reserve exactly.
+    A positive percent uses at least 512 MiB and rounds upward to 64 MiB.
+    The pool may independently require a larger shared device floor.
+    """
+    floor = budget.get("gpu_vram_reserve_mb", 0)
+    percent = budget.get("gpu_vram_reserve_percent", 0)
+    if type(floor) is not int or floor < 0:
+        raise ValueError("budget.gpu_vram_reserve_mb must be a nonnegative integer")
+    if type(percent) is not int or not 0 <= percent <= 100:
+        raise ValueError("budget.gpu_vram_reserve_percent must be an integer from 0 to 100")
+    if type(workload_memory_mib) is not int or workload_memory_mib < 0:
+        raise ValueError("workload_memory_mib must be a nonnegative integer")
+    if not percent:
+        return floor
+    return ((max(512, floor, (workload_memory_mib * percent + 99) // 100) + 63) // 64) * 64
 
 
 class ComputeResourceError(RuntimeError):
@@ -1042,6 +1062,7 @@ __all__ = [
     "GpuPressureTracker",
     "GpuRuntimeObservation",
     "LocalComputeResources",
+    "gpu_memory_reserve_mib",
     "gpu_pressure_attribution",
     "gpu_pressure_payload",
     "observe_authorized_gpu_memory",

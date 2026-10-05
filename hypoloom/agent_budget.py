@@ -21,6 +21,7 @@ from .agent_context import (
     candidate_failure_retryable,
 )
 from .provider_observation import PROVIDER_UNAVAILABLE
+from .compute_resources import gpu_memory_reserve_mib
 
 
 PROFILE_BUDGET_FIELDS = frozenset({
@@ -28,7 +29,7 @@ PROFILE_BUDGET_FIELDS = frozenset({
     "max_experiments", "max_papers", "experiment_timeout", "max_retries",
     "max_infrastructure_retries", "max_process_lost_retries",
     "max_active_hypotheses", "min_vram_per_experiment",
-    "gpu_vram_reserve_mb", "initial_vram_per_experiment", "max_turns",
+    "gpu_vram_reserve_mb", "gpu_vram_reserve_percent", "initial_vram_per_experiment", "max_turns",
     "total_budget_usd", "per_expert_budget_usd", "max_active_agents",
     "max_active_processes", "max_active_reviews", "provider_auth_cooldown_seconds",
 })
@@ -322,6 +323,7 @@ def validate_new_run_budget(document: Mapping[str, Any], fallback: AgentBudget) 
     if unknown:
         raise ValueError(f"budget has unknown fields: {sorted(unknown)!r}")
     validate_initial_vram_budget(budget)
+    gpu_memory_reserve_mib(budget, 0)
     if not isinstance(budget["agent_invocation"], Mapping):
         raise ValueError("new runs require budget.agent_invocation to be an object")
     if "token_enforcement_mode" not in budget["agent_invocation"]:

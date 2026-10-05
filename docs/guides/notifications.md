@@ -78,6 +78,103 @@ webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出
 旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
 源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。
 
+## Server-side Clash proxy / 服务器 Clash 代理
+
+When the Linux server cannot connect directly to Telegram, configure an explicit
+notification proxy **before a new init**. Clash/Mihomo must run on the server
+under an appropriate account and stay available for unattended notifications.
+Here `127.0.0.1` means the server running Hypoloom, not the Windows client.
+Notifications do not inherit model/browser proxy settings or automatically use
+`HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`.
+
+中文：服务器无法直连 Telegram 时，在**新 init 前**配置专用通知代理。
+Clash/Mihomo 应运行在 Linux 服务器上，并保持后台可用；这里的 `127.0.0.1`
+指 Hypoloom 所在服务器，不是 Windows 客户端。通知不会自动采用模型、浏览器
+的代理，也不会自动读取 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`。
+
+Check Clash's `port` (HTTP) or `mixed-port` (HTTP supported), then confirm the
+listener. A `socks-port` alone is not supported by this notification transport.
+The example below uses HTTP port **7891**; replace it with your actual port.
+The proxy URL must be an HTTP origin without credentials, path or query.
+
+中文：先确认 Clash 的 `port`（HTTP）或支持 HTTP 的 `mixed-port`，再检查监听。
+通知传输不支持仅提供 SOCKS 的 `socks-port`。以下以 **7891** 为例，必须替换为
+自己的实际 HTTP 端口；这不是项目固定端口。代理 URL 不携带账号、密码、路径或查询参数。
+
+```bash
+ss -ltnp 'sport = :7891'
+```
+
+Run this optional connection check on the server in the configured Python
+environment. It opens an HTTP CONNECT tunnel and verifies Telegram's TLS
+certificate; it uses no Bot credentials and sends no Telegram message.
+A listening local port alone does not establish that Telegram is reachable.
+
+中文：可在服务器的项目 Python 环境执行以下连接检查。它验证代理到 Telegram
+的隧道和 TLS 证书，不使用 Bot 凭据、不发送消息；仅看到本地端口监听不足以证明连通。
+
+```bash
+python - <<'PY'
+import http.client
+
+connection = http.client.HTTPSConnection("127.0.0.1", 7891, timeout=8)
+connection.set_tunnel("api.telegram.org", 443)
+try:
+    connection.connect()
+    print("Telegram CONNECT + verified TLS succeeded; no message sent")
+finally:
+    connection.close()
+PY
+```
+
+Add this **top-level** field to the existing private `notify.yaml`, alongside
+`sinks` and `events`; preserve those sections and keep file permissions at 0600:
+
+中文：在现有私有 `notify.yaml` 的**顶层**添加，与 `sinks`、`events` 同级；
+保留原有通知配置和 0600 权限：
+
+```yaml
+proxy_url: "http://127.0.0.1:7891"
+```
+
+Start a new init after saving. Preflight validates this configuration without
+connecting; it still reports delivery as unverified. The connection check above
+proves network access only. `--test` below separately checks Bot authentication
+and recipient access; `--send-test` additionally sends a message.
+
+中文：保存后再开始新 init。预检只验证配置，不实际连接，因此仍显示投递未验证。
+上面的检查只证明网络可达；下节的 `--test` 另行验证 Bot 认证与接收对象，
+`--send-test` 才会额外发送测试消息。
+
+**Existing runs:** the notification service caches its proxy when it starts.
+TUI **n**, Web **Retry Telegram delivery** and `--retry` clear delivery backoff;
+they do not reload or change the proxy. Adding `proxy_url` after a run was created
+without it also does not add that binding to the admitted run configuration.
+Restore the original network route for automatic recovery, or arrange an explicit
+same-version Host recovery with the required proxy startup option and the same
+notification output directory. Do not create a second sender to work around this:
+concurrent senders can duplicate messages. Preserve the existing delivery cursors.
+
+中文：**已有运行**的通知服务在启动时缓存代理。TUI **n**、Web 的重试按钮及
+`--retry` 只解除投递退避，不重载或切换代理。若创建运行时未配置代理，事后新增
+`proxy_url` 也不会改变已准入的配置绑定。恢复原网络路径后可自动重试；需要更换
+代理时，应单独安排使用原运行版本、指定代理启动参数并保留通知输出目录的 Host
+恢复操作。不要另开第二个发送进程来绕过这一限制，以免重复消息；保留原投递游标。
+
+For an existing run **without a Profile proxy binding**, an explicitly requested
+access check can use a one-command environment variable. This tests the selected
+proxy without sending a message or installing it in the running Host:
+
+中文：对于**尚未绑定 Profile 代理**的已有运行，可主动执行以下独立认证检查。
+变量只用于这一次命令；不会发送消息，也不会给正在运行的 Host 安装代理。
+已绑定 Profile 代理时，使用下节不带 `--proxy-env` 的检查，不能混用两种来源。
+
+```bash
+HYPOLOOM_NOTIFY_PROXY=http://127.0.0.1:7891 hypoloom notify \
+  --state-root /absolute/state/run --run-id RUN_ID \
+  --proxy-env HYPOLOOM_NOTIFY_PROXY --test
+```
+
 
 ## Delivery health and recovery / 投递状态与恢复
 
@@ -94,8 +191,9 @@ hypoloom notify --state-root /absolute/state/run --run-id RUN_ID --retry
 `--test` checks Telegram Bot authentication and recipient access. `--send-test`
 additionally sends one message; API acceptance does not prove the human read it.
 Neither operation replays research events or changes a delivery cursor. `--retry`
-asks the live managed Host to retry Telegram after repairing the selected private
-Profile credentials/connection. These modes need no `--output-root`. Ordinary
+asks the live managed Host to retry Telegram after repairing its already-bound
+credential source or network route. It does not reload proxy settings (see above).
+These modes need no `--output-root`. Ordinary
 standalone delivery still requires a separate explicit output directory.
 
 Web and TUI show sink state, pending event count, last successful delivery in this
@@ -103,6 +201,12 @@ Host lifetime, safe failure class/phase and next retry time. Unknown/unavailable
 Host contact is never a healthy channel. TUI **n** opens the Telegram retry form;
 the scoped Web operator link includes **Retry Telegram delivery**. Notification
 failures stay separate from scientific acceptance and model API recovery.
+
+If the failure phase is `connect` with `timeout` or `network_unreachable` and
+no HTTP status, first check the server's network route and selected proxy.
+No Telegram API response has been received, so this is not evidence of an invalid
+Bot token or recipient. A successful TLS check still needs the separate access
+check before authentication or recipient permissions can be considered verified.
 
 Temporary errors back off 30, 60, 120, 240, then at most 300 seconds. A longer
 server Retry-After is respected. Authentication, recipient/permission and TLS
@@ -129,8 +233,13 @@ observing actual retrieval success do. See [API recovery](provider-recovery.md).
 中文：**开启通知不代表已验证投递成功**。init 只检查配置，明确显示未验证；
 `--test` 检查 Bot 认证和接收对象，`--send-test` 另发一条标注测试用途的消息。
 这两项不补发历史通知、不改投递游标；接口接受消息也不代表用户已经阅读。
-修复原 Profile 凭据或连接后，可执行 `--retry`，或使用 TUI **n** 和 Web 的
-**Retry Telegram delivery**。以上模式无需输出目录；普通独立投递仍要求指定目录。
+修复已绑定的凭据来源或网络路径后，可执行 `--retry`，或使用 TUI **n** 和 Web 的
+**Retry Telegram delivery**；这些操作不重载代理配置，见上节。以上模式无需输出目录；
+普通独立投递仍要求指定目录。
+
+若失败阶段为 `connect`，错误为 `timeout` 或 `network_unreachable` 且没有 HTTP
+状态码，先排查服务器网络路径和选定代理。这时尚未收到 Telegram API 响应，不能
+据此判断 Bot token 或接收对象无效；TLS 检查通过后，仍需单独验证认证和接收权限。
 
 Web/TUI 显示待投递数量、本次 Host 生命周期内最近成功时间、失败类别/阶段和
 下次重试时间。Host 不可达时状态为未知。暂时性错误按 30/60/120/240/300 秒退避，

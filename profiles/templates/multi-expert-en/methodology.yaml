@@ -36,6 +36,8 @@ memory:
   max_memory_bytes: 8388608
   max_plugin_bytes: 1048576
 budget:
+  gpu_vram_reserve_mb: 512  # Absolute per-device floor; GPU use also needs a workload floor.
+  gpu_vram_reserve_percent: 5  # Percentage of the admitted workload, rounded up to 64 MiB.
   total_budget_usd: 45
   per_expert_budget_usd: 15
   wallclock_hours: 6

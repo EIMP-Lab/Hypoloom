@@ -754,7 +754,7 @@ def test_current_user_docs_route_real_agent_auth_contract_by_role() -> None:
             assert field in text, (relative, field)
     skill = _normalized(_skill("autoresearch"))
     assert "docs/qualification.md" in skill
-    assert "experiment-resource-planning/5" in skill
+    assert "experiment-resource-planning/6" in skill
     assert "unknown charges retain reservations" in skill
 
 

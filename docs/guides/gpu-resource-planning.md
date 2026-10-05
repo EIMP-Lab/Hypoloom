@@ -18,7 +18,7 @@ require no unresolved dependencies. See [initialization](initialization.md).
 The Host admits the maximum of the Profile floor, the Agent's estimate, the
 comparable measured budget and any observed OOM budget bound. An optional
 `initial_vram_per_experiment` remains until suitable successful measurements
-exist. Device `gpu_vram_reserve_mb` is separate: the pool charges the maximum
+exist. Device reserve is separate: the pool charges the maximum
 required reserve once per device, not once per experiment. Agent estimates
 already include their uncertainty; they are not multiplied again by the Host.
 
@@ -38,6 +38,40 @@ cover model, data/shapes, precision, batch and execution phases. A successful
 Process is evidence of execution, not proof that the scientific goal was met.
 The percentages are engineering policy, not measured universal optima.
 
+### Device reserve
+
+New templates use these settings under `methodology.yaml` → `budget`:
+
+```yaml
+gpu_vram_reserve_mb: 512
+gpu_vram_reserve_percent: 5
+```
+
+For a positive percentage, reserve is the greatest of 512 MiB, the configured
+absolute floor and that percentage of the **admitted per-device workload**,
+rounded up to 64 MiB. A 12,288 MiB workload reserves 640 MiB; a 19,456 MiB
+workload reserves 1,024 MiB. GPU use also requires a positive
+`min_vram_per_experiment` chosen for the workload. On nonpooled fixed-grant runs,
+that floor is the workload budget. An omitted or zero percentage preserves the
+old fixed reserve exactly. Adopting an existing Profile does not rewrite it.
+
+The reserve does not replace workload estimation headroom. The Host uses the
+resolved reserve for preview, admission and sustained-pressure protection;
+accepted requests keep their values. On pooled runs, after an actual OOM, the next comparable
+submission's existing 25% budget increase also increases proportional reserve.
+Script errors, protective cancellation and external occupancy are not OOM.
+Experts retain scoped lessons through repair, CYCLE_REPORT and SELF_EVOLVE;
+they cannot change the operator's reserve policy or accepted requests.
+
+The pool's floor remains binding for admission. A reused pool with a 4 GiB floor
+still reserves at least 4 GiB, even for a 5% request. Init shows the actual pool
+floor alongside the starting budget; `get_resources` exposes request reserve
+in `budget_preview` and effective admission reserve in `capacity_preview`.
+Runtime pressure protection uses the accepted request's reserve; a larger pool
+floor controls admission without rewriting that request. Change an idle pool
+only through its reviewed reconfiguration flow. An active pool and old runs
+are not silently updated.
+
 ## Preview and waiting
 
 `get_resources` still accepts an empty object. In ACI 27 it also accepts an
@@ -46,6 +80,8 @@ optional positive `gpus` count. The response includes `budget_preview` and
 `capacity_preview`: submitted and measured amounts, selected margin, OOM bound,
 sharing mode, per-device capacity and shortfall. This is read-only and does not
 reserve capacity. Submission validates again and captures its own evidence.
+Same-run FIFO is retained: a smaller request may wait behind a larger one even
+when it would fit. Do not shrink declared requirements merely to jump the queue.
 
 The Web/TUI resource panel distinguishes:
 
@@ -75,7 +111,7 @@ pool deployment separately from ongoing research. Do not migrate accepted runs.
 Exclusive means exclusive among pool commitments; external GPU users remain
 outside that scheduler, with the existing live-pressure protections retained.
 
-This change does not lower device reserves, enlarge GPU authorization, move live
+This change does not alter existing reserves, enlarge GPU authorization, move live
 processes, automatically change scientific hyperparameters or combine missing
 seed results. See [qualification](../qualification.md) for actual test scope;
 synthetic-device regressions do not establish CUDA OOM rates or model quality.

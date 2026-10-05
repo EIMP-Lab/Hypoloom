@@ -190,6 +190,8 @@ def validate_gpu_pool_budget(contract: Mapping[str, Any], *, pooled: bool) -> No
     budget = contract["budget"]
     if pooled and int(budget.get("min_vram_per_experiment", 0)) <= 0:
         raise ValueError("shared GPU admission requires a positive min_vram_per_experiment workload floor")
+    if budget.get("gpu_vram_reserve_percent", 0) and int(budget.get("min_vram_per_experiment", 0)) <= 0:
+        raise ValueError("percentage GPU reserve requires a positive min_vram_per_experiment workload floor")
     if not pooled and "initial_vram_per_experiment" in budget:
         raise ValueError("initial_vram_per_experiment requires an explicitly configured shared GPU pool; "
                          "configure the pool or omit the initial setting for fixed-grant GPU execution")

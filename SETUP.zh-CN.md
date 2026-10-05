@@ -22,6 +22,11 @@ init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默
 
 实际模型优先级、Profile 集中预算和托管通知凭据见[初始化指南](docs/guides/initialization.zh-CN.md)。
 
+服务器需要通过 Clash/Mihomo 访问 Telegram 时，在新 init 前填写私有
+`notify.yaml` 顶层的 `proxy_url`，使用服务器实际的 HTTP CONNECT 端口。
+通知不会自动继承其他代理；操作与已有运行的生效限制见
+[服务器代理配置](docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理)。
+
 Windows 机构客户端首次接入或换机时，先完成
 [用户级 SSH 密钥与免交互登录配置](docs/guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)，
 再运行连接脚本的 `Setup`；只有密码登录可用还不够。

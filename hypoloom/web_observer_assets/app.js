@@ -247,6 +247,7 @@
     const seconds = Math.max(0, end - startedAt);
     if (seconds < 60) return `${seconds.toFixed(1)}s`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+    if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   }
 
@@ -566,6 +567,21 @@
     const status = object(snapshot.status);
     const oracle = object(snapshot.oracle);
     setText("run-id", snapshot.run_id);
+    const overview = object(snapshot.overview || state.product?.summary);
+    const elapsed = overview.elapsed_seconds;
+    setText("run-elapsed", Number.isFinite(elapsed) && elapsed >= 0 ? formatDuration(0, elapsed) : "—");
+    byId("run-elapsed").title = t("Elapsed wall time through the latest observation, including waiting. Stops when the run ends.");
+    const accounting = object(overview.accounting);
+    const reported = accounting.reported_tokens;
+    const unsettled = accounting.observed_unsettled_tokens;
+    const hasReported = Number.isFinite(reported) && reported >= 0;
+    const hasUnsettled = Number.isFinite(unsettled) && unsettled >= 0;
+    const hasTokens = hasReported || hasUnsettled;
+    // The summary owns these disjoint totals; never add reserves or retry subsets.
+    setText("run-tokens", hasTokens ? `≥${compactNumber((hasReported ? reported : 0) + (hasUnsettled ? unsettled : 0), true)}` : "—");
+    byId("run-tokens").title = hasTokens
+      ? t("Observed token lower bound: {0} reported + {1} from unsettled calls. Reservations are excluded; missing usage remains unknown.", hasReported ? reported : "?", hasUnsettled ? unsettled : "?")
+      : t("Token usage observation unavailable.");
     const hostObservation = object(object(state.snapshot && state.snapshot.overview).host_observation);
     const active = !["COMPLETED", "CANCELLED", "FAILED"].includes(status.run_state);
     const hostAbsent = active && hostObservation.availability === "absent";
@@ -1076,18 +1092,25 @@
 
   const EXPERT_STAGES = () => ([
     ["LITERATURE_REVIEW", "LIT", t("Literature review")], ["HYPOTHESIS_PROPOSAL", "HYP", t("Hypothesis proposal")],
-    ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", t("RUN"), t("Experiment execution")],
+    ["EXPERIMENT_DESIGN_IMPLEMENT", "DES", "Design / implementation"], ["EXPERIMENT_EXECUTION", "RUN", t("Experiment execution")],
     ["RESULT_ANALYSIS", "ANA", t("Result analysis")], ["HYPOTHESIS_UPDATE", "UPD", t("Hypothesis update")],
     ["CYCLE_REPORT", "REP", t("Cycle report")], ["ADJUDICATE", "JDG", "Adjudication"], ["SELF_EVOLVE", "EVO", "Self-evolution"],
     ["DEBATE", "DEB", t("Debate round")], ["DEBATE_JUDGE", "JUD", t("Debate judge")], ["LEADER", "LEAD", t("Leader advice")],
   ]);
 
-  function compactNumber(value) {
+  function compactNumber(value, lowerBound = false) {
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "?";
     let amount = value;
+    let divisor = 1;
     for (const suffix of ["", "K", "M", "B", "T"]) {
-      if (amount < 999.995 || suffix === "T") return `${Number(amount.toFixed(2))}${suffix}`;
+      if (amount < (lowerBound ? 1000 : 999.995) || suffix === "T") {
+        // Divide the original count before truncating to avoid floating-point
+        // loss from rescaling an already rounded decimal (for example 2.55M).
+        const displayed = lowerBound ? Math.floor(value / (divisor / 100)) / 100 : Number(amount.toFixed(2));
+        return `${displayed}${suffix}`;
+      }
       amount /= 1000;
+      divisor *= 1000;
     }
     return "?";
   }

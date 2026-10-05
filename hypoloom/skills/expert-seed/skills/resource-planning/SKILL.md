@@ -52,6 +52,17 @@ evidence for lowering it. Include successful measurement IDs and explain any
 reduction in `basis`; keep workload labels accurate when model/batch/shapes change.
 For retained nonpooled contracts, the Host's fixed-grant rules still apply.
 
+New templates separate a 512 MiB device reserve floor from a 5% reserve of the
+final admitted workload budget (rounded up to 64 MiB). Larger Profile/pool floors
+still apply; an omitted/zero `gpu_vram_reserve_percent` retains the fixed reserve.
+The Host computes this value; do not include it again in `peak_memory_mib` or
+remove workload uncertainty headroom. Real OOM raises the next comparable budget
+by at least 25%, which also grows proportional reserve. Script errors, protective
+pressure cancellation and external occupancy cannot trigger OOM learning.
+An incomplete sampled peak is only a lower bound, not a full-run maximum or a
+reason to lower a future estimate. Keep same-run FIFO and use wait/handoff;
+do not shrink declarations, churn submissions or poll repeatedly to jump ahead.
+
 For ACI27+ pooled runs, preview the exact `resource_estimate` with `get_resources`
 (and optional positive `gpus`). The same resolver reports Profile/initial floors,
 submitted and measured budgets, OOM bounds, device reserve and capacity shortfall.

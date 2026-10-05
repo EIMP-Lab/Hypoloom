@@ -31,8 +31,7 @@ from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepar
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
-from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable, gpu_pressure_attribution, gpu_pressure_payload
-from .domain import ResourceIntent
+from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable, gpu_memory_reserve_mib, gpu_pressure_attribution, gpu_pressure_payload
 from .gpu_pool import PoolError, resource_wait_message
 from .component_contract import component_execution_blockers, component_execution_plan, component_is_production
 from .measurement_contract import ScientificMeasurement, assert_frozen_measurement
@@ -40,13 +39,12 @@ from .collaboration import (ExpertSignal, ExpertSignalKind, RendezvousDispositio
 from .contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
 from .diagnostics import bounded_diagnostic_text
 from .runtime_diagnostics import record_host_exception
-from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReason, CanonicalOutcomeAccepted, ComponentId, ComponentResultKind, EvidenceId, EvidenceLinked, ExecutionId, ExperimentId, ExperimentPreregistered, FactId, GoalDefined, GoalId, GoalVerdict, GoalVerdictRecorded, HypothesisAssessed, HypothesisAssessment, HypothesisId, HypothesisProposed, ExecutionContract, LogicalArtifact, MethodFamilyId, ProducerOutcomeBinding, ResearchContract, ResourceGrant, ResourceKind, ResourcePreference, OutcomeId, RunId, RunVersion, ScientificOutcome, VerdictId, REVISIONABLE_INTEGRITY_VALIDATION_CODES)
+from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReason, CanonicalOutcomeAccepted, ComponentId, ComponentResultKind, EvidenceId, EvidenceLinked, ExecutionId, ExperimentId, ExperimentPreregistered, FactId, GoalDefined, GoalId, GoalVerdict, GoalVerdictRecorded, HypothesisAssessed, HypothesisAssessment, HypothesisId, HypothesisProposed, ExecutionContract, LogicalArtifact, MethodFamilyId, ProducerOutcomeBinding, ResearchContract, ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, OutcomeId, RunId, RunVersion, ScientificOutcome, VerdictId, REVISIONABLE_INTEGRITY_VALIDATION_CODES)
 from .fake_agent import FakeAgent, FakeAgentMode
 from .execution_workspace import (EXECUTION_WORKSPACE_VERSION, ExecutionWorkspace, ExecutionWorkspaceError, GitTargetBinding, PreparedAgentWorkspace, PreparedExecution, TargetPreparationError, bind_clean_git_target, execution_environment_contract, execution_read_root_projection, verify_downstream_implementation_contracts)
 from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, AuxiliaryTaskView, DerivedWorkState, ExpertLineage, ExpertLineageInput, HypothesisUpdateDisposition, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask, ResearchNodeView, ScientificNodeRefs, _EXPERT_NODE_ORDER, reduce_expert_lineage)
 from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batches, proposal_siblings, sibling_proposal_failed
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
-from .grounding_context import build_grounding_context_bytes
 from .lifecycle import Command, ExperimentState, Machine, RunState, WORKFLOW_DEFINITION_VERSION, validate_transition
 from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureCoverageError, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
 from .monitor import build_status_projection
@@ -64,7 +62,7 @@ _TERMINAL_RUNS = {state.value for state in (RunState.COMPLETED, RunState.FAILED,
 _VERSION_FIELDS = tuple(RunVersion.__dataclass_fields__)
 _PRESSURE_TERMINATE_GRACE_SECONDS = 30.0
 _CONFIG = {"agent_attempt_cap": 2, "agent_infrastructure_attempt_cap": 3, "process_attempt_cap": 2, "process_timeout": 10.0, "evaluator_retry_delay": 1.0}
-_RESOURCE_SKILL = Path(__file__).resolve().parent / "skills/experiment-resource-planning/SKILL.md"; _RESOURCE_SKILL_VERSION = "experiment-resource-planning/5"; _QUERY_SKILL = Path(__file__).resolve().parent / "skills/openalex-query-planning/SKILL.md"; _QUERY_SKILL_VERSION = "openalex-query-planning/6"
+_RESOURCE_SKILL = Path(__file__).resolve().parent / "skills/experiment-resource-planning/SKILL.md"; _RESOURCE_SKILL_VERSION = "experiment-resource-planning/6"; _QUERY_SKILL = Path(__file__).resolve().parent / "skills/openalex-query-planning/SKILL.md"; _QUERY_SKILL_VERSION = "openalex-query-planning/6"
 _CPU_SANDBOX_PROFILE = "bwrap-cpu-no-network/2"; _GPU_SANDBOX_PROFILE = "bwrap-gpu-single-no-network/1"
 _GPU_MULTI_SANDBOX_PROFILE = "bwrap-gpu-multi-no-network/1"
 def _grant_profile(grant: ResourceGrant | ResourceIntent) -> str:
@@ -2935,7 +2933,7 @@ class WorkflowHost:
             budget = contract.document["budget"]
             minimum = int(budget.get("min_vram_per_experiment", 0))
             if self.shared_gpu is not None: minimum = self.shared_gpu.workload_budget(request, {}, minimum)
-            try: grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only_artifact else (self.compute_resources.plan_intent if self.shared_gpu else self.compute_resources.select)(candidate.resource_preference, capabilities, min_vram_per_experiment=minimum, gpu_vram_reserve_mb=int(budget.get("gpu_vram_reserve_mb", 0)))
+            try: grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only_artifact else (self.compute_resources.plan_intent if self.shared_gpu else self.compute_resources.select)(candidate.resource_preference, capabilities, min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
             except (ResourceUnavailable, ValueError) as exc: raise AgentACIError("resource_unsatisfied", str(exc)) from exc
             if isinstance(grant, ResourceIntent): grant = self.shared_gpu.plan_intent(request, {}, grant)
             creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (request.owner_workflow_id,))
@@ -3468,7 +3466,7 @@ class WorkflowHost:
             if self.shared_gpu is not None: minimum = self.shared_gpu.workload_budget(request, arguments, minimum)
             grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only else (self.compute_resources.plan_intent if self.shared_gpu else self.compute_resources.select)(candidate.resource_preference, capabilities,
                 gpu_count=arguments.get("gpus"), max_gpus_per_experiment=safety.get("max_gpus_per_experiment", 1),
-                min_vram_per_experiment=minimum, gpu_vram_reserve_mb=int(budget.get("gpu_vram_reserve_mb", 0)))
+                min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
         except (ResourceUnavailable, ValueError) as exc: raise AgentACIError("resource_unsatisfied", str(exc)) from exc
         if isinstance(grant, ResourceIntent): grant = self.shared_gpu.plan_intent(request, arguments, grant)
         patch = self._implementation_patch(request.run_id, str(request.component_id), str(candidate.method_family_id))
@@ -3823,10 +3821,12 @@ class WorkflowHost:
         spec, contract, agent_request, agent_response, source_path, result_path, workspace, capabilities, grant = self._execution_inputs(run_id, experiment_id, actual_grant=selected)
         if pool_key is None and set(grant.device_uuids).intersection(self._busy_gpu_uuids(experiment_id)): self.resource_waits[experiment_id] = (run_id, "frozen GPU is busy in this state root"); return
         bundle_current = self._runtime_version() == self.version; budget = self._research_contract(run_id).document["budget"]
+        reserve = (contract["resource_intent"]["reserve_memory_mib"] if pool_key is not None
+                   else gpu_memory_reserve_mib(budget, int(budget.get("min_vram_per_experiment", 0))))
         if bundle_current:
             try:
                 if pool_key is not None: self.compute_resources.validate_identity(grant, capabilities)
-                else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=int(budget.get("gpu_vram_reserve_mb", 0)))
+                else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
             except ResourceUnavailable as exc: self.resource_waits[experiment_id] = (run_id, str(exc)[:512]); return
         self.resource_waits.pop(experiment_id, None)
         self._crash("before_process_intent_commit")
@@ -3874,8 +3874,8 @@ class WorkflowHost:
                 workspace.assert_component_preflight(plan=plan, target_root=target_root, control_root=control_root)
             workspace.assert_prestart_clean(prepared, agent_request=agent_request, agent_response=agent_response)
             if pool_key is not None: self.compute_resources.validate_identity(grant, capabilities)
-            else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=int(budget.get("gpu_vram_reserve_mb", 0)))
-            trackers = tuple(GpuPressureTracker(initial_observation=self.compute_resources.observe_runtime(uuid), reserve_memory_mib=int(budget.get("gpu_vram_reserve_mb", 0)), grace_seconds=self.gpu_pressure_grace_seconds) for uuid in grant.device_uuids)
+            else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
+            trackers = tuple(GpuPressureTracker(initial_observation=self.compute_resources.observe_runtime(uuid), reserve_memory_mib=reserve, grace_seconds=self.gpu_pressure_grace_seconds) for uuid in grant.device_uuids)
             if self._runtime_version() != self.version: raise ResourceUnavailable("pinned Agent/compute configuration or runtime drifted")
             handle = self._start_registered_process(prepared.process_request, pool_key=pool_key)
         except PoolError as exc:
@@ -3888,7 +3888,7 @@ class WorkflowHost:
             self.resource_waits[experiment_id] = (run_id, str(exc)[:512]); return
         except (ExecutionWorkspaceError, ResourceUnavailable, OSError, ValueError) as exc: self._close_prestart_failure(run_id, experiment_id, prepared, exc); return
         self.running[attempt_id] = handle
-        if trackers: self.gpu_pressure[attempt_id] = (trackers, int(budget.get("gpu_vram_reserve_mb", 0)), {})
+        if trackers: self.gpu_pressure[attempt_id] = (trackers, reserve, {})
         self._crash("after_spawn_before_observation")
     def _execution_inputs(self, run_id: str, experiment_id: str, *, actual_grant: ResourceGrant | None = None,
                           attempt_id: str | None = None, synthetic: bool = False) -> tuple[Any, ...]:
@@ -3954,9 +3954,9 @@ class WorkflowHost:
                 raise OperationalHalt("submitted timeout differs from preregistration")
         elif isinstance(resource, ResourceIntent):
             budget = research.document["budget"]
+            minimum = self.shared_gpu.workload_budget(typed_request, {}, int(budget.get("min_vram_per_experiment", 0)))
             expected_intent = self.compute_resources.plan_intent(preference, capabilities,
-                min_vram_per_experiment=self.shared_gpu.workload_budget(typed_request, {}, int(budget.get("min_vram_per_experiment", 0))),
-                gpu_vram_reserve_mb=int(budget.get("gpu_vram_reserve_mb", 0)))
+                min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
             expected_intent = self.shared_gpu.plan_intent(typed_request, {}, expected_intent)
             if resource != expected_intent: raise OperationalHalt("resource intent differs from its source and reviewed Profile")
         if (not isinstance(request, Mapping) or not isinstance(response, Mapping)

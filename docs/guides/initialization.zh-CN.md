@@ -168,6 +168,12 @@ sinks:
 ```
 
 可选 webhook 使用 `sinks.webhook.url`／`token`，通知代理使用 `proxy_url`。
+若服务器通过 Clash 投递 Telegram，在**新 init 之前**于 `notify.yaml` 顶层填写
+`proxy_url: "http://127.0.0.1:7891"`，端口替换为实际支持 HTTP CONNECT 的端口
+（支持 HTTP 的 `mixed-port` 也可）。这里的本机是 Linux 服务器，不是 Windows。
+通知代理独立于模型及文献代理；已有运行和 **Retry Telegram delivery** 不会热加载
+新增或修改的代理。详见[服务器 Clash 代理](notifications.md#server-side-clash-proxy--服务器-clash-代理)。
+
 含凭据文件保持 0600，并放在 Agent/实验的数据和运行环境挂载目录之外。准入剥离
 明文，只派生原 YAML 的文件引用；Host 复用既有私有读取器，不生成第二份密钥文件。
 文献密钥填写在 `methodology.yaml`，完整字段及步骤见[个人配置教程](../../config/README.md)。

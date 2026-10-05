@@ -30,6 +30,11 @@ model availability or scientific quality. Exact helper usage is in
 
 See [Initialization](docs/guides/initialization.md) for effective model precedence, unified Profile budgets and managed notification credentials.
 
+If the server needs Clash/Mihomo to reach Telegram, configure the private
+`notify.yaml` top-level `proxy_url` before a new init. Use the server's actual
+HTTP CONNECT port; notifications do not automatically inherit other proxies.
+See [server-side proxy setup and existing-run limits](docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理).
+
 For a first Windows institutional client or a replacement PC/account, complete
 [user-level SSH key and noninteractive login setup](docs/guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
 before running the connector's `Setup`; password login alone is insufficient.

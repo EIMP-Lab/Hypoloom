@@ -329,6 +329,7 @@ def test_managed_inspect_preserves_full_pool_configuration_and_run_subset(checko
     assert parsed.gpu_device_uuid == [devices[1]]
     assert parsed.gpu_pool_namespace == parsed.run_id and parsed.gpu_pool_server_uid == os.geteuid()
     assert seen[0].member == [f"{os.geteuid()}={devices[1]}"]
+    assert seen[0].reserve_mib == 512  # New template; restored pool still retains 789.
     assert bootstrap.main([value for value in argv[4:] if value != "--summary"]) == 0
     commands = json.loads(capsys.readouterr().out)["commands"]
     pool_args = managed_gpu_pool.build_parser().parse_args(commands["pool_prepare"][4:])
@@ -742,7 +743,8 @@ def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, m
     from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
     from hypoloom.gpu_pool_client import PoolClient
     monkeypatch.setattr(PoolClient, "request", lambda self, operation, arguments: {
-        "devices": [{"gpu_uuid": device} for device in devices], "capabilities": ["resource_replanning/1"]})
+        "devices": [{"gpu_uuid": device, "pool_reserve_memory_mib": 4096,
+                     "reserve_memory_mib": 4096} for device in devices], "capabilities": ["resource_replanning/1"]})
     monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=tuple(
         GpuCapability(index=i, uuid=device, name="synthetic", total_memory_mib=24000,
             free_memory_mib=12000, driver_version="synthetic") for i, device in enumerate(devices))))
@@ -753,7 +755,13 @@ def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, m
     for device in devices:
         argv += ["--gpu-device-uuid", device]
     assert bootstrap.main(argv) == 0
-    commands = json.loads(capsys.readouterr().out)["commands"]
+    result = json.loads(capsys.readouterr().out)
+    commands = result["commands"]
+    memory = result["effective_configuration"]["gpu"]["memory_budget"]
+    assert memory["reserve_percent"] == 5 and memory["initial_reserve_mib"] == 512
+    assert memory["initial_request_required_free_mib"] == 1536
+    assert all(device["pool_reserve_memory_mib"] == 4096
+               for device in result["effective_configuration"]["gpu"]["pool"]["device_reserves"])
     serve = cli_parser().parse_args(commands["host_start"][commands["host_start"].index("--") + 4:])
     assert serve.gpu_device_uuid == devices and serve.gpu_pool_namespace == "topic"
     assert serve.gpu_pool_socket == str(repo / "pool.sock")
@@ -873,10 +881,10 @@ def test_gpu_combination_is_rejected_in_preview(checkout, tmp_path, capsys, monk
     elif kind == 'selector':
         additions = [f'safety.gpus=[{other}]']
     elif kind == 'no_pool':
-        additions += ['methodology.budget.min_vram_per_experiment=1024',
-                      'methodology.budget.initial_vram_per_experiment=2048']
+        additions += ['methodology.budget.initial_vram_per_experiment=2048']
     elif kind == 'empty':
         additions = ['safety.gpus=[]']
+    additions += ['methodology.budget.min_vram_per_experiment=1024']
     argv = arguments(repo, [*overrides, *additions], 'launch')
     argv[argv.index('--cpu-only')] = '--allow-gpu'
     assert bootstrap.main([*argv, '--gpu-device-uuid', device, '--gpu-runtime-prefix', prefix]) == 2

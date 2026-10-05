@@ -206,6 +206,14 @@ sinks:
 ```
 
 Optional fields are `sinks.webhook.url` / `token` and `proxy_url`.
+If server-side Telegram delivery needs Clash, set top-level
+`proxy_url: "http://127.0.0.1:7891"` in `notify.yaml` **before a new init**,
+using the actual HTTP CONNECT port (an HTTP-capable `mixed-port` also works).
+Here loopback means the Linux server, not your Windows PC. This setting is
+independent of model and literature proxies. Existing runs and **Retry Telegram
+delivery** do not hot-load a newly added or changed proxy. See the
+[server-side Clash guide](notifications.md#server-side-clash-proxy--服务器-clash-代理).
+
 Keep populated files mode 0600 and outside Agent/experiment mounts. Admission
 strips the values and derives references to the original YAML; the Host reads
 that file with the existing private-file validator. No copied secrets or extra

@@ -64,6 +64,14 @@ TUI 与 Web 默认英文。点击工具栏的 **CN**（TUI）或 **中文**（We
 按当前地址记住主动选择，存储不可用时仅在当前页面有效。切换更新界面标签与
 说明，保留筛选、草稿和研究状态；研究正文、日志、标识与命令保持原文。
 各个观察器独立选择语言，不会影响其他用户。
+Web 专家卡片的阶段徽章保留 LIT、HYP、DES、RUN 等英文缩写，不随语言切换。
+右上角显示本运行累计时长（包含等待，满 24 小时显示为 `1d 1h` 等天/小时格式）
+和已观测 token 用量（`≥`，以 K/M/B/T
+缩写）。用量包含已报告值及未结算调用已观测值，不含预留额度，不受筛选影响；
+悬停可查看分项。数据缺失显示 `—`，断连保留最近值，时长在运行记录结束时停止累计。
+TUI 将已报告与未结算已观测 token 分开显示，两者相加后可与同一观测时刻的 Web
+顶栏比较。`≥` 表示已知用量下界，缺失部分没有可推断的误差范围，因此不使用 `≈`。
+预算条包含预留额度，不能作为消耗量比较。
 
 - **q / Leave monitor**：退出当前监控窗口，后台 Host 和任务继续。
 - **x / End run**：打开明确的取消确认；等待任务清理、最终报告和托管 Host 退出。
@@ -75,7 +83,8 @@ TUI 与 Web 默认英文。点击工具栏的 **CN**（TUI）或 **中文**（We
   [运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
 
 - **l / Literature retry**：修复后重试 OpenAlex，与模型 API 恢复分开。
-- **n / Telegram retry**：检查并重试托管通知；认证检查和显式测试消息见[通知指南](docs/guides/notifications.md)。
+- **n / Telegram retry**：按当前代理重试托管通知，不重载代理配置；代理设置、认证检查
+  和显式测试消息见[通知指南](docs/guides/notifications.md)。
 
 Web / local access 位于独立的连接信息区域。启动 Web observer：
 
@@ -252,7 +261,7 @@ Git 提交。树外链接等不兼容问题会在研究启动前报出。准入�
 恢复所需的私有模型设置单独提供，不进入备份。不要将恢复解释为当前工作树接管旧运行，
 也不要覆盖已有状态根。具体参数见 `hypoloom backup --help` 和 `hypoloom restore --help`。
 
-通知配置见 [notifications](docs/guides/notifications.md)(英文)。新的昂贵课题运行前，核对
+通知配置见[通知指南（中英双语）](docs/guides/notifications.md)。新的昂贵课题运行前，核对
 [资格状态与验收规则](docs/qualification.zh-CN.md)。
 
 ### 阅读科研进展和 token 用量

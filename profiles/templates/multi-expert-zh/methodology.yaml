@@ -36,6 +36,8 @@ memory:
   max_memory_bytes: 8388608
   max_plugin_bytes: 1048576
 budget:
+  gpu_vram_reserve_mb: 512  # 每卡绝对保留量下限；启用 GPU 时还须配置工作负载下限。
+  gpu_vram_reserve_percent: 5  # 已核定工作负载的百分比，向上取整到 64 MiB。
   total_budget_usd: 45
   per_expert_budget_usd: 15
   wallclock_hours: 6

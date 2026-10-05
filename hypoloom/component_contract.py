@@ -25,6 +25,7 @@ from .agent_budget import (
     ROLE_BUDGET_FIELDS,
 )
 from .contract_normalization import normalize_experiment_isolation
+from .compute_resources import gpu_memory_reserve_mib
 from .domain import MetricDirection, MetricSpec, normalize_metric_value
 from .profile_language import validate_profile_language_policy
 
@@ -1010,6 +1011,10 @@ class _Compiler:
         if value is None:
             return {}
         self.unknown(value, _BUDGET_FIELDS, location)
+        try:
+            gpu_memory_reserve_mib(value, 0)
+        except ValueError as exc:
+            self.block("contract_invalid_value", location, str(exc))
         try:
             validate_initial_vram_budget(value)
         except ValueError as exc:

@@ -190,6 +190,212 @@ Windows/SSO, GPU or long-duration service guarantee is claimed. Existing runs,
 client/browser, local secrets and Clash configuration remain unchanged. The
 candidate is developed separately from pre-existing GPU/Web/Telegram edits.
 
+## Literature proxy comparison (2026-10-05)
+
+Evidence: `.local/analysis/literature-proxy-20261005/`. The operator requests
+testing whether the existing server Clash improves literature retrieval.
+Anonymous public requests compare explicit direct connections with the existing
+Clash HTTP listener, then with an isolated instance using its selected Shadowsocks
+node. The latter has one MATCH rule and no DIRECT fallback. Existing Clash rules,
+node selections, private Profiles, research runs and Windows browsers are unchanged.
+
+The first comparison exposes an important routing distinction: the existing
+Clash routes every tested domain except Semantic Scholar through DIRECT. Its
+public PDFs succeed 10/12 versus direct 12/12; two Google-storage TLS resets later
+recover. OpenAlex, Crossref and arXiv metadata succeed 3/3 per route. Semantic
+Scholar uses a real node but succeeds only 1/3 versus direct 0/3; other responses
+are HTTP 429 despite at least 60 seconds between rate-limited requests. No nodes
+are rotated in response to rate limits.
+
+The isolated-node comparison obtains these complete, validated responses:
+
+| Sample | Direct successes | Node successes | Median successful seconds, direct / node |
+|---|---:|---:|---:|
+| OpenAlex keyword search | 3/3 | 3/3 | 1.703 / 0.994 |
+| Crossref exact DOI | 3/3 | 3/3 | 0.758 / 0.689 |
+| arXiv API fixed ID | 3/3 | 3/3 | 0.385 / 0.557 |
+| arXiv PDF `2407.16714v1` | 3/3 | 3/3 | 1.088 / 1.939 |
+| IEEE paper, Glasgow repository copy | 3/3 | 3/3 | 3.235 / 2.613 |
+| Springer OA PDF | 3/3 | 3/3 | 4.851 / 3.446 |
+| ACM paper, author copy | 3/3 | 3/3 | 1.506 / 1.131 |
+| IEEE official OA PDF | 0/3 | 3/3 | — / 10.773 |
+| ACM publisher PDF endpoint | 0/1 | 0/1 | HTTP 403 both |
+| ScienceDirect PDF endpoint | 0/1 | 0/1 | HTTP 403 both |
+
+IEEE DOI `10.1109/ACCESS.2019.2902267` is the material availability improvement:
+direct returns 502 in three paired checks; the node retrieves 6,652,868 bytes and
+six readable pages each time. All three official PDFs are byte-identical and
+pass the existing document identity validator. This is an OA sample without
+subscriber credentials, not proof of institutional subscription access or general
+IEEE coverage. ACM/ScienceDirect remain unsuccessful; do not attribute every
+403/502 to a particular challenge system. Semantic Scholar is not probed again
+through the isolated instance because the first stage already used that node.
+
+Both comparisons use alternating route order, verified TLS, identical per-pair
+headers, explicit proxy selection and cleared proxy environment variables. PDF
+limits are five-second connect / 30-second total / 32 MiB; metadata has a
+20-second total bound. No curl retries are enabled. arXiv uses the existing
+three-second request slot. Metadata success requires the expected JSON/Atom
+records. PDF success requires full bytes, Poppler parsing and the production
+DOI-or-title identity check. Successful public-copy files are byte-identical
+across the routes. Medians cover HTTP transfer, excluding pacing/429 cooldowns.
+
+There are 106 literature request attempts across both stages and the two extra
+IEEE pairs. Detailed scripts, per-request results and summaries remain in the
+evidence directory, including the initial PDF-script import error corrected
+before network requests. The read-only route observer is stopped; both temporary
+proxy processes and their private configuration directories are removed. The
+original Clash process remains running. No production proxy support is added.
+
+Recommendation: consider optional per-domain literature proxy support, with
+IEEE public downloads as a demonstrated candidate; retain direct access as the
+default. Merely sending IEEE to the existing listener would still select DIRECT
+under current rules. Preserve existing time limits, source validation and public
+fallbacks; proxy selection does not solve rate limits, challenges or subscription
+authorization. This single-node, three-round observation does not establish
+long-term stability, automated discovery/archive closure, Windows institutional
+access or a new runtime qualification.
+
+## Publisher challenge and Semantic Scholar diagnosis (2026-10-05)
+
+Follow-up evidence remains under `.local/analysis/literature-proxy-20261005/`:
+`endpoint-diagnosis.json` reads the saved responses; `endpoint-replay.json`
+replays their bodies through the production HTTP reader with an offline socket.
+No additional publisher/Semantic Scholar API requests, credential use, production
+code edits, retained-run changes or live proxy changes are made in this follow-up.
+
+All eight saved ACM/ScienceDirect requests, including direct and actual-node
+paths, carry HTTP 403, HTML content and `Cf-Mitigated: challenge`. Cloudflare
+[documents this header as challenge evidence](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
+ACM returns a roughly 5.5 KB interstitial; ScienceDirect returns roughly 1.2 MB
+with its human-verification text starting at byte 772,888. The initial experiment's
+100 KB body-prefix classifier missed ScienceDirect, although it retained the
+decisive header. This is a challenge response, not proof of missing subscription,
+bad DOI, PDF corruption or network timeout. The response does not identify which
+request signal caused the challenge.
+
+The production reader also loses this distinction. `PublicHttpsTransport` reads
+the entire bounded body and stores only type, length and redirect headers;
+`FetchResponse` does not carry the challenge signal. The offline replay confirms
+both saved bodies are fully read, then reported as generic `http_error/403`.
+The batch PDF path similarly records a generic PDF HTTP failure. A minimal
+future repair should recognize the explicit header before reading the challenge
+body and reuse existing challenge/error traces. Ordinary 403 must remain distinct;
+an anonymous challenge must not preempt an independently authenticated browser.
+
+Current unattended recovery is bounded: public acquisition deduplicates URLs,
+retries only a status-free timeout once, then continues other candidates and
+arXiv within the original budget. Background institutional challenges end
+unavailable rather than waiting for human input. This does not establish a
+cross-Attempt negative cache, nor is there evidence here requiring a new one.
+The validated ACM author copy was supplied explicitly: a successful fixed-URL
+download is not proof that automatic discovery will locate it.
+
+ScienceDirect remains unsuitable as a guaranteed unattended website PDF source
+in these observations. Elsevier's [support guidance](https://www.elsevier.support/sciencedirect/answer/why-am-i-getting-an-error-message-indicating-that-my-ip-address-has-been-blocked)
+directs programmatic retrieval to its APIs. Its [article retrieval documentation](https://dev.elsevier.com/tecdoc_text_mining.html)
+separates API credentials from article entitlement and full XML from abstracts.
+The existing optional Elsevier adapter does not prove the user's entitlement or
+PDF availability. Under the existing no-publisher-key preference, retain public
+copies and explicit full-text gaps. Browser [clearance is session/device-bound
+and may be reevaluated](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/);
+one manual success cannot establish future server-side or browser availability.
+
+Semantic Scholar's five failures are complete HTTP 429 JSON responses containing
+`TooManyRequestsException`; none includes Retry-After. It is a DOI-to-OA-PDF
+locator in this project, not the primary keyword search or a subscribed PDF
+service. The [official API overview](https://webflow.semanticscholar.org/product/api)
+describes a shared anonymous pool of 1,000 RPS, possible additional throttling,
+and an initial API-key rate of 1 RPS. The observed responses do not identify
+whether an IP, global quota or another dynamic rule was responsible.
+
+The current locator is anonymous. Runtime `FixedLiteratureIO` already shares
+a 60-second 429 cooldown, while init `fetch_sample()` creates a fresh bare
+locator on every call and bypasses that shared state. Useful future work is
+optional private S2 credentials with appropriate request pacing, consistent
+cooldown across init/runtime, and propagation of Retry-After through the existing
+response/error fields. The latter is a code gap, not the cause of these five
+failures, because no Retry-After was sent. S2 remains optional; proxy routing
+does not replace quota handling or improve its downstream publisher's access.
+
+## Web run summary counters (2026-10-05)
+
+The top-right Web HUD now shows elapsed time and observed tokens for the whole
+run. It reuses the existing overview elapsed observation and disjoint reported
+and unsettled token totals. Reservations and failed/retry subsets are not added.
+Missing values remain unknown; stale observations are retained without a local
+timer, and terminal elapsed time comes from the existing summary. Labels and
+explanatory tooltips follow the selected language. Both usage guides describe
+the lower-bound meaning of the token counter.
+
+The final browser/summary/documentation selection passes **36 tests**. A separate
+focused browser/language selection passes **four tests** (five deselected). The
+browser regression checks settlement without double counting, filtering,
+English/Chinese, missing and zero values, terminal/stale observations, read-only
+GET traffic, and 1440/768/390/320-pixel layouts. Desktop and narrow-screen renders
+were inspected; all ten HUD cells fit five desktop columns or two mobile columns.
+Logs, JUnit results and screenshots are retained in
+`.local/qualification/web-run-hud-20261005/`. These are local browser fixtures and
+existing summary tests; no retained run was changed or migrated.
+
+Duration/accounting follow-up: Web durations of at least 24 hours now show days
+and hours (25 hours becomes `1d 1h`), matching the existing TUI duration formatter.
+The TUI budget bar still uses hours to match its configured limit. Documentation
+clarifies that TUI reports settled and observed unsettled tokens separately,
+whereas the Web header adds them. Both derive from the same Attempt accounting;
+refresh timing can differ. Keep the lower-bound symbol because unavailable usage
+has no known error margin. The updated browser regression, summary tests, TUI
+summary interaction and documentation selection pass **37 tests**; evidence is in
+the same directory under `duration-followup/`.
+
+Color follow-up: elapsed/token values now inherit the HUD's white text, keeping
+bold tabular numerals. The existing HUD browser regression passes; the desktop
+render was inspected (`white-metrics.log`, `white-metrics-desktop.png`).
+
+## Workload-relative GPU reserve (2026-10-05)
+
+The user retains same-run FIFO and requests a smaller device reserve instead of
+the previous 4 GiB floor. Existing read-only run evidence includes protection at
+4,068 MiB free against a 4,096 MiB reserve without an observed OOM. New templates
+use an absolute 512 MiB floor and 5% of admitted workload, rounded up to 64 MiB.
+Missing/zero percentage retains the old fixed policy. Existing workload margins,
+OOM budget growth, source ownership, pool floors and FIFO remain authoritative.
+See [design](design/gpu-capacity-and-resource-replanning.md#8-按工作负载保留显存2026-10-05)
+and [operator guide](guides/gpu-resource-planning.md#device-reserve).
+
+Final focused selections cover **606 distinct passing tests**. They cover strict
+Profile/new-run validation, old fixed reserves, rounding, preview/admission,
+pooled and fixed-grant pressure protection, measured/OOM feedback, independent
+Oracle source checks, FIFO, higher pool floors, init review, packaged Skills and
+documentation. Three real Host/store/pool repair cases independently each close
+two Processes, two accepted outcomes and two released pool requests, with no
+open Attempts or live handles. OOM grows 16,384/832 MiB workload/reserve to
+20,480/1,024 MiB; script failure and pressure cancellation retain 16,384/832 MiB.
+An accepted request survives 900 MiB free and retains protection at 831 MiB.
+
+The separate **native CC/Host/CPU test passes** through two cycles, live read-only
+resource queries, Skill invocation and SELF_EVOLVE publication/next-cycle reuse.
+Independent SQL/process census finds **27 successful Agent Attempts, two
+successful Processes**, two accepted outcomes, 29 absent process groups, zero
+open Attempts or pool requests. Oracle passes. This uses a local scripted
+provider and isolated CPU execution, not a paid model or physical GPU.
+
+Early test iterations corrected test-only audit return-shape and synthetic
+Runner signature mistakes. Two old init fixtures needed a workload floor under
+the new percentage template. The unchanged entry Skill already exceeded its
+existing line limit (261); reflow restores 259 without changing instructions or
+relaxing the check. An initial native run correctly rejected code edited during
+its execution; rerunning after source edits ended passes. Original failures and
+final reruns remain in `.local/qualification/gpu-reserve-20261005/` alongside
+`final-test-selection.txt`, native observations and independent `census.json`.
+
+Wheel, isolated installation and fresh bundle match **178 package files**,
+including both resource Skills; installed reserve calculation agrees with source.
+Retained research, its bound plugins and the live shared pool are unchanged.
+An existing 4 GiB pool floor continues to constrain admission and is shown in
+init; this change does not silently deploy a lower pool floor. No full G1/G4,
+CUDA OOM-rate, paid-model quality or live-run migration qualification is claimed.
+
 ## Publisher selection and English TUI (2026-10-05)
 
 The full routing catalog previously defaulted every omitted publisher to auto,
@@ -8005,6 +8211,15 @@ translated labels resized; the final probe checks button dimensions instead.
 Evidence: `.local/qualification/language-button-style-20261005/`. This styling
 follow-up was checked from source; the earlier wheel predates these cosmetic edits.
 
+Expert-badge follow-up: RUN was the only stage abbreviation passed through the
+translator. Keep all 12 Web stage abbreviations fixed while translating their
+descriptions. A rendered browser check preserves labels and classes across four
+English/Chinese switches; tooltips still translate. Two existing browser language
+tests and four documentation checks pass. Evidence is under
+`.local/qualification/web-stage-badges-20261005/`; the manual fixture required
+shared-goal cards and checks recorded absence rather than assuming an OPEN task.
+This source-only presentation repair does not modify a retained run.
+
 ## Same-title arXiv fallback (2026-10-04)
 
 Evidence: `.local/qualification/arxiv-fallback-20261004/`. The operator requests
@@ -8174,3 +8389,34 @@ migrated. Crossref ranking/coverage can differ from OpenAlex, and unavailable
 full text still follows the existing public-source fallback with explicit gaps.
 No new real Windows/SSO, publisher entitlement, paid-model, GPU or soak
 qualification is claimed.
+
+
+## GPU reserve, observer and tutorial integration (2026-10-05)
+
+Evidence: `.local/qualification/preserved-changes-integration-20261005/`.
+Combine the previously qualified workload-relative GPU reserve, packaged resource
+Skills, Web elapsed/token HUD, fixed stage abbreviations and Telegram proxy
+tutorials with the current independent-search/optional-routing implementation.
+Earlier native GPU-planning/CPU closure evidence remains in
+`gpu-reserve-20261005/`; this integration does not rerun physical GPU or paid lanes.
+
+The initial root selection has 229 passes and one existing LOC-budget failure
+after combining the changes. Remove an unused grounding import and combine the
+two domain imports; the unchanged lifecycle budget then passes all 17 tests.
+No behavior or limit is relaxed. The GPU/Skill selection passes all 199 tests.
+
+Review also reproduces compact token lower bounds rounding upward: 999,999 known
+tokens displayed as `≥1M`. The HUD now truncates its compact lower bound; other
+card formatting stays unchanged. Existing rendered HUD regression covers 1,559,
+2,559,000 and 999,999, alongside settlement, missing/stale observations, both
+languages and four screen widths. The red case is retained in `ui-hud-red.xml`.
+Retained research, private configuration and the live GPU pool remain unchanged.
+
+Final UI/docs/summary/loopback-notification selection: 45 passes
+(`ui-docs-final.xml`). Reconciliation by test identity across the root, correction,
+GPU and UI selections gives **474 distinct passing tests**, zero outstanding
+failures or skips (`integration-test-summary.json`); no new full-G1 claim.
+Final source, wheel, isolated install and fresh bundle match 181 package files;
+installed reserve calculation, CLI/MCP and bounded worker cleanup pass
+(`installation.json`). This commit changes source for future launches and observer
+reloads; it does not migrate an existing frozen run.

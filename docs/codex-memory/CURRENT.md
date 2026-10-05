@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- October 5 combined GPU/observer/tutorial integration: workload-relative reserve,
+  Web elapsed/token HUD and Telegram proxy tutorials now share the current search
+  and accounting implementation. Compact HUD lower bounds truncate instead of
+  rounding upward; other card formatting is unchanged. Remove duplicate/dead Host
+  imports to retain the existing LOC budget.
+  [Integration checks](../qualification.md#gpu-reserve-observer-and-tutorial-integration-2026-10-05).
+
 - October 5 independent search/optional routing: new Hosts use anonymous Crossref
   keyword fallback after transient OpenAlex failure, within the same deadline and
   existing query/metadata/coverage validation. Auth errors retain their repair
@@ -56,6 +63,50 @@
   [Design](../design/institutional-literature-access.md#publisher-challenges-and-optional-semantic-scholar-credentials--2026-10-05)
   / [qualification](../qualification.md#publisher-challenges-and-semantic-scholar-recovery-2026-10-05).
 
+- October 5 literature proxy A/B: existing Clash mostly selects DIRECT, so test
+  an isolated instance using its actual selected node without changing live rules.
+  IEEE official OA sample improves from direct 0/3 (502) to node 3/3 verified PDFs.
+  Other public PDFs/metadata already work directly; ACM/ScienceDirect stay 403,
+  Semantic Scholar remains rate limited. Consider optional per-domain routing,
+  not a mandatory proxy or subscription claim. No production proxy code/run
+  changes; temporary processes/private configs cleaned. [Evidence](../qualification.md#literature-proxy-comparison-2026-10-05).
+  Follow-up: saved ACM/ScienceDirect 403s explicitly carry a Cloudflare challenge
+  header; offline replay proves public transport drops it and reads the entire
+  challenge body. S2 is anonymous/rate-limited; runtime cooldown exists but init
+  samples bypass it. Analysis only; [repair candidates and limits](../qualification.md#publisher-challenge-and-semantic-scholar-diagnosis-2026-10-05).
+
+- October 5 Telegram proxy tutorial: configure an explicit server HTTP CONNECT
+  proxy before new init; include a credential-free TLS check and explain
+  access-check versus message delivery. Existing retry does not reload cached
+  proxy/bindings. Setup/init/config/usage guides link the bilingual instructions.
+  Four documentation checks pass; Python/YAML examples validate without networking.
+  Documentation only; retained runs, private Profiles and delivery cursors untouched.
+  [Guide](../guides/notifications.md#server-side-clash-proxy--服务器-clash-代理).
+
+- October 5 Web run HUD: top-right elapsed time and observed token lower bound
+  reuse overview.elapsed_seconds/accounting (reported + unsettled; no reserves
+  or retry double counting). All-run values survive filtering/language changes;
+  missing is unknown, stale freezes, terminal elapsed comes from the existing
+  summary. Five-column desktop / two-column mobile layout; bilingual guidance.
+  Metric values inherit the same white text as other HUD values, retaining bold
+  tabular numerals.
+  Follow-up: Web durations >=24h use days/hours as TUI does; guides distinguish
+  the combined Web token counter from TUI reported/unsettled parts. Keep >=:
+  missing usage has no known error margin and is not an approximate estimate.
+  [Validation](../qualification.md#web-run-summary-counters-2026-10-05).
+
+- October 5 GPU reserve: user retains FIFO. Optional budget
+  gpu_vram_reserve_percent uses admitted workload; new templates default 5% with
+  a 512 MiB minimum and 64 MiB upward rounding. Missing/zero keeps fixed reserves.
+  Host preview/admission/pressure and Oracle agree; existing OOM +25% budget
+  feedback grows the reserve without classifying protection/script errors as OOM.
+  Init discloses higher pool floors; Skills and bilingual guides updated.
+  606 distinct focused tests + one native two-cycle CC/CPU test pass; native census
+  27 Agents + two Processes, no open/live residue. Wheel/install/bundle: 178 files.
+  Existing run, plugin and live pool unchanged; no CUDA or paid-model claim.
+  [Design](../design/gpu-capacity-and-resource-replanning.md#8-按工作负载保留显存2026-10-05)
+  / [validation](../qualification.md#workload-relative-gpu-reserve-2026-10-05).
+
 - October 5 observer language: TUI and Web toolbars switch English/Chinese using
   one packaged catalog; default English. TUI choice is session-local; Web retains
   explicit browser-origin preference. Redraw preserves filters, drafts, stale
@@ -64,6 +115,7 @@
   catalog. Guides updated; retained research/client untouched.
   Style follow-up: TUI uses fixed-width CN/EN without reversed focus text;
   Web uses theme blue. Twelve focused language/docs tests and rendered checks pass.
+  Web expert stage badges keep fixed English abbreviations (including RUN) in both languages.
   [Validation](../qualification.md#observer-language-switch-2026-10-05).
 
 - October 5 TUI toolbar alignment: fixed three-row buttons clipped by a

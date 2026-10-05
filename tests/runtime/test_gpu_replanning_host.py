@@ -154,3 +154,81 @@ def test_successful_owned_measurement_lowers_margin_in_actual_admission_and_orac
     _until(host, lambda: host.store.latest_transition(request.run_id)["state"] == "COMPLETED")
     report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
     assert report.ok and report.open_attempt_count == 0, report.to_dict()
+
+
+@pytest.fixture
+def proportional_execution(shared_pool, monkeypatch, request):
+    import test_host_experiment_tools as fixture
+    from functools import partial
+    original = fixture._pilot_payload
+    def payload(*args):
+        result = original(*args)
+        result["research_contract"]["budget"].update(gpu_vram_reserve_mb=512, gpu_vram_reserve_percent=5)
+        return result
+    monkeypatch.setattr(fixture, "_pilot_payload", payload)
+    monkeypatch.setattr(fixture, "WorkflowHost", partial(fixture.WorkflowHost, gpu_pressure_grace_seconds=0))
+    return request.getfixturevalue("execution")
+
+
+@pytest.mark.parametrize("failure", ["oom", "script", "pressure"])
+def test_proportional_reserve_preview_dispatch_protection_and_repair_close(
+    proportional_execution, shared_pool, monkeypatch, failure,
+):
+    from pathlib import Path
+    host, request, arguments, free, measurement = _configured(proportional_execution, shared_pool, monkeypatch)
+    cancel = host.runner.cancel
+    def cancel_with_grace(handle, *, terminate_grace_seconds):
+        assert terminate_grace_seconds == 30
+        return cancel(handle)
+    monkeypatch.setattr(host.runner, "cancel", cancel_with_grace)
+    arguments = gpu_arguments(arguments, peak=16384)
+    measurement["mib"] = 1000
+    preview = host.handle_agent_tool(request.attempt_id, "get_resources", {"resource_estimate": arguments["resource_estimate"]})
+    assert preview["profile_reserve_percent"] == 5
+    assert preview["budget_preview"]["reserve_memory_mib"] == 832
+    assert all(device["pool_reserve_memory_mib"] == 1000 for device in preview["devices"])
+    first = host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)
+    spec, handle = _running(host, first)
+    intent = spec["payload"]["execution_contract"]["resource_intent"]
+    assert intent["workload_memory_mib"] == 16384 and intent["reserve_memory_mib"] == 832
+    assert host.gpu_pressure[handle.request.attempt_id][1] == 832
+    # Below the former 4096 threshold is healthy, even below the pool's static
+    # floor: pressure monitoring uses the accepted request reserve.
+    free.update({uuid: 900 for uuid in free})
+    host.tick()
+    assert not handle.cancelled and not host.gpu_pressure[handle.request.attempt_id][0][0].summary.pressure_exceeded
+    if failure == "pressure":
+        free.update({uuid: 831 for uuid in free})
+        _until(host, lambda: host.store.get_attempt(handle.request.attempt_id)["state"] == "CLOSED")
+    else:
+        (Path(handle.request.cwd) / handle.request.stderr_path).write_text(
+            "torch.OutOfMemoryError: CUDA out of memory.\n" if failure == "oom" else "KeyError: test\n")
+        handle.returncode = 1
+        _until(host, lambda: host.store.get_attempt(handle.request.attempt_id)["state"] == "CLOSED")
+    process = host.store.get_attempt(handle.request.attempt_id)
+    observation = json.loads(process["observation_json"])
+    assert (observation.get("resource_failure") == "gpu_out_of_memory") == (failure == "oom")
+    if failure == "pressure":
+        assert observation["resource_pressure"]["gpu_reserve_memory_mib"] == 832
+    _until(host, lambda: bool(host.store.list_facts(request.run_id, "EvidenceLinked")))
+    free.update({uuid: 22000 for uuid in free})
+    preview = host.handle_agent_tool(request.attempt_id, "get_resources", {"resource_estimate": arguments["resource_estimate"]})
+    expected_workload, expected_reserve = (20480, 1024) if failure == "oom" else (16384, 832)
+    assert preview["budget_preview"]["resolved_workload_memory_mib"] == expected_workload
+    assert preview["budget_preview"]["reserve_memory_mib"] == expected_reserve
+    second = host.handle_agent_tool(request.attempt_id, "submit_experiment", {**arguments, "replaces_experiment_id": first["exp_id"]})
+    repaired, handle = _running(host, second)
+    repaired_intent = repaired["payload"]["execution_contract"]["resource_intent"]
+    assert repaired_intent["workload_memory_mib"] == expected_workload
+    assert repaired_intent["reserve_memory_mib"] == expected_reserve
+    _close(host, second, handle, success=True, arguments=arguments)
+    host._finish_fake_agent(request, FakeAgent().invoke(request))
+    _until(host, lambda: host.store.latest_transition(request.run_id)["state"] == "COMPLETED")
+    report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
+    assert report.ok and report.open_attempt_count == 0 and report.pending_effect_count == 0, report.to_dict()
+    assert not host.running and not report.owned_process_residue
+    attempts = host.store.list_attempts()
+    assert len([a for a in attempts if a["kind"] == "PROCESS"]) == 2
+    assert all(a["state"] == "CLOSED" for a in attempts)
+    pool_report = audit_gpu_pool(host.shared_gpu.socket_path.parent / "pool")
+    assert pool_report["ok"], pool_report

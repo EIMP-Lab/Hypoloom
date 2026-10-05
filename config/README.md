@@ -44,12 +44,26 @@ literature:
 
 ```yaml
 # profiles/local/YOUR_PROFILE/notify.yaml
+# Optional: set before new init; use your server's actual HTTP CONNECT port.
+# 可选：新 init 前设置，使用服务器实际支持 HTTP CONNECT 的端口。
+# proxy_url: "http://127.0.0.1:7891"
 sinks:
   telegram:
     enabled: false      # Enable after reviewing recipient / 确认接收对象后开启
     bot_token: ""       # Fill locally / 本地填写
     chat_id: ""         # Quote numeric IDs too / 数字 ID 也须加引号
 ```
+
+The top-level notification `proxy_url` is independent of model/literature
+proxies. For Clash, use its HTTP CONNECT port or an HTTP-capable `mixed-port`;
+`127.0.0.1` is the Linux server, not the Windows client. Configure it before a
+new init: existing runs and **Retry Telegram delivery** do not hot-load proxy
+changes. See [server-side Clash setup](../docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理).
+
+顶层 `proxy_url` 仅控制通知代理，独立于模型和文献代理。Clash 须使用实际支持
+HTTP CONNECT 的端口或支持 HTTP 的 `mixed-port`；`127.0.0.1` 指 Linux 服务器，
+不是 Windows 客户端。请在新 init 前配置；已有运行和 **Retry Telegram delivery**
+不会热加载代理修改。详见[服务器 Clash 配置](../docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理)。
 
 Prepare the Profile, edit these fields in a local editor, then repeat init or
 `profile-check`. Keep private files mode 0600. For a manually copied Profile,

@@ -366,7 +366,7 @@ def test_host_binds_request_snapshot_and_freezes_auto_gpu_grant_before_execution
             "truncated": False,
         }
         assert host.configuration["resource_planning_skill"] == (
-            "experiment-resource-planning/5"
+            "experiment-resource-planning/6"
         )
         assert any(path.name == "SKILL.md" for path in host.runtime_files)
         assert response["input_digest"] == request_digest(AgentRequest.from_dict(request))
@@ -960,8 +960,9 @@ def test_capacity_loss_after_intent_is_one_real_prestart_failure(
     assert report.ok, report.issues
 
 
+@pytest.mark.parametrize("reserve,percent,low_free", [(4096, None, 1024), (512, 5, 511)])
 def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_summary(
-    tmp_path: Path,
+    tmp_path: Path, reserve, percent, low_free,
 ) -> None:
     initial = GpuRuntimeObservation(
         uuid=GPU_UUID,
@@ -972,8 +973,8 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
     )
     low = replace(
         initial,
-        free_memory_mib=1_024,
-        used_memory_mib=23_552,
+        free_memory_mib=low_free,
+        used_memory_mib=24_576-low_free,
         utilization_percent=99,
     )
     samples = iter((initial, low))
@@ -1036,7 +1037,8 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
         payload["research_contract"]["budget"].update(
             {
                 "min_vram_per_experiment": 4_096,
-                "gpu_vram_reserve_mb": 4_096,
+                "gpu_vram_reserve_mb": reserve,
+                **({"gpu_vram_reserve_percent": percent} if percent else {}),
             }
         )
         response = host.handle(
@@ -1076,13 +1078,13 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
         observation = json.loads(process["observation_json"])
         assert observation["resource_pressure"] == {
             "reason": "sustained_free_gpu_memory_below_reserve",
-            "gpu_reserve_memory_mib": 4_096,
+            "gpu_reserve_memory_mib": reserve,
             "owned_memory_mib_at_decision": None,
             "attribution": "unknown",
             "terminate_grace_seconds": 30.0,
         }
         assert observation["resource_usage"]["gpu_uuid"] == GPU_UUID
-        assert observation["resource_usage"]["gpu_minimum_free_memory_mib"] == 1_024
+        assert observation["resource_usage"]["gpu_minimum_free_memory_mib"] == low_free
         assert observation["resource_usage"]["pressure_exceeded"] is True
         assert observation["resource_usage"]["pressure_attribution"] == "unknown"
         host.runner.cancel.assert_called_once_with(started[0], terminate_grace_seconds=30.0)
@@ -1104,8 +1106,8 @@ def test_sustained_gpu_pressure_cancels_only_owned_handle_and_records_device_sum
             if item.attempt_id == process["attempt_id"]
         )
         assert view.gpu_uuid == GPU_UUID
-        assert view.minimum_free_memory_mib == 1_024
-        assert view.latest_free_memory_mib == 1_024
+        assert view.minimum_free_memory_mib == low_free
+        assert view.latest_free_memory_mib == low_free
         assert view.latest_utilization_percent == 99
         assert view.resource_pressure_exceeded is True
     finally:

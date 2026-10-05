@@ -7,6 +7,8 @@ independent outcome oracle rather than another runtime authority.
 
 from __future__ import annotations
 
+from .compute_resources import gpu_memory_reserve_mib
+
 import base64
 import binascii
 import hashlib
@@ -5248,6 +5250,11 @@ def _audit_resource_contract(
                 initial_memory_mib=budget.get("initial_vram_per_experiment"), planning=planning)
             except (KeyError, TypeError, ValueError, RecursionError) as exc:
                 issues.append(OracleIssue("resource_learning_source_invalid", str(exc), (fact_id,)))
+        try:
+            reserve = gpu_memory_reserve_mib(budget, resolved)
+        except (TypeError, ValueError) as exc:
+            reserve = -1
+            issues.append(OracleIssue("resource_intent_mismatch", str(exc), (fact_id,)))
         valid = (shared_version and _valid_gpu_pool_binding(pool_binding) and "resource_grant" not in contract
             and isinstance(raw, Mapping) and set(raw) == expected_keys and raw.get("kind") == "GPU"
             and (not adaptive or raw.get("sharing") == planning.get("sharing"))
@@ -5280,7 +5287,10 @@ def _audit_resource_contract(
         grant_uuids, valid_grant = (), False
     grant_uuid = grant_uuids[0] if len(grant_uuids) == 1 else None
     minimum = budget.get("min_vram_per_experiment", 0)
-    reserve = budget.get("gpu_vram_reserve_mb", 0)
+    try:
+        reserve = gpu_memory_reserve_mib(budget, minimum)
+    except (TypeError, ValueError):
+        reserve = -1
     thresholds_valid = all(
         isinstance(value, int) and not isinstance(value, bool) and value >= 0
         for value in (minimum, reserve)

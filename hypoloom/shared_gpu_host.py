@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .compute_resources import validate_gpu_uuid
+from .compute_resources import gpu_memory_reserve_mib, validate_gpu_uuid
 from .domain import ResourceEstimate, ResourceGrant, ResourceIntent, ResourceKind
 from .gpu_pool import PoolError, RequestKey, assess_capacity
 from .gpu_pool_client import PoolClient, validate_pool_snapshot
@@ -136,6 +136,9 @@ class SharedGpuHost:
             arguments = self.resolve_arguments(request, arguments or {})
             response["budget_preview"] = self.budget_plan(request, arguments, document["budget"]["min_vram_per_experiment"])
             response["estimate_policy"] = "evidence_adaptive_25_15_10_percent"
+            response["profile_reserve_percent"] = document["budget"].get("gpu_vram_reserve_percent", 0)
+            response["budget_preview"]["reserve_memory_mib"] = gpu_memory_reserve_mib(
+                document["budget"], response["budget_preview"]["resolved_workload_memory_mib"])
         allowed = {gpu.uuid for gpu in restrict_profile_capabilities(document, self.host.compute_resources.snapshot()).gpus}
         try: snapshot = self.snapshot()
         except PoolError as error: return {**response, "status": "unavailable", "reason": error.code}
@@ -153,7 +156,7 @@ class SharedGpuHost:
             if allowed:
                 intent = ResourceIntent(allowed_gpu_uuids=tuple(allowed), gpu_count=(arguments or {}).get("gpus", 1),
                     workload_memory_mib=response["budget_preview"]["resolved_workload_memory_mib"],
-                    reserve_memory_mib=document["budget"].get("gpu_vram_reserve_mb", 0),
+                    reserve_memory_mib=response["budget_preview"]["reserve_memory_mib"],
                     sharing=response["budget_preview"]["sharing"])
                 response["capacity_preview"] = assess_capacity(devices, intent.to_dict())
         return {**response, "status": "ok", "sampling_started_at": snapshot["sampling_started_at"],

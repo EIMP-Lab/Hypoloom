@@ -1263,5 +1263,10 @@
   "Affected roles: {0}.": "受影响角色：{0}。",
   " · l Literature retry": " · l 文献重试",
   "Status unknown": "状态未知",
-  "Literature: Crossref fallback; OpenAlex recovery unconfirmed.": "文献：使用 Crossref 后备检索；OpenAlex 尚未确认恢复。"
+  "Literature: Crossref fallback; OpenAlex recovery unconfirmed.": "文献：使用 Crossref 后备检索；OpenAlex 尚未确认恢复。",
+  "ELAPSED": "已运行",
+  "TOKENS USED": "已用 TOKEN",
+  "Elapsed wall time through the latest observation, including waiting. Stops when the run ends.": "截至最近一次观测的运行时长，包含等待时间；运行结束后停止累计。",
+  "Observed token lower bound: {0} reported + {1} from unsettled calls. Reservations are excluded; missing usage remains unknown.": "已观测 token 用量下界：已报告 {0} + 未结算调用已观测 {1}。不含预留额度；缺失用量仍为未知。",
+  "Token usage observation unavailable.": "暂未获得 token 用量观测。"
 }

@@ -452,9 +452,17 @@ scratch.
    `nvidia-smi` read-only and show, for every detected card, its index, stable
    UUID, model, total and free memory, utilization, and current compute
    occupancy. Alongside the inventory show the admitted profile's exact
-   `min_vram_per_experiment`, `gpu_vram_reserve_mb`, and their sum. If configured,
-   also show `initial_vram_per_experiment` and its sum with the reserve; this is
-   the pre-measurement dispatch threshold. Distinguish the hard workload floor
+   `min_vram_per_experiment`, `gpu_vram_reserve_mb` and optional
+   `gpu_vram_reserve_percent`. New templates use 512 MiB and 5%; adopting an
+   existing Profile preserves its values. A missing/zero percentage means the
+   fixed reserve; a positive percentage means the greater of 512 MiB, the fixed
+   floor and that percentage of the admitted per-device workload, rounded up to
+   64 MiB. GPU use with a percentage requires a positive workload floor.
+   Show bootstrap's `gpu.memory_budget` computed starting workload, reserve and
+   required free memory; initial workload includes `initial_vram_per_experiment`
+   when configured. Later measured/estimated workloads can require more. Show
+   the pool's actual reserve too: a reused 4096 MiB pool floor still applies even
+   when this Profile requests 5%. Unknown pool reserve stays unknown. Distinguish the hard workload floor
    from a conservative starting guess. For a new explicitly pooled run, the
    operator may configure a lower hard floor and a separate initial estimate;
    reuse existing in-scope approval, otherwise include the proposed values and
@@ -566,7 +574,10 @@ scratch.
    `$REPOSITORY/.local/gpu-pools/shared`, socket `control.sock` inside it, the
    derived `hypoloom-gpu-pool@<escaped-pool-root>.service` unit, the single
    `--member <this-uid>=<approved UUID subset>` line, and `--reserve-mib`
-   equal to the admitted profile's `gpu_vram_reserve_mb` (zero when absent). Creation runs only
+   equal to the computed absolute reserve floor (at least 512 MiB and rounded up
+   to 64 MiB with a positive percentage; otherwise `gpu_vram_reserve_mb`, zero
+   when absent). Use the returned plan when reusing/restoring a pool; do not
+   silently replace its larger floor. Creation runs only
    after **Start now** approval, immediately before the managed Host start,
    through bootstrap's generated `pool_prepare` vector to the bounded
    `manage_gpu_pool.py`/`hypoloom.managed_gpu_pool` helper. Do not invoke a second
