@@ -450,7 +450,7 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
     argv = review["institutional_preparation_argv"]
     assert argv[1:5] == ["-m", "hypoloom", "institutional", "prepare"]
     parsed = cli_parser().parse_args([*argv[3:], "--provider", "IEEE"])
-    assert parsed.institutional_provider_mode == ["IEEE=public_only"]
+    assert parsed.institutional_provider_mode == ["IEEE=public_only", "ScienceDirect=auto", "Springer=auto"]
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
@@ -487,8 +487,9 @@ def test_init_common_preparation_roundtrips_without_changing_research(checkout, 
     assert launch["effective_configuration"]["institutional_preparation"] == plan
     host = launch['commands']['host_start']
     serve = cli_parser().parse_args(host[host.index('--') + 4:])
-    assert serve.institutional_provider_mode == ([] if not selection or selection[0] != '--institutional-provider-mode'
-                                               else ['ScienceDirect=public_only', 'ACM=public_only'])
+    assert serve.institutional_provider_mode == (
+        (['ScienceDirect=public_only', 'ACM=public_only'] if selection and selection[0] == '--institutional-provider-mode' else [])
+        + [f'{name}=auto' for name in expected])
     if expected:
         prepare = cli_parser().parse_args(review["effective_configuration"]["institutional_preparation_argv"][3:])
         assert prepare.provider == expected

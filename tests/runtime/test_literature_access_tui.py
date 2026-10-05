@@ -40,12 +40,12 @@ def plain(renderable, width=110):
 def test_summary_separates_configured_paths_current_work_and_sample_readability():
     status = observation(); original = deepcopy(status)
     text = plain(publisher_table(status))
-    assert '2 个出版社允许机构访问 · 2 个仅公开' in access_summary(status)
-    assert '浏览器可用性未确认' in connection_summary(status)
-    assert 'IEEE' in text and '1 / 1 / 1' in text and '文档未通过校验' in text
-    assert '本篇遇到人机验证' in text and '0 / 0 / 1' in text
-    assert '单篇样本可读' in text and '尚无机构请求' in text
-    assert '登录成功' not in text and 'PDF' not in text
+    assert '2 institutional · 2 public only · 0 disabled' in access_summary(status)
+    assert 'browser availability unconfirmed' in connection_summary(status)
+    assert 'IEEE' in text and '1 / 1 / 1' in text and 'Document validation failed' in text
+    assert 'Human verification required' in text and '0 / 0 / 1' in text
+    assert 'Sample readable' in text and 'No institutional requests' in text
+    assert 'Login succeeded' not in text and 'PDF' not in text
     assert status == original
 
 
@@ -54,26 +54,26 @@ def test_empty_cache_does_not_erase_logged_verification():
     status['literature_access']['groups'][0]['papers'] = []
     status['literature_access']['history'] = {'state': 'observed', 'document_verified': {'IEEE': 4}}
     text = plain(publisher_table(status), width=130)
-    assert '0 / 0 / 0' in text and '日志内验证 4 次' in text
-    assert '日志内未见验证' in text and 'PDF' not in text
+    assert '0 / 0 / 0' in text and '4 verified in log' in text
+    assert 'no verification in log' in text and 'PDF' not in text
 
 
-@pytest.mark.parametrize('access,expected', [(None, '状态未知'), ({}, '状态未知'),
-    ({'enabled': False, 'groups': []}, '未启用机构浏览器')])
+@pytest.mark.parametrize('access,expected', [(None, 'status unknown'), ({}, 'status unknown'),
+    ({'enabled': False, 'groups': []}, 'Institutional browser disabled')])
 def test_missing_host_observation_is_not_disabled_or_connected(access, expected):
     status = {'literature_access': access}
     assert expected in access_summary(status)
     assert connection_summary(status) == '' and not publisher_table(status).rows
 
 
-@pytest.mark.parametrize('state,expected', [('waiting_for_client', '等待客户端'),
-    ('allocated', '未确认'), ('unavailable', '不可用'), ('inactive', '未激活')])
+@pytest.mark.parametrize('state,expected', [('waiting_for_client', 'Waiting for client'),
+    ('allocated', 'unconfirmed'), ('unavailable', 'unavailable'), ('inactive', 'inactive')])
 def test_connection_observation_does_not_assert_browser_or_subscription_health(state, expected):
     status = observation()
     status['literature_access']['connection']['state'] = state
     assert expected in connection_summary(status)
     status['run_state'] = 'COMPLETED'
-    assert '运行已结束' in connection_summary(status)
+    assert 'Run ended' in connection_summary(status)
 
 
 @pytest.mark.parametrize('size', [(80, 24), (100, 34), (237, 52)])
@@ -84,7 +84,7 @@ def test_readonly_panel_refresh_and_both_return_actions(tmp_path, monkeypatch, s
     monkeypatch.setattr('hypoloom.institutional_browser.PlaywrightInstitutionalBrowser.check_connection', forbidden)
     status = observation()
     status['literature_access']['groups'].extend(
-        {'provider': name, 'mode': 'auto', 'papers': []}
+        {'provider': name, 'mode': 'disabled', 'papers': []}
         for name in ['Nature', 'Wiley', 'SAGE', 'Oxford', 'Taylor & Francis'])
     async def exercise():
         app = App()
@@ -97,11 +97,11 @@ def test_readonly_panel_refresh_and_both_return_actions(tmp_path, monkeypatch, s
             await pilot.press('l', 'r')  # Former login/retry keys perform no operation.
             screen.update_status({'run_state': 'ACTIVE'})
             await pilot.pause()
-            assert '状态未知' in str(screen.query_one('#literature-summary').content)
+            assert 'status unknown' in str(screen.query_one('#literature-summary').content)
             assert not screen.query_one('#literature-publishers').display
             screen.update_status(status)
             await pilot.pause()
-            assert '本篇遇到人机验证' in plain(screen.query_one('#literature-publishers').content)
+            assert 'Human verification required' in plain(screen.query_one('#literature-publishers').content)
             app.save_screenshot(f'institutional-status-{size[0]}.svg', path=tmp_path)
             scroll = screen.query_one('#literature-access-scroll')
             scroll.scroll_end(animate=False)
@@ -128,7 +128,7 @@ def test_panel_uses_real_host_modes_and_results_without_writes_or_browser_action
     from tests.runtime.test_monitor_live_status import _row_census
     host, parent, *_ = reading_host
     backend = Backend(); backend.state = 'available'
-    access = InstitutionalAccess(backend, provider_modes={'ScienceDirect': 'public_only', 'ACM': 'public_only'})
+    access = InstitutionalAccess(backend, provider_modes={'Nature': 'auto', 'ScienceDirect': 'public_only', 'ACM': 'public_only'})
     host.institutional_access = access
     bind(host)
     access.request(scope_for(parent), URL)
@@ -145,9 +145,9 @@ def test_panel_uses_real_host_modes_and_results_without_writes_or_browser_action
             app.push_screen(LiteratureAccessScreen(status()))
             await pilot.pause()
             screen = app.screen
-            assert '2 个仅公开' in str(screen.query_one('#literature-summary').content)
+            assert '2 public only' in str(screen.query_one('#literature-summary').content)
             rendered = plain(screen.query_one('#literature-publishers').content)
-            assert 'Nature' in rendered and '0 / 1 / 0' in rendered and '全文已就绪' in rendered
+            assert 'Nature' in rendered and '0 / 1 / 0' in rendered and 'Full text ready' in rendered
             screen.update_status(status())
             await pilot.press('l', 'r')
             await pilot.click('#literature-close')

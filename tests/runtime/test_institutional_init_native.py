@@ -14,6 +14,9 @@ from tests.runtime.test_institutional_init_dialogue import arguments, eventually
 from tests.runtime.test_institutional_runtime import assert_free
 
 
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO
+
+
 def route_fixed_samples(context, downloads, manual_clearance=None):
     from hypoloom.institutional_access import PROVIDERS, provider_catalog
     from tests.runtime.test_institutional_browser import _pdf
@@ -74,7 +77,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
         return dial()
     backend.relay.dial = delayed_dial
     relay_endpoint = backend.endpoint
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     if sample_challenge: access.poll_seconds = .05
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, codes, errors = [], [], []
@@ -201,7 +204,7 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
             current.route('**/*', route)
             return current
     backend = Browser(adapter.endpoint)
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, results, errors = [], [], []
     def worker():
@@ -262,7 +265,7 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
         if not reachable.is_set(): raise ConnectionRefusedError('disposable transport unavailable')
         return dial()
     backend.relay.dial = network
-    access = InstitutionalAccess(backend, poll_seconds=.05)
+    access = InstitutionalAccess(backend, poll_seconds=.05, provider_modes=ALL_PROVIDERS_AUTO)
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, codes = [], []
     thread = threading.Thread(target=lambda: codes.append(run(arguments('--agent-session',

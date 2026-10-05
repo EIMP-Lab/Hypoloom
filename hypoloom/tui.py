@@ -695,7 +695,7 @@ class SummaryPanel(CockpitPanel):
         literature_access = status.get("literature_access") or {}
         if literature_access:
             from .literature_access_tui import access_summary
-            health.append(escape("机构接入：" + access_summary(status) + " · i 状态"))
+            health.append(escape("Institutional access: " + access_summary(status) + " · i Status"))
         for title, section in (("RESEARCH ACTIVITY", activity), ("BUDGET & TOKENS", budget_lines),
                 ("EXECUTION RELIABILITY", reliability), ("RUN HEALTH", health)):
             if section:
@@ -1183,7 +1183,7 @@ class HypoloomVNextMonitor(App):
         Binding("g", "resource_recheck", "GPU recheck"),
         Binding("l", "literature_retry", "Literature retry", show=False),
         Binding("n", "notification_retry", "Telegram retry", show=False),
-        Binding("i", "literature_access", "机构接入状态"),
+        Binding("i", "literature_access", "Institutional access"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )

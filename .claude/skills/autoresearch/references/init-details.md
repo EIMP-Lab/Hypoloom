@@ -55,9 +55,13 @@ public/OA retrieval available and disables institutional-panel operations. Previ
 preparation and final run startup retain their separate explicit choices.
 Enabled previews also provide the common-platform preparation catalog and a complete
 command. Keep selections in repeated `--institutional-prepare-provider` arguments;
-`none` skips this optional step without disabling institutional retrieval. The shared
+`none` skips this optional step; only explicitly configured provider modes remain enabled. The shared
 defaults prepare IEEE, ScienceDirect and Springer; ACM is shown as public-first with
 optional login. Use the existing single library URL and browser profile for the batch.
+The program carries selected platforms as `auto` unless an explicit `public_only` or
+`disabled` mode overrides them. All other publishers default to disabled institutional
+access, even though the catalog lists them. Public/OA retrieval remains independent.
+Use generated provider modes and argv unchanged; do not enable the rest of the catalog.
 When the user explicitly prioritizes unattended stability, carry
 `--institutional-prepare-failure-mode public_only` through inspection and launch.
 Known failed/challenge-dependent platforms can use the existing repeated

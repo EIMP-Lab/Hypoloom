@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from .control_protocol import ControlResponse
-from .institutional_access import PROVIDERS, article_url, publisher
+from .institutional_access import PROVIDERS, PROVIDER_MODES, article_url, publisher
 from .lifecycle import Command, RunState, WORKFLOW_DEFINITION_VERSION
 
 DURABLE_ACTIONS = {"skip", "restore", "mode"}
@@ -49,8 +49,8 @@ def control(host, request):
     if "url" in payload:
         if article_url(payload["url"]) != payload["url"] or publisher(payload["url"]) != payload["provider"]:
             raise ValueError("use a canonical article URL belonging to the selected provider")
-    if action == "mode" and payload["mode"] not in {"auto", "public_only"}:
-        raise ValueError("provider mode must be auto or public_only")
+    if action == "mode" and payload["mode"] not in PROVIDER_MODES:
+        raise ValueError("provider mode must be auto, public_only or disabled")
     access = host.institutional_access
     if access is None: raise ValueError("institutional browser access is not configured")
     run = host.store.get_run(run_id)

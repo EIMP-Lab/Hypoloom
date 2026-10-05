@@ -24,9 +24,9 @@ PROVIDERS = {
     "journals.sagepub.com": "SAGE", "academic.oup.com": "Oxford",
     "tandfonline.com": "Taylor & Francis",
 }
-# Presentation/default preparation only; the full routing catalog stays authoritative.
-# ACM research content is public; optional preparation must not disable its browser fallback.
+# Presentation/default preparation only; routing requires a selected provider mode.
 COMMON_PREPARATION = {"IEEE": True, "ACM": False, "ScienceDirect": True, "Springer": True}
+PROVIDER_MODES = {"auto", "public_only", "disabled"}
 # Public full-text probes, not subscription/authentication tests. Publisher
 # sources and selection rationale: docs/guides/institutional-access.md#fixed-samples
 PREPARATION_SAMPLES = {
@@ -240,7 +240,7 @@ class InstitutionalAccess:
                 raise ValueError(f"{name} must be finite and between {low} and {high}")
         self.acquisition_seconds, self.manual_seconds = acquisition_seconds, manual_seconds
         self.provider_modes = dict(provider_modes or {})
-        if any(provider not in PROVIDERS.values() or mode not in {"auto", "public_only"}
+        if any(provider not in PROVIDERS.values() or mode not in PROVIDER_MODES
                for provider, mode in self.provider_modes.items()):
             raise ValueError("unknown institutional provider or mode")
         self.read_choices = lambda run_id: ({}, {})
@@ -280,24 +280,26 @@ class InstitutionalAccess:
         modes, skipped = self.read_choices(scope[0])
         key = "doi:" + _doi(identity) if identity.startswith("doi:") else self.paper_identity(scope[0], url)
         if key in skipped or url in skipped.values(): return "skipped"
-        if institution and modes.get(publisher(url), self.provider_modes.get(publisher(url), "auto")) == "public_only":
-            return "public_only"
+        mode = modes.get(publisher(url), self.provider_modes.get(publisher(url), "disabled"))
+        if institution and mode != "auto":
+            return mode
         return None
 
     def _apply_choices(self, run_id):
         modes, skipped = self.read_choices(run_id)
         for provider in PROVIDERS.values():
-            if modes.get(provider, self.provider_modes.get(provider, "auto")) == "public_only":
+            if modes.get(provider, self.provider_modes.get(provider, "disabled")) != "auto":
                 self._manual_until.pop((run_id, provider), None)
         for key, item in list(self._items.items()):
             if item.scope[0] != run_id or item.document is not None or item.import_path:
                 continue
             identity = "doi:" + _doi(item.identity) if item.identity.startswith("doi:") else item.url
+            mode = modes.get(item.provider, self.provider_modes.get(item.provider, "disabled"))
             reason = ("skipped" if not item.preparation and (identity in skipped or item.url in skipped.values()) else
-                "public_only" if modes.get(item.provider, self.provider_modes.get(item.provider, "auto")) == "public_only" else None)
+                mode if mode != "auto" else None)
             if reason:
                 if item.state != reason: self._transition(item, reason, "operator_" + reason)
-            elif item.state in {"skipped", "public_only"}:
+            elif item.state in {"skipped", "public_only", "disabled"}:
                 # Restore permits a fresh request, not unsolicited replay of an old fetch.
                 del self._items[key]
 
@@ -415,7 +417,7 @@ class InstitutionalAccess:
             self._expire()
             modes, skipped = self.read_choices(run_id)
             groups = {name: {"provider": name, "entry_url": provider_entry_url(name), "papers": [],
-                "mode": modes.get(name, self.provider_modes.get(name, "auto")),
+                "mode": modes.get(name, self.provider_modes.get(name, "disabled")),
                 "manual_remaining_seconds": max(0, ceil(self._manual_until.get((run_id, name), 0) - self.clock())),
                 "preparation": {"state": "unchecked"}}
                 for domain, name in PROVIDERS.items()}
@@ -466,7 +468,7 @@ class InstitutionalAccess:
             items = [p for p in self._items.values() if p.scope[0] == run_id
                      and p.provider == provider and not p.preparation and (url is None or p.url == url)]
             modes, _ = self.read_choices(run_id)
-            if action != "import" and modes.get(provider, self.provider_modes.get(provider, "auto")) == "public_only":
+            if action != "import" and modes.get(provider, self.provider_modes.get(provider, "disabled")) != "auto":
                 raise ValueError("enable institutional access before opening or checking this platform")
             if action == "verify" or not items and action in {"open", "retry"}:
                 return self._prepare(run_id, provider, action, url)

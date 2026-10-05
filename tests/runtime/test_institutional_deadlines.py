@@ -3,14 +3,14 @@ from threading import Event
 import pytest
 
 from hypoloom.institutional_access import InstitutionalAccess, MAX_REQUESTS
-from tests.runtime.test_institutional_access import Backend, SCOPE, URL, SECOND, document, pump
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO, Backend, SCOPE, URL, SECOND, document, pump
 
 
 @pytest.mark.parametrize("state", ["login_required", "verification_required", "access_required"])
 def test_background_auth_finishes_without_operator_and_does_not_reopen_for_new_papers(state):
     backend = Backend()
     backend.state = state
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.peek(SCOPE, URL).get("status") == "unavailable")
@@ -33,7 +33,7 @@ def test_deadline_expires_queued_items_even_while_worker_is_busy_and_discards_la
             entered.set()
             assert release.wait(5)
             return {"state": "available", "document": document(url)}
-    access = InstitutionalAccess(Slow(), clock=lambda: clock[0])
+    access = InstitutionalAccess(Slow(), clock=lambda: clock[0], provider_modes=ALL_PROVIDERS_AUTO)
     try:
         for n in range(MAX_REQUESTS):
             access.request(SCOPE, URL + str(n))
@@ -56,7 +56,7 @@ def test_deadline_expires_queued_items_even_while_worker_is_busy_and_discards_la
 
 def test_new_papers_and_repeated_calls_never_extend_manual_window():
     clock = [0.]
-    access = InstitutionalAccess(Backend(), clock=lambda: clock[0])
+    access = InstitutionalAccess(Backend(), clock=lambda: clock[0], provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.control("run", "Nature", "open")
@@ -85,7 +85,7 @@ def test_retry_replaces_inflight_request_instead_of_admitting_old_result():
                 assert release.wait(5)
                 return {"state": "available", "document": document(url)}
             return {"state": "access_denied"}
-    access = InstitutionalAccess(Slow())
+    access = InstitutionalAccess(Slow(), provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.tick({"run"})
@@ -105,4 +105,4 @@ def test_retry_replaces_inflight_request_instead_of_admitting_old_result():
     {"acquisition_seconds": 601}, {"manual_seconds": float("nan")}, {"manual_seconds": 59}])
 def test_deadlines_must_be_finite_and_bounded(options):
     with pytest.raises(ValueError):
-        InstitutionalAccess(Backend(), **options)
+        InstitutionalAccess(Backend(), **options, provider_modes=ALL_PROVIDERS_AUTO)

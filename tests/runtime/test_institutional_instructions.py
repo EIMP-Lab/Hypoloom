@@ -146,7 +146,7 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
         assert summary["preparation_state"] == "input_timeout"
         remaining = build_parser().parse_args(summary["remaining_preparation_argv"][4:])
         assert remaining.provider == ["Nature"] and remaining.agent_session
-        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=public_only"]
+        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=public_only", "Nature=auto"]
         assert remaining.institutional_manual_seconds == 70 and remaining.institutional_connect_timeout == 7
         assert remaining.repository == str(tmp_path) and remaining.institutional_browser_url == args.institutional_browser_url
         assert not root.exists() and not list(tmp_path.rglob("state.sqlite"))

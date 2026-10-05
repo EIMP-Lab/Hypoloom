@@ -21,6 +21,9 @@ from test_full_cc_host_g3 import _new_host, _start_provider
 from test_grounding_web import DOC, Transport, _response
 
 
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO
+
+
 def _main(request):
     return (request.command is AgentCommand.LITERATURE_REVIEW and isinstance(request.task_context, ResearchNodeTask)
             and request.task_context.key.subkind.value == "MAIN")
@@ -161,7 +164,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                     "url": DOC + ".pdf", "requested_url": url, "identity": "doi:" + DOI,
                     "title": "Original method for independent reading"}}
             backend.fetch = fetch
-        modes = {"Nature": "public_only"} if arxiv_oa else {}
+        modes = {"Nature": "public_only"} if arxiv_oa else ({"Nature": "auto"} if institutional_oa == "browser" else {})
         if institutional_oa == 'preparation-failure':
             from hypoloom.cli import build_parser
             from hypoloom import institutional_prepare
@@ -169,7 +172,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             failed = PreparationBackend(); failed.state = 'verification_required'
             output = []
             with monkeypatch.context() as preparation_patch:
-                preparation_patch.setattr(institutional_prepare, 'build', lambda _: InstitutionalAccess(failed))
+                preparation_patch.setattr(institutional_prepare, 'build', lambda _: InstitutionalAccess(failed, provider_modes=ALL_PROVIDERS_AUTO))
                 args = build_parser().parse_args(['institutional', 'prepare', '--sample', DOC, '--non-interactive',
                     '--institutional-prepare-failure-mode', 'public_only'])
                 assert institutional_prepare.run(args, input_fn=lambda _: pytest.fail('manual recovery requested'),

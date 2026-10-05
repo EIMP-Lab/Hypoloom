@@ -2,6 +2,20 @@
 
 [English](qualification.md) · 简体中文
 
+## 出版社选择与英文 TUI（2026-10-05）
+
+准备名单现在通过既有 provider_modes 进入启动和 Host 配置；未配置出版社默认
+disabled，已选 auto／public_only 保留。禁用机构渠道不影响公开检索及 OA 全文。
+TUI 入口、列名、状态、说明统一英文，保留只读刷新和 Close／Esc；修复 80 列下
+英文内容挤压观察列的问题。Web 对禁用平台要求先显式启用再打开或验证。
+
+最终相关选择 380 个不同测试通过、18 个可选环境测试跳过。两组原生 CC／Host／
+三阅读者／CPU 闭环各完成 18 Agent＋1 Process，未完成 Attempt、存活进程组、
+论文暂存均为零；其中公开路径测试显式设置一次 public_only，无需人工回答。
+wheel、隔离安装、新 bundle 的 176 个包文件相同，安装版面板检查 80／100／237 列。
+既有运行及客户端未修改，旧 Host 的真实策略不由新 TUI 改写；没有付费、GPU 或
+实际出版社登录可用性的新声明。[详细范围与初始失败](qualification.md#publisher-selection-and-english-tui-2026-10-05)。
+
 ## TUI 只读机构状态（2026-10-04）
 
 用户要求机构 TUI 仅展示简要工作情况。i 面板复用 Host 的出版社策略、连接观察、

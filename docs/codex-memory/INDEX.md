@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Publisher selection and English TUI](../design/institutional-access-preparation.md#出版社选择与英文-tui2026-10-05):
+  selected modes survive generated launch arguments; other institutional routes
+  are disabled, public retrieval stays independent. English read-only TUI and
+  disabled Web actions; [validation](../qualification.md#publisher-selection-and-english-tui-2026-10-05).
+
 - [Windows first setup/replacement PC](../guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
   / [中文](../guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户):
   distinguish password login from BatchMode readiness; user-level keys and agent,

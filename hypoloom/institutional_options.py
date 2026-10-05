@@ -1,5 +1,5 @@
 """Shared launch arguments; reviewing configuration never connects a browser."""
-from .institutional_access import InstitutionalAccess, PROVIDERS, provider_catalog, provider_name
+from .institutional_access import InstitutionalAccess, PROVIDERS, PROVIDER_MODES, provider_catalog, provider_name, publisher
 from .institutional_browser import PlaywrightInstitutionalBrowser
 
 
@@ -8,7 +8,7 @@ def add_arguments(parser, *, connection=False):
     parser.add_argument("--institutional-browser-ui-url", help="loopback server-browser GUI origin")
     parser.add_argument("--institutional-library-url", help="HTTPS interactive library entry, never a SAML metadata endpoint")
     parser.add_argument("--institutional-provider-mode", action="append", default=[], metavar="PROVIDER=MODE",
-                        help="auto or public_only; repeat for different providers")
+                        help="auto, public_only or disabled; unselected providers are disabled")
     parser.add_argument("--institutional-acquisition-seconds", type=float, default=120)
     parser.add_argument("--institutional-manual-seconds", type=float, default=600)
     if connection:
@@ -21,11 +21,26 @@ def options(args):
     for value in args.institutional_provider_mode:
         name, separator, mode = value.partition("=")
         name = provider_name(name)
-        if not separator or name not in PROVIDERS.values() or mode not in {"auto", "public_only"}:
-            raise ValueError("institutional provider mode requires a supported PROVIDER=auto or PROVIDER=public_only")
+        if not separator or name not in PROVIDERS.values() or mode not in PROVIDER_MODES:
+            raise ValueError("institutional provider mode requires a supported PROVIDER=auto, public_only or disabled")
         if name in modes and modes[name] != mode:
             raise ValueError("conflicting institutional provider modes")
         modes[name] = mode
+    # Preparation selection must survive the generated launch/Host argv. The
+    # routing catalog itself does not opt the remaining publishers in.
+    if getattr(args, "institutional_action", None) == "prepare":
+        from .institutional_prepare import sample_url
+        samples = [publisher(sample_url(value)) for value in args.sample]
+        values = args.provider if args.provider is not None else (samples or None)
+        selected = [*preparation_selection(values, modes), *samples]
+    elif hasattr(args, "institutional_prepare_provider") and (
+        args.institutional_browser_url or getattr(args, "institutional_browser_mode", None) not in (None, "off")
+    ):
+        selected = preparation_selection(args.institutional_prepare_provider, modes)
+    else:
+        selected = []
+    for name in selected:
+        modes.setdefault(name, "auto")
     return {"provider_modes": modes, "acquisition_seconds": args.institutional_acquisition_seconds,
             "manual_seconds": args.institutional_manual_seconds}
 
@@ -40,7 +55,7 @@ def add_preparation_argument(parser, flag="--institutional-prepare-provider"):
 def preparation_selection(values, modes):
     if values is None:
         return [p["provider"] for p in provider_catalog()
-                if p["recommended_prepare"] and modes.get(p["provider"]) != "public_only"]
+                if p["recommended_prepare"] and modes.get(p["provider"]) not in {"public_only", "disabled"}]
     selected = list(dict.fromkeys(values))
     if "none" in selected:
         if len(selected) != 1: raise ValueError("preparation none cannot be combined with other platforms or samples")
@@ -68,7 +83,7 @@ def preparation(args):
             "failure_mode": args.institutional_prepare_failure_mode,
             **({"api_providers": api_providers, "api_full_text_access": "not_checked"} if api_providers else {}),
             "catalog": [{**p, "selected": p["provider"] in selected,
-                         "mode": modes.get(p["provider"], "auto"), "state": "not_checked"}
+                         "mode": modes.get(p["provider"], "disabled"), "state": "not_checked"}
                         for p in provider_catalog()]}
 
 
@@ -120,8 +135,8 @@ def launch_arguments(args, *, include_connection=False, include_preparation=Fals
         for name in ("browser_url", "browser_ui_url", "library_url", "acquisition_seconds", "manual_seconds"):
             value = getattr(args, "institutional_" + name)
             if value is not None: result += ["--institutional-" + name.replace("_", "-"), str(value)]
-        for value in args.institutional_provider_mode:
-            result += ["--institutional-provider-mode", value]
+        for name, value in options(args)["provider_modes"].items():
+            result += ["--institutional-provider-mode", f"{name}={value}"]
     if include_connection:
         from .institutional_connection import arguments
         result += arguments(args)

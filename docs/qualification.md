@@ -2,6 +2,42 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Publisher selection and English TUI (2026-10-05)
+
+The full routing catalog previously defaulted every omitted publisher to auto,
+while preparation selection was not carried into Host provider modes. Reuse the
+existing mode map and validators: selected platforms carry auto unless overridden,
+unselected publishers default to disabled, and explicit public_only remains
+distinct. Public/OA retrieval is independent of institutional browsing. Preparation,
+retry, generated launch arguments, durable controls and Web observations agree.
+No new storage, authority or run migration is introduced.
+
+All institutional TUI labels, status text and help are English. Read-only refresh,
+Close and Esc remain. Visual inspection found English column expansion crowding
+the last column at 80 columns; proportional columns and a compact queue heading
+repair it. Installed panels were checked at 80x24, 100x34 and 237x52.
+
+Final targeted selections cover **380 distinct passing tests**, with **18 optional
+environment skips**, including two native CC/Host/three-reader/CPU closures.
+Each native closure independently has 18 successful Agent Attempts and one
+successful Process, zero open Attempts, live process groups or staged papers.
+The public-route fixture explicitly submits one public_only setup control; the
+browser-route fixture submits none. Neither needs a human answer. These are
+isolated providers/documents, not new Windows/SSO or real publisher qualification.
+
+Initial fixture failures exposed old implicit opt-ins/empty-mode assertions and
+a missing test-helper import; fixtures now declare their chosen routes. The new
+Web test initially read headers from the generic request ledger instead of its
+body; scoped request-body capture verifies explicit enablement without relaxing
+the fixture's read-only traffic check. Final reruns pass.
+
+Wheel, isolated installation and a fresh bundle match **176 package files**.
+Evidence, initial failures, final reruns, native census and screenshots remain in
+`.local/qualification/institutional-selection-20261005/`; `final-test-selection.txt`
+lists the 398 selected identities. No retained research/preparation root, client,
+browser or credentials changed. Updated monitors preserve old Host observations;
+new routing defaults apply to new runs. No full G1/G4, paid or GPU promotion claim.
+
 ## PR 4 report and patch instructions (2026-10-05)
 
 The user authorizes merging PR #4 (`ab6369c`) into dev (`0e8c488`) after review.

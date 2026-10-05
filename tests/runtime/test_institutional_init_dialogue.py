@@ -12,6 +12,7 @@ from hypoloom.control_protocol import ControlRequest, request_over_socket
 from hypoloom.institutional_access import InstitutionalAccess
 from hypoloom.institutional_prepare import run
 from tests.runtime.test_institutional_preparation import PreparationBackend
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO
 
 
 def arguments(*extra):
@@ -22,7 +23,7 @@ def arguments(*extra):
 def ready_access(monkeypatch, state="ready"):
     backend = PreparationBackend()
     backend.state = "available"
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     checks = []
     def check(run_id, *, timeout_seconds):
         checks.append(timeout_seconds)
@@ -49,7 +50,7 @@ def test_connection_failure_is_one_batch_result_without_platform_attempts(monkey
         assert summary['remaining_preparation_argv'] == []
         assert summary['next_actions'] == ['review_launch_configuration']
     else:
-        assert summary['provider_modes'] == {} and summary['remaining_preparation_argv']
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer'], 'auto') and summary['remaining_preparation_argv']
 
 
 def test_terminal_eof_is_reported_without_claiming_login_or_leaking_browser(monkeypatch):
@@ -167,7 +168,7 @@ def test_sample_challenge_waits_for_user_without_restarting_acquisition(tmp_path
         else:
             assert row['state'] == {'complete': 'sample_verified', 'skip': 'skipped',
                 'public_only': 'public_only', 'expire': 'acquisition_timeout', 'manual_expire': 'input_timeout'}[action]
-        assert summary['provider_modes'] == ({'ScienceDirect': 'public_only'} if action == 'public_only' else {})
+        assert summary['provider_modes'] == {'ScienceDirect': 'public_only' if action == 'public_only' else 'auto'}
         assert item.deadline == deadline and sum(c['force'] for c in calls) == 1
         assert [c[0] for c in backend.calls].count('ScienceDirect') == 1
         assert backend.closed and not root.exists() and not list(tmp_path.rglob('state.sqlite'))
@@ -193,7 +194,7 @@ def test_sample_wait_choice_overrides_earlier_sample_failure(tmp_path, monkeypat
         assert not worker.is_alive() and results == [0]
         summary = json.loads(output[-1]); row = summary['preparation_summary'][0]
         assert row['state'] == expected and row['samples'][0]['state'] == 'identity_unconfirmed'
-        assert summary['provider_modes'] == ({'ScienceDirect': 'public_only'} if action == 'public_only' else {})
+        assert summary['provider_modes'] == {'ScienceDirect': 'public_only' if action == 'public_only' else 'auto'}
         assert summary['remaining_preparation_argv'] == [] and backend.closed and not root.exists()
     finally:
         if worker.is_alive(): request(root, 'PREPARATION_ANSWER', {'action': 'finish'}); worker.join(4)
@@ -265,7 +266,7 @@ def test_fixed_sample_challenge_advances_without_manual_download_or_background_r
         assert not worker.is_alive() and results == [1]
         summary = json.loads(output[-1]); rows = summary['preparation_summary']
         assert [r['state'] for r in rows] == ['verification_required', 'sample_verified']
-        assert summary['provider_modes'] == ({'ScienceDirect': 'public_only'} if failure_mode == 'public_only' else {})
+        assert summary['provider_modes'] == {'ScienceDirect': 'public_only' if failure_mode == 'public_only' else 'auto', 'Springer': 'auto'}
         assert bool(summary['remaining_preparation_argv']) == (failure_mode == 'review')
         assert len(attempts) == 1 and backend.closed and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))

@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 5 publisher selection/TUI: unconfigured publishers now default to
+  disabled institutional access. Existing provider_modes carries selected auto,
+  public_only and disabled choices through preparation/retry/launch/Host; public
+  retrieval stays independent. TUI labels and observations are English, with
+  responsive columns and Close/Esc; Web respects disabled browser actions.
+  Final focused selections: 380 distinct pass, 18 optional-environment skips.
+  Two native reader/CPU closures each have 18 successful Agents + one Process,
+  zero open Attempts/live groups/staging; one fixture sets public_only explicitly.
+  Wheel/install/fresh bundle match 176 files; installed 80/100/237-column panels
+  checked. Retained runs/client untouched; old Host modes remain authoritative.
+  [Design](../design/institutional-access-preparation.md#出版社选择与英文-tui2026-10-05)
+  and [validation](../qualification.md#publisher-selection-and-english-tui-2026-10-05).
+
 - October 5 Windows replacement-client tutorial: reported ordinary SSH exit 0
   and BatchMode exit 255 on a new PC isolate missing noninteractive authentication.
   Both institutional guides now cover new PC/account prerequisites, error triage,

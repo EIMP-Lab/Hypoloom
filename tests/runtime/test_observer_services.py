@@ -21,6 +21,9 @@ from test_notification_tailer import _create_profile_run, _notify
 from test_web_observer import _row_census
 
 
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO
+
+
 def configured(tmp_path, *, dashboard=True, webhook=False, telegram=False, port=0):
     config = _notify(webhook=webhook, telegram=telegram)
     config["sinks"]["dashboard"] = {"enabled": dashboard, "host": "127.0.0.1", "port": port}
@@ -35,7 +38,7 @@ def test_live_literature_transitions_reuse_local_log_without_research_writes_or_
     root = configured(tmp_path, dashboard=False)
     before = _row_census(root / "state.sqlite")
     service = ObserverServices(root, output=io.StringIO(), errors=io.StringIO())
-    access = InstitutionalAccess(Backend(), event_sink=service.record_literature_event)
+    access = InstitutionalAccess(Backend(), event_sink=service.record_literature_event, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(("notifications", "expert", "component"), URL)
         pump(access, lambda: access.peek(("notifications", "expert", "component"), URL)["reason"] == "login_required",

@@ -2869,7 +2869,7 @@
     available: "全文已就绪", access_denied: "当前机构无权限", no_full_text: "未找到全文",
     identity_unconfirmed: "论文对应关系未确认", failed: "文件获取或解析失败",
     sample_verified: "样本全文已验证", opened: "准备页已打开，请在浏览器完成登录",
-    unchecked: "未检查", tab_limit: "标签页已满，请分批准备", skipped: "已跳过此篇", public_only: "仅公开途径", queue_timeout: "排队超时",
+    unchecked: "未检查", tab_limit: "标签页已满，请分批准备", skipped: "已跳过此篇", public_only: "仅公开途径", disabled: "未启用", queue_timeout: "排队超时",
     acquisition_timeout: "获取超时", manual_timeout: "主动登录等待已结束",
   };
   const LITERATURE_REASON_LABELS = {
@@ -3011,12 +3011,12 @@
       const open = actionButton("打开登录", () => requestLiterature(providerName, "open", "", ""), "detail-link");
       const retry = actionButton("检查并重试", () => requestLiterature(providerName, "retry", "", ""), "detail-link");
       open.disabled = !writable; retry.disabled = !writable;
-      const modeButton = actionButton(group.mode === "public_only" ? "启用机构访问" : "仅公开途径",
-        () => requestLiterature(providerName, "mode", "", "", group.mode === "public_only" ? "auto" : "public_only"), "detail-link");
+      const modeButton = actionButton(group.mode !== "auto" ? "启用机构访问" : "仅公开途径",
+        () => requestLiterature(providerName, "mode", "", "", group.mode !== "auto" ? "auto" : "public_only"), "detail-link");
       modeButton.disabled = !writable;
-      open.disabled ||= group.mode === "public_only"; retry.disabled ||= group.mode === "public_only";
+      open.disabled ||= group.mode !== "auto"; retry.disabled ||= group.mode !== "auto";
       heading.append(open, retry, modeButton);
-      section.append(element("p", "panel-copy", `${group.mode === "public_only" ? "仅公开途径" : "使用现有机构会话"} · 主动等待剩余 ${group.manual_remaining_seconds || 0} 秒`));
+      section.append(element("p", "panel-copy", `${({auto: "使用现有机构会话", public_only: "仅公开途径", disabled: "未启用机构渠道"})[group.mode] || "策略未知"} · 主动等待剩余 ${group.manual_remaining_seconds || 0} 秒`));
       section.append(heading);
       const prep = object(group.preparation);
       section.append(element("p", "panel-copy", `${LITERATURE_STATE_LABELS[prep.state] || prep.state || "未检查"}${prep.last_checked_at ? " · " + prep.last_checked_at : ""}`));
@@ -3030,7 +3030,7 @@
         if (url.startsWith("10.")) url = "https://doi.org/" + url;
         requestLiterature(providerName, "verify", url);
       }, "detail-link");
-      verify.disabled = !writable || group.mode === "public_only";
+      verify.disabled = !writable || group.mode !== "auto";
       section.append(sample, verify);
       list(group.papers).forEach((paper) => {
         const row = element("div", "institutional-paper");

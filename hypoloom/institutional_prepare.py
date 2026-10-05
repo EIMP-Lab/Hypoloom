@@ -14,7 +14,7 @@ from .institutional_options import add_arguments, add_preparation_argument, buil
 from .institutional_dialogue import PreparationDialogue, PreparationEnded
 
 
-_COMPLETED_STATES = {"sample_verified", "not_checked", "skipped", "public_only"}
+_COMPLETED_STATES = {"sample_verified", "not_checked", "skipped", "public_only", "disabled"}
 _WATCH_SECONDS = 30
 
 
@@ -157,13 +157,13 @@ def _remaining_providers(selected, rows):
 def _finish_summary(args, selected, rows, modes, output, **extra):
     # Apply an explicit preparation policy to the existing launch preferences.
     # Keep observations (including failure/timeout and untouched platforms) intact.
-    remaining = _remaining_providers(selected, rows)
+    remaining = [name for name in _remaining_providers(selected, rows) if modes.get(name) != "disabled"]
     failure_mode = args.institutional_prepare_failure_mode
     if failure_mode == "public_only":
         modes.update(dict.fromkeys(remaining, "public_only"))
         if "next_actions" in extra:
             extra["next_actions"] = ["review_launch_configuration"]
-    remaining = [name for name in remaining if modes.get(name) != "public_only"]
+    remaining = [name for name in remaining if modes.get(name) not in {"public_only", "disabled"}]
     rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
     _summary(rows, modes, output, preparation_failure_mode=failure_mode,
              remaining_preparation_argv=_remaining_command(args, remaining, modes), **extra)
@@ -178,8 +178,8 @@ def _sample_state(results):
 def _prepare_platform(access, provider, samples, *, interactive, input_fn, output, modes, cancelled=lambda: False,
                       dialogue=None):
     row = {"provider": provider, "state": "not_checked", "samples": []}
-    if modes.get(provider) == "public_only":
-        return {**row, "state": "public_only"}, False
+    if modes.get(provider) in {"public_only", "disabled"}:
+        return {**row, "state": modes[provider]}, False
     if samples:
         row["samples"] = _verify(access, provider, samples, output, cancelled=cancelled, dialogue=dialogue)
         row["state"] = _sample_state(row["samples"])
@@ -325,8 +325,8 @@ def run(args, *, input_fn=input, output=print):
         return 0
     if len(selected) > 8: raise ValueError("prepare at most eight platforms per batch; run another batch afterward")
     if args.non_interactive and not samples: raise ValueError("non-interactive preparation requires a sample")
-    if all(modes.get(provider) == "public_only" for provider in selected):
-        _finish_summary(args, selected, [{"provider": provider, "state": "public_only", "samples": []}
+    if all(modes.get(provider) in {"public_only", "disabled"} for provider in selected):
+        _finish_summary(args, selected, [{"provider": provider, "state": modes[provider], "samples": []}
                                        for provider in selected], modes, output)
         return 0
     access = build(args)

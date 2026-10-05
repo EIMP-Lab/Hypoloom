@@ -6,13 +6,14 @@ import pytest
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.institutional_access import InstitutionalAccess, scope_for
 from hypoloom.institutional_controls import bind
-from tests.runtime.test_institutional_access import Backend, URL, SECOND, document, pump
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO, Backend, URL, SECOND, document, pump
 from tests.runtime.test_paper_reading import reading_host
 
 
-def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_login(reading_host):
+@pytest.mark.parametrize("mode", ["public_only", "disabled"])
+def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_login(reading_host, mode):
     host, parent, *_ = reading_host
-    access = InstitutionalAccess(Backend())
+    access = InstitutionalAccess(Backend(), provider_modes=ALL_PROVIDERS_AUTO)
     host.institutional_access = access
     bind(host)
     scope = scope_for(parent)
@@ -30,7 +31,7 @@ def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_
     assert access.request(("other-run", "expert", "a"), URL)["status"] == "pending"
     # A new queue, as on Host recovery, has no login window and reads the committed choice.
     access.close()
-    restored = InstitutionalAccess(Backend())
+    restored = InstitutionalAccess(Backend(), provider_modes=ALL_PROVIDERS_AUTO)
     host.institutional_access = restored
     bind(host)
     assert restored.request(scope, alias)["reason"] == "skipped"
@@ -42,10 +43,10 @@ def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_
     assert response.status == "accepted"
     assert restored.request(scope, URL)["status"] == "pending"
     changed = host.handle(ControlRequest(1, "public-only", response.revision, "LITERATURE_ACCESS",
-        {"run_id": parent.run_id, "provider": "Nature", "action": "mode", "mode": "public_only"}))
+        {"run_id": parent.run_id, "provider": "Nature", "action": "mode", "mode": mode}))
     assert changed.status == "accepted"
-    assert restored.request(scope, SECOND)["reason"] == "public_only"
-    assert "Nature" not in restored.configuration["provider_modes"], "frozen launch configuration stays unchanged"
+    assert restored.request(scope, SECOND)["reason"] == mode
+    assert restored.configuration["provider_modes"]["Nature"] == "auto", "frozen launch configuration stays unchanged"
     assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 3
 
 
@@ -57,7 +58,7 @@ def test_skip_during_download_discards_result_but_allows_explicit_import(reading
             entered.set()
             assert release.wait(5)
             return {"state": "available", "document": document(url)}
-    access = InstitutionalAccess(Slow())
+    access = InstitutionalAccess(Slow(), provider_modes=ALL_PROVIDERS_AUTO)
     host.institutional_access = access
     bind(host)
     scope = scope_for(parent)
@@ -85,7 +86,7 @@ def test_real_host_restart_recovers_choices_without_replaying_manual_window(tmp_
     from hypoloom.oracle import Oracle
     from tests.runtime.test_expert_loop_host import _pilot_payload
     with tempfile.TemporaryDirectory(prefix="hl-inst-restart-", dir="/var/tmp") as target:
-        access = InstitutionalAccess(Backend())
+        access = InstitutionalAccess(Backend(), provider_modes=ALL_PROVIDERS_AUTO)
         host = WorkflowHost(tmp_path / "state", institutional_access=access)
         host.initialize()
         run_id = "institutional-restart"
@@ -101,7 +102,7 @@ def test_real_host_restart_recovers_choices_without_replaying_manual_window(tmp_
             host.institutional_access._manual_until[(run_id, "Springer")] = host.institutional_access.clock() + 600
         finally:
             host.close()
-        restarted = WorkflowHost(tmp_path / "state", institutional_access=InstitutionalAccess(Backend()))
+        restarted = WorkflowHost(tmp_path / "state", institutional_access=InstitutionalAccess(Backend(), provider_modes=ALL_PROVIDERS_AUTO))
         restarted.initialize()
         try:
             restored = restarted.institutional_access

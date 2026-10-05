@@ -8,13 +8,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from hypoloom.institutional_access import InstitutionalAccess, publisher, validate_document
+from hypoloom.institutional_access import InstitutionalAccess, PROVIDERS, publisher, validate_document
 from hypoloom.institutional_browser import PlaywrightInstitutionalBrowser
 from hypoloom.grounding_web import GroundingWebError
 from hypoloom.paper_sources import PaperWorkspace, web_tool
 from hypoloom.fake_agent import default_request
 from hypoloom.domain import AgentCommand
 from tests.runtime.test_paper_reading import reading_host as reading_host
+
+# Acquisition fixtures explicitly opt in to the full catalog. Production defaults are disabled.
+ALL_PROVIDERS_AUTO = dict.fromkeys(PROVIDERS.values(), "auto")
 
 URL = "https://www.nature.com/articles/s41586-026-00001-1"
 SECOND = "https://www.nature.com/articles/s41586-026-00002-2"
@@ -62,7 +65,7 @@ def pump(access, predicate, runs=("run",)):
 def test_wait_deduplicates_provider_and_recovers_without_reprompting_every_paper():
     backend = Backend()
     clock = [0.]
-    access = InstitutionalAccess(backend, clock=lambda: clock[0])
+    access = InstitutionalAccess(backend, clock=lambda: clock[0], provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.request(SCOPE, URL)
@@ -94,7 +97,7 @@ def test_late_result_after_run_stop_is_discarded_and_host_poll_is_nonblocking():
             assert release.wait(3)
             return {"state": "available", "document": document()}
     backend = Slow()
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.tick({"run"})
@@ -113,7 +116,7 @@ def test_late_result_after_run_stop_is_discarded_and_host_poll_is_nonblocking():
 @pytest.mark.parametrize("state", ["access_denied", "no_full_text", "identity_unconfirmed"])
 def test_terminal_acquisition_failure_does_not_automatically_retry(state):
     backend = Backend(); backend.state = state
-    access = InstitutionalAccess(backend, poll_seconds=0)
+    access = InstitutionalAccess(backend, poll_seconds=0, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.peek(SCOPE, URL).get("reason") == state)
@@ -133,7 +136,7 @@ def test_network_wait_is_retried_without_blocking_other_papers_or_leaking_diagno
             return {"state": "available", "document": document(url)}
     events, clock = [], [0.]
     backend = Network()
-    access = InstitutionalAccess(backend, clock=lambda: clock[0], event_sink=events.append)
+    access = InstitutionalAccess(backend, clock=lambda: clock[0], event_sink=events.append, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.request(SCOPE, SECOND)
@@ -157,7 +160,7 @@ def test_adapter_reason_is_allowlisted_before_status_and_logging():
     backend = Backend()
     backend.fetch = lambda *args, **kwargs: {"state": "fetch_unavailable", "reason": "https://school/sso?token=SECRET"}
     events = []
-    access = InstitutionalAccess(backend, event_sink=events.append)
+    access = InstitutionalAccess(backend, event_sink=events.append, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.peek(SCOPE, URL)["reason"] == "fetch_unavailable")
@@ -171,7 +174,7 @@ def test_adapter_reason_is_allowlisted_before_status_and_logging():
 def test_transient_backoff_caps_and_resets_after_recovery(reason):
     backend, clock = Backend(), [0.]
     backend.fetch = lambda *args, **kwargs: {"state": "fetch_unavailable", "reason": reason}
-    access = InstitutionalAccess(backend, clock=lambda: clock[0], manual_seconds=1800)
+    access = InstitutionalAccess(backend, clock=lambda: clock[0], manual_seconds=1800, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.control("run", "Nature", "retry")
@@ -201,7 +204,7 @@ def test_auth_poll_and_operator_retry_reset_transient_backoff():
     backend, clock = Backend(), [0.]
     result = [{"state": "fetch_unavailable", "reason": "network_error"}]
     backend.fetch = lambda *args, **kwargs: result[0]
-    access = InstitutionalAccess(backend, clock=lambda: clock[0])
+    access = InstitutionalAccess(backend, clock=lambda: clock[0], provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         item = access._items[(*SCOPE, URL)]
@@ -274,7 +277,7 @@ def test_rejected_public_packet_never_reenters_browser_queue_or_cache(tmp_path, 
         rows.append({"observation_json": json.dumps({"request": request.to_dict(),
             "preflight_diagnostics": {"literature_reused_from_attempt": "original"}})})
     backend = Backend(); backend.state = "available"
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     public_calls = []
     def fetch(url):
         public_calls.append(url)
@@ -322,7 +325,7 @@ def test_browser_exception_diagnostics_do_not_contain_session_secrets():
     class Broken(Backend):
         def fetch(self, *args, **kwargs):
             raise RuntimeError("https://school.example/sso?SAMLResponse=SECRET")
-    access = InstitutionalAccess(Broken())
+    access = InstitutionalAccess(Broken(), provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.peek(SCOPE, URL)["reason"] == "browser_unavailable")
@@ -349,7 +352,7 @@ def test_import_requested_during_inflight_check_is_not_lost():
             entered.set()
             assert release.wait(3)
             return {"state": "login_required"}
-    backend = Slow(); access = InstitutionalAccess(backend)
+    backend = Slow(); access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.tick({"run"}); assert entered.wait(1)
@@ -365,7 +368,7 @@ def test_real_host_control_status_and_stop_preserve_research_revision(reading_ho
     from hypoloom.control_protocol import ControlRequest
     from hypoloom.institutional_access import scope_for
     host, parent, _, _, _ = reading_host
-    backend = Backend(); access = InstitutionalAccess(backend)
+    backend = Backend(); access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     host.institutional_access = access
     access.request(scope_for(parent), URL)
     head = host.store.latest_transition(parent.run_id)
@@ -395,7 +398,7 @@ def test_real_host_control_status_and_stop_preserve_research_revision(reading_ho
 
 def test_document_tool_admits_recovered_fulltext_and_archives_exact_bytes(tmp_path):
     backend = Backend()
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     request = replace(default_request(AgentCommand.GROUNDING), schema_version=20, required_output_schema="GroundingCandidate/v3")
     papers = PaperWorkspace(tmp_path, request)
     class Public:
@@ -424,8 +427,9 @@ def test_document_tool_admits_recovered_fulltext_and_archives_exact_bytes(tmp_pa
         access.close()
 
 
-def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp_path):
-    backend = Backend(); access = InstitutionalAccess(backend)
+@pytest.mark.parametrize("mode", ["auto", "public_only", "disabled"])
+def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp_path, mode):
+    backend = Backend(); access = InstitutionalAccess(backend, provider_modes={"Nature": mode})
     request = replace(default_request(AgentCommand.GROUNDING), schema_version=20, required_output_schema="GroundingCandidate/v3")
     papers = PaperWorkspace(tmp_path, request)
     class Public:
@@ -451,7 +455,7 @@ def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp
 def test_status_exposes_endpoint_without_document_bytes():
     backend = Backend()
     backend.configuration = {"browser_endpoint": "http://127.0.0.1:52929", "library_url": None}
-    access = InstitutionalAccess(backend, clock=lambda: 0.0)
+    access = InstitutionalAccess(backend, clock=lambda: 0.0, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         status = access.status("run")
     finally:
@@ -462,7 +466,7 @@ def test_status_exposes_endpoint_without_document_bytes():
 
 def test_server_browser_status_exposes_its_gui_endpoint():
     backend = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222", ui_url="http://127.0.0.1:5800")
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         status = access.status("run")
         assert status["browser_ui_url"] == "http://127.0.0.1:5800"

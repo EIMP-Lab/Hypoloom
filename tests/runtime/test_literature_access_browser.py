@@ -5,7 +5,7 @@ from test_observer_browser_ui import browser as browser
 
 def pending(page):
     page.evaluate("""Object.assign(fixture.snapshot.status, {run_state:'ACTIVE', literature_access:{
-        enabled:true, pending:2, available:0, groups:[{provider:'Nature', papers:[
+        enabled:true, pending:2, available:0, groups:[{provider:'Nature', mode:'auto', papers:[
             {url:'https://www.nature.com/articles/s41586-026-00001-1', title:'A verified scholarly method', state:'login_required'},
             {url:'https://www.nature.com/articles/s41586-026-00002-2', title:'Second paper', state:'queued'}]}]}})""")
     page.wait("document.querySelector('#run-state').textContent.includes('机构全文 2 篇待处理')")
@@ -21,6 +21,27 @@ def test_reader_sees_pending_panel_without_action_grant(browser):
     assert "只读列表" in page.text("#workbench-list")
     assert page.evaluate("Array.from(document.querySelectorAll('#workbench-list button')).every(b => b.disabled)")
     assert page.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
+
+
+@pytest.mark.parametrize("browser", ["literature"], indirect=True)
+def test_disabled_publisher_needs_explicit_enable_before_browser_actions(browser):
+    page = browser
+    pending(page)
+    page.evaluate("""(() => {
+      const original = window.fetch; window.modeCalls = [];
+      window.fetch = async (path, options={}) => {
+        if (path !== '/api/literature-access') return original(path, options);
+        modeCalls.push(JSON.parse(options.body));
+        return new Response(JSON.stringify({status:'accepted',revision:6}), {status:200});
+      };
+    })()""")
+    page.evaluate("fixture.snapshot.status.literature_access.groups[0].mode = 'disabled'")
+    page.wait("document.querySelector('#workbench-list').textContent.includes('未启用机构渠道')")
+    assert page.evaluate("[...document.querySelectorAll('.institutional-heading button')].slice(0, 2).every(b => b.disabled)")
+    assert page.evaluate("[...document.querySelectorAll('#workbench-list button')].find(b => b.textContent === '验证样本').disabled")
+    page.evaluate("[...document.querySelectorAll('.institutional-heading button')].find(b => b.textContent === '启用机构访问').click()")
+    page.wait("modeCalls.length === 1")
+    assert page.evaluate("modeCalls[0].provider === 'Nature' && modeCalls[0].action === 'mode' && modeCalls[0].mode === 'auto'")
 
 
 @pytest.mark.parametrize("browser", ["literature"], indirect=True)

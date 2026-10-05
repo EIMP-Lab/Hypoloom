@@ -123,7 +123,9 @@ legacy browser URL already answers this choice and retains its unmanaged behavio
 **Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
 Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For an explicit unattended-stability priority, use `--institutional-prepare-failure-mode public_only` and the failure policy in [details](references/init-details.md).
 Reuse choices; repeated `--institutional-prepare-provider` replaces the list, and `none` skips
-preparation without limiting research. Re-inspect with the same identity. Run `institutional_preparation_argv` with
+preparation without limiting research. Selected platforms carry explicit modes into launch;
+unselected platforms default to disabled institutional access, with public retrieval independent.
+Re-inspect with the same identity. Run `institutional_preparation_argv` with
 `--agent-session` in the background; run its flushed `instructions_argv` and show
 the returned instructions/code block verbatim. Use `status_argv` for the current
 `reply_argv`; append `--text` with the exact offered user reply, and `--sample` only
@@ -139,7 +141,7 @@ only that paper's readability, not login or subscription. Missing access never b
 Report public PDF, browser PDF or HTML. Fixed-sample challenges fail and advance; never require per-paper solving or claim HTML is PDF. See details.
 Merge returned `provider_modes` by platform into launch choices, replacing old values,
 then re-inspect and review. Retain completed/skipped preparation in this interaction;
-do not rerun a batch merely because its command still appears. Review auto/public_only
+do not rerun a batch merely because its command still appears. Review auto/public_only/disabled
 and finite 120-second acquisition / 600-second manual defaults. During research,
 observe Host status in the read-only TUI; optional manual controls use authorized Web, not another standalone browser manager.
 

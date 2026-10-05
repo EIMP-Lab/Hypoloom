@@ -16,7 +16,7 @@ from hypoloom.host_tools_server import AgentToolServer, call_tool
 from hypoloom.institutional_access import InstitutionalAccess, MAX_REQUESTS
 from hypoloom.literature import FixedLiteratureIO, LITERATURE_PACKET_MEDIA_TYPE
 from hypoloom.paper_sources import PaperWorkspace, prepare_sources, web_tool
-from tests.runtime.test_institutional_access import Backend, SCOPE, URL, PDF, pump
+from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO, Backend, SCOPE, URL, PDF, pump
 from tests.runtime.test_literature import FakeFetcher, _papers, _query
 
 
@@ -29,7 +29,7 @@ def test_metadata_packet_does_not_eagerly_queue_unselected_papers(tmp_path):
         required_output_schema="GroundingCandidate/v3", input_artifacts=(EmbeddedInput.from_bytes(
             "test--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes()),))
     backend = Backend()
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     workspace = SimpleNamespace(request=request)
     try:
         prepare_sources(SimpleNamespace(state_root=tmp_path, institutional_access=access), workspace, retrieval)
@@ -44,7 +44,7 @@ def test_metadata_packet_does_not_eagerly_queue_unselected_papers(tmp_path):
 @pytest.mark.parametrize("already_available", [False, True])
 def test_explicit_peer_requests_share_fetch_but_not_scope_or_identity(already_available):
     backend = Backend(); backend.state = "available"
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     peer = (SCOPE[0], "peer", "peer-component")
     try:
         access.request(SCOPE, URL)
@@ -63,7 +63,7 @@ def test_explicit_peer_requests_share_fetch_but_not_scope_or_identity(already_av
 
 def test_preferences_do_not_evict_verified_bytes_before_failures():
     backend = Backend(); backend.state = "available"
-    access = InstitutionalAccess(backend, provider_modes={"ScienceDirect": "public_only"})
+    access = InstitutionalAccess(backend, provider_modes={"Nature": "auto", "ScienceDirect": "public_only"})
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.status(SCOPE[0])["available"] == 1)
@@ -76,7 +76,7 @@ def test_preferences_do_not_evict_verified_bytes_before_failures():
 
 
 def test_manually_imported_bytes_are_not_reused_across_experts():
-    backend = Backend(); access = InstitutionalAccess(backend)
+    backend = Backend(); access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         access.control(SCOPE[0], "Nature", "import", url=URL, path="/fixture/authorized.pdf")
@@ -92,7 +92,7 @@ def test_peer_reuse_preserves_existing_cache_byte_limit(monkeypatch):
     size = len(doc['content']) + sum(len(t.encode()) for t in doc['pages'])
     monkeypatch.setattr('hypoloom.institutional_access.MAX_CACHE_BYTES', size)
     backend = Backend(); backend.state = 'available'
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.status(SCOPE[0])['available'] == 1)
@@ -107,7 +107,7 @@ def test_peer_reuse_preserves_existing_cache_byte_limit(monkeypatch):
 @pytest.mark.parametrize("backend_state", ["available", "verification_required"])
 def test_one_mcp_call_waits_then_delivers_or_finishes_without_human_input(tmp_path, backend_state, mode):
     backend = Backend(); backend.state = backend_state
-    access = InstitutionalAccess(backend)
+    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     request = replace(default_request(AgentCommand.GROUNDING), schema_version=20,
                       required_output_schema="GroundingCandidate/v3")
     papers = PaperWorkspace(tmp_path / "papers", request)

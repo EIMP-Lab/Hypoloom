@@ -618,12 +618,20 @@ The existing catalog shows four common platforms first:
 | Springer | Yes | Open the official institution finder, then authenticate with the institution. |
 
 With no platform/sample arguments the command selects these three preparation
-defaults, excluding platforms set to `public_only`. Repeated `--provider <platform>`
+defaults, excluding platforms set to `public_only` or `disabled`. Repeated `--provider <platform>`
 replaces the defaults and can include ACM or other supported platforms; `--provider none`
 does not connect. Samples alone still select only their own platforms. Preparation
 never restricts research discovery. ACM's default follows its
 [2026 open-access announcement](https://www.acm.org/about-acm/acm-pres-on-oa-transition-and-dl-changes);
-it does not guarantee successful automated downloads or disable browser fallback.
+it does not guarantee successful automated downloads. Select ACM explicitly to
+enable its institutional browser fallback.
+
+Selected preparation platforms carry `auto` into the generated launch arguments,
+unless an explicit `public_only` or `disabled` mode overrides them. All other
+publishers default to **Disabled** institutional access; the catalog is not a
+selection of every supported publisher. Public discovery and public/OA full-text
+retrieval remain independent. With preparation set to `none`, only explicitly
+configured provider modes remain enabled. Existing runs retain their frozen policy.
 
 Choose one browser profile and optional `--institutional-library-url` for the batch.
 Without a library URL, preparation opens Springer's official institution finder
@@ -739,7 +747,7 @@ The optional [Elsevier TDM channel](https://www.elsevier.com/about/policies-and-
 requires verified access, and XML full text is not the publisher PDF.
 
 During a run, the TUI **i** panel is read-only: publisher routes, public-plus-institutional
-or public-only policies, current pending/ready/gap counts and latest observations.
+public-only or disabled policies, current pending/ready/gap counts and latest observations.
 Idle publishers remain visible; a configured route is not proof of login or subscription.
 The panel refreshes with the main monitor. **Close** or **Esc** returns to research.
 It has no PDF path input, login/retry/sample actions or policy controls. Optional manual
@@ -932,9 +940,12 @@ keeping a partial PDF. Rate limits, access denial, challenges, invalid PDFs and
 identity conflicts do not trigger this retry. Download diagnostics retain the
 DNS/TCP/TLS/request/header/body timeout phase and received-byte count where known.
 
-Press **i** in the TUI to see one row per publisher: access policy, current
+Press **i** in the TUI to open the English **Institutional access** panel and see one row per publisher: access policy, current
 institutional pending/ready/gap counts and latest observations. Public-only suppresses
-automatic institutional browsing. No institutional requests does not mean public
+automatic institutional browsing. Policies are **Public + institution**, **Public only**
+and **Disabled**. Unselected publishers are Disabled; public retrieval remains available.
+Reopening an updated monitor does not change an existing Host's publisher modes.
+No institutional requests does not mean public
 retrieval failed, and ready full text does not prove an Agent read it or obtained PDF.
 Counts cover the current bounded queue, not historical totals or public downloads.
 Where the Host exposes its existing local notification log, recent observations
