@@ -299,12 +299,13 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     from .institutional_options import preview as institutional_preview
     review.update(institutional_preview(args, repository))
     if "institutional_access" in review:
-        from .institutional_options import launch_arguments as institutional_arguments
+        from .institutional_options import launch_arguments as institutional_arguments, preparation_literature_arguments
         selected = review["institutional_preparation"]["selected"]
         if selected:
             review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
                 "--agent-session", "--repository", str(repository),
                 *institutional_arguments(args, include_connection=True, include_preparation=True),
+                *preparation_literature_arguments(args),
                 *[part for provider in selected for part in ("--provider", provider)]]
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",

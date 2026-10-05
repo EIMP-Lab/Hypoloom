@@ -251,11 +251,9 @@ not permission to omit checks or necessary user decisions.
 
 ## Supported routing
 
-For `monitor`, including a missing run ID or state root, read the focused
-[monitor shortcut](../autoresearch-monitor/SKILL.md) and use its existing
-read-only discovery/launcher flow. `/autoresearch monitor` remains supported.
+For `monitor`, including a missing run ID or state root, read the focused [monitor shortcut](../autoresearch-monitor/SKILL.md)
+and use its existing read-only discovery/launcher flow. `/autoresearch monitor` remains supported.
 
 For other non-init operations, read [Operations reference](references/operations.md)
-before routing the exact user request. It defines status, monitoring, controls,
-notifications, retained debugging, cancellation and backup boundaries. Never
-infer an existing run or mutate one merely because init is being performed.
+before routing the exact user request. It defines status, monitoring, controls, notifications,
+retained debugging, cancellation and backup boundaries. Never infer an existing run or mutate one merely because init is being performed.

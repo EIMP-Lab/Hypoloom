@@ -124,6 +124,7 @@ class LiteratureFailureCode(str, Enum):
     PDF_DEADLINE = "PDF_DEADLINE"
     PDF_REQUEST_BUDGET = "PDF_REQUEST_BUDGET"
     PDF_HTTP = "PDF_HTTP"
+    PDF_CHALLENGE = "PDF_CHALLENGE"
     PDF_TRANSPORT = "PDF_TRANSPORT"
     PDF_INVALID = "PDF_INVALID"
     PDF_RESPONSE_LIMIT = "PDF_RESPONSE_LIMIT"
@@ -1622,7 +1623,8 @@ def _pdf_locator_get(provider: str, host: str, target: str, headers: Mapping[str
         if len(body) > max_bytes:
             raise LiteratureFetchError(f"{provider} response exceeded its byte bound")
         return OpenAlexResponse(status_code=response.status,
-            media_type=response.getheader("Content-Type"), content_length=content_length, body=body)
+            media_type=response.getheader("Content-Type"), content_length=content_length, body=body,
+            retry_after=response.getheader("Retry-After"))
     except (TimeoutError, socket.timeout) as exc:
         raise LiteratureFetchError(
             f"{provider} request timed out", code=LiteratureFailureCode.PDF_TIMEOUT,
@@ -1642,15 +1644,31 @@ class PdfFallbackLocator(Protocol):
 
 
 class SemanticScholarPdfLocator:
-    """Find one legal OA copy by an exact DOI, never by fuzzy title search."""
+    """Exact-DOI OA lookup with one request/second and one in-flight request.
+
+    Admission and 429 cooldown are per instance, shared by all its callers.
+    Each lookup sends at most one HTTP request: waiting consumes its deadline,
+    and active cooldown fails immediately so other public sources can proceed.
+    Separate processes/instances using one API key must share its rate allowance.
+    """
 
     def __init__(
         self,
         *,
+        api_key: str | None = None,
+        api_key_loader: Callable[[], str | None] | None = None,
         transport: OpenAlexTransport | None = None,
         timeout_seconds: float = DEFAULT_OPENALEX_TIMEOUT_SECONDS,
         max_response_bytes: int = 64 * 1024,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        if api_key is not None and api_key_loader is not None:
+            raise ValueError("Semantic Scholar accepts either an API key or a key loader")
+        if api_key_loader is not None and not callable(api_key_loader):
+            raise ValueError("Semantic Scholar key loader must be callable")
+        if not callable(clock) or not callable(sleep):
+            raise ValueError("Semantic Scholar clock and sleep must be callable")
         if (
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
@@ -1668,6 +1686,22 @@ class SemanticScholarPdfLocator:
         )
         self.timeout_seconds = float(timeout_seconds)
         self.max_response_bytes = max_response_bytes
+        self._api_key = self._clean_key(api_key)
+        self._api_key_loader = api_key_loader
+        self._clock, self._sleep = clock, sleep
+        self._request_lock = Lock()
+        self._next_request_at = self._retry_at = 0.0
+
+    @staticmethod
+    def _clean_key(value):
+        if value is None:
+            return None
+        try:
+            key = _clean_api_key(value, allow_file_newline=False)
+            key.encode("ascii")
+        except (LiteratureError, UnicodeError):
+            raise LiteratureFetchError("Semantic Scholar API key is invalid") from None
+        return key
 
     @property
     def configuration(self) -> dict[str, object]:
@@ -1679,41 +1713,26 @@ class SemanticScholarPdfLocator:
         }
 
     def preflight(self) -> dict[str, object]:
-        return {**self.configuration, "credential_source": "none", "network_probe_performed": False}
+        source = "loader" if self._api_key_loader is not None else "explicit" if self._api_key is not None else "none"
+        return {**self.configuration, "credential_source": source, "network_probe_performed": False}
 
     def locate(self, paper: SearchPaper) -> Sequence[str]:
         return self.locate_doi(paper.bibliographic_identity[4:]) if paper.bibliographic_identity.startswith("doi:") else ()
 
     def locate_doi(self, doi: str, *, timeout_seconds=None) -> Sequence[str]:
         doi = _identity("doi:" + doi)[4:]
+        if timeout_seconds is not None and (isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, (int, float))
+                or not math.isfinite(timeout_seconds) or timeout_seconds <= 0):
+            raise ValueError("Semantic Scholar request timeout must be positive and finite")
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        deadline = self._clock() + timeout
         target = (
             "/graph/v1/paper/"
             + quote(f"DOI:{doi}", safe="")
             + "?fields=externalIds%2CopenAccessPdf"
         )
-        try:
-            response = self._transport.get(
-                host=SEMANTIC_SCHOLAR_API_HOST,
-                target=target,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "Hypoloom-Hypoloom-literature/2",
-                },
-                timeout_seconds=self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds),
-                max_bytes=self.max_response_bytes,
-            )
-        except LiteratureError:
-            raise
-        except TimeoutError as exc:
-            raise LiteratureFetchError(
-                "Semantic Scholar metadata lookup timed out", code=LiteratureFailureCode.PDF_TIMEOUT,
-            ) from exc
-        except Exception as exc:
-            raise LiteratureFetchError(
-                "Semantic Scholar metadata lookup failed", code=LiteratureFailureCode.PDF_TRANSPORT,
-            ) from exc
-        if not isinstance(response, OpenAlexResponse):
-            raise LiteratureFetchError("Semantic Scholar response is invalid")
+        response = self._request(target, deadline)
         if response.status_code == 404:
             return ()
         if response.status_code != 200:
@@ -1747,6 +1766,70 @@ class SemanticScholarPdfLocator:
         except LiteratureError:
             return ()
         return (uri,)
+
+    def _request(self, target, deadline):
+        def remaining():
+            seconds = deadline - self._clock()
+            if seconds <= 0:
+                raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
+            return seconds
+
+        if not self._request_lock.acquire(timeout=remaining()):
+            raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
+        try:
+            remaining()
+            if self._retry_at > self._clock():
+                raise LiteratureFetchError("Semantic Scholar rate limit cooldown", http_status=429,
+                    retry_after_seconds=self._retry_at - self._clock())
+            while self._next_request_at > self._clock():
+                delay = self._next_request_at - self._clock()
+                if delay >= remaining():
+                    raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
+                self._sleep(delay)
+            try:
+                key = self._clean_key(self._api_key_loader()) if self._api_key_loader is not None else self._api_key
+            except Exception:
+                raise LiteratureFetchError("Semantic Scholar credentials are unavailable or invalid") from None
+            headers = {"Accept": "application/json", "User-Agent": "Hypoloom-Hypoloom-literature/2"}
+            if key is not None:
+                headers["x-api-key"] = key
+            timeout = remaining()
+            self._next_request_at = self._clock() + 1.0
+            try:
+                response = self._transport.get(host=SEMANTIC_SCHOLAR_API_HOST, target=target,
+                    headers=headers, timeout_seconds=timeout, max_bytes=self.max_response_bytes)
+            except LiteratureError as exc:
+                if exc.http_status == 429:
+                    delay = _pdf_fallback_retry_delay(exc)
+                    self._retry_at = self._clock() + delay
+                else:
+                    delay = exc.retry_after_seconds
+                raise LiteratureFetchError("Semantic Scholar metadata lookup failed", code=exc.code,
+                    http_status=exc.http_status, retry_after_seconds=delay) from None
+            except TimeoutError:
+                raise LiteratureFetchError("Semantic Scholar metadata lookup timed out", code=LiteratureFailureCode.PDF_TIMEOUT) from None
+            except Exception:
+                raise LiteratureFetchError("Semantic Scholar metadata lookup failed", code=LiteratureFailureCode.PDF_TRANSPORT) from None
+            if not isinstance(response, OpenAlexResponse):
+                raise LiteratureFetchError("Semantic Scholar response is invalid")
+            if response.status_code == 429:
+                from .provider_observation import retry_after_seconds
+                delay = max(PDF_FALLBACK_COOLDOWN_SECONDS,
+                            retry_after_seconds(response.retry_after, now=time.time()) or 0)
+                self._retry_at = self._clock() + delay
+                raise LiteratureFetchError("Semantic Scholar rate limit was reached", http_status=429,
+                    retry_after_seconds=delay)
+            remaining()
+            return response
+        finally:
+            self._request_lock.release()
+
+
+def _pdf_fallback_retry_delay(error):
+    delay = error.retry_after_seconds
+    return max(PDF_FALLBACK_COOLDOWN_SECONDS, delay) if (
+        isinstance(delay, (int, float)) and not isinstance(delay, bool) and math.isfinite(delay)
+    ) else PDF_FALLBACK_COOLDOWN_SECONDS
 
 
 UNPAYWALL_API_HOST = "api.unpaywall.org"
@@ -2759,6 +2842,9 @@ class OpenAlexLiteratureFetcher:
                 },
             )
             response = connection.getresponse()
+            if str(response.getheader("Cf-Mitigated") or "").strip().casefold() == "challenge":
+                raise LiteratureFetchError("PDF request requires publisher verification",
+                    code=LiteratureFailureCode.PDF_CHALLENGE, http_status=response.status)
             content_length = _http_content_length(
                 response.getheader("Content-Length"),
                 "PDF",
@@ -2983,6 +3069,8 @@ def literature_failure_retryable(failure: LiteratureError) -> bool:
 
     if not isinstance(failure, LiteratureError):
         raise TypeError("failure must be a LiteratureError")
+    if failure.code is LiteratureFailureCode.PDF_CHALLENGE:
+        return False
     if failure.code in {
         LiteratureFailureCode.OPENALEX_TIMEOUT,
         LiteratureFailureCode.OPENALEX_RATE_LIMIT,
@@ -3356,7 +3444,9 @@ def _download_event(
     except LiteratureError:
         source_host = None
     if error is not None:
-        if isinstance(error, _LiteratureDnsResolutionError):
+        if error.code is LiteratureFailureCode.PDF_CHALLENGE:
+            outcome = "CHALLENGE"
+        elif isinstance(error, _LiteratureDnsResolutionError):
             outcome = "TRANSPORT_FAILURE"
         elif stage == "extraction":
             outcome = "EXTRACTION_FAILURE"
@@ -3469,7 +3559,7 @@ class FixedLiteratureIO:
         except LiteratureError as exc:
             if exc.http_status == 429:
                 with self._pdf_lock:
-                    self._fallback_retry_at = max(self._fallback_retry_at, self._clock() + PDF_FALLBACK_COOLDOWN_SECONDS)
+                    self._fallback_retry_at = max(self._fallback_retry_at, self._clock() + _pdf_fallback_retry_delay(exc))
             _download_event(events, "fallback_lookup", "VALIDATION_FAILURE", error=exc)
             return ()
         if not isinstance(located, (tuple, list)) or len(located) > 4 or any(not isinstance(url, str) for url in located):
@@ -3920,13 +4010,21 @@ class FixedLiteratureIO:
                 return None
             fallback_lookups[0] += 1
         try:
-            located = self.fallback_locator.locate(candidate)
+            # The lookup has its own bounded batch count above; it sends at
+            # most one metadata request and must share the PDF work deadline.
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                _download_event(events, "fallback_lookup", "DEADLINE")
+                return None
+            bounded_lookup = getattr(self.fallback_locator, "locate_doi", None)
+            located = (bounded_lookup(candidate.bibliographic_identity[4:], timeout_seconds=remaining)
+                       if callable(bounded_lookup) else self.fallback_locator.locate(candidate))
         except LiteratureError as exc:
             if exc.http_status == 429:
                 with self._pdf_lock:
                     fallback_rate_limited[0] = True
                     self._fallback_retry_at = max(self._fallback_retry_at,
-                        self._clock() + PDF_FALLBACK_COOLDOWN_SECONDS)
+                        self._clock() + _pdf_fallback_retry_delay(exc))
             _download_event(events, "fallback_lookup", "VALIDATION_FAILURE", error=exc)
             return None
         except Exception as exc:
@@ -4212,6 +4310,8 @@ def build_openalex_literature_io(
     pdf_workers: int = 2,
     transport: OpenAlexTransport | None = None,
     semantic_scholar_transport: OpenAlexTransport | None = None,
+    semantic_scholar_api_key: str | None = None,
+    semantic_scholar_api_key_loader: Callable[[], str | None] | None = None,
     pdf_fallback: str = "semantic-scholar",
     unpaywall_email: str | None = None,
     unpaywall_email_file: str | Path | None = None,
@@ -4228,6 +4328,7 @@ def build_openalex_literature_io(
     fallback = (UnpaywallPdfLocator(email=unpaywall_email, email_file=unpaywall_email_file, transport=unpaywall_transport,
                     timeout_seconds=min(float(timeout_seconds), 5.0)) if pdf_fallback == "unpaywall" else
                 SemanticScholarPdfLocator(transport=semantic_scholar_transport,
+                    api_key=semantic_scholar_api_key, api_key_loader=semantic_scholar_api_key_loader,
                     timeout_seconds=min(float(timeout_seconds), 5.0)))
     extractor = PopplerPdfExtractor(
         pdfinfo_path=pdfinfo_path,

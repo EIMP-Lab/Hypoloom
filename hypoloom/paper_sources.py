@@ -515,6 +515,13 @@ def web_tool(host, request, tool, arguments, *, defer=False):
             except GroundingWebError as exc:
                 if api is None and exc.code not in {"http_error", "transport_failed", "timed_out", "challenge", "redirect_error", "full_text_unconfirmed", "rate_limited"}:
                     return {"error": {"code": exc.code, "message": str(exc)[:1024]}}
+                if exc.code == "challenge":
+                    from .literature import LiteratureError, LiteratureFailureCode, _download_event
+                    events = []
+                    _download_event(events, "direct", "CHALLENGE", uri=item["url"],
+                        error=LiteratureError("Browser verification required", code=LiteratureFailureCode.PDF_CHALLENGE,
+                            http_status=exc.http_status))
+                    observations.append({"bibliographic_identity": identity, "events": events})
                 error = {"code": exc.code, "message": str(exc)[:1024]}
             if identity not in located:
                 events = []

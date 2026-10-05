@@ -191,6 +191,7 @@ def test_actual_web_renderer_lists_every_gpu_with_singular_fallback(plural):
     if executable is None:
         pytest.skip("node is unavailable for the actual web renderer")
     source = (Path(__file__).resolve().parents[2] / "hypoloom/web_observer_assets/app.js").read_text()
+    translation = source[source.index("  function t("):source.index("  const byId =")]
     renderer = source[source.index("  function renderAttempts(selection) {"):source.index("  function renderFactCounts(container) {")]
     scope_label = source[source.index("  function taskScopeLabel(record) {"):source.index("  function renderGlobalTasks(snapshot) {")]
     device = {**_device("GPU-first"), "owned_memory": _owned(unknown=1)}
@@ -199,6 +200,7 @@ def test_actual_web_renderer_lists_every_gpu_with_singular_fallback(plural):
         view.pop("gpu_usage", None)  # retained serialized monitor sample
     harness = """
 const entries = [], classes = [];
+const uiLanguage = 'en', messages = {};
 const element = () => ({append() {}, addEventListener() {}, classList: {add(value) {classes.push(value);}}});
 const list = value => Array.isArray(value) ? value : [];
 const object = value => value || {};
@@ -207,7 +209,7 @@ const setText = () => {}, attemptMatches = () => true;
 const formatTimestamp = () => '', formatDuration = () => '';
 const appendDefinition = (_grid, name, value) => entries.push([name, value]);
 """
-    command = harness + "\nconst state = " + json.dumps({"snapshot": {"attempts": [view]}}) + ";\n" + scope_label + renderer
+    command = harness + translation + "\nconst state = " + json.dumps({"snapshot": {"attempts": [view]}}) + ";\n" + scope_label + renderer
     command += "\nrenderAttempts(null); process.stdout.write(JSON.stringify({entries, classes}));"
     result = subprocess.run([executable, "-e", command], capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, result.stderr

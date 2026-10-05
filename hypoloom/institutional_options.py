@@ -87,14 +87,14 @@ def preparation(args):
                         for p in provider_catalog()]}
 
 
-def build(args):
+def build(args, *, pdf_locator=None):
     from .institutional_connection import configure
     configure(args)
     settings = options(args)
     if getattr(args, "institutional_browser_mode", None) not in (None, "off"):
         from .institutional_connection import runtime_plan
         from .institutional_runtime import RunAccess
-        return RunAccess(runtime_plan(args), **settings)
+        return RunAccess(runtime_plan(args), pdf_locator=pdf_locator if pdf_locator is not None else _pdf_locator(args), **settings)
     if not args.institutional_browser_url:
         if args.institutional_browser_ui_url:
             raise ValueError("institutional browser UI requires a browser endpoint")
@@ -103,7 +103,36 @@ def build(args):
             raise ValueError("institutional options require an enabled browser mode or --institutional-browser-url")
         return None
     return InstitutionalAccess(PlaywrightInstitutionalBrowser(args.institutional_browser_url,
-        library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url), **settings)
+        library_url=args.institutional_library_url, ui_url=args.institutional_browser_ui_url,
+        pdf_locator=pdf_locator if pdf_locator is not None else _pdf_locator(args)), **settings)
+
+
+def _pdf_locator(args):
+    """Runtime and preparation use the selected locator with Host-only secrets."""
+    from .credentials import (SEMANTIC_SCHOLAR_API_KEY_KEY, UNPAYWALL_EMAIL_KEY,
+        credential, optional_credential_loader, read_credentials_file)
+    from .literature import SemanticScholarPdfLocator, UnpaywallPdfLocator
+    source = getattr(args, "credentials_file", None)
+    if getattr(args, "literature_pdf_fallback", "semantic-scholar") == "unpaywall":
+        email_file = getattr(args, "unpaywall_email_file", None)
+        if source and email_file:
+            raise ValueError("use exactly one of --unpaywall-email-file or UNPAYWALL_EMAIL in --credentials-file")
+        return UnpaywallPdfLocator(email=credential(read_credentials_file(source), UNPAYWALL_EMAIL_KEY)
+            if source else None, email_file=email_file, timeout_seconds=5)
+    if getattr(args, "unpaywall_email_file", None) is not None:
+        raise ValueError("Unpaywall options require pdf_fallback='unpaywall'")
+    return SemanticScholarPdfLocator(timeout_seconds=5,
+        api_key_loader=optional_credential_loader(source, SEMANTIC_SCHOLAR_API_KEY_KEY))
+
+
+def preparation_literature_arguments(args):
+    """Carry only existing source paths and fallback choice into prepare/retry."""
+    result = []
+    for name in ("credentials_file", "literature_pdf_fallback", "unpaywall_email_file"):
+        value = getattr(args, name, None)
+        if value is not None:
+            result += ["--" + name.replace("_", "-"), str(value)]
+    return result
 
 
 def preview(args, repository=None):

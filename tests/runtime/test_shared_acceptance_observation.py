@@ -211,6 +211,7 @@ def test_web_common_panel_renders_raw_values_and_reuses_its_read_only_node(tmp_p
     )
     helpers = "".join(
         [
+            extract("  function t(", "  const byId ="),
             extract("  function element(", "  function svgElement("),
             extract("  function svgElement(", "  function setText("),
             extract("  function object(", "  function sharedGoal("),
@@ -223,6 +224,7 @@ def test_web_common_panel_renders_raw_values_and_reuses_its_read_only_node(tmp_p
     snapshot = {"status": payload, "hypotheses": [], "components": [], "experts": []}
     harness = r"""
 const registry = new Map();
+const uiLanguage = 'en', messages = {};
 let insertions = 0;
 const SVG_NS = "http://www.w3.org/2000/svg";
 class Node {

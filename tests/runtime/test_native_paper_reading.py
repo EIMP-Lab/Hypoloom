@@ -133,10 +133,11 @@ class ReadingScenario(_FinalReportHostScenario):
     (False, False, False, False), (True, False, False, False), (False, True, False, False),
     (False, False, True, False), (False, False, False, True), (False, False, False, "metadata"),
     (False, False, False, "preparation-failure"), (False, False, False, "browser"),
-    (False, False, False, "arxiv"), (False, False, False, "arxiv-timeout")],
-    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback", "arxiv-timeout"])
+    (False, False, False, "arxiv"), (False, False, False, "arxiv-timeout"),
+    (False, False, False, "arxiv-challenge")],
+    ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback", "arxiv-timeout", "challenge-and-quota"])
 def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
-    arxiv_oa = institutional_oa in {'arxiv', 'arxiv-timeout'}
+    arxiv_oa = institutional_oa in {'arxiv', 'arxiv-timeout', 'arxiv-challenge'}
     if institutional_oa:
         import sys
         monkeypatch.setattr(sys.modules[__name__], "DOC", "https://www.nature.com/articles/s41586-026-00001-1")
@@ -185,7 +186,17 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             assert modes == {'Nature': 'public_only'}
         host.institutional_access = InstitutionalAccess(backend, provider_modes=modes)
         host.configuration["institutional_access"] = host.institutional_access.configuration
-        host.literature_io.fallback_locator = UnpaywallPdfLocator(email="reader@example.org", transport=metadata)
+        if institutional_oa == 'arxiv-challenge':
+            from hypoloom.literature import SemanticScholarPdfLocator, OpenAlexResponse
+            def limited(**kwargs):
+                metadata.calls.append(kwargs)
+                body = b'{"message":"Too Many Requests","code":"429"}'
+                return OpenAlexResponse(status_code=429, media_type='application/json',
+                    content_length=len(body), body=body, retry_after='120')
+            metadata.get = limited
+            host.literature_io.fallback_locator = SemanticScholarPdfLocator(transport=metadata)
+        else:
+            host.literature_io.fallback_locator = UnpaywallPdfLocator(email="reader@example.org", transport=metadata)
         host.configuration["literature"] = host.literature_io.configuration
         # Finish isolated launch configuration before the first run/version is persisted.
         host.version = host._runtime_version()
@@ -198,6 +209,8 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             from test_arxiv_fallback import atom, feed, AUTHORS, PDF as ARXIV_PDF
             monkeypatch.setattr(arxiv_fallback, 'API_LOCK', tmp_path / 'arxiv-api.lock')
             work.update(locations=[], authorships=[{'author': {'display_name': author}} for author in AUTHORS])
+            if institutional_oa == 'arxiv-challenge':
+                work['locations'] = [{'is_oa': True, 'pdf_url': OA}]
         host.grounding_web = GroundingWeb(Transport({DOC: _response(DOC, b"Denied", status_code=403),
             lookup: _response(lookup, json.dumps(work).encode(), media_type="application/json",
                               status_code=200 if arxiv_oa or institutional_oa in {"metadata", "preparation-failure"} else 404),
@@ -209,6 +222,16 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             host.grounding_web.transport.responses.update({
                 target: _response(target, feed(atom(title=work['display_name'], doi=DOI)), media_type='application/atom+xml'),
                 ARXIV_PDF: _response(ARXIV_PDF, _pdf(DOI + ' ' + scenario.nonce), media_type='application/pdf')})
+            if institutional_oa == 'arxiv-challenge':
+                from hypoloom.grounding_web import GroundingWebError
+                fetch = host.grounding_web.transport.fetch
+                challenged = []
+                def publisher_challenge(url, **kwargs):
+                    if url in {DOC, OA}:
+                        challenged.append(url)
+                        raise GroundingWebError('challenge', 'web provider requires human verification', http_status=403)
+                    return fetch(url, **kwargs)
+                host.grounding_web.transport.fetch = publisher_challenge
             if institutional_oa == 'arxiv-timeout':
                 from hypoloom.grounding_web import GroundingWebError
                 fetch = host.grounding_web.transport.fetch
@@ -267,6 +290,17 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                            for sources in scenario.sources.values() for source in sources)
             if institutional_oa == 'arxiv-timeout':
                 assert len(pdf_requests) == 2
+            if institutional_oa == 'arxiv-challenge':
+                assert challenged.count(DOC) == challenged.count(OA) == 1
+                trace = [event for attempt in host.store.list_attempts()
+                    for call in json.loads(attempt['observation_json']).get('web_tool_results', [])
+                    for row in call.get('literature_download_trace', []) for event in row.get('events', [])]
+                assert any(e['failure_code'] == 'PDF_CHALLENGE' and e['http_status'] == 403 for e in trace)
+                assert any(e['http_status'] == 429 for e in trace)
+                assert host.literature_io.locate_doi('doi:' + DOI, [], timeout_seconds=1) == ()
+                assert len(metadata.calls) == 1, 'quota failure must not cause another remote lookup'
+                (tmp_path / 'challenge-quota-evidence.json').write_text(json.dumps({
+                    'challenged_urls': challenged, 's2_requests': len(metadata.calls), 'trace': trace}, indent=2))
             if institutional_oa != "browser":
                 assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
             assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if arxiv_oa or institutional_oa in {'preparation-failure', 'browser'} else 1)

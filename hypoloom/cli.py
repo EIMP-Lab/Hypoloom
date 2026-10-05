@@ -72,7 +72,7 @@ def _add_literature_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--openalex-api-key-file")
     parser.add_argument("--credentials-file",
-                        help="existing dotenv credentials file providing OPENALEX_API_KEY and, for the Unpaywall PDF fallback, UNPAYWALL_EMAIL")
+                        help="private Profile or dotenv providing OPENALEX_API_KEY, optional SEMANTIC_SCHOLAR_API_KEY, or UNPAYWALL_EMAIL for the selected fallback")
     parser.add_argument("--literature-pdf-fallback", choices=("semantic-scholar", "unpaywall"), default="semantic-scholar")
     parser.add_argument("--unpaywall-email-file", help="existing contact-email file for explicitly selected Unpaywall PDF fallback")
     parser.add_argument("--literature-pdfinfo", default="/usr/bin/pdfinfo")
@@ -131,6 +131,7 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
                 raise ValueError("use exactly one of --unpaywall-email-file or UNPAYWALL_EMAIL in --credentials-file")
             unpaywall_email = credential(entries, UNPAYWALL_EMAIL_KEY)
     from .literature import build_openalex_literature_io
+    from .credentials import SEMANTIC_SCHOLAR_API_KEY_KEY, optional_credential_loader
 
     adapter = build_openalex_literature_io(
         api_key=api_key,
@@ -144,6 +145,8 @@ def _literature_adapter(args: argparse.Namespace) -> object | None:
         pdf_fallback=args.literature_pdf_fallback,
         unpaywall_email=unpaywall_email,
         unpaywall_email_file=args.unpaywall_email_file,
+        semantic_scholar_api_key_loader=(optional_credential_loader(args.credentials_file, SEMANTIC_SCHOLAR_API_KEY_KEY)
+            if args.literature_pdf_fallback == "semantic-scholar" else None),
     )
     if args.credentials_file is not None:
         adapter.fetcher.api_key_loader = lambda: credential(read_credentials_file(args.credentials_file), OPENALEX_API_KEY_KEY)
@@ -632,7 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             literature_io = _literature_adapter(args)
             web_options = {}
             from .institutional_options import build as build_institutional
-            access = build_institutional(args)
+            access = build_institutional(args, pdf_locator=getattr(literature_io, "fallback_locator", None))
             if access is not None: web_options["institutional_access"] = access
             if args.web_search_fallback is not None and literature_io is None:
                 parser.error("--web-search-fallback openalex requires --literature-adapter openalex")

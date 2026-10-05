@@ -9,14 +9,22 @@ from hypoloom.elsevier import ElsevierArticleAPI, ElsevierTransport, article_tar
 from hypoloom.grounding_web import GroundingWebError
 from hypoloom.literature import FetchResponse
 from tests.runtime.test_institutional_browser import _pdf
-from tests.runtime.test_document_fallback import system as system
+from tests.runtime.test_document_fallback import system as fallback_system
 from tests.runtime.test_paper_reading import reading_host as reading_host
 
 DOI = "10.1016/j.fixture.2026.123456"
 URL = "https://doi.org/" + DOI
+LOOKUPS = ["https://api.openalex.org/works/https://doi.org/" + DOI,
+           "https://api.crossref.org/works/" + DOI]
 TARGET = "https://api.elsevier.com/content/article/doi/" + DOI + "?view=FULL"
 KEY = "synthetic-elsevier-key"
 TOKEN = "synthetic-institution-token"
+
+
+@pytest.fixture
+def system(fallback_system):
+    fallback_system[0].institutional_access.provider_modes["ScienceDirect"] = "auto"
+    return fallback_system
 
 
 @pytest.fixture
@@ -151,7 +159,7 @@ def test_host_api_denial_never_starts_captcha_loop(system, api):
     settings["status"] = 403
     result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
     assert result["status"] == "unavailable" and result["error"]["code"] == "elsevier_access_denied"
-    assert len(calls) == 2 and not public.calls and not backend.calls and not papers.sources
+    assert len(calls) == 2 and public.calls == LOOKUPS and not backend.calls and not papers.sources
     assert host.institutional_access.status(request.run_id)["pending"] == 0
     group = next(g for g in host.institutional_access.status(request.run_id)["groups"] if g["provider"] == "ScienceDirect")
     assert group["papers"][0]["url"] == URL and group["papers"][0]["reason_code"] == "manual_import_available"
@@ -195,6 +203,8 @@ def test_api_denial_can_recover_through_exact_doi_oa(system, api):
     metadata.get = locate
     def document(url):
         public.calls.append(url)
+        if url in LOOKUPS:
+            raise GroundingWebError("http_error", "HTTP 403", http_status=403)
         assert url == OA
         return {"url": url, "requested_url": url, "title": "Example", "content": _pdf(DOI),
                 "pages": ("Method coefficient 0.83. DOI " + DOI,), "media_type": "application/pdf"}
@@ -202,7 +212,7 @@ def test_api_denial_can_recover_through_exact_doi_oa(system, api):
     result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
     assert result["status"] == "available" and result["url"] == OA and result["requested_url"] == URL
     assert "Open-access copy" in result["version_note"]
-    assert len(calls) == 2 and public.calls == [OA] and len(metadata.calls) == 1 and not backend.calls
+    assert len(calls) == 2 and public.calls == [*LOOKUPS, OA] and len(metadata.calls) == 1 and not backend.calls
 
 
 def test_public_only_choice_also_disables_authenticated_api(system, api):
@@ -214,7 +224,7 @@ def test_public_only_choice_also_disables_authenticated_api(system, api):
     host.institutional_access.provider_modes["ScienceDirect"] = "public_only"
     result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
     assert result["status"] == "unavailable" and result["reason"] == "public_only"
-    assert public.calls == [URL]
+    assert public.calls == [URL, *LOOKUPS]
     assert not calls and not backend.calls and not papers.sources
 
 

@@ -16,6 +16,7 @@ No separate `.env` is required. Start from the existing six-file
 | Setting / 内容 | Local Profile field / 本地字段 |
 |---|---|
 | OpenAlex API key / 文献密钥 | `methodology.yaml` → `literature.openalex_api_key` |
+| Optional Semantic Scholar key / 可选 DOI 后备查询密钥 | `methodology.yaml` → `literature.semantic_scholar_api_key` |
 | Unpaywall contact / PDF 后备联系方式 | `methodology.yaml` → `literature.unpaywall_email` |
 | Elsevier article API key / ScienceDirect 全文接口 | `methodology.yaml` → `literature.elsevier_api_key` |
 | Optional Elsevier institution token / 可选机构令牌 | `methodology.yaml` → `literature.elsevier_insttoken` |
@@ -34,6 +35,7 @@ literature:
   tools: [web_search, web_fetch]
   max_sources: 8
   openalex_api_key: ""  # Fill locally / 本地填写
+  semantic_scholar_api_key: "" # Optional; anonymous lookup otherwise / 可选，留空使用匿名查询
   unpaywall_email: ""   # Only for Unpaywall / 仅 Unpaywall 需要
   elsevier_api_key: ""  # Optional official ScienceDirect API / 可选官方全文接口
   elsevier_insttoken: "" # Only if issued by Elsevier / 仅在 Elsevier 签发后填写
@@ -63,6 +65,24 @@ Never enter values through `--set`, shell arguments, chat, tracked templates or
 issue attachments. The helper rejects populated credential fields in templates
 and `--set`; it does not copy existing secrets into a new Profile.
 Sharing a filled Profile shares its credentials: share a blank template instead.
+
+The default Semantic Scholar DOI fallback accepts an optional key in the same
+private file (legacy dotenv: `SEMANTIC_SCHOLAR_API_KEY`). Init preparation and
+new Hosts use that source; existing runs are not migrated. A configured key is
+read again for each admitted request, so replacing its value supports rotation;
+removing it or making the file unreadable fails that lookup rather than silently
+sending an anonymous request. Empty or omitted keys at startup keep anonymous access.
+Each shared locator allows one request per second and observes a 429 cooldown of
+at least 60 seconds, or longer when required by `Retry-After`. Independent Hosts
+using one key still share the provider's quota. This key locates public copies;
+it does not authorize publisher subscriptions or bypass browser challenges.
+
+默认 Semantic Scholar DOI 后备查询可在同一私有文件填写可选密钥；旧 dotenv
+使用 `SEMANTIC_SCHOLAR_API_KEY`。init 准备与新 Host 使用该来源，不迁移旧运行。
+已配置密钥会在每次获准请求前重读，支持直接轮换；删除密钥、权限变化或文件不可读
+会使该次查询失败，不会静默改成匿名请求。启动时未填写则维持匿名查询。
+同一查询实例每秒最多一个请求；429 至少冷却 60 秒，并遵守更长的 `Retry-After`。
+多个独立 Host 共用密钥仍受总额度限制。该密钥只查询公开副本，不提供出版社订阅授权。
 
 An Elsevier key enables the official article path for new Hosts and removes
 ScienceDirect from init's default browser preparation. It does not establish

@@ -78,7 +78,7 @@ def test_credential_requires_present_non_empty_values():
 def test_shipped_template_lists_every_conventional_key(tmp_path):
     template = Path(__file__).resolve().parents[2] / "config/hypoloom.env.example"
     entries = read_credentials_file(str(_write(tmp_path, template.read_text())))
-    assert set(entries) == {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "OPENALEX_API_KEY", "UNPAYWALL_EMAIL"}
+    assert set(entries) == {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "OPENALEX_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "UNPAYWALL_EMAIL"}
 
 
 @pytest.mark.parametrize("mode", [0o400, 0o640, 0o644, 0o660, 0o700])

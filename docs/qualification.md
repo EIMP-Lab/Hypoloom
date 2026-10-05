@@ -2,6 +2,95 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Publisher challenges and Semantic Scholar recovery (2026-10-05)
+
+The preceding direct/proxy observations retained eight ACM/ScienceDirect challenge
+responses and five Semantic Scholar 429s under
+`.local/analysis/literature-proxy-20261005/`. The ScienceDirect challenge body was
+1,207,846 bytes, with verification text beyond the original 100 KB inspection.
+The explicit `Cf-Mitigated` header provides a deterministic early failure boundary;
+this does not establish missing subscription rights or universal publisher failure.
+
+Both public HTTP readers now close challenge responses before reading the body.
+Existing download events retain `PDF_CHALLENGE` and HTTP status, including the
+initial explicit URL when a later OA copy succeeds. Plain 403 remains separate.
+No same-call challenge retry or new persistent failure cache is added. The existing
+public-copy identity checks, arXiv fallback, archive and bounded acquisition remain.
+
+Semantic Scholar serializes requests at one per second per locator, with deadline
+bounded queue/spacing waits and no hidden HTTP retry. Init reuses its locator;
+the Host shares its literature locator with browser acquisition. Both reuse
+429 cooldown and honor a longer Retry-After. Optional S2 credentials use the
+existing private Profile/dotenv source and admission projection. First/retry
+preparation commands carry paths only; a configured key is reread and source loss
+fails safely. Anonymous startup and explicit Unpaywall selection remain supported.
+Independent Hosts sharing a key are still subject to the provider's total quota.
+
+The isolated native CC/Host sample combines two challenged URLs, one S2 429 and
+a successful matching arXiv PDF. Three real readers receive the document and the
+parent completes a CPU experiment. Independent SQL/process/archive inspection
+counts **18 successful Agent Attempts and one successful Process**, zero open
+Attempts/live groups/paper staging, and four identical readable archived PDF
+copies (parent plus readers). No institutional human control is submitted; the
+same locator performs no second request during cooldown. The existing Oracle passes.
+
+Focused compatibility selection: **656 passed, 76 optional-environment skips**.
+The separate documentation/Profile/operator selection passes **44 tests**.
+The original Skill entry had 261 lines against its existing `<260` test; preserve
+all instructions and compact two lines rather than relaxing the assertion.
+New red fixtures also initially selected a non-DOI record and a sub-minimum work
+window; corrected fixtures retain the DOI-only and minimum-deadline validators.
+Wheel build, outside-checkout install and fresh bundle compare **178 files** byte
+for byte; installed CLI/MCP help and the new API/enum import successfully.
+
+The initial serial full-suite invocation was deliberately interrupted after 939
+passes in 2,913 seconds to reschedule the same full selection with the repository's
+existing eight-worker approach and a short temporary root. Its record remains
+`g1.log`/`g1.xml`; no test process tied to that temporary root remained after
+normal interruption cleanup. This partial invocation is not a full G1 pass and
+its repeated identities are not added to the final full-suite count.
+
+The first parallel attempt (`g1-parallel.*`, 1,349 passed / five failed before
+rescheduling) exposed five existing Elsevier test failures, reproduced unchanged
+on a separate `f628678` baseline export (30 passed / five failed). Its imported
+fixture selected Nature only, and its public-call expectations predated exact-DOI
+OpenAlex/Crossref discovery. The local Elsevier fixture now explicitly selects
+ScienceDirect and asserts those exact metadata URLs. API call counts, zero-browser
+behavior, public-only's zero API calls, full-text validation/archive and reuse
+assertions are retained. Elsevier plus public fallback passes **47 tests**; no
+production access policy changed. The final full invocation uses eight workers,
+`--maxschedchunk=2` and a short temporary root, retaining the complete selection.
+
+That full invocation (`g1-balanced.*`) completed all **7,180 identities** in
+1,666.53 seconds: **7,059 passed, 11 failed, 110 skipped**. Ten failures also
+reproduced on the unchanged `f628678` baseline: seven institutional Web tests
+expected Chinese despite the current English default, and three extracted-renderer
+Node tests omitted the existing translation helper. Test-only corrections retain
+authorization, read-only behavior, payload identity, forwarding and raw-value
+assertions; focused reruns pass all ten. Reconciliation by test identity therefore
+gives **7,069 passing, 110 skipped and one unresolved baseline failure**, not a
+green full G1 invocation. No process tied to the full-suite temporary root remains.
+
+The remaining native model-usage test fails with `KeyError:
+provider_usage_normalization` on both candidate and unchanged `f628678`, with the
+five relevant source/test files identical. Claude Code 2.1.289 reports outer input
+54 versus model/wire input 29, plus output 11; the existing adapter conservatively
+retains 65 total tokens rather than 40. This is the previously recorded fallback
+accounting compatibility issue. Both fixtures reach COMPLETED/revision 18 with
+11 successful Agents, one expected rejected Agent and one successful CPU Process;
+all 13 recorded process groups are gone. It is disclosed and left outside this
+publisher repair; no accounting assertion or production behavior was weakened.
+`accounting-*.json`, baseline XML/logs, `literature-ui-*.xml`, `web-*.xml` and
+`g1-reconciled.json` retain the comparison and focused resolution evidence.
+
+Evidence: `.local/worktrees/literature-access-repair-20261005/.local/qualification/`
+`literature-access-repair-20261005/`, with earlier red/green S2 evidence in sibling
+`semantic-scholar-recovery-20261005/`. Native inputs use isolated HTTP fixtures
+and a local scripted model provider. No paid model, live publisher authorization,
+Windows/SSO, GPU or long-duration service guarantee is claimed. Existing runs,
+client/browser, local secrets and Clash configuration remain unchanged. The
+candidate is developed separately from pre-existing GPU/Web/Telegram edits.
+
 ## Publisher selection and English TUI (2026-10-05)
 
 The full routing catalog previously defaulted every omitted publisher to auto,

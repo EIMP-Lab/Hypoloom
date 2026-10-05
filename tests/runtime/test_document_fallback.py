@@ -130,6 +130,77 @@ def test_host_discovers_public_pdf_without_locator_and_archives_exact_bytes(syst
     assert transport.calls == before
 
 
+def test_challenged_pdf_is_not_retried_and_other_oa_copy_is_verified(monkeypatch):
+    from time import monotonic
+    from hypoloom.document_fallback import acquire_public_pdf
+    from hypoloom.grounding_web import GroundingWeb
+    from tests.runtime.test_grounding_web import _public_http_responses
+    from tests.runtime.test_institutional_browser import _pdf
+    from tests.runtime.test_literature_probe import DOI, METADATA, PDF
+
+    challenged = "https://www.sciencedirect.com/science/article/pii/S2352711024000943/pdfft"
+    work = {"doi": "https://doi.org/" + DOI, "display_name": "A controlled scholarly article",
+            "locations": [{"is_oa": True, "pdf_url": url} for url in (challenged, PDF)]}
+    metadata, original = json.dumps(work).encode(), _pdf(DOI)
+    def response(content, media):
+        return (f"HTTP/1.1 200 OK\r\nContent-Type: {media}\r\n"
+                f"Content-Length: {len(content)}\r\n\r\n").encode() + content
+    transport, calls = _public_http_responses(monkeypatch, {
+        METADATA: response(metadata, "application/json"), PDF: response(original, "application/pdf"),
+        challenged: b"HTTP/1.1 403 Forbidden\r\nCf-Mitigated: challenge\r\n"
+                    b"Content-Length: 1207846\r\nContent-Type: text/html\r\n\r\n" + b" " * 1207846})
+    events, budget = [], [12]
+    document, _ = acquire_public_pdf(GroundingWeb(transport), "doi:" + DOI,
+        supplied_urls=(challenged,), deadline=monotonic() + 5, http_calls=budget, events=events)
+    assert document["content"] == original and document["url"] == PDF
+    assert DOI in document["pages"][0]
+    assert calls["requested"] == calls["closed"] == [METADATA, challenged, PDF]
+    assert challenged not in calls["body_reads"] and budget == [9]
+    assert events == [{"stage": "supplied", "reason": "challenge", "url": challenged,
+                       "http_status": 403, "retrying": False}]
+
+
+@pytest.mark.parametrize("initial_challenge", [False, True])
+def test_host_trace_preserves_challenge_when_other_oa_copy_is_archived(system, tmp_path, initial_challenge):
+    from tests.runtime.test_literature_probe import system as public_system, DOI as sample, PDF
+    from tests.runtime.test_grounding_web import _response
+    from tests.runtime.test_institutional_browser import _pdf
+    host, request, _, _, backend, papers = system
+    challenged = "https://dl.acm.org/doi/pdf/" + sample
+    url = "https://dl.acm.org/doi/" + sample
+    web, transport, _ = public_system(locations=(challenged, PDF))
+    original = _pdf(sample)
+    transport.responses[url] = _response(url, b"", status_code=403)
+    transport.responses[PDF] = _response(PDF, original, media_type="application/pdf")
+    fetch = transport.fetch
+    def challenged_fetch(target, **kwargs):
+        if target == challenged or initial_challenge and target == url:
+            transport.calls.append(("fetch", target, kwargs))
+            raise GroundingWebError("challenge", "web provider requires browser verification", http_status=403)
+        return fetch(target, **kwargs)
+    transport.fetch = challenged_fetch
+    host.grounding_web, host.literature_io = web, None
+    arguments = {"mode": "document", "url": url}
+    result = web_tool(host, request, "web_fetch", arguments)
+    assert result["status"] == "available" and result["url"] == PDF and not backend.calls
+    trace = [event for item in io_trace(host, request) for event in item["events"]]
+    direct = [event for event in trace if event["stage"] == "direct"]
+    assert direct == ([{"stage": "direct", "outcome": "CHALLENGE", "source_host": "dl.acm.org",
+                        "failure_code": "PDF_CHALLENGE", "http_status": 403}] if initial_challenge else [])
+    challenged_event = next(event for event in trace
+        if event.get("source_host") == "dl.acm.org" and event["stage"] == "fallback")
+    assert challenged_event["outcome"] == "CHALLENGE"
+    assert challenged_event["failure_code"] == "PDF_CHALLENGE"
+    assert challenged_event["http_status"] == 403 and challenged_event["retrying"] is False
+    before = list(transport.calls)
+    assert sum(call[0] == "fetch" and call[1] == challenged for call in before) == 1
+    assert sum(call[0] == "fetch" and call[1] == url for call in before) == 1
+    assert web_tool(host, request, "web_fetch", arguments) == result and transport.calls == before
+    archive = tmp_path / "challenge-fallback-archive"; archive.mkdir()
+    papers.archive(archive)
+    assert (archive / result["original_path"].lstrip("/")).read_bytes() == original
+
+
 @pytest.mark.parametrize('redirected', [False, True])
 def test_public_discovery_cannot_readmit_rejected_source(redirected):
     from time import monotonic

@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Publisher challenges and Semantic Scholar recovery](../qualification.md#publisher-challenges-and-semantic-scholar-recovery-2026-10-05):
+  early challenge closure, preserved direct/fallback reasons, per-locator pacing,
+  init/runtime cooldown reuse and optional private S2 credentials. Native
+  challenge/429/arXiv/reader/CPU closure; [configuration](../../config/README.md).
+
 - [Observer language switch](../qualification.md#observer-language-switch-2026-10-05):
   shared English/Chinese catalog, independent observer preferences, preserved
   data/controls and installed-package checks; compact CN/EN and blue button styling.

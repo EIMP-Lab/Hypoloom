@@ -204,7 +204,7 @@ def _operation_reason(error):
 
 
 class PlaywrightInstitutionalBrowser:
-    def __init__(self, endpoint, *, library_url=None, ui_url=None, extractor=None):
+    def __init__(self, endpoint, *, library_url=None, ui_url=None, extractor=None, pdf_locator=None):
         parts = urlsplit(endpoint)
         if (parts.scheme != "http" or parts.hostname not in {"localhost", "127.0.0.1", "::1"}
                 or not parts.port or parts.username or parts.password or parts.query or parts.fragment
@@ -228,6 +228,7 @@ class PlaywrightInstitutionalBrowser:
         self._tabs = {}
         self._pdf_pending = {}
         self._deadline = None
+        self._pdf_locator = pdf_locator
 
     @property
     def configuration(self):
@@ -434,7 +435,9 @@ class PlaywrightInstitutionalBrowser:
         from .literature import SemanticScholarPdfLocator
         deadline = monotonic() + timeout_seconds
         web = GroundingWeb(max_response_bytes=MAX_DOCUMENT_BYTES)
-        locator = SemanticScholarPdfLocator(timeout_seconds=5)
+        if self._pdf_locator is None:
+            self._pdf_locator = SemanticScholarPdfLocator(timeout_seconds=5)
+        locator = self._pdf_locator
         identity = identity_from_url(url)
         # Reserve time for the browser; this never extends the queue's deadline.
         document, title = acquire_public_pdf(web, identity,

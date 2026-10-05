@@ -23,6 +23,9 @@ def add_parser(subparsers):
     commands = parser.add_subparsers(dest="institutional_action", required=True)
     prepare = commands.add_parser("prepare", help="open selected platforms and verify fixed or supplied full-text samples")
     add_arguments(prepare, connection=True)
+    prepare.add_argument("--credentials-file", help="existing private literature Profile or dotenv; secret values never belong in argv")
+    prepare.add_argument("--literature-pdf-fallback", choices=("semantic-scholar", "unpaywall"), default="semantic-scholar")
+    prepare.add_argument("--unpaywall-email-file", help="existing contact-email file for the explicitly selected Unpaywall fallback")
     prepare.add_argument("--repository", help="checkout containing the server Compose configuration")
     add_preparation_argument(prepare, "--provider")
     prepare.add_argument("--sample", action="append", default=[], metavar="DOI_OR_URL",
@@ -135,7 +138,7 @@ def _summary(rows, modes, output, **extra):
 
 def _remaining_command(args, remaining, modes):
     if not remaining: return []
-    from .institutional_options import launch_arguments
+    from .institutional_options import launch_arguments, preparation_literature_arguments
     selected = copy(args)
     selected.institutional_provider_mode = [f"{name}={mode}" for name, mode in modes.items()]
     return [sys.executable, "-B", "-m", "hypoloom", "institutional", "prepare",
@@ -143,6 +146,7 @@ def _remaining_command(args, remaining, modes):
         *(["--agent-session"] if args.agent_session else []),
         *(["--non-interactive"] if args.non_interactive else []),
         *launch_arguments(selected, include_connection=True, include_preparation=True),
+        *preparation_literature_arguments(selected),
         *[part for provider in remaining for part in ("--provider", provider)],
         *[part for sample in args.sample if publisher(sample_url(sample)) in remaining
           for part in ("--sample", sample)]]

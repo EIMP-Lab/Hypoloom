@@ -108,6 +108,9 @@ class PublicHttpsTransport:
             phase = "response_headers"
             response = connection.getresponse()
             status = response.status
+            if (response.getheader("Cf-Mitigated") or "").strip().lower() == "challenge":
+                raise GroundingWebError("challenge", "web provider requires browser verification",
+                    http_status=status)
             raw_length = response.getheader("Content-Length")
             if raw_length is not None and (not raw_length.isascii() or not raw_length.isdigit()):
                 raise GroundingWebError("transport_failed", "invalid Content-Length")

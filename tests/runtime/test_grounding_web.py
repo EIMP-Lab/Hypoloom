@@ -176,6 +176,62 @@ class Transport:
         return self.responses[url]
 
 
+def _public_http_responses(monkeypatch, responses):
+    """Exercise real HTTP header parsing and public transport over saved bytes."""
+    import io
+    calls = {"requested": [], "body_reads": [], "closed": []}
+    class Body(io.BytesIO):
+        def read1(self, size=-1):
+            calls["body_reads"].append(self.url)
+            return super().read1(size)
+    class Connection:
+        def __init__(self, host, port, timeout):
+            self.host = host
+            self.sock = SimpleNamespace(getpeername=lambda: ("8.8.8.8", 443), settimeout=lambda value: None)
+        def connect(self): pass
+        def request(self, method, target, headers):
+            self.url = "https://" + self.host + target
+            calls["requested"].append(self.url)
+        def getresponse(self):
+            body = Body(responses[self.url]); body.url = self.url
+            self.response = web_module.http.client.HTTPResponse(SimpleNamespace(makefile=lambda *args: body))
+            self.response.begin()
+            return self.response
+        def close(self):
+            self.response.close()
+            calls["closed"].append(self.url)
+    monkeypatch.setattr(web_module.http.client, "HTTPSConnection", Connection)
+    transport = PublicHttpsTransport()
+    transport.resolve = lambda hostname: ("8.8.8.8",)
+    return transport, calls
+
+
+@pytest.mark.parametrize("status", [200, 403])
+def test_public_challenge_header_ends_before_reading_large_html(monkeypatch, status):
+    # ScienceDirect's observed 1.2 MB page places its challenge markup after 100 KB.
+    body = b" " * 1207800 + b"<h1>Are you a robot?</h1>"
+    wire = (f"HTTP/1.1 {status} Response\r\nContent-Type: text/html\r\n"
+            f"Content-Length: {len(body)}\r\ncF-mItIgAtEd: challenge\r\n\r\n").encode() + body
+    transport, calls = _public_http_responses(monkeypatch, {DOC: wire})
+    with pytest.raises(GroundingWebError) as failure:
+        GroundingWeb(transport, max_response_bytes=1024).document(DOC)
+    assert failure.value.code == "challenge" and failure.value.http_status == status
+    assert calls == {"requested": [DOC], "body_reads": [], "closed": [DOC]}
+    assert "Are you a robot" not in str(failure.value)
+
+
+@pytest.mark.parametrize("marker", ["", "Cf-Mitigated: other\r\n"])
+def test_public_403_without_challenge_header_stays_http_error(monkeypatch, marker):
+    wire = ("HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n"
+            "Content-Length: 6\r\n" + marker + "\r\ndenied").encode()
+    transport, calls = _public_http_responses(monkeypatch, {DOC: wire})
+    with pytest.raises(GroundingWebError) as failure:
+        GroundingWeb(transport).document(DOC)
+    assert failure.value.code == "http_error" and failure.value.http_status == 403
+    assert calls["requested"] == calls["closed"] == [DOC]
+    assert calls["body_reads"] == [DOC]
+
+
 def test_agent_selected_query_returns_actual_public_html_results_and_snippets():
     body = b'''<html><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fdocs">Project <b>guide</b></a>
 <a class="result__snippet">Run the <b>evaluation</b> entrypoint.</a>

@@ -159,8 +159,9 @@ class RunBrowser(PlaywrightInstitutionalBrowser):
 
 
 class RunAccess:
-    def __init__(self, spec, **settings):
+    def __init__(self, spec, *, pdf_locator=None, **settings):
         self.spec, self.settings = spec, settings
+        self._pdf_locator = pdf_locator
         self.instances = {}
         self.retired = []
         self.read_choices = lambda run_id: ({}, {})
@@ -193,6 +194,8 @@ class RunAccess:
             if failure is not None: raise failure
             for run_id in (set(live_runs) - set(self.instances)) if create else ():
                 backend = RunBrowser(self.spec, run_id)
+                if self._pdf_locator is not None:
+                    backend._pdf_locator = self._pdf_locator
                 self.instances[run_id] = InstitutionalAccess(backend, **self.settings)
 
     def tick(self, active_runs):

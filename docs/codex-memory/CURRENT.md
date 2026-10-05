@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 5 publisher/S2 recovery: explicit Cloudflare challenges end before body
+  reads and remain `PDF_CHALLENGE` in direct/batch/Host traces; ordinary 403 stays
+  distinct. Existing OA/arXiv fallback and archive validation remain authoritative.
+  Init and Host reuse S2 locators with per-instance 1 RPS, bounded lock waits and
+  shared 429 cooldown respecting Retry-After. Optional private
+  `literature.semantic_scholar_api_key` / `SEMANTIC_SCHOLAR_API_KEY` uses existing
+  credential projection/rereads; only paths enter first/retry preparation argv.
+  No CAPTCHA bypass, proxy routing, retained-run or Windows changes. Native
+  challenge+429 closure has 18 successful Agents, one CPU Process, identical
+  archived PDFs and zero open Attempts/live groups/paper staging.
+  Full-suite plus focused fixture corrections reconcile to 7,069 pass/110 skip;
+  one native fallback token-accounting failure reproduces on unchanged f628678
+  with CC 2.1.289. Disclosed separately; no claim of green full G1.
+  [Design](../design/institutional-literature-access.md#publisher-challenges-and-optional-semantic-scholar-credentials--2026-10-05)
+  / [qualification](../qualification.md#publisher-challenges-and-semantic-scholar-recovery-2026-10-05).
+
 - October 5 observer language: TUI and Web toolbars switch English/Chinese using
   one packaged catalog; default English. TUI choice is session-local; Web retains
   explicit browser-origin preference. Redraw preserves filters, drafts, stale

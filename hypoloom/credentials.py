@@ -19,6 +19,7 @@ CREDENTIALS_FILE_MAX_BYTES = 8192
 TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN"
 TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID"
 OPENALEX_API_KEY_KEY = "OPENALEX_API_KEY"
+SEMANTIC_SCHOLAR_API_KEY_KEY = "SEMANTIC_SCHOLAR_API_KEY"
 UNPAYWALL_EMAIL_KEY = "UNPAYWALL_EMAIL"
 ELSEVIER_API_KEY = "ELSEVIER_API_KEY"
 ELSEVIER_INSTTOKEN = "ELSEVIER_INSTTOKEN"
@@ -30,6 +31,7 @@ NOTIFICATION_PROXY_KEY = "HYPOLOOM_NOTIFICATION_PROXY"
 PROFILE_CREDENTIAL_FIELDS = {
     "methodology.yaml": {("literature",): {
         "openalex_api_key": OPENALEX_API_KEY_KEY, "unpaywall_email": UNPAYWALL_EMAIL_KEY,
+        "semantic_scholar_api_key": SEMANTIC_SCHOLAR_API_KEY_KEY,
         "elsevier_api_key": ELSEVIER_API_KEY, "elsevier_insttoken": ELSEVIER_INSTTOKEN}},
     "notify.yaml": {
         (): {"proxy_url": NOTIFICATION_PROXY_KEY},
@@ -157,3 +159,14 @@ def credential(entries: Mapping[str, str], key: str) -> str:
     if not value:
         raise CredentialError(f"credentials file has an empty {key}")
     return value
+
+
+def optional_credential_loader(source: object, key: str):
+    """Bind an explicitly configured key; later source loss is never anonymous."""
+    if source is None:
+        return None
+    entries = read_credentials_file(source)
+    if entries.get(key) in (None, ""):
+        return None
+    credential(entries, key)
+    return lambda: credential(read_credentials_file(source), key)

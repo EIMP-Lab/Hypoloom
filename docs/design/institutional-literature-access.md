@@ -387,3 +387,61 @@ one second of its original deadline. Metadata lookup is not replayed. Known HTTP
 errors, rate limits, challenges, invalid PDFs and identity failures are not retried.
 Each retry starts a fresh response; partial bytes never reach validation/archive.
 No overall timeout, browser wait, source validator or persistent authority changes.
+
+## Publisher challenges and optional Semantic Scholar credentials — 2026-10-05
+
+Saved anonymous requests to ACM and ScienceDirect both returned HTTP 403 with
+`Cf-Mitigated: challenge`. The ScienceDirect response was approximately 1.2 MB;
+its verification text appeared beyond the first 100 KB inspected by the original
+experiment. Offline replay through the production reader confirmed the response
+header was discarded and the complete challenge body was read before reporting
+a generic HTTP error. Separately, Semantic Scholar returned five complete 429
+responses despite low-frequency requests, including on the selected proxy node.
+These establish challenge handling and locator availability problems, not absent
+subscription rights or a publisher-wide PDF failure.
+
+The repair keeps ordinary source admission, publication and recovery boundaries:
+
+- Recognize the explicit Cloudflare challenge header in both public HTTP readers
+  before reading the response body. Close the connection, retain the original
+  HTTP status and a fixed challenge reason in the existing exception/download
+  trace. Plain 403 remains an HTTP failure. Do not store arbitrary HTTP headers,
+  replay a challenge, import cookies or change the DOI/PDF validator. Other public
+  sources and an independently authenticated browser retain their existing paths.
+- Keep one Semantic Scholar locator for a browser preparation backend instead
+  of constructing one per sample. The locator owns its bounded request spacing
+  and server cooldown; init and runtime use the same implementation. Preserve
+  the runtime's batch caps and 60-second fallback cooldown, honoring a longer
+  Retry-After through the existing response/error fields. Cooldown returns an
+  unavailable lookup promptly; it does not spend the acquisition deadline waiting
+  for quota or extend it. Short request-spacing waits use the remaining budget.
+- Support an optional `literature.semantic_scholar_api_key` in the existing
+  private Profile and `SEMANTIC_SCHOLAR_API_KEY` in the existing legacy credentials
+  file. Reuse projection, mode-0600 validation and Host-only rereads. Never expose
+  the literal in generated commands, run configurations, diagnostics, Agents or
+  client helpers. Send `x-api-key` only to the canonical Semantic Scholar API;
+  absence of a configured source keeps anonymous compatibility. A configured
+  source that becomes unreadable or loses its key fails that lookup safely.
+- Space locator requests at one request per second per instance, including
+  concurrent callers. An external key shared across Hosts or machines can still
+  be limited by the provider; handle its 429 and continue existing fallbacks.
+  Do not add a cross-process credential registry, persistent negative cache or
+  new recovery authority to address a failure not demonstrated here.
+
+No new schema, receipt, hash, marker or admission gate is required. Existing
+exception types, volatile locks/timing and private credential references are
+sufficient. This change does not introduce literature proxy routing or a broad
+author-site crawler. The measured IEEE proxy benefit and automatic discovery of
+additional author copies remain separate work. ACM/ScienceDirect challenges can
+still prevent publisher downloads; under unattended operation these are explicit
+full-text gaps with bounded public fallback, never a request for recurring human
+CAPTCHA input. The existing optional Elsevier API remains unchanged and still
+requires article entitlement; XML does not become a PDF claim.
+
+Validation covers early response closure, ordinary 403, downstream OA success,
+quota cooldown/recovery, deadlines and concurrency, canonical-host credentials,
+private projection and init/runtime wiring. Native Host/CC/reader/CPU closure
+and ordinary archives must preserve real retrieved bytes and failed-source
+observations. Use isolated fixtures; retained research runs and Windows browsers
+remain untouched. Qualification records distinguish these repairs from actual
+publisher authorization or long-term API availability.

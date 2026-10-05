@@ -209,9 +209,12 @@ def open_copy(io, web, url, identity, title, rejected, events, deadline, http_ca
     # Reuse the Host's existing attempt trace and repeated-lookup suppression.
     for event in observed:
         before = len(events)
+        code = LiteratureFailureCode.PDF_TIMEOUT if event["reason"] == "timed_out" else LiteratureFailureCode.VALIDATION_FAILED
+        if event["reason"] == "challenge":
+            code = LiteratureFailureCode.PDF_CHALLENGE
         _download_event(events, "fallback", "VALIDATION_FAILURE", uri=event.get("url"),
             error=LiteratureError(str(event["reason"]), http_status=event.get("http_status"),
-                code=LiteratureFailureCode.PDF_TIMEOUT if event["reason"] == "timed_out" else LiteratureFailureCode.VALIDATION_FAILED))
+                code=code))
         if len(events) > before:
             events[-1].update({key: event[key] for key in ("transport_phase", "received_bytes", "retrying") if key in event})
     if not any(event.get("stage") == "fallback_lookup" for event in events):

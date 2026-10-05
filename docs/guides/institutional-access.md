@@ -8,6 +8,29 @@ with each run, while dedicated profiles retain still-valid sessions. The TUI sho
 read-only publisher policies and current acquisition observations. Other research continues;
 available bytes do not establish that an Agent read a paper.
 
+## Publisher challenges and DOI fallback
+
+Public PDF requests can receive a Cloudflare challenge even when the article
+landing page works. Hypoloom detects the explicit challenge response before
+reading its body, records `PDF_CHALLENGE` / `CHALLENGE` in the existing download
+trace, and tries the remaining allowed public sources within the same deadline.
+An ordinary 403 stays a separate HTTP failure. No CAPTCHA is solved automatically,
+and failed acquisition does not become proof that a paper was read.
+
+Semantic Scholar uses exact DOI lookup to find a public copy. Init preparation
+reuses its locator across samples; the Host shares one with its institutional
+browser path. Requests are serialized at at most one per second per locator.
+A 429 activates at least 60 seconds of cooldown, respecting a longer `Retry-After`;
+other public sources can proceed without waiting through that cooldown. Independent
+Hosts still share any account quota. Optional private key configuration is in
+[Personal configuration](../../config/README.md). A key is not a subscription and
+does not guarantee that Semantic Scholar or the publisher will serve full text.
+
+For unattended runs, unavailable full text remains an explicit evidence gap;
+the framework continues with other admissible sources. These changes take effect
+in new Hosts and new preparation sessions; they do not change retained runs or
+require reinstalling the Windows helper.
+
 ## Elsevier API
 
 ScienceDirect can use the official Article Retrieval API independently of the

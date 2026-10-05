@@ -385,7 +385,14 @@ scratch.
    receipt. The legacy single-secret flags `--openalex-api-key-file` and
    `--unpaywall-email-file` remain accepted instead of `--credentials-file`,
    never mixed with it.
-   The DOI-only PDF fallback defaults to Semantic Scholar. If the operator
+   The DOI-only PDF fallback defaults to Semantic Scholar. An optional
+   `literature.semantic_scholar_api_key` in the private methodology file (legacy
+   dotenv: `SEMANTIC_SCHOLAR_API_KEY`) is read by the Host only; never ask for its
+   value in chat or put it in argv. No key is required. Generated preparation and
+   retry arguments preserve the existing credential path and selected fallback;
+   forward them unchanged. Rate limits and publisher verification leave bounded
+   full-text gaps; do not promise that a key or another browser retry resolves them.
+   If the operator
    selects Unpaywall, append `--literature-pdf-fallback unpaywall` to that
    same
    literature vector for serve, profile-check and start; the declared
