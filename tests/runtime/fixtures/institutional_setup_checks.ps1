@@ -11,15 +11,17 @@ $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDe
 $env:LOCALAPPDATA = $Desktop
 $Action = 'Setup'; $LocalPort = 0
 $script:Server = ''; $script:Repository = ''; $script:PythonExecutable = ''; $script:RunsRoot = ''
+$script:StateRoot=''; $script:RunId=''; $script:RequestId=''; $script:PreparationRoot=''
 $script:prompts = 0; $script:checks = 0; $script:called = @()
 $repo = '/server/repo '' $literal ` $(throw INJECTED)'
-$answers = @('research@fixture', $repo, '', '')
-if ($Scenario -eq 'custom') { $answers = @('research@fixture', $repo, '/custom/python space', '/custom/runs') }
+$answers = @('research@fixture', $repo, '', '/state/final', 'final', 'create-final', '/state/preparation')
+if ($Scenario -eq 'custom') { $answers = @('research@fixture', $repo, '/custom/python space', '/custom/final', 'final', 'create-final', '/custom/preparation') }
 if ($Scenario -eq 'invalid_target') { $answers[0] = 'ssh research@fixture' }
 if ($Scenario -eq 'invalid_repository') { $answers[1] = 'relative/repository' }
 if ($Scenario -eq 'supplied') {
     $script:Server = 'research@fixture'; $script:Repository = $repo
-    $script:PythonExecutable = '/custom/python space'; $script:RunsRoot = '/custom/runs'
+    $script:PythonExecutable = '/custom/python space'
+    $script:StateRoot='/custom/final'; $script:RunId='final'; $script:RequestId='create-final'; $script:PreparationRoot='/custom/preparation'
 }
 function Read-Host { $value = $answers[$script:prompts]; $script:prompts++; $value }
 function Check-InitConnection {

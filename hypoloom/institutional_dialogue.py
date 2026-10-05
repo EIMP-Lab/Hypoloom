@@ -77,12 +77,36 @@ class PreparationDialogue:
                 raise ValueError("sample is only valid for verification")
             else: sample = None
             self.answer = {"complete": "", "skip": "s", "public_only": "p",
-                "retry_connection": "retry", "verify": sample}[action]
-            if action != "retry_connection":
+                "retry_connection": "retry", "retry": "retry", "verify": sample}[action]
+            if action not in {"retry_connection", "retry"}:
                 self.view = {**self.view, "state": "processing", "actions": ["finish"]}
                 self.deadline = None
             self.condition.notify_all()
             return ControlResponse.accepted(request.request_id, None, deepcopy(self.view))
+
+    def await_launch(self, summary, check, *, seconds=600):
+        """Retain this existing control endpoint through review, never start a run."""
+        with self.condition:
+            self.answer = None
+            self.deadline = monotonic() + seconds
+            self.view = {"state": "awaiting_launch", "summary": summary,
+                         "actions": ["finish"] + (["retry"] if summary["remaining_preparation_argv"] else []),
+                         "finish_argv": summary["finish_argv"],
+                         "remaining_preparation_argv": summary["remaining_preparation_argv"]}
+        while True:
+            with self.condition:
+                if self.finished or monotonic() >= self.deadline: return "finished"
+                if self.answer == "retry":
+                    self.answer = None
+                    self.view = {"state": "checking_connection", "actions": ["finish"]}
+                    self.deadline = None
+                    return "retry"
+            # The formal Host's existing command and transition are the authority.
+            # This read cannot create, resume or cancel research.
+            if check(): return "handoff"
+            with self.condition:
+                if self.deadline is not None:
+                    self.condition.wait(min(.5, max(0, self.deadline - monotonic())))
 
     def wait(self, *, provider=None, connection=None, check=None, check_seconds=30, observed=lambda _: None,
              reason_code=None, completion_samples=(), sample_url=None, wait_seconds=None):

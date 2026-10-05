@@ -10,19 +10,27 @@ REPLIES = {
 CLIENT_SETUP_COMMAND = "pwsh -NoProfile -File .\\institutional-connect.ps1 -Action Setup"
 
 
-def client_entry(repository, python):
+def client_entry(repository, python, *, target=None, preparation_root=None):
     repository = Path(repository).resolve()
     source = Path(__file__).with_name("connection_assets") / "institutional-connect.ps1"
     inputs = {"repository": str(repository), "python_executable": str(python),
               "runs_root": str(repository / "state")}
+    if target: inputs.update(target)
+    if preparation_root: inputs["preparation_root"] = str(preparation_root)
     if any(c in value for value in [str(source), *inputs.values()] for c in "\x00\r\n"):
         raise ValueError("client setup paths must not contain control characters")
     # Only a file launch is shown to the model. The installation program travels
     # through SSH file transfer, never through a model-generated code block.
+    command = CLIENT_SETUP_COMMAND
+    if target:
+        for name, key in (("Repository", "repository"), ("PythonExecutable", "python_executable"),
+                          ("StateRoot", "state_root"), ("RunId", "run_id"), ("RequestId", "request_id"),
+                          ("PreparationRoot", "preparation_root")):
+            if key in inputs: command += " -" + name + " '" + inputs[key].replace("'", "''") + "'"
     return {"runs_on": "Windows client", "requires": ["PowerShell 7.2+", "existing SSH authentication"],
             "script_source": str(source), "setup_inputs": inputs,
-            "powershell": CLIENT_SETUP_COMMAND + "\n",
-            "note": "Download the original script via SFTP/SCP; run Setup in its local directory. Return to the same init conversation."}
+            "powershell": command + "\n",
+            "note": "Run this exact entry once on the chosen Windows PC for this init only. No logon task or future-run discovery."}
 
 
 def reply_choices(view):
@@ -105,10 +113,15 @@ def render(view):
         if "client_entry" in view:
             entry = view["client_entry"]
             inputs = entry.get("setup_inputs")
+            command = CLIENT_SETUP_COMMAND
+            if inputs and all(key in inputs for key in ("state_root", "run_id", "request_id")):
+                command = client_entry(inputs["repository"], inputs["python_executable"],
+                    target={key: inputs[key] for key in ("state_root", "run_id", "request_id")},
+                    preparation_root=inputs.get("preparation_root"))["powershell"].strip()
             lines.extend(["首次接入或更新时，通过 SFTP/SCP 从当前服务器下载原始脚本文件到 Windows；不要把助手转贴的脚本正文保存为文件。",
                           "服务器文件：" + entry["script_source"],
                           "在下载文件所在目录打开 PowerShell 7.2+，执行这个固定入口：",
-                          "```powershell", CLIENT_SETUP_COMMAND, "```",
+                          "```powershell", command, "```",
                           "程序会询问 SSH 目标（你从 Windows 登录服务器使用的 user@host 或别名，不是密码）及服务器路径。"])
             if inputs:
                 lines.extend(["服务器仓库：" + inputs["repository"],
@@ -118,8 +131,8 @@ def render(view):
                 # An already-running older preparation has only an inline script.
                 # Never render or parse that source as a substitute for path data.
                 lines.append("此旧批次未单独提供路径值；请使用本次 init 审阅中的仓库、Python 和运行目录。")
-            lines.extend(["Setup 安装到本机固定位置并执行 Connect；返回后可关闭此 PowerShell 窗口，保留当前 init 会话。",
-                          "后续 init 复用隐藏后台任务；任务正常时无需重复下载或安装。",
+            lines.extend(["Setup 安装到本机固定位置并执行本次 Connect；返回后可关闭此 PowerShell 窗口，保留当前 init 会话。",
+                          "每次 init 在所选 Windows 明确执行本次入口；助手仅连接指定运行，不登录自启、不发现未来运行。",
                           ("接入后回到此会话查看进展；程序会自动检测实际连接。" if automatic else
                           "看到客户端连接任务已启动后，回到此会话回复：继续连接。") + "启动任务不等于浏览器已连通。"])
         else:
@@ -151,6 +164,10 @@ def render(view):
             lines.append("完成表示结束此平台的人工准备；未验证样本时，不代表登录或订阅已验证。")
     elif state in {"preparing_platform", "processing"}:
         lines.append("程序正在处理；尚未请求本阶段的人工完成确认。")
+    elif state == "awaiting_launch":
+        lines.append("平台准备已结束，请读取 status 的 summary 并检查启动配置；后台进程仅保留本次连接交接。")
+        lines.append("失败平台仅用 remaining_preparation_argv 在原批次重试；Start now 仍需单独明确选择。")
+        lines.append("选择 Prepare only 或取消时执行 finish_argv；等待超时会释放本次连接，不自动启动科研。")
     elif state == "finishing":
         lines.append("正在结束并清理临时准备资源，请读取后台任务的最终结果。")
     choices = reply_choices(view)

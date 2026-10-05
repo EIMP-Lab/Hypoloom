@@ -355,12 +355,8 @@ class WorkflowHost:
         try:
             if request.command == "STATUS": return self._status_response(request)
             if request.command == "INSTITUTIONAL_CONNECTIONS":
-                if request.payload: raise ValueError("INSTITUTIONAL_CONNECTIONS takes no payload")
-                from .institutional_runtime import RunAccess
-                entries = self.institutional_access.connections() if isinstance(self.institutional_access, RunAccess) else []
-                entries = [entry for entry in entries if (head := self.store.latest_transition(entry["run_id"]))
-                    and head["state"] not in _TERMINAL_RUNS | {RunState.STOPPING.value}]
-                return ControlResponse.accepted(request.request_id, None, {"connections": entries})
+                from .institutional_client import host_connections
+                return ControlResponse.accepted(request.request_id, None, host_connections(self, request.payload))
             if request.command == "LITERATURE_ACCESS": return self._literature_access_control(request)
             if request.command == "BACKUP": return self._backup(request)
             if request.command == "CREATE_RUN": return self._create_run(request)

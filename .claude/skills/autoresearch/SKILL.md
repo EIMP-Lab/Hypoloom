@@ -119,53 +119,48 @@ Explicit off keeps public/OA retrieval and disables institutional browser acquis
 legacy browser URL already answers this choice and retains its unmanaged behavior.
 
 **Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
-Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For an explicit unattended-stability priority, use `--institutional-prepare-failure-mode public_only` and the failure policy in [details](references/init-details.md).
-Reuse choices; repeated `--institutional-prepare-provider` replaces the list, and `none` skips
-preparation without limiting research. Selected platforms carry explicit modes into launch;
-unselected platforms default to disabled institutional access, with public retrieval independent.
+Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For unattended stability, use `--institutional-prepare-failure-mode public_only`; see [details](references/init-details.md).
+Reuse choices: repeated `--institutional-prepare-provider` replaces the list; `none` skips.
+Selected modes enter launch; unselected institutional routes default disabled, with public retrieval independent.
 Re-inspect with the same identity. Run `institutional_preparation_argv` with
-`--agent-session` in the background; run its flushed `instructions_argv` and show
-the returned instructions/code block verbatim. Use `status_argv` for the current
-`reply_argv`; append `--text` with the exact offered user reply, and `--sample` only
-for sample verification. Connection checks advance automatically; retries never extend deadlines.
-Immediately arm one generated `watch_argv` in the background after connection instructions and
-platform replies; its completion supplies current choices. Do not wait for "connected", overlap
-watches or infer answers. Ending preparation cancels the batch; it is not needed before testing.
-For ended batches see [details](references/init-details.md); never invent commands or use stdin.
+`--agent-session` in the background; execute `instructions_argv` and relay its output verbatim.
+Use `status_argv` for the current `reply_argv`; append the exact offered user reply
+with `--text`, and `--sample` only for sample verification. Never use background stdin.
+Connection checks advance automatically; retries never extend deadlines. Arm one generated
+`watch_argv` after connection instructions and platform replies; never overlap observers or infer answers.
+At `status.state=awaiting_launch`, preparation is complete: read `summary` and enter review,
+without waiting for the background process to exit. It retains this connection at most 600 seconds.
+On an offered retry, execute `remaining_preparation_argv` unchanged: same-root `preparation retry`,
+preserving identity/results. Prepare only/cancel must execute returned `finish_argv`; expiry never starts research.
+Explicit finish/skip during preparation releases scope directly; read its final background result.
 Only an explicit preparation choice opens the browser; it does not authorize a
 Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
-Show `preparation_summary`: no sample means not_checked; sample_verified proves
-only that paper's readability, not login or subscription. Missing access never blocks research.
-Report public PDF, browser PDF or HTML. Fixed-sample challenges fail and advance; never require per-paper solving or claim HTML is PDF. See details.
-Merge returned `provider_modes` by platform into launch choices, replacing old values,
-then re-inspect and review. Retain completed/skipped preparation in this interaction;
-do not rerun a batch merely because its command still appears. Review auto/public_only/disabled
-and finite 120-second acquisition / 600-second manual defaults. During research,
-observe Host status in the read-only TUI; optional manual controls use authorized Web, not another standalone browser manager.
+Show `preparation_summary`: no sample means not_checked; sample_verified proves only that
+paper's readability, not login/subscription. Report public PDF, browser PDF or HTML accurately.
+Fixed-sample challenges fail and advance; never require per-paper solving or call HTML a PDF.
+Merge `provider_modes` by platform, replacing old values; re-inspect and review without replaying
+completed/skipped preparation. Missing access never blocks research. Review auto/public_only/disabled
+and finite 120-second acquisition / 600-second manual defaults. TUI observes; optional manual controls use authorized Web.
 
-The enabled `--institutional-browser-mode client|local|existing|server` selects
-run-owned connections. Windows `client` uses the program's `Connect` code block:
-download the local entry and start discovery, then return to this same CC session.
-Never substitute `Init` while init is already open. First local execution and SSH
-authentication remain necessary. Missing connections do not prove an absent helper.
-`local` uses the actual Linux user's visible browser over a process pipe, without
-SSH or Docker. Check the current X11/Wayland session. `existing` wraps an explicitly
-managed external endpoint. `server` uses the repository image/environment with
-private per-run container relays, not Compose's fixed published ports.
-
-Preview exposes policy, a read-only `institutional_connection_argv` and separate
-preparation command. It starts no resources. Host allocates ports using port 0 after
-run creation and releases owned connections on run termination or Host exit;
-pausing or closing a monitor does not end the run. Profiles stay browser-owned.
-The helper discovers active runs and cannot reconnect terminated runs. Same-version
-recovery rebuilds ephemeral addresses without changing frozen configuration.
-Local/server profiles cannot be shared by simultaneous browser instances. Do not
-install dependencies, pull images, replace external browsers or change placements
-silently. Missing connections use existing bounded acquisition/OA fallback.
-Browser connectivity does not prove GUI visibility, school login or subscription.
-Endpoint-only and explicit manual `institutional connect` commands retain their
-old operator-owned behavior; never invoke detached manual startup for a new managed
-run. See the institutional guide for commands and machine-specific checks.
+Enabled `--institutional-browser-mode client|local|existing|server` selects run-owned connections.
+For Windows client mode, show the exact program-generated Setup/Connect entry for this init.
+Transfer the original script through SFTP/SCP; never reproduce its body. Preserve `-StateRoot`,
+`-RunId`, `-RequestId` and supplied `-PreparationRoot`. The user executes it once on the chosen PC,
+then returns here. No logon trigger, task restart or future-run discovery; no terminal must stay open
+except foreground Run diagnostics. Never substitute Init inside an existing init. Local execution
+and SSH authentication remain prerequisites; waiting_for_client does not prove an absent helper.
+The helper follows only this preparation/run, closes its own SSH/browser at STOPPING/termination,
+and preserves login data. Continuous lost contact for 300 seconds ends it locally; wake checks expiry
+before reconnecting. A new init needs new authorization; old tasks/browsers cannot adopt another run.
+`local` uses the Linux user's visible browser over a pipe; check X11/Wayland. `existing` wraps
+an explicit external endpoint; `server` uses the installed image with private per-run relays.
+Preview exposes policy, read-only `institutional_connection_argv` and a separate preparation command;
+it starts no resources. Host allocates ports after creation and releases owned connections on exit.
+Closing CC/interactive SSH or monitors does not stop managed research; missing client access uses
+bounded acquisition/OA fallback. Same-version recovery preserves frozen configuration; no run migration.
+Do not share active local/server profiles, install dependencies, pull images or replace external browsers silently.
+Connectivity proves neither visible GUI nor subscription. Legacy endpoint/manual commands remain
+operator-owned; do not use detached manual startup for a new managed run. See details and the institutional guide.
 
 Ask only about returned missing fields or explicit changes the user requested;
 group related choices. Proposed model/auth values must be shown as defaults,
@@ -209,7 +204,7 @@ bootstrap writes, pool operation and research launch:
 - **Prepare only** — only reviewed Profile/settings preparation; no pool
   creation, stop or upgrade, no Host, state root, run or provider call.
 
-Rejection or cancellation stops with zero bootstrap writes before execution.
+Rejection/cancellation before execution makes zero bootstrap writes; release preparation via `finish_argv`.
 After an authorized operation has partly executed, report actual changes;
 never claim it made no writes. Existing settings stay byte-for-byte unchanged.
 

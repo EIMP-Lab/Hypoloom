@@ -98,10 +98,12 @@ Immediately after relaying connection instructions, start exactly one `watch_arg
 in the background, including when the client has not attached yet. Do not end the
 turn waiting for the user to say "connected" with no observer running: connection
 checks can advance and open a platform without a reply. The generated command adds
-`--wait-seconds 3600`; it exits early at a user-action stage or batch end and prints
+`--wait-seconds 3600`; it exits early at a user-action stage, awaiting_launch or batch end and prints
 current instructions. This is an observation limit, not a new preparation deadline.
 On its background completion, read current instructions and offer the current
-platform's fixed replies promptly. If the batch ended, read its final summary.
+platform's fixed replies promptly. At `status.state=awaiting_launch`, read `summary`
+and enter review immediately; the live background process is only retaining the
+connection for handoff. If the process ended, read its final background summary.
 After submitting a platform reply, re-arm one background watch for the next stage.
 If an observer reaches its limit while preparation is still progressing, relay its
 current result and re-arm one observer; never overlap them or repeat the same user
@@ -116,11 +118,12 @@ rejected by the process. A tool/background completion is never a user reply.
 `waiting_for_connection` offers 继续连接 and 跳过准备. Its manual deadline starts
 when connection waiting begins, even if no publisher page has opened. Platform
 answer waiting has its own deadline; checks, retry replies and polling do not extend
-the connection deadline. Expiry ends the batch and emits its latest connection result.
+the connection deadline. Expiry concludes preparation with the latest connection
+result; a bound init may retain its control root in awaiting_launch for review.
 No publisher action has occurred at this point. Do not claim a local helper is
 absent solely from waiting_for_client, or promise a browser popup before `opened`.
 Execute `watch_argv` unchanged in background mode, with no shorter external timeout.
-It prints on reaching a user-action stage, batch end or its observation limit; it
+It prints at a user-action stage, awaiting_launch, batch end or its observation limit; it
 is not an event stream. A foreground/tool timeout must not kill it before that
 result. If an external timeout does kill it, empty output is not evidence of
 unchanged state. Read status/instructions and restore one observer if needed.
@@ -161,11 +164,14 @@ or generating another prepare/verify command. Use its current fixed choices; thi
 stage does not accept a replacement sample. Expiry is still failure, never success.
 For other platforms or older sessions without a sample, completion stays
 not_checked. Use each live process's generated instructions. Answer waiting
-uses the existing manual timeout; expiry or finish cleans resources. Read the
-background command's final summary and merge modes even when some platforms fail.
+uses the existing manual timeout. Scoped Windows init completion/non-manual timeout enters
+`awaiting_launch`: read status's `summary` without waiting for process exit. The same
+control root retains the helper for at most 600 seconds, then releases it without
+starting research. Explicit finish/skip during preparation releases it immediately;
+read that command's final background summary instead. Merge modes even on failure.
 The command's nonzero exit is a preparation result, not a failed research run.
 Relay the program's final human-readable preparation results verbatim before
-offering retry/continue; the final JSON remains the source of states and commands.
+offering retry/continue; the returned summary remains the source of states and commands.
 `identity_unconfirmed` concerns the requested paper, never the user's institutional
 account identity. It may occur before any PDF fetch. Use `reason_code` to distinguish
 `article_identity_unconfirmed` (landing identity), `pdf_target_unconfirmed` (download
@@ -194,17 +200,14 @@ Otherwise, if any selected platform failed, name the failed platforms and offer 
 Start now on the user's behalf. This is an optional preparation choice, not a
 research admission blocker; an explicit decision to finish/skip already permits review.
 Never put credentials in answers or use a second interactive manager concurrently.
-If the process has ended, instructions explicitly say so. On the user's fixed
-重新准备 reply, read the original background result first and execute its generated
-`remaining_preparation_argv` unchanged. It includes failed as well as unanswered
-platforms and preserves connection options, updated modes and supplied samples.
-An empty list is never proof of login or success. If an older review-mode summary has failures
-but an empty vector, re-run the existing read-only bootstrap inspection with only
-those failed/unfinished `--institutional-prepare-provider` selections and the same
-other choices/identity; use its generated preparation command after the user's
-retry choice. Never replay successful/manual-complete platforms to repair this omission.
-Retain completed results and the same launch identity. Do not hand-build a restart,
-replay completed logins, restart CC or create a run.
+While `awaiting_launch`, the user's fixed 重新准备 executes the summary's generated
+`remaining_preparation_argv` unchanged. It invokes `preparation retry` on that same
+control root, retaining failed/unfinished platforms, completed results, connection
+options, modes, samples and launch identity. Never open another preparation root
+or replay successful/manual-complete platforms. An empty list is not proof of login
+or success. Once finished/expired, an old retry vector cannot revive the controller;
+follow the current generated instructions, never reconstruct a restart from bootstrap.
+Do not restart CC or create a run merely to recover a preparation check.
 Do not launch custom polling tasks or repeatedly ask the same question on background
 notifications; use one program-generated observer and relay the current instructions.
 Never recommend 结束准备 merely because the client connected or the user started a
@@ -218,28 +221,43 @@ transfers the original script from that server to Windows through SFTP/SCP and r
 input values; never reproduce, rewrite or generate the installer body, nor use a
 chat-generated script file as the download. Keep installation source on the
 file-transfer path, outside model-generated text.
-Setup asks for the actual SSH target and server paths, verifies SSH/remote Python,
-installs the original file at the existing stable local path and invokes Connect.
-No Windows checkout or second CC session is needed. Use the guide's file-transfer
-steps if needed. If an old damaged command is stuck at `>>`, instruct Ctrl+C first.
-Explain that loopback on Windows refers to Windows. Password login is not proof of
-BatchMode readiness; use the guide's SSH key/agent steps when authentication fails.
-Return to the original init; preparation automatically checks readiness. A healthy
-installed discovery task is reused by later init sessions without another download.
-Use fixed replies only for the offered choices. `-Action Init` remains a separate
-entry for starting a new session; never recommend it inside an existing init.
-Connect prepares the owned default browser directory's private permissions before
-starting the task. It returns while hidden discovery continues; do not require its
-PowerShell window to stay open or infer task health from server connection waiting.
-Only a foreground `-Action Run` diagnostic requires its window to remain open.
-It reports waiting_for_preparation_or_run when no active target exists; preserve
-the CC preparation alongside that diagnostic. This waiting is not browser success.
-The task remains available for research and
-later sessions; it never opens a browser without an active preparation/run. Its
-Stop/Uninstall operations retain browser login data. Initial local script acquisition
-and valid SSH authentication are real prerequisites; a server-only invocation
-cannot install or run code on an unconnected Windows computer. Keep that boundary
-explicit and use the guide's integrated entry instead of a manual helper checklist.
+Every init requires the user to execute its exact scoped entry once on the chosen
+Windows PC. Preserve `-StateRoot`, `-RunId`, `-RequestId` and supplied
+`-PreparationRoot`; these are the existing launch identity and current temporary
+control root, never values to invent. Setup accepts them as arguments or asks for
+the displayed values, then checks SSH/remote Python, installs the original file at
+the stable local path and invokes Connect. No Windows checkout or second CC session
+is needed. Never substitute `-Action Init` inside this init. Use the guide's original
+file-transfer flow and SSH key/agent steps. Loopback refers to Windows; password
+login is not BatchMode readiness. For an old command stuck at `>>`, Ctrl+C first.
+
+Setup/Connect prepares the owned profile's private permissions and starts a hidden
+one-shot task without a logon trigger or task restart. It returns, so the terminal
+may close; only foreground `-Action Run` diagnostics require keeping it open and
+must carry the same scope. A started task/waiting status does not prove connectivity.
+The same helper follows preparation into the exact authorized run; it does not scan
+all runs or stay available for later init sessions. New Setup checks ownership before
+removing a matching old logon/discovery task. Never recommend wildcard task deletion
+or adopting an old dedicated browser; close that old window while preserving its
+profile. The guide covers migration of the local helper, not frozen research Hosts.
+
+At `awaiting_launch`, show the summary and perform launch review while the controller
+retains the connection. **Prepare only or cancel must execute returned `finish_argv`**
+to revoke that connection; Start now still requires separate explicit authorization.
+If the handoff expires, report lost optional access without inferring failure of
+research admission or automatically renewing the authorization. An explicit
+finish/skip during preparation also revokes scope; later browser use requires an
+explicit entry for the intended run. Never keep an observer waiting for this live
+controller to exit before asking the final launch choice.
+
+On STOPPING/termination the helper closes its owned SSH/browser, preserving login
+data. Short disconnection only recovers to the same run; 300 seconds of continuous
+lost contact causes local exit. After sleep it checks expiry before reconnecting.
+Closing CC or interactive SSH does not stop started managed research; preparation
+and pre-launch waiting remain bounded. Missing client access uses public/OA fallback
+and does not block unrelated work. Old unscoped helpers cannot discover new runs.
+A server-only invocation cannot start programs on an unconnected Windows PC. Do not
+claim Windows GUI/sleep acceptance from automated tests or server-side readiness.
 Merge provider_modes by platform into launch choices (replace, never append conflicting
 values), then re-inspect. Results are transient, not saved credentials or authority.
 Failures and skipped/unverified platforms do not block research startup. Preserve the
@@ -1180,6 +1198,10 @@ authorization to enumerate, stop, restart, or otherwise mutate pre-existing
 terminal runs or units.
 
 ### Prepare only — compact fallback
+
+If preparation is awaiting_launch, execute its returned `finish_argv` to release
+the helper authorization before returning. Do the same on cancellation; this is
+cleanup of explicitly selected preparation, not authorization to stop a run.
 
 After the approved bootstrap writes, do not call `manage_host.py`, create the
 state root, start a unit, run `manage_gpu_pool.py ensure`, submit `start`, or

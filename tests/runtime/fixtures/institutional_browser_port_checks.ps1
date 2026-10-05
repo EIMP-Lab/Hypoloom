@@ -12,7 +12,8 @@ function Reset-Browser {
     $script:BrowserProfile = 'C:\Users\Fixture\Hypoloom\Institutional-msedge'
     $script:userSid = 'fixture-user'
     $script:RequestedPort = 0; $script:LocalPort = 0; $script:BrowserCommandPort = $null
-    $script:Candidates = @(); $script:CurrentBrowser = $null
+    $script:Candidates = @(); $script:CurrentBrowser = $null; $script:OwnedBrowser = $null
+    $script:Now=0L; $script:UnhealthySince=$null; $script:LastScopeContact=0L
     $script:Launches = 0; $script:Waits = 0; $script:CdpReads = 0
     $script:CdpUnavailable = $false; $script:NoListener = $false
     $script:LaunchOwner = 'fixture-user'; $script:ListenAddress = '127.0.0.1'
@@ -41,9 +42,10 @@ function Get-LocalCDP {
     $script:CdpReads++
     if (-not $script:CdpUnavailable) { @{webSocketDebuggerUrl="ws://127.0.0.1:$LocalPort/devtools/browser/fixture"} }
 }
-function Start-Sleep { param($Seconds) $script:Waits++ }
+function Get-ElapsedMilliseconds { $script:Now }
+function Start-Sleep { param($Seconds, $Milliseconds) $script:Waits++; $script:Now += 1000 }
 function Start-Process {
-    param($FilePath, $ArgumentList)
+    param($FilePath, $ArgumentList, [switch]$PassThru)
     $script:Launches++
     $match = [regex]::Match($ArgumentList, '--remote-debugging-port=(\d+)')
     Assert ($match.Success -and [int]$match.Groups[1].Value -gt 0) 'browser launched with automation-triggering port 0'
@@ -51,6 +53,11 @@ function Start-Process {
     $script:CurrentBrowser = New-Browser ([int]$match.Groups[1].Value) $script:LaunchOwner
     $script:CurrentBrowser.CommandLine = $ArgumentList
     $script:Candidates = @($script:CurrentBrowser)
+    $owned=[pscustomobject]@{Id=123;HasExited=$false}
+    $owned | Add-Member ScriptMethod Dispose {}
+    $owned | Add-Member ScriptMethod Kill { param($EntireTree) $this.HasExited=$true }
+    $owned | Add-Member ScriptMethod WaitForExit { param($Timeout) $true }
+    $owned
 }
 function Expect-Failure([string]$Reason) {
     $caught = ''
@@ -63,11 +70,11 @@ $observed = Ensure-Browser
 Assert ($observed.webSocketDebuggerUrl -and $LocalPort -gt 0 -and $RequestedPort -eq 0) 'automatic launch failed'
 Assert ($Launches -eq 1 -and $CdpReads -eq 1) 'fresh launch did extra browser/CDP work'
 $firstPort = $LocalPort
-# A restarted connector discovers the live command, without a port file.
-$script:LocalPort = 0; $script:BrowserCommandPort = $null
+# The same invocation reuses only the Process object it launched.
 Ensure-Browser | Out-Null
-Assert ($LocalPort -eq $firstPort -and $Launches -eq 1) 'connector restart lost existing browser'
-# A closed browser gets a new OS choice, without relying on the stale local port.
+Assert ($LocalPort -eq $firstPort -and $Launches -eq 1) 'owned browser not reused'
+# A closed owned browser gets a fresh bounded launch.
+$script:OwnedBrowser.HasExited=$true
 $script:CurrentBrowser = $null; $script:Candidates = @()
 Ensure-Browser | Out-Null
 Assert ($LocalPort -gt 0 -and $Launches -eq 2) 'closed browser did not relaunch'
@@ -81,12 +88,12 @@ Assert ($Launches -eq 1) 'explicit browser not reused'
 
 Reset-Browser
 $script:Candidates = @((New-Browser 0))
-Expect-Failure 'browser_restart_required_close_dedicated_window'
+Expect-Failure 'browser_profile_already_in_use_close_previous_dedicated_window'
 Assert ($Launches -eq 0 -and $CdpReads -eq 0) 'legacy browser was silently reused or replaced'
 
 Reset-Browser
 $script:Candidates = @((New-Browser 45678 'other-user'))
-Expect-Failure 'browser_profile_owner_mismatch'
+Expect-Failure 'browser_profile_already_in_use_close_previous_dedicated_window'
 Assert ($Launches -eq 0 -and $CdpReads -eq 0) 'foreign candidate adopted'
 
 Reset-Browser
@@ -118,8 +125,8 @@ Reset-Browser
 $script:CurrentBrowser = New-Browser 45678
 $script:Candidates = @($script:CurrentBrowser)
 $script:CdpUnavailable = $true
-Expect-Failure 'existing_browser_cdp_unavailable'
-Assert ($Launches -eq 0 -and $CdpReads -eq 1) 'unavailable owned browser replaced'
+Expect-Failure 'browser_profile_already_in_use_close_previous_dedicated_window'
+Assert ($Launches -eq 0 -and $CdpReads -eq 0) 'existing browser was contacted or adopted'
 
 $selected = Get-AvailableBrowserPort
 Assert ($selected -gt 0 -and $selected -le 65535) 'OS allocation returned invalid port'

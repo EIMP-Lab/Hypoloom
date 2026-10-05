@@ -92,26 +92,36 @@ the preparation result back into platform arguments and re-review. Unverified
 or unavailable platforms do not prevent research startup.
 
 Inspect and launch preview share the existing validators without contacting a
-browser or allocating ports. After Start now, the Host allocates resources for
-the run; missing connectivity/login uses bounded acquisition and OA fallback.
-An explicit standalone preparation choice can handle logins first; preparation
-does not save the mode for future runs. Init uses a background `--agent-session`:
-connection readiness precedes platforms. Instructions and fixed replies come from
-the program and are validated against the current stage/provider, without background
-stdin. For first Windows setup, transfer the original script through SFTP/SCP and
-run its fixed `Setup` entry. It asks for paths, installs the file and invokes Connect;
-installation source never passes through assistant prose. Return to the same init;
-later sessions reuse the installed discovery task. Connection
-waiting also has a deadline, with remaining seconds reported by the process. The program
-automatically rechecks until ready; a retry reply only expedites a check without extending
-the window. CC uses the generated `watch_argv` for at most 30 seconds of observation,
-instead of writing polling loops. Windows terminal users
-can use the unified local `Init` entry to start discovery and remote init together;
-standard paths are derived and no separate helper terminal is needed. First local
-entry setup and SSH authentication remain necessary; server-only init cannot start
-an unconnected PC. See the
-[institutional guide](institutional-access.md#prepare-the-connection-during-init)
-for commands, stopping and qualification limits. SSO/MFA remains human-operated.
+browser or allocating ports. Start now allocates the run's resources; unavailable
+institutional access uses bounded acquisition and public/OA fallback.
+Init preparation uses a background `--agent-session`: the program checks readiness,
+opens selected platforms and validates fixed replies for the current stage/provider.
+It uses a generated `watch_argv`, not assistant-written polling or background stdin.
+
+For each init in Windows client mode, run the exact generated Setup/Connect entry
+once on the PC you choose. Transfer the original script through SFTP/SCP on first
+use or upgrade; never execute assistant-transcribed installation source. The entry
+carries this init's `-StateRoot`, `-RunId`, `-RequestId` and optional
+`-PreparationRoot`. It starts a hidden one-shot task, with no logon trigger or
+future-run discovery. Setup/Connect returns, so its terminal may close; only a
+foreground Run diagnostic needs an open terminal. Return to the same CC init.
+
+`status.state: awaiting_launch` means preparation is complete: read `summary` and
+review immediately, without waiting for the background process to exit. The same
+control root/helper waits at most 600 seconds for this run. Failed platforms use the
+returned `remaining_preparation_argv` to retry in that root; successful results are
+retained. Prepare only/cancel executes `finish_argv`; Start now still needs explicit
+authorization. Expiry never starts research. Explicit finish/skip during preparation
+exits directly and leaves its result in the background output.
+
+The helper closes its own SSH/browser on run termination or `STOPPING`, preserving
+login data. Short disconnection can recover only to the same run; continuous lost
+contact for 300 seconds causes local exit. After sleep it checks expiry before
+reconnecting. Closing CC/interactive SSH does not stop already started research;
+a missing Windows client does not block public fallback or other work. A new init
+requires its own entry. See the [institutional guide](institutional-access.md#prepare-the-connection-during-init)
+for upgrade/old-task cleanup, scope values and Windows acceptance limits. Server-only
+init cannot start an unconnected PC; SSO/MFA remains human-operated.
 
 On first use or after changing Windows PC/account, follow the
 [SSH setup guide](institutional-access.md#first-setup-or-a-new-windows-pcaccount)

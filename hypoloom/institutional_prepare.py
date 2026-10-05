@@ -28,6 +28,9 @@ def add_parser(subparsers):
     prepare.add_argument("--literature-pdf-fallback", choices=("semantic-scholar", "unpaywall"), default="semantic-scholar")
     prepare.add_argument("--unpaywall-email-file", help="existing contact-email file for the explicitly selected Unpaywall fallback")
     prepare.add_argument("--repository", help="checkout containing the server Compose configuration")
+    prepare.add_argument("--state-root", help="exact final research root for a scoped client")
+    prepare.add_argument("--run-id", help="final research run selected by init")
+    prepare.add_argument("--request-id", help="existing CREATE_RUN request identity selected by init")
     add_preparation_argument(prepare, "--provider")
     prepare.add_argument("--sample", action="append", default=[], metavar="DOI_OR_URL",
                          help="override this platform's default probe; verify through the same browser and document identity validator")
@@ -35,7 +38,7 @@ def add_parser(subparsers):
     prepare.add_argument("--non-interactive", action="store_true", help="verify supplied samples using existing sessions; never wait for input")
     prepare.add_argument("--agent-session", action="store_true", help="receive init answers over the private preparation socket instead of stdin")
     dialogue = commands.add_parser("preparation", help="observe or answer a live init preparation session")
-    dialogue.add_argument("preparation_action", choices=("status", "instructions", "watch", "reply", "complete", "verify", "skip", "public_only", "retry_connection", "finish"))
+    dialogue.add_argument("preparation_action", choices=("status", "instructions", "watch", "reply", "complete", "verify", "skip", "public_only", "retry_connection", "retry", "finish"))
     dialogue.add_argument("--state-root", required=True)
     dialogue.add_argument("--provider")
     dialogue.add_argument("--sample")
@@ -47,14 +50,17 @@ def add_parser(subparsers):
     connect.add_argument("--repository")
     add_arguments(connect, connection=True)
     listing = commands.add_parser("connections", help="read current run endpoints through private Host control sockets")
-    scope = listing.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--state-root")
-    scope.add_argument("--runs-root")
+    listing.add_argument("--state-root", required=True)
+    listing.add_argument("--run-id", required=True)
+    listing.add_argument("--request-id", required=True)
+    listing.add_argument("--preparation-root")
     listing.add_argument("--include-ui-credentials", action="store_true", help="show private container GUI access credentials locally")
     for name in ("forward-ready", "watch"):
         watch = commands.add_parser(name, help="check or hold the private run-owned SSH forwarding session")
         watch.add_argument("--state-root", required=True)
         watch.add_argument("--run-id", required=True)
+        watch.add_argument("--request-id", required=True)
+        watch.add_argument("--preparation-root")
         watch.add_argument("--socket-path", required=True)
     watch.add_argument("--browser-path", required=True)
 
@@ -131,10 +137,12 @@ def _summary(rows, modes, output, **extra):
     # This is a transient review, not saved proof of authentication or subscription.
     from .institutional_instructions import render_results
     output(render_results(rows, modes))
-    output(json.dumps({"preparation_summary": rows, "provider_modes": modes, **extra,
+    document = {"preparation_summary": rows, "provider_modes": modes, **extra,
         "verification_scope": "Sample readability only; institutional login and platform-wide subscription are not established.",
         "provider_mode_argv": [part for name, mode in modes.items()
-                               for part in ("--institutional-provider-mode", f"{name}={mode}")]}, ensure_ascii=False))
+                               for part in ("--institutional-provider-mode", f"{name}={mode}")]}
+    output(json.dumps(document, ensure_ascii=False))
+    return document
 
 
 def _remaining_command(args, remaining, modes):
@@ -170,7 +178,8 @@ def _finish_summary(args, selected, rows, modes, output, **extra):
             extra["next_actions"] = ["review_launch_configuration"]
     remaining = [name for name in remaining if modes.get(name) not in {"public_only", "disabled"}]
     rows.extend({"provider": name, "state": "not_checked", "samples": []} for name in selected[len(rows):])
-    _summary(rows, modes, output, preparation_failure_mode=failure_mode,
+    return _summary(rows, modes, output, preparation_failure_mode=failure_mode,
+             remaining_providers=remaining,
              remaining_preparation_argv=_remaining_command(args, remaining, modes), **extra)
 
 
@@ -302,6 +311,45 @@ def _answer(args, output):
     return 0 if response.status == "accepted" else 1
 
 
+
+def _batch(args, access, dialogue, selected, modes, output, input_fn):
+    rows = []
+    samples = list(dict.fromkeys(sample_url(value) for value in args.sample))
+    cancelled = dialogue.cancelled if dialogue else lambda: False
+    try:
+        while True:
+            connection = _connection(access, args.institutional_connect_timeout, dialogue)
+            output(json.dumps({"connection": connection}, ensure_ascii=False))
+            if connection["state"] == "ready": break
+            if not dialogue:
+                summary = _finish_summary(args, selected, rows, modes, output, connection=connection,
+                    next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
+                return summary, 1
+            output("Browser connection is unavailable. Preparation automatically rechecks within this fixed waiting window; no platform login was attempted.")
+            if dialogue.wait(connection=connection,
+                    check=lambda **kwargs: access.check_connection("preparation", **kwargs),
+                    check_seconds=args.institutional_connect_timeout,
+                    observed=lambda value: output(json.dumps({"connection": value}, ensure_ascii=False))) == "ready":
+                break
+        for provider in selected:
+            if cancelled(): raise PreparationEnded("finished")
+            if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
+            row, stop = _prepare_platform(access, provider, [url for url in samples if publisher(url) == provider],
+                interactive=not args.non_interactive,
+                input_fn=input_fn, dialogue=dialogue,
+                output=output, modes=modes, cancelled=cancelled)
+            rows.append(row)
+            if stop:
+                break
+        summary = _finish_summary(args, selected, rows, modes, output)
+        return summary, int(any(row["state"] not in _COMPLETED_STATES for row in rows))
+    except PreparationEnded as exc:
+        connection = dialogue.snapshot().get("connection") if dialogue else None
+        summary = _finish_summary(args, selected, rows, modes, output, preparation_state=str(exc),
+                        **({"connection": connection} if connection else {}))
+        return summary, int(str(exc) != "finished")
+
+
 def run(args, *, input_fn=input, output=print):
     if output is print:
         output = lambda text: print(text, flush=True)
@@ -334,12 +382,12 @@ def run(args, *, input_fn=input, output=print):
         _finish_summary(args, selected, [{"provider": provider, "state": modes[provider], "samples": []}
                                        for provider in selected], modes, output)
         return 0
+    from .institutional_handoff import preparation_target
+    target = preparation_target(args)
     access = build(args)
     if access is None: raise ValueError("preparation requires an enabled browser mode or --institutional-browser-url")
-    rows = []
     control = directory = None
     dialogue = PreparationDialogue(args.institutional_manual_seconds) if args.agent_session else None
-    cancelled = dialogue.cancelled if dialogue else lambda: False
     try:
         if args.institutional_browser_mode or dialogue:
             import tempfile
@@ -353,8 +401,8 @@ def run(args, *, input_fn=input, output=print):
                 dialogue.context = {"reply_argv": [*command, "reply", "--state-root", directory.name]}
                 if args.institutional_browser_mode == "client":
                     from .institutional_instructions import client_entry
-                    dialogue.context["client_entry"] = client_entry(root.parent, sys.executable)
-            control = PreparationControl(directory.name, access, dialogue.handle if dialogue else None)
+                    dialogue.context["client_entry"] = client_entry(root.parent, sys.executable, target=target, preparation_root=directory.name)
+            control = PreparationControl(directory.name, access, dialogue.handle if dialogue else None, target=target)
             output(json.dumps({"state_root": directory.name,
                 "connection": access.status("preparation").get("connection", {"mode": "existing", "state": "unchecked"}),
                 "status_argv": [*command, "status", "--state-root", directory.name],
@@ -365,37 +413,10 @@ def run(args, *, input_fn=input, output=print):
                 "watch_argv": [*command, "watch", "--state-root", directory.name, "--wait-seconds", "3600"],
                 "answer_argv": [*command, "<action>", "--state-root", directory.name]}, ensure_ascii=False))
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
-        while True:
-            connection = _connection(access, args.institutional_connect_timeout, dialogue)
-            output(json.dumps({"connection": connection}, ensure_ascii=False))
-            if connection["state"] == "ready": break
-            if not dialogue:
-                _finish_summary(args, selected, rows, modes, output, connection=connection,
-                    next_actions=["prepare_client_connection", "retry_connection", "skip_preparation"])
-                return 1
-            output("Browser connection is unavailable. Preparation automatically rechecks within this fixed waiting window; no platform login was attempted.")
-            if dialogue.wait(connection=connection,
-                    check=lambda **kwargs: access.check_connection("preparation", **kwargs),
-                    check_seconds=args.institutional_connect_timeout,
-                    observed=lambda value: output(json.dumps({"connection": value}, ensure_ascii=False))) == "ready":
-                break
-        for provider in selected:
-            if cancelled(): raise PreparationEnded("finished")
-            if dialogue: dialogue.update(state="preparing_platform", provider=provider, actions=["finish"])
-            row, stop = _prepare_platform(access, provider, [url for url in samples if publisher(url) == provider],
-                interactive=not args.non_interactive,
-                input_fn=input_fn, dialogue=dialogue,
-                output=output, modes=modes, cancelled=cancelled)
-            rows.append(row)
-            if stop:
-                break
-        _finish_summary(args, selected, rows, modes, output)
-        return int(any(row["state"] not in _COMPLETED_STATES for row in rows))
-    except PreparationEnded as exc:
-        connection = dialogue.snapshot().get("connection") if dialogue else None
-        _finish_summary(args, selected, rows, modes, output, preparation_state=str(exc),
-                        **({"connection": connection} if connection else {}))
-        return int(str(exc) != "finished")
+        if target:
+            from .institutional_handoff import batches
+            return batches(args, access, dialogue, selected, modes, output, input_fn, directory.name, target)
+        return _batch(args, access, dialogue, selected, modes, output, input_fn)[1]
     finally:
         try:
             if control is not None: control.close()

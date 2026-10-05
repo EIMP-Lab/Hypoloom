@@ -29,7 +29,9 @@ init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默
 
 Windows 机构客户端首次接入或换机时，先完成
 [用户级 SSH 密钥与免交互登录配置](docs/guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)，
-再运行连接脚本的 `Setup`；只有密码登录可用还不够。
+再运行连接脚本的 `Setup`；只有密码登录可用还不够。每次 init 在本次所选电脑
+执行一次程序生成的入口；助手只服务该准备／运行，不登录自启或接入未来运行。
+详见[单运行接入步骤](docs/guides/institutional-access.zh-CN.md#windows-终端统一-init-入口)。
 
 init 同时显示针对已配置远端分支的[版本提醒](docs/guides/version-check.zh-CN.md)，
 可用 `hypoloom version-check` 手动检查，或 `bootstrap paths --offline` 跳过远端查询。

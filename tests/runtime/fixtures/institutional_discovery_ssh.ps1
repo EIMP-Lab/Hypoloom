@@ -1,5 +1,6 @@
 param([string]$Connector, [string]$Ssh, [string]$Repository, [string]$PythonExecutable,
-    [string]$RunsRoot, [int]$LocalPort, [string]$StopFile)
+    [string]$StateRoot, [string]$RunId, [string]$RequestId, [string]$PreparationRoot,
+    [int]$LocalPort, [string]$StopFile)
 $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($Connector, [ref]$tokens, [ref]$errors)
@@ -8,6 +9,9 @@ $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDe
     . ([scriptblock]::Create($_.Extent.Text))
 }
 $script:ssh = $Ssh; $Server = 'fixture'; $script:BrowserRequests = 0
+$script:Clock=[Diagnostics.Stopwatch]::StartNew()
+function Get-ElapsedMilliseconds { $script:Clock.ElapsedMilliseconds }
+function Stop-OwnedBrowser {}
 # The HTTP CDP endpoint and SSH are real; only Windows browser startup and time
 # between polls are substituted. Deadlines and retry policy have separate tests.
 function Ensure-Browser {
@@ -15,7 +19,7 @@ function Ensure-Browser {
     @{webSocketDebuggerUrl="ws://127.0.0.1:$LocalPort/devtools/browser/fixture"}
 }
 function Start-Sleep {
-    param($Seconds)
+    param($Seconds, $Milliseconds)
     if (Test-Path -LiteralPath $StopFile) { throw 'fixture_complete' }
     Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds 100
 }

@@ -106,14 +106,14 @@ Windows 专用浏览器仍可用于其他平台。[官方全文接口](https://d
 
 ## 集中准备与研究期间的处理
 
-没有研究运行或待下载论文时，也可先准备常用平台。Windows 终端用户建议使用下文的
-统一 Init 入口，在同一流程中启动连接并进入服务器初始化，无须单独开启助手终端。
-已有连接时也可在服务器独立执行以下命令；原生 Linux 桌面改用 `local`：
+没有研究运行或待下载论文时，也可先准备常用平台。Windows 客户端先在服务器
+进入 init，再使用它生成的单运行准备命令和 Windows 入口。仅列目录或在原生 Linux
+桌面独立准备时使用：
 
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-mode client
+  --institutional-browser-mode local
 ```
 
 目录优先展示四个常用平台，入口来自现有平台目录，无须逐个输入网址：
@@ -253,8 +253,9 @@ PDF 已经下载。程序在最终 JSON 前输出固定结果说明；CC 应原�
 重复登录或重试不保证解决身份校验问题；公开／OA 回退仍可尝试，也不保证获取成功。
 
 若要验收新用户流程，每轮可新开 CC 会话执行 `/autoresearch init`，在最终启动审阅
-处暂停，不必续接旧批次。已有客户端和浏览器登录仍可能被复用；完全首次安装需在
-独立测试账户验证，不能把已有登录的新 init 记作首次安装通过。
+处暂停，不必续接旧批次。原脚本和私有登录目录可复用，但每次需在所选 Windows
+执行本次入口，旧助手不具备新运行的授权。完全首次安装需在独立测试账户验证，
+不能把已有登录的新 init 记作首次安装通过。
 
 init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接期限内验证实际浏览器
 连接，成功后才打开平台。失败后进入统一的连接等待窗口，各平台保持 `not_checked`，
@@ -268,7 +269,11 @@ init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接�
 查询状态和“继续连接”都不会延长期限；后者只提前下一次检查，不叠加并发检查。
 程序输出实际剩余秒数，不让助手自行推算。连接等待超时的摘要保留最后一次检查
 结果及重新准备命令。
-超时/结束会清理连接与临时目录，已完成的平台结果保留在本次输出中，研究启动身份不变。
+单运行 Windows init 自然完成或非手动结束的超时失败后进入 `awaiting_launch`；读取 status 的
+`summary`，不用等后台进程退出。同一临时控制目录最多保留 600 秒，供审阅并向正式
+运行交接；Start now 仍需明确选择。选择 Prepare only／取消时执行返回的 `finish_argv`
+撤销本次连接授权；到期也会清理，不自动启动研究。准备中主动结束／跳过则直接退出，
+从后台最终结果读取摘要。已完成结果保留，启动身份不变。
 独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
 
 手动诊断对话准备时，使用首次输出的 `status_argv` / `answer_argv`；例如：
@@ -287,7 +292,8 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 验证样本 / 跳过此平台 / 仅公开 / 结束准备**。验证样本另提供 DOI 或论文 URL。
 客户端接入后由程序自动检测。CC 展示连接说明后，应立即后台执行一个程序生成的
 `watch_argv`，不能等用户另说“已连接”才开始观察。生成命令含 `--wait-seconds 3600`，
-到需人工操作的阶段或批次结束即提前返回当前说明，并通过后台任务完成通知唤回 CC。
+到需人工操作的阶段、`awaiting_launch` 或批次结束即提前返回当前说明，
+并通过后台任务完成通知唤回 CC。
 它只观察、不代答，也不延长连接、平台回答或样本获取期限。每次提交平台回复后再
 观察下一阶段，同一时刻最多一个观察进程。手动运行不带此参数的 `watch` 仍默认 30 秒。
 不要给生成命令再套较短的 timeout；等待期间无输出不能解释为“没有新事件”。CC
@@ -295,15 +301,14 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 若接入期间已完成浏览器登录，进入平台阶段后直接回复 **完成**，
 无需重新登录。连接阶段的旧回复失效时，按程序最新提示回答，不替用户自动确认完成。
 **结束准备／跳过准备会终止当前批次**，不会表示“已连接”或自动重开；新建的批次
-无需先结束才能测试。仅想刷新进展时读取状态，不发送结束命令。Windows 的
-`run_discovery_recovered` 表示连接列表查询恢复，不等于浏览器验证成功；
-`waiting_for_preparation_or_run` 表示当前没有发现活动目标，前台助手仍在等待。
-助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台任务完成通知
-不是用户回答。批次结束后会明确提示 **重新准备**，先读取原摘要并保留已完成的平台
-和模式，再原样执行摘要中的 `remaining_preparation_argv`；其中包含失败及未回答的平台，
-保留连接参数、已选模式和原命令提供的样本。默认检查失败的平台也在重试名单中；
-成功的平台不重复准备。没有固定或自选样本的平台手工完成仍属未验证，不重复准备。
-无需新开 CC 会话或创建科研运行。
+无需先结束才能测试。仅想刷新进展时读取状态，不发送结束命令。连接查询恢复不等于
+浏览器验证成功；助手只查询给定的准备／运行身份，不常驻等待服务器目录中的未来运行。
+助手将原话交给 `reply_argv --text`，程序按当前阶段和平台校验；后台完成通知不是回答。
+在 `awaiting_launch` 阶段选择 **重新准备** 时，原样执行摘要中的
+`remaining_preparation_argv`。它是原控制目录的 `preparation retry`，只重试失败及未回答
+的平台，保留启动身份、已完成结果、模式和样本；不新建准备目录或重做成功平台。
+没有固定或自选样本的平台手工完成仍属未验证。控制器已到期或被结束后，旧重试命令
+不能使它复活，应遵循当前程序说明，不由助手另拼一个批次。无需为重试创建科研运行。
 
 准备入口检测到验证码时，固定说明会显示“页面打开时检测到人机验证”。这是打开
 页面时的观察，不证明验证已通过或机构登录已完成。仅在专用浏览器中手动完成；若
@@ -312,9 +317,9 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 这种网站验证不能靠反复重装客户端保证恢复；必要时使用平台支持的接口或手动 PDF 导入。
 
 所选平台超时时，init 应提供 **重新准备** 或 **接受未验证状态，继续检查启动配置**，
-由用户决定。准备失败不阻止科研启动，也不代表成功。如果旧版本摘要仍有失败项却输出
-空重试数组，助手应使用原只读 bootstrap 检查为这些平台重新生成准备命令，保留其他
-配置和启动身份。请保持专用浏览器打开。中间的 `browser_unavailable` /
+由用户决定。准备失败不阻止科研启动，也不代表成功。空重试数组不证明成功，应按
+返回的失败策略审阅真实状态，不通过另建批次绕过控制器到期。当前助手仍有效时，
+保持它的专用浏览器可用。中间的 `browser_unavailable` /
 `fetch_unavailable` 输出安全错误码；只有最终 `acquisition_timeout` 无法确定底层原因。
 连接预检也返回固定错误码：`cdp_timeout`、`cdp_connection_refused`、
 `cdp_connection_closed`、`cdp_authorization_failed`、`cdp_endpoint_unavailable`、
@@ -330,7 +335,8 @@ SSH 任务退出。重试沿用原有有界队列；窗口仍开着不等于控�
 
 `complete` 按程序显示的样本自动检查；既无固定也无自选样本时仍是未验证。
 `skip` / `public_only` 也须带当前平台。
-这些命令只用于仍存活的临时准备进程，不修改科研运行；结束后读取后台命令最终摘要。
+这些命令只用于仍存活的临时准备进程，不修改科研运行；`awaiting_launch` 时读取
+status 的 `summary`，主动结束后读取后台命令最终摘要。
 
 运行后按 TUI 的 **i** 打开英文 **Institutional access** 面板：当前运行的出版社目录、
 **Public + institution / Public only / Disabled**（公开＋机构／仅公开／未启用）
@@ -392,7 +398,7 @@ OA 作者稿保留实际来源和版本限制，不声称为出版社定稿。�
 | mode | 浏览器位置 | 生命周期 |
 | --- | --- | --- |
 | `off` | 不使用机构浏览器 | 不创建机构连接；保留公开/OA，关闭机构面板操作。 |
-| `client` | Windows Edge/Chrome | Windows 脚本发现活跃运行，每个运行建立独立的私有 SSH 转发。 |
+| `client` | Windows Edge/Chrome | 明确绑定本次 init／运行；准备与该运行复用同一助手，到期自动退出。 |
 | `local` | 原生 Linux 桌面 | 专用可见 Chrome/Chromium 通过进程管道控制，不开放 CDP TCP 端口。 |
 | `server` | 无桌面的 Linux 服务器 | 每次运行使用独立容器、私有 CDP 和 GUI 转发，要求镜像已安装。 |
 | `existing` | 明确指定的外部回环 CDP | 项目建立受保护的运行连接；外部浏览器仍由原管理者负责。 |
@@ -426,19 +432,19 @@ SSH 存活检测（15 秒、连续三次），不能承诺瞬时释放。原生�
 原有有限期限内结束后正常关闭。Docker 收尾需要 daemon 可响应，失败会明确报告。
 
 登录目录由浏览器保存，运行清理不删除它。local/server 同一目录同时只允许一个运行
-使用；并发时选择不同的专用目录。Windows 的同一专用浏览器可以经独立隧道服务多个
-运行，结束服务器运行不关闭这个用户浏览器。
+使用；并发时选择不同的专用目录。Windows 助手只绑定一个明确运行，结束时关闭
+自己启动的专用浏览器与 SSH，保留登录目录；不接管上一次运行遗留的浏览器进程。
 
 ```bash
 python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
-# 服务器上使用 Windows 连接脚本时：
-python -m hypoloom institutional prepare --institutional-browser-mode client --provider Springer
-python -m hypoloom institutional connections --runs-root /path/to/Hypoloom/state
+# client 模式使用 init 生成的准备命令及 Windows 入口。
+python -m hypoloom institutional connections --state-root /path/to/selected-run --run-id RUN-ID --request-id CREATE-REQUEST-ID
 ```
 
-集中准备在 `<repository>/state` 下创建临时私有控制目录，结束后清理连接；
-Windows 的 `-RunsRoot` 要指向该父目录。它不创建科研运行或归档。
-在其他工作目录执行时显式传 `--repository`。
+集中准备在 `<repository>/state` 下创建临时私有控制目录，仅在有界启动交接期间
+保留连接。Windows 生成入口携带准确的最终 `-StateRoot`、`-RunId`、`-RequestId`，
+准备期间另有 `-PreparationRoot`；父级运行目录不构成接入授权。准备不创建科研运行
+或归档。在其他工作目录执行时显式传 `--repository`。
 
 local 需要实际 Linux 桌面用户的 Chrome/Chromium 和 Playwright；init 只把所选的
 X11/Wayland 会话变量传给受管 Host。可见窗口须在对应机器确认。
@@ -454,7 +460,7 @@ client/server 的清理服务要求 Linux 用户级 systemd。server 仅从
 不发布 Docker 端口。GUI 使用本次运行的临时认证，在服务器终端读取：
 
 ```bash
-python -m hypoloom institutional connections --state-root /path/to/run --include-ui-credentials
+python -m hypoloom institutional connections --state-root /path/to/run --run-id RUN-ID --request-id CREATE-REQUEST-ID --include-ui-credentials
 ```
 
 将返回的 GUI 端口通过 SSH `-L` 转发到本机，输入本次 GUI 访问凭据；学校账号只在
@@ -466,115 +472,96 @@ python -m hypoloom institutional connections --state-root /path/to/run --include
 
 ### Windows 终端统一 Init 入口
 
-**已经在 CC 中进行 init 时**，首次接入或升级采用原始脚本文件，不执行助手转贴的
-安装代码。bootstrap 与准备进程共同给出 `script_source`（服务器文件位置）、
-`setup_inputs`（需要填写的路径）和固定启动入口。
+**每次 CC init** 都在本次希望使用的 Windows 电脑上执行一次程序生成的入口。
+入口绑定审阅中的 `state_root`、`run_id` 和创建请求 ID；另一台电脑的旧助手不会
+自动连接。Setup 不安装登录自启，也不发现未来运行。
 
 首次使用或更换 Windows 机器／用户账户时，先完成下方的
 [SSH 免交互认证检查](#首次接入或更换-windows-机器账户)。能用密码下载脚本，不代表
 后台助手已能登录服务器。
 
-1. 在 Windows 打开一个用于下载的目录，通过现有 SFTP/SCP 或文件传输工具，从当前
-   SSH 服务器下载程序给出的 `institutional-connect.ps1` 原始文件。不要将聊天中的
-   脚本正文另存为文件。Windows 无需安装 Hypoloom 或 Python。
-2. 在该下载目录打开 PowerShell 7.2+，执行：
+1. 保留服务器上的 `/autoresearch init`，选择 Windows 客户端模式。程序会给出
+   `script_source`、`setup_inputs` 和准确的 `powershell` 启动入口。
+2. 在 Windows 通过 SFTP/SCP 或文件传输工具下载该服务器上的原始
+   `institutional-connect.ps1`。升级后重新下载；不要把助手转贴的脚本正文保存为文件。
+   Windows 无需安装 Hypoloom 或 Python。
+3. 在下载目录打开 PowerShell 7.2+，**原样执行本次程序生成的入口**，包括
+   `-StateRoot`、`-RunId`、`-RequestId` 及提供时的 `-PreparationRoot`。
+   也可运行以下交互式入口，将本次 init 显示的范围值填入提示；不自行生成 ID 或沿用旧值：
 
    ```powershell
    pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
    ```
 
-3. 按程序提示输入 Windows 使用的 SSH 目标、服务器仓库路径、Python 路径和运行目录。
-   init 会显示三个路径的实际值。标准安装的后两项可回车使用默认值；非标准安装填写
-   init 显示的值，不要修改脚本源码。Setup 验证 SSH 和服务器 Python，再按原始字节
-   安装到 `%LOCALAPPDATA%\Hypoloom\institutional-connect.ps1`，随后执行 Connect。
-4. 看到 `client_discovery_started` 后回到原 init 查看进展，程序自动检测实际连接。
-   如原批次已结束，回复 **重新准备**。后续 init 复用已安装的后台任务；任务正常时
-   不需要再次下载或安装。Setup 不新开 CC 会话。
+4. 输入 SSH 目标及需要补充的服务器路径。Setup 校验 SSH／服务器 Python，将原文件
+   安装到 `%LOCALAPPDATA%\Hypoloom\institutional-connect.ps1`，启动本次连接。
+   一次性计划任务使用隐藏窗口，没有登录触发器或自动任务重启。
+   Setup／Connect 返回后可以关闭这个 PowerShell 窗口。
+5. 回到原 CC init。程序检测实际连接、打开所选平台，并在固定回复后验证样本。
+   进入 `awaiting_launch` 即从 status 的 `summary` 开始审阅，不等待后台退出。
+   Start now 将同一助手交接给该运行；Prepare only／取消执行 `finish_argv`。
+   交接等待最多 600 秒，到期释放。
 
-没有图形文件传输工具时，可以在 Windows 下载目录使用 OpenSSH 的交互式 SFTP。
-以下目标和文件路径是示例，应使用自己原有的 SSH 目标及 init 显示的 `script_source`：
+没有图形传输工具时，在 Windows 下载目录打开 SFTP：
 
 ```powershell
 sftp research-server
 ```
 
-进入 `sftp>` 提示符后下载文件并退出（路径含空格时用双引号包围）：
+在 `sftp>` 下载 init 显示的 `script_source` 后退出。以下为示例路径，按实际值替换；
+含空格时加双引号：
 
 ```text
 get /path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1
 bye
 ```
 
-确认下载成功后再运行上面的固定 Setup 入口。文件传输直接保留脚本字节，避免聊天
-转述改写和本机代码页损坏程序正文。旧版本发生乱码或参数拼写错误时，重新取得
-原始文件并执行 Setup，不继续修补助手生成的代码块。若旧命令停在 `>>`，先 Ctrl+C。
-SSH 目标不是密码；`127.0.0.1` / `localhost` 指向 Windows 本机。普通 SSH 能输入密码
-登录，不代表后台免交互认证可用；先按下方密钥/ssh-agent 步骤验证
-`ssh -o BatchMode=yes <目标> exit` 返回 0。服务器仍须验证实际浏览器连接。
+文件传输保留原始字节。旧入口发生乱码或参数拼写错误时，重新下载原文件，不继续
+修补聊天生成的源码。旧命令停在 `>>` 时先 Ctrl+C。SSH 目标不是密码，Windows 的
+回环地址指向 Windows；Setup 前验证 `ssh -o BatchMode=yes <目标> exit` 返回 0。
+任务已启动不等于浏览器已连通。
 
-后台发现任务使用隐藏窗口。重新执行 `Connect` 会在严格核对用户、程序和全部连接
-参数后，为旧任务更新窗口设置；正在运行的旧可见任务会重启，连接可能短暂中断。
-任务已使用隐藏参数时不会因此重启。SSH 密钥和浏览器登录目录不变；需要学校认证
-时浏览器仍会正常打开。`client_discovery_started` 只表示已请求任务启动，实际浏览器
-连通仍以 init 的检查为准。
-Connect 返回后可以关闭其 Windows PowerShell 窗口，隐藏发现任务会继续运行。
-只有前台 `-Action Run` 诊断需要保持窗口打开；出现
-`waiting_for_preparation_or_run` 表示没有活动连接目标，应同时保留服务器上的 CC
-准备批次。这条等待提示不代表浏览器已连接成功。
+**升级已有客户端：** 先用 Ctrl+C 停止旧前台 Run。新 Setup 核对归属后清理匹配的
+旧登录自启／发现任务，再建立本次一次性任务；不覆盖其他账户或程序的任务。出现
+`scheduled_task_ownership_mismatch` 时检查对应任务和账户，不按通配符批量删除。
+Windows 可能显示短用户名，归属按 SID 校验。旧版手工建立的固定端口或其他任务仍由
+操作员明确停止。新连接前正常关闭旧 Hypoloom 专用浏览器；保留登录目录及普通浏览器。
+新助手不能接管旧浏览器进程；覆盖脚本文件不会更新已运行的助手或冻结 Host。
 
-旧版前台输出 `run_discovery_unavailable` 后以 2 退出，表示刷新服务端连接列表连续
-失败，不能据此认定 Edge 已关闭。新版保留已有转发，按 5、10、20、随后每 30 秒
-重试列表查询；每次查询仍最多 15 秒，准备／全文获取期限不延长。前台分别显示
-`run_discovery_timeout`（查询超时）、`run_discovery_ssh_failed`（SSH 退出 255）、
-`run_discovery_command_failed`（远端命令失败）或 `run_discovery_invalid_response`
-（返回内容无效），附带重试间隔；恢复时显示 `run_discovery_recovered`。保持前台窗口
-打开即可自动重试，不用反复发送“继续连接”。持续 SSH 错误需检查本机免交互登录；
-命令／返回错误需检查服务器路径和安装。失败期间不会凭旧列表创建新连接，已有
-转发仍由服务器逐条检查运行存活和浏览器身份，不能保证网络故障时转发本身存活。
-
-遇到旧版这个退出原因时，按上面的文件流程重新下载并运行 Setup；已经退出的任务
-可直接启动新版。若旧版 Run 或后台任务仍在运行，先用 Ctrl+C 或原参数 `-Action Stop`
-停止它，再运行 Setup，以加载新文件。保留专用 Edge 和登录目录；回到原 CC 会话，
-批次仍在等待时由程序自动检测，已结束时再选择“重新准备”，无需新建 init。
-
-Windows 计划任务可能把运行账户显示为短用户名，而当前会话显示为“计算机名\\用户名”。
-新版通过 Windows 解析账户 SID 后核对归属。遇到旧版因此报出的
-`scheduled_task_ownership_mismatch`，重新下载原始脚本文件并运行 Setup
-取得新版入口；无需改名或删除任务。真实账户、程序或连接参数不同仍会拒绝更新。
-
-**从 Windows 开始一个新的 init 会话时**，才使用以下入口：
-
-先按上面的文件流程完成一次 Setup。以后也可从 Windows 启动新的 init，使用原有
-SSH 目标和服务器仓库位置；入口推导标准的 Python 与 state 路径：
+如果改用电脑 B，还需在电脑 A 清理历史常驻助手；服务器升级不能删除 A 的本地任务。
+在 A 将新版原文件下载到旧安装位置后，执行下面的命令（替换服务器和仓库）。不传运行
+范围时，`Uninstall` 仅清理严格核验归属的旧发现任务，不影响新版单运行任务；旧专用
+浏览器正常关闭即可，登录目录保留。
 
 ```powershell
-$researchServer = 'research-server' # 原有 user@host 或 SSH 别名
-$researchRepository = '/path/to/Hypoloom'
-$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
-pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -Repository $researchRepository
+pwsh -NoProfile -File "$env:LOCALAPPDATA\Hypoloom\institutional-connect.ps1" -Action Uninstall -Server 'user@server' -Repository '/path/to/Hypoloom'
 ```
 
-入口先检查 SSH 认证、服务器 Python 和 Claude 命令，再安装或复用属于当前用户的
-连接发现计划任务并立即启动，最后进入服务器 `/autoresearch init`。该任务也在用户
-登录时启动，为后续研究保留连接能力；没有活跃准备/运行时不打开浏览器。以后也可以
-继续普通 SSH 登录并调用 init，复用已启动的任务。非标准安装可显式提供
-`-PythonExecutable` / `-RunsRoot`；已有任务归属或参数不匹配时不会覆盖。
+助手只跟随本次准备／运行。科研终结或进入 `STOPPING` 后，清理自己启动的 SSH 和
+专用浏览器，保留登录目录。短断线只允许恢复同一运行；连续失联 300 秒后本地退出。
+睡眠唤醒先核验期限，到期后不自动重连，也不寻找另一运行。此后若仍需机构接入，
+须明确执行目标运行新生成的入口。
 
-首次本机入口、PowerShell 7.2+、有效 SSH 认证是实际前提。纯服务器 init 无法在没有
-本地执行通道的 Windows 上安装或启动程序；它会在连接步骤给出实际状态和重试/结束
-选择。机构登录、验证码及 MFA 始终由本人完成。下方保留 SSH 准备与手动诊断命令。
+关闭 CC 或交互式 SSH 会话不会停止已经启动的受管科研运行；尚未启动的准备和交接
+等待仍有期限。需要该机构通道时 Windows 和专用浏览器应保持可用；意外关闭只使该
+通道不可用，有限公开／OA 回退和其他研究继续，不保证每篇 PDF 可得。只有诊断用的
+前台 `-Action Run` 才需要保留终端。
+
+本机执行入口、PowerShell 7.2+ 和有效 SSH 认证仍是前提，服务器不能凭空启动未连接
+的电脑。登录和 MFA 在浏览器完成；旧运行不迁移。Windows 界面与生命周期仍需在实际
+客户端验收，自动化测试不能替代此结论。
 
 ### 客户端前提与手动诊断
 
 将 `hypoloom/connection_assets/institutional-connect.ps1` 复制到 Windows 固定位置。
 要求 PowerShell 7.2+，Windows 不需要安装项目或 Python。SSH 目标为已有 `user@host`
 或 SSH 别名，先确认主机密钥并配置 SSH key／ssh-agent。脚本使用 BatchMode，
-不保存密码。Linux SSH 服务须允许远程 Unix socket 转发；脚本通过下方三个明确的
-服务器绝对路径调用项目 CLI。
+不保存密码。Linux SSH 服务须允许远程 Unix socket 转发；脚本通过给定的服务器
+路径和本次 init 的准确运行范围调用项目 CLI。
 
 #### 首次接入或更换 Windows 机器／账户
 
-复制连接脚本不会迁移旧机器的 SSH 密钥、主机确认记录、计划任务或浏览器登录状态。
+复制连接脚本不会迁移旧机器的 SSH 密钥、主机确认记录、浏览器登录状态或本次接入授权。
 先保证新机器能访问服务器；如果服务器地址通过 VPN／组网软件访问，新机器也需接入
 相同网络。SSH 目标仍是 Linux 的 `user@host` 或本机已配置的别名；本机 Windows
 用户名改变，不意味着服务器用户名也要改变。
@@ -657,11 +644,16 @@ Start-Service ssh-agent
 pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
 ```
 
-填写服务器 init 显示的目标及路径，标准安装的 Python 和运行目录可回车使用默认值。
-回到原 CC 会话：准备仍在等待时会自动检测；已结束时选择“重新准备”。不必为了 SSH
-配置另建研究运行。此步骤只准备 SSH 认证，新机器上的出版社登录仍在专用浏览器完成。
+填写本次 init 显示的目标、路径及准确的 StateRoot／RunId／RequestId／PreparationRoot；
+标准安装可使用 Python 默认值。回到原 CC：准备仍等待时自动检测，在 awaiting_launch
+仅按提供的选项“重新准备”；已到期控制器不能凭旧入口复活。不必为了 SSH 配置另建
+研究运行。此步骤只准备 SSH 认证，新机器的出版社登录仍在专用浏览器完成。
 
 #### 手动连接诊断
+
+优先使用程序生成的 Setup／Connect 入口。需要前台诊断时，先停止相同范围的后台
+助手，再把本次 init 的**全部范围值**填入下例；只有生成入口未含 `PreparationRoot`
+时才省略它。不可只传服务器和仓库，也不扫描整个运行目录。
 
 ```powershell
 $researchServer = 'research-server' # user@host or SSH alias
@@ -672,17 +664,19 @@ $researchConnection = @{
     Server = $researchServer
     Repository = '/path/to/Hypoloom'
     PythonExecutable = '/path/to/Hypoloom/.conda/envs/hypoloom/bin/python'
-    RunsRoot = '/path/to/Hypoloom/state'
+    StateRoot = '/path/to/Hypoloom/state/RUN-ID' # init 的准确 state_root
+    RunId = 'RUN-ID' # init 的准确 run_id
+    RequestId = 'CREATE-REQUEST-ID' # init 的准确创建请求 ID
+    PreparationRoot = '/path/to/Hypoloom/state/institutional-prepare-EXAMPLE' # 按生成值提供
 }
 & $researchConnector @researchConnection -Action Run
-# Optional current-user logon task; repeat these same paths and options:
-& $researchConnector @researchConnection -Action Install
+# 诊断和明确停止使用同一范围；不安装登录自启任务。
 & $researchConnector @researchConnection -Action Status
 & $researchConnector @researchConnection -Action Stop
 & $researchConnector @researchConnection -Action Uninstall
 ```
 
-Connect/Init 在启动发现任务前准备目录权限，失败会直接显示在当前终端。对于当前
+Setup／Connect 在启动本次范围的助手前准备目录权限，失败会直接显示在当前终端。对于当前
 用户拥有的默认专用目录，额外的**继承 Allow**（例如其他本地组的读取权限）会在
 保护父目录继承、保留既有合法主体及 Deny 后移除，再以原私有校验重新读取确认。
 不修改父目录、组成员或浏览器文件内容；子项按 Windows 正常 ACL 继承传播处理，
@@ -705,7 +699,7 @@ webdriver 标志，因此不再使用这种启动方式。端口接管仍校验�
 使用 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` 或 `Institutional-chrome`，
 可通过 `-BrowserExecutable`／`-BrowserProfile` 指定原来完成登录的专用目录。
 不导出 Cookie，不复制登录凭据；目录权限限于当前用户、SYSTEM 和管理员。
-已有相同程序、目录及用户的非零端口专用浏览器可复用，包括手动启动的 9222 端点。
+助手仅拥有自己为本次范围启动的浏览器，不接管已运行的手工浏览器或旧运行浏览器。
 
 **从旧版端口 0 浏览器更新：** 安排一次客户端连接中断，以原服务器和连接参数运行
 `-Action Stop`，停止旧发现任务；手动关闭 Hypoloom 专用浏览器的所有窗口。普通
@@ -714,23 +708,17 @@ webdriver 标志，因此不再使用这种启动方式。端口接管仍校验�
 若看到 `browser_restart_required_close_dedicated_window`，说明仍有旧参数的专用
 进程，请正常退出该专用浏览器后重新 Connect；程序不会强杀浏览器或清理登录数据。
 
-原准备批次仍在等待连接时回复“继续连接”，已结束时选择“重新准备”，无需为此
+原准备批次仍等待连接时回复“继续连接”，awaiting_launch 时按提供的选项“重新准备”，无需为此
 创建科研运行。在新专用窗口打开 [Cloudflare 官方检测](https://debug.challenges.cloudflare.com/)
 检查 Automation Check，再在 ScienceDirect 实际完成验证和论文样本检查；消除已知
 启动副作用不代表网站一定放行。登录、验证码及 MFA 仍由本人在浏览器完成。
 
-脚本仅对活跃运行建立 SSH 转发，没有运行时不启动浏览器、不占服务器研究端口。
-服务端目标为每次运行的私有 Unix socket，无需 `-RemotePort`。
-断线后先核验运行仍活跃，并清理确认没有监听者的旧 socket 路径；不接管现有监听。
-每条转发最多重试三次，间隔 30 秒；列表查询失败由常驻发现循环持续退避重试，
-不能因此关闭健康转发。成功的新列表与逐条远程 watch 继续负责连接的创建和回收。
-Run 保持前台，Ctrl+C 只清理自身 SSH 子进程。运行终结或 Host 失联时远程 watch
-退出，转发随 SSH 关闭；终态运行不会因自动重连而重新出现。
-
-Install 从下次该用户登录开始生效，当前会话可直接 Run。计划任务不覆盖归属不匹配的
-同名任务；更新安装参数前，用原参数 Uninstall。旧版固定端口任务也应由操作员停止，
-本脚本不会接管它们。保留登录目录；出版社或学校使会话过期、要求 MFA 时仍需本人登录。
-电脑必须保持开机联网，服务器不能远程唤醒或代替登录。
+助手确认准确的准备／运行范围后才建立 SSH 转发。服务端目标为每次运行的私有
+Unix socket，无需 `-RemotePort`；查询失败不能凭缓存创建新连接。短暂重试受原有
+准备／获取期限及连续失联 300 秒的本地期限约束；另一运行的可用连接不是恢复目标。
+Ctrl+C、Stop 或运行退出只清理本助手拥有的 SSH／浏览器资源，保留登录目录。
+没有登录触发器或任务重启使它常驻等待未来运行。服务器不能唤醒电脑，登录态到期
+和 MFA 仍由出版社／学校决定。
 
 原生可见桌面、Windows 原生计划任务与实际镜像部署仍需对应机器验收；
 自动化范围见[验证记录](../qualification.md#run-scoped-institutional-connections-2026-10-02)。
@@ -869,25 +857,14 @@ Literature MAIN要读取补回的全文，其冻结的`methodology.literature.to
 
 ## 旧的固定端口与常驻连接（仅兼容模式）
 
-本节仅适用于不传 mode 的旧 URL 接口；新运行请优先使用上面的 client 模式。
-此手动模式的浏览器和SSH隧道按用户会话复用，不需要每个run重建。约定使用9222；每次新Host都传
-`--institutional-browser-url http://127.0.0.1:9222`。代码不会为这个参数重新分配端口。
-Web面板的HTTP端口可以随机分配，与Chrome的CDP端口无关。若9222被占用，统一修改
-Chrome、隧道远端和Host配置；不要跟随Web面板地址修改浏览器端口。
+明确提供非受管 `--institutional-browser-url` 时保留原来的操作员端点行为，不属于
+新版单运行 Windows 助手。旧冻结 Host 保持原实现，不自动迁移。新 init 使用上述
+绑定范围的客户端入口，不再配置常驻固定端口隧道或 Windows 登录自启任务。
+Web 面板的 HTTP 端口与浏览器 CDP 无关。
 
-需要Windows登录后常驻时，可在“任务计划程序”创建两个任务，触发器均为“用户登录时”：
-
-- 浏览器任务：程序使用上文`$researchBrowser`的实际值，目录使用`$researchProfile`的实际值；Chrome示例参数为
-  `--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="C:\Users\你的用户名\AppData\Local\Hypoloom\Institutional-chrome" about:blank`。
-  Edge使用`Institutional-msedge`目录。保持与你手动登录时相同的程序和目录，选择“仅当用户登录时运行”，让登录窗口可见。
-- 隧道任务：程序为`C:\Windows\System32\OpenSSH\ssh.exe`，参数为
-  `-N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:9222:127.0.0.1:9222 user@SERVER`。
-  先手动确认SSH主机密钥，并验证该用户通过SSH密钥/ssh-agent能免交互连接。
-  可设置失败后每1分钟重试；已有实例运行时不启动新实例。不要在任务参数里保存密码。
-
-笔记本需保持开机联网，睡眠、断网或退出登录会中断连接；恢复后请检查状态，已超时项手动重试。
-学校使会话过期、要求MFA时仍需本人登录。常驻连接不保证永久免登录。
-在笔记本模式中，Cookie和浏览器storage只在笔记本的专用浏览器配置目录，不复制到服务器。
+如果曾手工创建浏览器／隧道任务，应明确停止其自动启动，新 Setup 前关闭旧专用
+浏览器。Setup 仅在核对归属后清理匹配的旧助手任务，不删除其他任务或接管监听。
+保留私有浏览器目录即可保留登录数据；Cookie／storage 不复制到服务器。
 
 ## 状态和排障日志
 
@@ -962,18 +939,23 @@ ScienceDirect／ACM 是本轮已反复失败的平台示例，并非所有用户
 
 该策略不保证全部论文可下载：没有合法可用全文时记录缺口并继续其他工作。初次
 Windows 接入和你选择保留的机构平台准备仍可能需要一次人工认证；研究期间不要求
-逐篇解验证码。现有客户端助手无需为此更新，既有运行也不会被自动改动。
+逐篇解验证码。新 init 使用新版单运行助手；旧运行不会被自动改动。
 
 需要专门测试所有出版社时，使用常规审阅策略：
 
 1. 在已更新的服务器仓库中新开 CC 会话，运行 `/autoresearch init`。
 2. 选择 Windows 客户端模式及 IEEE、ScienceDirect、Springer、ACM（ACM 需主动选择）。
-   健康的 Windows 后台助手可复用；本轮没有修改助手脚本，无需重复安装。
+   在所选 Windows 上用新版原文件执行本次生成的 Setup／Connect 入口一次；
+   先关闭旧专用浏览器，不沿用旧助手的接入授权。
 3. 每个平台打开后，在需要时完成机构认证，回 CC 回复 **完成**。已有登录态可直接完成；
    固定样本由程序自动验证，不需另找 DOI 或逐篇处理验证码。
 4. 检查每个平台的状态、来源、格式和页数。验证码、403、身份未确认或超时都不是通过。
    有失败时，可选 **接受未验证状态，继续检查启动配置**，停在最终启动确认处验收；
-   只有你选择 **Start now** 才启动新的科研运行。
+   `awaiting_launch` 表示准备已结束；只有你选择 **Start now** 才启动科研。
+   选择 Prepare only／取消时，由 CC 执行返回的 `finish_argv`。
+5. 检查助手拥有的浏览器／SSH 已清理且登录目录保留；下一次 init 必须执行新入口，
+   旧电脑／旧助手不能自动接入。分别实测短断线、连续失联超过 300 秒和睡眠越过期限；
+   自动化测试不能证明实际 Windows 界面和唤醒行为已经通过。
 
 该实测覆盖新 init 的编排和你当前环境的可用性。复用登录目录不是全新 Windows
 安装验证；单个公开样本成功也不保证同出版社所有论文可自动获取。

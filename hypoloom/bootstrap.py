@@ -317,15 +317,18 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         if selected:
             review["institutional_preparation_argv"] = [str(python), "-m", "hypoloom", "institutional", "prepare",
                 "--agent-session", "--repository", str(repository),
+                *(["--state-root", str(state), "--run-id", args.run_id, "--request-id", request_id]
+                  if args.institutional_browser_mode == "client" else []),
                 *institutional_arguments(args, include_connection=True, include_preparation=True),
                 *preparation_literature_arguments(args),
                 *[part for provider in selected for part in ("--provider", provider)]]
         if args.institutional_browser_mode:
             review["institutional_connection_argv"] = [str(python), "-B", "-m", "hypoloom", "institutional", "connections",
-                "--state-root", str(state)]
+                "--state-root", str(state), "--run-id", args.run_id, "--request-id", request_id]
         if args.institutional_browser_mode == "client":
             from .institutional_instructions import client_entry
-            review["institutional_client_entry"] = client_entry(repository, python)
+            review["institutional_client_entry"] = client_entry(repository, python,
+                target={"state_root": str(state), "run_id": args.run_id, "request_id": request_id})
     real = args.auth_transport != "none"
     if real:
         if not args.claude_model or not args.claude_executable or args.literature_adapter != "openalex":

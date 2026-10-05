@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 5 run-scoped Windows clients: explicit final state root/run/create
+  identity replaces global discovery; old unscoped clients cannot obtain new
+  endpoints. Preparation retries keep one private owner through a bounded
+  600-second launch review; the actual Host CREATE record governs handoff.
+  One-shot Windows tasks have no logon/restart trigger; owned SSH/browser cleanup
+  follows terminal state or 300 seconds of continuous lost connection, including
+  sleep elapsed on wake. Login profiles remain, separated by server account.
+  Existing research and old frozen Hosts are not migrated. Full G1: 7,404 pass /
+  100 skip; final missed-fast-retry deadline correction: 126 focused passes.
+  Wheel/install/bundle match 182 files; Windows kernel/GUI acceptance remains
+  distinct. [Design](../design/institutional-access-preparation.md#单运行客户端与断电退出2026-10-05)
+  / [qualification](../qualification.md#single-run-windows-client-lifetime-2026-10-05).
+
 - October 5 combined GPU/observer/tutorial integration: workload-relative reserve,
   Web elapsed/token HUD and Telegram proxy tutorials now share the current search
   and accounting implementation. Compact HUD lower bounds truncate instead of

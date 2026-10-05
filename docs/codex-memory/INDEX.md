@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Single-run clients and power-loss cleanup](../design/institutional-access-preparation.md#单运行客户端与断电退出2026-10-05):
+  exact existing run/create scope, legacy discovery refusal, in-memory preparation
+  retry/handoff, one-shot Windows ownership and bounded offline exit. Operators
+  use the updated [Windows guide](../guides/institutional-access.zh-CN.md).
+  [Qualification](../qualification.md#single-run-windows-client-lifetime-2026-10-05)
+  separates full offline, final deadline correction, real SSH/Chromium and
+  installation evidence from pending physical Windows acceptance.
+
 - [Combined GPU, observer and tutorial integration](../qualification.md#gpu-reserve-observer-and-tutorial-integration-2026-10-05):
   current-source integration checks and compact token lower-bound rounding repair.
 

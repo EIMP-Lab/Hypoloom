@@ -77,16 +77,18 @@ def test_private_discovery_and_watch_exit_when_operation_ends(tmp_path):
     from hypoloom.institutional_client import PreparationControl, connections
     root = tmp_path / "private"; root.mkdir(mode=0o700)
     access = RunAccess(client_spec())
-    access.sync({"a"})
-    control = PreparationControl(root, access)
+    access.sync({"preparation"})
+    final = tmp_path / "final"
+    target = {"state_root": str(final), "run_id": "run", "request_id": "create-run"}
+    control = PreparationControl(root, access, target=target)
     try:
-        current = connections(root)
-        assert len(current) == 1 and current[0]["run_id"] == "a"
+        current = connections(final, "run", "create-run", preparation_root=root)["connections"]
+        assert len(current) == 1 and current[0]["run_id"] == "preparation"
         old = current[0]
         access.sync(set())
-        assert connections(root) == []
-        result = subprocess.run([sys.executable, "-m", "hypoloom", "institutional", "watch", "--state-root", str(root),
-            "--run-id", "a", "--socket-path", old["socket_path"], "--browser-path", "/devtools/browser/fixture"],
+        assert connections(final, "run", "create-run", preparation_root=root)["connections"] == []
+        result = subprocess.run([sys.executable, "-m", "hypoloom", "institutional", "watch", "--state-root", str(final),
+            "--run-id", "run", "--request-id", "create-run", "--preparation-root", str(root), "--socket-path", old["socket_path"], "--browser-path", "/devtools/browser/fixture"],
             capture_output=True, timeout=5)
         assert result.returncode == 0, result.stderr
     finally:
@@ -123,8 +125,10 @@ LogLevel ERROR
 ''')
     server = subprocess.Popen([sshd, "-D", "-e", "-f", str(config)], stderr=subprocess.PIPE, text=True)
     root = tmp_path / "control"; root.mkdir(mode=0o700)
-    access = RunAccess(client_spec()); access.sync({"a"})
-    control = PreparationControl(root, access)
+    access = RunAccess(client_spec()); access.sync({"preparation"})
+    final = tmp_path / "final"
+    target = {"state_root": str(final), "run_id": "run", "request_id": "create-run"}
+    control = PreparationControl(root, access, target=target)
     child = None
     try:
         def listening():
@@ -132,15 +136,15 @@ LogLevel ERROR
                 with socket.create_connection(("127.0.0.1", port), timeout=.2): return True
             except OSError: return False
         eventually(listening)
-        browser = access.instances["a"].backend
+        browser = access.instances["preparation"].backend
         with backend() as endpoint:
             if discovery_outage:
-                _check_powershell_discovery_outage(tmp_path, port, known, root, endpoint, browser)
+                _check_powershell_discovery_outage(tmp_path, port, known, root, final, endpoint, browser)
                 access.sync(set())
                 assert_free(browser.endpoint)
                 return
-            watch = shlex.join([sys.executable, "-m", "hypoloom", "institutional", "watch", "--state-root", str(root),
-                "--run-id", "a", "--socket-path", str(browser.socket_path), "--browser-path", "/devtools/browser/fixture"])
+            watch = shlex.join([sys.executable, "-m", "hypoloom", "institutional", "watch", "--state-root", str(final),
+                "--run-id", "run", "--request-id", "create-run", "--preparation-root", str(root), "--socket-path", str(browser.socket_path), "--browser-path", "/devtools/browser/fixture"])
             remote = "cd " + shlex.quote(str(Path.cwd())) + " && " + watch
             argv = ["ssh", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
                 "-o", "ExitOnForwardFailure=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + str(known),
@@ -151,7 +155,7 @@ LogLevel ERROR
                 eventually(lambda: browser.socket_path.exists())
                 eventually(lambda: get(browser.endpoint, browser.relay.token)[0] == 200)
                 child.terminate(); child.communicate(timeout=5)
-                eventually(lambda: prepare_forward(str(root), "a", str(browser.socket_path)))
+                eventually(lambda: prepare_forward(final, "run", str(browser.socket_path), request_id="create-run", preparation_root=root))
                 assert not browser.socket_path.exists()
             child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             eventually(lambda: browser.socket_path.exists())
@@ -166,7 +170,7 @@ LogLevel ERROR
         server.terminate(); server.communicate(timeout=5)
 
 
-def _check_powershell_discovery_outage(tmp_path, port, known, root, endpoint, browser):
+def _check_powershell_discovery_outage(tmp_path, port, known, root, final, endpoint, browser):
     from hypoloom.institutional_client import prepare_forward
     pwsh = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
     if not pwsh: pytest.skip("PowerShell required for real discovery loop")
@@ -192,7 +196,7 @@ os.execvp('ssh', {options!r} + args)
         str(project / "tests/runtime/fixtures/institutional_discovery_ssh.ps1"),
         "-Connector", str(project / "hypoloom/connection_assets/institutional-connect.ps1"),
         "-Ssh", str(wrapper), "-Repository", str(project), "-PythonExecutable", sys.executable,
-        "-RunsRoot", str(root.parent), "-LocalPort", str(urlsplit(endpoint).port), "-StopFile", str(stop)],
+        "-StateRoot", str(final), "-RunId", "run", "-RequestId", "create-run", "-PreparationRoot", str(root), "-LocalPort", str(urlsplit(endpoint).port), "-StopFile", str(stop)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     lines = []
     # Read incrementally so test observations never block on a long-lived helper.
@@ -214,7 +218,7 @@ os.execvp('ssh', {options!r} + args)
         assert process.wait(timeout=10) == 0, lines
         reader.join(timeout=2)
         assert "fixture_stopped" in lines
-        eventually(lambda: prepare_forward(str(root), "a", str(browser.socket_path)))
+        eventually(lambda: prepare_forward(final, "run", str(browser.socket_path), request_id="create-run", preparation_root=root))
         assert not browser.socket_path.exists()
     finally:
         if process.poll() is None:
@@ -412,7 +416,11 @@ def test_host_cancel_and_same_version_recovery_follow_durable_state(tmp_path):
             assert pause.status == "accepted", pause
             count = host.store.inspect("SELECT count(*) AS n FROM workflow_commands")[0]["n"]
             reply = host.handle(ControlRequest(1, "connections", None, "INSTITUTIONAL_CONNECTIONS", {}))
-            assert {e["run_id"] for e in reply.result["connections"]} == {"a", "b"}
+            assert reply.status == "rejected" and not reply.result
+            reply = host.handle(ControlRequest(1, "connections-a", None, "INSTITUTIONAL_CONNECTIONS",
+                {"run_id": "a", "request_id": "create-a"}))
+            assert reply.status == "accepted", reply
+            assert {e["run_id"] for e in reply.result["connections"]} == {"a"}
             assert host.store.inspect("SELECT count(*) AS n FROM workflow_commands")[0]["n"] == count
             reply = host.handle(ControlRequest(1, "cancel-a", None, "CANCEL", {"run_id": "a", "cause": "test"}))
             assert reply.status == "accepted", reply

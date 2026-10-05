@@ -139,7 +139,7 @@ or `institutional prepare` operations:
 | Mode | Browser location | Lifetime |
 | --- | --- | --- |
 | `off` | No institutional browser | No institutional connection or panel operations; public/OA retrieval remains available. |
-| `client` | Windows Edge/Chrome | The Windows helper discovers active runs and opens one private SSH forward for each run. |
+| `client` | Windows Edge/Chrome | One explicit init/run binding; preparation and that run share the helper, which exits at its lifetime boundary. |
 | `local` | Native Linux desktop | A visible persistent Chrome/Chromium context uses a process pipe, without a CDP TCP port. |
 | `server` | Headless Linux server | A separate container per run uses an installed image and private CDP/GUI relays. |
 | `existing` | Explicit external loopback CDP | A protected run relay connects to the supplied endpoint; the external browser remains operator-owned. |
@@ -175,7 +175,8 @@ that a helper is absent or an institution lacks access. Output is flushed immedi
 The agent queries the temporary private control socket and returns your answers
 from the init conversation; it never feeds a background process's stdin. Login,
 verification codes and MFA stay in the dedicated browser. Answer waiting uses the
-existing finite manual timeout; finish/expiry cleans up temporary resources.
+existing finite manual timeout. Explicit finish releases the temporary connection;
+completed preparation retains it only for the bounded launch handoff described below.
 This timeout also starts when entering connection waiting. Platform-answer waiting
 has its own deadline. Status reads and `继续连接` never extend the connection window;
 that reply only expedites the next check. The process reports remaining seconds.
@@ -207,7 +208,13 @@ python -m hypoloom institutional preparation finish --state-root /path/to/tempor
 `complete` checks the samples displayed by the program; without a fixed or supplied
 sample it remains unverified. `skip` and `public_only` also take
 the current provider. These commands address only the live temporary preparation,
-never a research run. Read the background command's final summary after it exits.
+never a research run. For scoped Windows init, when status reports `state: awaiting_launch`, read its
+`summary` immediately: preparation is complete even while the background process
+remains alive. The same control root retains the connection for at most 600 seconds
+while you review launch choices. **Start now** still requires your explicit choice.
+For **Prepare only** or cancellation, execute the returned `finish_argv` to release
+this authorization. Expiry also releases it; it never starts research. An explicit
+finish/skip during preparation exits directly; read that background result instead.
 
 `identity_unconfirmed` concerns the **requested paper**, not the user's institutional
 account. It does not prove a PDF was downloaded. CC relays the program's fixed result
@@ -227,8 +234,10 @@ continue to report the observed status without waiting for a person.
 
 For fresh-init acceptance testing, start a new CC session and `/autoresearch init`
 each round, stopping at launch review. Recovery of the old batch is not required.
-An installed client and browser session may still be reused; first-install testing
-needs a separate test account and must be recorded separately.
+Reuse the downloaded script and private login profile, but execute the new init
+entry once on the Windows PC chosen for this run. A previous helper is not authorized
+for the new run. First-install testing needs a separate test account and must be
+recorded separately.
 
 Normal init runs the generated `instructions_argv` and displays its output verbatim:
 the Windows file location, fixed Setup entry, input values, remaining time and replies.
@@ -236,7 +245,7 @@ Connection replies are `继续连接` (retry connection) and `跳过准备` (ski
 The program detects readiness automatically. Immediately after displaying connection
 instructions, CC starts one generated `watch_argv` in the background instead of
 waiting for a separate "connected" reply. It includes `--wait-seconds 3600`, exits
-early at a user-action stage or batch end, and prints current instructions. Its task
+early at a user-action stage, `awaiting_launch` or batch end, and prints current instructions. Its task
 completion wakes CC to show the current platform choices. After a platform reply,
 CC arms one observer for the next stage; never run overlapping observers or custom
 sleep/poll loops. This read-only limit does not extend connection, answer or sample
@@ -247,19 +256,20 @@ reply `完成` at the platform stage without logging in again. Follow the curren
 choices if a connection reply is now stale; do not infer platform completion.
 **结束准备 / 跳过准备 cancels the batch**; it does not mean "connected" or restart
 preparation automatically. A fresh batch does not need cancellation before testing.
-Read status to refresh progress. Windows `run_discovery_recovered` means listing
-queries recovered, not that the browser is verified; `waiting_for_preparation_or_run`
-means no active target was found and the foreground helper is still waiting.
+Read status to refresh progress. A recovered connection query does not itself prove
+browser readiness. The helper queries only its supplied preparation/run identity;
+it does not wait indefinitely for any future run in the server directory.
 Platform replies are `完成`, `验证样本`, `跳过此平台`, `仅公开`, `结束准备`
 (complete, verify a separately supplied sample, skip this platform, public only, finish).
 The agent passes the exact choice to `reply_argv --text`; the process validates
 the current stage and provider. Background notifications are never answers.
-An ended batch explicitly requests `重新准备` (prepare again): read the prior final
-summary and execute its generated `remaining_preparation_argv` unchanged. It includes
-failed and unanswered platforms, retaining connection options, updated modes and
-supplied samples. Failed default probes are retryable; successful platforms are not
-repeated. Platforms without any fixed or supplied sample retain unverified manual
-completion. No new CC session or research run is needed.
+At `awaiting_launch`, an offered `重新准备` uses the summary's generated
+`remaining_preparation_argv` unchanged. It invokes `preparation retry` on the same
+control root, preserving launch identity, completed results, choices and supplied
+samples; successful platforms are not replayed. Do not create another preparation
+root or extend authorization by reconstructing a command. Once the controller has
+expired or been finished, follow the current generated instructions; an old retry
+vector cannot revive it.
 
 If a selected platform times out, init offers `重新准备` (retry the remaining platforms)
 or `接受未验证状态，继续检查启动配置` (accept unverified access and continue to launch
@@ -267,9 +277,9 @@ review). Optional preparation failures do not block research, but do not mean su
 Sample acquisition preserves the same safe CDP/page failure reasons as platform
 opening. `acquisition_timeout` does not establish readability, failed login or a
 closed browser; only `sample_verified` establishes that sample's readability.
-For an older summary with failures and an empty retry vector, init regenerates the
-preparation command using read-only bootstrap inspection for just those platforms,
-preserving the other choices and launch identity. Keep the dedicated browser open.
+An empty retry vector is not proof of success. Follow the returned failure policy
+and review the retained states; never invent a new batch to work around an expired
+controller. Keep the current dedicated browser available while its helper is active.
 Intermediate `browser_unavailable` / `fetch_unavailable` events include sanitized
 reason codes; a final `acquisition_timeout` alone cannot identify the underlying fault.
 Connection checks also report fixed `cdp_timeout`, `cdp_connection_refused`,
@@ -307,19 +317,21 @@ daemon and reports service failure rather than claiming success.
 
 Profiles stay browser-owned and are never deleted by run cleanup. Local/server
 runs cannot open the same profile concurrently; choose distinct dedicated directories
-for parallel sessions. Windows runs may share the one user-owned browser through
-independent forwards. Run retirement leaves that Windows browser open.
+for parallel sessions. Windows helpers are bound to one explicit run and close their own dedicated
+browser and SSH children on retirement, preserving the login profile. A live
+browser owned by an older helper is not adopted for another run.
 
 ```bash
 python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
-# On a server, while the Windows helper is running:
-python -m hypoloom institutional prepare --institutional-browser-mode client --provider Springer
-python -m hypoloom institutional connections --runs-root /path/to/Hypoloom/state
+# For client mode, use init's generated preparation and Windows entry commands.
+python -m hypoloom institutional connections --state-root /path/to/selected-run --run-id RUN-ID --request-id CREATE-REQUEST-ID
 ```
 
 Preparation creates a temporary private control directory under `<repository>/state`
-and removes its transport when the operation ends. The helper's `-RunsRoot` must
-match that parent. It creates no research run or archive. Use `--repository` when
+and retains its transport only through the bounded launch handoff. The generated
+Windows entry carries the exact final `-StateRoot`, `-RunId`, `-RequestId` and,
+during preparation, `-PreparationRoot`; the parent runs directory is not connection
+authority. Preparation creates no research run or archive. Use `--repository` when
 preparing from another working directory.
 
 Local mode requires Chrome/Chromium and Playwright in the actual Linux desktop
@@ -339,7 +351,7 @@ must provide `nc`. Container services listen internally on loopback; no Docker p
 is published. Obtain the temporary GUI URL and Basic credentials locally with:
 
 ```bash
-python -m hypoloom institutional connections --state-root /path/to/run --include-ui-credentials
+python -m hypoloom institutional connections --state-root /path/to/run --run-id RUN-ID --request-id CREATE-REQUEST-ID --include-ui-credentials
 ```
 
 Forward that GUI port with SSH `-L`, then enter its temporary GUI credentials.
@@ -353,121 +365,101 @@ run startup and do not acquire the run lifetime described above.
 
 ### One Windows terminal entry for init
 
-**Inside an existing CC init**, first setup and upgrades use an original script file,
-not installation source reproduced in chat. Bootstrap and preparation expose the
-same `script_source`, `setup_inputs` and fixed file-launch command.
+**For each CC init**, execute the program-generated Windows entry once on the PC
+that should supply its institutional browser. The entry binds the helper to the
+reviewed `state_root`, `run_id` and create request ID. Another PC's old helper cannot
+connect automatically. Setup does not install a logon trigger or discover future runs.
 
 On first use or after changing Windows PC/account, complete the
 [noninteractive SSH check](#first-setup-or-a-new-windows-pcaccount) below first.
 Downloading the script with a password does not establish background authentication.
 
-1. On Windows, open a download directory. Use SFTP/SCP or your existing file transfer
-   tool to download the original `institutional-connect.ps1` from the server path
-   shown by init. Do not save assistant-written source as the script. A Windows
-   Hypoloom checkout or Python installation is unnecessary.
-2. Open PowerShell 7.2+ in that directory and run:
+1. Keep the server's `/autoresearch init` open and select Windows client mode.
+   Init shows `script_source`, `setup_inputs` and the exact `powershell` entry.
+2. On Windows, download the original `institutional-connect.ps1` from that server
+   path using SFTP/SCP or your file-transfer tool. Download again after an upgrade;
+   do not save assistant-written source as the script. Windows needs no Hypoloom
+   checkout or Python installation.
+3. Open PowerShell 7.2+ in the download directory and run the **exact generated
+   entry**, including its `-StateRoot`, `-RunId`, `-RequestId` and, when supplied,
+   `-PreparationRoot`. If using the interactive entry below, fill its scope prompts
+   with the values displayed by this init; do not invent new IDs or reuse old ones:
 
    ```powershell
    pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
    ```
 
-3. Answer the program's prompts for your SSH target, server repository, Python and
-   runs directory. Init shows the actual three paths. Standard installations may
-   accept the defaults for the last two; otherwise enter the displayed values
-   without editing source. Setup checks SSH/remote Python, copies the original
-   bytes to `%LOCALAPPDATA%\Hypoloom\institutional-connect.ps1` and invokes Connect.
-4. After `client_discovery_started`, return to the same init; preparation checks
-   actual readiness automatically. If the batch ended, reply `重新准备`. Later init
-   sessions reuse the installed discovery task; a healthy task needs no reinstall.
-   Setup never opens a second CC session.
+4. Supply your SSH target and any prompted server paths. Setup checks SSH/remote
+   Python, installs the original file at
+   `%LOCALAPPDATA%\Hypoloom\institutional-connect.ps1` and starts this connection.
+   Its one-shot scheduled task runs hidden, with no logon trigger or automatic task
+   restart. After Setup/Connect returns, its PowerShell window may close.
+5. Return to the same CC init. The program checks actual browser readiness, opens
+   the selected pages and validates samples after your fixed replies. At
+   `awaiting_launch`, review `summary` without waiting for the background command to
+   exit. Start now hands the same helper to that exact run; Prepare only/cancel
+   executes `finish_argv`. The handoff expires after at most 600 seconds.
 
-Without a graphical transfer tool, use interactive OpenSSH SFTP from the Windows
-download directory. Replace this example target with your existing SSH target:
+Without a graphical transfer tool, open SFTP in your Windows download directory:
 
 ```powershell
 sftp research-server
 ```
 
-At `sftp>`, download the `script_source` displayed by init and exit. This path is an
-example; surround paths containing spaces with double quotes:
+At `sftp>`, download the `script_source` displayed by init and exit. Replace this
+example path; surround paths containing spaces with double quotes:
 
 ```text
 get /path/to/Hypoloom/hypoloom/connection_assets/institutional-connect.ps1
 bye
 ```
 
-After a successful download, run the fixed Setup entry above. File transfer preserves
-bytes without model transcription or local code-page decoding. For old garbled or
-mistyped setup, obtain the original file again instead of patching chat-generated
-source. Press Ctrl+C first if an old command is stuck at `>>`. The SSH target is not
-a password; Windows loopback refers to Windows. Password login alone does not prove
-background authentication works: follow the key/ssh-agent steps below and verify
-`ssh -o BatchMode=yes <target> exit` returns 0. The server still checks the browser.
+File transfer preserves the original bytes. For old garbled or mistyped setup,
+obtain the original file again instead of patching chat-generated source. Press
+Ctrl+C first if an old command is stuck at `>>`. The SSH target is not a password;
+Windows loopback refers to Windows. Verify `ssh -o BatchMode=yes <target> exit`
+returns 0 before Setup. Task startup alone does not prove browser readiness.
 
-Background discovery tasks use a hidden window. Repeating Connect updates only an exact
-matching prior task's window setting, preserving user/program/connection ownership
-checks; a running prior visible task is restarted, briefly interrupting connections.
-Already updated tasks are not restarted for this change. SSH keys and browser
-profiles are retained; publisher login still uses a visible browser.
-`client_discovery_started` means task startup was requested, not browser readiness.
-Connect returns after starting hidden discovery; its PowerShell window may close.
-Only a foreground `-Action Run` diagnostic needs an open terminal. Its
-`waiting_for_preparation_or_run` message means no active connection target was found;
-keep the server CC preparation active as well. It is not a connection success.
+**Upgrading an existing Windows client:** stop any old foreground Run with Ctrl+C.
+New Setup checks ownership before removing the matching old logon/discovery task
+and creating this one-shot task. It will not overwrite another account's or
+program's task. If it reports `scheduled_task_ownership_mismatch`, inspect the
+reported task/user rather than deleting tasks by wildcard. Windows may display a
+short principal name; ownership is checked by SID. Old manually created fixed-port
+or unrelated tasks remain operator-owned: stop those explicitly. Close the old
+Hypoloom dedicated browser before this new connection; keep its login profile and
+ordinary browser windows. The new helper must not adopt an old browser process.
+Replacing the script does not update an already running helper or frozen Host.
 
-An older entry may exit 2 with `run_discovery_unavailable` after three failed
-server-list queries, even while Edge remains usable. The updated helper retains
-existing forwards and retries discovery after 5, 10, 20, then every 30 seconds.
-Each query still has a 15-second limit; preparation and acquisition deadlines do
-not extend. Foreground output distinguishes `run_discovery_timeout`,
-`run_discovery_ssh_failed` (SSH exit 255), `run_discovery_command_failed` (remote
-command failure) and `run_discovery_invalid_response`, with the retry interval.
-Recovery prints `run_discovery_recovered`. Leave a foreground diagnostic open;
-repeated connection replies are unnecessary. Persistent SSH errors require checking
-noninteractive login; command/response errors require checking server paths and
-installation. Failed discovery never authorizes new forwards from cached entries.
-Each existing forward still has its independent remote lifetime/identity watch;
-retention does not guarantee that a network outage leaves the forward alive.
-
-For this old exit reason, download the original file again and run Setup. An
-already exited task can start the updated entry directly. If an older foreground
-Run or background task is still running, stop it first with Ctrl+C or `-Action Stop`
-using its original options, then run Setup to load the new file. Keep the dedicated
-Edge/profile. Return to the same CC session: a waiting batch detects the connection
-automatically; choose “重新准备” only if that batch has ended. A new init is unnecessary.
-
-Windows may report a task principal as a short username while the current session
-uses a computer-qualified name. The connector resolves account names through
-Windows and compares SIDs. If an older entry rejects this with
-`scheduled_task_ownership_mismatch`, download the original file and run Setup
-again to obtain the update; do not rename or delete the task. Different accounts,
-programs or connection arguments are still rejected.
-
-**To start a new init session from Windows**, use the entry below:
-
-Complete Setup through the file workflow above once. You can then start a new init
-from Windows with the same SSH target and repository; standard Python and state
-paths are derived, without another helper terminal or configuration file:
+If you switch to Windows B, also retire the historical resident helper on Windows
+A; upgrading the server cannot remove A's local task. On A, download the new
+original script to its old installation path, then run this command with your
+server and repository. Without run scope, `Uninstall` removes only the
+ownership-validated legacy discovery task, leaving new scoped tasks alone. Close
+the old dedicated browser normally; retain its login profile.
 
 ```powershell
-$researchServer = 'research-server' # Your existing user@host or SSH alias
-$researchRepository = '/path/to/Hypoloom'
-$researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
-pwsh -NoProfile -File $researchConnector -Action Init -Server $researchServer -Repository $researchRepository
+pwsh -NoProfile -File "$env:LOCALAPPDATA\Hypoloom\institutional-connect.ps1" -Action Uninstall -Server 'user@server' -Repository '/path/to/Hypoloom'
 ```
 
-Init checks SSH authentication and the remote Python/Claude commands first, then
-installs or reuses the existing current-user discovery task, starts it immediately,
-and opens remote `/autoresearch init`. The task also starts at user logon, retaining
-connection capability for research and later ordinary SSH init sessions. It never
-opens a browser without an active preparation/run. Nonstandard installations can
-pass `-PythonExecutable` and `-RunsRoot`; mismatched task ownership/arguments are
-not overwritten. Stop/Uninstall retain browser login data.
+The helper follows only this preparation/run. On run termination or `STOPPING` it
+closes its own SSH processes and dedicated browser, retaining the profile. Short
+connection interruptions may recover only to the same run. After 300 seconds of
+continuous lost contact it exits locally; after sleep it checks the deadline before
+trying to reconnect. It never reconnects after expiry or discovers a different run.
+A new attempt then requires an explicitly generated entry for the intended run.
 
-The local entry, PowerShell 7.2+ and valid SSH authentication remain real prerequisites.
-Server-only init cannot install or start programs on an unconnected Windows PC;
-it reports connection state and offers retry/finish. Institution login and MFA
-remain human-operated. SSH setup and compatible manual commands follow below.
+Closing CC or its interactive SSH session does not stop an already started managed
+research run. Before launch, preparation and the launch handoff remain time-limited.
+The Windows PC and dedicated browser need to stay available only while supplying
+institutional access; closing them makes that route unavailable, while bounded
+public/OA fallback and other research continue. This does not guarantee every PDF.
+Only a foreground `-Action Run` diagnostic requires keeping its terminal open.
+
+Local execution, PowerShell 7.2+ and valid SSH authentication remain prerequisites.
+Server-only init cannot start programs on an unconnected PC. Login/MFA stays in the
+browser; retained runs are not migrated. Windows GUI/lifecycle behavior still needs
+acceptance on the actual client, separately from automated test results.
 
 ### Client prerequisites and manual diagnostics
 
@@ -476,12 +468,12 @@ location. PowerShell 7.2+ is required; Windows needs neither Python nor Hypoloom
 Use an existing `user@host` or SSH alias, establish host-key trust once, and configure
 SSH key/ssh-agent authentication. The helper uses BatchMode and stores no passwords.
 The Linux server must permit remote Unix-socket forwarding. It runs the installed
-Hypoloom CLI using the three explicit absolute server paths below.
+Hypoloom CLI using the displayed server paths and this init's exact scope.
 
 #### First setup or a new Windows PC/account
 
 Copying the connector does not transfer the old PC's SSH keys, host-key trust,
-scheduled task or browser login state. Ensure the new PC can reach the server;
+browser login state or authority for this run. Ensure the new PC can reach the server;
 join the required VPN/private network if its address depends on one. The target
 is still the Linux `user@host` or a locally configured SSH alias. A different
 Windows username does not require changing the remote Linux username.
@@ -569,13 +561,19 @@ you downloaded the original connector:
 pwsh -NoProfile -File .\institutional-connect.ps1 -Action Setup
 ```
 
-Enter the target and paths shown by server init; standard installations may accept
-the Python and runs-directory defaults. Return to the original CC session: a
-waiting preparation detects the connection automatically; choose `重新准备` if
-the batch ended. SSH setup does not require another research run. Publisher login
-on the new PC still happens separately in the dedicated browser.
+Enter the target, server paths and exact StateRoot/RunId/RequestId/PreparationRoot
+shown by this init; standard installations may accept the Python default. Return
+to the original CC session: waiting preparation detects the connection automatically;
+at awaiting_launch choose `重新准备` only when offered. An expired controller cannot
+be revived with its old entry. SSH setup does not require another research run.
+Publisher login on the new PC happens separately in the dedicated browser.
 
 #### Manual connection diagnostics
+
+Prefer the exact generated Setup/Connect entry. For a foreground diagnosis, stop
+the matching background helper first and copy **all** scope values from this init
+into the example below. Omit `PreparationRoot` only when the generated entry omits
+it. Never run with only a server/repository or scan the parent runs directory.
 
 ```powershell
 $researchServer = 'research-server' # user@host or SSH alias
@@ -586,11 +584,13 @@ $researchConnection = @{
     Server = $researchServer
     Repository = '/path/to/Hypoloom'
     PythonExecutable = '/path/to/Hypoloom/.conda/envs/hypoloom/bin/python'
-    RunsRoot = '/path/to/Hypoloom/state'
+    StateRoot = '/path/to/Hypoloom/state/RUN-ID' # exact init state_root
+    RunId = 'RUN-ID' # exact init run_id
+    RequestId = 'CREATE-REQUEST-ID' # exact init create request ID
+    PreparationRoot = '/path/to/Hypoloom/state/institutional-prepare-EXAMPLE' # when supplied
 }
 & $researchConnector @researchConnection -Action Run
-# Optional current-user logon task; repeat these same paths and options:
-& $researchConnector @researchConnection -Action Install
+# Same scope for diagnostics and explicit cleanup; no logon task is installed.
 & $researchConnector @researchConnection -Action Status
 & $researchConnector @researchConnection -Action Stop
 & $researchConnector @researchConnection -Action Uninstall
@@ -604,8 +604,8 @@ loopback checks still apply after allocation. Profiles remain under
 `%LOCALAPPDATA%\Hypoloom\Institutional-msedge` or `Institutional-chrome`; use
 `-BrowserExecutable` / `-BrowserProfile` to retain your previously authenticated
 dedicated profile. Only its user, SYSTEM and administrators may access it. Cookies
-are not exported or copied. An existing browser with matching user, executable and
-profile and nonzero port may be reused, including one manually started on 9222.
+are not exported or copied. The helper owns the browser it starts for this scope;
+it does not adopt an already running manual or previous-run browser.
 
 **Updating an older port-0 browser:** arrange a client connection interruption,
 run the installed entry with `-Action Stop` and its original server/connection
@@ -617,14 +617,14 @@ reports `browser_restart_required_close_dedicated_window`, the old browser proce
 still exists: exit that dedicated browser and Connect again. The program never
 kills it or removes stored login data.
 
-Use `继续连接` while the existing preparation is still waiting, or `重新准备`
-after it ends; a new research run is unnecessary. In the new dedicated window,
+Use `继续连接` while preparation is waiting, or an offered `重新准备` during
+its bounded awaiting_launch stage; a new research run is unnecessary. In the new dedicated window,
 check Automation Check on [Cloudflare's official diagnostic](https://debug.challenges.cloudflare.com/),
 then verify the actual ScienceDirect challenge and a paper sample. Removing the
 known launch side effect does not guarantee website acceptance; login, challenges
 and MFA remain manual browser actions.
 
-Connect/Init prepares profile permissions before starting discovery, so a failure
+Setup/Connect prepares profile permissions before starting the scoped helper, so a failure
 appears in the calling terminal. For the current user's default dedicated profile,
 extra **inherited** allow rules (for example, another local group's read access)
 are removed after disabling parent inheritance while preserving existing allowed
@@ -649,35 +649,28 @@ does not authorize their removal. Its errors now distinguish
 `browser_profile_custom_path_requires_manual_permissions`,
 `browser_profile_permissions_write_failed` and `browser_profile_permissions_not_applied`.
 
-The helper starts forwards only for active runs; with no run it starts no browser
-and holds no research port. Remote targets are private per-run Unix sockets, so
-there is no `-RemotePort`. Before reconnecting it verifies the current run and
-removes only a refused stale socket pathname, never a live listener. Forwarding
-retries are limited to three, 30 seconds apart. The long-lived discovery loop retries
-failed listings with capped backoff without closing healthy forwards. Fresh successful
-lists and each remote watch still control connection creation and retirement.
-Ctrl+C stops the helper's own SSH children. Remote watch exits when its run ends or
-Host disappears; automatic reconnect cannot resurrect terminal runs.
-
-Install takes effect at next user logon; use Run for the current session. Tasks
-with mismatched ownership/options are never overwritten. Before changing installed
-options, Uninstall using the old options. Operators should also stop any old fixed
-port task explicitly; this helper does not adopt it. Profiles are preserved, but
-schools/publishers still control session expiry and MFA. The PC must stay online;
-server init cannot wake it or complete login.
+The helper creates forwards only after confirming its exact preparation/run scope.
+Remote targets are private per-run Unix sockets, so there is no `-RemotePort`.
+A failed query cannot authorize a new forward from a cached entry. Short retries
+remain bounded by the preparation/acquisition deadlines and the 300-second local
+contact limit; a successful listing for another run is never a recovery target.
+Ctrl+C, Stop and retirement close only this helper's SSH/browser resources, retaining
+login data. No task logon trigger or task restart keeps it alive for future runs.
+The PC cannot be woken by server init; publishers still control session expiry/MFA.
 
 Visible Linux GUI, native Windows task APIs and actual container-image deployment
 require checks on those machines; see [qualification](../qualification.md#run-scoped-institutional-connections-2026-10-02).
 
 ## Prepare platforms before research
 
-For a Windows client, start the helper described above, then run these commands in
-the project's server environment. Use `local` instead on a native Linux desktop:
+For a Windows client, start server init and use its generated scoped preparation
+and Windows entry commands. For the catalog or standalone preparation on a native
+Linux desktop, use:
 
 ```bash
 python -m hypoloom institutional prepare --list
 python -m hypoloom institutional prepare \
-  --institutional-browser-mode client
+  --institutional-browser-mode local
 ```
 
 The existing catalog shows four common platforms first:
@@ -1052,28 +1045,17 @@ requirement.
 
 ## Legacy fixed ports and persistent sessions (compatibility mode)
 
-Reuse the browser and reverse tunnel across runs. Use port 9222 by convention,
-and pass `--institutional-browser-url http://127.0.0.1:9222` to each new Host.
-The Host preserves this endpoint; it does not allocate another CDP port.
-The Web observer's dynamically assigned HTTP port is independent of CDP.
-If 9222 is occupied, change the browser, tunnel and Host configuration together.
+An explicit unmanaged `--institutional-browser-url` retains its operator-owned
+endpoint behavior; it is not the new single-run Windows helper. Existing frozen
+Hosts keep their original implementation and are not migrated. New init should use
+the scoped client entry above instead of configuring a persistent fixed-port tunnel
+or Windows logon tasks. The Web observer's HTTP port is unrelated to browser CDP.
 
-For Windows logon startup, create two Task Scheduler tasks triggered at user
-logon. Use the actual values of `$researchBrowser` and `$researchProfile` from
-the successful manual setup, with the same port 9222 arguments. Select
-"Run only when user is logged on" so SSO
-and MFA stay visible. Use an absolute profile path in Task Scheduler arguments.
-For the tunnel, use `C:\Windows\System32\OpenSSH\ssh.exe` with arguments:
-
-```text
--N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:9222:127.0.0.1:9222 user@SERVER
-```
-
-First verify the SSH host key and noninteractive key/ssh-agent authentication
-manually. Configure restart on failure and do not start another task instance
-while one is running. Never store a password in task arguments. The laptop
-must stay awake and connected; session expiry/MFA still requires the operator.
-In laptop mode, browser cookies/storage stay in the laptop profile, never in the server.
+If you previously created browser/tunnel tasks manually, stop their automatic
+startup explicitly and close the old dedicated browser before new Setup. Setup
+only cleans matching legacy helper tasks after checking ownership; it does not
+remove unrelated tasks or take over their listeners. Keep the private browser
+profile to preserve login data. Cookies/storage are not copied to the server.
 
 ## Diagnostics and development checks
 
@@ -1166,19 +1148,25 @@ There is no repeated retry/accept question or automatic research launch. The def
 
 Missing legitimate full text remains an explicit gap; this does not guarantee every
 PDF. First client setup and preparation of platforms kept on auto may still require
-authentication, but research does not require solving per-paper challenges. No client
-helper update is needed for this policy, and retained runs are not changed.
+authentication, but research does not require solving per-paper challenges. Use
+the current scoped helper for new init; retained runs are not changed.
 
 To specifically test every publisher, use the ordinary review policy:
 
 1. Open a new CC session in the updated server checkout and run `/autoresearch init`.
 2. Select Windows client mode and IEEE, ScienceDirect, Springer and ACM (select ACM
-   explicitly). Reuse a healthy Windows helper; this update does not change its script.
+   explicitly). On the chosen Windows PC, run this init's exact generated Setup/Connect
+   entry once, using the current original script. Close any old dedicated browser first.
 3. Finish authentication where needed and reply `完成` for each platform. Existing
    sessions need no repeated login. The program checks fixed samples automatically.
 4. Review state, source, format and page count. Challenges, 403, identity failures
    and timeouts are failures. Choose the offered continuation with unverified access
-   if desired, then stop at launch review. Only selecting **Start now** launches research.
+   if desired, then stop at launch review (`awaiting_launch`). Only selecting **Start now**
+   launches research. For Prepare only/cancel, CC executes the returned `finish_argv`.
+5. Check that cleanup closes the helper-owned browser/SSH while retaining the profile.
+   A subsequent init must require its own entry; an old PC/helper must not attach to it.
+   Test brief disconnection, a contact loss over 300 seconds and sleep beyond the
+   deadline separately on Windows; automated tests do not establish those GUI results.
 
 This tests fresh init orchestration in the current environment. Reusing a login
 profile is not first-install Windows qualification; one public sample does not

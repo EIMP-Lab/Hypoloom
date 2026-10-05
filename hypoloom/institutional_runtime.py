@@ -241,6 +241,11 @@ class RunAccess:
         with self.lock:
             return self._selected(run_id).check_connection(run_id, timeout_seconds=timeout_seconds)
 
+    def discard_preparation(self, run_id, provider):
+        with self.lock:
+            if run_id in self.instances:
+                self.instances[run_id].discard_preparation(run_id, provider)
+
     def close(self):
         try:
             with self.lock: self.sync(set())

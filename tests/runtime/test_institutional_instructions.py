@@ -322,8 +322,12 @@ def test_file_setup_installs_original_bytes_and_reuses_connect(tmp_path, scenari
         assert args[args.index("-Repository") + 1] == repository
         expected_python = "/custom/python space" if scenario in {"custom", "supplied"} else repository + "/.conda/envs/hypoloom/bin/python"
         assert args[args.index("-PythonExecutable") + 1] == expected_python
-        expected_runs = "/custom/runs" if scenario in {"custom", "supplied"} else repository + "/state"
-        assert args[args.index("-RunsRoot") + 1] == expected_runs
+        prefix = "/custom" if scenario in {"custom", "supplied"} else "/state"
+        assert args[args.index("-StateRoot") + 1] == prefix + "/final"
+        assert args[args.index("-RunId") + 1] == "final"
+        assert args[args.index("-RequestId") + 1] == "create-final"
+        assert args[args.index("-PreparationRoot") + 1] == prefix + "/preparation"
+        assert "-RunsRoot" not in args
         assert observed["checks"] == 1
     else:
         assert observed["args"] == []

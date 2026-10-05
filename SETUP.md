@@ -38,6 +38,9 @@ See [server-side proxy setup and existing-run limits](docs/guides/notifications.
 For a first Windows institutional client or a replacement PC/account, complete
 [user-level SSH key and noninteractive login setup](docs/guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
 before running the connector's `Setup`; password login alone is insufficient.
+For every init, run its generated entry once on the chosen PC. The helper follows
+only that preparation/run; it does not install logon startup or attach to future runs.
+See the [scoped client steps](docs/guides/institutional-access.md#one-windows-terminal-entry-for-init).
 
 Init also shows a bounded [version reminder](docs/guides/version-check.md)
 against the configured remote branch. Run `hypoloom version-check` manually or

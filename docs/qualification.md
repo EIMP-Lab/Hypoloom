@@ -2,6 +2,95 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Single-run Windows client lifetime (2026-10-05)
+
+An old Windows A discovery task attached to a new init launched from Windows B.
+The same unbounded discovery loop could survive a server outage indefinitely.
+The repaired client uses the existing final state root, run ID and CREATE_RUN
+request ID throughout preparation, forwarding and research. These identifiers
+select the target; SSH authentication, private sockets and CDP identity checks
+remain authoritative. Empty legacy discovery requests reveal no new endpoints.
+No client registry, persistent lease, token, hash or second terminal record is
+introduced. See the [design](design/institutional-access-preparation.md#单运行客户端与断电退出2026-10-05).
+
+Setup creates a one-shot task without logon triggers or failure restart, retiring
+only an ownership-validated legacy task on that Windows account. One temporary
+preparation owner survives failed-platform retries and a bounded 600-second
+launch review. Only the existing Host CREATE record establishes handoff; neither
+the helper nor preparation starts or cancels research. STOPPING/terminal releases
+the client's owned SSH/browser processes. Unknown state stays unknown: continuous
+loss of the scoped connection expires locally after 300 seconds, without changing
+research state. Windows sleep counts toward this limit, checked before reconnect
+on wake. Profiles remain on disk; an existing browser is not silently adopted.
+
+The complete G1 invocation passes **7,404 tests**, with **100 environment/opt-in
+skips** and no failures, in **1,416.44 seconds**. Its XML contains all **7,504
+identities**. Focused scope/Host tests, PowerShell execution fixtures and real SSH
+tests exercise exact creation identity, old-client rejection, wrong endpoint,
+CDP handshake, outage/recovery, sleep, task ownership and owned-resource cleanup.
+Seven handoff tests include an actual Host subprocess: mere Host availability
+does not hand off, accepted CREATE does, and terminal state remains readable after
+Host exit. The helper does not mutate the existing run during these checks.
+
+Initial focused failures are preserved: five fixture assertions still expected
+global RunsRoot discovery, while a real renderer regression reproduced legacy
+inline PowerShell output. Fixtures now require the final scope; rendering builds
+the entry from structured arguments instead of replaying old script text. The
+corrected instruction/background-cleanup selection passes **31 tests**.
+
+Selected real Chromium scenarios pass **four tests**: background preparation
+finish, both user-tab preservation cases and recovery between platforms with the
+browser left open. Earlier missing-executable errors and the original recovery
+failure remain recorded. The latter was an unrelated real public-PDF request in
+a synthetic CDP fixture: it took **25.009 seconds**, so the six-second observation
+expired before its browser fault was even injected. That fixture now disables
+public acquisition; the original six-second bound and browser/PDF/tab assertions
+remain. Other native tests cover public acquisition. This fixture-only correction
+was made during G1 and verified separately with the selected Chromium cases.
+
+Final review reproduced a fast explicit retry entirely between Windows polls:
+the server's review remaining time changed **600 → 10 → 600** without an observed
+preparing response. The client incorrectly retained the old deadline and exited.
+The correction projects each valid scoped server deadline locally; it does not
+renew the separate 300-second continuous-outage deadline. Its original failing
+PowerShell execution and the focused corrected cases are retained separately
+from the full G1 result above. After that production correction, the final scoped
+client/runtime/instruction/PowerShell selection passes **124 tests**, with two
+Windows-kernel and one real-browser opt-in skips; both isolated real-SSH cases
+also pass. These **126 passes** are not added to G1 as distinct coverage. The
+original failing timing fixture now reaches terminal normally. Production files
+were then held fixed: the final wheel, isolated install and fresh runtime bundle
+match **182 package files** byte for byte. Outside-checkout CLI/MCP help and actual
+local DNS child cleanup pass, with zero FD/thread growth and no research database.
+Final documentation/operator checks pass **41 tests**, and static checks pass.
+
+Independent inspection of the complete G1 temporary root finds all **2,353
+recorded process groups** gone, with no matching live process or bound Unix socket.
+Its **1,206
+SQLite files** include 1,159 with the current Attempt/run tables, four deliberately
+invalid SQLite fixtures and 43 partial/older-schema fixtures. Recorded Attempts
+are **11,560 CLOSED and 113 OPEN**; this is a collection of intermediate-state test
+fixtures, not 11,673 completed research operations. Twenty unbound socket paths
+remain in test directories, including three closed CDP handshake-fixture paths;
+they are disclosed rather than reported as zero filesystem residue. The separate
+native handoff/browser root audit has **19 CLOSED Attempts**, no open Attempts,
+recorded live groups or sockets. Mapping the 113 OPEN records to their test paths
+found no native end-to-end closure left open; four GPU-selection records are
+explicit synthetic occupancy fixtures, not spawned GPU work. The census was saved
+before normal pytest retention removed the temporary root. These observations do
+not alter retained runs.
+
+Evidence is in `.local/qualification/client-run-lifetime-20261005/`,
+`.local/qualification/institutional-single-run-20261005/` and
+`.local/qualification/single-run-windows-helper-20261005/`; the final rebuilt
+package and documentation checks are under
+`.local/qualification/client-run-lifetime-final-20261005/`. Two actual Windows Job
+Object kernel tests are skipped on Linux; C# compilation and controlled PowerShell
+process edges do not prove Windows desktop, scheduler, sleep or physical power-cut
+behavior. No live Windows task, user browser, retained research run, credentials,
+paid model or GPU workload was changed. Existing frozen Hosts are not migrated;
+a new init and updated original Windows script are required for user acceptance.
+
 ## Network deadlines and unattended recovery (2026-10-05)
 
 Reproduced an HTTP header drip surviving a 0.2-second socket timeout beyond

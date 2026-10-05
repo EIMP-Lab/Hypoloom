@@ -17,6 +17,14 @@ from tests.runtime.test_institutional_runtime import assert_free
 from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO
 
 
+@pytest.fixture(autouse=True)
+def synthetic_browser_sources_only(monkeypatch):
+    # These scenarios qualify CDP/tab recovery using routed synthetic PDFs.
+    # Public acquisition has its own native closure tests; a real 25s public
+    # request here can expire the 6s browser observation before fault injection.
+    monkeypatch.setattr("hypoloom.document_fallback.acquire_public_pdf", lambda *a, **kw: (None, None))
+
+
 def route_fixed_samples(context, downloads, manual_clearance=None):
     from hypoloom.institutional_access import PROVIDERS, provider_catalog
     from tests.runtime.test_institutional_browser import _pdf
@@ -144,8 +152,10 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
 
 
 def test_real_background_client_failure_is_single_and_finish_releases_resources(tmp_path):
+    final_root = tmp_path / 'state' / 'research'
     process = subprocess.Popen([sys.executable, '-B', '-m', 'hypoloom', 'institutional', 'prepare',
         '--repository', str(tmp_path), '--agent-session', '--institutional-browser-mode', 'client',
+        '--state-root', str(final_root), '--run-id', 'research', '--request-id', 'create-research',
         '--institutional-connect-timeout', '3'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True)
     root = None
@@ -154,7 +164,7 @@ def test_real_background_client_failure_is_single_and_finish_releases_resources(
         first = json.loads(process.stdout.readline())
         assert time.monotonic() - started < 5, 'initial status was buffered until process exit'
         root = Path(first['state_root'])
-        allocated = connections(root)[0]
+        allocated = connections(final_root, 'research', 'create-research', preparation_root=root)['connections'][0]
         assert allocated['state'] == 'waiting_for_client'
         def blocked():
             status = request(root).result
