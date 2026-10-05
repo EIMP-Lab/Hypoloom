@@ -40,6 +40,9 @@ if ($Scenario -eq 'legacy_task') {
     function Disable-ScheduledTask { param($TaskName) $script:TaskEvents+='disable' }
     function Stop-ScheduledTask { param($TaskName) $script:TaskEvents+='stop' }
     function Unregister-ScheduledTask { param($TaskName,$Confirm) $script:TaskEvents+='uninstall' }
+    $script:ScheduledTask=$null
+    $removed=Retire-LegacyTask $PowerShell $Source
+    Assert ($removed -ceq $false -and $script:TaskEvents.Count -eq 0) 'absent legacy task was reported as removed'
     foreach ($case in @('valid', 'short_user', 'qualified_user', 'owner', 'exe', 'source', 'server', 'action', 'extra_action', 'duplicate', 'injected', 'missing_file')) {
         $script:TaskEvents=@()
         $script:ScheduledTask=@{Actions=@(@{Execute=$PowerShell;Arguments='fixture'});Principal=@{UserId='fixture-sid'}}
@@ -57,9 +60,10 @@ if ($Scenario -eq 'legacy_task') {
             'injected' { $script:LegacyArguments+=@('-Command','unexpected') }
             'missing_file' { $script:LegacyArguments=@('-NoProfile','-Action','Run','-Server',$Server) }
         }
-        $caught=''; try { Retire-LegacyTask $PowerShell $Source | Out-Null } catch { $caught=$_.Exception.Message }
+        $caught=''; $removed=$false
+        try { $removed=Retire-LegacyTask $PowerShell $Source } catch { $caught=$_.Exception.Message }
         if ($case -in @('valid','short_user','qualified_user')) {
-            Assert (-not $caught -and ($script:TaskEvents -join ',') -eq 'disable,stop,uninstall') "legacy migration failed $case"
+            Assert (-not $caught -and $removed -ceq $true -and ($script:TaskEvents -join ',') -eq 'disable,stop,uninstall') "legacy migration failed $case"
         } else { Assert ($caught -eq 'legacy_task_ownership_mismatch' -and $script:TaskEvents.Count -eq 0) "legacy mismatch changed task $case" }
     }
     exit 0
@@ -122,6 +126,12 @@ if ($Scenario -eq 'task_ownership') {
     Invoke-ClientTask 'owned' $values $PowerShell | Out-Null
     Assert (($script:TaskEvents -join ',') -eq 'uninstall,register,start') 'completed preparation prevented explicit formal-run reconnect'
     Assert (-not $script:ScheduledTask.Actions[0].Arguments.Contains('-PreparationRoot')) 'stale preparation was retained'
+    $Action='Uninstall'; $script:TaskEvents=@()
+    $messages=@(Invoke-ClientTask 'owned' $values $PowerShell)
+    Assert (($script:TaskEvents -join ',') -eq 'stop,uninstall' -and $messages -contains 'task_stopped; browser_profile_preserved; foreground_Run_uses_Ctrl+C') 'existing task removal was not reported'
+    $script:ScheduledTask=$null; $script:TaskEvents=@()
+    $messages=@(Invoke-ClientTask 'owned' $values $PowerShell)
+    Assert ($script:TaskEvents.Count -eq 0 -and $messages -contains 'task_not_found; browser_profile_preserved; foreground_Run_uses_Ctrl+C') 'absent task was reported as stopped'
     exit 0
 }
 $script:Polls=0; $script:Browsers=0; $script:Forwards=@(); $script:Stopped=@(); $script:BrowserStopped=0

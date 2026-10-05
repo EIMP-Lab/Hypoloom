@@ -91,6 +91,19 @@ behavior. No live Windows task, user browser, retained research run, credentials
 paid model or GPU workload was changed. Existing frozen Hosts are not migrated;
 a new init and updated original Windows script are required for user acceptance.
 
+Client-cleanup follow-up: the user copied the tutorial's literal `user@server`
+and `/path/to/Hypoloom` while the old installed helper still ran. Its unconditional
+`task_stopped` output falsely suggested success although the real task and process
+remained. Missing tasks now report `task_not_found` / `legacy_task_not_found`,
+separately from actual removal; ownership validation and cleanup scope are unchanged.
+Both guides download the updated original to the old installation path before
+uninstalling, prompt for actual values, and independently check the exact task name.
+Both missing-task regressions fail against the preceding commit. Corrected
+PowerShell/runtime/documentation/operator tests pass **75 tests**, with **seven
+environment/opt-in skips**; both tutorial blocks parse in PowerShell. Evidence is
+under `.local/qualification/client-uninstall-feedback-20261005/`. Actual Windows
+task removal remains a user acceptance step, not an action performed on this server.
+
 ## Network deadlines and unattended recovery (2026-10-05)
 
 Reproduced an HTTP header drip surviving a 0.2-second socket timeout beyond

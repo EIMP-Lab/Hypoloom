@@ -431,16 +431,54 @@ Hypoloom dedicated browser before this new connection; keep its login profile an
 ordinary browser windows. The new helper must not adopt an old browser process.
 Replacing the script does not update an already running helper or frozen Host.
 
-If you switch to Windows B, also retire the historical resident helper on Windows
-A; upgrading the server cannot remove A's local task. On A, download the new
-original script to its old installation path, then run this command with your
-server and repository. Without run scope, `Uninstall` removes only the
-ownership-validated legacy discovery task, leaving new scoped tasks alone. Close
-the old dedicated browser normally; retain its login profile.
+If you switch to Windows B, retire the historical resident helper **on Windows A**;
+upgrading the server cannot remove A's local task. First update the server checkout,
+then run this whole block in A's PowerShell 7.2+. Enter the actual SSH target used
+by the old task, including the same alias spelling, and the repository path shown
+by init. No example server/path is prefilled. The block downloads the original
+updated script before replacing the old installed file; download failure stops
+without replacing it. No run scope is passed to `Uninstall`, so only the matching
+ownership-validated legacy task is removed; new scoped tasks are left alone.
 
 ```powershell
-pwsh -NoProfile -File "$env:LOCALAPPDATA\Hypoloom\institutional-connect.ps1" -Action Uninstall -Server 'user@server' -Repository '/path/to/Hypoloom'
+& {
+    $ErrorActionPreference = 'Stop'
+    if (-not $IsWindows -or $PSVersionTable.PSVersion -lt [version]'7.2') {
+        throw 'Run this block in Windows PowerShell 7.2+ (pwsh).'
+    }
+    $researchServer = (Read-Host 'Actual SSH target used by the OLD helper (exact user@host or alias)').Trim()
+    if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {
+        throw 'Enter the actual SSH target, not a password or an ssh command.'
+    }
+    $researchRepository = (Read-Host 'Absolute repository path on the UPDATED server, as shown by init').Trim().TrimEnd('/')
+    if (-not $researchRepository.StartsWith('/') -or $researchRepository -match '[\r\n\x00]') {
+        throw 'Enter the actual absolute Linux repository path.'
+    }
+    $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+    $researchDirectory = Split-Path $researchConnector
+    New-Item -ItemType Directory -Force $researchDirectory | Out-Null
+    $researchTemporary = Join-Path $researchDirectory ([IO.Path]::GetRandomFileName())
+    try {
+        & scp.exe -o BatchMode=yes -o ConnectTimeout=10 "${researchServer}:$researchRepository/hypoloom/connection_assets/institutional-connect.ps1" $researchTemporary
+        if ($LASTEXITCODE -ne 0) { throw 'Download failed; installed script unchanged. Keep the SSH error above.' }
+        if ((Get-Item -LiteralPath $researchTemporary).Length -eq 0) { throw 'Empty download; installed script unchanged.' }
+        Move-Item -LiteralPath $researchTemporary -Destination $researchConnector -Force
+    } finally {
+        if (Test-Path -LiteralPath $researchTemporary) { Remove-Item -LiteralPath $researchTemporary }
+    }
+    & pwsh -NoProfile -File $researchConnector -Action Uninstall -Server $researchServer -Repository $researchRepository
+    if ($LASTEXITCODE -ne 0) { throw 'Cleanup failed; keep the error above. Do not delete tasks by wildcard.' }
+    $researchSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $researchTaskName = "Hypoloom-Institutional-$researchServer-$researchSid"
+    $researchRemaining = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -ceq $researchTaskName })
+    if ($researchRemaining.Count) { throw "The exact legacy task still exists; cleanup is not complete: $researchTaskName" }
+    Write-Host "Verified absent legacy task: $researchTaskName"
+}
 ```
+
+Success confirms absence of the **printed exact task name**, not all tasks on A.
+Close the old dedicated browser normally and retain its login profile. A printed
+`task_stopped` alone is not proof that this legacy task was removed.
 
 The helper follows only this preparation/run. On run termination or `STOPPING` it
 closes its own SSH processes and dedicated browser, retaining the profile. Short

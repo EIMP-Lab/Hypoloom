@@ -12,6 +12,10 @@
   Wheel/install/bundle match 182 files; Windows kernel/GUI acceptance remains
   distinct. [Design](../design/institutional-access-preparation.md#单运行客户端与断电退出2026-10-05)
   / [qualification](../qualification.md#single-run-windows-client-lifetime-2026-10-05).
+  Cleanup follow-up: stop/uninstall distinguishes absent tasks from actual removal;
+  bilingual steps download the new script, prompt for real target/path and verify
+  the exact legacy task. Copied placeholders plus an old helper caused false success.
+  Focused PowerShell/runtime/docs: 75 pass / seven environment skips.
 
 - October 5 combined GPU/observer/tutorial integration: workload-relative reserve,
   Web elapsed/token HUD and Telegram proxy tutorials now share the current search

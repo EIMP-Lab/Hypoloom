@@ -528,14 +528,50 @@ Windows 可能显示短用户名，归属按 SID 校验。旧版手工建立的�
 操作员明确停止。新连接前正常关闭旧 Hypoloom 专用浏览器；保留登录目录及普通浏览器。
 新助手不能接管旧浏览器进程；覆盖脚本文件不会更新已运行的助手或冻结 Host。
 
-如果改用电脑 B，还需在电脑 A 清理历史常驻助手；服务器升级不能删除 A 的本地任务。
-在 A 将新版原文件下载到旧安装位置后，执行下面的命令（替换服务器和仓库）。不传运行
-范围时，`Uninstall` 仅清理严格核验归属的旧发现任务，不影响新版单运行任务；旧专用
-浏览器正常关闭即可，登录目录保留。
+如果改用电脑 B，还需**在电脑 A**清理历史常驻助手；服务器升级不能删除 A 的本地任务。
+先更新服务器仓库，再在 A 的 PowerShell 7.2+ 执行下面完整代码块。按提示填写旧任务
+原来使用的真实 SSH 目标（别名也必须相同）及 init 显示的实际仓库路径；不预填示例值。
+程序先下载新版原始脚本，下载失败即停止，不覆盖旧文件；成功才替换旧安装位置。
+`Uninstall` 不传运行范围，只清理核验归属的对应旧任务，不影响新版单运行任务。
 
 ```powershell
-pwsh -NoProfile -File "$env:LOCALAPPDATA\Hypoloom\institutional-connect.ps1" -Action Uninstall -Server 'user@server' -Repository '/path/to/Hypoloom'
+& {
+    $ErrorActionPreference = 'Stop'
+    if (-not $IsWindows -or $PSVersionTable.PSVersion -lt [version]'7.2') {
+        throw '请在 Windows 的 PowerShell 7.2+（pwsh）中运行整块。'
+    }
+    $researchServer = (Read-Host '旧助手使用的实际 SSH 目标（须为原来的 user@host 或别名）').Trim()
+    if ($researchServer -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.@-]*$') {
+        throw '请输入实际 SSH 目标，不是密码或整条 ssh 命令。'
+    }
+    $researchRepository = (Read-Host '已更新服务器上的仓库绝对路径（复制 init 显示的实际值）').Trim().TrimEnd('/')
+    if (-not $researchRepository.StartsWith('/') -or $researchRepository -match '[\r\n\x00]') {
+        throw '请输入实际 Linux 仓库绝对路径。'
+    }
+    $researchConnector = Join-Path $env:LOCALAPPDATA 'Hypoloom\institutional-connect.ps1'
+    $researchDirectory = Split-Path $researchConnector
+    New-Item -ItemType Directory -Force $researchDirectory | Out-Null
+    $researchTemporary = Join-Path $researchDirectory ([IO.Path]::GetRandomFileName())
+    try {
+        & scp.exe -o BatchMode=yes -o ConnectTimeout=10 "${researchServer}:$researchRepository/hypoloom/connection_assets/institutional-connect.ps1" $researchTemporary
+        if ($LASTEXITCODE -ne 0) { throw '下载失败，未覆盖已安装脚本；请保留上方 SSH 错误。' }
+        if ((Get-Item -LiteralPath $researchTemporary).Length -eq 0) { throw '下载内容为空，未覆盖已安装脚本。' }
+        Move-Item -LiteralPath $researchTemporary -Destination $researchConnector -Force
+    } finally {
+        if (Test-Path -LiteralPath $researchTemporary) { Remove-Item -LiteralPath $researchTemporary }
+    }
+    & pwsh -NoProfile -File $researchConnector -Action Uninstall -Server $researchServer -Repository $researchRepository
+    if ($LASTEXITCODE -ne 0) { throw '清理失败，请保留上方错误；不要按通配符删除任务。' }
+    $researchSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $researchTaskName = "Hypoloom-Institutional-$researchServer-$researchSid"
+    $researchRemaining = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -ceq $researchTaskName })
+    if ($researchRemaining.Count) { throw "此旧任务仍存在，清理未完成: $researchTaskName" }
+    Write-Host "已确认此旧任务不存在: $researchTaskName"
+}
 ```
+
+成功提示只证明**输出的准确任务名**已不存在，不表示 A 上所有任务均已清理。
+旧专用浏览器正常关闭即可，保留登录目录。仅看到 `task_stopped` 不证明旧任务已删除。
 
 助手只跟随本次准备／运行。科研终结或进入 `STOPPING` 后，清理自己启动的 SSH 和
 专用浏览器，保留登录目录。短断线只允许恢复同一运行；连续失联 300 秒后本地退出。

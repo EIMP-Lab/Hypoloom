@@ -515,7 +515,7 @@ function Test-TaskUser([string]$UserId) {
 function Retire-LegacyTask([string]$PowerShell, [string]$Source) {
     $name = "Hypoloom-Institutional-$Server-$script:userSid"
     $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-    if (-not $task) { return }
+    if (-not $task) { return $false }
     if (@($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $PowerShell -or
         -not (Test-TaskUser $task.Principal.UserId)) { throw 'legacy_task_ownership_mismatch' }
     $values = @(Split-TaskArguments $task.Actions[0].Arguments)
@@ -534,6 +534,7 @@ function Retire-LegacyTask([string]$PowerShell, [string]$Source) {
     Stop-ScheduledTask -TaskName $name
     Unregister-ScheduledTask -TaskName $name -Confirm:$false
     Write-Host 'legacy_autostart_removed; previous_browser_not_adopted'
+    return $true
 }
 
 function Split-TaskArguments([string]$Arguments) {
@@ -574,8 +575,10 @@ function Invoke-ClientTask([string]$TaskName, [string[]]$TaskValues, [string]$Po
         if ($task) {
             Stop-ScheduledTask -TaskName $TaskName
             Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+            Write-Output 'task_stopped; browser_profile_preserved; foreground_Run_uses_Ctrl+C'
+        } else {
+            Write-Output 'task_not_found; browser_profile_preserved; foreground_Run_uses_Ctrl+C'
         }
-        Write-Output 'task_stopped; browser_profile_preserved; foreground_Run_uses_Ctrl+C'
     }
 }
 
@@ -586,9 +589,11 @@ function Connector-Main {
     if (-not $Server -or -not $Repository) { throw 'server_and_repository_required' }
     $script:userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $powershell = (Get-Process -Id $PID).Path
-    if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) { Retire-LegacyTask $powershell $PSCommandPath }
+    $legacyRemoved = $false
+    if ($Action -in @('Connect', 'Init', 'Install', 'Stop', 'Uninstall')) { $legacyRemoved = Retire-LegacyTask $powershell $PSCommandPath }
     if ($Action -in @('Stop', 'Uninstall') -and -not $StateRoot -and -not $RunId -and -not $RequestId) {
-        Write-Output 'legacy_task_removed; browser_profile_preserved'
+        if ($legacyRemoved) { Write-Output 'legacy_task_removed; browser_profile_preserved' }
+        else { Write-Output 'legacy_task_not_found; browser_profile_preserved' }
         return
     }
     $script:RequestedPort = $LocalPort
