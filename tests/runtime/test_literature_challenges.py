@@ -13,6 +13,7 @@ from test_literature import FakeFetcher, PUBLIC_A, _papers, _query
 
 @pytest.mark.parametrize("status", [200, 403, 503])
 def test_batch_https_challenge_closes_without_reading_body(monkeypatch, status):
+    from hypoloom import grounding_web, network_io
     closed = []
 
     class Response:
@@ -26,7 +27,7 @@ def test_batch_https_challenge_closes_without_reading_body(monkeypatch, status):
 
     class Connection:
         def __init__(self, *args, **kwargs):
-            self.sock = SimpleNamespace(getpeername=lambda: (PUBLIC_A, 443))
+            self.sock = SimpleNamespace(getpeername=lambda: (PUBLIC_A, 443), settimeout=lambda value: None)
 
         def connect(self): pass
         def request(self, *args, **kwargs): pass
@@ -34,6 +35,15 @@ def test_batch_https_challenge_closes_without_reading_body(monkeypatch, status):
         def close(self): closed.append(True)
 
     monkeypatch.setattr("hypoloom.literature.http.client.HTTPSConnection", Connection)
+    # Exercise the shared socket reader locally; subprocess lifecycle is covered
+    # by the stalled-network tests, where this injected connection cannot cross exec.
+    def run(operation, payload, **kwargs):
+        assert operation == "hypoloom.grounding_web:_fetch_in_process"
+        try:
+            return grounding_web._fetch_in_process(payload)
+        except grounding_web.GroundingWebError as error:
+            raise network_io.NetworkOperationError(error.code, http_status=error.http_status) from None
+    monkeypatch.setattr(network_io, "run_network_operation", run)
     fetcher = OpenAlexLiteratureFetcher(api_key="fixture-openalex")
     with pytest.raises(LiteratureFetchError) as caught:
         fetcher._fetch_pdf_https("https://dl.acm.org/doi/pdf/10.1145/945445.945450",

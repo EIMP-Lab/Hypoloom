@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Network deadlines and unattended recovery](../qualification.md#network-deadlines-and-unattended-recovery-2026-10-05):
+  disposable DNS/HTTPS workers, cancellation/reaping, retained successful PDFs,
+  shared coverage/retrieval cooldown and automatic 15-minute transient recovery.
+  Native six-failure/reader/CPU closure and bilingual observer states;
+  [operator behavior](../guides/provider-recovery.md#literature-service-recovery).
+
 - [Publisher challenges and Semantic Scholar recovery](../qualification.md#publisher-challenges-and-semantic-scholar-recovery-2026-10-05):
   early challenge closure, preserved direct/fallback reasons, per-locator pacing,
   init/runtime cooldown reuse and optional private S2 credentials. Native

@@ -143,7 +143,7 @@ def test_public_connect_uses_one_deadline_and_only_preapproved_addresses(monkeyp
     monkeypatch.setattr(module.socket, "socket", Sock)
     monkeypatch.setattr(module.http.client, "HTTPSConnection", Connection)
     with pytest.raises((TimeoutError, GroundingWebError)):
-        PublicHttpsTransport().fetch(DOC, approved_addresses=("8.8.8.8", "1.1.1.1"),
+        PublicHttpsTransport()._fetch_in_process(DOC, approved_addresses=("8.8.8.8", "1.1.1.1"),
                                      max_bytes=100, timeout_seconds=1)
     assert [item for item in calls if item[0] == "timeout"] == [("timeout", 1), ("timeout", 0.25)]
     assert [item[1][0] for item in calls if item[0] == "connect"] == ["8.8.8.8", "1.1.1.1"]
@@ -202,6 +202,9 @@ def _public_http_responses(monkeypatch, responses):
             calls["closed"].append(self.url)
     monkeypatch.setattr(web_module.http.client, "HTTPSConnection", Connection)
     transport = PublicHttpsTransport()
+    # These saved-wire tests exercise the child HTTP implementation; real
+    # process lifetime and deadline behavior is covered in test_network_deadlines.
+    transport.fetch = transport._fetch_in_process
     transport.resolve = lambda hostname: ("8.8.8.8",)
     return transport, calls
 
@@ -386,7 +389,7 @@ def test_default_https_transport_never_forwards_ambient_credentials(monkeypatch)
         def close(self):
             calls.append("closed")
     monkeypatch.setattr(web_module.http.client, "HTTPSConnection", Connection)
-    result = PublicHttpsTransport().fetch(DOC, approved_addresses=("8.8.8.8",), max_bytes=10)
+    result = PublicHttpsTransport()._fetch_in_process(DOC, approved_addresses=("8.8.8.8",), max_bytes=10)
     assert result.body == b"safe"
     assert set(calls[1][2]) == {"Accept", "User-Agent"}
     assert "private-host-key" not in str(calls) and "password" not in str(calls)
@@ -427,7 +430,7 @@ def test_public_timeout_reports_phase_and_partial_bytes_without_exception_text(m
     monkeypatch.setattr(web_module.socket, 'socket', Sock)
     monkeypatch.setattr(web_module.http.client, 'HTTPSConnection', Connection)
     with pytest.raises(GroundingWebError) as error:
-        PublicHttpsTransport().fetch(DOC, approved_addresses=('8.8.8.8',), max_bytes=10)
+        PublicHttpsTransport()._fetch_in_process(DOC, approved_addresses=('8.8.8.8',), max_bytes=10)
     event = error_event('download', error.value, DOC)
     assert event['reason'] == 'timed_out' and event['transport_phase'] == phase
     assert event['received_bytes'] == (4 if phase == 'response_body' else 0)

@@ -2009,14 +2009,16 @@ class WorkflowHost:
                        component_id: str, role: str, method_family_id: str | None) -> tuple[EmbeddedInput, ...]:
         from .agent_context import expert_inputs
         return expert_inputs(self, run_id, task, component_id, role, method_family_id)
+    def _literature_read_pending(self, run_id: str) -> bool:
+        from .literature_recovery import status
+        return status(self.store, run_id)["pending"] or any(job.run_id == run_id for job in self._literature_jobs.values())
     def _read_literature(self, run_id: str, kind: str, identity: str, query: LiteratureQuery) -> dict[str, Any] | None:
         key = (kind, identity)
         job = self._literature_jobs.get(key)
         if job is None:
-            if kind == "retrieve":
-                from .literature_recovery import status
-                if status(self.store, run_id)["pending"]: return None
-                if any(k[0] == "retrieve" and v.run_id == run_id for k, v in self._literature_jobs.items()): return None
+            run = self.store.latest_transition(run_id)
+            if run is None or run["state"] in _TERMINAL_RUNS | {RunState.STOPPING.value} or self._run_wallclock_expired(run_id): return None
+            if self._literature_read_pending(run_id): return None
             self._literature_jobs[key] = self.literature_io.submit_read(
                 self._literature_executor, run_id, kind, query)
             return None
@@ -2026,23 +2028,25 @@ class WorkflowHost:
     def _poll_literature(self) -> bool:
         progressed = False
         for attempt_id, (request, response, diagnostics) in tuple(self._literature_responses.items()):
-            job = self._literature_jobs[("coverage", attempt_id)]
+            job = self._literature_jobs.get(("coverage", attempt_id))
             attempt = self.store.get_attempt(attempt_id)
             run = self.store.latest_transition(request.run_id)
             stale = attempt is None or attempt["state"] != "OPEN" or attempt["host_generation"] != self.generation
             stopped = run is None or run["state"] in _TERMINAL_RUNS or run["state"] == RunState.STOPPING.value
             expired = not stopped and self._run_wallclock_expired(request.run_id)
-            if not (stale or stopped or expired or job.future.done()): continue
+            if not (stale or stopped or expired):
+                if job is not None and not job.future.done(): continue
+                if job is None and self._literature_read_pending(request.run_id): continue
             try:
+                self._literature_responses.pop(attempt_id, None)
                 if stale or stopped or expired:
-                    job.cancelled.set(); job.future.cancel()
+                    if job is not None: job.cancelled.set(); job.future.cancel()
                     if not stale:
                         self._agent_failure(request, AttemptTerminalReason.TIMED_OUT if expired else AttemptTerminalReason.CANCELLED,
                             "profile_wallclock_exhausted" if expired else "run_stopping", retryable=False,
                             details={"diagnostics": dict(diagnostics or {}), "response_discarded_after_stop": stopped, "discarded_response": response.to_dict()},
                             owner_transition=False)
                 else:
-                    self._literature_responses.pop(attempt_id, None)
                     try: self._accept_agent_response(request, response, diagnostics=diagnostics)
                     except AgentACIError as exc:
                         self._agent_failure(request, AttemptTerminalReason.FAILED, exc.code,
@@ -2052,9 +2056,10 @@ class WorkflowHost:
                                 **literature_read_diagnostics(self._literature_jobs.get(("coverage", request.attempt_id))),
                                 "failure_stage": "host_candidate_validation", "rejected_response": response.to_dict()})
             finally:
-                self._literature_responses.pop(attempt_id, None)
-                self.agent_session_metadata.pop(attempt_id, None)
-                if job.future.done(): self._literature_jobs.pop(("coverage", attempt_id), None)
+                # A coverage read may only now have been submitted after the
+                # shared cooldown/previous read. Keep its original response.
+                if attempt_id not in self._literature_responses: self.agent_session_metadata.pop(attempt_id, None)
+                if job is not None and job.future.done(): self._literature_jobs.pop(("coverage", attempt_id), None)
             progressed = True
         for key, job in tuple(self._literature_jobs.items()):
             run = self.store.latest_transition(job.run_id)

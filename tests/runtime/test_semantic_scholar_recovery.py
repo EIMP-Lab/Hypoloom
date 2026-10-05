@@ -173,16 +173,24 @@ def test_retry_after_http_date_reuses_existing_parser(monkeypatch):
 
 
 def test_exact_host_transport_preserves_retry_after_without_redirecting(monkeypatch):
+    from types import SimpleNamespace
+    from hypoloom import grounding_web, network_io
     calls = []
     class Response:
         status = 429
+        pending = True
         def getheader(self, name):
             return {"Retry-After": "120", "Content-Type": "application/json", "Content-Length": "2"}.get(name)
-        def read(self, bound):
-            return b"{}"
+        def read1(self, bound):
+            result = b"{}" if self.pending else b""
+            self.pending = False
+            return result
     class Connection:
         def __init__(self, host, port, timeout):
             calls.append((host, port))
+            self.sock = SimpleNamespace(getpeername=lambda: ("93.184.216.34", 443), settimeout=lambda value: None)
+        def connect(self):
+            pass
         def request(self, *args, **kwargs):
             pass
         def getresponse(self):
@@ -190,6 +198,9 @@ def test_exact_host_transport_preserves_retry_after_without_redirecting(monkeypa
         def close(self):
             pass
     monkeypatch.setattr(literature.http.client, "HTTPSConnection", Connection)
+    monkeypatch.setattr(grounding_web.socket, "getaddrinfo", lambda *a, **kw: [(None, None, None, None, ("93.184.216.34", 443))])
+    monkeypatch.setattr(network_io, "run_network_operation",
+                        lambda operation, payload, **kwargs: grounding_web._fetch_in_process(payload))
     transport = StdlibSemanticScholarTransport()
     kwargs = {"target": "/graph/v1/paper/DOI%3A10.1000%2Fpaper?fields=externalIds%2CopenAccessPdf",
               "headers": {"x-api-key": SECRET}, "timeout_seconds": 1, "max_bytes": 1024}

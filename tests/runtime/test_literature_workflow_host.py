@@ -146,7 +146,7 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
     assert not any(t.name.startswith("hypoloom-literature") for t in threading.enumerate())
 
 
-def test_shutdown_cancels_owned_agents_before_waiting_for_literature(tmp_path):
+def test_shutdown_cancels_owned_agents_before_waiting_for_literature(tmp_path, mount_root):
     from types import SimpleNamespace
     from test_literature import _query
     entered, release = threading.Event(), threading.Event()
@@ -161,6 +161,7 @@ def test_shutdown_cancels_owned_agents_before_waiting_for_literature(tmp_path):
     host = WorkflowHost(tmp_path / "state", literature_io=HeldLiterature(_LiteratureFetcher()))
     try:
         host.initialize()
+        assert host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", _payload(tmp_path, mount_root, "probe"))).status == "accepted"
         host._read_literature("probe", "coverage", "held-read", _query())
         assert entered.wait(1)
         def cancel(_handle):

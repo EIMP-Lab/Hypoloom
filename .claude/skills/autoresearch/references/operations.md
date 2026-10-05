@@ -142,6 +142,13 @@ may use the existing bounded Agent retry with its exact diagnostic; a Host
 `QUERY_INVALID`/HTTP 400 does not repeat the same admitted plan. Existing Agent
 Attempt timing includes the Host retrieval interval and records
 `literature_retrieval_seconds` for every successful or failed retrieval.
+Temporary catalog failures reuse the original query and recover automatically:
+30/60/120/240/300-second backoff, then 15-minute checks from the sixth failed
+wave, respecting a longer Retry-After. Authentication failures require repairing
+the selected credential source. Do not restart init or repeatedly submit manual
+retry controls for ordinary cooldown. Deferred query-coverage validation shares
+the run's catalog wait and keeps its original model response; it still occupies
+the ordinary task slot. Stop and wallclock limits prevent further reads.
 Role-neutral means no expert persona in the prompt. The existing ACI/budget
 ledger still requires a declared role/component accounting key, so both shared
 prelude calls remain charged to the Run and the scheduler-selected role; this

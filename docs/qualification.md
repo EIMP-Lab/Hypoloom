@@ -2,6 +2,105 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Network deadlines and unattended recovery (2026-10-05)
+
+Reproduced an HTTP header drip surviving a 0.2-second socket timeout beyond
+0.8 seconds. A socket timeout and `Future.cancel()` do not terminate DNS or an
+already-running read. Direct DNS/HTTPS now runs in a disposable child using the
+existing public-address, TLS, byte, challenge and PDF validators. The caller's
+single deadline includes child startup, DNS and HTTP transfer; cancellation or
+expiry kills and waits for the child, with an additional one-second cleanup
+allowance. A failed reap is an explicit infrastructure failure, not a successful
+download or an ordinary paper gap. The parent pipe closes the worker on parent
+death. Credentials stay in private stdin, outside argv, diagnostics and ambient
+environment. No durable process record, secondary schema or proxy is added.
+
+Temporary OpenAlex failures retain the original query and back off for
+30/60/120/240/300 seconds, then 900 seconds from the sixth failed wave. A longer
+Retry-After wins. Authentication still waits for operator credential repair.
+Query coverage and retrieval share the existing run cooldown and serialization;
+deferred validation retains its original model response. Its open Attempt still
+occupies ordinary capacity; this does not add an independent task scheduler.
+Stopping, terminal state and wallclock expiry prevent new reads. TUI/Web use
+the same durable status for bilingual cause, affected roles and next retry;
+terminal views retain history without promising another automatic check.
+
+Focused network/literature/browser/bundle checks pass **400 tests**, with
+**58 optional-environment skips**. Separate recovery/Host/notification tests
+pass **86**, and recovery UI/language/monitor tests pass **24**. These selections
+overlap; they are not added as a distinct total. Fault tests exercise blocked
+DNS, TLS, slow headers/body, active cancellation, parent SIGKILL, output bounds,
+safe diagnostics, four repeated hangs without FD/thread growth, and worker PID
+absence before return. Batch tests retain an independent successful PDF, discard
+the failed partial result, then recover on the next batch. The final transport
+review also caught a response-limit error-code regression; its red test and
+focused correction preserve `OPENALEX_RESPONSE_LIMIT`.
+
+Documentation/Profile/operator checks pass **44 tests**. The final response-limit
+and literature regression selection passes **133**. Wheel, isolated installation
+and fresh runtime bundle match all **179 package files** byte for byte, including
+the final error-code correction. From outside the checkout, installed CLI/MCP
+help succeeds and both installed/bundled modules run a real localhost DNS worker
+in 0.158/0.160 seconds. Each worker is reaped, with zero FD/thread growth and no
+research database or external HTTP access. The first build's detected source
+change is retained separately; only the rebuilt final package matches all files.
+
+The real CC/Host recovery sample passes in **67.31 seconds**, using a local
+scripted provider and catalog/PDF fixtures. Only the literature recovery decision
+clock is accelerated; Host, Attempt and model clocks remain real. Six pre-model
+503 failures have zero billed tokens/cost and the exact delays above, followed
+by recovery with the same query and command. Independent inspection counts
+**18 successful Agents, six expected pre-model failures and one successful CPU
+Process**: all 25 Attempts CLOSED, three real readers, four byte-identical PDF
+archives, one experiment/outcome/assessment/goal verdict, and a passing original
+Oracle. All 19 recorded process groups are gone; there are no sockets, staging,
+open Attempts or pending/duplicate effects. There is one waiting and one recovered
+notification. Initial fixture corrections distinguish the normal coverage read
+from the injected failures and derive retry time from the existing durable
+observation time; their original logs and zero-residue inspections are retained.
+
+The complete collection contains **7,221 identities**. The first eight-worker G1
+invocation passed static checks and recorded **7,046 pass / 109 skip / seven
+fail** in 1,538.44 seconds before a normal SIGINT. Its load scheduler had accumulated
+long native cases on one worker while seven workers were idle; the remaining
+selection was redistributed with the existing work-stealing scheduler. This
+partial invocation is not described as a complete or green G1 run.
+
+Five failures came from existing pinned-runtime protection after this task's
+last in-flight source/instruction edits; the combined workflow's three rejected
+CPU Attempts were explicitly pre-spawn, not successful effects. A sixth failure
+exposed a real compatibility regression: the new timeout keyword reached an
+injected replacement for Poppler's `extract_pdf`. Only the actual bundled method
+now receives that optional bound, preserving the established injected protocol;
+the original native case plus network bounds pass **nine tests**. The final
+package comparison was repeated after this correction. No validator or fixture
+assertion was weakened.
+
+With every tracked file held fixed, the **59 unfinished plus seven failed** cases
+completed in 668.86 seconds: **64 pass / one skip / one fail**. Reconciliation by
+identity gives **7,110 pass / 110 optional skips / one existing failure**, with no
+uncovered identities. The remaining failure is the same baseline token-accounting
+`KeyError: provider_usage_normalization` documented in the preceding publisher
+repair; it was not changed or suppressed. Five pinned-runtime failures and the
+extractor regression pass on the final candidate. The native combined scenario
+independently closes 84 successful Agents and six CPU Processes; the final Leader
+scenario closes 120 successful Agents and nine CPU Processes. Both are COMPLETED
+with passing Oracles, no open Attempts/pending effects and all recorded process
+groups gone. Independent residue checks find none among 2,084 recorded groups in
+the interrupted invocation or 341 in the remainder, and no matching live paths.
+The first scan separately lists 17 intentionally invalid/empty SQLite fixtures;
+the remainder has no database read errors. Original logs, anonymous interruption
+record, failure diagnoses and reconciled results remain separate in the evidence.
+
+Evidence is under `.local/worktrees/literature-network-recovery-20261005/.local/`
+`qualification/literature-network-recovery-20261005/`, with transport fault logs
+in sibling `network-deadlines-20261005/`. No paid provider, live publisher/SSO,
+Windows helper, GPU or long-duration service availability is qualified. Public
+access restrictions and CAPTCHA remain real download gaps; independent keyword
+search fallback and optional proxy routing are separate follow-up work. Existing
+research runs, client/browser, credentials, proxy configuration and prior
+uncommitted GPU/Web/Telegram changes are preserved.
+
 ## Publisher challenges and Semantic Scholar recovery (2026-10-05)
 
 The preceding direct/proxy observations retained eight ACM/ScienceDirect challenge

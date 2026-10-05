@@ -435,6 +435,22 @@
     byId("provider-settings").disabled = providerBusy || Boolean(providerPending);
     byId("provider-retry").textContent = providerPending ? t("Retry same request") : t("Try current API");
   }
+  function literatureStatusText(value, terminal) {
+    if (!value) return t("Literature service status unknown.");
+    const labels = {ready: value.recovered_at ? t("Retrieval recovered") : t("Retrieval allowed; access unverified"),
+      cooldown: t("Automatic retry scheduled"), recovering: t("Waiting for automatic retry"), waiting_operator: t("Waiting for operator")};
+    const reasons = {openalex_timeout: t("Request timed out"), openalex_rate_limit: t("Rate limited"),
+      openalex_auth: t("Authentication rejected"), openalex_http: t("HTTP request failed")};
+    const lines = [t("OpenAlex: {0}.", terminal ? t("Run ended") : labels[value.state] || t("Status unknown"))];
+    if (value.reason) lines.push(t("Last failure: {0}{1}.", reasons[value.reason] || value.reason,
+      value.http_status == null ? "" : ` · HTTP ${value.http_status}`));
+    if (terminal) lines.push(t("Run ended; no further automatic retry."));
+    else if (value.requires_operator || value.state === "waiting_operator") lines.push(t("Automatic retry is paused; operator action is required."));
+    else if (value.state === "recovering") lines.push(t("An eligible task will retry automatically; access is not yet confirmed."));
+    else if (value.next_retry_at != null) lines.push(t("Next automatic retry: {0}.", formatTimestamp(value.next_retry_at)));
+    if (list(value.affected_roles).length) lines.push(t("Affected roles: {0}.", value.affected_roles.join(", ")));
+    return lines.join(" ");
+  }
   function renderProvider(snapshot) {
     const retry = snapshot.status?.provider_retry;
     const terminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(snapshot.status?.run_state);
@@ -457,8 +473,7 @@
     recheck.disabled = resourceBusy || !providerWritable();
     recheck.textContent = resourcePending ? t("Retry same resource recheck") : t("Recheck GPU resources");
     const literature = snapshot.status?.literature_retry;
-    setText("literature-status", !literature ? t("Literature service status unknown.")
-      : t("OpenAlex: {0}{1}. {2} {3}", literature.state === "ready" && !literature.recovered_at ? t("retrieval allowed; access unverified") : literature.state.replaceAll("_", " "), literature.reason ? ` · ${literature.reason}` : "", literature.requires_operator ? t("Operator action required.") : literature.next_retry_at ? t("Next attempt: {0}.", formatTimestamp(literature.next_retry_at)) : "", list(literature.affected_roles).join(", ")));
+    setText("literature-status", literatureStatusText(literature, terminal));
     const notifications = snapshot.status?.notifications;
     const sinks = Object.entries(notifications?.sinks || {}).filter(([name]) => name !== "log");
     setText("notification-status", !notifications || notifications.state === "unavailable" ? t("Notification delivery status unknown; owning service unavailable.")

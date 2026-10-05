@@ -1246,5 +1246,21 @@
   "quota exhausted": "额度耗尽",
   "connection configuration unavailable": "连接配置不可用",
   "provider rejected access": "提供商拒绝访问",
-  "operator action required": "需要操作员操作"
+  "operator action required": "需要操作员操作",
+  "OpenAlex: {0}.": "OpenAlex：{0}。",
+  "Retrieval recovered": "检索服务已恢复",
+  "Retrieval allowed; access unverified": "允许检索；接入尚未验证",
+  "Automatic retry scheduled": "已安排自动重试",
+  "Waiting for automatic retry": "等待自动重试",
+  "Waiting for operator": "等待操作员处理",
+  "Request timed out": "请求超时",
+  "Rate limited": "请求受到限流",
+  "Last failure: {0}{1}.": "最近失败：{0}{1}。",
+  "Next automatic retry: {0}.": "下次自动重试：{0}。",
+  "Automatic retry is paused; operator action is required.": "自动重试已暂停，需要操作员处理。",
+  "An eligible task will retry automatically; access is not yet confirmed.": "符合执行条件的任务将自动重试；接入尚未确认。",
+  "Run ended; no further automatic retry.": "运行已结束，不再自动重试。",
+  "Affected roles: {0}.": "受影响角色：{0}。",
+  " · l Literature retry": " · l 文献重试",
+  "Status unknown": "状态未知"
 }

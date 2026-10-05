@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- October 5 network deadlines/unattended recovery: direct DNS/HTTPS operations
+  run in disposable, bounded children, with parent-EOF cleanup and existing
+  public-address/TLS/byte validators. One caller deadline covers startup, DNS,
+  headers/body and redirects; expiry has an additional one-second kill/wait
+  allowance and reports cleanup failure explicitly. Partial PDFs are discarded;
+  other validated papers survive. Temporary OpenAlex failures slow to 15-minute
+  recovery after six waves instead of requiring an operator; auth still waits
+  for credential repair, and Retry-After can extend cooldown. Coverage/retrieval
+  share the existing run wait, preserving the original query/model response;
+  deferred coverage still consumes its ordinary task slot. TUI/Web project the
+  current reason, affected roles and next retry in both languages.
+  Native six-failure recovery/reader/CPU closure passes with 18 successful Agents,
+  six zero-usage pre-model failures and one CPU Process; all 25 Attempts close,
+  matching PDF archives and no live groups/socket/staging. Complete-selection
+  reconciliation: 7,110 pass/110 skip/one unchanged token-accounting baseline
+  failure; interrupted scheduling, source-drift reruns and repaired injected
+  extractor compatibility are disclosed. Final wheel/install/bundle match 179
+  files. No proxy, independent
+  search backend, credential/client or retained-run change is included.
+  [Design](../design/institutional-literature-access.md#network-deadlines-and-unattended-recovery--2026-10-05)
+  / [qualification](../qualification.md#network-deadlines-and-unattended-recovery-2026-10-05).
+
 - October 5 publisher/S2 recovery: explicit Cloudflare challenges end before body
   reads and remain `PDF_CHALLENGE` in direct/batch/Host traces; ordinary 403 stays
   distinct. Existing OA/arXiv fallback and archive validation remain authoritative.

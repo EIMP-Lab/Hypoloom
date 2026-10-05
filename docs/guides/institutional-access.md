@@ -31,6 +31,15 @@ the framework continues with other admissible sources. These changes take effect
 in new Hosts and new preparation sessions; they do not change retained runs or
 require reinstalling the Windows helper.
 
+Direct HTTP requests now enforce one deadline across DNS, connection, TLS,
+headers and body; redirects and retries use the remaining caller budget. At
+expiry or cancellation the network worker is terminated and reaped, with up to
+one additional second reserved for cleanup. Slow continuous responses cannot
+keep refreshing an idle timeout. Partial PDFs are discarded; other successful
+papers remain available. This does not require a proxy or an extra init step.
+Search-provider outages use [automatic literature recovery](provider-recovery.md#literature-service-recovery);
+they are distinct from a single unavailable publisher PDF.
+
 ## Elsevier API
 
 ScienceDirect can use the official Article Retrieval API independently of the

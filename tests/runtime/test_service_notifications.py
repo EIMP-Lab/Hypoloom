@@ -95,7 +95,7 @@ def row(identity, start, end, available=False, reason='openalex_http'):
     return {'attempt_id':identity,'started_at':start,'ended_at':end,'state':'CLOSED','observation':obs}
 
 
-def test_literature_waves_are_bounded_and_late_failures_do_not_undo_recovery():
+def test_literature_waves_slow_down_and_late_failures_do_not_undo_recovery():
     records=[row('a',1,5),row('b',2,6)]
     state=reduce_availability(points(records,[]),now=7)
     assert state['recovery_attempts']==1 and state['next_retry_at']==36
@@ -103,11 +103,13 @@ def test_literature_waves_are_bounded_and_late_failures_do_not_undo_recovery():
     state=reduce_availability(points(records,[]),now=46)
     assert state['state']=='ready' and state['recovered_at']==41
     records=[row(str(i),i*1000,i*1000+2) for i in range(6)]
-    assert reduce_availability(points(records,[]),now=99999)['state']=='waiting_operator'
+    state=reduce_availability(points(records,[]),now=5003)
+    assert state['state']=='cooldown' and state['next_retry_at']==5902
+    assert reduce_availability(points(records,[]),now=99999)['state']=='recovering'
     clear={'command_id':'clear','payload':{'literature_retry_clear':{'cleared_at':100000}}}
     assert reduce_availability(points(records,[clear]),now=100001)['state']=='recovering'
     recorded=events('run',records,[clear])
-    assert [e['type'] for e in recorded]==['literature_waiting','literature_waiting','literature_retry_requested']
+    assert [e['type'] for e in recorded]==['literature_waiting','literature_retry_requested']
 
 
 def test_literature_auth_waits_for_operator_and_query_errors_keep_normal_validation():

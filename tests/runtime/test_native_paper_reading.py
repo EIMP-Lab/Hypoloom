@@ -136,7 +136,7 @@ class ReadingScenario(_FinalReportHostScenario):
     (False, False, False, "arxiv"), (False, False, False, "arxiv-timeout"),
     (False, False, False, "arxiv-challenge")],
     ids=["cpu-completion", "end-run", "batch-documents", "correct-errors", "institutional-oa", "institutional-metadata", "preparation-failure", "institutional-browser", "arxiv-fallback", "arxiv-timeout", "challenge-and-quota"])
-def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa):
+def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch, end_run, batch_documents, correct_errors, institutional_oa, service_recovery=False):
     arxiv_oa = institutional_oa in {'arxiv', 'arxiv-timeout', 'arxiv-challenge'}
     if institutional_oa:
         import sys
@@ -147,6 +147,33 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}\n"); settings_file.chmod(0o600)
     host = _new_host(tmp_path, _installed_claude(), f"http://127.0.0.1:{provider.server_port}", secret)
+    if service_recovery:
+        from hypoloom.literature import OpenAlexResponse
+        from hypoloom.literature_recovery import status as service_status
+        from test_literature_recovery import OffsetClock
+        recovery_clock = OffsetClock()
+        monkeypatch.setattr("hypoloom.literature_recovery.time", recovery_clock)
+        # Fault only the catalog transport. The original OpenAlex parser,
+        # accepted query, packet admission and real CC topology stay in use.
+        fetcher = host.literature_io.fetcher
+        fetcher.max_retries = 0
+        catalog_get = fetcher._transport.get
+        admit_coverage = host.literature_io.admit_query_coverage
+        coverage_admitted = False
+        def admit_then_outage(query):
+            nonlocal coverage_admitted
+            result = admit_coverage(query)
+            coverage_admitted = True
+            return result
+        host.literature_io.admit_query_coverage = admit_then_outage
+        outage_requests, recovery_waves = [], []
+        def outage_then_catalog(**kwargs):
+            if coverage_admitted and len(outage_requests) < 6:
+                outage_requests.append(kwargs["target"])
+                return OpenAlexResponse(status_code=503, media_type="application/json",
+                    content_length=2, body=b"{}")
+            return catalog_get(**kwargs)
+        fetcher._transport.get = outage_then_catalog
     host.grounding_web = GroundingWeb(Transport({url: _response(url,
         ("<title>Selected method</title><p>Coefficient label " + scenario.nonce + "</p>").encode())
         for url in (DOC, DOC + "/second")}))
@@ -244,6 +271,9 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                                 transport_phase='response_body', received_bytes=1378)
                     return fetch(url, **kwargs)
                 host.grounding_web.transport.fetch = interrupted_once
+    if service_recovery:
+        host.configuration["literature"] = host.literature_io.configuration
+        host.version = host._runtime_version()
     run_id = "native-paper-reading"
     max_readers = 0; stopped = False
     try:
@@ -265,6 +295,25 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             host.tick()
+            if service_recovery:
+                waiting = service_status(host.store, run_id)
+                if waiting["pending"] and waiting["recovery_attempts"] > len(recovery_waves):
+                    wave = len(recovery_waves) + 1
+                    assert waiting["state"] == "cooldown" and not waiting["requires_operator"]
+                    assert waiting["recovery_attempts"] == wave and len(outage_requests) == wave
+                    failed_reads = [row for row in host.store.list_attempts()
+                        if json.loads(row["observation_json"]).get("failure_stage") == "literature_retrieval"]
+                    assert len(failed_reads) == wave
+                    failure_observed_at = max(json.loads(row["observation_json"])["literature_service"]["observed_at"]
+                        for row in failed_reads)
+                    assert waiting["next_retry_at"] - failure_observed_at == pytest.approx(
+                        (30, 60, 120, 240, 300, 900)[wave - 1], abs=.1)
+                    for _ in range(3): host.tick()
+                    assert len(outage_requests) == wave, "cooldown must not launch another catalog request"
+                    recovery_waves.append(waiting)
+                    # Only advance the existing recovery decision clock. Real
+                    # Host/Attempt/CC wall times and original facts are intact.
+                    recovery_clock.advance_to(waiting["next_retry_at"])
             max_readers = max(max_readers, sum(handle.request.command is AgentCommand.PAPER_READ for handle in host.running_agents.values()))
             if max_readers == 3:
                 scenario.readers_ready.set()
@@ -306,7 +355,40 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if arxiv_oa or institutional_oa in {'preparation-failure', 'browser'} else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
-        if not end_run: assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts)
+        service_failures = [row for row in attempts
+            if json.loads(row["observation_json"]).get("failure_stage") == "literature_retrieval"] if service_recovery else []
+        if not end_run:
+            assert all(row["terminal_reason"] == "SUCCEEDED" for row in attempts if row not in service_failures)
+        if service_recovery:
+            from hypoloom.agent_budget import fold_agent_attempts
+            from hypoloom.observation_api import build_product_observation
+            assert len(service_failures) == len(recovery_waves) == 6
+            assert all(row["terminal_reason"] == "FAILED" for row in service_failures)
+            assert all(json.loads(row["observation_json"])["literature_service"]["reason"] == "openalex_http"
+                and json.loads(row["observation_json"])["literature_service"]["http_status"] == 503
+                for row in service_failures)
+            assert len({row["command_id"] for row in service_failures}) == 1
+            requests = [json.loads(row["observation_json"])["request"] for row in service_failures]
+            assert all(request["input_artifacts"] == requests[0]["input_artifacts"] for request in requests)
+            assert len(set(outage_requests)) == 1
+            continuation = [row for row in attempts if row["command_id"] == service_failures[0]["command_id"]]
+            assert len(continuation) == 7 and continuation[-1]["terminal_reason"] == "SUCCEEDED"
+            assert all(charge.source == "pre_model" and charge.tokens == charge.turns == charge.cost == 0
+                for charge in fold_agent_attempts(service_failures))
+            plans = [row for row in attempts if json.loads(row["observation_json"]).get("request", {}).get(
+                "task_context", {}).get("request_kind") == "GROUNDING_QUERY_PLAN"]
+            assert len(plans) == 1
+            assert service_status(host.store, run_id)["state"] == "ready"
+            assert not host.store.inspect("SELECT command_id FROM workflow_transitions WHERE json_type(payload_json,'$.literature_retry_clear')='object'")
+            events = [event["type"] for event in build_product_observation(host.state_root, run_id)["events"]]
+            assert events.count("literature_waiting") == events.count("literature_recovered") == 1
+            (tmp_path / "automatic-recovery-evidence.json").write_text(json.dumps({
+                "paid_model": False, "gpu": False, "recovery_clock_only_advanced": True,
+                "waves": recovery_waves, "failed_request_targets": outage_requests,
+                "failed_attempts": [row["attempt_id"] for row in service_failures],
+                "continuation": [row["attempt_id"] for row in continuation], "grounding_query_plans": len(plans),
+                "literature_waiting_events": events.count("literature_waiting"),
+                "literature_recovered_events": events.count("literature_recovered")}, indent=2))
         assert len([row for row in attempts if row["kind"] == "PROCESS"]) == (0 if end_run else 1)
         for row in attempts:
             observed = json.loads(row["observation_json"])
@@ -332,6 +414,11 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         host.close()
         provider.shutdown(); provider.server_close(); thread.join(timeout=5)
         if (tmp_path / "admitted-target.txt").exists(): shutil.rmtree(Path((tmp_path / "admitted-target.txt").read_text().strip()))
+
+
+def test_native_six_catalog_failures_recover_without_operator_then_readers_and_cpu_close(tmp_path, monkeypatch):
+    test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tmp_path, monkeypatch,
+        False, False, False, "arxiv", service_recovery=True)
 
 
 @pytest.mark.parametrize("stage", ["execution", "readers"])

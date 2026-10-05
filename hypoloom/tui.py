@@ -775,13 +775,9 @@ class SummaryPanel(CockpitPanel):
                 " · p API recovery[/]"
             ))
         literature = status.get("literature_retry") or {}
-        if literature.get("state") in {"cooldown", "waiting_operator", "recovering"}:
-            health.append(escape(tr(
-                "OpenAlex: {0} · {1} · next retry {2} · l Literature retry",
-                literature['state'],
-                literature.get('reason'),
-                _service_time(literature.get('next_retry_at')),
-            )))
+        if literature:
+            health.extend(escape(line) for line in _literature_status_lines(literature,
+                terminal=run_state in {"COMPLETED", "CANCELLED", "FAILED"}))
         notifications = status.get("notifications")
         if not notifications or notifications.get("state") == "unavailable":
             health.append(tr("Notifications: delivery status unknown"))
@@ -1420,6 +1416,31 @@ class EvidencePanel(CockpitPanel):
 
 def _service_time(value):
     return time.strftime("%m-%d %H:%M:%S", time.localtime(value)) if type(value) in (int, float) else "unknown"
+
+
+def _literature_status_lines(value, *, terminal=False):
+    """Describe the existing service observation without turning rounds into a cap."""
+    state = value.get("state")
+    labels = {"ready": "Retrieval recovered" if value.get("recovered_at") else "Retrieval allowed; access unverified",
+        "cooldown": "Automatic retry scheduled", "recovering": "Waiting for automatic retry",
+        "waiting_operator": "Waiting for operator"}
+    reasons = {"openalex_timeout": "Request timed out", "openalex_rate_limit": "Rate limited",
+        "openalex_auth": "Authentication rejected", "openalex_http": "HTTP request failed"}
+    lines = [tr("OpenAlex: {0}.", tr("Run ended" if terminal else labels.get(state, "Status unknown")))]
+    if value.get("reason"):
+        http = "" if value.get("http_status") is None else f" · HTTP {value['http_status']}"
+        lines.append(tr("Last failure: {0}{1}.", tr(reasons.get(value["reason"], value["reason"])), http))
+    if terminal:
+        lines.append(tr("Run ended; no further automatic retry."))
+    elif value.get("requires_operator") or state == "waiting_operator":
+        lines.append(tr("Automatic retry is paused; operator action is required.") + tr(" · l Literature retry"))
+    elif state == "recovering":
+        lines.append(tr("An eligible task will retry automatically; access is not yet confirmed."))
+    elif value.get("next_retry_at") is not None:
+        lines.append(tr("Next automatic retry: {0}.", _service_time(value["next_retry_at"])))
+    if value.get("affected_roles"):
+        lines.append(tr("Affected roles: {0}.", ", ".join(value["affected_roles"])))
+    return lines
 
 
 class HypoloomVNextMonitor(App):

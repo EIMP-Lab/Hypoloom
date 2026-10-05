@@ -9,6 +9,7 @@ return PDF bytes separately from the JSON-safe literature packet.
 
 from __future__ import annotations
 
+import base64
 import http.client
 import ipaddress
 import json
@@ -126,6 +127,7 @@ class LiteratureFailureCode(str, Enum):
     PDF_HTTP = "PDF_HTTP"
     PDF_CHALLENGE = "PDF_CHALLENGE"
     PDF_TRANSPORT = "PDF_TRANSPORT"
+    NETWORK_CLEANUP_FAILED = "NETWORK_CLEANUP_FAILED"
     PDF_INVALID = "PDF_INVALID"
     PDF_RESPONSE_LIMIT = "PDF_RESPONSE_LIMIT"
     POPPLER_TIMEOUT = "POPPLER_TIMEOUT"
@@ -147,6 +149,8 @@ class LiteratureError(ValueError):
         http_status: int | None = None,
         attempt_count: int | None = None,
         retry_after_seconds: float | None = None,
+        transport_phase: str | None = None,
+        received_bytes: int = 0,
     ) -> None:
         super().__init__(message)
         self.code = self.default_code if code is None else code
@@ -165,6 +169,12 @@ class LiteratureError(ValueError):
             raise ValueError("attempt_count must be a positive integer")
         self.attempt_count = attempt_count
         self.retry_after_seconds = retry_after_seconds
+        if transport_phase not in {None, "dns", "tcp_connect", "tls_handshake", "request_send",
+                                   "response_headers", "response_body", "response_decode"}:
+            raise ValueError("unknown literature transport phase")
+        if type(received_bytes) is not int or received_bytes < 0:
+            raise ValueError("received byte count must be nonnegative")
+        self.transport_phase, self.received_bytes = transport_phase, received_bytes
 
 
 class LiteratureQueryError(LiteratureError):
@@ -1517,6 +1527,7 @@ class StdlibOpenAlexTransport:
         headers: Mapping[str, str],
         timeout_seconds: float,
         max_bytes: int,
+        cancel_event: Event | None = None,
     ) -> OpenAlexResponse:
         if host != OPENALEX_API_HOST:
             raise LiteratureFetchError(
@@ -1534,51 +1545,8 @@ class StdlibOpenAlexTransport:
                 "OpenAlex transport rejected an invalid request target",
                 code=LiteratureFailureCode.OPENALEX_RESPONSE_INVALID,
             )
-        connection = http.client.HTTPSConnection(
-            OPENALEX_API_HOST,
-            443,
-            timeout=timeout_seconds,
-        )
-        try:
-            connection.request("GET", target, headers=dict(headers))
-            response = connection.getresponse()
-            content_length = _http_content_length(
-                response.getheader("Content-Length"),
-                "OpenAlex",
-                LiteratureFailureCode.OPENALEX_RESPONSE_INVALID,
-            )
-            if content_length is not None and content_length > max_bytes:
-                raise LiteratureFetchError(
-                    "OpenAlex response exceeded its byte bound",
-                    code=LiteratureFailureCode.OPENALEX_RESPONSE_LIMIT,
-                )
-            body = response.read(max_bytes + 1)
-            if len(body) > max_bytes:
-                raise LiteratureFetchError(
-                    "OpenAlex response exceeded its byte bound",
-                    code=LiteratureFailureCode.OPENALEX_RESPONSE_LIMIT,
-                )
-            return OpenAlexResponse(
-                status_code=response.status,
-                media_type=response.getheader("Content-Type"),
-                content_length=content_length,
-                body=body,
-                retry_after=response.getheader("Retry-After"),
-            )
-        except (TimeoutError, socket.timeout) as exc:
-            raise LiteratureFetchError(
-                "OpenAlex request timed out",
-                code=LiteratureFailureCode.OPENALEX_TIMEOUT,
-            ) from exc
-        except LiteratureError:
-            raise
-        except (OSError, http.client.HTTPException) as exc:
-            raise LiteratureFetchError(
-                "OpenAlex HTTPS transport failed",
-                code=LiteratureFailureCode.OPENALEX_HTTP,
-            ) from exc
-        finally:
-            connection.close()
+        return _metadata_https_get("OpenAlex", host, target, headers, timeout_seconds,
+                                   max_bytes, cancel_event=cancel_event)
 
 
 class StdlibSemanticScholarTransport:
@@ -1592,6 +1560,7 @@ class StdlibSemanticScholarTransport:
         headers: Mapping[str, str],
         timeout_seconds: float,
         max_bytes: int,
+        cancel_event: Event | None = None,
     ) -> OpenAlexResponse:
         if host != SEMANTIC_SCHOLAR_API_HOST:
             raise LiteratureFetchError("Semantic Scholar host is not canonical")
@@ -1604,39 +1573,49 @@ class StdlibSemanticScholarTransport:
             or "\n" in target
         ):
             raise LiteratureFetchError("Semantic Scholar target is invalid")
-        return _pdf_locator_get("Semantic Scholar", host, target, headers, timeout_seconds, max_bytes)
+        return _pdf_locator_get("Semantic Scholar", host, target, headers, timeout_seconds, max_bytes, cancel_event=cancel_event)
+
+
+def _network_http_get(uri, headers, timeout_seconds, max_bytes, *,
+                      approved_addresses=None, cancel_event=None):
+    from .network_io import run_network_operation
+    deadline = time.monotonic() + timeout_seconds
+    return run_network_operation("hypoloom.grounding_web:_fetch_in_process", {
+        "uri": uri, "headers": dict(headers), "deadline": deadline,
+        "approved_addresses": approved_addresses, "max_bytes": max_bytes,
+    }, deadline=deadline, max_output_bytes=4 * ((max_bytes + 2) // 3) + 65536,
+       cancel_event=cancel_event)
+
+
+def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_bytes, *, cancel_event=None):
+    from .network_io import NetworkOperationError
+    try:
+        value = _network_http_get(f"https://{host}{target}", headers,
+                                 timeout_seconds, max_bytes, cancel_event=cancel_event)
+        return OpenAlexResponse(status_code=value["status_code"], media_type=value["media_type"],
+            content_length=value["content_length"], body=base64.b64decode(value["body_b64"], validate=True),
+            retry_after=value["retry_after"])
+    except NetworkOperationError as exc:
+        if exc.code == "cleanup_failed":
+            raise LiteratureFetchError("Network worker could not be reaped",
+                code=LiteratureFailureCode.NETWORK_CLEANUP_FAILED) from None
+        if provider == "OpenAlex":
+            code = (LiteratureFailureCode.OPENALEX_TIMEOUT if exc.code in {"timed_out", "cancelled"}
+                    else LiteratureFailureCode.OPENALEX_RESPONSE_LIMIT if exc.code == "response_limit"
+                    else LiteratureFailureCode.OPENALEX_HTTP)
+        else:
+            code = {"timed_out": LiteratureFailureCode.PDF_TIMEOUT,
+                    "cancelled": LiteratureFailureCode.PDF_DEADLINE}.get(exc.code, LiteratureFailureCode.PDF_TRANSPORT)
+        raise LiteratureFetchError(f"{provider} transport failed ({exc.code})", code=code,
+                                   http_status=exc.http_status, transport_phase=exc.transport_phase,
+                                   received_bytes=exc.received_bytes) from None
 
 
 def _pdf_locator_get(provider: str, host: str, target: str, headers: Mapping[str, str],
-                     timeout_seconds: float, max_bytes: int) -> OpenAlexResponse:
-    """Shared bounded HTTP read after a locator's exact-host/target check."""
-    connection = http.client.HTTPSConnection(host, 443, timeout=timeout_seconds)
-    try:
-        connection.request("GET", target, headers=dict(headers))
-        response = connection.getresponse()
-        content_length = _http_content_length(
-            response.getheader("Content-Length"), provider, LiteratureFailureCode.FETCH_FAILED,
-        )
-        if content_length is not None and content_length > max_bytes:
-            raise LiteratureFetchError(f"{provider} response exceeded its byte bound")
-        body = response.read(max_bytes + 1)
-        if len(body) > max_bytes:
-            raise LiteratureFetchError(f"{provider} response exceeded its byte bound")
-        return OpenAlexResponse(status_code=response.status,
-            media_type=response.getheader("Content-Type"), content_length=content_length, body=body,
-            retry_after=response.getheader("Retry-After"))
-    except (TimeoutError, socket.timeout) as exc:
-        raise LiteratureFetchError(
-            f"{provider} request timed out", code=LiteratureFailureCode.PDF_TIMEOUT,
-        ) from exc
-    except LiteratureError:
-        raise
-    except (OSError, http.client.HTTPException) as exc:
-        raise LiteratureFetchError(
-            f"{provider} HTTPS transport failed", code=LiteratureFailureCode.PDF_TRANSPORT,
-        ) from exc
-    finally:
-        connection.close()
+                     timeout_seconds: float, max_bytes: int, *, cancel_event=None) -> OpenAlexResponse:
+    """Same cancellable HTTP reader, after a locator's exact-host/target check."""
+    return _metadata_https_get(provider, host, target, headers, timeout_seconds,
+                               max_bytes, cancel_event=cancel_event)
 
 
 class PdfFallbackLocator(Protocol):
@@ -1719,7 +1698,7 @@ class SemanticScholarPdfLocator:
     def locate(self, paper: SearchPaper) -> Sequence[str]:
         return self.locate_doi(paper.bibliographic_identity[4:]) if paper.bibliographic_identity.startswith("doi:") else ()
 
-    def locate_doi(self, doi: str, *, timeout_seconds=None) -> Sequence[str]:
+    def locate_doi(self, doi: str, *, timeout_seconds=None, cancel_event: Event | None = None) -> Sequence[str]:
         doi = _identity("doi:" + doi)[4:]
         if timeout_seconds is not None and (isinstance(timeout_seconds, bool)
                 or not isinstance(timeout_seconds, (int, float))
@@ -1732,7 +1711,7 @@ class SemanticScholarPdfLocator:
             + quote(f"DOI:{doi}", safe="")
             + "?fields=externalIds%2CopenAccessPdf"
         )
-        response = self._request(target, deadline)
+        response = self._request(target, deadline, cancel_event=cancel_event)
         if response.status_code == 404:
             return ()
         if response.status_code != 200:
@@ -1767,15 +1746,21 @@ class SemanticScholarPdfLocator:
             return ()
         return (uri,)
 
-    def _request(self, target, deadline):
+    def _request(self, target, deadline, *, cancel_event=None):
         def remaining():
+            if cancel_event is not None and cancel_event.is_set():
+                raise LiteratureFetchError("Semantic Scholar lookup cancelled", code=LiteratureFailureCode.PDF_DEADLINE)
             seconds = deadline - self._clock()
             if seconds <= 0:
                 raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
             return seconds
 
-        if not self._request_lock.acquire(timeout=remaining()):
-            raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
+        if cancel_event is None:
+            if not self._request_lock.acquire(timeout=remaining()):
+                raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
+        else:
+            while not self._request_lock.acquire(timeout=min(.05, remaining())):
+                remaining()
         try:
             remaining()
             if self._retry_at > self._clock():
@@ -1785,7 +1770,11 @@ class SemanticScholarPdfLocator:
                 delay = self._next_request_at - self._clock()
                 if delay >= remaining():
                     raise LiteratureFetchError("Semantic Scholar lookup deadline expired", code=LiteratureFailureCode.PDF_TIMEOUT)
-                self._sleep(delay)
+                if cancel_event is not None and self._sleep is time.sleep:
+                    cancel_event.wait(delay)
+                    remaining()
+                else:
+                    self._sleep(delay)
             try:
                 key = self._clean_key(self._api_key_loader()) if self._api_key_loader is not None else self._api_key
             except Exception:
@@ -1797,7 +1786,8 @@ class SemanticScholarPdfLocator:
             self._next_request_at = self._clock() + 1.0
             try:
                 response = self._transport.get(host=SEMANTIC_SCHOLAR_API_HOST, target=target,
-                    headers=headers, timeout_seconds=timeout, max_bytes=self.max_response_bytes)
+                    headers=headers, timeout_seconds=timeout, max_bytes=self.max_response_bytes,
+                    **({"cancel_event": cancel_event} if isinstance(self._transport, StdlibSemanticScholarTransport) else {}))
             except LiteratureError as exc:
                 if exc.http_status == 429:
                     delay = _pdf_fallback_retry_delay(exc)
@@ -1805,7 +1795,8 @@ class SemanticScholarPdfLocator:
                 else:
                     delay = exc.retry_after_seconds
                 raise LiteratureFetchError("Semantic Scholar metadata lookup failed", code=exc.code,
-                    http_status=exc.http_status, retry_after_seconds=delay) from None
+                    http_status=exc.http_status, retry_after_seconds=delay,
+                    transport_phase=exc.transport_phase, received_bytes=exc.received_bytes) from None
             except TimeoutError:
                 raise LiteratureFetchError("Semantic Scholar metadata lookup timed out", code=LiteratureFailureCode.PDF_TIMEOUT) from None
             except Exception:
@@ -1839,7 +1830,7 @@ class StdlibUnpaywallTransport:
     """Contact email is sent only to the fixed DOI endpoint, with no redirects."""
 
     def get(self, *, host: str, target: str, headers: Mapping[str, str],
-            timeout_seconds: float, max_bytes: int) -> OpenAlexResponse:
+            timeout_seconds: float, max_bytes: int, cancel_event: Event | None = None) -> OpenAlexResponse:
         if host != UNPAYWALL_API_HOST:
             raise LiteratureFetchError("Unpaywall host is not canonical")
         if not isinstance(target, str) or not target.startswith("/v2/10.") or any(c in target for c in "#\r\n"):
@@ -1853,7 +1844,7 @@ class StdlibUnpaywallTransport:
             _unpaywall_email(query["email"][0], None)
         except ValueError as exc:
             raise LiteratureFetchError("Unpaywall target is invalid") from exc
-        return _pdf_locator_get("Unpaywall", host, target, headers, timeout_seconds, max_bytes)
+        return _pdf_locator_get("Unpaywall", host, target, headers, timeout_seconds, max_bytes, cancel_event=cancel_event)
 
 
 def _unpaywall_email(email: str | None, email_file: str | Path | None) -> str:
@@ -1902,13 +1893,14 @@ class UnpaywallPdfLocator:
     def locate(self, paper: SearchPaper) -> Sequence[str]:
         return self.locate_doi(paper.bibliographic_identity[4:]) if paper.bibliographic_identity.startswith("doi:") else ()
 
-    def locate_doi(self, doi: str, *, timeout_seconds=None) -> Sequence[str]:
+    def locate_doi(self, doi: str, *, timeout_seconds=None, cancel_event: Event | None = None) -> Sequence[str]:
         doi = _identity("doi:" + doi)[4:]
         target = "/v2/" + quote(doi, safe="/") + "?" + urlencode({"email": self._email})
         try:
             response = self._transport.get(host=UNPAYWALL_API_HOST, target=target,
                 headers={"Accept": "application/json", "User-Agent": "Hypoloom-Literature/2"},
-                timeout_seconds=self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds), max_bytes=self.max_response_bytes)
+                timeout_seconds=self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds), max_bytes=self.max_response_bytes,
+                **({"cancel_event": cancel_event} if isinstance(self._transport, StdlibUnpaywallTransport) else {}))
         except LiteratureError:
             raise
         except TimeoutError as exc:
@@ -2101,8 +2093,8 @@ class PopplerPdfExtractor:
             )
         return PdfDocument(page_count=page_count, pages=pages + ("",) * (page_count - len(pages)))
 
-    def extract_pdf(self, content: bytes, *, max_pages: int) -> PdfExtraction:
-        document = self.extract_document(content, max_pages=max_pages)
+    def extract_pdf(self, content: bytes, *, max_pages: int, timeout_seconds: float | None = None) -> PdfExtraction:
+        document = self.extract_document(content, max_pages=max_pages, timeout_seconds=timeout_seconds)
         pages, page_count = document.pages, document.page_count
         if not any(page.strip() for page in pages):
             raise LiteratureValidationError("PDF contains no readable text", code=LiteratureFailureCode.POPPLER_INVALID)
@@ -2321,7 +2313,8 @@ class OpenAlexLiteratureFetcher:
         response = self._transport.get(host=OPENALEX_API_HOST, target=target,
             headers={"Accept": "application/json", "Authorization": f"Bearer {self._api_key}",
                      "User-Agent": "Hypoloom-Grounding/1"},
-            timeout_seconds=min(self.timeout_seconds, timeout_seconds), max_bytes=self.max_response_bytes)
+            timeout_seconds=min(self.timeout_seconds, timeout_seconds), max_bytes=self.max_response_bytes,
+            **({"cancel_event": self._cancel_event} if isinstance(self._transport, StdlibOpenAlexTransport) else {}))
         works = self._response_works(response, max_results)
         results = []
         for work in works:
@@ -2544,8 +2537,10 @@ class OpenAlexLiteratureFetcher:
                 resolved.append(venue)
         return tuple(resolved)
 
-    def resolve(self, hostname: str) -> Sequence[str]:
+    def resolve(self, hostname: str, *, timeout_seconds: float | None = None) -> Sequence[str]:
         try:
+            if self._resolver == self._resolve_host:
+                return self._resolve_host(hostname, timeout_seconds=timeout_seconds)
             return self._resolver(hostname)
         except LiteratureError:
             raise
@@ -2554,31 +2549,25 @@ class OpenAlexLiteratureFetcher:
         except Exception as exc:
             raise LiteratureFetchError("PDF DNS resolution failed") from exc
 
-    def fetch(
-        self,
-        uri: str,
-        *,
-        approved_addresses: tuple[str, ...],
-        max_bytes: int,
-    ) -> FetchResponse:
+    def fetch(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
+              timeout_seconds: float | None = None) -> FetchResponse:
         try:
-            return self._pdf_fetcher(
-                uri,
-                approved_addresses=approved_addresses,
-                max_bytes=max_bytes,
-            )
+            bounds = ({"timeout_seconds": timeout_seconds}
+                      if self._pdf_fetcher == self._fetch_pdf_https else {})
+            return self._pdf_fetcher(uri, approved_addresses=approved_addresses,
+                                     max_bytes=max_bytes, **bounds)
         except LiteratureError:
             raise
         except (TimeoutError, socket.timeout) as exc:
-            raise LiteratureFetchError(
-                "PDF request timed out",
-                code=LiteratureFailureCode.PDF_TIMEOUT,
-            ) from exc
+            raise LiteratureFetchError("PDF request timed out", code=LiteratureFailureCode.PDF_TIMEOUT) from exc
         except Exception as exc:
             raise LiteratureFetchError("PDF HTTPS transport failed", code=LiteratureFailureCode.PDF_TRANSPORT) from exc
 
-    def extract_pdf(self, content: bytes, *, max_pages: int) -> PdfExtraction:
-        return self._pdf_extractor.extract_pdf(content, max_pages=max_pages)
+    def extract_pdf(self, content: bytes, *, max_pages: int,
+                    timeout_seconds: float | None = None) -> PdfExtraction:
+        bounds = ({"timeout_seconds": timeout_seconds}
+                  if getattr(self._pdf_extractor.extract_pdf, "__func__", None) is PopplerPdfExtractor.extract_pdf else {})
+        return self._pdf_extractor.extract_pdf(content, max_pages=max_pages, **bounds)
 
     def _request_results(
         self,
@@ -2614,6 +2603,7 @@ class OpenAlexLiteratureFetcher:
                     },
                     timeout_seconds=min(self.timeout_seconds, remaining),
                     max_bytes=self.max_response_bytes,
+                    **({"cancel_event": self._cancel_event} if isinstance(self._transport, StdlibOpenAlexTransport) else {}),
                 )
                 return self._response_works(response, quota)
             except (TimeoutError, socket.timeout):
@@ -2796,91 +2786,48 @@ class OpenAlexLiteratureFetcher:
             )
         return tuple(results)
 
-    @staticmethod
-    def _resolve_host(hostname: str) -> Sequence[str]:
+    def _resolve_host(self, hostname: str, *, timeout_seconds: float | None = None) -> Sequence[str]:
+        from .network_io import NetworkOperationError, run_network_operation
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        deadline = time.monotonic() + timeout
         try:
-            records = socket.getaddrinfo(
-                hostname,
-                443,
-                family=socket.AF_UNSPEC,
-                type=socket.SOCK_STREAM,
-            )
-        except socket.gaierror as exc:
-            raise _LiteratureDnsResolutionError("PDF URI", hostname) from exc
-        return tuple(sorted({record[4][0] for record in records}))
+            result = run_network_operation("hypoloom.grounding_web:_resolve_in_process",
+                {"hostname": hostname}, deadline=deadline, max_output_bytes=65536,
+                cancel_event=self._cancel_event)
+            return tuple(result["addresses"])
+        except NetworkOperationError as exc:
+            if exc.code == "cleanup_failed":
+                raise LiteratureFetchError("Network worker could not be reaped",
+                    code=LiteratureFailureCode.NETWORK_CLEANUP_FAILED) from None
+            if exc.code in {"timed_out", "cancelled"}:
+                raise LiteratureFetchError("PDF DNS resolution timed out or was cancelled",
+                    code=LiteratureFailureCode.PDF_TIMEOUT if exc.code == "timed_out" else LiteratureFailureCode.PDF_DEADLINE,
+                    transport_phase="dns", received_bytes=0) from None
+            raise _LiteratureDnsResolutionError("PDF URI", hostname) from None
 
-    def _fetch_pdf_https(
-        self,
-        uri: str,
-        *,
-        approved_addresses: tuple[str, ...],
-        max_bytes: int,
-    ) -> FetchResponse:
-        canonical, hostname = _uri_parts(uri, "PDF URI")
-        parsed = urlsplit(canonical)
-        target = urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
-        connection = http.client.HTTPSConnection(
-            hostname,
-            443,
-            timeout=self.timeout_seconds,
-        )
+    def _fetch_pdf_https(self, uri: str, *, approved_addresses: tuple[str, ...],
+                         max_bytes: int, timeout_seconds: float | None = None) -> FetchResponse:
+        from .network_io import NetworkOperationError
+        canonical, _hostname = _uri_parts(uri, "PDF URI")
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
         try:
-            connection.connect()
-            if connection.sock is None:
-                raise LiteratureFetchError("PDF HTTPS connection has no socket")
-            peer_address = str(connection.sock.getpeername()[0])
-            if peer_address not in approved_addresses:
-                raise LiteratureFetchError(
-                    "PDF HTTPS peer was not pre-approved by DNS"
-                )
-            connection.request(
-                "GET",
-                target,
-                headers={
-                    "Accept": "application/pdf",
-                    "User-Agent": "Hypoloom-Hypoloom-literature/1",
-                },
-            )
-            response = connection.getresponse()
-            if str(response.getheader("Cf-Mitigated") or "").strip().casefold() == "challenge":
-                raise LiteratureFetchError("PDF request requires publisher verification",
-                    code=LiteratureFailureCode.PDF_CHALLENGE, http_status=response.status)
-            content_length = _http_content_length(
-                response.getheader("Content-Length"),
-                "PDF",
-                LiteratureFailureCode.FETCH_FAILED,
-            )
-            if content_length is not None and content_length > max_bytes:
-                raise LiteratureFetchError(
-                    "PDF response exceeded its byte bound",
-                    code=LiteratureFailureCode.PDF_RESPONSE_LIMIT,
-                )
-            body = response.read(max_bytes + 1)
-            if len(body) > max_bytes:
-                raise LiteratureFetchError(
-                    "PDF response exceeded its byte bound",
-                    code=LiteratureFailureCode.PDF_RESPONSE_LIMIT,
-                )
-            return FetchResponse(
-                requested_uri=canonical,
-                status_code=response.status,
-                peer_address=peer_address,
-                media_type=response.getheader("Content-Type"),
-                content_length=content_length,
-                location=response.getheader("Location"),
-                body=body,
-            )
-        except (TimeoutError, socket.timeout) as exc:
-            raise LiteratureFetchError(
-                "PDF request timed out",
-                code=LiteratureFailureCode.PDF_TIMEOUT,
-            ) from exc
-        except LiteratureError:
-            raise
-        except (OSError, http.client.HTTPException) as exc:
-            raise LiteratureFetchError("PDF HTTPS transport failed") from exc
-        finally:
-            connection.close()
+            value = _network_http_get(canonical,
+                {"Accept": "application/pdf", "User-Agent": "Hypoloom-Hypoloom-literature/1"},
+                timeout, max_bytes, approved_addresses=approved_addresses, cancel_event=self._cancel_event)
+            return FetchResponse(requested_uri=value["requested_uri"], status_code=value["status_code"],
+                peer_address=value["peer_address"], media_type=value["media_type"],
+                content_length=value["content_length"], location=value["location"],
+                body=base64.b64decode(value["body_b64"], validate=True))
+        except NetworkOperationError as exc:
+            code = {"timed_out": LiteratureFailureCode.PDF_TIMEOUT,
+                    "cancelled": LiteratureFailureCode.PDF_DEADLINE,
+                    "challenge": LiteratureFailureCode.PDF_CHALLENGE,
+                    "cleanup_failed": LiteratureFailureCode.NETWORK_CLEANUP_FAILED,
+                    "unsafe_url": LiteratureFailureCode.VALIDATION_FAILED,
+                    "response_limit": LiteratureFailureCode.PDF_RESPONSE_LIMIT}.get(exc.code, LiteratureFailureCode.PDF_TRANSPORT)
+            raise LiteratureFetchError(f"PDF request failed ({exc.code})", code=code,
+                                       http_status=exc.http_status, transport_phase=exc.transport_phase,
+                                       received_bytes=exc.received_bytes) from None
 
 
 def _http_content_length(
@@ -3102,6 +3049,7 @@ def _openalex_attempt_failure(
         http_status=failure.http_status,
         attempt_count=attempt_count,
         retry_after_seconds=failure.retry_after_seconds,
+        transport_phase=failure.transport_phase, received_bytes=failure.received_bytes,
     )
 
 
@@ -3466,6 +3414,8 @@ def _download_event(
         "source_host": source_host,
         "failure_code": None if error is None else error.code.value,
         "http_status": None if error is None else error.http_status,
+        **({"transport_phase": error.transport_phase, "received_bytes": error.received_bytes}
+           if error is not None and error.transport_phase is not None else {}),
     })
 
 
@@ -3555,8 +3505,12 @@ class FixedLiteratureIO:
                 _download_event(events, "fallback_lookup", "RATE_LIMITED")
                 return ()
         try:
-            located = self.fallback_locator.locate_doi(identity[4:], timeout_seconds=timeout_seconds)
+            located = self.fallback_locator.locate_doi(identity[4:], timeout_seconds=timeout_seconds,
+                **({"cancel_event": self._cancel_event}
+                   if isinstance(self.fallback_locator, (SemanticScholarPdfLocator, UnpaywallPdfLocator)) else {}))
         except LiteratureError as exc:
+            if exc.code is LiteratureFailureCode.NETWORK_CLEANUP_FAILED:
+                raise
             if exc.http_status == 429:
                 with self._pdf_lock:
                     self._fallback_retry_at = max(self._fallback_retry_at, self._clock() + _pdf_fallback_retry_delay(exc))
@@ -3970,10 +3924,15 @@ class FixedLiteratureIO:
                 _download_event(events, name, "DEADLINE", uri=uri)
                 return None
             try:
-                self._approve_uri(uri, name, approved_hosts)
+                self._approve_uri(uri, name, approved_hosts, deadline=deadline)
             except _LiteratureDnsResolutionError as exc:
                 _download_event(events, name, "TRANSPORT_FAILURE", uri=uri, error=exc)
             except LiteratureFetchError as exc:
+                if exc.code in {LiteratureFailureCode.PDF_TIMEOUT, LiteratureFailureCode.PDF_DEADLINE}:
+                    _download_event(events, name, "TIMEOUT", uri=uri, error=exc)
+                    if self._clock() >= deadline or self._cancel_event is not None and self._cancel_event.is_set():
+                        return None
+                    continue
                 if exc.code is not LiteratureFailureCode.VALIDATION_FAILED:
                     raise  # Unknown resolver/adapter faults still fail the operation.
                 # Deny this candidate before PDF/cache/fallback access. A bad
@@ -4017,9 +3976,13 @@ class FixedLiteratureIO:
                 _download_event(events, "fallback_lookup", "DEADLINE")
                 return None
             bounded_lookup = getattr(self.fallback_locator, "locate_doi", None)
-            located = (bounded_lookup(candidate.bibliographic_identity[4:], timeout_seconds=remaining)
+            located = (bounded_lookup(candidate.bibliographic_identity[4:], timeout_seconds=remaining,
+                       **({"cancel_event": self._cancel_event}
+                          if isinstance(self.fallback_locator, (SemanticScholarPdfLocator, UnpaywallPdfLocator)) else {}))
                        if callable(bounded_lookup) else self.fallback_locator.locate(candidate))
         except LiteratureError as exc:
+            if exc.code is LiteratureFailureCode.NETWORK_CLEANUP_FAILED:
+                raise
             if exc.http_status == 429:
                 with self._pdf_lock:
                     fallback_rate_limited[0] = True
@@ -4098,10 +4061,14 @@ class FixedLiteratureIO:
                     continue
             except LiteratureError as exc:
                 _download_event(events, stage, "VALIDATION_FAILURE", uri=source_uri, error=exc)
+                if exc.code is LiteratureFailureCode.NETWORK_CLEANUP_FAILED:
+                    raise
                 continue
             try:
                 extraction = self.fetcher.extract_pdf(
-                    body, max_pages=self.max_pdf_pages
+                    body, max_pages=self.max_pdf_pages,
+                    **({"timeout_seconds": deadline - self._clock()}
+                       if isinstance(self.fetcher, OpenAlexLiteratureFetcher) else {}),
                 )
             except LiteratureError as exc:
                 _download_event(events, "extraction", "EXTRACTION_FAILURE", uri=source_uri, error=exc)
@@ -4156,6 +4123,7 @@ class FixedLiteratureIO:
         cache: dict[str, tuple[str, ...]],
         *,
         refresh: bool = False,
+        deadline: float | None = None,
     ) -> tuple[str, tuple[str, ...]]:
         uri, hostname = _uri_parts(value, name)
         if (
@@ -4173,7 +4141,9 @@ class FixedLiteratureIO:
             addresses = cache[hostname]
         else:
             try:
-                resolved = self.fetcher.resolve(hostname)
+                bounds = ({"timeout_seconds": deadline - self._clock()}
+                          if deadline is not None and isinstance(self.fetcher, OpenAlexLiteratureFetcher) else {})
+                resolved = self.fetcher.resolve(hostname, **bounds)
             except _LiteratureDnsResolutionError as exc:
                 raise _LiteratureDnsResolutionError(name, exc.hostname) from exc
             except LiteratureError:
@@ -4223,7 +4193,7 @@ class FixedLiteratureIO:
                     "PDF request bound expired", code=LiteratureFailureCode.PDF_REQUEST_BUDGET,
                 )
             uri, addresses = self._approve_uri(
-                current, "PDF URI", cache, refresh=True
+                current, "PDF URI", cache, refresh=True, deadline=deadline
             )
             if self._clock() >= deadline:
                 raise LiteratureFetchError(
@@ -4240,6 +4210,8 @@ class FixedLiteratureIO:
                     uri,
                     approved_addresses=addresses,
                     max_bytes=self.max_pdf_bytes + 1,
+                    **({"timeout_seconds": deadline - self._clock()}
+                       if isinstance(self.fetcher, OpenAlexLiteratureFetcher) else {}),
                 )
             except LiteratureError:
                 raise

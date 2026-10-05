@@ -9,6 +9,7 @@ Host callers must schedule this bounded blocking I/O outside writer transactions
 from __future__ import annotations
 
 import http.client
+import base64
 import ipaddress
 import re
 import socket
@@ -20,6 +21,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 
 from .literature import (MAX_ADDRESSES_PER_HOST, FetchResponse, LiteratureError, PdfDocument,
                          PopplerPdfExtractor, _public_address, _uri_parts)
+from .network_io import NetworkOperationError, report_network_progress, run_network_operation
 
 
 class GroundingWebError(ValueError):
@@ -46,23 +48,54 @@ class PublicHttpsTransport:
             raise ValueError("web timeout must be within 0.1..60 seconds")
         self.timeout_seconds = timeout_seconds
 
-    def resolve(self, hostname: str) -> tuple[str, ...]:
-        return tuple(sorted({item[4][0] for item in socket.getaddrinfo(
-            hostname, 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)}))
+    def resolve(self, hostname: str, *, timeout_seconds: float | None = None,
+                cancel_event: Any = None) -> tuple[str, ...]:
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        try:
+            value = run_network_operation("hypoloom.grounding_web:_resolve_in_process",
+                {"hostname": hostname}, deadline=time.monotonic() + max(0, timeout),
+                max_output_bytes=65536, cancel_event=cancel_event)
+        except NetworkOperationError as error:
+            raise _network_error(error, phase="dns") from None
+        return tuple(value["addresses"])
 
     def request_headers(self, uri: str) -> dict[str, str]:
         return {"Accept": "text/html, text/plain, application/pdf;q=0.9, application/json;q=0.8, application/atom+xml;q=0.8",
                 "User-Agent": "Hypoloom-Grounding/1"}
 
     def fetch(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
-              timeout_seconds: float | None = None) -> FetchResponse:
+              timeout_seconds: float | None = None, cancel_event: Any = None) -> FetchResponse:
+        canonical, _ = _uri_parts(uri, "web URL")
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        deadline = time.monotonic() + max(0, timeout)
+        try:
+            result = run_network_operation("hypoloom.grounding_web:_fetch_in_process",
+                {"uri": canonical, "approved_addresses": list(approved_addresses), "max_bytes": max_bytes,
+                 "headers": self.request_headers(canonical), "deadline": deadline},
+                deadline=deadline, max_output_bytes=(max_bytes * 4 // 3) + 65536, cancel_event=cancel_event)
+        except NetworkOperationError as error:
+            raise _network_error(error) from None
+        return _fetch_response(result)
+
+    def _fetch_in_process(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
+                          timeout_seconds: float | None = None) -> FetchResponse:
+        """Socket implementation seam for injected HTTP tests; production uses fetch."""
+        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        return _fetch_response(self._request_in_process(uri, approved_addresses=approved_addresses,
+            max_bytes=max_bytes, deadline=time.monotonic() + max(0, timeout), headers=self.request_headers(uri)))
+
+    def _request_in_process(self, uri: str, *, approved_addresses: tuple[str, ...], max_bytes: int,
+                            deadline: float, headers: dict[str, str]) -> dict[str, Any]:
         canonical, host = _uri_parts(uri, "web URL")
         parsed = urlsplit(canonical)
-        timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
+        timeout = deadline - time.monotonic()
         if timeout <= 0: raise GroundingWebError("timed_out", "web request wall bound expired")
-        deadline = time.monotonic() + timeout
         connection = http.client.HTTPSConnection(host, 443, timeout=timeout)
         phase, size, status = "tcp_connect", 0, None
+        def progress(value: str) -> None:
+            nonlocal phase
+            phase = value
+            report_network_progress(phase, received_bytes=size, http_status=status)
         def timed_out():
             return GroundingWebError("timed_out", "web transport timed out",
                 transport_phase=phase, received_bytes=size,
@@ -76,7 +109,7 @@ class PublicHttpsTransport:
             # Do not repeat DNS or grant each address a fresh full timeout.
             last_error = None
             for address in approved_addresses:
-                phase = "tcp_connect"
+                progress("tcp_connect")
                 address = _public_address(address, "web DNS address")
                 sock = socket.socket(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM)
                 try:
@@ -84,7 +117,7 @@ class PublicHttpsTransport:
                     if source_address is not None: sock.bind(source_address)
                     sock.connect((address, 443))
                     sock.settimeout(remaining())
-                    phase = "tls_handshake"
+                    progress("tls_handshake")
                     return sock
                 except OSError as exc:
                     last_error = exc; sock.close()
@@ -94,18 +127,19 @@ class PublicHttpsTransport:
             raise GroundingWebError("unsafe_url", "no approved public web address")
         connection._create_connection = connect_approved
         try:
+            progress("tcp_connect")
             connection.connect()
             if connection.sock is None:
                 raise GroundingWebError("transport_failed", "HTTPS connection has no socket")
             peer = _public_address(str(connection.sock.getpeername()[0]), "web peer")
             if peer not in approved_addresses:
                 raise GroundingWebError("unsafe_url", "HTTPS peer differs from approved DNS addresses")
-            phase = "request_send"
+            progress("request_send")
             connection.sock.settimeout(remaining())
             connection.request("GET", urlunsplit(("", "", parsed.path or "/", parsed.query, "")),
-                headers=self.request_headers(canonical))
+                headers=headers)
             connection.sock.settimeout(remaining())
-            phase = "response_headers"
+            progress("response_headers")
             response = connection.getresponse()
             status = response.status
             if (response.getheader("Cf-Mitigated") or "").strip().lower() == "challenge":
@@ -118,7 +152,7 @@ class PublicHttpsTransport:
             if length is not None and length > max_bytes:
                 raise GroundingWebError("response_limit", "web response exceeds its byte bound")
             chunks = []
-            phase = "response_body"
+            progress("response_body")
             while True:
                 seconds_left = remaining()
                 if connection.sock is not None:
@@ -128,15 +162,49 @@ class PublicHttpsTransport:
                     break
                 chunks.append(chunk)
                 size += len(chunk)
+                progress("response_body")
                 if size > max_bytes:
                     raise GroundingWebError("response_limit", "web response exceeds its byte bound")
-            return FetchResponse(requested_uri=canonical, status_code=response.status,
-                peer_address=peer, media_type=response.getheader("Content-Type"),
-                content_length=length, location=response.getheader("Location"), body=b"".join(chunks))
+            return {"requested_uri": canonical, "status_code": response.status,
+                "peer_address": peer, "media_type": response.getheader("Content-Type"),
+                "content_length": length, "location": response.getheader("Location"),
+                "body_b64": base64.b64encode(b"".join(chunks)).decode("ascii"),
+                "retry_after": response.getheader("Retry-After")}
         except (TimeoutError, socket.timeout) as exc:
             raise timed_out() from exc
         finally:
             connection.close()
+
+
+def _network_error(error: NetworkOperationError, *, phase: str | None = None) -> GroundingWebError:
+    return GroundingWebError(error.code, "web network operation ended",
+        http_status=error.http_status, transport_phase=error.transport_phase or phase,
+        received_bytes=error.received_bytes)
+
+
+def _fetch_response(value: dict[str, Any]) -> FetchResponse:
+    return FetchResponse(requested_uri=value["requested_uri"], status_code=value["status_code"],
+        peer_address=value["peer_address"], media_type=value["media_type"], content_length=value["content_length"],
+        location=value["location"], body=base64.b64decode(value["body_b64"], validate=True))
+
+
+def _resolve_in_process(payload: dict[str, Any]) -> dict[str, Any]:
+    report_network_progress("dns")
+    return {"addresses": sorted({item[4][0] for item in socket.getaddrinfo(
+        payload["hostname"], 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)})}
+
+
+def _fetch_in_process(payload: dict[str, Any]) -> dict[str, Any]:
+    """One child-owned DNS/HTTPS request, also shared by fixed literature APIs."""
+    uri, host = _uri_parts(payload["uri"], "web URL")
+    addresses = payload.get("approved_addresses")
+    if addresses is None:
+        addresses = _resolve_in_process({"hostname": host})["addresses"]
+    addresses = tuple(sorted({_public_address(value, "web DNS address") for value in addresses}))
+    if not 1 <= len(addresses) <= MAX_ADDRESSES_PER_HOST:
+        raise GroundingWebError("unsafe_url", "DNS returned an invalid public address count")
+    return PublicHttpsTransport()._request_in_process(uri, approved_addresses=addresses,
+        max_bytes=payload["max_bytes"], deadline=payload["deadline"], headers=payload["headers"])
 
 
 def _link(base: str, href: str) -> str | None:
@@ -265,7 +333,9 @@ class GroundingWeb:
                 except ValueError:
                     literal = None
                 phase = "dns"
-                resolved = (str(literal),) if literal is not None else self.transport.resolve(host)
+                resolve_bounds = ({"timeout_seconds": deadline - self.clock()}
+                    if getattr(self.transport.resolve, "__func__", None) is PublicHttpsTransport.resolve else {})
+                resolved = (str(literal),) if literal is not None else self.transport.resolve(host, **resolve_bounds)
                 if isinstance(resolved, (str, bytes)):
                     raise GroundingWebError("unsafe_url", "DNS must return an address array")
                 addresses = tuple(sorted({_public_address(value, "web DNS address") for value in resolved}))

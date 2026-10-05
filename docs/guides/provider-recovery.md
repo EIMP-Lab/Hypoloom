@@ -162,11 +162,25 @@ not need this service continue. Query validation, scientific coverage, private
 address rejection and PDF rules remain unchanged. QUERY_PLAN can still defer a
 service failure to MAIN; accepting a plan does not certify provider availability.
 
-Known service failures do not exhaust model/node retry slots. There are six
-automatic failed recovery waves with 30/60/120/240/300-second delays (or a longer
-Retry-After), then an operator wait; authentication failures wait immediately.
+Known service failures do not exhaust model/node retry slots. Transient failures
+use 30/60/120/240/300-second delays, then one automatic recovery attempt every
+15 minutes after the sixth failed wave. A longer Retry-After takes precedence.
+Authentication failures wait for credential repair immediately.
 Run wall-clock/cancellation limits still apply. Concurrent failures count as one
 wave; an older in-flight failure cannot overwrite newer successful retrieval.
+
+The original pending query performs recovery before any model call; no model is
+launched just to check connectivity. Coverage prechecks share the same cooldown
+and per-run serialization. Already running experiments and independent work retain
+their ordinary scheduling; a deferred query-plan Attempt still occupies its
+existing task slot. If required evidence is unavailable, dependent work waits:
+timeouts, empty search results or missing PDF text are never scientific success.
+
+TUI/Web show the latest reason/HTTP status, next automatic retry and affected
+roles in the selected language. Repeated unchanged failures do not generate a
+new alert every 15 minutes. Terminal runs retain failure history without promising
+future retries. No proxy is required for these recovery rules; a permanently
+unreachable search provider still needs a usable network connection.
 
 Web **Retry literature service**, TUI **l**, or the command below requests a
 bounded recovery attempt after the operator repairs the connection/credential:

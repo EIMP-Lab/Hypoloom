@@ -445,3 +445,61 @@ and ordinary archives must preserve real retrieved bytes and failed-source
 observations. Use isolated fixtures; retained research runs and Windows browsers
 remain untouched. Qualification records distinguish these repairs from actual
 publisher authorization or long-term API availability.
+
+## Network deadlines and unattended recovery — 2026-10-05
+
+The next delivery covers direct-network failure handling, not a new search engine.
+The production batch PDF reader still calls synchronous getaddrinfo and whole-body
+HTTP reads; socket idle timeouts do not bound continuously arriving slow headers
+or body bytes. The Host's cancellation Event/future cannot stop these blocking
+operations, so a timed-out read can retain a worker and delay Host shutdown.
+Fault fixtures must reproduce these cases before the repair is qualified.
+
+The affected asset is the existing literature worker and its lifecycle boundary
+with OS/network calls. Git, transactions, stable task identities and type checks
+can preserve source ownership but cannot interrupt a blocking system call; a
+Future timeout only stops its caller's wait. The smallest extra execution boundary
+is a short-lived, parent-owned network subprocess, using existing bounded pipe,
+process-group cleanup and parent-lifetime techniques. It adds process-start cost
+per real operation and one internal transport helper, not a daemon, new durable
+state, scientific Process, schema, receipt or second validator. It can be removed
+when the shared transport can cancel every blocking phase directly, including DNS.
+
+Keep one monotonic deadline through queueing, DNS, all addresses, TLS, headers,
+body, redirects and retries. Expiry cancels the operation; kill/wait cleanup has
+an explicit additional bound of one second. Reuse the public HTTPS reader's approved-IP
+connection, TLS/peer validation and chunked bounded reads for batch PDFs and API
+metadata. Parent timeout/cancellation must terminate and reap its worker before
+reporting completion; an unreaped worker is an explicit infrastructure failure.
+Private headers travel only through private IPC, never argv, logs or observations.
+Partial bodies cannot enter the existing cache/archive. Semantic Scholar spacing
+and cooldown stay in the parent locator, so child replacement cannot reset quota.
+Extraction receives the remaining work window rather than a fresh per-paper one.
+
+OpenAlex recovery continues to derive from existing Attempt observations and
+operator transitions. Authentication errors require operator repair. Transient
+failures keep the first five 30/60/120/240/300-second waits, then use 900 seconds
+after the sixth failed wave; a longer Retry-After wins. Recovery runs the original
+pending query before any model call, with the existing per-run serialization.
+Coverage prechecks obey the same pending-service condition; they cannot create
+parallel retries or falsely establish coverage. Only an ordinary valid retrieved
+packet establishes availability. Cancellation, terminal state and run wallclock
+still stop recovery. Existing tasks without this dependency retain normal
+scheduling; deferred query-plan Attempts still occupy their admitted slots, while
+missing evidence cannot become scientific success. Repeated unchanged failures
+use existing event deduplication instead of periodic duplicate notifications.
+
+TUI/Web retain the same status projection and bilingual catalog, showing automatic
+retry, credential repair, next check, affected roles and existing PDF gaps. No
+mandatory init connectivity test or per-region blacklist is added. An entirely
+unreachable search provider remains a real coverage limitation; independent search
+fallback and optional proxy routing require separate implementation/qualification.
+
+Acceptance includes stalled DNS/TLS/headers/body, timeout and cancellation cleanup,
+mixed successful/blocked papers, subsequent worker reuse, shared quota, restart
+reconstruction, late failures after recovery and real Host/reader/CPU closure.
+Inspect process/thread/file-descriptor residue independently of returned errors.
+Use local fault injection; existing research runs, credentials and Windows clients
+remain untouched. Freeze a candidate only after focused tests, then run the full
+offline selection and isolated installation checks; record baseline failures
+separately rather than weakening unrelated assertions.

@@ -65,10 +65,12 @@ def reduce_availability(history, *, now, attempt_limit=6):
         if item["started_at"] >= last_end: rounds += 1
         last_end = max(last_end, item["at"])
     last = failures[-1] if failures else None
-    operator = bool(last and (last["reason"] == "openalex_auth" or rounds >= attempt_limit))
+    operator = bool(last and last["reason"] == "openalex_auth")
     retry_at = None
     if last and not operator:
-        delay = min(30.0 * 2 ** min(max(0, rounds - 1), 4), 300.0)
+        # Exhausting the fast recovery rounds slows transient probes; it does
+        # not turn an unattended network outage into a permanent operator wait.
+        delay = 900.0 if rounds >= attempt_limit else min(30.0 * 2 ** min(max(0, rounds - 1), 4), 300.0)
         if type(last.get("retry_after_seconds")) in (int, float): delay = max(delay, last["retry_after_seconds"])
         retry_at = last["at"] + delay
     state = ("waiting_operator" if operator else "cooldown" if retry_at is not None and retry_at > now
