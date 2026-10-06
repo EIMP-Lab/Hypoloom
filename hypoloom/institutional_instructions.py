@@ -6,6 +6,7 @@ REPLIES = {
     "继续连接": "retry_connection", "跳过准备": "finish",
     "完成": "complete", "验证样本": "verify", "跳过此平台": "skip",
     "仅公开": "public_only", "结束准备": "finish",
+    "Start now": "launch", "Prepare only": "finish", "重新准备": "retry",
 }
 CLIENT_SETUP_COMMAND = "pwsh -NoProfile -File .\\institutional-connect.ps1 -Action Setup"
 
@@ -35,10 +36,13 @@ def client_entry(repository, python, *, target=None, preparation_root=None):
 
 def reply_choices(view):
     allowed = set(view.get("actions", ()))
+    if "launch_review" in view:
+        return [reply for reply in ("Start now", "Prepare only", "重新准备") if REPLIES[reply] in allowed]
     connection = view.get("state") == "waiting_for_connection"
     finish = "跳过准备" if connection else "结束准备"
     return [text for text, action in REPLIES.items()
-            if action in allowed and (action != "finish" or text == finish)]
+            if text not in {"Start now", "Prepare only", "重新准备"}
+            and action in allowed and (action != "finish" or text == finish)]
 
 
 def render_results(rows, modes=None):
@@ -165,11 +169,18 @@ def render(view):
     elif state in {"preparing_platform", "processing"}:
         lines.append("程序正在处理；尚未请求本阶段的人工完成确认。")
     elif state == "awaiting_launch":
-        lines.append("平台准备已结束，请读取 status 的 summary 并检查启动配置；后台进程仅保留本次连接交接。")
+        if "launch_review" in view:
+            lines.append(view["launch_review"]["text"])
+            lines.append("请直接展示以上审阅并询问固定选择；无需合并策略、重新 inspect 或读取通知配置。")
+            lines.append("Start now 通过本次 reply_argv 提交；程序重新检查 Profile 后执行已审阅的启动操作。不要另行执行 launch --start。")
+        else:
+            lines.append("平台准备已结束，请读取 status 的 summary 并检查启动配置；后台进程仅保留本次连接交接。")
         lines.append("失败平台仅用 remaining_preparation_argv 在原批次重试；Start now 仍需单独明确选择。")
         lines.append("选择 Prepare only 或取消时执行 finish_argv；等待超时会释放本次连接，不自动启动科研。")
     elif state == "finishing":
         lines.append("正在结束并清理临时准备资源，请读取后台任务的最终结果。")
+    elif state == "launching":
+        lines.append("已接受 Start now，程序正在执行启动并交接连接；请观察 bootstrap_result，不重复提交启动或取消命令。")
     choices = reply_choices(view)
     if choices:
         lines.append("固定回复：" + " / ".join(choices) + "。")

@@ -29,7 +29,7 @@ def _launched(target):
     return result["lifecycle"] in {"active", "terminal"}
 
 
-def batches(args, access, dialogue, selected, modes, output, input_fn, root, target):
+def batches(args, access, dialogue, selected, modes, output, input_fn, root, target, *, launch_session=None):
     from .institutional_prepare import _batch
     from .institutional_instructions import render_results
     command = [sys.executable, "-B", "-m", "hypoloom", "institutional", "preparation"]
@@ -50,10 +50,21 @@ def batches(args, access, dialogue, selected, modes, output, input_fn, root, tar
         summary["remaining_preparation_argv"] = ([*command, "retry", "--state-root", root] if pending else [])
         summary["finish_argv"] = [*command, "finish", "--state-root", root]
         summary["scope"] = target
+        if launch_session is not None and not dialogue.cancelled():
+            # All noninteractive review work finishes before the review clock
+            # starts. No model has to merge results or reread credential files.
+            summary["launch_review"] = launch_session.review(summary)
         output(render_results(summary["preparation_summary"], modes))
         output(json.dumps(summary, ensure_ascii=False))
         outcome = ("operator_finished" if dialogue.cancelled() else
                    dialogue.await_launch(summary, lambda: _launched(target), seconds=HANDOFF_SECONDS))
+        if outcome == "launch":
+            result = launch_session.start()
+            output(json.dumps({"bootstrap_result": result}, ensure_ascii=False))
+            started = result["launch"]["status"] == "started"
+            code = 0 if started else 2
+            outcome = ("run_handoff" if started else "launch_uncertain"
+                if result["launch"]["status"] in {"creation_uncertain", "host_start_uncertain"} else "launch_failed")
         if outcome != "retry":
             dialogue.update(state="finishing", actions=[])
             # Leave the existing endpoint available for one ordinary client poll

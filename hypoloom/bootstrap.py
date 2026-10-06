@@ -566,8 +566,9 @@ def build_parser() -> argparse.ArgumentParser:
     paths.add_argument("--profile")
     paths.add_argument("--offline", action="store_true", help="skip the advisory remote version check")
     paths.add_argument("--version-timeout", type=float, default=DEFAULT_TIMEOUT, help="total version-check deadline in seconds (maximum 30)")
-    for action in ("prepare", "launch", "inspect"):
-        command = commands.add_parser(action, help="preview Profile preparation" if action == "prepare" else "derive reviewed CLI arguments without starting anything")
+    for action in ("prepare", "launch", "inspect", "session"):
+        command = commands.add_parser(action, help=("prepare client access, then await explicit launch reply" if action == "session"
+            else "preview Profile preparation" if action == "prepare" else "derive reviewed CLI arguments without starting anything"))
         command.add_argument("--repository", default=str(Path.cwd()))
         _add_profile_arguments(command)
         command.add_argument("--summary", action="store_true", help="emit the compact non-secret interactive view")
@@ -581,7 +582,7 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--request-id")
             command.add_argument("--control-python", default=sys.executable)
             command.add_argument("--ready-timeout", type=float, default=30)
-            command.add_argument("--auth-transport", choices=("none", "settings", "environment"), required=action == "launch")
+            command.add_argument("--auth-transport", choices=("none", "settings", "environment"), required=action in {"launch", "session"})
             for name in ("claude-executable", "claude-model", "claude-settings", "gpu-runtime-prefix",
                          "gpu-pool-socket", "gpu-pool-namespace", "notification-output-root", "notification-proxy-env",
                          "notification-credentials-file"):
@@ -618,6 +619,8 @@ def main(argv=None) -> int:
         if os.environ.get("HYPOLOOM_RUNTIME_FAMILY") not in (None, "", "hypoloom"):
             raise ValueError("conflicting runtime family")
         repository = _repository(args.repository)
+        if args.action == "session" and (args.start or args.template or args.overrides):
+            raise ValueError("session requires an existing Profile; Start now is a separate live reply")
         if args.action == "inventory":
             from .compute_resources import _nvml_inventory
             print(json.dumps({"devices": [gpu.to_dict() for gpu in _nvml_inventory().gpus]}))
@@ -660,6 +663,9 @@ def main(argv=None) -> int:
             elif report.admitted:
                 result["effective_configuration"] = {}
                 result["commands"] = launch_arguments(args, repository, report, review=result["effective_configuration"])
+                if args.action == "session":
+                    from .bootstrap_session import run
+                    return run(args, repository, report, result)
                 if args.start:
                     if texts is not None:
                         raise ValueError("prepare the reviewed Profile before --start; templates cannot launch directly")

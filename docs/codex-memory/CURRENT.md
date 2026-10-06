@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 6 program-owned init review: confirmed 658-second model work exceeded
+  the 600-second handoff window before Start now was offered. Generated
+  `init_session_argv` reuses the private preparation dialogue and original
+  admission/start_fresh; code merges modes and renders review before its clock,
+  then accepts one explicit launch reply. No saved manifest, automatic launch or
+  retained-run change. Notification events/source paths remove ad hoc secret-file
+  reads. 195 focused passes / nine skips; final session correction ten passes.
+  Actual Host closure: one CREATE, two successful Agents/two CPU Processes, no
+  open Attempts/pending effects/owned process or socket residue. Full G1 blocked
+  by invocation-specific socket EPERM; Windows GUI acceptance remains pending.
+  [Design](../design/institutional-access-preparation.md#程序负责-init-收尾与显式启动2026-10-06)
+  / [validation](../qualification.md#program-owned-init-review-and-launch-2026-10-06).
+
 - October 6 status-query session reuse: the new Windows log confirms repeated
   fresh SSH-query timeouts led to 300-second expiry and owned Edge cleanup while
   forwarding had still worked. Reuse one request/response SSH session with the

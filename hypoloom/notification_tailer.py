@@ -310,11 +310,20 @@ def notification_preflight(config: Mapping[str, Any], *, state_root: Path,
     enabled = [name for name, value in sinks.items() if name == "log" or value.get("enabled", False)]
     for name in ("telegram", "webhook"):
         if name in enabled: notification_remote(name, sinks[name], environment)
-    notification_proxy(config, environment, proxy_env)
+    proxy = notification_proxy(config, environment, proxy_env)
     if "dashboard" in enabled:
         from .web_observer import _require_loopback_host
         _require_loopback_host(sinks["dashboard"].get("host", "127.0.0.1"))
-    return {"enabled_sinks": enabled, "output_root": str(output), "network_probe_performed": False,
+    details = {}
+    for name in enabled:
+        sink = sinks[name]
+        details[name] = {"events": config.get("events", {}).get(name, sorted(_EVENT_TYPES) if name == "log" else [])}
+        # Source references suffice for review; recipients, tokens and webhook
+        # paths remain in their private files, never in interactive transcripts.
+        details[name].update({key: sink[key] for key in
+            ("credentials_file", "bot_token_env", "chat_id_env", "url_env", "token_env", "host", "port", "path", "level") if key in sink})
+    return {"enabled_sinks": enabled, "sinks": details, "proxy": "configured" if proxy else "direct",
+            "output_root": str(output), "network_probe_performed": False,
             "delivery_status": "unverified", "message": "Configuration valid; remote delivery has not been verified. Use notify --test to check access, --send-test to send one message."}
 
 

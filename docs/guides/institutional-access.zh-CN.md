@@ -274,9 +274,15 @@ init 生成的准备命令使用 `--agent-session`：先在默认 30 秒连接�
 运行交接；Start now 仍需明确选择。选择 Prepare only／取消时执行返回的 `finish_argv`
 撤销本次连接授权；到期也会清理，不自动启动研究。准备中主动结束／跳过则直接退出，
 从后台最终结果读取摘要。已完成结果保留，启动身份不变。最终独立的
-`preparation_lifecycle` 事件记录 `run_handoff`、`launch_review_expired` 或
+`preparation_lifecycle` 事件记录 `run_handoff`、`launch_failed`、`launch_uncertain`、`launch_review_expired` 或
 `operator_finished`；出版社摘要只说明样本结果，不证明准备控制器或 Windows 助手
 此刻仍存活。排障时应同时保留这两类观察。
+当前 Windows init 优先使用 `init_session_argv`，由同一程序完成准备到启动审阅的
+衔接。`launch_review` 在 600 秒选择窗口开始前就已生成，CC 直接展示并提交你的
+**Start now / Prepare only** 固定回复，不再手动合并策略、读取通知文件或另行启动。
+有效 Start now 后进入 `launching`，真实启动结果看 `bootstrap_result`；提前、过期
+或重复回复均不能触发新启动。重试保留控制目录和已完成出版社。独立的
+`institutional prepare` 仍是集中准备命令，不会自行创建科研运行。
 独立交互命令仍可在终端使用；输入被关闭时明确返回 `input_required` 并清理资源。
 
 手动诊断对话准备时，使用首次输出的 `status_argv` / `answer_argv`；例如：

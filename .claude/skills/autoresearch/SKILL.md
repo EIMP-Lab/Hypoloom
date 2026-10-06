@@ -122,14 +122,25 @@ legacy browser URL already answers this choice and retains its unmanaged behavio
 Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For unattended stability, use `--institutional-prepare-failure-mode public_only`; see [details](references/init-details.md).
 Reuse choices: repeated `--institutional-prepare-provider` replaces the list; `none` skips.
 Selected modes enter launch; unselected institutional routes default disabled, with public retrieval independent.
-Re-inspect with the same identity. Run `institutional_preparation_argv` with
-`--agent-session` in the background; execute `instructions_argv` and relay its output verbatim.
+Re-inspect with the same identity. When `init_session_argv` is returned, run it
+unchanged in the background instead of `institutional_preparation_argv`. This
+program owns client preparation, policy merging, final review and explicit launch.
+Otherwise use the separate `institutional_preparation_argv` with `--agent-session`.
+Execute `instructions_argv` and relay its output verbatim.
 Use `status_argv` for the current `reply_argv`; append the exact offered user reply
 with `--text`, and `--sample` only for sample verification. Never use background stdin.
 Connection checks advance automatically; retries never extend deadlines. Arm one generated
 `watch_argv` after connection instructions and platform replies; never overlap observers or infer answers.
-At `status.state=awaiting_launch`, preparation is complete: read `summary` and enter review,
-without waiting for the background process to exit. It retains this connection at most 600 seconds.
+At `status.state=awaiting_launch`, preparation is complete. If `launch_review` is
+present, relay the current `instructions_argv` output and immediately ask its fixed
+Start now / Prepare only choices (plus retry if offered). Do not write a scratch
+reader, reread notification files, merge modes, re-inspect or compose a second
+review. Submit the exact user choice through `reply_argv --text`; the same program
+executes the reviewed launch only after Start now. Do not also run `launch --start`.
+Observe the background `bootstrap_result`; `launching` is processing, not another
+question. Rejected/expired replies never authorize a separate launch or new identity.
+Without `launch_review`, read `summary` and enter the legacy separate review path.
+Never wait for process exit before asking; the review retains the connection at most 600 seconds.
 On an offered retry, execute `remaining_preparation_argv` unchanged: same-root `preparation retry`,
 preserving identity/results. Prepare only/cancel must execute returned `finish_argv`; expiry never starts research.
 Explicit finish/skip during preparation releases scope directly; read its final background result.
@@ -138,7 +149,7 @@ Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never cha
 Show `preparation_summary`: no sample means not_checked; sample_verified proves only that
 paper's readability, not login/subscription. Report public PDF, browser PDF or HTML accurately.
 Fixed-sample challenges fail and advance; never require per-paper solving or call HTML a PDF.
-Merge `provider_modes` by platform, replacing old values; re-inspect and review without replaying
+Only for the separate preparation path, merge `provider_modes` by platform, replacing old values; re-inspect and review without replaying
 completed/skipped preparation. Missing access never blocks research. Review auto/public_only/disabled
 and finite 120-second acquisition / 600-second manual defaults. TUI observes; optional manual controls use authorized Web.
 
@@ -196,7 +207,7 @@ can offer Start now before the service is ready. For blockers, keep this init
 open: recheck, revise affected choices, Prepare only or cancel. Preserve prior
 answers and do not ask the user to start the whole conversation again.
 
-Use one final `AskUserQuestion` for the concrete effective configuration,
+Use the session's program-rendered review when available; otherwise use one final `AskUserQuestion` for the concrete effective configuration,
 bootstrap writes, pool operation and research launch:
 
 - **Start now (Recommended)** when all prerequisites either pass or have the
@@ -214,6 +225,9 @@ For a new Profile, first perform the reviewed `bootstrap prepare --write`, then
 inspect the written Profile without `--template` or `--set`. An actual mismatch
 requires review. For adoption, there is no preparation write.
 
+For an active `init_session_argv` session, use its live fixed replies and read
+`bootstrap_result`; never execute an additional launch command. The following
+direct launch steps apply only when there is no active program-owned session.
 Use the returned `launch_argv` values without reconstructing Host commands.
 They are an argv array, not executable shell text; if invoking through Bash,
 quote each argument normally. Never write a scratch launcher, manifest, receipt

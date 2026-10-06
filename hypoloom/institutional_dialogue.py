@@ -54,6 +54,8 @@ class PreparationDialogue:
             if request.command != "PREPARATION_ANSWER" or set(payload) - {"provider", "action", "sample"}:
                 raise ValueError("unsupported preparation command")
             action = payload.get("action")
+            if self.view.get("state") == "launching":
+                raise ValueError("launch is already in progress; observe its result")
             if action == "finish":
                 self.finished = True
                 self.view = {"state": "finishing"}
@@ -77,15 +79,16 @@ class PreparationDialogue:
                 raise ValueError("sample is only valid for verification")
             else: sample = None
             self.answer = {"complete": "", "skip": "s", "public_only": "p",
-                "retry_connection": "retry", "retry": "retry", "verify": sample}[action]
+                "retry_connection": "retry", "retry": "retry", "verify": sample, "launch": "launch"}[action]
             if action not in {"retry_connection", "retry"}:
-                self.view = {**self.view, "state": "processing", "actions": ["finish"]}
+                self.view = {**self.view, "state": "launching" if action == "launch" else "processing",
+                             "actions": [] if action == "launch" else ["finish"]}
                 self.deadline = None
             self.condition.notify_all()
             return ControlResponse.accepted(request.request_id, None, deepcopy(self.view))
 
     def await_launch(self, summary, check, *, seconds=600):
-        """Retain this existing control endpoint through review, never start a run."""
+        """Wait for explicit review choice or actual Host handoff; no launch here."""
         with self.condition:
             self.answer = None
             self.deadline = monotonic() + seconds
@@ -93,9 +96,14 @@ class PreparationDialogue:
                          "actions": ["finish"] + (["retry"] if summary["remaining_preparation_argv"] else []),
                          "finish_argv": summary["finish_argv"],
                          "remaining_preparation_argv": summary["remaining_preparation_argv"]}
+            if "launch_review" in summary:
+                self.view["launch_review"] = summary["launch_review"]
+                if summary["launch_review"]["status"] == "ready_for_review":
+                    self.view["actions"].append("launch")
         while True:
             with self.condition:
                 if self.finished: return "operator_finished"
+                if self.answer == "launch": return "launch"
                 if monotonic() >= self.deadline: return "launch_review_expired"
                 if self.answer == "retry":
                     self.answer = None

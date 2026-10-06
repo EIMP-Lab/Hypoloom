@@ -75,9 +75,9 @@ def _pools(repository: Path) -> dict:
     return manager._endpoint_entry(root / "control.sock", root)
 
 
-def _launch_argv(args, repository: Path) -> list[str]:
+def _launch_argv(args, repository: Path, *, action="launch") -> list[str]:
     """Exact validated choices, not shell text, and no secret literals."""
-    values = [args.control_python, "-B", "-m", "hypoloom.bootstrap", "launch", args.profile,
+    values = [args.control_python, "-B", "-m", "hypoloom.bootstrap", action, args.profile,
         "--repository", str(repository), "--run-id", args.run_id,
         "--allow-gpu" if args.allow_gpu else "--cpu-only", "--summary"]
     for name in ("state_root", "request_id", "control_python", "ready_timeout", "process_delay", "auth_transport",
@@ -194,6 +194,9 @@ def inspect(args, repository: Path) -> dict:
                         result["profile_preparation_required"] = True
                     else:
                         result["launch_argv"] = _launch_argv(args, repository)
+                        from .bootstrap_session import supported
+                        if supported(args, review):
+                            result["init_session_argv"] = _launch_argv(args, repository, action="session")
             except (ValueError, OSError) as exc:
                 blockers.append({"code": "launch_preflight_failed", "message": str(exc)})
         else:

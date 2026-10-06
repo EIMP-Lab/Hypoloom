@@ -215,7 +215,16 @@ while you review launch choices. **Start now** still requires your explicit choi
 For **Prepare only** or cancellation, execute the returned `finish_argv` to release
 this authorization. Expiry also releases it; it never starts research. An explicit
 finish/skip during preparation exits directly; read that background result instead.
-The final `preparation_lifecycle` event separately records `run_handoff`,
+Current Windows init uses `init_session_argv` to automate the preparation-to-launch
+review. Its `launch_review` is generated before the 600-second choice clock starts:
+CC relays it and submits the exact **Start now / Prepare only** reply. It need not
+merge policies, reread notification configuration or run a separate launch command.
+Only an accepted Start now enters `launching`; actual managed launch success appears
+in `bootstrap_result`. Expired, early or duplicate Start now replies are rejected.
+Preparation retry keeps the same owner and completed publishers. Standalone
+`institutional prepare` retains its existing separate-launch behavior.
+
+The final `preparation_lifecycle` event separately records `run_handoff`, `launch_failed`, `launch_uncertain`,
 `launch_review_expired` or `operator_finished`. A publisher summary describes its
 samples; it does not prove that the preparation controller or Windows helper is
 still running. Preserve both observations when diagnosing an exit.

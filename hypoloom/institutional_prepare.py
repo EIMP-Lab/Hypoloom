@@ -301,7 +301,7 @@ def _answer(args, output):
             return 1
         if not watching or response.status != "accepted": break
         view = response.result
-        if view["state"] not in {"checking_connection", "preparing_platform", "processing", "waiting_for_connection"}: break
+        if view["state"] not in {"checking_connection", "preparing_platform", "processing", "waiting_for_connection", "launching"}: break
         # An older preparation waits for an answer rather than automatic checks.
         if view["state"] == "waiting_for_connection" and not view.get("automatic_connection_checks"): break
         remaining = deadline - monotonic()
@@ -351,7 +351,7 @@ def _batch(args, access, dialogue, selected, modes, output, input_fn):
         return summary, int(str(exc) != "finished")
 
 
-def run(args, *, input_fn=input, output=print):
+def run(args, *, input_fn=input, output=print, launch_session=None):
     if output is print:
         output = lambda text: print(text, flush=True)
     if getattr(args, "institutional_action", None) == "preparation":
@@ -416,7 +416,8 @@ def run(args, *, input_fn=input, output=print):
         output("Preparation only: no research run or source archive. Login only in the dedicated browser. Keep this terminal open.")
         if target:
             from .institutional_handoff import batches
-            return batches(args, access, dialogue, selected, modes, output, input_fn, directory.name, target)
+            return batches(args, access, dialogue, selected, modes, output, input_fn, directory.name, target,
+                           launch_session=launch_session)
         return _batch(args, access, dialogue, selected, modes, output, input_fn)[1]
     finally:
         try:

@@ -72,8 +72,9 @@ Elsevier / ScienceDirect、Springer。默认集中准备 IEEE、ScienceDirect、
 ACM 优先公开获取，机构登录可选。选择默认批次、自定义名单或跳过即可，无须逐家填写网址。
 重复传 `--institutional-prepare-provider <平台>` 会替换默认名单，`none` 跳过集中准备；
 `Elsevier` 可作为 `ScienceDirect` 的别名。学校交互入口和浏览器位置只配置一次。
-已有选择随重查保留；准备名单不限制文献检索范围。准备结果中的“仅公开途径”选择
-应合并回平台参数并重新审阅，未验证或无权限的平台不阻止开始研究。
+已有选择随重查保留；准备名单不限制文献检索范围。Windows init 的程序会自动将
+“仅公开途径”选择合并到启动审阅；独立准备命令的结果仍需带入后续启动参数。
+未验证或无权限的平台不阻止开始研究。
 
 检查与启动预览共用原校验器，预览不连接浏览器或分配端口。Start now 后为运行
 分配资源；机构通道不可用时沿用有限获取和公开／OA 回退。init 使用后台
@@ -86,7 +87,16 @@ Windows 客户端模式下，**每次 init** 在本次所选电脑执行一次�
 任务，不登录自启或发现未来运行。Setup／Connect 返回后可关终端；只有前台 Run
 诊断需要保留终端。随后回到原 CC init。
 
-`status.state: awaiting_launch` 表示准备已完成，应读取 `summary` 立即开始审阅，
+Windows 客户端准备使用 inspect 生成的 `init_session_argv`：CC 启动一个后台程序，
+转述固定指令。最后一个出版社结束后，程序自动合并策略、检查原 Profile、生成完整
+启动审阅（包括通知事件列表和私有凭据来源路径，不显示令牌或接收人内容、不发测试
+消息）。CC 直接询问 **Start now / Prepare only**，无需再次 inspect、编写读取脚本
+或手动整理配置。选择经原有回复通道提交；只有有效的 Start now 才调用现有启动流程，
+结果与监控命令来自 `bootstrap_result`，不得再单独执行一次 `launch --start`。
+重试保留已完成出版社；审阅阻塞或过期不会启动运行。接受 Start now 后，连接保留至
+有界启动步骤完成并交接给 Host；连续失联 300 秒的退出规则不变。
+
+`status.state: awaiting_launch` 表示准备已完成，应展示程序审阅并立即询问固定选择，
 无需等待后台进程退出。同一控制目录／助手最多等待 600 秒交接给该运行；失败平台
 按返回的 `remaining_preparation_argv` 在原目录重试，保留成功结果。Prepare only／
 取消执行 `finish_argv`；Start now 仍需明确授权，到期不自动启动研究。准备阶段主动

@@ -87,8 +87,9 @@ a custom list or skip, without entering each publisher URL. Repeated
 `--institutional-prepare-provider <platform>` values replace the default list;
 `none` skips preparation. `Elsevier` aliases `ScienceDirect`. Choose the browser
 and optional interactive library URL once. Reinspection preserves selections;
-the preparation list does not restrict research. Merge public-only choices from
-the preparation result back into platform arguments and re-review. Unverified
+the preparation list does not restrict research. Windows client init merges public-only
+choices into the launch arguments in its program-owned session. Standalone preparation
+still requires carrying those choices into the separate launch review. Unverified
 or unavailable platforms do not prevent research startup.
 
 Inspect and launch preview share the existing validators without contacting a
@@ -97,6 +98,19 @@ institutional access uses bounded acquisition and public/OA fallback.
 Init preparation uses a background `--agent-session`: the program checks readiness,
 opens selected platforms and validates fixed replies for the current stage/provider.
 It uses a generated `watch_argv`, not assistant-written polling or background stdin.
+
+For Windows client preparation, inspect returns `init_session_argv`. CC starts that
+single background program and relays its fixed instructions. After the last platform,
+the program merges publisher results, checks the Profile and produces the full launch
+review, including notification events and credential source paths. No notification
+test is sent and private recipient/token values remain undisplayed. CC asks the fixed
+**Start now / Prepare only** choice immediately; no extra inspect, custom reader or
+manual policy merge is needed. The reply goes through the existing preparation
+channel. Only an accepted **Start now** invokes managed launch; `bootstrap_result`
+reports the result and monitor commands. Never also execute a separate `launch --start`.
+Retries preserve completed publishers. A blocked or expired review cannot start a run.
+Once Start now is accepted, the bounded launch phases retain the connection through
+Host handoff; the 300-second lost-contact bound remains unchanged.
 
 For each init in Windows client mode, run the exact generated Setup/Connect entry
 once on the PC you choose. Transfer the original script through SFTP/SCP on first

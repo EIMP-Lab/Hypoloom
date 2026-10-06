@@ -2,6 +2,48 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Program-owned init review and launch (2026-10-06)
+
+Baseline: dev `6c6f351`. The observed ACM-to-final-question delay was about 658
+seconds against a 600-second review window. The controller expired before the
+model offered Start now. The new `bootstrap session` reuses preparation's private
+dialogue, the original admission and `start_fresh`; policy merging, notification
+projection and review rendering finish before the answer clock begins. Only a
+live explicit Start now consumes the reviewed launch. No new saved manifest or
+research-state authority is introduced. See the
+[design](design/institutional-access-preparation.md#程序负责-init-收尾与显式启动2026-10-06).
+
+Evidence under `.local/qualification/init-session-20261006/`:
+
+- `focused-final.xml`: 195 passed / nine existing environment opt-in skips across
+  bootstrap, preparation/handoff/dialogue/instructions, notifications and docs.
+  A final correction removes an extra opening log so the first JSON retains the
+  existing control-root contract; `session-final-v2.xml` reruns all ten session
+  cases successfully. These are overlapping results, not 205 unique passes.
+- Real private sockets exercise early/expired/repeated Start now, no-write Prepare
+  only, retries retaining completed publishers, Profile drift and uncertain launch.
+  The reproduced 658-second delay rejects the late answer. Program review work is
+  complete before the human window starts; reads do not renew it.
+- Actual session CLI → managed launch → real Host/CREATE → CPU → terminal closure
+  uses fake research agents and synthetic publisher opening, replacing only the
+  systemd transport at the launch boundary. Independent database census records
+  one CREATE, two successful Agent Attempts and two successful Process Attempts;
+  Oracle has zero open Attempts/pending effects. Owned process groups, preparation
+  root and Host socket are gone; scoped connections report terminal. No paid calls
+  or claim of real Windows GUI/publisher access qualification.
+- Full G1 was attempted, then interrupted around 40% after widespread failures in
+  the restricted invocation. `g1-first-failure.xml` reproduces the first blocker:
+  287 passed / one failure creating a local HTTPServer socket with EPERM, before a
+  changed code path. Full G1 is **not qualified**. `session.xml` preserves a separate
+  invocation's seven Unix-socket EPERM failures; direct focused invocations could
+  create sockets. The original new census test also used the wrong table name;
+  corrected to `workflow_commands`, retaining the one-CREATE check. These failures
+  are retained in `validation-notes.json`, not hidden by skipping assertions.
+- Final wheel, isolated installation and fresh bundle are compared byte-for-byte
+  in `packaging-accepted.json`. Static checks and `git diff --check` pass. Current
+  guides and the runtime init Skill describe the fixed session path; retained
+  research runs and local Windows installations are untouched.
+
 ## Reused client status-query session (2026-10-06)
 
 The new local diagnostics identify the second closure: the initial browser

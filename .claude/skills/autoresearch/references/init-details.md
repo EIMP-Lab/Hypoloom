@@ -70,6 +70,24 @@ user's platform choices instead of imposing a global publisher blacklist.
 This policy converts failed/unvisited preparation platforms to public-only, including
 connection failure or interrupted preparation. Completed/skipped platform choices
 are retained. Review is still the default for users who have not chosen this policy.
+For Windows client init, prefer the returned `init_session_argv`: one background
+`bootstrap session` uses the same preparation socket, merges accepted publisher
+modes, rechecks the original admitted Profile and renders the complete final review
+before starting its 600-second answer clock. At `awaiting_launch`, relay the live
+instructions and immediately ask the offered fixed choice. Send Start now or Prepare
+only via the existing `reply_argv --text`. Start now is consumed once and calls the
+existing managed launch; watch `bootstrap_result`, not a second launch invocation.
+Do not rerun inspect, build a notification-reading script, manually merge policies
+or rewrite the program's review. These operations are already complete. Notification
+review includes actual event subscriptions and private source paths; do not extract
+recipient/token values. A blocked review offers no Start now. Expiry or a rejected
+reply requires a fresh explicit decision; never reuse the old review as approval.
+An accepted Start now changes to `launching`: bounded existing launch phases retain
+the connection until actual Host CREATE handoff or launch failure. The helper's
+300-second lost-contact bound still applies. No status read renews a review.
+The separate preparation/direct-launch guidance below applies when the generated
+session command is absent, or when deliberately diagnosing standalone preparation.
+
 Standalone preparation checks supplied samples first and returns current results and
 platform modes. Merge modes by platform, re-inspect, and retain the same run identity.
 Never turn not_checked, an opened page or a previous sample into permanent login proof.
@@ -245,7 +263,8 @@ removing a matching old logon/discovery task. Never recommend wildcard task dele
 or adopting an old dedicated browser; close that old window while preserving its
 profile. The guide covers migration of the local helper, not frozen research Hosts.
 
-At `awaiting_launch`, show the summary and perform launch review while the controller
+At `awaiting_launch` with `launch_review`, use the fixed session procedure above.
+For standalone preparation, show the summary and perform launch review while the controller
 retains the connection. **Prepare only or cancel must execute returned `finish_argv`**
 to revoke that connection; Start now still requires separate explicit authorization.
 If the handoff expires, report lost optional access without inferring failure of
@@ -995,7 +1014,7 @@ estimate availability versus timestamped capacity, and shared pool
 socket/namespace/peer UID, participation and wait/blocker status, plus the
 exact pool plan (pool root, socket, derived unit, member line, reserve MiB)
 when pool creation is approved; Profile-enabled notification
-recipients/environment and dashboard host/port; retention choice; user-systemd readiness and linger
+recipient source paths/environment names (not their contents) and dashboard host/port; retention choice; user-systemd readiness and linger
 limitation; and the exact bootstrap writes that each action would permit. For
 Profile v4, notification authority is
 `research_contract.methodology.controls.product.notify`, compiled from

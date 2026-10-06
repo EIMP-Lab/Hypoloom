@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Program-owned init review and launch](../qualification.md#program-owned-init-review-and-launch-2026-10-06):
+  prepare/review/explicit Start now over one existing controller; fixed projection,
+  no LLM policy merge or notification reader. Real Host/CPU closure passes, while
+  full G1 has socket restrictions and physical Windows acceptance is outstanding.
+  [Design](../design/institutional-access-preparation.md#程序负责-init-收尾与显式启动2026-10-06).
+
 - [Reused client status-query session](../qualification.md#reused-client-status-query-session-2026-10-06):
   confirmed timeout-driven helper closure; fresh scoped requests over one SSH
   session, no cached liveness, bounded recovery and owned cleanup. Local process
