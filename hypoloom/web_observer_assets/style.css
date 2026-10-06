@@ -529,7 +529,7 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 }
 @media (prefers-reduced-motion: no-preference) {
   html[data-rpm-fresh="true"] .breath-dot.host-confirmed.rpm-active,
-  html[data-rpm-fresh="true"] .agent-tile-light.host-confirmed.rpm-active { animation: breath var(--rpm-period, 6s) ease-in-out infinite; }
+  html[data-rpm-fresh="true"] .agent-tile-light.host-confirmed.rpm-active { animation: breath var(--rpm-period, 3s) ease-in-out infinite; }
   @keyframes breath {
     0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--expert-accent); }
     50% { opacity: .35; box-shadow: 0 0 .5rem .05rem var(--expert-accent); }

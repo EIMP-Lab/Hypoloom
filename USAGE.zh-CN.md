@@ -124,7 +124,9 @@ Web/TUI 统一以 **token** 展示用量，区分已报告、预留与未知记�
 保留完整 ID 与数值。LOCAL 不套用 GOAL 门槛，也不混合不同筛选基线。
 进行中的实验要等结果正式发布后才显示指标。
 
-Web/TUI 的 **Global tasks** 将 Grounding 和运行级协调任务与专家卡片分开。
+Web/TUI 使用独立的 **Grounding Agent** 卡片显示 RPM 和累计执行稳定性；
+**Global tasks** 显示其他运行级协调任务。Grounding 指标包含其查询规划与阅读助手，
+Web 点击指标后只查看对应证据，不混入专家或其他全局任务。
 Web **Details & history** 查看实际执行身份、用量和 Grounding 输入提供情况；
 TUI **d / w** 打开诊断 / Web 详情。结果已接纳与已提供给专家是不同的观测状态。
 重新打开使用新版代码的监控即可，研究 Host 可以继续运行。详见

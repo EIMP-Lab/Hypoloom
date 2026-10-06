@@ -2,6 +2,34 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Grounding card reliability and faster pulses (2026-10-06)
+
+Web/TUI Grounding cards previously omitted the reliability summary already
+computed for their scope. They now reuse the expert card's FP/CR/RT/DL/RA
+renderers, preserving denominators, unknowns and excluded observations. Web
+drill-down propagates the existing `run_group` ownership through reliability
+groups and filters; same-role PAPER_READ tasks belonging to other global work
+remain separate. No new metric reducer or durable state is introduced.
+
+Child Web pulse periods change from `clamp(6/sqrt(RPM), 0.8, 6)` to
+`clamp(3/sqrt(RPM), 0.6, 3)` seconds. Main lights retain the 1.35 multiplier.
+At 4 RPM the main/child periods are 2.025/1.5 seconds. Zero, missing/stale Host
+observations, completion and reduced-motion behavior retain their existing
+guards; Process tiles remain static.
+
+Focused validation: **93 passed**. This includes 71 ownership/reliability/summary
+checks; four actual browser cases covering scoped evidence, refreshed metrics,
+English/Chinese, narrow screens, animation speed and stop conditions; four
+Textual layout/refresh cases; eight language cases; and six documentation and
+reliability-comparison cases. Static undefined-name and whitespace checks pass.
+After final filter-label localization, a shell-wrapped browser recheck failed
+at Chrome startup (exit -5), before page initialization. The same test passed
+under the ordinary direct pytest invocation, with unchanged fixture checks;
+the resulting desktop preview was also inspected.
+This is a presentation change, not a new full G1 or provider qualification.
+No retained run, Host, credentials, model routing or request scheduling changed.
+Reopen observers using updated code; a frozen research bundle is not upgraded.
+
 ## Model request pacing and automatic recovery (2026-10-06)
 
 Implementation scope: request-level RPM and in-flight limits shared by the

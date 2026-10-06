@@ -1,5 +1,14 @@
 # Current Hypoloom development state
 
+- October 6 Grounding card reliability: Web/TUI reuse the existing five scoped
+  metrics (FP/CR/RT/DL/RA). Web evidence filters retain the existing run_group so
+  Grounding readers do not mix with other global readers under the same role.
+  Web pulse periods are now clamp(3/sqrt(RPM), 0.6, 3) seconds for children and
+  1.35x for main lights; unknown/stale/zero/reduced-motion behavior is unchanged.
+  93 focused checks pass, including actual browser interaction and Textual
+  layouts/languages. Existing research and credentials remain unchanged.
+  [Validation](../qualification.md#grounding-card-reliability-and-faster-pulses-2026-10-06).
+
 - October 6 model request pacing: one disposable coordinator per run shares
   per-model rolling RPM/in-flight admission across expert, Grounding and reader
   relays. New Profile defaults are 60 RPM/in-flight matching max_active_agents;

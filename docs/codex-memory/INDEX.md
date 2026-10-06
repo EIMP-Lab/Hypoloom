@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Grounding card reliability and faster pulses](../qualification.md#grounding-card-reliability-and-faster-pulses-2026-10-06):
+  existing scoped metrics on Web/TUI, Grounding-only evidence filters including
+  readers, faster RPM animation with retained main/child hierarchy and stale guards.
+
 - [Model request pacing and automatic recovery](../qualification.md#model-request-pacing-and-automatic-recovery-2026-10-06):
   shared per-run/per-model admission, automatic transient-429 recovery, open-Agent
   response confirmation, coalesced manual retry, local-queue isolation, independent

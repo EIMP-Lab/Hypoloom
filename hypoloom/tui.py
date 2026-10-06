@@ -842,6 +842,7 @@ class ExpertsPanel(CockpitPanel):
                 _duration(grounding.get("elapsed_seconds")), _count(grounding.get("active_readers")))]
         for stage in grounding.get("activity", []):
             grounding_lines.append(f"  {_value(stage.get('node'))} · {_stage_badge(stage, overview.get('host_observation', {}).get('availability', 'unconfirmed'))}")
+        grounding_lines.extend(("", *_reliability_lines(grounding.get("reliability"))))
         for key, title in (("global_tasks", tr("GLOBAL TASKS")), ("unknown_tasks", tr("OWNERSHIP UNKNOWN"))):
             group = overview.get("other_global_tasks", overview.get(key, {})) if key == "global_tasks" else overview.get(key, {})
             if not group.get("stages"):

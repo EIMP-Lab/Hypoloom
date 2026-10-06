@@ -79,13 +79,19 @@ def test_grounding_card_partitions_global_work_and_inherits_nested_readers(tmp_p
         record('g', 'GROUNDING', kind='GROUNDING', state='OPEN'),
         record('reader', 'PAPER_READ', kind='PAPER_READ', parent='g', state='OPEN'),
         record('nested', 'PAPER_READ', kind='PAPER_READ', parent='reader'),
-        record('observer', 'OBSERVER', kind='OBSERVER'), record('e', 'RESULT_ANALYSIS')]
+        record('observer', 'OBSERVER', kind='OBSERVER'),
+        record('other-reader', 'PAPER_READ', kind='PAPER_READ', parent='observer'),
+        record('e', 'RESULT_ANALYSIS')]
     summary = _summary(tmp_path, attempts=rows)
     grounding = summary['grounding']
     assert set(grounding['attempt_ids']) == {'plan','g','reader','nested'}
     assert grounding['active_readers'] == 1 and grounding['state'] == 'active'
     assert grounding['accounting']['reported_tokens'] + summary['other_global_tasks']['accounting']['reported_tokens'] == summary['global_tasks']['accounting']['reported_tokens']
     assert summary['experts'][0]['accounting']['reported_tokens'] == 10
+    assert grounding['reliability']['counts']['agent_attempts'] == 4
+    readers = [group for group in summary['reliability']['groups'] if group['node'] == 'PAPER_READ']
+    assert {group['run_group']: group['counts']['agent_attempts'] for group in readers} == {'grounding': 2, 'other': 1}
+    assert grounding['reliability']['metrics']['node_delivery']['unknown'] == 2
     rows[1] = record('g', 'GROUNDING', kind='GROUNDING', accepted=True)
     rows[2] = record('reader', 'PAPER_READ', kind='PAPER_READ', parent='g')
     completed = _summary(tmp_path, attempts=rows)['grounding']
@@ -239,6 +245,8 @@ def test_tui_global_lane_survives_expert_filter_and_completed_refresh(tmp_path):
             assert "Grounding" in text and "GROUNDING" in text
             assert "GLOBAL TASKS" not in text  # Grounding now has its own card.
             assert "No experts match" in text and "OPEN?" in text
+            assert all(label in text for label in ('FP', 'CR', 'RT', 'DL', 'RA'))
+            assert 'DL 0/0 (—) ?1' in text
             rows[0] = record("g", "GROUNDING", kind="GROUNDING", accepted=True)
             snapshot.overview = _summary(tmp_path, attempts=rows)
             panel.update_snapshot(snapshot)
@@ -246,4 +254,10 @@ def test_tui_global_lane_survives_expert_filter_and_completed_refresh(tmp_path):
             text = _static_text(panel.query_one(Static))
             assert "Grounding accepted" in text and "supplied to 0/1" in text
             assert "not started" in text
+            assert 'DL 1/1 (100%)' in text
+            app.ui_language = 'zh-CN'
+            panel.update_snapshot(snapshot, 'missing-expert')
+            await pilot.pause()
+            text = _static_text(panel.query_one(Static))
+            assert 'DL 1/1 (100%)' in text and 'Grounding' in text
     asyncio.run(exercise())

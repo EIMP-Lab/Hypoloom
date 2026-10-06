@@ -207,10 +207,11 @@ def summarize_reliability(nodes, *, include_nodes=True, include_groups=None):
     if include_groups:
         grouped = defaultdict(list)
         for node in nodes:
-            grouped[(node["role"], node["node"], node["model"], node.get("task_scope"), node.get("owner_role"))].append(node)
+            grouped[(node["role"], node["node"], node["model"], node.get("task_scope"), node.get("owner_role"), node.get("run_group"))].append(node)
         result["groups"] = [{"role": role, "node": kind, "model": model,
             **({"task_scope": scope, "owner_role": owner} if scope is not None else {}),
-            **summarize_reliability(values, include_nodes=False)} for (role, kind, model, scope, owner), values in grouped.items()]
+            **({"run_group": group} if group is not None else {}),
+            **summarize_reliability(values, include_nodes=False)} for (role, kind, model, scope, owner, group), values in grouped.items()]
     return result
 
 

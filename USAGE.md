@@ -160,8 +160,11 @@ Published experiment records retain full IDs and values. LOCAL results never
 inherit GOAL thresholds or combine different screening baselines. Running
 experiments appear as scores only after their outcomes are published.
 
-**Global tasks** separates Grounding and run-wide coordination from expert cards
-in Web and TUI. Web **Details & history** shows recorded execution identities,
+Web and TUI give **Grounding Agent** its own card with RPM and cumulative
+execution reliability; **Global tasks** contains other run-wide coordination.
+Grounding metrics include its query planning and readers. Web metric buttons
+open the matching evidence, excluding expert and other global work.
+Web **Details & history** shows recorded execution identities,
 usage and Grounding input delivery; TUI **d / w** opens diagnostics / Web details.
 An accepted result and its delivery to an expert are distinct observations.
 Reopen the monitor from updated code; the research Host can keep running. See

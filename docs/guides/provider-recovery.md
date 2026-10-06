@@ -77,13 +77,22 @@ role. Other global tasks contribute to the total separately. Hover over a value
 for in-flight and queued counts. Grounding retains tasks, token accounting,
 active reader counts and result-sharing evidence after completion; Web details
 can be collapsed. Other global task summaries exclude Grounding.
+Grounding shows the same cumulative execution reliability metrics as experts:
+first output pass (FP), correction recovery (CR), nodes needing retry (RT),
+final delivery (DL) and required actions (RA). Its scope includes Grounding query
+planning and readers, excluding other global tasks and expert work. Web metric
+buttons open evidence filtered to that scope. Denominators, unknowns and excluded
+records remain visible; no samples is not a 100% success rate. These are execution
+observations, not scientific quality scores.
 
 Web Agent child tiles use RPM for their exact execution Attempt. An expert or
 Grounding main light uses its aggregate RPM; these totals are never added again
-to the run total. Child period is `clamp(6 / sqrt(RPM), 0.8, 6)` seconds; main
+to the run total. Child period is `clamp(3 / sqrt(RPM), 0.6, 3)` seconds; main
 period is 1.35 times that curve. At equal RPM the main light is slower; differing
 aggregate and child rates need not preserve that ordering. Process tiles use
 static status, and TUI uses status labels rather than continuous animation.
+For example, at 4 RPM the child period is 1.5 seconds and the main period is
+2.025 seconds; both are twice as fast as the previous animation at that rate.
 This frequency cue is not a heartbeat, token speed or research progress signal.
 Zero RPM, missing/stale data and reduced-motion preferences stop animation;
 unavailable values display `—`.

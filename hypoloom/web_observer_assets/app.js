@@ -587,7 +587,7 @@
       const active = fresh && valid(counts.rpm) && counts.rpm > 0 && light.classList.contains("host-confirmed");
       light.classList.toggle("rpm-active", active);
       if (active) {
-        const period = Math.max(.8, Math.min(6, 6 / Math.sqrt(counts.rpm))) * (aggregate ? 1.35 : 1);
+        const period = Math.max(.6, Math.min(3, 3 / Math.sqrt(counts.rpm))) * (aggregate ? 1.35 : 1);
         light.style.setProperty("--rpm-period", `${period}s`);
         light.style.animationDelay = `-${(Date.now() / 1000) % period}s`;
       }
@@ -1295,7 +1295,7 @@
   }
 
   function taskScopeLabel(record) {
-    return record.task_scope === "run" ? "Global" : record.task_scope === "expert"
+    return record.task_scope === "run" ? (record.run_group === "grounding" ? "Grounding" : "Global") : record.task_scope === "expert"
       ? t("Expert · {0}", record.owner_role || "unavailable") : t("Ownership unknown");
   }
 
@@ -1346,6 +1346,10 @@
     const rpmValue = element('strong', '', '—'); rpmValue.id = 'grounding-rpm'; rpm.append(rpmValue);
     card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · task span {1} · active readers {2}',
       compactNumber(object(group.accounting).reported_tokens), typeof group.elapsed_seconds === 'number' ? compactDuration(group.elapsed_seconds) : '—', group.active_readers ?? '—')));
+    const preview = element('div', 'reliability-preview');
+    preview.setAttribute('aria-label', t('{0} cumulative execution reliability', 'Grounding'));
+    compactReliability(preview, object(group.reliability).metrics, {taskScope: 'run', runGroup: 'grounding'});
+    card.append(preview);
     const details = document.createElement('details');
     details.open = wasOpen ?? group.state !== 'completed';
     details.append(element('summary', '', t('Tasks & details')));
@@ -2653,7 +2657,7 @@
 
   const RELIABILITY_SHORT = ["🎯 FP", "🔧 CR", "🔁 RT", "📦 DL", "🧰 RA"];
 
-  function compactReliability(parent, metrics, {role = "", expanded = false, taskScope = ""} = {}) {
+  function compactReliability(parent, metrics, {role = "", expanded = false, taskScope = "", runGroup = ""} = {}) {
     RELIABILITY_METRICS().forEach(([key, label], index) => {
       const metric = object(object(metrics)[key]);
       const rate = typeof metric.rate === "number" ? `${(metric.rate * 100).toFixed(0)}%` : "—";
@@ -2661,7 +2665,7 @@
         .map(([name, symbol]) => `${symbol}${metric[name] ?? "?"}`).join(" ");
       const button = actionButton("", () => {
         state.reliabilityMetric = key;
-        state.reliabilityFilters = {role: "", owner_role: role, task_scope: taskScope || (role ? "expert" : ""), node: "", model: ""};
+        state.reliabilityFilters = {role: "", owner_role: role, task_scope: taskScope || (role ? "expert" : ""), run_group: runGroup, node: "", model: ""};
         openWorkbench("reliability");
       }, "reliability-mini");
       button.dataset.previewMetric = key;
@@ -2685,7 +2689,7 @@
     RELIABILITY_METRICS().forEach(([key, label]) => {
       const button = actionButton(`${label}: ${reliabilityMetricText(object(metrics)[key])}`, () => {
         state.reliabilityMetric = key;
-        if (scope) state.reliabilityFilters = {role: scope.role || "", task_scope: scope.task_scope || "", owner_role: scope.owner_role || "", node: scope.node || "", model: scope.model || ""};
+        if (scope) state.reliabilityFilters = {role: scope.role || "", task_scope: scope.task_scope || "", run_group: scope.run_group || "", owner_role: scope.owner_role || "", node: scope.node || "", model: scope.model || ""};
         renderReliability();
       }, "reliability-metric detail-link");
       button.dataset.reliabilityMetric = key;
@@ -2721,13 +2725,16 @@
     list(source.notices).forEach((notice) => summary.append(element("p", "panel-copy", displayValue(notice))));
     container.append(summary);
     const controls = element("div", "filter-grid");
-    ["task_scope", "owner_role", "role", "node", "model"].forEach((key) => {
-      const label = element("label", "", ({role: t("Execution role"), owner_role: t("Owning expert"), task_scope: t("Task scope")})[key] || key);
+    ["task_scope", "run_group", "owner_role", "role", "node", "model"].forEach((key) => {
+      const label = element("label", "", ({role: t("Execution role"), owner_role: t("Owning expert"), task_scope: t("Task scope"), run_group: t("Run task group")})[key] || key);
       const select = element("select"); select.id = `reliability-${key}`;
-      const all = element("option", "", t("All {0}s", key)); all.value = ""; select.append(all);
+      const all = element("option", "", key === "run_group" ? t("All run task groups") : t("All {0}s", key)); all.value = ""; select.append(all);
       const values = new Set([...groups, ...nodes].map((row) => row[key] || "unknown"));
       if (filters[key]) values.add(filters[key]);
-      [...values].sort().forEach((value) => { const option = element("option", "", value); option.value = value; select.append(option); });
+      [...values].sort().forEach((value) => {
+        const text = key === "run_group" ? ({grounding: "Grounding", other: t("Other global tasks"), unknown: t("Unknown")})[value] || value : value;
+        const option = element("option", "", text); option.value = value; select.append(option);
+      });
       select.value = filters[key] || "";
       select.addEventListener("change", () => { state.reliabilityFilters[key] = select.value; renderReliability(); byId(`reliability-${key}`).focus({preventScroll: true}); });
       label.append(select); controls.append(label);
