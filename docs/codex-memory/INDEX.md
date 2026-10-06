@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Web pulse visibility and continuous animation](../qualification.md#web-pulse-visibility-and-continuous-animation-2026-10-07):
+  larger lights with synchronized core/halo brightness, a gentler RPM curve,
+  browser-owned phase continuity across polls, card redraws and rate changes.
+
 - [Grounding card reliability and faster pulses](../qualification.md#grounding-card-reliability-and-faster-pulses-2026-10-06):
   existing scoped metrics on Web/TUI, Grounding-only evidence filters including
   readers, faster RPM animation with retained main/child hierarchy and stale guards.

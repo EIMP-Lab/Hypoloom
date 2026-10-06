@@ -564,6 +564,25 @@
   byId("provider-retry").addEventListener("click", () => requestProvider(false));
   byId("provider-switch").addEventListener("click", () => requestProvider(true));
 
+  function preservePulseTiming(container) {
+    // Reparenting even a reused light cancels its CSS animation. Carry only the
+    // browser's timing across this synchronous redraw, then discard these values.
+    const timings = container.getAnimations({subtree: true})
+      .filter(animation => animation.animationName === "breath" && animation.currentTime !== null)
+      .map(animation => ({light: animation.effect.target, time: animation.currentTime,
+        start: animation.startTime, paused: animation.playState === "paused"}));
+    return () => timings.forEach(({light, time, start, paused}) => {
+      if (!light.isConnected) return;
+      const animation = light.getAnimations().find(item => item.animationName === "breath");
+      if (!animation) return;
+      if (paused) {
+        animation.pause();
+        animation.currentTime = time;
+      } else if (start !== null) animation.startTime = start;
+      else animation.currentTime = time;
+    });
+  }
+
   function renderTraffic(snapshot) {
     const traffic = object(snapshot.status?.provider_traffic);
     const age = Number(snapshot.observed_at) - Number(traffic.observed_at);
@@ -587,9 +606,16 @@
       const active = fresh && valid(counts.rpm) && counts.rpm > 0 && light.classList.contains("host-confirmed");
       light.classList.toggle("rpm-active", active);
       if (active) {
-        const period = Math.max(.6, Math.min(3, 3 / Math.sqrt(counts.rpm))) * (aggregate ? 1.35 : 1);
-        light.style.setProperty("--rpm-period", `${period}s`);
-        light.style.animationDelay = `-${(Date.now() / 1000) % period}s`;
+        const period = (.8 + 1.2 / Math.sqrt(counts.rpm)) * (aggregate ? 1.35 : 1);
+        const duration = `${period}s`;
+        if (light.style.getPropertyValue("--rpm-period") !== duration) {
+          // Keep the browser's current phase when RPM changes; ordinary polls
+          // leave its animation clock alone instead of seeking on every refresh.
+          const animation = light.getAnimations().find(item => item.animationName === "breath");
+          const progress = animation?.effect.getComputedTiming().progress;
+          light.style.setProperty("--rpm-period", duration);
+          if (typeof progress === "number") animation.currentTime = progress * period * 1000;
+        }
       }
       light.title = `${light.dataset.workTitle || ""}\n${describe(counts)} ${t("Pulse frequency follows RPM; it is not a heartbeat or token speed.")}`;
     };
@@ -1327,7 +1353,9 @@
 
   function renderGrounding(snapshot) {
     const container = byId('grounding-agent-card');
+    const restorePulses = preservePulseTiming(container);
     const wasOpen = container.querySelector('details')?.open;
+    const previousLight = container.querySelector('.breath-dot');
     container.replaceChildren();
     const group = object(snapshot.overview?.grounding);
     const sharing = object(snapshot.overview?.grounding_sharing);
@@ -1335,7 +1363,9 @@
     const heading = element('h3', '', 'Grounding');
     if (group.state === 'active') {
       const confirmed = object(snapshot.overview).host_observation?.availability === 'responded';
-      const light = element('span', `breath-dot${confirmed ? ' host-confirmed' : ' host-unconfirmed'}`);
+      const light = previousLight || element('span', 'breath-dot');
+      light.classList.toggle('host-confirmed', confirmed);
+      light.classList.toggle('host-unconfirmed', !confirmed);
       light.id = 'grounding-pulse';
       heading.prepend(light);
     }
@@ -1378,6 +1408,7 @@
     details.append(actionButton('Details & history', () => openLocalDetail('global_tasks',
       {task_scope:'run', name:t('Global tasks')}), 'detail-link grounding-history'));
     card.append(details); container.append(card);
+    restorePulses();
   }
 
   function renderGlobalDetails(parent, scope) {
@@ -1513,6 +1544,9 @@
   function renderExperts(snapshot) {
     const experts = list(snapshot.experts).filter((expert) => expertMatches(expert));
     const container = byId("expert-list");
+    const restorePulses = preservePulseTiming(container);
+    const previousLights = new Map(Array.from(container.querySelectorAll('.expert-preview[data-expert-role]'),
+      card => [card.dataset.expertRole, card.querySelector('.breath-dot')]));
     const previousTiles = new Set();
     container.querySelectorAll(".agent-tile[data-attempt]").forEach((tile) => previousTiles.add(tile.dataset.attempt));
     container.replaceChildren();
@@ -1534,7 +1568,9 @@
       const heading = element("h3", "", expert.role || t("unnamed role"));
       if (openAttempts) {
         const confirmed = object(snapshot.overview).host_observation?.availability === "responded";
-        const breath = element("span", `breath-dot${confirmed ? " host-confirmed" : " host-unconfirmed"}`);
+        const breath = previousLights.get(expert.role) || element("span", "breath-dot");
+        breath.classList.toggle("host-confirmed", confirmed);
+        breath.classList.toggle("host-unconfirmed", !confirmed);
         breath.title = t("{0} durably open attempt{1} · {2} · OPEN is durable state, not process liveness", openAttempts, openAttempts === 1 ? "" : "s", confirmed ? t("Host responded this poll") : t("Host contact unconfirmed"));
         breath.dataset.workTitle = breath.title;
         breath.setAttribute("aria-label", confirmed ? t("Open work; Host responded") : t("Open work; activity unknown"));
@@ -1629,6 +1665,7 @@
       }
     }
     renderTraffic(snapshot);
+    restorePulses();
   }
 
   function selectByComponent(componentId) {

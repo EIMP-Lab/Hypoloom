@@ -87,12 +87,14 @@ observations, not scientific quality scores.
 
 Web Agent child tiles use RPM for their exact execution Attempt. An expert or
 Grounding main light uses its aggregate RPM; these totals are never added again
-to the run total. Child period is `clamp(3 / sqrt(RPM), 0.6, 3)` seconds; main
+to the run total. For positive RPM, child period is `0.8 + 1.2 / sqrt(RPM)` seconds; main
 period is 1.35 times that curve. At equal RPM the main light is slower; differing
 aggregate and child rates need not preserve that ordering. Process tiles use
 static status, and TUI uses status labels rather than continuous animation.
-For example, at 4 RPM the child period is 1.5 seconds and the main period is
-2.025 seconds; both are twice as fast as the previous animation at that rate.
+At 1 RPM the child/main periods are 2/2.7 seconds; at 4 RPM they are 1.4/1.89
+seconds. At higher rates the curve approaches 0.8/1.08 seconds without a hard
+cutoff. Larger lights brighten and expand with their halos, then dim and shrink
+together. Refreshes preserve the animation; RPM changes retain its current phase.
 This frequency cue is not a heartbeat, token speed or research progress signal.
 Zero RPM, missing/stale data and reduced-motion preferences stop animation;
 unavailable values display `—`.

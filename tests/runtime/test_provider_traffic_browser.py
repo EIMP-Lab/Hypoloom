@@ -1,6 +1,8 @@
 """Real browser RPM ownership, live animation, stale state and accessibility."""
 import json
 
+import pytest
+
 from test_observer_browser_ui import browser
 from test_observer_scope import record
 from test_observer_summary import _summary
@@ -43,15 +45,15 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     assert page.text('.expert-rpm-value') == '4'
     assert 'in flight 1 · queued 2' in page.evaluate("document.querySelector('.expert-rpm-value').title")
     period = page.evaluate("getComputedStyle(document.querySelector('.expert-preview .breath-dot')).animationDuration")
-    assert period == '2.025s'
-    assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=live-rpm] .agent-tile-light')).animationDuration") == '1.5s'
+    assert period == '1.89s'
+    assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=live-rpm] .agent-tile-light')).animationDuration") == '1.4s'
     assert page.text('#grounding-state') == 'RUN'
     assert page.text('[data-attempt=live-rpm] .agent-tile-rpm') == '4'
     page.evaluate("document.querySelector('#grounding-agent-panel').scrollIntoView({block:'center'})")
     page.screenshot(tmp_path / 'grounding-card.png')
     page.evaluate("fixture.snapshot.status.provider_traffic.by_expert['expert-a'].rpm=16; fixture.snapshot.status.provider_traffic.rpm=21")
     page.wait("document.querySelector('.expert-rpm-value').textContent === '16'")
-    assert page.evaluate("getComputedStyle(document.querySelector('.expert-preview .breath-dot')).animationDuration") == '1.0125s'
+    assert page.evaluate("getComputedStyle(document.querySelector('.expert-preview .breath-dot')).animationDuration") == '1.485s'
     page.evaluate("document.querySelector('#filter-expert').value='expert-a'; document.querySelector('#filter-expert').dispatchEvent(new Event('change'))")
     assert page.text('#run-rpm') == '21' and page.text('#grounding-rpm') == '3'
     page.click('#language-toggle')
@@ -120,3 +122,87 @@ def test_stale_poll_stops_rpm_animation_and_clears_live_values(browser):
     assert page.evaluate("document.documentElement.dataset.rpmFresh") == 'false'
     assert page.text('[data-attempt=stale-rpm] .agent-tile-rpm') == '—'
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=stale-rpm] .agent-tile-light')).animationName") == 'none'
+
+
+def test_pulse_phase_survives_poll_card_redraw_and_rpm_change(browser, tmp_path):
+    page = browser
+    page.evaluate("""fixture.snapshot.overview.host_observation={availability:'responded'};
+      fixture.snapshot.attempts.push(
+        {attempt_id:'phase-agent',kind:'AGENT',state:'OPEN',role:'expert-a',task_scope:'expert',owner_role:'expert-a',command:'LITERATURE_REVIEW'},
+        {attempt_id:'phase-ground',kind:'AGENT',state:'OPEN',task_scope:'run',command:'GROUNDING'},
+        {attempt_id:'phase-process',kind:'PROCESS',state:'OPEN',role:'expert-a',task_scope:'expert',owner_role:'expert-a'});
+      fixture.snapshot.overview.grounding={state:'active',attempt_ids:['phase-ground'],elapsed_seconds:10,accounting:{reported_tokens:21}};
+      fixture.snapshot.status.provider_traffic={scope:'run',observed_at:fixture.snapshot.observed_at,
+        rpm:6,in_flight:2,queued:0,by_expert:{'expert-a':{rpm:3}},grounding:{rpm:3},
+        by_attempt:{'phase-agent':{rpm:3},'phase-ground':{rpm:3}}};
+      window.pulseSelectors=['.expert-preview .breath-dot','[data-attempt=phase-agent] .agent-tile-light',
+        '#grounding-pulse','[data-attempt=phase-ground] .agent-tile-light'];""")
+    page.wait("pulseSelectors.every(s => document.querySelector(s)?.getAnimations()[0]?.currentTime > 350)")
+    page.evaluate("""window.pulseNodes=pulseSelectors.map(s=>document.querySelector(s));
+      window.pulseAnimations=pulseNodes.map(e=>e.getAnimations()[0]);
+      pulseAnimations.forEach(a=>{a.pause(); a.currentTime=a.effect.getComputedTiming().duration*.375;});
+      window.readPulses=()=>pulseSelectors.map((s,i)=>{const e=document.querySelector(s),a=e.getAnimations()[0],c=getComputedStyle(e);
+        return {sameNode:e===pulseNodes[i],sameAnimation:a===pulseAnimations[i],phase:a.effect.getComputedTiming().progress,
+          duration:a.effect.getComputedTiming().duration,opacity:+c.opacity,width:parseFloat(c.width),shadow:c.boxShadow,scale:new DOMMatrix(c.transform).a};});
+      window.pollCount=fixtureRequests.filter(r=>r[1]==='/api/refresh').length;""")
+    before = page.evaluate('readPulses()')
+    # A real unchanged poll must not seek a paused animation to a wall-clock phase.
+    page.wait("fixtureRequests.filter(r=>r[1]==='/api/refresh').length > pollCount")
+    after_poll = page.evaluate('readPulses()')
+    assert [p['phase'] for p in after_poll] == pytest.approx([p['phase'] for p in before])
+    assert all(p['sameNode'] and p['sameAnimation'] for p in after_poll)
+
+    # Changing card content must preserve all four lights, including main lights.
+    page.evaluate("""fixture.snapshot.attempts.find(a=>a.attempt_id==='phase-agent').context_tokens=1234;
+      fixture.snapshot.overview.grounding.elapsed_seconds=17;""")
+    page.wait("document.querySelector('[data-attempt=phase-agent] .agent-tile-value').textContent === '1.23K' && document.querySelector('#grounding-agent-card').textContent.includes('17s')")
+    after_redraw = page.evaluate('readPulses()')
+    assert all(p['sameNode'] for p in after_redraw)
+    assert [p['phase'] for p in after_redraw] == pytest.approx([p['phase'] for p in before])
+    assert [p['opacity'] for p in after_redraw] == pytest.approx([p['opacity'] for p in before])
+    assert [p['scale'] for p in after_redraw] == pytest.approx([p['scale'] for p in before])
+    assert [p['shadow'] for p in after_redraw] == [p['shadow'] for p in before]
+    # Chromium replaces CSSAnimation objects on reparenting. Check the visible
+    # phase above and exactly one animation per light, not old object identity.
+    assert page.evaluate('pulseNodes.every(e=>e.getAnimations().length===1)')
+    page.evaluate('window.pulseAnimations=pulseNodes.map(e=>e.getAnimations()[0])')
+
+    for rpm, child_ms in [(1, 2000), (4, 1400), (25, 1040), (100, 920)]:
+        page.evaluate(f"""fixture.snapshot.status.provider_traffic.by_expert['expert-a'].rpm={rpm};
+          fixture.snapshot.status.provider_traffic.grounding.rpm={rpm};
+          fixture.snapshot.status.provider_traffic.rpm={rpm * 2};
+          Object.values(fixture.snapshot.status.provider_traffic.by_attempt).forEach(c=>c.rpm={rpm});""")
+        page.wait(f"document.querySelector('.expert-rpm-value').textContent === '{rpm}'")
+        changed = page.evaluate('readPulses()')
+        assert all(p['sameNode'] and p['sameAnimation'] for p in changed)
+        assert [p['phase'] for p in changed] == pytest.approx([p['phase'] for p in before])
+        assert [p['duration'] for p in changed] == pytest.approx([child_ms * 1.35, child_ms] * 2)
+
+    # Inspect rendered extremes: the larger light and halo brighten together.
+    page.evaluate('pulseAnimations.forEach(a=>a.currentTime=0)')
+    bright = page.evaluate('readPulses()')
+    page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'center'})")
+    page.screenshot(tmp_path / 'pulse-bright.png')
+    page.evaluate('pulseAnimations.forEach(a=>a.currentTime=a.effect.getComputedTiming().duration/2)')
+    dim = page.evaluate('readPulses()')
+    page.screenshot(tmp_path / 'pulse-dim.png')
+    for index, (high, low) in enumerate(zip(bright, dim)):
+        assert high['width'] >= (12 if index % 2 == 0 else 10)
+        assert high['opacity'] >= .95 and low['opacity'] <= .25
+        assert high['scale'] > 1 and low['scale'] < 1
+        assert high['shadow'] != low['shadow']
+        assert low['shadow'].endswith('0px 0px 0px 0px')
+    assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=phase-process] .agent-tile-light')).animationName") == 'none'
+
+    # The browser still advances naturally after the diagnostic pause is removed.
+    page.evaluate('pulseAnimations.forEach(a=>a.play())')
+    page.wait('readPulses().every(p=>Math.abs(p.phase-.5)>.1)')
+    running = page.evaluate('pulseNodes.map(e=>({start:e.getAnimations()[0].startTime,time:e.getAnimations()[0].currentTime}))')
+    page.evaluate("""fixture.snapshot.attempts.find(a=>a.attempt_id==='phase-agent').context_tokens=2456;
+      fixture.snapshot.overview.grounding.elapsed_seconds=24;""")
+    page.wait("document.querySelector('[data-attempt=phase-agent] .agent-tile-value').textContent === '2.46K' && document.querySelector('#grounding-agent-card').textContent.includes('24s')")
+    redrawn = page.evaluate('pulseNodes.map(e=>({start:e.getAnimations()[0].startTime,time:e.getAnimations()[0].currentTime}))')
+    assert [p['start'] for p in redrawn] == pytest.approx([p['start'] for p in running])
+    assert all(after['time'] > prior['time'] for after, prior in zip(redrawn, running))
+    page.call('Emulation.setEmulatedMedia', {'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
+    assert page.evaluate("pulseNodes.every(e=>e.getAnimations().length===0 && getComputedStyle(e).opacity==='1' && getComputedStyle(e).transform==='none')")

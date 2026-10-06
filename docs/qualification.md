@@ -2,6 +2,63 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Web pulse visibility and continuous animation (2026-10-07)
+
+The prior 8/10 px child/main lights combined a dim core with the largest halo.
+At 1 RPM the main period was 4.05 seconds; from 25 RPM all faster rates shared
+the same clamped period. A Chromium trace of 566 frames also reproduced a
+refresh-time opacity jump from 0.35 to 0.74 within one frame: every poll rewrote
+the negative animation delay even for unchanged RPM and retained DOM nodes.
+
+The revised visual design uses 0.6/0.7 rem child/main lights (10.8/12.6 px at
+the default font size), opacity 0.2–1 and scale 0.88–1.12. The core and halo now
+brighten together. For positive RPM, child period is `0.8 + 1.2 / sqrt(RPM)`
+seconds and main period retains the 1.35 multiplier. At 1 RPM this is 2/2.7
+seconds; at 4 RPM, 1.4/1.89 seconds. The asymptotic floor preserves a full
+breath at high rates without the previous hard cutoff. This is a visual design
+choice, not a calibrated throughput or progress measurement.
+
+Reuse the existing DOM nodes, keyed expert roles and Attempt tile ownership.
+Unchanged polls do not seek the animation; a changed period preserves the
+browser animation's current progress. Main lights survive ordinary card
+redraws as child tile nodes already do. Chromium cancels CSS animations when
+these nodes are reparented, so each synchronous redraw restores the browser's
+start time (or paused current time) to the replacement CSS animation. These
+temporary values are discarded immediately. There is no extra timer, animation ledger,
+hash or durable authority. Zero/unknown/stale/warming-up traffic and reduced
+motion retain the existing stop conditions; Process lights remain static.
+
+The browser regression first fails against the original assets on phase
+continuity for all four expert/Grounding main/child lights. Original failure
+and focused validation artifacts are retained under
+`.local/qualification/web-pulse-20261007/`. Implementation checks also exposed
+the reparenting cancellation; restoring timing fixes the phase failure instead
+of assuming node reuse preserves a CSSAnimation object. The regression checks
+identical rendered opacity, scale and halo at a paused phase, one animation per
+light, and the original start time with advancing time during a running redraw.
+An initial fixture wait incorrectly expected `1.2K` for 1,234 tokens; it was
+corrected to the existing `1.23K` formatting, without a product formatting change.
+The initial base-Python Web/docs run passed 17 cases and skipped two SQLite
+integration cases; final validation uses the documented project Conda Python.
+
+Final focused validation: **31 passed, zero skipped** in the project Conda
+environment (Python 3.12.14 / SQLite 3.53.4): three RPM browser cases, the
+existing working-subagent browser case, eight language cases, 15 Web server
+cases and four documentation cases. Coverage includes exact Attempt ownership,
+Grounding, unchanged polls, paused and running card redraws, phase-preserving
+rate changes at 1/4/25/100 RPM, real animation advance, rendered bright/dim
+extremes, Process inactivity, zero/stale/missing/warming-up/completed conditions,
+reduced motion, filters, English/Chinese and narrow layouts. Desktop extrema
+and a separate 390 px Chinese card preview were visually inspected; both main
+and child lights fit without horizontal overflow. Node syntax, Ruff undefined
+names and Git whitespace checks pass. This establishes the implemented visual
+contrast and timing behavior, not universal perceptual acceptance on every display.
+
+This change concerns Web presentation only. Existing research runs, frozen
+bundles, Hosts, request pacing and credentials are unchanged. Reopen a Web
+observer from updated code to use the new assets; this is not a release or a
+new full G1/provider/CPU/GPU qualification.
+
 ## Grounding card reliability and faster pulses (2026-10-06)
 
 Web/TUI Grounding cards previously omitted the reliability summary already

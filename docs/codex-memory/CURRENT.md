@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- October 7 Web pulse visibility: larger main/child lights now brighten, expand
+  and glow together. Positive-RPM child periods use `0.8 + 1.2/sqrt(RPM)` seconds;
+  main periods remain 1.35x. Ordinary polls leave animation timing untouched;
+  rate changes retain phase, and card redraws restore the browser's timing on
+  reused lights after CSS animation cancellation. No extra clock or durable state;
+  existing static/unknown/stale/reduced-motion behavior and research runs remain.
+  31 focused checks pass without skips; desktop extrema and 390 px Chinese cards
+  inspected. Original phase failure and intermediate redraw/fixture failures retained.
+  [Design and validation](../qualification.md#web-pulse-visibility-and-continuous-animation-2026-10-07).
+
 - October 6 Grounding card reliability: Web/TUI reuse the existing five scoped
   metrics (FP/CR/RT/DL/RA). Web evidence filters retain the existing run_group so
   Grounding readers do not mix with other global readers under the same role.
