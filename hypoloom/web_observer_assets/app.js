@@ -482,7 +482,8 @@
     setText("notification-status", !notifications || notifications.state === "unavailable" ? t("Notification delivery status unknown; owning service unavailable.")
       : notifications.error ? t("Notification service: {0}", notifications.error)
       : !sinks.length ? t("No remote notification delivery has been observed.")
-      : sinks.map(([name, h]) => t("{0}: {1} · pending {2} · last success {3}{4}{5}", name, (h.state || "unverified").replaceAll("_", " "), h.pending ?? "unknown", formatTimestamp(h.last_success_at), h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : "", h.next_retry_at ? t(" · next retry {0}", formatTimestamp(h.next_retry_at)) : "")).join(" | "));
+      : sinks.map(([name, h]) => t("{0}: {1} · pending {2} · last success {3}{4}{5}", name, (h.state || "unverified").replaceAll("_", " "), h.pending ?? "unknown", formatTimestamp(h.last_success_at), h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : "", h.next_retry_at ? t(" · next retry {0}", formatTimestamp(h.next_retry_at)) : "")
+        + (name === "telegram" ? t(" · route: {0}", ({direct: t("Direct"), http_proxy: t("HTTP proxy")})[h.route] || t("Unknown route")) : "")).join(" | "));
     for (const kind of ["literature", "notification"]) {
       const button = byId(`${kind}-retry`);
       button.hidden = !providerToken || terminal || (kind === "notification" ? !notifications?.sinks?.telegram : !literature);
@@ -2931,7 +2932,7 @@
     available: t("Full text ready"), access_denied: t("Current institution has no access"), no_full_text: t("No full text found"),
     identity_unconfirmed: t("Paper identity unconfirmed"), failed: t("File acquisition or parsing failed"),
     sample_verified: t("Sample full text verified"), opened: t("Preparation page opened; log in in the browser"),
-    unchecked: t("Not checked"), tab_limit: t("Browser tab limit reached; prepare in batches"), skipped: t("Paper skipped"), public_only: t("Public only"), disabled: t("Disabled"), queue_timeout: t("Queue timed out"),
+    unchecked: t("Not checked"), tab_limit: t("Browser tab limit reached; prepare in batches"), skipped: t("Paper skipped"), public_only: t("Public/OA only"), disabled: t("Institutional route not enabled"), queue_timeout: t("Queue timed out"),
     acquisition_timeout: t("Acquisition timed out"), manual_timeout: t("Active login wait ended"),
   });
   const LITERATURE_REASON_LABELS = () => ({
@@ -3005,10 +3006,13 @@
     const access = object(status.literature_access);
     const groups = list(access.groups);
     const container = byId("workbench-list");
-    setText("workbench-scope", t("Institutional full-text requests grouped by publisher. Log in only in your own browser; this panel requests tabs or imports."));
+    setText("workbench-scope", t("Public/OA retrieval is available for all publishers, including those not listed here. Institutional settings below do not guarantee login, subscription or successful downloads."));
+    const inactiveMessage = "enabled" in access
+      ? t("Institutional browser not enabled for this run. Public/OA retrieval remains available.")
+      : t("Institutional status unknown: no current Host observation.");
     setText("workbench-status", state.literatureMessage || (access.enabled
-      ? t("Pending {0} · Ready {1}.", displayValue(access.pending), displayValue(access.available))
-      : t("Host has not enabled institutional access. Configure --institutional-browser-url for a new run; do not enter credentials here.")));
+      ? t("Institutional queue: {0} pending · {1} ready. Excludes public downloads and history.", displayValue(access.pending), displayValue(access.available))
+      : inactiveMessage));
     setText("workbench-page", t("Institutional full-text requests · no pagination"));
     byId("workbench-previous").disabled = true; byId("workbench-next").disabled = true;
     const renderedKey = JSON.stringify([uiLanguage, "institutional", access, state.literatureMessage, state.literatureBusy]);
@@ -3016,7 +3020,7 @@
     container.dataset.renderedKey = renderedKey;
     container.replaceChildren();
     if (!access.enabled) {
-      container.append(element("p", "empty-copy", t("Host has not enabled institutional access. Configure --institutional-browser-url for a new run; do not enter credentials here.")));
+      container.append(element("p", "empty-copy", inactiveMessage));
       return;
     }
     if (!literatureToken) {
@@ -3073,12 +3077,12 @@
       const open = actionButton(t("Open login"), () => requestLiterature(providerName, "open", "", ""), "detail-link");
       const retry = actionButton(t("Check and retry"), () => requestLiterature(providerName, "retry", "", ""), "detail-link");
       open.disabled = !writable; retry.disabled = !writable;
-      const modeButton = actionButton(group.mode !== "auto" ? t("Enable institutional access") : t("Public only"),
+      const modeButton = actionButton(group.mode !== "auto" ? t("Enable institutional access") : t("Public/OA only"),
         () => requestLiterature(providerName, "mode", "", "", group.mode !== "auto" ? "auto" : "public_only"), "detail-link");
       modeButton.disabled = !writable;
       open.disabled ||= group.mode !== "auto"; retry.disabled ||= group.mode !== "auto";
       heading.append(open, retry, modeButton);
-      section.append(element("p", "panel-copy", t("{0} · active wait: {1} seconds remaining", ({auto: t("Use existing institutional session"), public_only: t("Public only"), disabled: t("Institutional route disabled")})[group.mode] || t("Policy unknown"), group.manual_remaining_seconds || 0)));
+      section.append(element("p", "panel-copy", t("Institutional route: {0} · active wait: {1} seconds remaining", ({auto: t("Allowed"), public_only: t("Off (public only)"), disabled: t("Not enabled")})[group.mode] || t("Policy unknown"), group.manual_remaining_seconds || 0)));
       section.append(heading);
       const prep = object(group.preparation);
       section.append(element("p", "panel-copy", `${LITERATURE_STATE_LABELS()[prep.state] || prep.state || t("Not checked")}${prep.last_checked_at ? " · " + prep.last_checked_at : ""}`));

@@ -11,6 +11,13 @@ def render(args, result, summary):
     effective = compact["effective_configuration"]
     admission = compact["admission"]
     profile = Path(admission["profile_path"])
+    notifications = effective["notifications"]
+    notification_route = []
+    if "telegram" in notifications.get("enabled_sinks", []):
+        notification_route = [
+            "Telegram route: explicit HTTP proxy; connectivity and delivery remain unverified."
+            if notifications.get("proxy") == "configured" else
+            "Telegram route: direct. System/browser proxy settings are not inherited. If this server needs a proxy, configure notify.yaml.proxy_url before starting."]
     def value(label, data):
         return label + ": " + json.dumps(data, ensure_ascii=False, sort_keys=True)
     lines = ["Launch review — no research run has started.",
@@ -24,7 +31,8 @@ def render(args, result, summary):
         value("Model authentication", {"transport": args.auth_transport, "settings_path": args.claude_settings}),
         value("Budgets (null means no cap)", effective["budget"]),
         value("GPU/pool (CPU-only if absent)", effective.get("gpu")),
-        value("Notifications", effective["notifications"]),
+        value("Notifications", notifications),
+        *notification_route,
         "Notification checks are local configuration checks only; delivery is unverified. No test message is sent.",
         "Telegram is outbound-only. Interactive grounding waits for an answer and continues consuming the run wall-clock budget.",
         value("Literature preflight", result.get("literature_preflight")),

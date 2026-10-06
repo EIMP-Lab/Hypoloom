@@ -352,11 +352,13 @@ SSH 任务退出。重试沿用原有有界队列；窗口仍开着不等于控�
 这些命令只用于仍存活的临时准备进程，不修改科研运行；`awaiting_launch` 时读取
 status 的 `summary`，主动结束后读取后台命令最终摘要。
 
-运行后按 TUI 的 **i** 打开英文 **Institutional access** 面板：当前运行的出版社目录、
-**Public + institution / Public only / Disabled**（公开＋机构／仅公开／未启用）
-策略、当前机构请求的进行／就绪／缺口数量，以及最近结果。无请求的平台也会显示；
-策略表示允许使用的访问途径，不代表已登录或整个平台已验证。
-未选择的出版社默认 **Disabled**，不自动使用机构浏览器；公开检索和开放全文兜底仍
+运行后按 TUI 的 **i** 打开 **Institutional access** 面板（默认英文，可切换中文）：当前
+运行的出版社目录、**Institutional route**（机构渠道）、当前机构请求的进行／就绪／缺口
+数量，以及最近结果。机构渠道显示 **Allowed / Off (public only) / Not enabled**
+（允许使用／关闭（仅公开）／未启用）；无请求的平台也会显示。
+面板顶部说明：所有出版社（含未列出的出版社）仍可尝试公开／开放获取（OA）全文。
+机构策略不代表已登录、有订阅权限或保证下载成功；这些计数也不包含公开下载。
+未选择的出版社默认 **Not enabled**，不自动使用机构浏览器；公开检索和开放全文兜底仍
 独立进行。准备名单中的平台会显式携带 `auto` 到运行配置；用户设置的 `public_only`
 或 `disabled` 优先。只跳过准备（`none`）时，仅保留显式配置的平台模式。
 新规则用于新运行；重新打开新版 TUI 不会改写旧运行的冻结策略。
@@ -906,8 +908,9 @@ Literature MAIN要读取补回的全文，其冻结的`methodology.literature.to
 ## 运行中怎么用
 
 1. 按 **i** 打开 **Institutional access**，一行一个出版社，查看访问策略、当前请求数量和最近观察。
-2. **Public + institution** 表示允许尝试当前机构会话；**Public only** 表示用户选择仅公开；
-   **Disabled** 表示机构渠道未启用。后两者均不自动使用该平台的机构浏览器。
+2. **Institutional route** 列中的 **Allowed** 表示允许尝试机构渠道；
+   **Off (public only)** 表示用户选择仅公开；**Not enabled** 表示机构渠道未启用。
+   后两者均不自动使用该平台的机构浏览器，仍可尝试公开／OA 全文；未列出的出版社也同样如此。
    **No institutional requests** 不代表公开获取失败。**Full text ready** 也不代表 Agent 已读或已下载 PDF。
 3. 连接端点存在仅表示已发现端点，不等于浏览器验证通过。Host 状态缺失时显示“未知”，
    与“未启用”区分。请求数量只覆盖当前有限队列，不是历史总量，也不包含公开路径下载。
@@ -917,7 +920,8 @@ Literature MAIN要读取补回的全文，其冻结的`methodology.literature.to
 `web_fetch(mode="document", url=...)` 进入既有 `/papers` 与归档流程；不改写已完成结论。
 
 如果主动选择人工补充，可另外启动带 `--allow-literature-control` 的 Web observer，
-使用其操作员链接；普通只读链接不能触发动作。Web 的 Workbench“机构全文”保留登录、
+使用其操作员链接；普通只读链接不能触发动作。Web 的 Workbench“机构全文”采用相同的机构渠道
+标签和公开／OA 说明；计数仅覆盖机构队列，不是公开下载或历史总量。该面板保留登录、
 重试和导入 PDF。导入仍要求 Host 上的绝对路径和原有 PDF、DOI／标题、来源校验。
 这些可选操作不从 TUI 机构面板发起。
 

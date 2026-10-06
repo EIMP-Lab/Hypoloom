@@ -2,6 +2,63 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Telegram route visibility and local configuration (2026-10-06)
+
+Baseline: dev `92aa829`, together with the institutional-panel wording changes
+below. The private Profile lacked a notification proxy; init recorded direct
+routing and unverified delivery. Eight selected events had no Telegram cursor.
+The prior October 5 diagnosis found failed direct connection and successful
+verified TLS through the configured server proxy; it is not a current network test.
+Original evidence: `.local/analysis/telegram-20261006/`.
+
+Correct the ignored private Profile binding for future admission, retaining all
+other settings and mode 0600. The program's init review explicitly distinguishes
+direct from explicit HTTP proxy. Existing sender health projects its actual bound
+route without exposing the endpoint; TUI/Web translate it and show unknown when
+an older Host omits it. No automatic proxy selection, new delivery state, hot
+reload, sender or research migration is added. Runtime guidance and tutorials
+explain the configuration-versus-delivery distinction.
+
+Evidence under `.local/qualification/telegram-route-20261006/`:
+
+- `focused.xml`: **131 passed**, covering notification transport/cursors, actual
+  loopback CONNECT/TLS fixtures, Host health/retry, private Profile admission,
+  fixed init review, TUI/Web language and documentation. It includes the existing
+  real Host/CPU init-session test; the JUnit `record_property` warning is retained.
+- `panel-skills-docs.xml`: **61 passed** for institutional TUI/browser, runtime
+  Skill and final documentation checks. Four documentation cases overlap the
+  first selection: **188 distinct focused passes** in total.
+- `private-config-check.json`: next admission selects the explicit proxy without
+  changing credentials/subscriptions. `access-check.json` and `live-contact.json`
+  record connect/STATUS EPERM; no message was sent and the current research Host
+  was not restarted or changed. Actual Telegram authentication/delivery remains
+  unverified. Existing runs do not inherit a newly added Profile proxy binding.
+- `g1.log`: static checks passed, then broad execution accumulated failures and
+  was interrupted. `g1-first-failure.xml` stops after **287 passes / one failure**:
+  the analysis-recovery fixture cannot create an AF_INET socket (EPERM). This is
+  not a completed or green G1; invocation-specific restrictions prevent extending
+  the passing focused result to full qualification.
+- `packaging.json`: **184** package files match source, wheel, isolated install
+  and a fresh disposable bundle; installed CLI and translated route labels work
+  outside the checkout. The private Profile is excluded from the wheel and Git.
+
+## Institutional panel route wording (2026-10-06)
+
+Baseline: dev `92aa829`. Generic Disabled labels suggested that unselected
+publishers were excluded from public retrieval. TUI/Web now name the institutional
+route explicitly, distinguish Allowed / Off (public only) / Not enabled, and
+explain public/OA availability for publishers inside and outside the list. Queue
+counts exclude public downloads and history; missing Web observations show unknown.
+Existing Host modes and control permissions remain authoritative and unchanged.
+
+`.local/qualification/institutional-panel-wording-20261006/focused.xml` records
+**32 passes** across institutional TUI/browser, language and documentation checks.
+These exercise actual local browser rendering/actions, narrow TUI layouts, bilingual
+switching, missing/disabled observations and read-only Host projection without
+browser actions or database writes. JavaScript syntax and whitespace checks pass.
+This is a presentation change, not full G1 or publisher download qualification;
+retained research and Windows clients were not changed.
+
 ## Explicit init publisher selection (2026-10-06)
 
 Baseline: dev `52d4e3c`. Selecting client browser placement without a publisher

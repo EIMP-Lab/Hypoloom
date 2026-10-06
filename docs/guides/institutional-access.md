@@ -775,8 +775,8 @@ enable its institutional browser fallback.
 
 Selected preparation platforms carry `auto` into the generated launch arguments,
 unless an explicit `public_only` or `disabled` mode overrides them. All other
-publishers default to **Disabled** institutional access; the catalog is not a
-selection of every supported publisher. Public discovery and public/OA full-text
+publishers show **Not enabled** under **Institutional route** (`disabled` internally);
+the catalog is not a selection of every supported publisher. Public discovery and public/OA full-text
 retrieval remain independent. With preparation set to `none`, only explicitly
 configured provider modes remain enabled. Existing runs retain their frozen policy.
 
@@ -1087,10 +1087,16 @@ keeping a partial PDF. Rate limits, access denial, challenges, invalid PDFs and
 identity conflicts do not trigger this retry. Download diagnostics retain the
 DNS/TCP/TLS/request/header/body timeout phase and received-byte count where known.
 
-Press **i** in the TUI to open the English **Institutional access** panel and see one row per publisher: access policy, current
-institutional pending/ready/gap counts and latest observations. Public-only suppresses
-automatic institutional browsing. Policies are **Public + institution**, **Public only**
-and **Disabled**. Unselected publishers are Disabled; public retrieval remains available.
+Press **i** in the TUI to open **Institutional access** (English by default, with a Chinese
+language option). Each publisher row shows its **Institutional route**, current
+institutional pending/ready/gap counts and latest observations. The route labels are
+**Allowed**, **Off (public only)** and **Not enabled**. They mean institutional browsing
+is allowed, explicitly off by public-only choice, or not enabled, respectively.
+The panel explains that public/OA retrieval remains available for all publishers,
+including those outside the list. Route settings do not guarantee login, subscription
+or successful downloads. Unselected publishers show **Not enabled** for their
+institutional route; this does not exclude their publicly accessible papers.
+The Web institutional panel uses the same route labels and public/OA explanation.
 Reopening an updated monitor does not change an existing Host's publisher modes.
 No institutional requests does not mean public
 retrieval failed, and ready full text does not prove an Agent read it or obtained PDF.

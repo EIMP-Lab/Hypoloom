@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Telegram route visibility and local configuration](../qualification.md#telegram-route-visibility-and-local-configuration-2026-10-06):
+  explicit private proxy binding, fixed init notice and observed transport route;
+  retained runs keep their binding, live recovery and full G1 have socket limits.
+
+- [Institutional panel route wording](../qualification.md#institutional-panel-route-wording-2026-10-06):
+  TUI/Web distinguish institutional selection from public/OA availability;
+  bilingual labels and queue scope, no retrieval policy change.
+
 - [Explicit init publisher selection](../qualification.md#explicit-init-publisher-selection-2026-10-06):
   existing missing-choice/argv flow requires interactive publisher selection;
   ACM is offered, recommendations are not answers, no persistent confirmation.

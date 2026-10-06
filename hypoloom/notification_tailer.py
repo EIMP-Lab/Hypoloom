@@ -380,7 +380,9 @@ class NotificationTailer:
 
     def health(self):
         with self._health_lock:
-            return {name: {**value, "failure": dict(value["failure"]) if value.get("failure") else None}
+            return {name: {**value,
+                    **({"route": "http_proxy" if self.proxy_url else "direct"} if name == "telegram" else {}),
+                    "failure": dict(value["failure"]) if value.get("failure") else None}
                     for name, value in self._health.items()}
 
     def retry(self, sink="telegram"):

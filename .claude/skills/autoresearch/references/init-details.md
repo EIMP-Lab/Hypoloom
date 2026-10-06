@@ -994,6 +994,12 @@ flag is needed. Preserve `--notification-output-root` when selected. Old explici
 file/environment inputs remain compatible, including `--notification-proxy-env`
 and `--notification-credentials-file`; do not mix sources for one service.
 Managed init does not rely on interactive or systemd-manager notification values.
+Use the inspected notification `proxy` field and the program's fixed Telegram
+route notice: a running Clash/browser proxy does not imply that notifications
+use it. When the user has selected a notification proxy, ensure its explicit
+private Profile or CLI binding is present before starting the session. Preserve
+direct routing when no proxy was selected; never guess a local port. Runtime
+retry does not reload a missing or changed proxy binding.
 Never copy secrets or put them in argv, unit properties, review JSON or chat.
 The helper runs the runtime's local credential,
 notification-output isolation, log-path, proxy and loopback-address validators

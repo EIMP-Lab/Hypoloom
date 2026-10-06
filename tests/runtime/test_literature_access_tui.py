@@ -38,9 +38,13 @@ def plain(renderable, width=110):
 
 
 def test_summary_separates_configured_paths_current_work_and_sample_readability():
-    status = observation(); original = deepcopy(status)
+    status = observation()
+    status['literature_access']['groups'].append({'provider': 'Wiley', 'mode': 'disabled', 'papers': []})
+    original = deepcopy(status)
     text = plain(publisher_table(status))
-    assert '2 institutional · 2 public only · 0 disabled' in access_summary(status)
+    assert '2 allowed · 2 off (public only) · 1 not enabled' in access_summary(status)
+    assert 'Institutional route' in text and 'Allowed' in text
+    assert 'Off (public only)' in text and 'Not enabled' in text and 'Disabled' not in text
     assert 'browser availability unconfirmed' in connection_summary(status)
     assert 'IEEE' in text and '1 / 1 / 1' in text and 'Document validation failed' in text
     assert 'Human verification required' in text and '0 / 0 / 1' in text
@@ -59,7 +63,7 @@ def test_empty_cache_does_not_erase_logged_verification():
 
 
 @pytest.mark.parametrize('access,expected', [(None, 'status unknown'), ({}, 'status unknown'),
-    ({'enabled': False, 'groups': []}, 'Institutional browser disabled')])
+    ({'enabled': False, 'groups': []}, 'Institutional browser not enabled')])
 def test_missing_host_observation_is_not_disabled_or_connected(access, expected):
     status = {'literature_access': access}
     assert expected in access_summary(status)
@@ -145,7 +149,7 @@ def test_panel_uses_real_host_modes_and_results_without_writes_or_browser_action
             app.push_screen(LiteratureAccessScreen(status()))
             await pilot.pause()
             screen = app.screen
-            assert '2 public only' in str(screen.query_one('#literature-summary').content)
+            assert '2 off (public only)' in str(screen.query_one('#literature-summary').content)
             rendered = plain(screen.query_one('#literature-publishers').content)
             assert 'Nature' in rendered and '0 / 1 / 0' in rendered and 'Full text ready' in rendered
             screen.update_status(status())

@@ -202,18 +202,29 @@ def test_retry_keeps_completed_publisher_and_updates_fixed_review(prepared, monk
         cleanup(root, thread)
 
 
-def test_notification_review_is_complete_without_private_values(tmp_path):
+@pytest.mark.parametrize("proxy", [None, "http://127.0.0.1:1234"])
+def test_notification_review_is_complete_without_private_values(tmp_path, prepared, proxy):
+    from hypoloom import bootstrap_review
     from hypoloom.notification_tailer import notification_preflight
     secrets = tmp_path / "notify.env"
     secrets.write_text("TELEGRAM_BOT_TOKEN=123:private-token\nTELEGRAM_CHAT_ID=private-recipient\n")
     secrets.chmod(0o600)
-    result = notification_preflight({"sinks": {"log": {}, "telegram": {"enabled": True,
+    config = {"sinks": {"log": {}, "telegram": {"enabled": True,
         "credentials_file": str(secrets)}, "dashboard": {"enabled": True, "host": "127.0.0.1", "port": 8765}},
-        "events": {"telegram": ["grounding_question", "run_finished"]}}, state_root=tmp_path / "run", environ={})
+        "events": {"telegram": ["grounding_question", "run_finished"]}}
+    result = notification_preflight(config, state_root=tmp_path / "run",
+        environ={"SELECTED_PROXY": proxy} if proxy else {}, proxy_env="SELECTED_PROXY" if proxy else None)
     assert result["sinks"]["telegram"]["events"] == ["grounding_question", "run_finished"]
     assert result["sinks"]["log"]["events"]
-    assert result["proxy"] == "direct" and result["delivery_status"] == "unverified"
+    assert result["proxy"] == ("configured" if proxy else "direct") and result["delivery_status"] == "unverified"
     assert "private-token" not in json.dumps(result) and "private-recipient" not in json.dumps(result)
+    _, args, _, launch = prepared
+    launch['effective_configuration']['notifications'] = result
+    text = bootstrap_review.render(args, launch, {'scope': {'run_id': args.run_id},
+        'preparation_summary': [], 'provider_modes': {}})
+    assert ('Telegram route: explicit HTTP proxy' if proxy else 'Telegram route: direct') in text
+    assert all(value not in text for value in ('private-token', 'private-recipient', 'http://127.0.0.1:1234'))
+    assert 'unverified' in text and 'No test message is sent' in text
 
 
 def test_session_cli_rejects_start_and_template_before_effects(prepared, capsys):

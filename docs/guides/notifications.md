@@ -87,10 +87,21 @@ Here `127.0.0.1` means the server running Hypoloom, not the Windows client.
 Notifications do not inherit model/browser proxy settings or automatically use
 `HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`.
 
+The fixed init review explicitly shows **Telegram route: direct** or
+**explicit HTTP proxy**. If Clash is running but the review says direct,
+the notification service has not selected it. Add `proxy_url` to the private
+Profile before init; installing Clash or updating this tutorial does not edit
+that Profile. A configured proxy still needs a connectivity check.
+
 中文：服务器无法直连 Telegram 时，在**新 init 前**配置专用通知代理。
 Clash/Mihomo 应运行在 Linux 服务器上，并保持后台可用；这里的 `127.0.0.1`
 指 Hypoloom 所在服务器，不是 Windows 客户端。通知不会自动采用模型、浏览器
 的代理，也不会自动读取 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`。
+
+程序生成的 init 审核会明确显示 **Telegram route: direct**（直连）或
+**explicit HTTP proxy**（显式 HTTP 代理）。Clash 已运行但审核仍显示 direct，
+说明通知服务尚未采用它；应在 init 前填写私有 Profile 的 `proxy_url`。
+安装 Clash 或更新教程不会修改该 Profile；显示已配置也不代表网络已验证。
 
 Check Clash's `port` (HTTP) or `mixed-port` (HTTP supported), then confirm the
 listener. A `socks-port` alone is not supported by this notification transport.
@@ -202,6 +213,11 @@ Host contact is never a healthy channel. TUI **n** opens the Telegram retry form
 the scoped Web operator link includes **Retry Telegram delivery**. Notification
 failures stay separate from scientific acceptance and model API recovery.
 
+Telegram health also shows its bound **Direct / HTTP proxy** route, without
+exposing the endpoint or credentials. **Unknown route** means the observed Host
+did not provide it (including older versions); viewers do not infer it from an
+edited Profile. Retry keeps that bound route and the existing delivery cursors.
+
 If the failure phase is `connect` with `timeout` or `network_unreachable` and
 no HTTP status, first check the server's network route and selected proxy.
 No Telegram API response has been received, so this is not evidence of an invalid
@@ -245,6 +261,10 @@ Web/TUI 显示待投递数量、本次 Host 生命周期内最近成功时间、
 下次重试时间。Host 不可达时状态为未知。暂时性错误按 30/60/120/240/300 秒退避，
 遵循更长的服务端 Retry-After；认证、接收对象、权限及证书错误等待人工处理。
 代理仍显式写入 Profile，保持 TLS、重定向和私密凭据边界。通知故障不暂停研究。
+
+Telegram 状态同时显示已绑定的“直连／HTTP 代理”，不显示端点或凭据。
+“连接方式未知”表示 Host 未提供该信息（包括旧版本），不能从事后编辑的 Profile
+推断当前发送线路；点击重试保留原有线路和投递游标。
 
 至少五条连续积压的普通 Telegram 事件会汇总；人工问题、错误和服务状态变化单独发送，
 每轮最多五条远程消息。成功确认并写入既有游标后，才记录摘要覆盖事件的进度。

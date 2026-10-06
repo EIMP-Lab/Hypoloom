@@ -234,11 +234,18 @@ def test_explicit_env_uses_tailer_mapping_and_cursor_prevents_second_post(tmp_pa
         calls.append((proxy_url, timeout))
         return notifier.HTTPResponse(200, b'{"ok":true}')
 
-    first = _tailer(tmp_path, environ=environment, proxy_env="SELECTED_PROXY", transport=transport).poll_once()
+    tailer = _tailer(tmp_path, environ=environment, proxy_env="SELECTED_PROXY", transport=transport)
+    first = tailer.poll_once()
     second = _tailer(tmp_path, environ=environment, proxy_env="SELECTED_PROXY", transport=transport).poll_once()
     assert not first.errors and first.delivered == {"telegram": 1}
     assert not second.errors and second.delivered == {"telegram": 0}
     assert calls == [(environment["SELECTED_PROXY"], 10.0)]
+    assert first.health['telegram']['route'] == 'http_proxy'
+    assert 'localhost' not in json.dumps(first.health)
+    environment['SELECTED_PROXY'] = 'http://localhost:9998'
+    tailer.retry()
+    assert tailer.health()['telegram']['route'] == 'http_proxy'
+    assert tailer.proxy_url == calls[0][0], 'retry retains the route actually bound to this sender'
 
 
 def test_no_proxy_preserves_old_custom_transport_signature(tmp_path, monkeypatch):
@@ -252,6 +259,7 @@ def test_no_proxy_preserves_old_custom_transport_signature(tmp_path, monkeypatch
 
     result = _tailer(tmp_path, environ=environment, transport=old_transport).poll_once()
     assert result.delivered == {"telegram": 1} and not result.errors and calls == [10.0]
+    assert result.health['telegram']['route'] == 'direct'
 
 
 def test_post_default_ignores_all_ambient_proxies(monkeypatch):

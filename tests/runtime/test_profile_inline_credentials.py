@@ -103,7 +103,10 @@ def test_blank_templates_need_no_private_values_and_set_cannot_carry_a_secret(ch
 
 
 def test_profile_proxy_uses_same_private_notify_source(checkout, capsys, tmp_path):
+    from hypoloom.notification_tailer import notification_proxy
     root = private_profile(checkout, capsys)
+    previous = admit_profile(root, run_id="before-proxy")
+    old_config = previous.create_run_payload["research_contract"]["methodology"]["controls"]["product"]["notify"]
     path = root / "notify.yaml"
     config = yaml.safe_load(path.read_text())
     config["proxy_url"] = "http://127.0.0.1:1234"
@@ -112,7 +115,9 @@ def test_profile_proxy_uses_same_private_notify_source(checkout, capsys, tmp_pat
     assert report.admitted, report.to_dict()
     config = report.create_run_payload["research_contract"]["methodology"]["controls"]["product"]["notify"]
     assert "proxy_url" not in config
-    assert notification_preflight(config, state_root=tmp_path / "state", environ={})
+    assert notification_preflight(config, state_root=tmp_path / "state", environ={})["proxy"] == "configured"
+    assert notification_proxy(config, {}, None) == "http://127.0.0.1:1234"
+    assert notification_proxy(old_config, {}, None) is None, "editing the Profile must not migrate prior admission"
     with pytest.raises(ValueError, match="not both"):
         notification_preflight(config, state_root=tmp_path / "state", environ={}, proxy_env="PROXY")
 

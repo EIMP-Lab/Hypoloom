@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 6 Telegram route diagnosis/repair: the local Profile and admitted run
+  still selected direct despite a separately configured server proxy. Correct the
+  ignored Profile for future init; fixed review and TUI/Web now expose the selected
+  or actually bound Telegram route, with unknown for older Host observations.
+  No proxy discovery, hot reload or duplicate sender. 188 distinct focused passes;
+  wheel/install/fresh bundle match 184 files. Full G1 and live access/recovery are
+  blocked by socket EPERM; no current-run delivery success is claimed.
+  [Validation](../qualification.md#telegram-route-visibility-and-local-configuration-2026-10-06).
+
+- October 6 institutional panel wording: TUI/Web label the institutional route
+  separately (Allowed / Off (public only) / Not enabled), explain public/OA access
+  for every publisher and limit queue counts to institutional work. Missing Web
+  observations remain unknown. Shared translations/guides updated; 32 focused
+  checks pass. Existing modes, control authorization and runs are unchanged.
+  [Validation](../qualification.md#institutional-panel-route-wording-2026-10-06).
+
 - October 6 explicit init publisher choice: client placement alone previously
   admitted the three default publishers, silently leaving ACM disabled. Enabled
   inspect now requires the existing institutional_prepare_provider argument,

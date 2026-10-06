@@ -141,7 +141,7 @@ def test_managed_notification_health_and_retry_are_visible_without_research_muta
         reply=host.handle(ControlRequest(1,'status',None,'STATUS',{'run_id':'notifications'}))
         health=reply.result['notifications']['sinks']['telegram']
         assert health['state']=='cooldown' and health['failure']['code']=='network_unreachable'
-        assert health['pending']==1
+        assert health['pending']==1 and health['route']=='direct'
         assert host.handle(ControlRequest(1,'retry',None,'NOTIFICATION_RETRY',{'run_id':'notifications','sink':'telegram'})).status=='accepted'
         services.poll_once()
         assert services.notification_status('notifications')['sinks']['telegram']['state']=='healthy'

@@ -17,7 +17,7 @@ LABELS = {
     "fetch_unavailable": "Fetch unavailable", "access_required": "Subscription required",
     "available": "Full text ready", "access_denied": "Access denied", "no_full_text": "No full text found",
     "identity_unconfirmed": "Paper identity unconfirmed", "failed": "Fetch or parsing failed",
-    "skipped": "Skipped", "public_only": "Public only", "disabled": "Disabled", "queue_timeout": "Queue timed out",
+    "skipped": "Skipped", "public_only": "Public/OA only", "disabled": "Institutional route not enabled", "queue_timeout": "Queue timed out",
     "acquisition_timeout": "Acquisition timed out", "manual_timeout": "Manual wait ended",
     "sample_verified": "Sample readable", "opened": "Preparation page opened", "unchecked": "Not checked",
     "not_checked": "Sample not verified", "tab_limit": "Browser tab limit reached",
@@ -38,12 +38,12 @@ def access_summary(status):
     if not isinstance(access, dict) or "enabled" not in access:
         return tr("Institutional status unknown: no current Host observation.")
     if not access["enabled"]:
-        return tr("Institutional browser disabled for this run. Public retrieval remains available.")
+        return tr("Institutional browser not enabled for this run. Public/OA retrieval remains available.")
     groups = access.get("groups", [])
     automatic = sum(g.get("mode") == "auto" for g in groups)
     public = sum(g.get("mode") == "public_only" for g in groups)
     disabled = sum(g.get("mode") == "disabled" for g in groups)
-    return tr("Publishers: {0} institutional · {1} public only · {2} disabled.", automatic, public, disabled)
+    return tr("Institutional routes: {0} allowed · {1} off (public only) · {2} not enabled.", automatic, public, disabled)
 
 
 def connection_summary(status):
@@ -70,7 +70,7 @@ def publisher_table(status):
     """Format live queue observations; no probes, commands or new stored counters."""
     table = Table(box=box.SIMPLE, expand=True, padding=(0, 1), pad_edge=False)
     table.add_column(tr("Publisher"), min_width=8, max_width=17, ratio=2, overflow="fold")
-    table.add_column(tr("Policy"), min_width=8, max_width=20, ratio=2, overflow="fold")
+    table.add_column(tr("Institutional route"), min_width=8, max_width=20, ratio=2, overflow="fold")
     table.add_column(tr("Work\nA / R / G"), width=9, no_wrap=True)
     table.add_column(tr("Latest observation"), min_width=16, ratio=3, overflow="fold")
     access = status.get("literature_access") or {}
@@ -101,7 +101,7 @@ def publisher_table(status):
             recent = tr("Observation time unknown")
         else:
             recent = tr("No institutional requests")
-        mode = {"auto": tr("Public + institution"), "public_only": tr("Public only"), "disabled": tr("Disabled")}.get(group.get("mode"), tr(
+        mode = {"auto": tr("Allowed"), "public_only": tr("Off (public only)"), "disabled": tr("Not enabled")}.get(group.get("mode"), tr(
             "Policy unknown"
         ))
         history = access.get("history") or {}
@@ -131,14 +131,16 @@ class LiteratureAccessScreen(ModalScreen):
         with Vertical(id="literature-access-form"):
             with VerticalScroll(id="literature-access-scroll"):
                 yield Static(tr("Institutional access · Read only · Refreshes with the main view"), markup=False)
+                yield Static(tr(
+                    "Public/OA retrieval is available for all publishers, including those not listed here. "
+                    "Institutional settings below do not guarantee login, subscription or successful downloads."
+                ), markup=False, id="literature-public-scope")
                 yield Static("", markup=False, id="literature-summary")
                 yield Static("", markup=False, id="literature-connection")
                 yield Static("", id="literature-publishers")
                 yield Static(tr(
-                    "Policies describe allowed routes, not verified login or subscription. Disabled "
-                    "publishers do not use the institutional browser; public retrieval remains "
-                    "independent.\n"
-                    "A / R / G = Active / Ready / Gaps in the current queue only. An empty cache does not "
+                    "A / R / G = Active / Ready / Gaps in the institutional queue only; excludes public downloads "
+                    "and history. An empty cache does not "
                     "mean no past success. Log verifications cover at most the latest 1 MiB; missing history "
                     "is unknown. Verification does not prove PDF archival or reading. Gaps do not block "
                     "other research."

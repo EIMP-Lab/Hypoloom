@@ -35,6 +35,7 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
     _create_fresh_run(root, 'language-test')
     snapshot = build_monitor_snapshot(root, 'language-test')
     status = {**snapshot.status, **observation(), 'run_state': 'WAITING_HUMAN',
+        'notifications': {'state': 'observed', 'sinks': {'telegram': {'state': 'cooldown', 'route': 'direct'}}},
         'grounding_dialogue': [{'decision_id': 'decision-language', 'ordinal': 1, 'state': 'OPEN',
           'question': 'Help is a research term; 不翻译研究内容', 'rationale': 'Original rationale',
           'options': ['Keep original'], 'answer': None, 'resolution': None}]}
@@ -61,6 +62,7 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
                 assert app.ui_language == 'zh-CN'
                 assert str(app.query_one('#help-button', Button).label) == '帮助'
                 assert '运行概览' in str(app.query_one('#summary .panel-content', Static).render())
+                assert '连接方式：直连' in str(app.query_one('#summary .panel-content', Static).render())
                 assert selector.value == selected
                 for name in ('language-button', 'help-button', 'support-help-button', 'end-run-button'):
                     button = app.query_one('#' + name, Button)
@@ -72,11 +74,13 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
                 await pilot.click('#language-button')
                 await pilot.pause()
                 assert 'RUN AT A GLANCE' in str(app.query_one('#summary .panel-content', Static).render())
+                assert 'route: Direct' in str(app.query_one('#summary .panel-content', Static).render())
             await pilot.click('#language-button')
             await pilot.press('i')
             await pilot.pause()
             assert str(app.screen.query_one('#literature-close', Button).label) == '关闭'
-            assert '出版社：' in str(app.screen.query_one('#literature-summary', Static).render())
+            assert '机构渠道：' in str(app.screen.query_one('#literature-summary', Static).render())
+            assert '所有出版社（含未列出的出版社）' in str(app.screen.query_one('#literature-public-scope', Static).render())
             await pilot.press('escape')
             await pilot.press('h')
             await pilot.pause()
@@ -102,6 +106,8 @@ def test_browser_switch_preserves_filters_research_and_no_operator_submission(br
     page = browser
     page.wait("!document.querySelector('#language-toggle').disabled")
     assert page.evaluate('document.documentElement.lang') == 'en'
+    page.evaluate("fixture.snapshot.status.notifications = {state:'observed', sinks:{telegram:{state:'cooldown',route:'http_proxy'}}}")
+    page.wait("document.querySelector('#notification-status').textContent.includes('route: HTTP proxy')")
     original = page.evaluate('JSON.stringify(fixture.snapshot)')
     page.evaluate("document.querySelector('#live-log-text').textContent = 'Help <script>研究日志原文</script>'")
     page.evaluate("document.querySelector('#filter-search').value='expert-a'; document.querySelector('#filter-search').dispatchEvent(new Event('input'))")
@@ -110,9 +116,12 @@ def test_browser_switch_preserves_filters_research_and_no_operator_submission(br
     assert page.text('h1') == '研究观察器'
     assert page.text('#tab-map') == '研究图谱'
     assert page.text('#open-support') == '报告问题'
+    assert '连接方式：HTTP 代理' in page.text('#notification-status')
     assert page.evaluate("document.querySelector('#filter-search').value") == 'expert-a'
     assert page.evaluate('JSON.stringify(fixture.snapshot)') == original
     assert page.text('#live-log-text') == 'Help <script>研究日志原文</script>'
+    page.evaluate("delete fixture.snapshot.status.notifications.sinks.telegram.route")
+    page.wait("document.querySelector('#notification-status').textContent.includes('连接方式未知')")
     page.click('#open-help')
     assert '术语与权限' in page.text('#help-dialog')
     page.click('#close-help')

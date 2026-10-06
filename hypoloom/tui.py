@@ -787,6 +787,8 @@ class SummaryPanel(CockpitPanel):
             for sink, item in notifications.get("sinks", {}).items():
                 if sink == "log": continue
                 failure = item.get("failure") or {}
+                route = tr(" · route: {0}", tr({"direct": "Direct", "http_proxy": "HTTP proxy"}.get(
+                    item.get("route"), "Unknown route"))) if sink == "telegram" else ""
                 health.append(escape(tr(
                     "{0}: {1} · pending {2} · last success {3} · {4} · next retry {5} · n Telegram retry",
                     sink,
@@ -795,7 +797,7 @@ class SummaryPanel(CockpitPanel):
                     _service_time(item.get('last_success_at')),
                     failure.get('code', ''),
                     _service_time(item.get('next_retry_at')),
-                )))
+                ) + route))
         literature_access = status.get("literature_access") or {}
         if literature_access:
             from .literature_access_tui import access_summary
