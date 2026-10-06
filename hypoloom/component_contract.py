@@ -101,7 +101,9 @@ _REQUIREMENT_FIELDS = {
     "required_source_literals",
     "argv_bindings",
     "artifact_validators",
+    "inconclusive_if",
 }
+_INCONCLUSIVE_IF_FIELDS = {"artifact", "path", "equals"}
 _REQUIRED_PATH_FIELDS = {"scope", "path", "kind"}
 _DATA_CHECK_FIELDS = {"type", "dataset", "cache", "manifest", "val_cache"}
 _ARGV_BINDING_FIELDS = {
@@ -678,6 +680,21 @@ class _Compiler:
             if field in spec:
                 parsed = self.text_list(spec[field], f"{location}.{field}")
                 normalized[field] = parsed or []
+        if "inconclusive_if" in spec:
+            condition = self.mapping(spec["inconclusive_if"], f"{location}.inconclusive_if")
+            if condition is not None:
+                self.unknown(condition, _INCONCLUSIVE_IF_FIELDS, f"{location}.inconclusive_if")
+                artifact = self.text(condition.get("artifact"), f"{location}.inconclusive_if.artifact")
+                path = self.text(condition.get("path"), f"{location}.inconclusive_if.path")
+                if isinstance(path, str) and any(not part for part in path.split(".")):
+                    self.block("contract_invalid_value", f"{location}.inconclusive_if.path", "path must contain non-empty dotted keys")
+                if "equals" not in condition or isinstance(condition.get("equals"), (list, tuple, Mapping)):
+                    self.block("contract_invalid_value", f"{location}.inconclusive_if.equals", "value must be a scalar")
+                normalized["inconclusive_if"] = {
+                    "artifact": artifact,
+                    "path": path,
+                    "equals": copy.deepcopy(condition.get("equals")),
+                }
         list_shapes = {
             "required_paths": _REQUIRED_PATH_FIELDS,
             "data_checks": _DATA_CHECK_FIELDS,
@@ -835,6 +852,13 @@ class _Compiler:
                             "contract_protocol_artifact_mismatch",
                             f"methodology.yaml.success_criteria.{component['tier']}.{component['name']}.required_artifacts",
                             "component and protocol required artifacts differ",
+                        )
+                    inconclusive_if = requirements.get("inconclusive_if")
+                    if isinstance(inconclusive_if, Mapping) and inconclusive_if.get("artifact") not in protocol_artifacts:
+                        self.block(
+                            "contract_protocol_mismatch",
+                            f"methodology.yaml.success_criteria.{component['tier']}.{component['name']}.experiment_kind",
+                            "inconclusive_if artifact must be one of the protocol required artifacts",
                         )
                     if result.get("kind") == "metric" and not result.get("deferred") and result.get("metric") not in requirements.get("required_metrics", []):
                         self.block(

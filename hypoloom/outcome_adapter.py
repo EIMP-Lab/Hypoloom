@@ -17,7 +17,7 @@ class ComponentResultValidationError(ValueError):
     def __init__(self, code: str, location: str, message: str) -> None:
         self.code, self.location, self.message = code, location, message; super().__init__(f"{code}@{location}: {message}")
 class ValidatedComponentResult(TypedDict):
-    component_id: str; result_kind: Literal["metric", "artifact"]; metric_name: str | None; metric_value: str | None; criterion_met: bool; logical_artifacts: dict[str, tuple[str, ...]]; method_family_id: str | None; implementation_sha256: str | None; core_config_sha256: str | None
+    component_id: str; result_kind: Literal["metric", "artifact"]; metric_name: str | None; metric_value: str | None; criterion_met: bool | None; logical_artifacts: dict[str, tuple[str, ...]]; method_family_id: str | None; implementation_sha256: str | None; core_config_sha256: str | None
 def _metric_mode(metric: str, required_metrics: tuple[str, ...]) -> str:
     return "paired" if metric.casefold().startswith("paired_") or "paired_delta" in required_metrics else "max" if metric.casefold().startswith("max_") else "mean"
 def component_result_contract_parts(component: Mapping[str, Any], protocol: Mapping[str, Any]) -> dict[str, Any]:
@@ -99,7 +99,31 @@ def validate_component_result(component: Mapping[str, Any], protocol: Mapping[st
     family, implementation, config = _validated_identity(result, paths, implementation_bytes, implementation_digest_check)
     metric_name = metric_value = None; criterion = True
     if kind == "metric": metric_name, value, target, direction = _component_metric(component, spec, requirements, result["trials"]); metric_value = normalize_metric_value(value); criterion = value >= target if direction == "MAXIMIZE" else value <= target
+    condition = requirements.get("inconclusive_if")
+    if condition is not None and _inconclusive_condition_matches(condition, paths):
+        criterion = None
     return {"component_id": component_id, "result_kind": kind, "metric_name": metric_name, "metric_value": metric_value, "criterion_met": criterion, "logical_artifacts": logical, "method_family_id": family, "implementation_sha256": implementation, "core_config_sha256": config}
+
+
+def _inconclusive_condition_matches(condition: Mapping[str, Any], paths: Mapping[str, tuple[Path, ...]]) -> bool:
+    """Interpret a protocol-owned completeness marker without special-casing a metric sentinel."""
+    artifact = condition.get("artifact")
+    dotted = condition.get("path")
+    selected = paths.get(artifact, ())
+    if not isinstance(artifact, str) or not isinstance(dotted, str) or len(selected) != 1:
+        raise ComponentResultValidationError(
+            "invalid_inconclusive_condition", "protocol.requirements.inconclusive_if", "condition must select one declared artifact"
+        )
+    try:
+        value: Any = json.loads(selected[0].read_text(encoding="utf-8"), object_pairs_hook=_unique_object, parse_constant=_reject_component_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ComponentResultValidationError("invalid_inconclusive_condition", dotted, str(exc)) from exc
+    for part in dotted.split("."):
+        if not part or not isinstance(value, Mapping) or part not in value:
+            raise ComponentResultValidationError("invalid_inconclusive_condition", dotted, "declared JSON path is absent")
+        value = value[part]
+    expected = condition.get("equals")
+    return type(value) is type(expected) and value == expected
 
 
 def validate_measurement_result(component: Mapping[str, Any], measurement: ScientificMeasurement,
