@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- October 7 pulse appearance preference: after enabling Edge animations, the
+  user accepted the new frequency but requested the original visual treatment.
+  Restore 0.45/0.55 rem child/main lights, opacity 0.35–1 and original halos;
+  remove scaling. Keep the new RPM curve and phase continuity unchanged.
+  Seven focused checks pass; bright/dim views inspected, served assets verified.
+  [Validation](../qualification.md#web-pulse-appearance-refinement-2026-10-07).
+
 - October 7 Web pulse visibility: larger main/child lights now brighten, expand
   and glow together. Positive-RPM child periods use `0.8 + 1.2/sqrt(RPM)` seconds;
   main periods remain 1.35x. Ordinary polls leave animation timing untouched;

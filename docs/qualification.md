@@ -2,6 +2,28 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Web pulse appearance refinement (2026-10-07)
+
+After enabling animations in Edge, the user confirmed the new frequency is
+appropriate but prefers the earlier size and halo. Restore the original
+0.45/0.55 rem child/main lights, opacity 0.35–1 and original shadow keyframes;
+remove the added scaling. Keep the `0.8 + 1.2 / sqrt(RPM)` curve, 1.35 main
+multiplier and all phase-continuity fixes. JavaScript and runtime behavior are
+unchanged. The prior visibility entry below records the initial visual design.
+
+Update the existing browser regression's appearance expectations to this
+explicit user preference, retaining its rate, continuity and stop-condition
+checks. Evidence belongs in `.local/qualification/web-pulse-appearance-20261007/`.
+
+Focused validation: **seven passed, zero skipped** (three real-browser RPM
+cases and four documentation cases). Bright/dim screenshots were inspected;
+the browser verifies original sizes, opacity and no transform while retaining
+the exact frequency and phase assertions. The live observer on port 44361
+serves the updated assets. Ruff undefined-name and Git whitespace checks pass.
+The initial invocation had three fixture setup errors because its temporary
+parent directory did not yet exist; that result remains in `focused.xml`, and
+the corrected invocation is `final.xml`. No research-run or Host mutation.
+
 ## Web pulse visibility and continuous animation (2026-10-07)
 
 The prior 8/10 px child/main lights combined a dim core with the largest halo.

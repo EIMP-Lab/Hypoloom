@@ -143,7 +143,7 @@ def test_pulse_phase_survives_poll_card_redraw_and_rpm_change(browser, tmp_path)
       pulseAnimations.forEach(a=>{a.pause(); a.currentTime=a.effect.getComputedTiming().duration*.375;});
       window.readPulses=()=>pulseSelectors.map((s,i)=>{const e=document.querySelector(s),a=e.getAnimations()[0],c=getComputedStyle(e);
         return {sameNode:e===pulseNodes[i],sameAnimation:a===pulseAnimations[i],phase:a.effect.getComputedTiming().progress,
-          duration:a.effect.getComputedTiming().duration,opacity:+c.opacity,width:parseFloat(c.width),shadow:c.boxShadow,scale:new DOMMatrix(c.transform).a};});
+          duration:a.effect.getComputedTiming().duration,opacity:+c.opacity,width:parseFloat(c.width),shadow:c.boxShadow,transform:c.transform};});
       window.pollCount=fixtureRequests.filter(r=>r[1]==='/api/refresh').length;""")
     before = page.evaluate('readPulses()')
     # A real unchanged poll must not seek a paused animation to a wall-clock phase.
@@ -160,7 +160,7 @@ def test_pulse_phase_survives_poll_card_redraw_and_rpm_change(browser, tmp_path)
     assert all(p['sameNode'] for p in after_redraw)
     assert [p['phase'] for p in after_redraw] == pytest.approx([p['phase'] for p in before])
     assert [p['opacity'] for p in after_redraw] == pytest.approx([p['opacity'] for p in before])
-    assert [p['scale'] for p in after_redraw] == pytest.approx([p['scale'] for p in before])
+    assert [p['transform'] for p in after_redraw] == [p['transform'] for p in before]
     assert [p['shadow'] for p in after_redraw] == [p['shadow'] for p in before]
     # Chromium replaces CSSAnimation objects on reparenting. Check the visible
     # phase above and exactly one animation per light, not old object identity.
@@ -178,7 +178,7 @@ def test_pulse_phase_survives_poll_card_redraw_and_rpm_change(browser, tmp_path)
         assert [p['phase'] for p in changed] == pytest.approx([p['phase'] for p in before])
         assert [p['duration'] for p in changed] == pytest.approx([child_ms * 1.35, child_ms] * 2)
 
-    # Inspect rendered extremes: the larger light and halo brighten together.
+    # The user prefers the original small light and soft halo, without scaling.
     page.evaluate('pulseAnimations.forEach(a=>a.currentTime=0)')
     bright = page.evaluate('readPulses()')
     page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'center'})")
@@ -187,11 +187,11 @@ def test_pulse_phase_survives_poll_card_redraw_and_rpm_change(browser, tmp_path)
     dim = page.evaluate('readPulses()')
     page.screenshot(tmp_path / 'pulse-dim.png')
     for index, (high, low) in enumerate(zip(bright, dim)):
-        assert high['width'] >= (12 if index % 2 == 0 else 10)
-        assert high['opacity'] >= .95 and low['opacity'] <= .25
-        assert high['scale'] > 1 and low['scale'] < 1
+        assert high['width'] == pytest.approx(9.9 if index % 2 == 0 else 8.1, abs=.02)
+        assert high['opacity'] == pytest.approx(1) and low['opacity'] == pytest.approx(.35)
+        assert high['transform'] == low['transform'] == 'none'
         assert high['shadow'] != low['shadow']
-        assert low['shadow'].endswith('0px 0px 0px 0px')
+        assert high['shadow'].endswith('0px 0px 0px 0px')
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=phase-process] .agent-tile-light')).animationName") == 'none'
 
     # The browser still advances naturally after the diagnostic pause is removed.

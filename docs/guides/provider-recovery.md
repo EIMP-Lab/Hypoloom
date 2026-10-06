@@ -93,8 +93,8 @@ aggregate and child rates need not preserve that ordering. Process tiles use
 static status, and TUI uses status labels rather than continuous animation.
 At 1 RPM the child/main periods are 2/2.7 seconds; at 4 RPM they are 1.4/1.89
 seconds. At higher rates the curve approaches 0.8/1.08 seconds without a hard
-cutoff. Larger lights brighten and expand with their halos, then dim and shrink
-together. Refreshes preserve the animation; RPM changes retain its current phase.
+cutoff. Lights retain their compact size and soft halo, without scaling.
+Refreshes preserve the animation; RPM changes retain its current phase.
 This frequency cue is not a heartbeat, token speed or research progress signal.
 Zero RPM, missing/stale data and reduced-motion preferences stop animation;
 unavailable values display `—`.

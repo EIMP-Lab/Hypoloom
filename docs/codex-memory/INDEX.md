@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Web pulse appearance refinement](../qualification.md#web-pulse-appearance-refinement-2026-10-07):
+  user-preferred original size, opacity and halo without scaling; retain the
+  accepted RPM frequency curve and browser-owned phase continuity.
+
 - [Web pulse visibility and continuous animation](../qualification.md#web-pulse-visibility-and-continuous-animation-2026-10-07):
   larger lights with synchronized core/halo brightness, a gentler RPM curve,
   browser-owned phase continuity across polls, card redraws and rate changes.
