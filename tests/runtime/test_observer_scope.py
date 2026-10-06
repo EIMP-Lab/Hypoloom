@@ -74,6 +74,24 @@ def test_scope_totals_partition_retries_without_changing_run_accounting(tmp_path
     assert rows == before
 
 
+def test_grounding_card_partitions_global_work_and_inherits_nested_readers(tmp_path):
+    rows = [record('plan', 'LITERATURE_REVIEW', kind='GROUNDING_QUERY_PLAN'),
+        record('g', 'GROUNDING', kind='GROUNDING', state='OPEN'),
+        record('reader', 'PAPER_READ', kind='PAPER_READ', parent='g', state='OPEN'),
+        record('nested', 'PAPER_READ', kind='PAPER_READ', parent='reader'),
+        record('observer', 'OBSERVER', kind='OBSERVER'), record('e', 'RESULT_ANALYSIS')]
+    summary = _summary(tmp_path, attempts=rows)
+    grounding = summary['grounding']
+    assert set(grounding['attempt_ids']) == {'plan','g','reader','nested'}
+    assert grounding['active_readers'] == 1 and grounding['state'] == 'active'
+    assert grounding['accounting']['reported_tokens'] + summary['other_global_tasks']['accounting']['reported_tokens'] == summary['global_tasks']['accounting']['reported_tokens']
+    assert summary['experts'][0]['accounting']['reported_tokens'] == 10
+    rows[1] = record('g', 'GROUNDING', kind='GROUNDING', accepted=True)
+    rows[2] = record('reader', 'PAPER_READ', kind='PAPER_READ', parent='g')
+    completed = _summary(tmp_path, attempts=rows)['grounding']
+    assert completed['state'] == 'completed' and completed['active_readers'] == 0
+
+
 def test_shared_result_requires_actual_reference_and_ignores_clarification():
     source = record("accepted", "GROUNDING", kind="GROUNDING", accepted=True)
     other = record("peer", "RESULT_ANALYSIS", role="peer", inputs=[{"ref": "accepted--response"}])
@@ -218,7 +236,8 @@ def test_tui_global_lane_survives_expert_filter_and_completed_refresh(tmp_path):
             panel.update_snapshot(snapshot, "missing-expert")
             await pilot.pause()
             text = _static_text(panel.query_one(Static))
-            assert "GLOBAL TASKS" in text and "GROUNDING" in text
+            assert "Grounding" in text and "GROUNDING" in text
+            assert "GLOBAL TASKS" not in text  # Grounding now has its own card.
             assert "No experts match" in text and "OPEN?" in text
             rows[0] = record("g", "GROUNDING", kind="GROUNDING", accepted=True)
             snapshot.overview = _summary(tmp_path, attempts=rows)

@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Model request pacing and automatic recovery](../qualification.md#model-request-pacing-and-automatic-recovery-2026-10-06):
+  shared per-run/per-model admission, automatic transient-429 recovery, open-Agent
+  response confirmation, coalesced manual retry, local-queue isolation, independent
+  Grounding cards and exact child/aggregate Web RPM/pulse semantics.
+  [Configuration and limitations](../guides/provider-recovery.md#run-rpm-and-request-concurrency)
+  distinguish the run's allocation from account RPM/TPM; retained runs are unchanged.
+
 - [Telegram route visibility and local configuration](../qualification.md#telegram-route-visibility-and-local-configuration-2026-10-06):
   explicit private proxy binding, fixed init notice and observed transport route;
   retained runs keep their binding, live recovery and full G1 have socket limits.

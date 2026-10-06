@@ -2,6 +2,147 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Model request pacing and automatic recovery (2026-10-06)
+
+Implementation scope: request-level RPM and in-flight limits shared by the
+Agents of one run, automatic backoff for transient 429, and live Web RPM for
+the run, Grounding and each expert. Limits apply per model; they are the run's
+allocation, not an observation of the provider account's total quota. Other
+programs and independent Hosts are outside this scope. TPM enforcement is not
+included. Existing runs retain their frozen implementation.
+
+The incident in `.local/analysis/api-recovery-20261006/analysis.json` records ten
+generic upstream 429s, a three-wave operator wait, and five manual clears.
+Open recovery Agents had completed model responses while dispatch still waited
+for their terminal results. Repeated same-connection clears admitted additional
+Agents. No exhausted balance or exact provider limit was established.
+
+Defense justification for shared request admission:
+
+1. Independent per-Agent relays have no shared rate window or in-flight count;
+   overlapping requests can exceed a run's allocation and compound recovery.
+2. The affected boundary is the Host-owned outbound model transport, before an
+   upstream request is sent; scientific workflow state is not the rate counter.
+3. Git, primary keys, atomic diagnostic writes, transactions and type validation
+   preserve inputs/results but cannot schedule simultaneous outbound requests.
+   Existing Attempt counts do not count individual model requests.
+4. Use one disposable in-process coordinator per run, existing request ownership,
+   existing budget validation, relay completion observations and Host STATUS.
+   Add no database, credential identity hash, receipt or independent service.
+   Restart waits out one 60-second window when prior Host calls exist instead
+   of claiming knowledge of their rate window. The coordinator can be removed
+   if the existing relay later becomes a single shared scheduler. Maintenance
+   is limited to request admission/release, cancellation, recovery and projection.
+
+Profile admission supplies configurable local defaults of 60 requests/minute
+and an in-flight limit matching `max_active_agents` per model. An explicit
+`provider_max_in_flight` overrides that default. These are project settings,
+not hard-coded MiMo limits. Direct low-level contracts may omit both limits.
+Queue time consumes the existing Agent/run deadline. Generic 429 uses automatic
+60/120/240/480/900-second backoff; longer Retry-After wins. Authentication,
+explicit quota exhaustion and connection-file controls retain their safeguards.
+Web animation is a bounded frequency cue, not a heartbeat or token-speed meter;
+zero, missing/stale observations and reduced-motion preferences stop animation.
+
+The follow-up separates local 300-second admission waits (`local_request_queue`)
+from upstream 429s: they return to Host without a global provider cooldown or
+scientific retry exhaustion. Agent/run deadlines and final-report limits remain.
+TUI and Web give Grounding its own card, including query planning and inherited
+reader ownership. Other global tasks exclude Grounding; accounting totals retain
+their original inclusive scope. Child Agent lights use exact Attempt RPM; main
+expert/Grounding lights use their aggregate RPM. At equal RPM, main periods are
+1.35 times child periods; Process lights stay static. No second task ledger or
+new authority is introduced. Follow-up evidence is recorded under
+`.local/qualification/agent-traffic-cards-20261006/`.
+
+Follow-up validation:
+
+- `focused.xml`: **117 passed** across request accounting, Profile defaults,
+  recovery, Grounding ownership and TUI behavior. `native.xml`: **three passed**
+  through installed CC, real Host/MCP/CPU and a local provider. Six remote 429s
+  and six local queue deferrals each close **18 Attempts/one CPU Process** with
+  zero operator commands, an independent clean Oracle and no owned process
+  residue. Explicit quota still requires the existing authorized switch path.
+- `ui-docs.xml` initially passed 48 cases and failed the old Grounding global-row
+  selector. The independent card now retains its existing history/sharing drawer;
+  the corrected test preserves ownership, live sharing and history assertions.
+  `corrections.xml`: **69 passed**, including the Grounding runtime capture seam,
+  Host code-size bound, recovery controls and browser cards. `ui-final.xml`:
+  **two passed**, additionally checking Host loss/reconnection, own Attempt RPM,
+  main/child periods, reduced motion, completion, localization and stale data.
+- Initial full selection `g1.xml` was interrupted after **2,274 passes/two
+  failures/two skips**. Failures were six extra Host lines and a test adapter
+  missing the new optional traffic binding. Connection-reload logic is now in
+  the existing counted settings helper, leaving the 4,650-line Host cap unchanged;
+  the capture fixture also checks the actual Grounding/Attempt ownership.
+- Early browser fixture errors traced to updating a not-yet-created Grounding
+  badge. Fix the optional DOM access; retain the original WebSocket size limit
+  and browser exception assertions. No validator was weakened.
+- The second full selection (`g1-final.xml`) was interrupted at **6,597 passes /
+  156 skips / one failure** to diagnose the first explicit API reload being
+  incorrectly coalesced. That first reload now records the existing session
+  boundary; only later unchanged controls reuse it. The original fresh-session
+  assertions remain intact, and `reload-boundary.xml` passes **90 cases** including
+  those controls, credentials, authentication cooldown and session recovery.
+  `collection.txt` records **7,623** collected identities; the remaining **870**
+  identities, including the failed case, are selected unchanged in
+  `remaining-tests.txt`. Anonymous interrupted JUnit records are not counted as
+  completed tests. Original interrupted results are retained.
+- `g1-rest.xml`: **867 passed/two skipped/one failed**. The remaining failure
+  counted only expert panels in TUI; the new independent Grounding panel is now
+  counted explicitly, including after filters and terminal-width changes.
+  Scroll position and unchanged-visual identity checks remain. `tui-final.xml`:
+  **26 passed**.
+- Reconciliation by collected test identity (`validation.json`) covers all
+  **7,623 cases: 7,465 passing/158 skipped**, with no unresolved failures or
+  missing identities. This combines the interrupted full selection, its complete
+  remainder and scoped corrections; it is **not one green full invocation**.
+  Skips retain Windows/PowerShell, optional browser, paid-service and GPU limits.
+  Static checks pass. Final source/wheel/isolated install/fresh bundle match
+  **185 files**; installed CLI works outside the checkout. No retained research
+  run, private Profile or provider account setting was changed.
+
+Initial implementation evidence (before that follow-up) under
+`.local/qualification/provider-rpm-20261006/`:
+
+- `focused.xml`: **274 passed** across relay transport/diagnostics, recovery,
+  Host connection controls, Profile/budget admission and observer projection.
+  Initial failures were two obsolete three-wave/manual-unlock expectations and
+  one injected adapter missing the new optional traffic binding; expectations
+  and fixture compatibility were corrected, preserving the original failures.
+- `integration-direct.xml`: **126 passed**, including the additional Retry-After,
+  quota, long-queue and invalid-budget regressions, real concurrent relays,
+  parallel Host/CPU behavior, disposable bundles and the three-expert public
+  Profile through actual CPU completion. These overlap the focused selection.
+- `native.xml`: **two passed** using installed CC, real Host/MCP/CPU and a local
+  scripted provider. Explicit quota retains the authorized connection-switch path.
+  Six ordinary 429s recover without operator commands, close all **18 Attempts**
+  and publish **one CPU Process** result. Independent Oracle passes; zero open
+  Attempts, pending effects or owned process residue. Backoff intervals alone
+  are shortened in this fixture; real clocks, request pacing and in-flight limits
+  remain active. `automatic-rpm-evidence.json` retains the observed counts.
+- `browser-docs.xml`: **97 passed** for actual browser interactions, public
+  templates, runtime Skills and documentation; `provider-ui.xml`: **14 passed**
+  for recovery controls and live monitor observations. Browser coverage checks
+  expert/Grounding/run ownership, English/Chinese,
+  changing frequency, stale/missing observations, zero RPM, reduced motion and
+  mobile layout; `rpm-mobile.png` retains a preview. Live counts include retries
+  and other run tasks, never queued admissions or another account client.
+- Static compilation, undefined-name checks and `git diff --check` pass.
+  `g1.log` and the first integration wrapper invocation accumulated failures and
+  were interrupted. `g1-first-failure.xml` records **299 passes/one failure** at
+  AF_INET socket creation (EPERM), before the native fixture starts. Direct
+  focused pytest invocations can exercise those transports in this environment;
+  this invocation-dependent restriction does **not** constitute a completed G1.
+- `packaging.json`: all **185** source/package files match the wheel, isolated
+  installation and a fresh bundle; installed CLI and the new module work outside
+  the checkout. No private Profile, provider credentials or retained run is changed.
+
+The five completed selections total **451 distinct passing cases** after
+deduplication (`validation.json`). This is local fixture evidence, not a new
+MiMo quota measurement or a paid/live
+run. Existing frozen Hosts are not upgraded or restarted by these changes.
+
 ## Telegram route visibility and local configuration (2026-10-06)
 
 Baseline: dev `92aa829`, together with the institutional-panel wording changes

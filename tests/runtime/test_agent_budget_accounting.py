@@ -98,6 +98,14 @@ def test_initial_vram_budget_is_separate_from_operator_minimum(initial):
     assert validate_new_run_budget(document, _dollar_budget()) == _dollar_budget()
 
 
+@pytest.mark.parametrize('field', ['provider_rpm_limit', 'provider_max_in_flight'])
+@pytest.mark.parametrize('value', [None, 0, -1, True, 2.5, '60'])
+def test_provider_request_limits_use_existing_budget_validation(field, value):
+    document = {'roles': [], 'budget': {'agent_invocation': _dollar_budget().to_dict(), field: value}}
+    with pytest.raises(ValueError, match=field):
+        validate_new_run_budget(document, _dollar_budget())
+
+
 @pytest.mark.parametrize("minimum,initial", [
     (1024, None), (1024, True), (1024, 1023), (1024, 1.5),
     (1024, 2**53), (0, 8192),

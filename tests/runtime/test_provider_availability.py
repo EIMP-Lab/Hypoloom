@@ -25,7 +25,7 @@ def gate(rows, now, clear=None):
     return provider_retry_gate(rows, cooldown_seconds=18000, cleared_at=clear, now=now)
 
 
-def test_provider_recovery_waves_are_bounded_and_late_old_calls_cannot_reblock():
+def test_transient_recovery_slows_down_and_late_old_calls_cannot_reblock():
     rows = [failure("a", 0, 10), failure("b", 1, 11), failure("c", 2, 12)]
     assert gate(rows, 20)["recovery_attempts"] == 1
     assert gate(rows, 73)["state"] == "recovering"
@@ -34,7 +34,8 @@ def test_provider_recovery_waves_are_bounded_and_late_old_calls_cannot_reblock()
     rows[-1] = failure("retry", 74, 80)
     rows.append(failure("retry2", 141, 150))
     waiting = gate(rows, 1000)
-    assert waiting["state"] == "waiting_operator" and waiting["pending"]
+    assert waiting["state"] == "recovering" and not waiting['requires_operator']
+    assert gate(rows, 200)['next_retry_at'] == 390
     rows.append(failure("late", 149, 201))
     assert gate(rows, 202, clear=200)["state"] == "recovering"
     assert not gate(rows, 202, clear=200)["pending"]
@@ -66,6 +67,29 @@ def test_quota_classification_does_not_guess_from_429_and_preserves_retry_after(
     known = provider_failure([{**observed, "upstream_status": 429, "ended_at": 10, "response_headers": {"retry-after": "3600"}}])
     assert known["retry_at"] == 3610
     assert gate([{**known, "attempt_id": "quota", "started_at": 1, "ended_at": 10}], 20)["state"] == "cooldown"
+
+
+def test_local_admission_timeout_never_claims_remote_rate_limit():
+    local = provider_failure([{'failure_reason': 'local_request_queue', 'upstream_status': None, 'ended_at': 10}])
+    assert local == {'code': 'local_request_queue', 'http_status': None, 'source': 'local_admission'}
+    assert gate([{**local, 'attempt_id': 'queued', 'started_at': 1, 'ended_at': 10}], 11)['state'] == 'ready'
+
+
+def test_local_queue_retries_do_not_exhaust_nodes_or_pause_other_work(batch_host, monkeypatch):
+    host = batch_host
+    original, deferred = host._accept_agent_response, []
+    def respond(request, response, **kwargs):
+        if len(deferred) < 6:
+            deferred.append(request.command_id)
+            host._agent_failure(request, AttemptTerminalReason.FAILED, 'nonzero_exit', retryable=True,
+                details={'diagnostics': {'provider_failure': {'code':'local_request_queue', 'source':'local_admission', 'http_status':None}}})
+            assert host._provider_retry_status('batch-host')['state'] == 'ready'
+        else:
+            original(request, response, **kwargs)
+    monkeypatch.setattr(host, '_accept_agent_response', respond)
+    _complete(host)
+    assert len(deferred) == 6 and not host._expert_final_failures('batch-host')
+    assert len([r for r in host.store.list_attempts() if r['kind'] == 'PROCESS']) == 2
 
 
 def test_zero_auth_delay_still_bounds_recovery_and_quality_failure_can_prove_access():
@@ -136,22 +160,23 @@ def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_
         host._agent_failure(request, AttemptTerminalReason.FAILED, "nonzero_exit", retryable=True,
             details={"diagnostics": {"provider_failure": {"code": "rate_limited", "http_status": 429, "retry_at": time.time() + 60}}})
     monkeypatch.setattr(host, "_accept_agent_response", reject)
-    for count in range(1, 4):
+    for count in range(1, 7):
         _until(host, lambda: len(rejected) == count)
-        offset[0] += 61
+        if count < 6:
+            offset[0] = min(900, 60 * 2 ** min(count - 1, 4)) + 1
     assert len({r.command_id for r in rejected}) == 1
-    assert host._provider_retry_status("batch-host")["state"] == "waiting_operator"
+    offset[0] = 0
+    assert host._provider_retry_status("batch-host")["state"] == "cooldown"
     before = len(host.store.list_attempts())
     for _ in range(4): host.tick()
     assert len(host.store.list_attempts()) == before
     assert not host._expert_final_failures("batch-host")
     reopened = WorkflowHost(host.state_root, local_agent=host.agent)
-    assert reopened._provider_retry_status("batch-host")["requires_operator"]
+    assert not reopened._provider_retry_status("batch-host")["requires_operator"]
+    assert reopened._provider_retry_status('batch-host')['next_retry_at'] is not None
     reopened.store.close()
     monkeypatch.setattr(host, "_accept_agent_response", original)
-    response = host.handle(ControlRequest(1, "try-again", None, "PROVIDER_RETRY_CLEAR", {"run_id": "batch-host", "reason": "operator"}))
-    assert response.status == "accepted" and response.result["provider_retry"]["state"] == "recovering"
-    offset[0] += 1
+    offset[0] = 901
     _complete(host)
     assert host._provider_retry_status("batch-host")["state"] == "ready"
     processes = [a for a in host.store.list_attempts() if a["kind"] == "PROCESS"]
@@ -159,6 +184,50 @@ def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_
     from hypoloom.oracle import Oracle
     audit = Oracle(host.store.database_path, host.publisher.root).audit("batch-host")
     assert audit.ok, audit.to_dict()
+
+
+def test_live_response_releases_dispatch_before_agent_closes_and_repeat_clear_is_noop(batch_host, monkeypatch):
+    import threading
+    from hypoloom.provider_traffic import for_run
+    host = batch_host
+    original = host._accept_agent_response
+    monkeypatch.setattr(host, '_accept_agent_response', lambda request, response, **kw:
+        host._agent_failure(request, AttemptTerminalReason.FAILED, 'nonzero_exit', retryable=True,
+            details={'diagnostics': {'provider_failure': {'code': 'rate_limited', 'http_status': 429}}}))
+    _until(host, lambda: host._provider_retry_status('batch-host')['state'] == 'cooldown')
+    monkeypatch.setattr(host, '_accept_agent_response', original)
+    clear = host.handle(ControlRequest(1, 'first-clear', None, 'PROVIDER_RETRY_CLEAR',
+        {'run_id': 'batch-host', 'reason': 'operator'}))
+    assert clear.status == 'accepted'
+    boundary = clear.result['provider_retry']['cleared_at']
+    finish, held = host._finish_fake_agent, []
+    monkeypatch.setattr(host, '_finish_fake_agent', lambda request, raw: held.append((request, raw)))
+    _until(host, lambda: bool(held))
+    assert host._provider_retry_status('batch-host')['pending']
+    again = host.handle(ControlRequest(1, 'second-clear', None, 'PROVIDER_RETRY_CLEAR',
+        {'run_id': 'batch-host', 'reason': 'operator'}))
+    assert again.status == 'accepted' and again.result['recovery_already_requested']
+    assert again.result['provider_retry']['cleared_at'] == boundary
+    assert again.result['provider_retry']['pending']
+    for _ in range(3): host.tick()
+    assert len(held) == 1
+    traffic = for_run(host, 'batch-host')
+    ticket = traffic.acquire(model='fixture', owner=('expert', held[0][0].role), connection=boundary,
+        deadline=time.monotonic() + 5, cancelled=threading.Event())
+    traffic.finish(ticket, {'request_path': '/v1/messages', 'upstream_status': 200,
+        'message_complete': True, 'response_body_complete': True, 'ended_at': time.time()})
+    assert host.store.get_attempt(held[0][0].attempt_id)['state'] == 'OPEN'
+    assert host._provider_retry_status('batch-host')['state'] == 'ready'
+    ready_clear = host.handle(ControlRequest(1, 'ready-clear', None, 'PROVIDER_RETRY_CLEAR',
+        {'run_id': 'batch-host', 'reason': 'operator'}))
+    assert ready_clear.status == 'accepted' and ready_clear.result['recovery_already_requested']
+    assert ready_clear.result['provider_retry']['cleared_at'] == boundary
+    monkeypatch.setattr(host, '_finish_fake_agent', finish)
+    finish(*held[0])
+    _complete(host)
+    from hypoloom.oracle import Oracle
+    report = Oracle(host.store.database_path, host.publisher.root).audit('batch-host')
+    assert report.ok, report.to_dict()
 
 
 @pytest.mark.parametrize("batch_host", ["iterate"], indirect=True)

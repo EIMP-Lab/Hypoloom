@@ -17,6 +17,13 @@ INPUT_TOO_LONG_PHRASES = (
     "maximum context length", "input is too long")
 
 PROVIDER_UNAVAILABLE = frozenset({"auth_failed", "rate_limited", "quota_exhausted"})
+# Local queue expiry retries its task without claiming a remote outage.
+PROVIDER_DEFERRED = PROVIDER_UNAVAILABLE | {"local_request_queue"}
+PROVIDER_RETRY_DELAYS = (60, 120, 240, 480, 900)
+
+
+def provider_retry_delay(rounds):
+    return PROVIDER_RETRY_DELAYS[min(max(rounds - 1, 0), len(PROVIDER_RETRY_DELAYS) - 1)]
 
 
 def provider_status_text(status, *, language="en"):
@@ -216,7 +223,7 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
             if type(retry_at) in (int, float) and math.isfinite(retry_at):
                 until = float(retry_at)
             elif row.get("code") == "rate_limited":
-                until = float(ended_at) + 60.0
+                until = float(ended_at) + provider_retry_delay(1)
         elif row.get("code") == "auth_failed" and cooldown_seconds >= 0:
             until = float(ended_at) + cooldown_seconds
         if until is None and row.get("code") != "quota_exhausted":
@@ -233,7 +240,11 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         if item["started_at"] >= last_end:
             rounds += 1
         last_end = max(last_end, item["attempt_ended_at"])
-    operator = rounds >= attempt_limit or any(item["until"] is None for item in gates)
+        if item['class'] == 'rate_limited':
+            item['until'] = max(item['until'], item['attempt_ended_at'] + provider_retry_delay(rounds))
+            item['pending'] = item['until'] > now
+    operator = (rounds >= attempt_limit and any(item['class'] != 'rate_limited' for item in gates)
+        or any(item["until"] is None for item in gates))
     waiting = operator or any(item["pending"] for item in gates)
     recovering = not waiting and (bool(gates) or cleared_at is not None and recovered_at is None)
     first_failure = min((item["attempt_ended_at"] for item in gates), default=float("-inf"))
@@ -272,6 +283,8 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
     last = next((item for item in reversed(exchanges) if item.get("request_path") != "/v1/messages/count_tokens"), exchanges[-1])
     code = last.get("provider_error_code") or last.get("failure_reason")
     status = last.get("upstream_status")
+    if code == "local_request_queue" and status is None:
+        return {"code": code, "http_status": None, "source": "local_admission"}
     if code in {"input_too_long", "token_budget_exceeded", "context_capacity"}:
         action = None
         generations = [item for item in exchanges if item.get("request_path") == "/v1/messages"]
@@ -305,7 +318,7 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at) if type(ended_at) in (int, float) else None
         return {"code": code, "http_status": status,
             **({"retry_at": ended_at + seconds, "retry_after_seconds": seconds} if seconds is not None else {})}
-    if status in (401, 403):
+    if status in (401, 403) or code == 'auth_failed':
         # Credential rejected (rolling quota window or rotation). The Host owns
         # the cooldown length; the exchange only proves the rejection class.
         return {"code": "auth_failed", "http_status": status}
@@ -316,7 +329,7 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         headers = last.get("response_headers") or {}
         seconds = retry_after_seconds(headers.get("retry-after"), now=ended_at)
         # No trusted reset time: bounded ordinary retry delay, existing caps apply.
-        seconds = 60.0 if seconds is None else seconds
+        seconds = float(provider_retry_delay(1)) if seconds is None else seconds
         return {"code": "rate_limited", "http_status": status,
             "retry_after_seconds": seconds, "retry_at": ended_at + seconds}
     return None

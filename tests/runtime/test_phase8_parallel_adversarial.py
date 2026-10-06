@@ -87,6 +87,7 @@ class _ControlledAgentHost:
         host_tool_handler: Callable[[str, str, Mapping[str, object]], dict[str, object]] | None = None,
         runtime_prefix: Path | None = None,
         read_roots: tuple[Path, ...] = (),
+        traffic_binding=None,
     ) -> _AgentHandle:
         assert model == self.model_identity
         assert request.required_model_identity == self.model_identity

@@ -45,6 +45,8 @@ budget:
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3
+  provider_rpm_limit: 60  # 本运行每个模型的请求份额，不代表已知的账号限额。
+  # provider_max_in_flight: 3  # 可选覆盖；省略时跟随 max_active_agents。
   max_active_processes: 2
   max_active_reviews: 3
   max_retries: 2

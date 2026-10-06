@@ -306,6 +306,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     budget = copy.deepcopy(methodology.get("budget", {}))
     if not isinstance(budget, dict): v.error("methodology.yaml.budget", "expected budget object"); budget = {}
     budget.setdefault("agent_invocation", DEFAULT_REAL_AGENT_BUDGET.to_dict())
+    budget.setdefault("provider_rpm_limit", 60)
     budget.setdefault("max_experiments", max(1, len(roles)) * int(stops.get("max_rounds_per_expert", 10) if isinstance(stops.get("max_rounds_per_expert", 10), int) else 10) * 5)
     budget.setdefault("max_active_hypotheses", max(1, len(roles)))
     fork_settings = [{**defaults, **item} for item in raw_experts if isinstance(item, Mapping)]
@@ -313,6 +314,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     default_effect_capacity = max(1, sum(value if type(value) is int and value > 0 else 1 for value in fork_limits))
     for field in ("max_active_agents", "max_active_processes", "max_active_reviews"):
         budget.setdefault(field, default_effect_capacity)
+    budget.setdefault("provider_max_in_flight", budget["max_active_agents"])
     budget_warnings = []
     aliases = ((safety, "total_budget_usd", "total_budget_usd", "safety.yaml", 1),
         (safety, "per_expert_budget_usd", "per_expert_budget_usd", "safety.yaml", 1),

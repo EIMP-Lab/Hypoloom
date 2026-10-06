@@ -101,7 +101,8 @@ def test_tui_expert_cards_follow_variable_rosters_and_reflow_without_losing_scro
                 await pilot.pause()
                 content = lanes.query_one(Static)
                 text = _static_text(content)
-                assert text.count("╭") == count and text.count("╰") == count
+                assert text.count("Grounding Agent") == 1
+                assert text.count("╭") == count + 1 and text.count("╰") == count + 1
                 assert all(item.role in text for item in roster)
                 if not count:
                     assert "No frozen roster" in text
@@ -119,7 +120,8 @@ def test_tui_expert_cards_follow_variable_rosters_and_reflow_without_losing_scro
                     totals = str(app.query_one(SummaryPanel).query_one(Static).render())
                     app.query_one("#expert-filter", Select).value = roster[-1].role
                     await pilot.pause()
-                    assert _static_text(content).count("╭") == 1 and roster[-1].role in _static_text(content)
+                    assert _static_text(content).count("╭") == 2 and roster[-1].role in _static_text(content)
+                    assert _static_text(content).count("Grounding Agent") == 1
                     assert str(app.query_one(SummaryPanel).query_one(Static).render()) == totals
                     app.query_one("#expert-filter", Select).value = ""
                     for width in (100, 60):
@@ -135,7 +137,7 @@ def test_tui_expert_cards_follow_variable_rosters_and_reflow_without_losing_scro
                         rows = console.render_lines(content.content, console.options, pad=False)
                         from rich.segment import Segment
                         assert all(Segment.get_line_length(row) <= actual_width for row in rows)
-                        assert _static_text(content).count("╭") == count
+                        assert _static_text(content).count("╭") == count + 1
                     lanes.scroll_home(animate=False)
                     app.save_screenshot("expert-cards-narrow.svg", path=tmp_path)
                     app._render(replace(initial, overview={**_overview(), "experts": []}, experts=()))

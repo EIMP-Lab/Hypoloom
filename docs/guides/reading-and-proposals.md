@@ -79,8 +79,11 @@ Reopening monitoring updates these displays for retained runs. Runtime retrieval
 repairs apply to new runs: changing an API, refreshing Web or updating the checkout
 does not reopen a terminal node or replace an existing run's frozen runtime.
 
-Web **Global tasks** and the TUI's global lane show Grounding/query planning,
-Observer, graph evolution, final reports and independent Debate judging. These
+Web and TUI show an independent **Grounding Agent** card for query planning,
+Grounding and its commissioned readers. It retains status, token usage, task
+span, reader counts and result-sharing evidence after completion. Web task details
+can be collapsed. **Global tasks** contains the other run work: Observer, graph
+evolution, final reports and independent Debate judging. These
 tasks serve the run even when an existing expert is their recorded execution role.
 Expert cards and their session filters show expert-owned work; readers follow the
 recorded parent commission. Unknown historical ownership stays explicit. Task
@@ -92,6 +95,11 @@ result. Per-expert delivery is shown only when a recorded research request conta
 that accepted result reference; delivery does not establish reading or understanding.
 Completed global work stays compact. Expert filters do not hide the global overview.
 TUI **d** shows execution details; **w** opens full Web history and sharing details.
+
+With a fresh supporting Host, cards also display live RPM. Web child lights use
+their own Attempt RPM; expert/Grounding main lights use the aggregate and breathe
+more slowly at equal RPM. Unknown/stale or zero rates stop the animation; Process
+lights are static. See [request limits and RPM](provider-recovery.md#run-rpm-and-request-concurrency).
 
 Token and retry observations are partitioned into global, expert and unknown work,
 using the existing accounting fold once per Attempt. Run totals and budget controls

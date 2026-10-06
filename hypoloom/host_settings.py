@@ -187,11 +187,34 @@ def provider_retry_status(host, run_id: str) -> dict[str, Any]:
     status = provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
         attempt_limit=host._agent_attempt_limits(host._research_contract(run_id))[1],
         cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
+    from .provider_traffic import for_run
+    traffic = for_run(host, run_id)
+    traffic.select(cleared)
+    boundary = max([cleared or 0, *(gate['attempt_ended_at'] for gate in status['gates'])])
+    recovered_at = traffic.recovered_after(boundary)
+    if (all(gate['class'] == 'rate_limited' for gate in status['gates'])
+            and recovered_at is not None):
+        status.update(pending=False, state='ready', requires_operator=False,
+            reason=None, next_retry_at=None, recovered_at=recovered_at,
+            recovery_attempts=0, gates=[])
     _, error = host._provider_connection(run_id)
     if error:
         status.update(pending=True, state="waiting_operator", requires_operator=True,
             reason="connection_configuration", connection_error=error, next_retry_at=None)
     return status
+
+def provider_recovery_reused(host, run_id: str) -> bool:
+    """Reload mutable credentials while coalescing an unchanged recovery."""
+    previous, _ = host._provider_connection(run_id)
+    host._provider_connections.pop(run_id, None)
+    environment, error = host._provider_connection(run_id)
+    if error:
+        raise ValueError(error)
+    status = host._provider_retry_status(run_id)
+    # The first explicit reload must retain its existing session boundary.
+    return (environment == previous and status['cleared_at'] is not None
+        and status['state'] in {'ready', 'recovering'})
+
 
 def provider_connection(host, run_id: str) -> tuple[dict[str, str], str | None]:
     controls = host.store.inspect("SELECT command_id, payload_json FROM workflow_transitions WHERE run_id=? "

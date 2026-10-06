@@ -258,6 +258,7 @@
   function setConnection(kind, message) {
     connection.dataset.state = kind;
     connectionText.textContent = message;
+    if (state.snapshot) renderTraffic(state.snapshot);
     providerButtons();
     if (kind !== "live" && state.snapshot) {
       setText("provider-title", t("API status unconfirmed · observation stale"));
@@ -431,7 +432,8 @@
   }
   function providerButtons() {
     byId("provider-controls").hidden = !providerToken;
-    byId("provider-retry").disabled = providerBusy || !providerWritable();
+    byId("provider-retry").disabled = providerBusy || !providerWritable()
+      || (!providerPending && state.snapshot?.status?.provider_retry?.state === "recovering");
     byId("provider-switch").disabled = providerBusy || !providerWritable() || Boolean(providerPending);
     byId("provider-settings").disabled = providerBusy || Boolean(providerPending);
     byId("provider-retry").textContent = providerPending ? t("Retry same request") : t("Try current API");
@@ -562,7 +564,58 @@
   byId("provider-retry").addEventListener("click", () => requestProvider(false));
   byId("provider-switch").addEventListener("click", () => requestProvider(true));
 
+  function renderTraffic(snapshot) {
+    const traffic = object(snapshot.status?.provider_traffic);
+    const age = Number(snapshot.observed_at) - Number(traffic.observed_at);
+    const fresh = connection.dataset.state === "live" && traffic.scope === "run"
+      && !traffic.warming_up && Number.isFinite(age) && Math.abs(age) <= 30
+      && object(snapshot.overview).host_observation?.availability === "responded";
+    document.documentElement.dataset.rpmFresh = String(fresh);
+    const valid = value => Number.isInteger(value) && value >= 0;
+    const describe = counts => fresh && valid(counts.rpm)
+      ? t("Last 60 seconds: {0} outbound API attempts · in flight {1} · queued {2}. This run only; includes retries, not other account clients.", counts.rpm, counts.in_flight ?? "?", counts.queued ?? "?")
+      : t("Live RPM unavailable; no fresh Host traffic observation.");
+    const fill = (node, counts) => {
+      if (!node) return;
+      node.textContent = fresh && valid(counts.rpm) ? String(counts.rpm) : "—";
+      node.title = describe(counts);
+    };
+    fill(byId("run-rpm"), traffic);
+    fill(byId("grounding-rpm"), object(traffic.grounding));
+    const pulse = (light, counts, aggregate) => {
+      if (!light) return;
+      const active = fresh && valid(counts.rpm) && counts.rpm > 0 && light.classList.contains("host-confirmed");
+      light.classList.toggle("rpm-active", active);
+      if (active) {
+        const period = Math.max(.8, Math.min(6, 6 / Math.sqrt(counts.rpm))) * (aggregate ? 1.35 : 1);
+        light.style.setProperty("--rpm-period", `${period}s`);
+        light.style.animationDelay = `-${(Date.now() / 1000) % period}s`;
+      }
+      light.title = `${light.dataset.workTitle || ""}\n${describe(counts)} ${t("Pulse frequency follows RPM; it is not a heartbeat or token speed.")}`;
+    };
+    pulse(byId("grounding-pulse"), object(traffic.grounding), true);
+    const grounding = object(snapshot.overview?.grounding);
+    const counts = object(traffic.grounding);
+    const groundingState = grounding.state === "preparing" && connection.dataset.state === 'live' && snapshot.status?.provider_retry?.state === 'cooldown' ? 'COOLDOWN'
+      : grounding.state === "active" && fresh && counts.queued > 0 && !counts.in_flight ? "QUEUED"
+      : ({active: "RUN", completed: "DONE", waiting_human: "WAIT", failed: "FAIL", cancelled: "CANCELLED", preparing: "PREP", not_started: "IDLE"}[grounding.state] || "UNKNOWN");
+    if (byId('grounding-state')) setText("grounding-state", groundingState === 'RUN' && (connection.dataset.state !== 'live' || object(snapshot.overview).host_observation?.availability !== 'responded') ? 'OPEN?' : groundingState);
+    document.querySelectorAll('.agent-tile[data-attempt]').forEach(tile => {
+      if (tile.dataset.kind !== 'AGENT') return;
+      const own = traffic.by_attempt ? object(traffic.by_attempt[tile.dataset.attempt] || {rpm:0,in_flight:0,queued:0}) : {};
+      fill(tile.querySelector('.agent-tile-rpm'), own);
+      pulse(tile.querySelector('.agent-tile-light'), own, false);
+      tile.title = `${tile.dataset.workTitle || ''}\n${describe(own)}`;
+    });
+    document.querySelectorAll(".expert-preview[data-expert-role]").forEach(card => {
+      const counts = object(object(traffic.by_expert)[card.dataset.expertRole] || {rpm: 0, in_flight: 0, queued: 0});
+      fill(card.querySelector(".expert-rpm-value"), counts);
+      pulse(card.querySelector(".breath-dot"), counts, true);
+    });
+  }
+
   function renderHud(snapshot) {
+    renderTraffic(snapshot);
     renderProvider(snapshot);
     renderHumanDecisions(snapshot);
     const status = object(snapshot.status);
@@ -1247,11 +1300,12 @@
   }
 
   function renderGlobalTasks(snapshot) {
+    renderGrounding(snapshot);
     const container = byId("global-task-list");
     container.replaceChildren();
     const overview = object(snapshot.overview);
     [["run", "global_tasks", "Global"], ["unknown", "unknown_tasks", t("Ownership unknown")]].forEach(([scope, key, title]) => {
-      const group = object(overview[key]);
+      const group = object(key === 'global_tasks' ? (overview.other_global_tasks || overview[key]) : overview[key]);
       if (!list(group.stages).length) return;
       const row = element("article", "global-task-summary");
       const opened = list(group.activity).filter((item) => item.state === "OPEN");
@@ -1267,11 +1321,59 @@
       row.append(actionButton("Details & history", () => openLocalDetail("global_tasks", {task_scope: scope, name: t("{0} tasks", title)}), "detail-link"));
       container.append(row);
     });
-    const sharing = object(overview.grounding_sharing);
-    if (sharing.state === "accepted") container.append(element("p", "panel-copy grounding-sharing",
-      t("Grounding accepted · supplied to {0}/{1} experts' task inputs", list(sharing.experts).filter((item) => item.provided).length, list(sharing.experts).length)));
-    else if (sharing.state === "waiting_human") container.append(element("p", "panel-copy", t("Grounding awaiting clarification · review the questions above.")));
     if (!container.children.length) container.append(element("p", "empty-copy", t("No global task evidence yet.")));
+    renderTraffic(snapshot);
+  }
+
+  function renderGrounding(snapshot) {
+    const container = byId('grounding-agent-card');
+    const wasOpen = container.querySelector('details')?.open;
+    container.replaceChildren();
+    const group = object(snapshot.overview?.grounding);
+    const sharing = object(snapshot.overview?.grounding_sharing);
+    const card = element('article', 'entity-card grounding-card');
+    const heading = element('h3', '', 'Grounding');
+    if (group.state === 'active') {
+      const confirmed = object(snapshot.overview).host_observation?.availability === 'responded';
+      const light = element('span', `breath-dot${confirmed ? ' host-confirmed' : ' host-unconfirmed'}`);
+      light.id = 'grounding-pulse';
+      heading.prepend(light);
+    }
+    const badge = element('span', 'grounding-badge', 'UNKNOWN');
+    badge.id = 'grounding-state'; heading.append(badge);
+    card.append(heading, element('p', 'panel-copy', t('Run-wide preparation · separate from expert work')));
+    const rpm = element('p', 'grounding-rpm', t('Grounding RPM') + ' ');
+    const rpmValue = element('strong', '', '—'); rpmValue.id = 'grounding-rpm'; rpm.append(rpmValue);
+    card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · task span {1} · active readers {2}',
+      compactNumber(object(group.accounting).reported_tokens), typeof group.elapsed_seconds === 'number' ? compactDuration(group.elapsed_seconds) : '—', group.active_readers ?? '—')));
+    const details = document.createElement('details');
+    details.open = wasOpen ?? group.state !== 'completed';
+    details.append(element('summary', '', t('Tasks & details')));
+    const ids = new Set(list(group.attempt_ids));
+    const working = list(snapshot.attempts).filter(a => ids.has(a.attempt_id) && a.kind === 'AGENT' && a.state === 'OPEN');
+    const tiles = element('div', 'agent-tile-list');
+    for (const attempt of working) {
+      const entry = workingTile(attempt, null);
+      updateWorkingTile(entry, attempt, attempt.task_kind || attempt.command || 'Grounding',
+        object(snapshot.overview).host_observation?.availability === 'responded', Number(snapshot.observed_at));
+      tiles.append(entry.tile);
+    }
+    for (const [id, entry] of state.workingTiles) {
+      if (entry.role === null && !working.some(a => a.attempt_id === id)) state.workingTiles.delete(id);
+    }
+    details.append(tiles);
+    for (const stage of list(group.activity)) {
+      details.append(actionButton(`${stage.node} · ${stage.state} · ${compactDuration(stage.elapsed_seconds)}`,
+        () => openRemoteDetail('attempt', {attempt_id:stage.attempt_id}), 'detail-link'));
+    }
+    if (sharing.state === "accepted") card.append(element("p", "panel-copy grounding-sharing",
+        t("Grounding accepted · supplied to {0}/{1} experts' task inputs", list(sharing.experts).filter((item) => item.provided).length, list(sharing.experts).length)));
+    else if (sharing.state === "waiting_human") card.append(element("p", "panel-copy", t("Grounding awaiting clarification · review the questions above.")));
+    if (sharing.source_attempt_id) details.append(actionButton(t('Grounding source'),
+      () => openRemoteDetail('attempt', {attempt_id:sharing.source_attempt_id}), 'detail-link'));
+    details.append(actionButton('Details & history', () => openLocalDetail('global_tasks',
+      {task_scope:'run', name:t('Global tasks')}), 'detail-link grounding-history'));
+    card.append(details); container.append(card);
   }
 
   function renderGlobalDetails(parent, scope) {
@@ -1299,17 +1401,10 @@
     }));
   }
 
-  function workingTilePhase(attemptId) {
-    let hash = 0;
-    for (const ch of String(attemptId)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    return -(hash % 24) / 10;
-  }
-
   function workingTile(attempt, role) {
     let entry = state.workingTiles.get(attempt.attempt_id);
     if (entry) return entry;
     const light = element("span", "agent-tile-light");
-    light.style.animationDelay = `${workingTilePhase(attempt.attempt_id)}s`;
     const fill = element("span", "agent-tile-fill");
     const value = element("span", "agent-tile-value");
     const bar = element("span", "agent-tile-bar");
@@ -1317,9 +1412,12 @@
     const tile = element("button", "agent-tile");
     tile.type = "button";
     tile.dataset.attempt = attempt.attempt_id;
+    tile.dataset.kind = attempt.kind;
     tile.append(light, bar);
+    if (attempt.kind === 'AGENT') tile.append(element('span', 'agent-tile-rpm', '—'));
     tile.addEventListener("click", () => {
-      byId("filter-expert").value = role;
+      if (role === null) { openRemoteDetail('attempt', {attempt_id:attempt.attempt_id}); return; }
+      byId("filter-expert").value = role || '';
       renderFilteredViews();
       openWorkbench("sessions");
     });
@@ -1333,6 +1431,7 @@
   function updateWorkingTile(entry, attempt, label, hostResponded, observedAt) {
     const {tile, fill, value} = entry;
     tile.classList.toggle("host-unconfirmed", !hostResponded);
+    tile.querySelector('.agent-tile-light').classList.toggle('host-confirmed', hostResponded);
     const elapsed = Math.max(0, observedAt - (Number(attempt.started_at) || observedAt));
     const hasWall = Number.isFinite(attempt.wall_seconds) && attempt.wall_seconds > 0;
     const overdue = hasWall && elapsed > attempt.wall_seconds;
@@ -1383,6 +1482,7 @@
       lines.push(t("elapsed {0}{1} · OPEN is durable state, not process liveness", compactDuration(elapsed), hasWall ? t(" of {0} wall budget{1}", compactDuration(attempt.wall_seconds), overdue ? " · exceeded" : "") : ""));
     }
     tile.title = lines.join("\n");
+    tile.dataset.workTitle = tile.title;
     tile.setAttribute("aria-label", `${label}: ${valueText}`);
   }
 
@@ -1432,10 +1532,16 @@
         const confirmed = object(snapshot.overview).host_observation?.availability === "responded";
         const breath = element("span", `breath-dot${confirmed ? " host-confirmed" : " host-unconfirmed"}`);
         breath.title = t("{0} durably open attempt{1} · {2} · OPEN is durable state, not process liveness", openAttempts, openAttempts === 1 ? "" : "s", confirmed ? t("Host responded this poll") : t("Host contact unconfirmed"));
+        breath.dataset.workTitle = breath.title;
         breath.setAttribute("aria-label", confirmed ? t("Open work; Host responded") : t("Open work; activity unknown"));
         heading.prepend(breath);
       }
       identity.append(element("p", "eyebrow", t("EXPERT {0}", String(expert.slot_ordinal ?? "?").padStart(2, "0"))), heading);
+      const rpm = element("p", "expert-rpm", "RPM ");
+      const rpmValue = element("strong", "expert-rpm-value", "—");
+      rpmValue.dataset.rpmValue = "";
+      rpm.append(rpmValue);
+      identity.append(rpm);
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (object(summary.leader).active > 0) {
@@ -1506,6 +1612,7 @@
       container.append(card);
     });
     for (const [attemptId, entry] of state.workingTiles) {
+      if (entry.role === null) continue;
       if (seenTiles.has(attemptId) || entry.leaving) continue;
       const tiles = tileLists.get(entry.role);
       if (previousTiles.has(attemptId) && tiles) {
@@ -1517,6 +1624,7 @@
         state.workingTiles.delete(attemptId);
       }
     }
+    renderTraffic(snapshot);
   }
 
   function selectByComponent(componentId) {
@@ -2354,7 +2462,7 @@
         snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], renderResearchDetail);
     }
     if (state.activeView === "operations") {
-      renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], () => renderGlobalTasks(snapshot));
+      renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing, snapshot.overview?.grounding, snapshot.overview?.host_observation?.availability, snapshot.attempts], () => renderGlobalTasks(snapshot));
       renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.status?.goal_verdict, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
       renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, snapshot.attempts, filters, sharedGoal(snapshot)], () => {

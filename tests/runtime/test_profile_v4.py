@@ -12,6 +12,18 @@ from hypoloom.domain import ResearchContract
 from test_profile_admission import _materialize_expert_loop_pilot_v3
 
 
+@pytest.mark.parametrize('agents,override', [(1, None), (12, None), (12, 2)])
+def test_provider_concurrency_follows_agent_capacity_unless_explicit(agents, override):
+    source = documents()
+    budget = source['methodology'].setdefault('budget', {})
+    budget['max_active_agents'] = agents
+    if override is not None:
+        budget['provider_max_in_flight'] = override
+    result = project_profile_v4(**source)
+    assert not result.issues
+    assert result.projection.methodology['budget']['provider_max_in_flight'] == (override or agents)
+
+
 @pytest.mark.parametrize("port", [0, 8766, 65535])
 def test_dashboard_accepts_dynamic_or_fixed_port(port):
     source = documents()

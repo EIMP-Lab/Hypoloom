@@ -1586,6 +1586,7 @@ _HOST_STATUS_FIELDS = (
     "resource_blocked",
     "process_activity",
     "provider_retry",
+    "provider_traffic",
     "notifications",
     "literature_retry",
     "literature_access",

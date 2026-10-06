@@ -35,7 +35,7 @@ def reading_parent(request):
     return None
 
 
-def attempt_scopes(attempts, commands=()):
+def attempt_scopes(attempts, commands=(), *, include_run_group=False):
     """Follow existing reader commissions, never infer ownership from a role name."""
     rows = {row["attempt_id"]: row for row in attempts}
     parents = {}
@@ -53,15 +53,17 @@ def attempt_scopes(attempts, commands=()):
         task = _object(request.get("task_context"))
         key = _object(task.get("key"))
         kind = task.get("request_kind") or key.get("node_kind") or request.get("command")
-        scope, owner = "unknown", None
+        scope, owner, group = "unknown", None, None
         if identity not in visiting and row:
             if kind == "PAPER_READ":
                 parent = parents.get(request.get("command_id", row.get("command_id"))) or reading_parent(request)
                 if parent in rows and rows[parent].get("run_id") == row.get("run_id"):
                     inherited = resolve(parent, visiting | {identity})
                     scope, owner = inherited["task_scope"], inherited["owner_role"]
+                    group = inherited.get("run_group")
             elif kind in _RUN_TASKS:
                 scope = "run"
+                group = "grounding" if kind in {"GROUNDING", "GROUNDING_QUERY_PLAN"} else "other"
             elif kind in _EXPERT_TASKS:
                 owner = key.get("expert_slot") or task.get("expert_slot") or request.get("role")
                 if isinstance(owner, str) and owner:
@@ -69,6 +71,8 @@ def attempt_scopes(attempts, commands=()):
                 else:
                     owner = None
         value = {"task_scope": scope, "owner_role": owner, "task_kind": kind}
+        if include_run_group:
+            value["run_group"] = group
         scopes[identity] = value
         return value
 

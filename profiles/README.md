@@ -157,12 +157,24 @@ Legacy safety USD/timeout and goal wall-clock fields are accepted individually
 with a migration warning; declaring the same bound in both places is an error,
 even when values match. Existing Profiles and runs are never rewritten automatically.
 
+New admission defaults `provider_rpm_limit: 60`; an omitted
+`provider_max_in_flight` follows `max_active_agents`:
+all Agents of this run share outbound request pacing per model. Override these
+positive integers to allocate a different share of a shared account. They are
+separate from Agent concurrency and do not claim knowledge of the provider's
+account quota. See [API recovery and live RPM](../docs/guides/provider-recovery.md#run-rpm-and-request-concurrency).
+
 中文：新模板将费用、时限、单次调用、重试及并发限制统一放在
 `methodology.yaml.budget`，实验超时 `experiment_timeout` 的单位是秒。
 旧 `safety` 费用/分钟超时、`goal.stop_conditions.max_wall_clock_hours`
 单独声明时仍兼容并提示迁移；与 budget 重复声明会报错，不再静默覆盖。
 无需增加文件或升级已有运行。完整生效配置与通知设置见
 [初始化指南](../docs/guides/initialization.zh-CN.md)。
+
+新准入默认 `provider_rpm_limit: 60`；省略的 `provider_max_in_flight` 跟随
+`max_active_agents`，显式值仍优先。所有 Agent
+共享本运行每模型的请求限速。可用正整数调整分配份额；它们与 Agent 并发数独立，
+不表示已查询账号限额。详见[API 恢复与实时 RPM](../docs/guides/provider-recovery.zh-CN.md#本运行的-rpm-与并发控制)。
 
 The multi-expert pair starts with three experts, a total USD ceiling of 45,
 15 per expert, at most four rounds and a six-hour run limit. Both languages use

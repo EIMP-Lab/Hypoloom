@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- October 6 model request pacing: one disposable coordinator per run shares
+  per-model rolling RPM/in-flight admission across expert, Grounding and reader
+  relays. New Profile defaults are 60 RPM/in-flight matching max_active_agents;
+  explicit overrides are independent of forks/hypotheses. These are local
+  allocations, not account quota discovery. Generic 429 keeps backing off
+  automatically; a complete fresh model response releases recovery before the
+  Agent ends, and repeated same-connection clears no longer stack invocations.
+  Auth/quota controls remain; local 300-second queue deferrals do not cause global
+  cooldown or scientific retry exhaustion. TUI/Web give Grounding its own card,
+  separate from other global tasks. Web children use exact Attempt RPM; main
+  lights use aggregate RPM with 1.35x periods on the same curve. Process lights
+  stay static; stale/missing/restart-window data stays unknown.
+  First explicit reload preserves the session boundary; later identical controls
+  coalesce. Native six-429 and six-local-queue recovery each close 18 Attempts/one
+  CPU Process without operator commands or residue. Full selection plus remaining
+  cases and scoped corrections reconciles to 7,465 pass/158 skip, no missing or
+  unresolved cases; not one green full invocation. Original failures are retained.
+  Source/wheel/install/fresh bundle match 185 files. Existing research is unchanged;
+  no account-wide or TPM limit.
+  [Design and validation](../qualification.md#model-request-pacing-and-automatic-recovery-2026-10-06)
+  / [configuration](../guides/provider-recovery.md#run-rpm-and-request-concurrency).
+
 - October 6 Telegram route diagnosis/repair: the local Profile and admitted run
   still selected direct despite a separately configured server proxy. Correct the
   ignored Profile for future init; fixed review and TUI/Web now expose the selected

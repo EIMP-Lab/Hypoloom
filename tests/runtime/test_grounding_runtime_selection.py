@@ -185,10 +185,13 @@ def test_host_freezes_global_grounding_request_and_reuses_it_on_infrastructure_r
         host_tool_handler=None,
         runtime_prefix=None,
         read_roots=(),
+        traffic_binding=None,
     ):
         assert model == request.required_model_identity
         assert provider_environment["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9"
         assert diagnostics_root == host.state_root
+        assert traffic_binding[1] == ('run', 'grounding')
+        assert traffic_binding[3] == request.attempt_id
         if request.command.value == "GROUNDING":
             assert tool_workspace.plugin_update is None
             assert (tool_workspace.plugin_root / "skills/research-workflow/SKILL.md").is_file()

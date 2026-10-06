@@ -379,6 +379,14 @@ def _has_host_status(snapshot: MonitorSnapshot) -> bool:
     return snapshot.status_source.endswith("+resident-host-status")
 
 
+def _live_traffic(snapshot):
+    traffic = snapshot.status.get("provider_traffic") or {}
+    timestamp = traffic.get("observed_at")
+    host = _has_host_status(snapshot) or (snapshot.overview or {}).get("host_observation", {}).get("availability") == "responded"
+    return traffic if (host and traffic.get("scope") == "run" and not traffic.get("warming_up")
+        and type(timestamp) in (float, int) and abs(time.time() - timestamp) <= 30) else {}
+
+
 def _agent_usage_lines(status: Mapping[str, object], accounting=None) -> tuple[str, ...]:
     # Keep the token icon compatible with tmux 3.0: it counts the newer coin
     # emoji as one cell while Rich reserves two, shifting the panel borders.
@@ -814,8 +822,28 @@ class ExpertsPanel(CockpitPanel):
         lines = []
         cards = []
         overview = snapshot.overview or {}
+        traffic = _live_traffic(snapshot)
+        grounding = overview.get("grounding", {})
+        counts = traffic.get("grounding", {})
+        label = {"active": "RUN", "completed": "DONE", "waiting_human": "WAIT",
+            "failed": "FAIL", "cancelled": "CANCELLED", "preparing": "PREP", "not_started": "IDLE"}.get(grounding.get("state"), "UNKNOWN")
+        if label == "RUN" and counts.get("queued", 0) > 0 and not counts.get("in_flight"):
+            label = "QUEUED"
+        if label == "RUN" and not _has_host_status(snapshot) and overview.get("host_observation", {}).get("availability") != "responded":
+            label = "OPEN?"
+        if label == "PREP" and _has_host_status(snapshot) and (snapshot.status.get("provider_retry") or {}).get("state") == "cooldown":
+            label = "COOLDOWN"
+        grounding_lines = [f"[b #78dcff]Grounding[/] · {label}",
+            tr("Run-wide preparation · separate from expert work"),
+            f"RPM {_count(counts.get('rpm'))} · " + tr("in flight {0} · queued {1}",
+                _count(counts.get('in_flight')), _count(counts.get('queued'))),
+            tr("≥{0} tokens · task span {1} · active readers {2}",
+                _compact(grounding.get("accounting", {}).get("reported_tokens")),
+                _duration(grounding.get("elapsed_seconds")), _count(grounding.get("active_readers")))]
+        for stage in grounding.get("activity", []):
+            grounding_lines.append(f"  {_value(stage.get('node'))} · {_stage_badge(stage, overview.get('host_observation', {}).get('availability', 'unconfirmed'))}")
         for key, title in (("global_tasks", tr("GLOBAL TASKS")), ("unknown_tasks", tr("OWNERSHIP UNKNOWN"))):
-            group = overview.get(key, {})
+            group = overview.get("other_global_tasks", overview.get(key, {})) if key == "global_tasks" else overview.get(key, {})
             if not group.get("stages"):
                 continue
             usage = group.get("accounting", {})
@@ -831,13 +859,13 @@ class ExpertsPanel(CockpitPanel):
         sharing = overview.get("grounding_sharing", {})
         if sharing.get("state") == "accepted":
             supplied = sum(item.get("provided", False) for item in sharing.get("experts", []))
-            lines.append(tr(
+            grounding_lines.append(tr(
                 "Grounding accepted · supplied to {0}/{1} experts' task inputs",
                 supplied,
                 len(sharing.get('experts', [])),
             ))
         elif sharing.get("state") == "waiting_human":
-            lines.append(tr("[yellow]Grounding awaiting clarification · h decisions[/]"))
+            grounding_lines.append(tr("[yellow]Grounding awaiting clarification · h decisions[/]"))
         lines.append(tr("\n[b #78dcff]EXPERT LANES[/]  [dim]current work · ? legend[/dim]"))
         host = overview.get("host_observation", {}).get("availability", "unconfirmed")
         if _has_host_status(snapshot):
@@ -871,6 +899,7 @@ class ExpertsPanel(CockpitPanel):
                 "not started"
             )
             card = [f"[b]{_role(snapshot, role)}[/] · C{_count(expert.get('cycle'))} · {label}",
+                f"RPM {_count(traffic.get('by_expert', {}).get(role, {}).get('rpm', 0 if traffic else None))}",
                 _lane_line(stages, host)]
             for stage in stages:
                 node = dict(_LANE_STAGES).get(stage.get("node"), _short_text(stage.get("node"), limit=30))
@@ -910,12 +939,14 @@ class ExpertsPanel(CockpitPanel):
             cards.append("\n".join(card))
         if role_filter and not cards:
             lines.append(tr("[dim]No experts match this filter[/dim]"))
-        rendered = [Text.from_markup("\n".join(lines))]
+        grounding_text = "\n".join(grounding_lines)
+        rendered = [Panel(Text.from_markup(grounding_text), title=tr("Grounding Agent"), border_style="#24566a", padding=(0, 1)),
+            Text.from_markup("\n".join(lines))]
         for card in cards:
             rendered.extend((Text(""), Panel(Text.from_markup(card), border_style="#24566a", padding=(0, 1))))
         # Reuse the ordinary content equality check so polling retains scroll
         # and avoids rebuilding unchanged visuals. Rich sizes cards on resize.
-        self.update("\n\n".join((*lines, *cards)), renderable=Group(*rendered))
+        self.update("\n\n".join((grounding_text, *lines, *cards)), renderable=Group(*rendered))
 
 
 class ComponentsPanel(CockpitPanel):

@@ -15,7 +15,7 @@ for API access. Missing live Host status means availability is unknown.
 |---|---|---|
 | `ready` | API dispatch is allowed, subject to task and budget limits. This is not a balance check. | Monitor normal progress. |
 | `cooldown` | New API work waits until the displayed retry time. | Wait, or explicitly retry/switch after restoring access. |
-| `waiting_operator` | Automatic recovery is exhausted, quota has no retry time, or the selected connection file is unavailable. | Restore access or fix/select a connection file, then request a retry. |
+| `waiting_operator` | Authentication recovery is exhausted, explicit quota exhaustion has no retry time, or the selected connection file is unavailable. | Restore access or fix/select a connection file, then request a retry. |
 | `recovering` | One pending task may try the API; recovery is not yet confirmed. | Wait for its response; repeated clicks do not prove recovery. |
 | Unknown / stale | The interface lacks a fresh Host observation. | Check Host liveness; Web recovery controls remain disabled. |
 
@@ -26,9 +26,11 @@ times and remaining balances are not inferred.
 
 The existing authentication delay remains `budget.provider_auth_cooldown_seconds`
 (18000 seconds by default). Zero removes that timed delay; it does not disable
-bounded recovery. Ordinary 429 without Retry-After waits 60 seconds. After the
-existing infrastructure attempt allowance is spent on consecutive recovery
-waves, the Host waits for an operator. Concurrent failures count as one wave.
+bounded authentication recovery. Ordinary 429 automatically backs off for
+60/120/240/480/900 seconds, then keeps retrying every 15 minutes. Longer
+Retry-After wins. Transient rate limits do not require manual unlocking after
+three waves. Authentication recovery still uses the existing infrastructure
+attempt allowance. Concurrent failures count as one wave.
 Explicit quota exhaustion without a retry time waits for an operator immediately.
 
 Provider availability failures retain closed Attempts and their actual/unknown
@@ -37,6 +39,70 @@ cancellation limits still apply. Submitted CPU/GPU Processes continue through
 collection. Final-report attempts during stopping retain their bounded failure
 path. Recovery first admits one ordinary pending invocation; an observed model
 response confirms availability independently of scientific output validation.
+
+## Run RPM and request concurrency
+
+New Profile admission supplies these defaults; override them in
+`methodology.yaml` to allocate this run a different share:
+
+```yaml
+budget:
+  provider_rpm_limit: 60
+  max_active_agents: 12
+  # provider_max_in_flight: 4  # Optional independent override.
+```
+
+When omitted, `provider_max_in_flight` follows the admitted `max_active_agents`
+(12 in this example). An explicit value overrides that default. A lower value
+queues model calls without reducing the number of research chains; `max_forks`
+and hypothesis counts remain independent. These are local limits per model,
+not discovered account limits. Experts,
+Grounding and reading assistants share admission. The rolling 60-second count
+includes outbound attempts, retries, remote token-count calls and connection
+failures. Locally queued or locally rejected requests do not count. Requests
+are spaced before forwarding; an in-flight slot remains occupied through the
+end of a streaming response. `max_active_agents` independently limits Agent
+tasks. Queue time consumes their existing Agent/run deadlines.
+
+Other CC sessions, machines and independent Hosts are not visible to this
+coordinator. Allocate separate shares when they use the same account. A low
+local RPM and sufficient balance do not rule out TPM, other account traffic or
+provider overload. TPM limiting is not implemented; 429 does not reveal an
+unknown provider limit.
+
+Web displays total run RPM in the header, each expert's RPM on its card, and
+Grounding RPM on its independent run-level Agent card in both Web and TUI. Grounding includes its query planning
+and readers; it is not also charged to the expert serving as its transport
+role. Other global tasks contribute to the total separately. Hover over a value
+for in-flight and queued counts. Grounding retains tasks, token accounting,
+active reader counts and result-sharing evidence after completion; Web details
+can be collapsed. Other global task summaries exclude Grounding.
+
+Web Agent child tiles use RPM for their exact execution Attempt. An expert or
+Grounding main light uses its aggregate RPM; these totals are never added again
+to the run total. Child period is `clamp(6 / sqrt(RPM), 0.8, 6)` seconds; main
+period is 1.35 times that curve. At equal RPM the main light is slower; differing
+aggregate and child rates need not preserve that ordering. Process tiles use
+static status, and TUI uses status labels rather than continuous animation.
+This frequency cue is not a heartbeat, token speed or research progress signal.
+Zero RPM, missing/stale data and reduced-motion preferences stop animation;
+unavailable values display `—`.
+
+A complete model response from 429 recovery can release dispatch before the
+whole Agent finishes. Repeated same-connection retries during recovery reuse
+that recovery rather than admitting another task. Explicit connection switches
+and the first explicit reload retain the existing fresh-session boundary.
+Known service cooldowns and overly long local
+queue waits return to Host recovery before the bridge read timeout. A local
+queue wait exceeding 300 seconds is `local_request_queue`, not an upstream 429:
+it requeues that task without global API cooldown or scientific retry exhaustion.
+Final-report closure, Agent deadlines and run time/token/cost bounds still apply. Cancellation
+cleans queued requests and in-flight slots; waiting is not model success.
+
+After a Host restart with prior Host calls, admission waits out a 60-second
+window and reports RPM as unknown during that interval. No additional durable
+request ledger is created. Existing frozen Hosts do not acquire these changes;
+missing traffic observations remain unknown.
 
 ## Retry or switch the connection
 

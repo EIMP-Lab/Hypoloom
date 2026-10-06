@@ -20,7 +20,7 @@ from .agent_context import (
     agent_retry_class,
     candidate_failure_retryable,
 )
-from .provider_observation import PROVIDER_UNAVAILABLE
+from .provider_observation import PROVIDER_DEFERRED
 from .compute_resources import gpu_memory_reserve_mib
 
 
@@ -32,6 +32,7 @@ PROFILE_BUDGET_FIELDS = frozenset({
     "gpu_vram_reserve_mb", "gpu_vram_reserve_percent", "initial_vram_per_experiment", "max_turns",
     "total_budget_usd", "per_expert_budget_usd", "max_active_agents",
     "max_active_processes", "max_active_reviews", "provider_auth_cooldown_seconds",
+    "provider_rpm_limit", "provider_max_in_flight",
 })
 ROLE_BUDGET_FIELDS = frozenset({
     "per_expert_tokens", "max_experiments", "max_papers", "timeout", "max_turns", "per_expert_budget_usd",
@@ -245,10 +246,10 @@ def agent_attempts_exhausted(
         observation = json.loads(row["observation_json"])
         from .literature_recovery import deferred_attempt
         if deferred_attempt(observation): continue
-        if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
+        if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_DEFERRED
                 and observation.get("retry_class") == "INFRASTRUCTURE"
                 and observation.get("request", {}).get("command") != "FINAL_REPORT"):
-            continue  # Shared availability is bounded by the Host recovery gate.
+            continue  # Admission/service waits retain ordinary run budget bounds.
         considered = True
         if row["terminal_reason"] == "SUCCEEDED": retry_class = "MODEL"
         elif "retry_class" in observation:
@@ -341,10 +342,10 @@ def validate_new_run_budget(document: Mapping[str, Any], fallback: AgentBudget) 
         "min_vram_per_experiment",
         "gpu_vram_reserve_mb",
     }
-    for name in positive | nonnegative:
+    for name in positive | nonnegative | {'provider_rpm_limit', 'provider_max_in_flight'}:
         value = budget.get(name)
         if name in budget and (isinstance(value, bool) or not isinstance(value, int)
-                               or value < (1 if name in positive else 0)):
+                               or value < (0 if name in nonnegative else 1)):
             raise ValueError(f"budget.{name} has an invalid bound")
     for name in ("total_budget_usd", "per_expert_budget_usd"):
         if name in budget and budget[name] is None: raise ValueError(f"budget.{name} cannot be null")

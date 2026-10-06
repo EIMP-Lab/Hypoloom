@@ -406,6 +406,7 @@ class ClaudeAgentHost:
         runtime_prefix: Path | None = None,
         read_roots: tuple[Path, ...] = (),
         diagnostics_root: Path | None = None,
+        traffic_binding=None,
     ) -> RunningClaudeAgent:
         """Transfer one prepared workspace to the adapter and launch safely."""
 
@@ -420,6 +421,7 @@ class ClaudeAgentHost:
                 runtime_prefix=runtime_prefix,
                 read_roots=read_roots,
                 diagnostics_root=diagnostics_root,
+                traffic_binding=traffic_binding,
             )
         except BaseException as exc:
             if diagnostics_root is not None and isinstance(request, AgentRequest):
@@ -470,6 +472,7 @@ class ClaudeAgentHost:
         runtime_prefix: Path | None,
         read_roots: tuple[Path, ...],
         diagnostics_root: Path | None,
+        traffic_binding=None,
     ) -> RunningClaudeAgent:
         """Spawn a gated launcher, persistently bind its PGID, then release it.
 
@@ -594,7 +597,7 @@ class ClaudeAgentHost:
                 max_requests=request.budget.max_turns * 4 + 4,
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 token_budget=request.budget.max_tokens if request.budget.token_enforcement_mode == "enforce" else None,
-                diagnostics=runtime_diagnostics, context_policy=context_policy(request))
+                diagnostics=runtime_diagnostics, context_policy=context_policy(request), traffic_binding=traffic_binding)
             resources.callback(relay.close)
             network_socket = None
             if request_network_allowed(request):

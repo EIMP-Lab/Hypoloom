@@ -1529,7 +1529,7 @@ def test_browser_expert_card_working_subagents_and_breathing_dot(browser, tmp_pa
     assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-fill')).map(e => e.style.width)") == ["0%", "22.6%", "0%"]
     assert page.evaluate(f"document.querySelectorAll('{tiles}.overdue').length") == 1
     assert page.evaluate(f"document.querySelectorAll('{tiles} .agent-tile-light').length") == 3
-    assert page.evaluate(f"new Set(Array.from(document.querySelectorAll('{tiles} .agent-tile-light')).map(e => e.style.animationDelay)).size") == 3
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{tiles} .agent-tile-light')).every(e => getComputedStyle(e).animationName === 'none')")
     assert page.evaluate(f"document.querySelectorAll('{tiles}.host-unconfirmed').length") == 0
     title = page.evaluate(f'document.querySelectorAll("{tiles}")[1].title')
     assert "Experiment execution" in title and "not process liveness" in title
@@ -1602,10 +1602,11 @@ def test_browser_global_grounding_is_separate_and_sharing_refreshes(browser, tmp
         "task_scope": "run", "owner_role": None}
     page.evaluate("fixture.snapshot.overview=" + json.dumps(summary))
     page.evaluate("fixture.snapshot.attempts=" + json.dumps([attempt]))
-    page.wait("document.querySelector('#global-task-list').textContent.includes('GROUNDING')")
+    page.wait("document.querySelector('#grounding-agent-card').textContent.includes('GROUNDING')")
+    assert 'GROUNDING' not in page.text('#global-task-list')
     assert "GROUNDING" not in page.text(".expert-preview")
     assert "Working" not in page.text(".expert-preview")
-    page.click("#global-task-list .detail-link:last-child")
+    page.click("#grounding-agent-card .grounding-history")
     page.wait("document.querySelector('#research-detail-content').textContent.includes('Grounding sharing')")
     assert "No final accepted" in page.text("#research-detail-content")
     completed = record("global-g", "GROUNDING", kind="GROUNDING", role="expert-a", accepted=True)

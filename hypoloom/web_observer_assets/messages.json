@@ -1274,5 +1274,15 @@
   " · route: {0}": " · 连接方式：{0}",
   "Direct": "直连",
   "HTTP proxy": "HTTP 代理",
-  "Unknown route": "连接方式未知"
+  "Unknown route": "连接方式未知",
+  "RUN RPM": "本运行 RPM",
+  "Grounding RPM": "Grounding RPM",
+  "Last 60 seconds: {0} outbound API attempts · in flight {1} · queued {2}. This run only; includes retries, not other account clients.": "最近 60 秒：{0} 次 API 出站尝试 · 在途 {1} · 排队 {2}。仅本运行，包含重试，不含账号其他客户端。",
+  "Live RPM unavailable; no fresh Host traffic observation.": "暂无实时 RPM：缺少新鲜的 Host 请求观测。",
+  "Pulse frequency follows RPM; it is not a heartbeat or token speed.": "呼吸频率随 RPM 变化，不表示心跳或 token 生成速度。",
+  "Grounding Agent": "Grounding Agent",
+  "Run-wide preparation · separate from expert work": "运行级准备 · 与专家任务分别统计",
+  "≥{0} tokens · task span {1} · active readers {2}": "≥{0} token · 任务跨度 {1} · 活跃阅读助手 {2}",
+  "Tasks & details": "任务与详情",
+  "in flight {0} · queued {1}": "在途 {0} · 排队 {1}"
 }

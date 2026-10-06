@@ -76,6 +76,7 @@
       <div><dt data-i18n>DURABLE STATE</dt><dd id="run-state">—</dd></div>
       <div class="hud-metric"><dt data-i18n>ELAPSED</dt><dd id="run-elapsed">—</dd></div>
       <div class="hud-metric"><dt data-i18n>TOKENS USED</dt><dd id="run-tokens">—</dd></div>
+      <div class="hud-metric"><dt data-i18n>RUN RPM</dt><dd id="run-rpm" data-rpm-value>—</dd></div>
       <div><dt data-i18n>SCIENTIFIC VERDICT</dt><dd id="goal-verdict">—</dd></div>
       <div><dt data-i18n>REQUIRED ASSESSED</dt><dd id="required-assessed">—</dd></div>
       <div><dt data-i18n>REVISION</dt><dd id="run-revision">—</dd></div>
@@ -189,6 +190,11 @@
         <h2 id="grounding-dialogue-heading" data-i18n>Grounding clarification</h2>
         <p data-i18n>Review pending questions and recorded answers. Submitting requires an operator answer link and an explicit reviewed answer.</p>
         <div id="grounding-dialogue-list" class="card-list"></div>
+      </section>
+
+      <section id="grounding-agent-panel" class="panel" aria-labelledby="grounding-agent-heading">
+        <header class="panel-heading compact"><h2 id="grounding-agent-heading" data-i18n>Grounding Agent</h2></header>
+        <div id="grounding-agent-card" class="card-list"></div>
       </section>
 
       <section id="global-tasks-panel" class="panel" aria-labelledby="global-tasks-heading">

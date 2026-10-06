@@ -282,6 +282,7 @@ class ProviderRelay:
         diagnostics: RuntimeDiagnostics | None = None,
         token_budget: int | None = None,
         context_policy: Mapping[str, Any] | None = None,
+        traffic_binding=None,
     ) -> None:
         endpoint, credentials = validate_provider_connection(base_url, provider_environment)
         port = endpoint.port
@@ -315,6 +316,7 @@ class ProviderRelay:
         self.deadline_at = float(deadline_at)
         self.token_budget = token_budget
         self.context_policy = context_policy
+        self.traffic_binding = traffic_binding
         self.context_limit_reached = False
         # Derived, bounded observations belong to this fixed connection/model.
         # They disappear with this relay and never modify the forwarded request.
@@ -396,6 +398,7 @@ class ProviderRelay:
                 stage = "request_validation"
                 capture_rejected = False
                 context_locked = False
+                traffic_ticket = None
                 try:
                     self.connection.settimeout(relay._remaining())
                     parsed = urlsplit(self.path)
@@ -499,6 +502,21 @@ class ProviderRelay:
                         relay._hostname, relay._port, timeout=relay._remaining()
                     )
                     stage = "upstream_connect"
+                    if relay.traffic_binding is not None:
+                        from .provider_traffic import ProviderDeferred
+                        traffic, owner, connection = relay.traffic_binding[:3]
+                        stage = "provider_queue"
+                        try:
+                            traffic_ticket = traffic.acquire(model=relay._wire_model, owner=owner,
+                                connection=connection, deadline=relay.deadline_at, cancelled=relay._closed,
+                                attempt_id=relay.traffic_binding[3] if len(relay.traffic_binding) > 3 else None)
+                        except ProviderDeferred as exc:
+                            if exc.retry_after is not None:
+                                capture.data['response_headers'] = {'retry-after': str(math.ceil(exc.retry_after))}
+                            raise _RelayRejected(503 if exc.code == 'local_request_queue' else 429, exc.code) from None
+                        capture.data['upstream_started_at'] = traffic_ticket[1]['started_at']
+                        upstream.timeout = relay._remaining()
+                        stage = "upstream_connect"
                     upstream.connect()
                     upstream_socket = upstream.sock
                     with relay._lock:
@@ -596,7 +614,7 @@ class ProviderRelay:
                     if not started:
                         self.send_error(exc.status, exc.code)
                         capture.data["relay_status"] = exc.status
-                    if capture_rejected and capture.recorder is not None:
+                    if capture_rejected and (capture.recorder is not None or relay.traffic_binding is not None):
                         capture.rejected_body(relay, response, upstream_socket)
                 except (OSError, ValueError, http.client.HTTPException) as exc:
                     if isinstance(exc, http.client.IncompleteRead) and exc.partial:
@@ -620,6 +638,8 @@ class ProviderRelay:
                     try:
                         capture.finish()
                     finally:
+                        if traffic_ticket is not None:
+                            relay.traffic_binding[0].finish(traffic_ticket, capture.data)
                         if context_locked:
                             relay._context_serial.release()
 

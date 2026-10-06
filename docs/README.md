@@ -14,7 +14,7 @@ Current user entry points:
 - [Profile templates](../profiles/README.md): complete English/Chinese v4 examples.
 - [Operator guide](operator-guide.md): English operational reference.
 - [Architecture](architecture.md): components, ownership and durable boundaries.
-- [API recovery](guides/provider-recovery.md): availability, operator retry and connection switching.
+- [API recovery](guides/provider-recovery.md): request RPM/concurrency, automatic recovery, operator retry and connection switching.
 - [Institutional full text](guides/institutional-access.md): init connection startup, Linux desktop/Windows client, platform preparation, bounded waits, OA fallback and PDF import.
 - [Context and memory](guides/context-management.md): working limits, short sessions, retrieval and recovery.
 - [Research workflow](guides/research-workflow.md): stage-specific methods, task-specific science and owner-local skill evolution.

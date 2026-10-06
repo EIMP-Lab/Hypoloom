@@ -27,7 +27,7 @@ from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
-from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection
+from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection, provider_recovery_reused
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
@@ -197,6 +197,7 @@ class WorkflowHost:
         self.runner = LocalRunner()
         self.publisher: ArtifactPublisher | None = None; self.policy = ResearchPolicy(); self.fault_point = fault_point
         self.running: dict[str, RunningProcess] = {}; self.running_agents: dict[str, RunningClaudeAgent] = {}; self.spec_validations: dict[str, tuple[PreparedExecution, ExecutionWorkspace]] = {}
+        self._provider_traffic = {}
         self.local_execution_agents: dict[str, AgentRequest] = {}
         self.agent_session_metadata: dict[str, Mapping[str, Any]] = {}
         self.grounding_web = grounding_web
@@ -556,11 +557,9 @@ class WorkflowHost:
                 self._check_agent_runtime()
                 try: read_provider_connection(Path(payload["settings_path"]))
                 except HostConfigurationError as exc: raise ValueError(str(exc)) from None
-            else:
-                # A fresh control also reloads the selected mutable source.
-                self._provider_connections.pop(run_id, None)
-                _, error = self._provider_connection(run_id)
-                if error: raise ValueError(error)
+            elif provider_recovery_reused(self, run_id):
+                return {'status': 'accepted', 'revision': head['revision'], 'result': {
+                    'run_id': run_id, 'run_state': head['state'], 'recovery_already_requested': True}}
             row = self._transition_record(tx, run_id, run_id, "RUN", Command.PROVIDER_RETRY_CLEAR, RunState(head["state"]),
                 request.request_id, payload={"provider_retry_clear": {"reason": "operator", "cleared_at": time.time(),
                     **({"settings_path": payload["settings_path"]} if "settings_path" in payload else {})}})
@@ -720,6 +719,8 @@ class WorkflowHost:
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
         result["dispatch_error"] = self.dispatch_errors.get(run_id)
         result["provider_retry"] = self._provider_retry_status(run_id)
+        from .provider_traffic import for_run
+        result['provider_traffic'] = for_run(self, run_id).snapshot() if self.claude_agent_host is not None else None
         from .literature_recovery import status as literature_status
         result["literature_retry"] = literature_status(self.store, run_id) if self.literature_io is not None else None
         result["notifications"] = ({"state": "unavailable", "sinks": {}} if self.observer_services is None
@@ -2309,8 +2310,10 @@ class WorkflowHost:
             with self.store.transaction() as tx:
                 tx.bind_attempt_process(attempt_id, binding.process_group_id)  # type: ignore[attr-defined]
         try:
+            from .provider_traffic import for_request
             handle = self.claude_agent_host.start(request, model=request.required_model_identity,
                 provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root,
+                traffic_binding=for_request(self, request),
                 bind_process_group=bind_process, tool_workspace=tool_workspace,
                 **(self._agent_runtime_arguments(run_id) if request.schema_version >= 11 and command is not AgentCommand.PAPER_READ else {}),
                 **({"host_tool_handler": self.handle_agent_tool} if command is AgentCommand.EXPERIMENT_EXECUTION or command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and request.schema_version >= 18 or command is AgentCommand.GROUNDING and supports_grounding_web(request.schema_version) or request_literature_tools(request) else {}))
@@ -2481,7 +2484,8 @@ class WorkflowHost:
                 details={"workspace_cleanup_error": cleanup_error} if cleanup_error is not None else None)
             if cleanup_error is not None: raise OperationalHalt("expired Agent workspace cleanup failed")
             return
-        try: handle = self.claude_agent_host.start(request, model=request.required_model_identity, provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root, bind_process_group=bind_process, tool_workspace=tool_workspace,
+        from .provider_traffic import for_request
+        try: handle = self.claude_agent_host.start(request, model=request.required_model_identity, provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root, bind_process_group=bind_process, tool_workspace=tool_workspace, traffic_binding=for_request(self, request),
             **(self._agent_runtime_arguments(run_id) if request.schema_version >= 11 else {}))
         except SandboxUnavailable as exc: self._agent_failure(request, AttemptTerminalReason.FAILED, "sandbox_unavailable", retryable=False); raise OperationalHalt(str(exc)) from exc
         except AgentDeadlineExpired:
@@ -2793,12 +2797,12 @@ class WorkflowHost:
             from .literature_recovery import deferred_attempt
             if deferred_attempt(observation) and tx.latest_transition(request.run_id)["state"] in {"CREATED", "ACTIVE"}:
                 return  # Shared literature availability owns recovery; no node exhaustion.
-            from .provider_observation import PROVIDER_UNAVAILABLE
-            if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_UNAVAILABLE
+            from .provider_observation import PROVIDER_DEFERRED
+            if (observation.get("diagnostics", {}).get("provider_failure", {}).get("code") in PROVIDER_DEFERRED
                     and retry_class == "INFRASTRUCTURE"
                     and not self._is_final_report_request(request)
                     and tx.latest_transition(request.run_id)["state"] in {RunState.CREATED.value, RunState.ACTIVE.value}):
-                return  # The shared provider wait owns recovery, not node exhaustion.
+                return  # Admission/service waits do not exhaust scientific nodes.
             if self.resource_recovery.for_request(request): return
             head = tx.latest_transition(request.owner_workflow_id)
             if not owner_transition or head is None: return

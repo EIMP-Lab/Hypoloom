@@ -21,7 +21,7 @@
 - [操作员指南](operator-guide.zh-CN.md):操作参考。
 - [架构](architecture.zh-CN.md):组件、所有权与持久边界。
 - [通知](guides/notifications.md)(英文):显式的外部投递。
-- [API 状态与恢复](guides/provider-recovery.zh-CN.md):等待、操作者重试与连接切换。
+- [API 状态与恢复](guides/provider-recovery.zh-CN.md):请求 RPM／并发、自动恢复、操作者重试与连接切换。
 - [机构全文访问](guides/institutional-access.zh-CN.md)：init 自动连接、Linux 桌面与 Windows 客户端、集中登录、有界等待及 PDF 导入。
 - [资格](qualification.zh-CN.md):G0–G5、可运行的测试选择与状态
   (框架与摘要;完整台账为[英文版](qualification.md))。

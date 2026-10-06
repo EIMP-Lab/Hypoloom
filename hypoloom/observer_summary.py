@@ -587,7 +587,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         for row in attempts]
     observed = _time(observed_at)
     agents = list(_agents(attempts))
-    scopes = attempt_scopes(attempts, reading_commands)
+    scopes = attempt_scopes(attempts, reading_commands, include_run_group=True)
     final_failure_ids = {row["payload"].get("attempt_id") for row in transitions if row["payload"].get("agent_final_failure")}
     stages = _logical_stages(agents, observed, state_root, run_id, final_failure_ids, scopes)
     literature = literature_catalog(state_root, run_id, attempts)
@@ -719,16 +719,35 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         notices.append("Successful self-evolution lacks retained plugin-update evidence; effective change count is unknown.")
     host_observation = _host_observation(state_root)
     host_observation["orphaned"] = terminal is None and host_observation["availability"] == "absent"
-    def auxiliary_group(scope):
-        selected = [stage for stage in stages if stage["task_scope"] == scope]
-        nodes = [node for node in reliability["nodes"] if scopes[node["attempt_ids"][-1]]["task_scope"] == scope]
+    def auxiliary_group(scope, group=None):
+        def selected_scope(value):
+            return value["task_scope"] == scope and (group is None or value.get("run_group") == group)
+        selected = [stage for stage in stages if selected_scope(stage)]
+        nodes = [node for node in reliability["nodes"] if selected_scope(scopes[node["attempt_ids"][-1]])]
         return {"stages": selected, "activity": _current_activity(selected, [], observed),
             "accounting": _token_accounting(selected), "stage_accounting": _stage_accounting(selected),
             "context_recovery": _context_accounting(selected),
             "reliability": summarize_reliability(nodes, include_nodes=False, include_groups=True)}
+    sharing = grounding_sharing(attempts, roles, run_rows[-1]["state"] if run_rows else None)
+    grounding = auxiliary_group("run", "grounding")
+    owned = [row for row in attempts if scopes[row["attempt_id"]].get("run_group") == "grounding"]
+    opened = [row for row in owned if row.get("state") == "OPEN"]
+    start_times = [_time(row.get("started_at")) for row in owned]
+    end_times = [_time(row.get("ended_at")) for row in owned]
+    start = min((v for v in start_times if v is not None), default=None)
+    end = observed if opened else max((v for v in end_times if v is not None), default=None)
+    grounding.update(attempt_ids=[row["attempt_id"] for row in owned], sharing=sharing,
+        elapsed_seconds=None if start is None or end is None else max(0, end - start),
+        active_readers=sum(scopes[row["attempt_id"]]["task_kind"] == "PAPER_READ" for row in opened),
+        state="completed" if sharing["state"] == "accepted" else
+            "waiting_human" if sharing["state"] == "waiting_human" else "active" if opened else
+            "cancelled" if terminal and terminal["state"] == "CANCELLED" and owned else
+            "failed" if any(row["attempt_id"] in final_failure_ids for row in owned) else
+            "preparing" if owned else "not_started")
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
         "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),
-        "grounding_sharing": grounding_sharing(attempts, roles, run_rows[-1]["state"] if run_rows else None),
+        "grounding": grounding, "other_global_tasks": auxiliary_group("run", "other"),
+        "grounding_sharing": sharing,
         "reliability": reliability, "accounting": _token_accounting(stages),
         "stage_accounting": _stage_accounting(stages),
         "context_recovery": _context_accounting(stages),

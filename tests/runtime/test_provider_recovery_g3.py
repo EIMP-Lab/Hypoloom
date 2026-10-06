@@ -4,6 +4,7 @@ import secrets
 import tempfile
 import threading
 import time
+import pytest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -89,3 +90,87 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
         if host is not None: host.close()
         for server, thread in ((healthy, healthy_thread), (exhausted, exhausted_thread)):
             server.shutdown(); server.server_close(); thread.join(timeout=5)
+
+
+@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue'])
+def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_path, monkeypatch, failure_kind):
+    from hypoloom import provider_observation
+    # Accelerate only the shared recovery policy, not Host/Process/model clocks.
+    monkeypatch.setattr(provider_observation, 'PROVIDER_RETRY_DELAYS', (.02, .04, .08, .1, .2))
+    executable = _installed_claude()
+    scenario = _DeclaredScenario(tmp_path, 'automatic-rpm-' + secrets.token_hex(12))
+    provider, thread = _start_provider(scenario, 'local-rpm-key')
+    post, rejected = provider.RequestHandlerClass.do_POST, []
+    def overload(handler):
+        if failure_kind == 'remote_429' and len(rejected) < 6:
+            handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
+            rejected.append(time.time())
+            body = b'{"error":{"code":"429","message":"Too Many Requests"}}'
+            handler.send_response(429)
+            handler.send_header('Content-Type', 'application/json')
+            handler.send_header('Content-Length', str(len(body)))
+            handler.end_headers()
+            handler.wfile.write(body)
+        else:
+            post(handler)
+    provider.RequestHandlerClass.do_POST = overload
+    if failure_kind == 'local_queue':
+        from hypoloom.provider_traffic import ProviderTraffic, ProviderDeferred
+        original_acquire = ProviderTraffic.acquire
+        def queued(self, **kwargs):
+            if len(rejected) < 6:
+                rejected.append(time.time())
+                raise ProviderDeferred('local_request_queue')
+            return original_acquire(self, **kwargs)
+        monkeypatch.setattr(ProviderTraffic, 'acquire', queued)
+    (tmp_path / 'settings.json').write_text('{}')
+    (tmp_path / 'settings.json').chmod(0o600)
+    host = None
+    run_id = 'native-rpm-recovery'
+    try:
+        host = _new_host(tmp_path, executable, f'http://127.0.0.1:{provider.server_port}', 'local-rpm-key')
+        host.grounding_web = _NoPublicWeb()
+        with tempfile.TemporaryDirectory(prefix='hypoloom-rpm-cpu-', dir='/var/tmp') as mount:
+            payload = _six_yaml_profile_v4_payload(tmp_path, Path(mount), run_id)
+            host.initialize()
+            assert host.handle(ControlRequest(1, 'create', 0, 'CREATE_RUN', payload)).status == 'accepted'
+            deadline = time.monotonic() + 240
+            max_in_flight, max_rpm = 0, 0
+            while time.monotonic() < deadline:
+                host.tick()
+                status = host.handle(ControlRequest(1, 'observe', None, 'STATUS', {'run_id': run_id})).result
+                assert not status['provider_retry']['requires_operator'], status['provider_retry']
+                if failure_kind == 'local_queue':
+                    assert status['provider_retry']['state'] == 'ready'
+                traffic = status['provider_traffic']
+                max_in_flight = max(max_in_flight, traffic['in_flight'])
+                max_rpm = max(max_rpm, traffic['rpm'])
+                assert not scenario.errors, scenario.errors
+                if host.store.latest_transition(run_id)['state'] in {'COMPLETED', 'FAILED', 'CANCELLED'}:
+                    break
+                time.sleep(.01)
+            assert len(rejected) == 6
+            assert host.store.latest_transition(run_id)['state'] == 'COMPLETED'
+            attempts = host.store.list_attempts()
+            processes = [a for a in attempts if a['kind'] == 'PROCESS']
+            assert len(processes) == 1 and processes[0]['terminal_reason'] == 'SUCCEEDED'
+            assert len(host.store.list_facts(run_id, 'CanonicalOutcomeAccepted')) == 1
+            assert 'cpu_outcome' in scenario.parser_evidence
+            assert all(a['state'] == 'CLOSED' for a in attempts)
+            assert all(not process_group_exists(a['process_group_id']) for a in attempts if a['process_group_id'] is not None)
+            assert not host.running and not host.running_agents
+            assert not host.store.inspect("SELECT 1 FROM workflow_commands WHERE command_type='PROVIDER_RETRY_CLEAR'")
+            assert max_in_flight <= payload['research_contract']['budget']['provider_max_in_flight'] and 0 < max_rpm <= 60
+            assert traffic['in_flight'] == traffic['queued'] == 0
+            assert traffic['rpm'] == traffic['grounding']['rpm'] + traffic['other']['rpm'] + sum(v['rpm'] for v in traffic['by_expert'].values())
+            assert traffic['rpm'] == sum(v['rpm'] for v in traffic['by_attempt'].values())
+            report = Oracle(host.store.database_path, host.publisher.root).audit(run_id)
+            assert report.ok, report.to_dict()
+            assert report.open_attempt_count == report.pending_effect_count == 0
+            (tmp_path / 'automatic-rpm-evidence.json').write_text(json.dumps({
+                'failure_kind': failure_kind, 'rejections': len(rejected), 'attempts': len(attempts), 'processes': len(processes),
+                'operator_commands': 0, 'max_in_flight': max_in_flight, 'max_rpm': max_rpm,
+                'oracle_ok': report.ok, 'process_residue': 0}, indent=2))
+    finally:
+        if host is not None: host.close()
+        provider.shutdown(); provider.server_close(); thread.join(timeout=5)

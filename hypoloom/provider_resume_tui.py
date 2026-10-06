@@ -69,7 +69,8 @@ class ProviderResumeScreen(ModalScreen):
         self.query_one("#provider-resume-status", Static).update(text)
 
     def _buttons(self) -> None:
-        self.query_one("#provider-resume-confirm", Button).disabled = self.busy or not self.writable
+        self.query_one("#provider-resume-confirm", Button).disabled = (self.busy or not self.writable
+            or not self.draft.get('pending') and (self.status.get('provider_retry') or {}).get('state') == 'recovering')
         self.query_one("#provider-switch", Button).disabled = self.busy or not self.writable or bool(self.draft.get("pending"))
         self.query_one("#provider-settings-path", Input).disabled = self.busy or bool(self.draft.get("pending"))
 

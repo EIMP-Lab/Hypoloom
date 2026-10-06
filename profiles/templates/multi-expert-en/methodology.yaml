@@ -45,6 +45,8 @@ budget:
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3
+  provider_rpm_limit: 60  # This run's allocation per model; not the account's observed limit.
+  # provider_max_in_flight: 3  # Optional override; otherwise follows max_active_agents.
   max_active_processes: 2
   max_active_reviews: 3
   max_retries: 2
