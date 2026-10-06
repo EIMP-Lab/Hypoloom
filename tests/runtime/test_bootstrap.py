@@ -228,6 +228,8 @@ def test_inspect_requires_institutional_choice_and_reuses_identity(checkout, cap
     assert {choice["value"] for choice in choices} == {"off", "local", "client", "server", "existing"}
     assert all(choice["description"] for choice in choices)
     followup = [*argv, "--institutional-browser-mode", "client" if supplied_library else "off"]
+    if supplied_library:
+        followup += ["--institutional-prepare-provider", "IEEE"]
     for key, value in pending["identity"].items():
         followup += ["--" + key.replace("_", "-"), value]
     assert bootstrap.main(followup) == 0
@@ -236,6 +238,52 @@ def test_inspect_requires_institutional_choice_and_reuses_identity(checkout, cap
     assert selected["status"] == "ready_for_review" and "choices" not in selected
     if supplied_library:
         assert selected["effective_configuration"]["institutional_connection"]["library_url"] == "https://library.example.edu/"
+    assert not (repo / "state").exists()
+
+
+@pytest.mark.parametrize("mode", ["client", "local", "server", "existing", "legacy"])
+@pytest.mark.parametrize("mode_flags", [[], ["--institutional-provider-mode", "ACM=auto",
+                                           "--institutional-provider-mode", "ScienceDirect=public_only"]])
+def test_inspect_requires_publisher_answer_before_executable_plan(checkout, capsys, monkeypatch, mode, mode_flags):
+    from hypoloom import bootstrap_inspect, institutional_connection, institutional_runtime
+    repo, overrides = checkout
+    assert bootstrap.main([*arguments(repo, overrides), "--write"]) == 0
+    capsys.readouterr()
+    before = {p: p.read_bytes() for p in (repo / "profiles/local").rglob("*.yaml")}
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    monkeypatch.setattr(institutional_connection, "_run", lambda *a, **k: pytest.fail("started a resource"))
+    monkeypatch.setattr(institutional_connection, "probe", lambda *a, **k: pytest.fail("contacted browser"))
+    monkeypatch.setattr(institutional_runtime.RunBrowser, "__init__", lambda *a, **k: pytest.fail("allocated a browser"))
+    choice = (["--institutional-browser-url", "http://127.0.0.1:19222"] if mode == "legacy"
+              else ["--institutional-browser-mode", mode])
+    argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none",
+            "--offline", *choice, *mode_flags]
+    assert bootstrap.main(argv) == 0
+    pending = json.loads(capsys.readouterr().out)
+    assert pending["status"] == "needs_input" and pending["missing"] == ["institutional_prepare_provider"]
+    candidates = pending["choices"]["institutional_prepare_provider"]
+    assert [p["value"] for p in candidates[:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer"]
+    assert {p["value"] for p in candidates} == {"IEEE", "ACM", "ScienceDirect", "Springer", "Nature",
+                                              "Wiley", "SAGE", "Oxford", "Taylor & Francis", "none"}
+    assert all(p["description"] for p in candidates)
+    assert "launch_argv" not in pending and "init_session_argv" not in pending
+    assert "institutional_preparation_argv" not in pending.get("effective_configuration", {})
+    assert pending["next_actions"][0] == "complete_choices"
+    followup = [*argv, "--institutional-prepare-provider", "ACM"]
+    for key, value in pending["identity"].items():
+        followup += ["--" + key.replace("_", "-"), value]
+    assert bootstrap.main(followup) == 0
+    selected = json.loads(capsys.readouterr().out)
+    assert selected["status"] == "ready_for_review" and not selected["missing"]
+    assert "choices" not in selected and selected["identity"] == pending["identity"]
+    plan = selected["effective_configuration"]["institutional_preparation"]
+    assert plan["selected"] == ["ACM"]
+    modes = {p["provider"]: p["mode"] for p in plan["catalog"]}
+    assert modes["ACM"] == "auto" and modes["IEEE"] == modes["Springer"] == "disabled"
+    assert modes["ScienceDirect"] == ("public_only" if mode_flags else "disabled")
+    command = selected["init_session_argv"] if mode == "client" else selected["launch_argv"]
+    assert bootstrap.build_parser().parse_args(command[4:]).institutional_prepare_provider == ["ACM"]
+    assert before == {p: p.read_bytes() for p in (repo / "profiles/local").rglob("*.yaml")}
     assert not (repo / "state").exists()
 
 
@@ -253,6 +301,8 @@ def test_inspect_institutional_choice_roundtrips_into_host_without_effects(check
     monkeypatch.setattr(institutional_runtime.RunBrowser, "__init__", lambda *a, **k: pytest.fail("preview allocated a run browser"))
     choice = (["--institutional-browser-url", "http://127.0.0.1:19222"] if mode == "legacy"
               else ["--institutional-browser-mode", mode])
+    if mode != "off":
+        choice += ["--institutional-prepare-provider", "IEEE"]
     argv = ["inspect", "topic", "--repository", str(repo), "--cpu-only", "--auth-transport", "none", "--offline", *choice]
     assert bootstrap.main(argv) == 0
     inspected = json.loads(capsys.readouterr().out)
@@ -456,12 +506,17 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
 
 
 @pytest.mark.parametrize("selection,expected", [
-    ([], ["IEEE", "ScienceDirect", "Springer"]),
+    (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
+      "--institutional-prepare-provider", "Springer"], ["IEEE", "ScienceDirect", "Springer"]),
+    (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
+      "--institutional-prepare-provider", "Springer", "--institutional-prepare-provider", "ACM"],
+     ["IEEE", "ScienceDirect", "Springer", "ACM"]),
     (["--institutional-prepare-provider", "Elsevier", "--institutional-prepare-provider", "Wiley"],
      ["ScienceDirect", "Wiley"]),
     (["--institutional-prepare-provider", "none"], []),
     (["--institutional-provider-mode", "ScienceDirect=public_only",
-      "--institutional-provider-mode", "ACM=public_only"], ["IEEE", "Springer"]),
+      "--institutional-provider-mode", "ACM=public_only", "--institutional-prepare-provider", "IEEE",
+      "--institutional-prepare-provider", "Springer"], ["IEEE", "Springer"]),
 ])
 @pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
 def test_init_common_preparation_roundtrips_without_changing_research(checkout, capsys, monkeypatch, selection, expected, failure_mode):
@@ -497,6 +552,8 @@ def test_init_common_preparation_roundtrips_without_changing_research(checkout, 
         assert prepare.institutional_prepare_failure_mode == failure_mode
     else:
         assert "institutional_preparation_argv" not in review["effective_configuration"]
+        assert "init_session_argv" not in review
+        assert serve.institutional_provider_mode == []
     assert not (repo / "state").exists()
 
 

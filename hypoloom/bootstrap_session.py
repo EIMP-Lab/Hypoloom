@@ -70,6 +70,9 @@ class LaunchSession:
 def run(args, repository, report, result, *, output=None):
     if Path(args.control_python).resolve() != Path(sys.executable).resolve():
         raise ValueError("run session with the selected control Python")
+    if args.institutional_prepare_provider is None:
+        raise ValueError("session requires an explicit publisher selection from init; "
+                         "answer institutional_prepare_provider and re-inspect")
     if not supported(args, result["effective_configuration"]):
         raise ValueError("session requires selected Windows client preparation; use the generated launch_argv otherwise")
     from .bootstrap_inspect import supervisor_check

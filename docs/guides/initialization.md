@@ -80,14 +80,19 @@ behavior. Existing direct launch/serve scripts may still omit the mode. Off reje
 conflicting connection or institutional-specific options; remove those options
 when changing the selection.
 
-Enabled reviews expose `institutional_preparation`, with IEEE, ACM, Elsevier /
-ScienceDirect and Springer first. The default batch prepares IEEE, ScienceDirect
-and Springer; ACM is public-first with optional login. Choose the default batch,
-a custom list or skip, without entering each publisher URL. Repeated
-`--institutional-prepare-provider <platform>` values replace the default list;
-`none` skips preparation. `Elsevier` aliases `ScienceDirect`. Choose the browser
+After enabling access, **confirm the publisher list in the interactive session**.
+Inspect reports `institutional_prepare_provider` as missing and supplies its choices,
+showing IEEE, ACM, Elsevier / ScienceDirect and Springer first. Select publishers,
+explicitly accept the recommended IEEE/ScienceDirect/Springer set, or skip.
+ACM is selectable even though its recommendation is public-first with optional login.
+Choosing Windows client mode alone does not select publishers; no preparation or launch
+command is generated until the list is supplied. Previously explicit answers are retained.
+Repeated `--institutional-prepare-provider <platform>` values carry the exact list;
+`none` skips preparation. Off needs no publisher question. Direct scripts and standalone
+preparation retain their defaults. `Elsevier` aliases `ScienceDirect`. Choose the browser
 and optional interactive library URL once. Reinspection preserves selections;
-the preparation list does not restrict research. Windows client init merges public-only
+unselected institutional channels remain disabled, while public/OA retrieval stays available.
+Windows client init merges public-only
 choices into the launch arguments in its program-owned session. Standalone preparation
 still requires carrying those choices into the separate launch review. Unverified
 or unavailable platforms do not prevent research startup.

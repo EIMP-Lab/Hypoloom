@@ -142,6 +142,16 @@ def inspect(args, repository: Path) -> dict:
         missing.append("institutional_browser_mode")
         result["choices"] = {"institutional_browser_mode": [
             {"value": value, "description": description} for value, description in BROWSER_MODES.items()]}
+    if (checks.get("institutional_connection", {}).get("mode") not in (None, "off")
+            and args.institutional_prepare_provider is None):
+        from .institutional_access import provider_catalog
+        # Browser placement does not select publishers. Reuse the ordinary argv
+        # field: an explicit list (or none) is required, not a second confirmation.
+        missing.append("institutional_prepare_provider")
+        result.setdefault("choices", {})["institutional_prepare_provider"] = [
+            {"value": p["provider"], "description": p["display_name"] + ": " + p["note"],
+             "recommended_prepare": p["recommended_prepare"]} for p in provider_catalog()
+        ] + [{"value": "none", "description": "Skip preparation; public/OA retrieval remains available"}]
     auth = checks["auth"]
     if auth["status"] == "unavailable":
         missing.append("model_auth_source")

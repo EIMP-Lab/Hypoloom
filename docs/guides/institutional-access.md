@@ -111,8 +111,10 @@ did not succeed. For 403, check the server's IP, institutional API access and
 Insttoken; do not copy browser cookies or repeat browser init as a remedy.
 
 Repeat init's read-only inspection to review the configuration. New Hosts use
-the key; default browser preparation omits ScienceDirect and retains IEEE and
-Springer. Explicit ScienceDirect browser preparation is still respected.
+the key; init still asks you to confirm the browser preparation list. An API key
+does not replace that answer or remove an explicitly selected ScienceDirect.
+Legacy direct-launch previews without an explicit list omit ScienceDirect from
+the default preparation set when this key is configured.
 Preflight reports `full_text_access: not_checked` and consumes no API quota.
 Existing runs retain their frozen version; no migration occurs.
 
@@ -737,8 +739,14 @@ require checks on those machines; see [qualification](../qualification.md#run-sc
 
 ## Prepare platforms before research
 
-For a Windows client, start server init and use its generated scoped preparation
-and Windows entry commands. For the catalog or standalone preparation on a native
+For a Windows client, start server init, confirm the publisher list in the interactive
+question, and use its generated scoped preparation and Windows entry commands.
+IEEE, ACM, ScienceDirect and Springer must be offered; selecting client mode alone
+does not accept the recommended list. You can select other catalog entries or skip.
+Until you answer, inspect reports `institutional_prepare_provider` as missing and
+returns no preparation/launch command. An existing explicit answer is retained on
+reinspection. Unselected institutional routes remain disabled; public/OA retrieval
+is independent. For the catalog or standalone preparation on a native
 Linux desktop, use:
 
 ```bash
@@ -749,14 +757,14 @@ python -m hypoloom institutional prepare \
 
 The existing catalog shows four common platforms first:
 
-| Platform | Prepare by default | Behavior |
+| Platform | Standalone default / init suggestion | Behavior |
 | --- | --- | --- |
 | IEEE | Yes | Reuse valid sessions; authenticate in the browser if needed. |
 | ACM | No, optional | Public full text first; login is not a reading prerequisite. |
 | Elsevier / ScienceDirect | Yes | Both names are accepted by preparation and mode arguments. |
 | Springer | Yes | Open the official institution finder, then authenticate with the institution. |
 
-With no platform/sample arguments the command selects these three preparation
+With no platform/sample arguments the standalone command selects these three preparation
 defaults, excluding platforms set to `public_only` or `disabled`. Repeated `--provider <platform>`
 replaces the defaults and can include ACM or other supported platforms; `--provider none`
 does not connect. Samples alone still select only their own platforms. Preparation

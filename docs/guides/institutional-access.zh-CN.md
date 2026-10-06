@@ -89,8 +89,9 @@ ScienceDirect 专用浏览器反复出现人机验证时，可配置官方 Artic
 Insttoken；不要把浏览器 Cookie 复制到 API 配置。已发到聊天的 Key 建议替换后本地保存。
 
 填写后重新执行 init 的只读检查即可审阅新配置。新 Host 的文献获取会识别该 Key；
-init 默认浏览器准备跳过 ScienceDirect，保留 IEEE、Springer。显式选择 ScienceDirect
-浏览器准备仍被尊重。预检显示 `full_text_access: not_checked`，不会自动消耗 API 额度。
+init 仍需交互确认浏览器准备名单，Key 不替代该回答，也不会移除已明确选择的
+ScienceDirect。直接启动预览未指定名单时，原有默认规则才会因配置 Key 而跳过
+ScienceDirect。预检显示 `full_text_access: not_checked`，不会自动消耗 API 额度。
 已启动运行使用其原冻结版本，不自动迁移。
 
 对已有公开 PDF 路径保持原行为；选中 ScienceDirect／Elsevier DOI 时，官方 API 代替
@@ -107,7 +108,11 @@ Windows 专用浏览器仍可用于其他平台。[官方全文接口](https://d
 ## 集中准备与研究期间的处理
 
 没有研究运行或待下载论文时，也可先准备常用平台。Windows 客户端先在服务器
-进入 init，再使用它生成的单运行准备命令和 Windows 入口。仅列目录或在原生 Linux
+进入 init，**在交互式问题中确认出版社名单**，再使用程序生成的单运行准备命令和
+Windows 入口。问题须展示 IEEE、ACM、ScienceDirect、Springer，可选其他平台或跳过；
+只选择 client 模式不等于接受推荐名单。未回答时，inspect 的 `missing` 包含
+`institutional_prepare_provider`，不返回准备／启动命令。已明确回答的名单随重查保留。
+未选择的机构渠道保持禁用，公开／OA 获取独立可用。仅列目录或在原生 Linux
 桌面独立准备时使用：
 
 ```bash
@@ -118,14 +123,14 @@ python -m hypoloom institutional prepare \
 
 目录优先展示四个常用平台，入口来自现有平台目录，无须逐个输入网址：
 
-| 平台 | 默认集中准备 | 说明 |
+| 平台 | 独立命令默认／init 建议 | 说明 |
 | --- | --- | --- |
 | IEEE | 是 | 复用有效会话，必要时在浏览器认证。 |
 | ACM | 否，可选 | 公开全文优先；不将登录作为读取论文的前提。 |
 | Elsevier / ScienceDirect | 是 | 参数可使用 `ScienceDirect` 或 `Elsevier`。 |
 | Springer | 是 | 直接打开官方机构选择页，搜索学校后认证。 |
 
-不指定平台/样本时采用上述三个默认准备平台；已设为 `public_only` 或 `disabled` 的平台不默认准备。
+独立命令不指定平台/样本时采用上述三个默认准备平台；已设为 `public_only` 或 `disabled` 的平台不默认准备。
 重复 `--provider <平台>` 替换默认名单，可加入 ACM 或目录中其他平台；`--provider none`
 不连接浏览器。只传 `--sample` 时仍只处理样本所属平台。准备名单不限制科研检索范围。
 ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/acm-pres-on-oa-transition-and-dl-changes)，

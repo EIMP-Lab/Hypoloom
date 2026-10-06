@@ -2,6 +2,35 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Explicit init publisher selection (2026-10-06)
+
+Baseline: dev `52d4e3c`. Selecting client browser placement without a publisher
+answer previously passed inspect with IEEE/ScienceDirect/Springer defaults and
+ACM disabled. The repair reuses the ordinary `institutional_prepare_provider`
+argument and missing-choice validation. No executable plan is returned until
+the interactive session supplies a list or none; candidate descriptions come
+from the existing catalog. Session rejects omitted lists. Off and standalone
+defaults retain their behavior. No retained-run configuration is changed.
+See the [design](design/institutional-access-preparation.md#init-出版社候选名单必须交互确认2026-10-06).
+
+Evidence: `.local/qualification/init-publisher-choice-20261006/`. `bootstrap.xml`
+has **108 passes**, including all enabled placements and legacy URL, mode flags
+without a list, explicit ACM/subsets/none, unchanged Profile/identity, exact
+preparation/launch forwarding and pre-effect session rejection. The existing
+native integration reaches one real Host CREATE, two successful Agent Attempts
+and two CPU Process Attempts, zero open Attempts/pending effects, no owned
+process groups, preparation root or Host socket left behind. Browser operations
+and systemd transport are replaced; no live publisher or paid-model claim.
+
+Related preparation/dialogue/credential/Skill/document checks initially had
+146 passes, nine skips and one Skill wording failure. The same assertion fails
+on unmodified HEAD: it expects the single final-question boundary text, which
+the previous reference had renamed. Restore the wording without changing test
+assertions; `skills-docs-final.xml` has 41 passes. Distinct final selected results
+are **255 passes / nine environment skips**, reconciled in `validation-notes.json`;
+the original failure remains in `related.xml`. Static checks and whitespace pass.
+Full G1 and actual Windows/CC interaction acceptance were not performed here.
+
 ## Program-owned init review and launch (2026-10-06)
 
 Baseline: dev `6c6f351`. The observed ACM-to-final-question delay was about 658

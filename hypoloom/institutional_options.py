@@ -47,7 +47,7 @@ def options(args):
 
 def add_preparation_argument(parser, flag="--institutional-prepare-provider"):
     parser.add_argument(flag, action="append", type=provider_name, choices=(*PROVIDERS.values(), "none"),
-                        help="replace common preparation defaults; repeat for platforms, Elsevier aliases ScienceDirect; none skips preparation")
+                        help="replace common defaults (explicit list required by init inspect/session); repeat for platforms, Elsevier aliases ScienceDirect; none skips preparation")
     parser.add_argument("--institutional-prepare-failure-mode", choices=("review", "public_only"), default="review",
                         help="review failures, or use public_only for failed/unvisited platforms before launch review")
 

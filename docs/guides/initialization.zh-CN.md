@@ -67,12 +67,15 @@ Prepare only、启动失败或创建结果未确认时，不能宣称启动成�
 已明确选择外部连接，保留原非受管行为。直接 launch/serve 的旧脚本仍可省略模式。
 off 与机构连接或机构专用配置同时提供会被拒绝，请在更改选择时移除冲突参数。
 
-启用后，审阅中的 `institutional_preparation` 展示常用平台：IEEE、ACM、
-Elsevier / ScienceDirect、Springer。默认集中准备 IEEE、ScienceDirect、Springer；
-ACM 优先公开获取，机构登录可选。选择默认批次、自定义名单或跳过即可，无须逐家填写网址。
-重复传 `--institutional-prepare-provider <平台>` 会替换默认名单，`none` 跳过集中准备；
+启用后，**必须在交互式会话中确认出版社候选名单**。inspect 将
+`institutional_prepare_provider` 列为缺失项，返回候选选项，优先展示 IEEE、ACM、
+Elsevier / ScienceDirect、Springer。可多选、自定义、明确接受推荐的三家或跳过。
+ACM 虽推荐优先公开获取，仍必须作为可选项展示；只选择 Windows client 不代表
+已经选择出版社，未回答前程序不生成准备或启动命令。已明确回答的名单随重查保留，
+不重复询问。重复传 `--institutional-prepare-provider <平台>` 携带准确名单，
+`none` 跳过；off 不额外询问出版社。独立准备和直接启动脚本保留原有默认值。
 `Elsevier` 可作为 `ScienceDirect` 的别名。学校交互入口和浏览器位置只配置一次。
-已有选择随重查保留；准备名单不限制文献检索范围。Windows init 的程序会自动将
+未选中的机构渠道保持禁用，公开／OA 检索获取仍可使用。Windows init 的程序会自动将
 “仅公开途径”选择合并到启动审阅；独立准备命令的结果仍需带入后续启动参数。
 未验证或无权限的平台不阻止开始研究。
 

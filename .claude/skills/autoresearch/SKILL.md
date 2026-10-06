@@ -109,45 +109,40 @@ disable a Hook, expand permissions or loop through equivalent shell forms.
 ### 2. Fill only missing choices and review
 
 **Institutional access choice.** If `missing` includes `institutional_browser_mode`,
-ask using `choices.institutional_browser_mode`, translating its descriptions for the
-user. The code supplies off/local/client/server/existing; do not infer off from an
-omitted answer or choose a placement from the server OS. If needed, split the UI
-question into whether to enable access and where the browser runs, then return one
-explicit mode to inspect. Preserve previously supplied choices and the same launch
-identity. Only use the returned `launch_argv` once missing choices are resolved.
-Explicit off keeps public/OA retrieval and disables institutional browser acquisition. A supplied
-legacy browser URL already answers this choice and retains its unmanaged behavior.
+ask using `choices.institutional_browser_mode`, translating descriptions for the user.
+Do not infer off from silence or placement from the server OS; if needed, ask enablement and placement separately.
+Return one explicit mode and retain prior choices/identity. Off keeps public/OA retrieval, disabling institutional acquisition.
+A supplied legacy URL answers placement and retains unmanaged behavior. Use `launch_argv` only after all missing choices resolve.
 
-**Optional institutional preparation.** Use the enabled preview's `institutional_preparation`.
-Offer defaults (IEEE, ScienceDirect, Springer), optional ACM (public-first), custom platforms or skip. For unattended stability, use `--institutional-prepare-failure-mode public_only`; see [details](references/init-details.md).
-Reuse choices: repeated `--institutional-prepare-provider` replaces the list; `none` skips.
-Selected modes enter launch; unselected institutional routes default disabled, with public retrieval independent.
-Re-inspect with the same identity. When `init_session_argv` is returned, run it
-unchanged in the background instead of `institutional_preparation_argv`. This
-program owns client preparation, policy merging, final review and explicit launch.
-Otherwise use the separate `institutional_preparation_argv` with `--agent-session`.
-Execute `instructions_argv` and relay its output verbatim.
-Use `status_argv` for the current `reply_argv`; append the exact offered user reply
-with `--text`, and `--sample` only for sample verification. Never use background stdin.
-Connection checks advance automatically; retries never extend deadlines. Arm one generated
-`watch_argv` after connection instructions and platform replies; never overlap observers or infer answers.
-At `status.state=awaiting_launch`, preparation is complete. If `launch_review` is
-present, relay the current `instructions_argv` output and immediately ask its fixed
-Start now / Prepare only choices (plus retry if offered). Do not write a scratch
-reader, reread notification files, merge modes, re-inspect or compose a second
-review. Submit the exact user choice through `reply_argv --text`; the same program
-executes the reviewed launch only after Start now. Do not also run `launch --start`.
-Observe the background `bootstrap_result`; `launching` is processing, not another
-question. Rejected/expired replies never authorize a separate launch or new identity.
+**Publisher selection requires an interactive answer.** When `missing` includes `institutional_prepare_provider`,
+use `AskUserQuestion` with `choices.institutional_prepare_provider`; show IEEE, ACM, ScienceDirect and Springer explicitly.
+Allow multiple publishers/custom catalog choices or skip. Recommendations are suggestions, never an implicit answer.
+Choosing client mode, adopting a Profile or using a previous run's list does not confirm the current list.
+Carry an already explicit answer through repeated `--institutional-prepare-provider`; `none` means skip. Do not ask again.
+The program withholds preparation/launch commands until the list is supplied. Never fill it from defaults or bypass inspect.
+Unselected institutional routes stay disabled; public retrieval is independent. For unattended stability, use
+`--institutional-prepare-failure-mode public_only`; see [details](references/init-details.md).
+
+Re-inspect with the same identity. Run returned `init_session_argv` unchanged in the background;
+it owns client preparation, policy merging, final review and explicit launch. Otherwise use
+`institutional_preparation_argv` with `--agent-session`. Relay `instructions_argv` output verbatim.
+Use `status_argv` for current `reply_argv`; append the exact offered reply with `--text`,
+and `--sample` only for sample verification. Never use background stdin.
+Connection checks advance automatically; retries never extend deadlines. Arm one generated `watch_argv`
+after connection instructions/platform replies; never overlap observers or infer answers.
+At `status.state=awaiting_launch`, preparation is complete. With `launch_review`, relay current instructions
+and immediately ask fixed Start now / Prepare only choices (plus retry if offered). Do not write a scratch reader,
+reread notification files, merge modes, re-inspect or compose a second review. Submit the user's exact `reply_argv --text`;
+the program launches only after Start now. Do not also run `launch --start`. Read background `bootstrap_result`;
+`launching` is processing, not a question. Rejected/expired replies authorize neither a separate launch nor a new identity.
 Without `launch_review`, read `summary` and enter the legacy separate review path.
 Never wait for process exit before asking; the review retains the connection at most 600 seconds.
 On an offered retry, execute `remaining_preparation_argv` unchanged: same-root `preparation retry`,
 preserving identity/results. Prepare only/cancel must execute returned `finish_argv`; expiry never starts research.
 Explicit finish/skip during preparation releases scope directly; read its final background result.
-Only an explicit preparation choice opens the browser; it does not authorize a
-Host/run, Profile writes or model calls. SSO/MFA stays in the browser, never chat.
-Show `preparation_summary`: no sample means not_checked; sample_verified proves only that
-paper's readability, not login/subscription. Report public PDF, browser PDF or HTML accurately.
+Only explicit preparation opens the browser; it authorizes no Host/run, Profile writes or model calls. SSO/MFA stays in the browser.
+Show `preparation_summary`: no sample means not_checked; sample_verified proves only paper readability, not login/subscription.
+Report public PDF, browser PDF or HTML accurately.
 Fixed-sample challenges fail and advance; never require per-paper solving or call HTML a PDF.
 Only for the separate preparation path, merge `provider_modes` by platform, replacing old values; re-inspect and review without replaying
 completed/skipped preparation. Missing access never blocks research. Review auto/public_only/disabled
@@ -173,10 +168,8 @@ Do not share active local/server profiles, install dependencies, pull images or 
 Connectivity proves neither visible GUI nor subscription. Legacy endpoint/manual commands remain
 operator-owned; do not use detached manual startup for a new managed run. See details and the institutional guide.
 
-Ask only about returned missing fields or explicit changes the user requested;
-group related choices. Proposed model/auth values must be shown as defaults,
-not claimed to be inherited from the interactive `/model`. Explain any actual
-Profile model/effort overrides in `effective_configuration`.
+Ask only about returned missing fields or requested changes; group related choices. Show proposed model/auth as defaults,
+not inherited from interactive `/model`; explain actual Profile model/effort overrides in `effective_configuration`.
 
 Capture the proposed run ID/state root/request ID once from `identity`; pass
 those same values on subsequent inspection. Never recapture a timestamp to

@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 6 explicit init publisher choice: client placement alone previously
+  admitted the three default publishers, silently leaving ACM disabled. Enabled
+  inspect now requires the existing institutional_prepare_provider argument,
+  exposes catalog choices including ACM/none, and returns no executable plan
+  until answered. Session rejects an omitted list; off and standalone defaults
+  remain compatible. No extra confirmation state or retained-run change.
+  Focused checks: 255 distinct passes / nine skips, including real Host/CPU closure;
+  physical Windows/LLM init acceptance and full G1 remain separate.
+  [Design](../design/institutional-access-preparation.md#init-出版社候选名单必须交互确认2026-10-06)
+  / [validation](../qualification.md#explicit-init-publisher-selection-2026-10-06).
+
 - October 6 program-owned init review: confirmed 658-second model work exceeded
   the 600-second handoff window before Start now was offered. Generated
   `init_session_argv` reuses the private preparation dialogue and original

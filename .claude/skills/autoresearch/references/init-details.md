@@ -53,11 +53,19 @@ legacy URL. Repeat inspect with the explicit answer and the same launch identity
 do not hand-build launch arguments to bypass an unanswered choice. Off leaves
 public/OA retrieval available and disables institutional-panel operations. Preview starts no browser; standalone
 preparation and final run startup retain their separate explicit choices.
-Enabled previews also provide the common-platform preparation catalog and a complete
-command. Keep selections in repeated `--institutional-prepare-provider` arguments;
-`none` skips this optional step; only explicitly configured provider modes remain enabled. The shared
-defaults prepare IEEE, ScienceDirect and Springer; ACM is shown as public-first with
-optional login. Use the existing single library URL and browser profile for the batch.
+When access is enabled, inspect requires a separate `institutional_prepare_provider`
+answer and supplies `choices.institutional_prepare_provider` from the existing catalog.
+Ask interactively, explicitly displaying IEEE, ACM, ScienceDirect and Springer, with
+multiple/custom selections and skip. Recommended IEEE/ScienceDirect/Springer are only
+suggestions; ACM's public-first recommendation does not authorize omitting it from the
+question. Browser placement, Profile adoption and old-run defaults are not list answers.
+Carry an already explicit answer without asking again; use repeated
+`--institutional-prepare-provider` arguments, or `none` to skip. No executable preparation,
+launch or session command is returned until this missing choice is resolved.
+`bootstrap session` also rejects an omitted list. Do not reconstruct a direct launch
+command to bypass the question. Standalone preparation/direct-launch defaults remain
+compatible; they do not answer an interactive init question.
+Use the existing single library URL and browser profile for the batch.
 The program carries selected platforms as `auto` unless an explicit `public_only` or
 `disabled` mode overrides them. All other publishers default to disabled institutional
 access, even though the catalog lists them. Public/OA retrieval remains independent.
@@ -1082,7 +1090,7 @@ code from the original repository. Agent tools keep admitted original paths;
 request execution `read_root_map` is only an advisory preview of formal Process
 paths, not extra authorization. Existing production-driver data bindings remain.
 
-Use the final `AskUserQuestion` described in the main skill as the sole authorization for both the reviewed
+Use one final `AskUserQuestion` as described in the main skill for authorization of both the reviewed
 bootstrap writes and the selected lifecycle action. When every readiness item
 passed and the state-root leaf is absent, offer exactly:
 

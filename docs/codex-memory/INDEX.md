@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Explicit init publisher selection](../qualification.md#explicit-init-publisher-selection-2026-10-06):
+  existing missing-choice/argv flow requires interactive publisher selection;
+  ACM is offered, recommendations are not answers, no persistent confirmation.
+  [Design](../design/institutional-access-preparation.md#init-出版社候选名单必须交互确认2026-10-06).
+
 - [Program-owned init review and launch](../qualification.md#program-owned-init-review-and-launch-2026-10-06):
   prepare/review/explicit Start now over one existing controller; fixed projection,
   no LLM policy merge or notification reader. Real Host/CPU closure passes, while

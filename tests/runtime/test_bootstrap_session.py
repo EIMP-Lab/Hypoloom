@@ -225,6 +225,19 @@ def test_session_cli_rejects_start_and_template_before_effects(prepared, capsys)
     assert not Path(args.state_root).exists()
 
 
+def test_session_rejects_implicit_publisher_defaults_before_preparation(prepared, capsys, monkeypatch):
+    from hypoloom import institutional_prepare
+    repo, args, _, _ = prepared
+    args.institutional_prepare_provider = None
+    # Existing provider-mode flags alone must not masquerade as a list answer.
+    assert args.institutional_provider_mode
+    monkeypatch.setattr(institutional_prepare, "run", lambda *a, **kw: pytest.fail("started preparation"))
+    argv = bootstrap_inspect._launch_argv(args, repo, action="session")[4:]
+    assert bootstrap.main(argv) == 2
+    assert "explicit publisher selection" in json.loads(capsys.readouterr().err)["error"]
+    assert not (repo / "state").exists()
+
+
 def test_session_explicit_reply_reaches_real_host_cpu_and_clean_terminal(checkout, tmp_path, monkeypatch, capsys, record_property):
     """Real sockets/CLI/CREATE/Host/Process/Oracle; fake research adapter, no paid calls.
 

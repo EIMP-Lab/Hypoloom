@@ -2,6 +2,19 @@
 
 [English](qualification.md) · 简体中文
 
+## init 出版社名单交互确认（2026-10-06）
+
+只选 client 曾隐式采用三家默认名单，导致 ACM 未经询问即被禁用。现在复用原
+`institutional_prepare_provider` 参数和缺失项检查：启用机构渠道后必须交互确认
+名单或 none，未回答不生成准备／启动命令；session 也拒绝隐式名单。ACM 列为
+候选，推荐值不等于用户回答；off 和独立命令保持兼容，不修改当前运行。
+
+定向检查最终去重 **255 通过、9 个环境相关跳过**，包括真实 Host 一次 CREATE、
+两个 Agent／两个 CPU Process 成功结束，无未结束 Attempt、待处理效果或自有进程／
+socket 残留。另修复了原 Skill 最终问题措辞与既有测试不一致的问题，保留原失败，
+没有放宽断言。本轮未做全量 G1 或实际 Windows／CC 交互验收。
+[完整范围及证据](qualification.md#explicit-init-publisher-selection-2026-10-06)。
+
 ## 客户端状态查询复用（2026-10-06）
 
 新日志确认第二次关窗由连续 SSH 状态查询超时、达到 300 秒失联期限后的助手清理
