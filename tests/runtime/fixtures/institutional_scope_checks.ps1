@@ -75,9 +75,10 @@ if ($Scenario -eq 'deadline_wait') {
         Assert ($Values[-1].Contains("'--state-root' '/state/final'")) 'final root missing'
         Assert ($Values[-1].Contains("'--request-id' 'create-final'")) 'creation identity missing'
         Assert (-not $Values[-1].Contains('--runs-root')) 'global discovery retained'
-        $process=[pscustomobject]@{ExitCode=0}
-        $process | Add-Member ScriptMethod WaitForExit { param($Timeout) Assert ($Timeout -le 1000) 'call exceeded remaining deadline'; $script:Now+=1000; $false }
-        @{Process=$process}
+        $process=[pscustomobject]@{ExitCode=0;StandardInput=[IO.StringWriter]::new()}
+        $output=[pscustomobject]@{}
+        $output | Add-Member ScriptMethod Wait { param($Timeout) Assert ($Timeout -le 1000) 'call exceeded remaining deadline'; $script:Now+=1000; $false }
+        @{Process=$process;Out=$output}
     }
     function Stop-Child($Child) { $script:Cleaned++ }
     $caught=''; try { Get-RunConnections } catch { $caught=$_.Exception.Message }

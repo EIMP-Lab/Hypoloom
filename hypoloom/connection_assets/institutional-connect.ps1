@@ -170,14 +170,16 @@ function Quote-Native([string]$Value) {
     '"' + [regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"'
 }
 
-function Start-Captured([string]$Executable, [string[]]$Values, [switch]$Handshake) {
+function Start-Captured([string]$Executable, [string[]]$Values, [switch]$Handshake, [switch]$KeepInput) {
     $info = [Diagnostics.ProcessStartInfo]::new($Executable)
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
+    $info.RedirectStandardInput = $true
     foreach ($value in $Values) { $info.ArgumentList.Add($value) }
     $process = [Diagnostics.Process]::Start($info)
+    if (-not $KeepInput) { $process.StandardInput.Close() }
     @{ Process = $process; Out = if ($Handshake) { $process.StandardOutput.ReadLineAsync() } else { $process.StandardOutput.ReadToEndAsync() }
        Err = $process.StandardError.ReadToEndAsync() }
 }
@@ -559,28 +561,46 @@ function Setup-ClientEntry([string]$Source) {
 
 function Get-RunConnections {
     $wait = Get-RemainingMilliseconds
-    $child = Start-Captured $script:ssh @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
-        '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
-        (Remote-Command (@('connections') + @(Scope-Arguments))))
-    $primary = $null
     try {
-        if (-not $child.Process.WaitForExit($wait)) { throw 'run_discovery_timeout' }
-        if ($child.Process.ExitCode -eq 255) { throw 'run_discovery_ssh_failed' }
-        if ($child.Process.ExitCode -ne 0) { throw 'run_discovery_command_failed' }
-        try { $result = $child.Out.GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable }
+        if (-not $script:DiscoveryChild) {
+            $script:DiscoveryChild = Start-Captured $script:ssh @('-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ConnectionAttempts=1',
+                '-o', 'ControlMaster=no', '-o', 'ControlPath=none', $Server,
+                (Remote-Command (@('connections', '--stdio') + @(Scope-Arguments)))) -Handshake -KeepInput
+        }
+        $child = $script:DiscoveryChild
+        try {
+            # A short request cannot fill this private pipe: only one is ever
+            # outstanding. On timeout discard the session, including late replies.
+            $child.Process.StandardInput.WriteLine('')
+            $child.Process.StandardInput.Flush()
+            if (-not $child.Out.Wait($wait)) { throw 'run_discovery_timeout' }
+            $line = $child.Out.GetAwaiter().GetResult()
+        } catch {
+            if ($_.Exception.Message -eq 'run_discovery_timeout') { throw }
+            if ($child.Process.HasExited -and $child.Process.ExitCode -eq 255) { throw 'run_discovery_ssh_failed' }
+            throw 'run_discovery_command_failed'
+        }
+        if ($null -eq $line) {
+            if ($child.Process.WaitForExit(100) -and $child.Process.ExitCode -eq 255) { throw 'run_discovery_ssh_failed' }
+            throw 'run_discovery_command_failed'
+        }
+        try { $result = $line | ConvertFrom-Json -AsHashtable }
         catch { throw 'run_discovery_invalid_response' }
         Assert-RunStatus $result
+        $child.Out = $child.Process.StandardOutput.ReadLineAsync()
         $result
-    } catch { $primary=$_; throw }
-    finally {
-        $cleanup = Clear-OwnedProcesses @($child)
-        if ($cleanup -and -not $primary) { throw $cleanup }
+    } catch {
+        $primary = $_
+        $null = Clear-OwnedProcesses @($script:DiscoveryChild)
+        $script:DiscoveryChild = $null
+        throw $primary
     }
 }
 
 function Watch-Runs {
     $children = @{}; $delay = 5; $notice = ''; $primary = $null; $ended = $false
     $script:OwnedCleanupFailed=$false
+    $script:DiscoveryChild=$null
     $script:UnhealthySince = $null; $script:LastScopeContact = Get-ElapsedMilliseconds
     $script:AwaitingDeadline = $null
     try {
@@ -687,7 +707,10 @@ function Watch-Runs {
         }
     } finally {
         if (-not $ended) { Write-ClientDiagnostic 'connection_ended' 'client_interrupted' 'lifetime' }
-        $cleanup = Clear-OwnedProcesses @($children.Values) -Browser
+        $owned = @($children.Values)
+        if ($script:DiscoveryChild) { $owned += $script:DiscoveryChild }
+        $cleanup = Clear-OwnedProcesses $owned -Browser
+        $script:DiscoveryChild=$null
         if ($cleanup -and -not $primary) { throw $cleanup }
     }
 }

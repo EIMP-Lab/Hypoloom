@@ -2,6 +2,58 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Reused client status-query session (2026-10-06)
+
+The new local diagnostics identify the second closure: the initial browser
+handshake succeeded, subsequent fresh SSH query children timed out, and the
+300-second unhealthy deadline closed the helper's owned browser. Server events
+show the next publisher opened while those queries were failing. The underlying
+SSH hang phase is still unknown; this evidence does not establish an Edge crash,
+publisher rejection or stdin interference. Baseline: dev `19673d9`.
+
+The helper now owns one persistent SSH query session. `connections --stdio`
+answers each empty-line request by invoking the existing scoped query and
+credential projection; results are flushed, not cached or pushed ahead. The
+client permits one outstanding request, retains the original scope validator,
+and discards the entire session on timeout/error before reconnecting. EOF and
+helper termination release it; the forward watch and 300-second outage/sleep
+bound remain. Noninteractive children have explicitly closed stdin; only the
+query channel keeps its own input pipe open. See the
+[design](design/institutional-access-preparation.md#复用-ssh-状态查询会话2026-10-06).
+
+Final selected process-pipe, lifecycle, diagnostic, setup and documentation
+checks pass **81 tests / two Windows-kernel skips / ten deselected**. The real
+PowerShell child and Python CLI exchange updated states over one process; a
+post-attach loop remains healthy beyond 300 seconds of simulated elapsed time,
+then cleans up on terminal state. Timeout kills the old process before recovery;
+wrong scope, SSH exit 255, client EOF and unrequested-output absence are checked.
+Every registered actual query child is independently observed absent at return.
+Existing outage/sleep/review-deadline and cleanup-failure counterexamples remain.
+Earlier overlapping selections are not additional distinct passes. Static
+compilation, the qualification Ruff selection and whitespace checks pass.
+
+Wheel, isolated installation and a fresh runtime bundle match **182 package
+files** byte for byte. The installed CLI exits cleanly on stdio EOF without
+creating research. A final documentation-link recheck passes four tests. A late
+Windows-newline regression failed because Linux stdin preserves CRLF; the first
+implementation accepted only LF. The corrected parser accepts either empty-line
+encoding, and all real query-pipe cases now send CRLF from their first request.
+The original failure is recorded separately; the final full selected rerun above
+and rebuilt packaging both include this correction.
+
+This environment denies both Unix and TCP socket creation with EPERM. The
+earlier expanded selection has **36 passes / one browser-port fixture failure**
+at listener construction; the explicit real-SSH selection also fails before
+starting sshd, at socket construction. Those failures are retained and are not
+counted as passes or hidden as product skips. Full G1, real SSH/Host/browser
+integration and physical Windows acceptance are **not qualified here**. No
+existing research run, client task, user SSH identity or login profile is changed.
+
+Evidence: `.local/qualification/client-query-session-20261006/`; incident records
+remain in `.local/analysis/institutional-close-20261006-0919/`. The bilingual
+guides explain status-query timeouts and refreshing the original script during
+the next init; users do not need to add private protocol flags manually.
+
 ## Windows helper exit diagnostics (2026-10-06)
 
 The reported hidden Windows task exited with code 2 after IEEE preparation, but

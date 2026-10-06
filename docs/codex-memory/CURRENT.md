@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 6 status-query session reuse: the new Windows log confirms repeated
+  fresh SSH-query timeouts led to 300-second expiry and owned Edge cleanup while
+  forwarding had still worked. Reuse one request/response SSH session with the
+  existing scope query/validator; no cached status, late-result reuse or relaxed
+  deadline. Own stdin explicitly and reap the query with forwarding/browser.
+  Focused checks: 81 pass / two Windows skips, including corrected CRLF input.
+  Wheel/install/fresh bundle match 182 files. Socket creation is denied here:
+  browser-port and real-SSH tests are blocked, full G1/native Windows acceptance
+  remains outstanding. The underlying SSH hang phase is still unproven.
+  [Design](../design/institutional-access-preparation.md#复用-ssh-状态查询会话2026-10-06)
+  / [validation](../qualification.md#reused-client-status-query-session-2026-10-06).
+
 - October 6 Windows exit diagnostics: preserve primary/cleanup causes and stop
   retries after failed cleanup; keep the exact preparation endpoint while the
   formal Host is pending CREATE. Bounded private logs and offline Status make

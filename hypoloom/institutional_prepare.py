@@ -55,6 +55,7 @@ def add_parser(subparsers):
     listing.add_argument("--request-id", required=True)
     listing.add_argument("--preparation-root")
     listing.add_argument("--include-ui-credentials", action="store_true", help="show private container GUI access credentials locally")
+    listing.add_argument("--stdio", action="store_true", help="reuse this SSH session; return a fresh scoped status for each empty input line")
     for name in ("forward-ready", "watch"):
         watch = commands.add_parser(name, help="check or hold the private run-owned SSH forwarding session")
         watch.add_argument("--state-root", required=True)

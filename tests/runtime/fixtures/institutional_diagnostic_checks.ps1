@@ -121,11 +121,16 @@ if ($Scenario -in @('cleanup_discovery','cleanup_ready','cleanup_handshake')) {
     function Start-Captured([string]$Executable,[string[]]$Values) {
         $script:Started++
         $ready=$Scenario -eq 'cleanup_handshake' -and $Values -notcontains '-R'
-        $process=[pscustomobject]@{HasExited=$ready;ExitCode=0}
+        $process=[pscustomobject]@{HasExited=$ready;ExitCode=0;StandardInput=[IO.StringWriter]::new()}
         $process | Add-Member ScriptMethod WaitForExit {param($Timeout) $this.HasExited}
         $process | Add-Member ScriptMethod Kill {param($Tree)}
         $process | Add-Member ScriptMethod Dispose {}
-        @{Process=$process;Out=[Threading.Tasks.Task]::FromResult('{}')}
+        $output=[Threading.Tasks.Task]::FromResult('{}')
+        if ($Scenario -eq 'cleanup_discovery') {
+            $output=[pscustomobject]@{}
+            $output | Add-Member ScriptMethod Wait {param($Timeout) $false}
+        }
+        @{Process=$process;Out=$output}
     }
     function Ensure-Browser { @{webSocketDebuggerUrl='ws://127.0.0.1:12345/devtools/browser/fixture'} }
     function Stop-OwnedBrowser {$script:BrowserCleared++}

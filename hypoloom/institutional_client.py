@@ -197,10 +197,21 @@ def run(args, *, output=print):
                     announced = True
                 checked = time.monotonic()
             time.sleep(.5)
-    selected = current()
-    if not getattr(args, "include_ui_credentials", False):
-        for item in selected["connections"]: item.pop("browser_ui_password", None)
-    output(json.dumps(selected, ensure_ascii=False))
+    def respond():
+        selected = current()
+        if not getattr(args, "include_ui_credentials", False):
+            for item in selected["connections"]: item.pop("browser_ui_password", None)
+        output(json.dumps(selected, ensure_ascii=False))
+        sys.stdout.flush()
+    if getattr(args, "stdio", False):
+        # One request/response at a time, using the same authority and validators
+        # as a one-shot query. No unsolicited status queue or cached liveness.
+        # A closed SSH stdin releases this process without a separate lifetime.
+        while line := sys.stdin.readline(2):
+            if line not in {"\n", "\r\n"}: raise ValueError("connection_query_empty_line_required")
+            respond()
+    else:
+        respond()
     return 0
 
 

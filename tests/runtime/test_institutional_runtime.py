@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -175,17 +176,19 @@ def _check_powershell_discovery_outage(tmp_path, port, known, root, final, endpo
     pwsh = os.environ.get("HYPOLOOM_TEST_PWSH") or shutil.which("pwsh")
     if not pwsh: pytest.skip("PowerShell required for real discovery loop")
     outage = tmp_path / "discovery-down"
+    query_pids = tmp_path / "query-pids"
     stop = tmp_path / "stop-fixture"
     wrapper = tmp_path / "ssh-fixture"
-    # Fail only list requests. Forward-ready and remote identity/lifetime watch
-    # continue through the real isolated SSH service with ephemeral identities.
+    # Deny new query sessions while preserving existing sessions/forwarding.
+    # Then drop the owned query session to exercise reconnection separately.
     options = ["ssh", "-F", "/dev/null", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
                "-o", "UserKnownHostsFile=" + str(known), "-p", str(port), "-i", str(tmp_path / "client")]
     wrapper.write_text(f'''#!{sys.executable}
 import os, sys
 from pathlib import Path
-if "'connections'" in sys.argv[-1] and Path({str(outage)!r}).exists():
-    sys.exit(255)
+if "'connections'" in sys.argv[-1]:
+    with open({str(query_pids)!r}, 'a') as record: record.write(str(os.getpid()) + '\\n')
+    if Path({str(outage)!r}).exists(): sys.exit(255)
 args = sys.argv[1:]
 args[-2] = '127.0.0.1'
 os.execvp('ssh', {options!r} + args)
@@ -207,6 +210,12 @@ os.execvp('ssh', {options!r} + args)
         eventually(lambda: browser.socket_path.exists())
         eventually(lambda: get(browser.endpoint, browser.relay.token)[0] == 200)
         outage.touch()
+        time.sleep(1)
+        pids = query_pids.read_text().splitlines()
+        assert len(pids) == 1, "healthy control polling opened another SSH session"
+        assert process.poll() is None, lines
+        assert get(browser.endpoint, browser.relay.token)[0] == 200
+        os.kill(int(pids[0]), signal.SIGTERM)
         eventually(lambda: any("retry_in_seconds=30" in line for line in lines) or process.poll() is not None)
         assert process.poll() is None, lines
         assert get(browser.endpoint, browser.relay.token)[0] == 200

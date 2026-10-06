@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Reused client status-query session](../qualification.md#reused-client-status-query-session-2026-10-06):
+  confirmed timeout-driven helper closure; fresh scoped requests over one SSH
+  session, no cached liveness, bounded recovery and owned cleanup. Local process
+  checks pass; socket restrictions block real SSH/Host/Windows qualification.
+  [Design](../design/institutional-access-preparation.md#复用-ssh-状态查询会话2026-10-06).
+
 - [Windows helper exit diagnostics](../qualification.md#windows-helper-exit-diagnostics-2026-10-06):
   private bounded local logs/Status, primary and cleanup causes, review/outage
   distinction, exact preparation-to-CREATE handoff and safe watch stderr.

@@ -643,6 +643,7 @@ then retain the safe output.
 | `run_terminal` | The server retired this connection scope, including stopping/terminal research. Normal helper exit; it does not prove publisher verification. |
 | `launch_review_expired` | The bounded pre-launch review expired. Normal helper exit; research was not started by this event. |
 | `run_connection_expired` | Connection/control checks could not remain confirmed for 300 seconds, including elapsed sleep. It does not establish that an open publisher page stopped working. Read preceding safe reasons before reconnecting the same intended run. |
+| `run_discovery_timeout` | The scoped server-status query did not return before its deadline. This does not establish a browser crash or failed institutional login. The helper discards that query session and retries within the existing outage window. |
 | `cleanup_failed` event | Resource cleanup failed. Keep this event and the original exit/failure reason; neither should replace the other. Do not assume every child/browser closed. |
 
 `run_terminal` and `launch_review_expired` are normal exits; connection expiry and
@@ -651,6 +652,13 @@ Status output, rather than repeatedly reinstalling or opening another foreground
 helper. Foreground Run remains an explicit diagnostic only, with the original scope
 and no matching background instance running. Never stop processes by name or adopt
 another run's browser.
+
+The current helper reuses one SSH session for status queries. Each query still
+reads fresh server state and validates the same run identity; an open SSH process
+or an old response cannot renew the connection deadline. A timed-out session is
+closed before retrying, so delayed responses cannot be reused. Update the local
+script through the next init's original-file download step and execute that
+init's scoped command; no extra SSH flags or hand-edited script are required.
 
 The helper finds Edge before Chrome. Default `-LocalPort 0` asks the helper to
 allocate an available loopback port through the OS, then launch the browser with
