@@ -227,10 +227,13 @@ def test_observer_snapshot_uses_exact_read_only_host_status_when_available(
     offline = build_observer_snapshot(state_root, run_id)
     assert offline.status_source == "offline-state-store"
     assert offline.status["agent_usage"] is None
+    assert offline.status.get("agent_scheduling") is None
     live = dict(offline.status)
     live.update({
         "state_sqlite_bytes": int(offline.status["state_sqlite_bytes"]) + 1,
         "quiescent_for_backup": True,
+        "agent_scheduling": {"observed_at": offline.observed_at, "tasks": [
+            {"command_id": "waiting-task", "role": "expert", "reason": "chain_capacity"}]},
         "agent_usage": {
             "observed_lower_bound": {
                 "responses": 0,
@@ -270,6 +273,7 @@ def test_observer_snapshot_uses_exact_read_only_host_status_when_available(
     assert snapshot.status["dispatch_error"] == live["dispatch_error"]
     assert snapshot.status["quiescent_for_backup"] is True
     assert snapshot.status["agent_usage"] == live["agent_usage"]
+    assert snapshot.status["agent_scheduling"] == live["agent_scheduling"]
     assert snapshot.status["resource_waits"] == live["resource_waits"]
     assert snapshot.status["state_sqlite_bytes"] == offline.status["state_sqlite_bytes"]
     assert snapshot.observed_at == offline.observed_at

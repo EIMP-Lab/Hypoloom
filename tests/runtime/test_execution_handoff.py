@@ -25,17 +25,22 @@ def handoff(request, experiment_id):
         'waiting_for_experiment_id': experiment_id}))
 
 
-def test_handoff_releases_agent_waits_then_collects_without_duplicate_work(execution):
+def test_handoff_releases_agent_waits_then_collects_without_duplicate_work(execution, monkeypatch):
     host, request, arguments = execution
     assert request.schema_version == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
     submitted = host.handle_agent_tool(request.attempt_id, 'submit_experiment', arguments)
+    capacity = host._effect_capacity
+    monkeypatch.setattr(host, '_effect_capacity', lambda run_id, kind='AGENT': 1 if kind == 'AGENT' else capacity(run_id, kind))
+    assert host._at_capacity(request.run_id)
     host._finish_fake_agent(request, handoff(request, submitted['exp_id']))
     attempt = host.store.get_attempt(request.attempt_id)
     assert attempt['terminal_reason'] == 'SUCCEEDED'
+    assert not host._at_capacity(request.run_id)
     assert host._expert_success(request.task_context) is None
     assert not agent_attempts_exhausted({'budget': {'max_retries': 0}}, [attempt],
         model_fallback=1, infrastructure_fallback=1)
     host._resume_tool_execution_agents(request.run_id)
+    assert host._agent_scheduling[request.run_id]['tasks'][request.command_id]['reason'] == 'experiment_wait'
     assert not host.local_execution_agents
     assert host.store.latest_transition(submitted['exp_id'])['state'] != 'TERMINAL'
     _until(host, lambda: bool(host.local_execution_agents))

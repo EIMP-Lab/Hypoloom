@@ -261,9 +261,10 @@ def batch_chain_failed(host, run_id: str, component_id: str, role: str, cycle: i
 
 def drive_expert_proposal(
     host, run_id: str, component_id: str, role: str, *, cycle: int = 1,
-    parent_hypothesis_id: str | None = None, restart_from_hypothesis: bool = False,
+    parent_hypothesis_id: str | None = None, restart_from_hypothesis: bool = False, dispatch=None,
 ) -> None:
     from .workflow_host import OperationalHalt
+    dispatch = dispatch or host._expert_agent_step
     contract = host._research_contract(run_id)
     batch_proposal = host._batch_enabled(run_id) and int(host.store.get_run(run_id)["agent_aci_version"]) >= 17
     keys = (
@@ -302,7 +303,7 @@ def drive_expert_proposal(
     if host._expert_success(grounding_plan := AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)) is None:
         if host._expert_task_exhausted(run_id, grounding_plan):
             host._record_expert_final_failure(run_id, component_id, role, grounding_plan, "grounding_query_plan_exhausted"); return
-        host._expert_agent_step(run_id, run_id, grounding_plan, contract.role_ids[0], str(contract.components[0].component_id)); return
+        dispatch(run_id, run_id, grounding_plan, contract.role_ids[0], str(contract.components[0].component_id)); return
     if restart_from_hypothesis:
         plan = host.interaction.debate.designated_round(run_id, component_id)
         if (plan is None or not plan.get("restart_from_hypothesis") or (plan["role"], plan["cycle"], plan["parent_hypothesis_id"]) != (role, cycle, parent_hypothesis_id)):
@@ -345,6 +346,28 @@ def drive_expert_proposal(
     dispatch_role = contract.role_ids[0] if isinstance(task, AuxiliaryTask) else role
     dispatch_component = (str(contract.components[0].component_id)
                           if isinstance(task, AuxiliaryTask) else component_id)
-    host._expert_agent_step(
+    dispatch(
         run_id, run_id, task, dispatch_role, dispatch_component,
     )
+
+
+def dispatch_batch_agents(host, requests):
+    """Order this pass's existing Policy work; admission remains Host-owned."""
+    from collections import defaultdict, deque
+    # Several components can request the same run-wide Grounding task. A local
+    # Agent can finish synchronously, so OPEN checks alone cannot deduplicate it.
+    unique = {}
+    for args in requests:
+        unique.setdefault(args[2].command_id, args)
+    for result_work in (True, False):
+        roles = defaultdict(deque)
+        for args in unique.values():
+            task = args[2]
+            closing = isinstance(task, ResearchNodeTask) and task.key.node_kind in {
+                ResearchNodeKind.RESULT_ANALYSIS, ResearchNodeKind.ADJUDICATE}
+            if closing == result_work:
+                roles[args[3]].append(args)
+        while any(roles.values()):
+            for work in roles.values():
+                if work:
+                    host._expert_agent_step(*work.popleft())

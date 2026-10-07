@@ -366,6 +366,50 @@ def test_one_synthesis_drives_two_real_cpu_chains_and_one_adjudication(batch_hos
     assert audit.ok, audit.to_dict()
 
 
+@pytest.mark.parametrize("batch_host", ["fifo-cross"], indirect=True)
+def test_shared_grounding_plan_is_invoked_once_across_components(batch_host):
+    from hypoloom.expert_loop import AuxiliaryRequestKind, AuxiliaryTask
+    host = batch_host
+    task = AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id="batch-host")
+    _until(host, lambda: host._expert_success(task) is not None)
+    # Each component needs this run-wide plan, including when the local Agent
+    # finishes synchronously before the next component's request is considered.
+    assert len(host._expert_attempts(task)) == 1
+
+
+def test_ready_result_wins_a_dispatch_opportunity_before_new_design(batch_host, monkeypatch):
+    host = batch_host
+    step = host._expert_agent_step
+    held = []
+
+    def hold_design_and_analysis(*args):
+        task = args[2]
+        if isinstance(task, ResearchNodeTask) and (task.key.node_kind is ResearchNodeKind.RESULT_ANALYSIS
+                or task.key.chain == "chain-a" and task.key.node_kind is ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT):
+            held.append(args)
+        else:
+            step(*args)
+
+    monkeypatch.setattr(host, "_expert_agent_step", hold_design_and_analysis)
+    _until(host, lambda: any(args[2].key.node_kind is ResearchNodeKind.RESULT_ANALYSIS for args in held))
+    assert len(host.store.list_facts("batch-host", "CanonicalOutcomeAccepted")) == 1
+    ready = {args[2].command_id: args for args in held}
+    _until(host, lambda: all(host._prepare_role_view(args[0], args[3], args[2]) for args in ready.values()))
+    monkeypatch.setattr(host, "_expert_agent_step", step)
+    before = {row["attempt_id"] for row in host.store.list_attempts()}
+    # A slow pass still permits one admission. The earlier chain's fresh design
+    # must not take that opportunity away from an already available result.
+    host._tick_deadline = time.monotonic() - 1
+    host._agent_dispatches = 0
+    host._drive_batches("batch-host")
+    admitted = [row for row in host.store.list_attempts() if row["attempt_id"] not in before]
+    assert [json.loads(row["observation_json"])["request"]["command"] for row in admitted] == ["RESULT_ANALYSIS"]
+    host._tick_deadline = None
+    _complete(host)
+    assert len(host.store.list_facts("batch-host", "CanonicalOutcomeAccepted")) == 2
+    assert Oracle(host.store.database_path, host.publisher.root).audit("batch-host").ok
+
+
 @pytest.mark.parametrize("batch_host", ["iterate"], indirect=True)
 def test_scientific_iteration_keeps_hypothesis_and_binds_accepted_analysis(batch_host):
     host = batch_host

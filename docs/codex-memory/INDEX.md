@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Concurrency observations and result-first dispatch](../qualification.md#concurrency-observations-and-result-first-dispatch-2026-10-07):
+  independent occupancy, actual admission reasons, handoff visibility and
+  result-first expert rotation; retained Hosts keep their original runtime.
+
 - [Compact Agent and experiment tile icons](../qualification.md#compact-agent-and-experiment-tile-icons-2026-10-07):
   equal-size robot/clock SVG suffixes, exact RPM tooltips and accessible labels,
   with existing pulse appearance, timing and observation boundaries preserved.

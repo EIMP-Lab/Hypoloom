@@ -122,6 +122,46 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     assert page.evaluate("document.querySelectorAll('.reliability-node').length") == 5
 
 
+def test_concurrency_handoffs_and_dispatch_reasons_respect_observation_freshness(browser, tmp_path):
+    page = browser
+    page.evaluate("""fixture.snapshot.status.run_state='ACTIVE';
+      fixture.snapshot.overview.host_observation={availability:'responded'};
+      fixture.snapshot.overview.concurrency={separate_limits:true,slots:{
+        AGENT:{used:1,limit:12},PROCESS:{used:2,limit:12},REVIEW:{used:0,limit:3}}};
+      fixture.snapshot.overview.experts=[{role:'expert-a',active_chains:2,parallel_activity:{chain_limit:2},
+        execution_wait:{pending_experiments:2,handed_off:1,open_controllers:1,
+          oldest_controller_seconds:90,experiment_ids:['pending-exp']}}];
+      fixture.snapshot.status.provider_traffic={scope:'run',observed_at:fixture.snapshot.observed_at,
+        rpm:2,in_flight:1,queued:3,by_expert:{'expert-a':{rpm:2,in_flight:1,queued:3}}};""")
+    page.wait("document.querySelector('#run-concurrency').textContent.includes('Agents: 1 / 12')")
+    assert 'Experiments: 2 / 12' in page.text('#run-concurrency')
+    assert 'Research chains: 2 / 2' in page.text('.expert-capacity')
+    assert 'handed to Host: 1' in page.text('.expert-waits')
+    assert 'still holding slots: 1' in page.text('.expert-waits')
+    assert 'Waiting for a research-chain slot' not in page.text('.expert-waits')  # Full is not proof of a blocked task.
+    assert 'No Agent task selected' not in page.text('.expert-waits')  # Old Hosts lack dispatch observations.
+    page.evaluate("""fixture.snapshot.status.agent_scheduling={observed_at:fixture.snapshot.observed_at,
+      tasks:[{role:'expert-a',reason:'chain_capacity'}]};""")
+    page.wait("document.querySelector('.expert-waits').textContent.includes('Waiting for a research-chain slot')")
+    assert 'API requests queued: 3' in page.text('.expert-waits')
+    page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'center'})")
+    page.screenshot(tmp_path / 'concurrency-desktop.png')
+    page.click('#language-toggle')
+    assert '等待假设链名额' in page.text('.expert-waits')
+    assert '已交接 Host：1' in page.text('.expert-waits')
+    page.call('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.evaluate("document.querySelector('.expert-preview').scrollIntoView({block:'center'})")
+    page.screenshot(tmp_path / 'concurrency-mobile.png')
+    page.evaluate("fixture.snapshot.status.agent_scheduling.observed_at-=120")
+    page.wait("!document.querySelector('.expert-waits').textContent.includes('等待假设链名额')")
+    page.evaluate("window.fetch=async()=>{throw new Error('fixture offline')}")
+    page.wait("document.querySelector('#connection').dataset.state === 'stale'")
+    assert '活动未确认' in page.text('#run-concurrency')
+    assert '1 / 12' in page.text('#run-concurrency')
+    assert 'API 请求排队' not in page.text('.expert-waits')
+
+
 def test_stale_poll_stops_rpm_animation_and_clears_live_values(browser):
     page = browser
     page.evaluate("""fixture.snapshot.overview.host_observation={availability:'responded'};

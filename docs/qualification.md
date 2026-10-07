@@ -2,6 +2,56 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Concurrency observations and result-first dispatch (2026-10-07)
+
+The first three concurrency improvements use existing Attempts, experiment
+transitions, accepted execution handoffs and admitted limits. Web exposes separate
+Agent/Process/review occupancy and per-expert chain occupancy. Pending experiments
+with accepted handoffs are distinct from open execution controllers; submission
+age is not claimed as idle time. Host admission branches emit disposable per-pass
+reasons through STATUS. Neither the observations nor the temporary ordering list
+participate in lifecycle authority or persist across restarts. Missing/old Host
+observations remain unknown; live reasons expire after 30 seconds or lost contact.
+
+Batch Policy still selects the work. Its existing calls are collected for this
+pass, result analysis/adjudication goes first, and each priority group rotates
+among experts before serving another task for the same expert. All calls return
+through the original admission checks. Collection resumption, experiment FIFO,
+pause/stop, budget and chain dependencies remain in their existing owners.
+Shared run-wide work is deduplicated within the pass by its existing command ID.
+No extra chain, speculative preparation, concurrency limit or runtime migration.
+
+A real Host/CPU regression holds an earlier chain's design while a later chain
+produces an accepted result, prepares both workspaces, then supplies one dispatch
+opportunity. Replaying the original `_drive_batches` chooses the new design and
+fails the result-first assertion; the revised dispatch chooses RESULT_ANALYSIS,
+then completes both experiments with a clean Oracle. Evidence:
+`.local/qualification/concurrency-observation-20261007/`.
+
+Initial regression setup needed explicit workspace readiness; the first browser
+fixture also omitted ACTIVE state. These setup failures were corrected without
+relaxing the behavioral assertions. Final review reproduced duplicate shared
+Grounding plans with synchronous Agents after deferred dispatch (two invocations
+instead of one); command-ID deduplication closes that regression without another
+queue or lifecycle record. The original failures remain in the evidence directory.
+
+Focused validation: **233 distinct checks passed, zero skipped**. The final
+83-case selection covers Host batching, execution handoff, observer summaries,
+read-only STATUS transport and documentation. Another 147-case integration
+selection covers monitor/status, accounting, paper reading, browser language
+behavior and runtime bundles (one transport case overlaps). Four browser cases
+cover the new occupancy/wait display plus existing RPM, stale and pulse behavior.
+Desktop and 390 px Chinese screenshots were inspected. JavaScript syntax, Ruff
+undefined-name and Git whitespace checks pass. These are focused regressions,
+not a full G1 or paid-provider qualification.
+
+A read-only observation of the retained MERC run through the new projection found
+Agent 1/12, Process 2/12 and review 0/12, with both pending experiments handed to
+Host and zero open execution controllers. The original frozen Host responded but
+has no new admission-reason fields; the projection correctly retains that unknown.
+Reopen the Web observer for the new backend projection. Scheduling changes apply
+to new runs; neither the retained run nor its Host was restarted or migrated.
+
 ## Compact Agent and experiment tile icons (2026-10-07)
 
 Agent tiles replace the visible RPM number/suffix with a trailing 🎛️ icon;

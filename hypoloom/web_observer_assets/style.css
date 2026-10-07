@@ -487,6 +487,9 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .grounding-card details > .detail-link { display: block; margin-top: .4rem; }
 .agent-tile-metric { display: flex; align-items: center; justify-content: center; color: var(--muted); line-height: 1; }
 .agent-tile-metric svg { display: block; width: .85rem; height: .85rem; }
+.concurrency-summary { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; padding: .6rem 1rem; color: var(--text); font-size: .7rem; border-bottom: 1px solid var(--line); }
+.concurrency-note, .entity-card .expert-capacity, .entity-card .expert-waits p { color: var(--muted); font-size: .64rem; }
+.expert-waits { margin: .3rem 0; overflow-wrap: anywhere; }
 .subagent-title { margin: 0; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
 .agent-tile-list { display: flex; flex-wrap: wrap; gap: .3rem; margin: .3rem 0 .65rem; }
 .agent-tile {

@@ -440,6 +440,9 @@ def _experiment_records(facts, transitions, agents, experts):
             payload = _payload(row)
             record = experiments.setdefault(row["workflow_id"], {})
             record["state"] = row["state"]
+            if row.get("revision") == 1:
+                record.update(execution_node_command_id=payload.get("execution_node_command_id"),
+                    submitted_at=_time(row.get("created_at")))
             if row.get("command_type") == "CREATE_EXPERIMENT" and payload.get("chain") is not None:
                 record["chain_identity"] = (payload.get("component_id"), payload.get("expert_cycle"), payload["chain"])
             role = payload.get("role") or payload.get("proposer_role") or owners.get(payload.get("component_id"))
@@ -573,7 +576,8 @@ def _parallel_activity(role, agents, stages, nodes, commands, contract, run_acti
 
 
 def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions,
-                      attempts, experts, graph, observed_at, created_at=None, reading_commands=()) -> dict[str, Any]:
+                      attempts, experts, graph, observed_at, created_at=None, reading_commands=(),
+                      agent_aci_version=None) -> dict[str, Any]:
     """Build all-run counts from complete transaction rows, never event pages."""
     from .observer_details import skill_catalog
     from .observer_reliability import build_reliability, summarize_reliability
@@ -625,6 +629,8 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         if start is not None and end is not None:
             waiting += max(0.0, min(end, finish) - start)
     goal = next((_payload(row) for row in facts if row["fact_type"] == "GoalDefined"), {})
+    from .observer_concurrency import concurrency_projection
+    concurrency = concurrency_projection(goal.get("research_contract", {}), attempts, experiments, observed, agent_aci_version)
     hours = goal.get("research_contract", {}).get("budget", {}).get("wallclock_hours")
     remaining = max(0.0, float(hours) * 3600 - elapsed) if isinstance(hours, (int, float)) and elapsed is not None else None
     activity = [_time(row.get("created_at")) for row in (*facts, *transitions)]
@@ -669,6 +675,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         own_activity.extend(_time(row.get("ended_at") or row.get("started_at"))
             for row in attempts if row.get("experiment_id") in experiment_ids)
         expert_values.append({"role": role, "cycle": max((item["cycle"] or 0 for item in own_stages), default=0),
+            "execution_wait": concurrency["experts"].get(role, {}),
             "accounting": _token_accounting(own_stages),
             "stage_accounting": _stage_accounting(own_stages),
             "context_recovery": _context_accounting(own_stages),
@@ -745,6 +752,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             "failed" if any(row["attempt_id"] in final_failure_ids for row in owned) else
             "preparing" if owned else "not_started")
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
+        "concurrency": {key: value for key, value in concurrency.items() if key != "experts"},
         "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),
         "grounding": grounding, "other_global_tasks": auxiliary_group("run", "other"),
         "grounding_sharing": sharing,

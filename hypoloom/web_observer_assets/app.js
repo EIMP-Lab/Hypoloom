@@ -590,6 +590,7 @@
       && !traffic.warming_up && Number.isFinite(age) && Math.abs(age) <= 30
       && object(snapshot.overview).host_observation?.availability === "responded";
     document.documentElement.dataset.rpmFresh = String(fresh);
+    renderConcurrency(snapshot, fresh);
     const valid = value => Number.isInteger(value) && value >= 0;
     const describe = counts => fresh && valid(counts.rpm)
       ? t("Last 60 seconds: {0} outbound API attempts · in flight {1} · queued {2}. This run only; includes retries, not other account clients.", counts.rpm, counts.in_flight ?? "?", counts.queued ?? "?")
@@ -1211,6 +1212,65 @@
     return status === "OPEN" && host !== "responded" ? "unconfirmed" : status.toLowerCase();
   }
 
+  function renderConcurrency(snapshot, trafficFresh) {
+    const overview = object(snapshot.overview);
+    const observed = object(overview.concurrency);
+    const live = connection.dataset.state === "live" && overview.host_observation?.availability === "responded";
+    const panel = byId("run-concurrency");
+    panel.replaceChildren();
+    panel.setAttribute("aria-label", t("Concurrency occupancy"));
+    for (const [kind, label] of [["AGENT", "Agents"], ["PROCESS", "Experiments"], ["REVIEW", "Reviews"]]) {
+      const slots = object(object(observed.slots)[kind]);
+      panel.append(element("span", "", t("{0}: {1} / {2}", t(label), slots.used ?? "—", slots.limit ?? "—")));
+    }
+    panel.append(element("span", "concurrency-note", live ? t("Observed occupancy") : t("Last observation · activity unconfirmed")));
+    panel.title = t("OPEN attempts consume slots; they do not prove process liveness. Agent, experiment and review limits are separate when available.");
+    const scheduling = object(snapshot.status?.agent_scheduling);
+    const age = Number(snapshot.observed_at) - Number(scheduling.observed_at);
+    const dispatchFresh = live && snapshot.status?.run_state === "ACTIVE" && scheduling.observed_at != null && Number.isFinite(age) && Math.abs(age) <= 30;
+    const reasons = {
+      agent_capacity: "Waiting for an Agent slot", chain_capacity: "Waiting for a research-chain slot",
+      chain_busy: "Waiting for work on the same chain", expert_busy: "Waiting for this expert's current work",
+      experiment_wait: "Waiting for experiment completion", provider_backoff: "Waiting for API recovery",
+      participant_paused: "Research paused", resource_recovery: "Waiting for resource recovery",
+      preparing_workspace: "Preparing workspace", preparing_literature: "Preparing literature",
+      dispatch_yield: "Waiting for the next dispatch pass", attempts_exhausted: "Automatic recovery ended",
+      budget_exhausted: "Agent budget exhausted", run_stopped: "Run is stopping or finished",
+    };
+    document.querySelectorAll(".expert-preview[data-expert-role]").forEach(card => {
+      const summary = object(list(overview.experts).find(item => item.role === card.dataset.expertRole));
+      const capacity = card.querySelector(".expert-capacity");
+      capacity.textContent = t("Research chains: {0} / {1}", summary.active_chains ?? "—", summary.parallel_activity?.chain_limit ?? "—");
+      capacity.title = t("Running experiments still occupy research-chain slots. A full limit alone does not mean another task is waiting.");
+      const waits = card.querySelector(".expert-waits");
+      waits.replaceChildren();
+      const messages = new Set();
+      const execution = object(summary.execution_wait);
+      if (execution.pending_experiments > 0) messages.add(t("Awaiting experiments: {0} · handed to Host: {1}", execution.pending_experiments, execution.handed_off ?? "—"));
+      if (execution.open_controllers > 0) {
+        messages.add(t("Execution Agents still holding slots: {0} · since submission {1}", execution.open_controllers,
+          execution.oldest_controller_seconds == null ? "—" : formatDuration(0, execution.oldest_controller_seconds)));
+        waits.title = t("An open execution session may be checking or repairing work; this is not proof of idle waiting. Only a closed invocation releases its Agent slot.");
+      } else waits.removeAttribute("title");
+      if (live) {
+        for (const wait of list(snapshot.status?.resource_waits)) {
+          if (list(execution.experiment_ids).includes(wait.experiment_id)) messages.add(t("Waiting for experiment resources"));
+        }
+        if (snapshot.status?.dispatch_error) messages.add(t("Dispatch paused · admitted work may still finish"));
+      }
+      const traffic = object(object(snapshot.status?.provider_traffic?.by_expert)[card.dataset.expertRole]);
+      if (trafficFresh && traffic.queued > 0) messages.add(t("API requests queued: {0}", traffic.queued));
+      if (dispatchFresh) {
+        const tasks = list(scheduling.tasks).filter(item => item.role === card.dataset.expertRole);
+        tasks.forEach(item => { if (reasons[item.reason]) messages.add(t(reasons[item.reason])); });
+        const opened = list(snapshot.attempts).some(item => item.state === "OPEN" && item.task_scope === "expert" && item.owner_role === card.dataset.expertRole);
+        if (!tasks.length && !opened && !execution.pending_experiments && !messages.size) messages.add(t("No Agent task selected on the last dispatch pass"));
+      } else if (!messages.size) messages.add(t("Dispatch observation unavailable"));
+      if (!live) messages.add(t("Last observation · activity unconfirmed"));
+      messages.forEach(message => waits.append(element("p", "", message)));
+    });
+  }
+
   function renderExpertActivity(parent, summary, snapshot) {
     const stages = list(summary.activity || summary.stages);
     const host = object(object(snapshot.overview).host_observation).availability ||
@@ -1643,6 +1703,7 @@
       rpmValue.dataset.rpmValue = "";
       rpm.append(rpmValue);
       identity.append(rpm);
+      identity.append(element("p", "expert-capacity"), element("div", "expert-waits"));
       const working = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN"
         && (attempt.kind === "AGENT" || attempt.kind === "PROCESS"));
       if (object(summary.leader).active > 0) {

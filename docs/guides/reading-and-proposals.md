@@ -26,6 +26,37 @@ finally fails, the Host cancels and drains its still-running sibling; it does
 not invent a scientific refutation. Stop, provider recovery and accounting use
 the existing mechanisms.
 
+## Concurrency and experiment waiting
+
+Web shows separate Agent, experiment and review occupancy, plus each expert's
+active chains and chain limit. These counts use durable OPEN Attempts, not a
+process heartbeat. Missing legacy limits stay unknown. A full chain limit alone
+does not prove that a further candidate is ready or waiting.
+
+An execution Agent normally hands its submitted experiment to the Host and ends
+its invocation. The experiment continues using Process and chain capacity; the
+Agent slot becomes available. Web distinguishes pending experiments with an
+accepted handoff from still-open execution sessions, showing the oldest elapsed
+time since submission for those sessions. This is not an idle-time measurement:
+an open session may still be checking or repairing work.
+
+New Hosts report the actual reason a considered Agent task did not start during
+their last dispatch pass: capacity, same-chain work, experiment completion,
+workspace/literature preparation, recovery or a control pause. Web displays these
+only with fresh Host contact and a dispatch observation no older than 30 seconds.
+API queues and resource waits retain their own live observations. Older Hosts
+without dispatch details do not imply "no ready work"; stale occupancy is labeled
+as the last observation.
+
+Within each batch dispatch pass, result analysis and adjudication precede new
+design/proposal work, with one opportunity per expert before a second for that
+expert within each priority group. The existing component rotation and earlier
+execution-collection resumption remain. Every admission still checks the ordinary
+capacity, dependency, budget, pause and deadline rules. No extra idle slots,
+durable queue or speculative candidates are introduced. Host scheduling changes
+apply to new runs; reopening the Web observer updates its read projections for
+retained runs without replacing their frozen Host.
+
 ## Preparing and delegating a paper
 
 Enable `read_papers` in the Profile's literature tool list when desired. A reader

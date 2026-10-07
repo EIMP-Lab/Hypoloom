@@ -208,6 +208,7 @@ class WorkflowHost:
         self._projection_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="research-projection")
         self._projection_jobs = {}
         self._batch_cursors = {}
+        self._agent_scheduling = {}
         self._tick_deadline = None
         self._agent_dispatches = 0
         self._role_view_jobs = {}
@@ -718,6 +719,9 @@ class WorkflowHost:
             quiescent_for_backup=self._backup_busy_reason() is None, attempts=attempts)
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
         result["dispatch_error"] = self.dispatch_errors.get(run_id)
+        scheduling = self._agent_scheduling.get(run_id)
+        result["agent_scheduling"] = None if scheduling is None else {
+            "observed_at": scheduling["observed_at"], "tasks": list(scheduling["tasks"].values())}
         result["provider_retry"] = self._provider_retry_status(run_id)
         from .provider_traffic import for_run
         result['provider_traffic'] = for_run(self, run_id).snapshot() if self.claude_agent_host is not None else None
@@ -1190,24 +1194,26 @@ class WorkflowHost:
             if kind in {"AGENT", "REVIEW"}: sql += " AND (json_extract(observation_json,'$.request.command')='ANSWER_RENDEZVOUS')=" + ("1" if kind == "REVIEW" else "0")
             return int(self.store.inspect(sql, (run_id, "AGENT" if kind == "REVIEW" else kind))[0]["n"]) >= self._effect_capacity(run_id, kind)
         return int(self.store.inspect("SELECT COUNT(*) AS n FROM execution_attempts WHERE state='OPEN'")[0]["n"]) >= 3
-    def _participant_busy(self, run_id: str, role: str, *, execution_node_command_id: str | None = None,
-                          component_id: str | None = None, chain: str | None = None, proposal_task=None) -> bool:
+    def _participant_wait_reason(self, run_id: str, role: str, *, execution_node_command_id: str | None = None,
+                          component_id: str | None = None, chain: str | None = None, proposal_task=None) -> str | None:
         if self._batch_enabled(run_id) and chain is not None:
             active = self._active_expert_chains(run_id, role)
-            if (component_id, chain) not in active and len(active) >= batch_limits(self._research_contract(run_id).document, role)["parallel_chains"]: return True
+            if (component_id, chain) not in active and len(active) >= batch_limits(self._research_contract(run_id).document, role)["parallel_chains"]: return "chain_capacity"
             for row in self.store.inspect("SELECT * FROM execution_attempts WHERE run_id=? AND state='OPEN'", (run_id,)):
                 if row["kind"] == "AGENT":
                     request = json.loads(row["observation_json"]).get("request", {}); key = request.get("task_context", {}).get("key", {})
-                    if request.get("role") == role and request.get("component_id") == component_id and key.get("chain") == chain and row["command_id"] != execution_node_command_id: return True
+                    if request.get("role") == role and request.get("component_id") == component_id and key.get("chain") == chain and row["command_id"] != execution_node_command_id: return "chain_busy"
                 else:
                     creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (row["workflow_id"],))
                     identity = {} if not creation else json.loads(creation[0]["payload_json"])
-                    if identity.get("role") == role and identity.get("component_id") == component_id and identity.get("chain") == chain and identity.get("execution_node_command_id") != execution_node_command_id: return True
-            return False
+                    if identity.get("role") == role and identity.get("component_id") == component_id and identity.get("chain") == chain and identity.get("execution_node_command_id") != execution_node_command_id: return "chain_busy"
+            return None
         busy = self.store.inspect("SELECT a.* FROM execution_attempts a JOIN workflow_transitions t ON t.workflow_id=a.workflow_id AND t.command_id=a.command_id WHERE a.run_id=? AND a.state='OPEN' AND json_extract(t.payload_json,'$.role')=? AND NOT((a.kind='AGENT' AND a.command_id=COALESCE(?,'')) OR (a.kind='PROCESS' AND EXISTS(SELECT 1 FROM workflow_transitions creation WHERE creation.workflow_id=a.workflow_id AND creation.revision=1 AND json_extract(creation.payload_json,'$.execution_node_command_id')=COALESCE(?,''))))", (run_id, role, execution_node_command_id, execution_node_command_id))
         version = int(self.store.get_run(run_id)["agent_aci_version"])
-        return any(row["kind"] != "AGENT" or not proposal_siblings(proposal_task,
-            (json.loads(row["observation_json"]).get("request", {}).get("task_context") or {}).get("key", {}), version) for row in busy)
+        return "expert_busy" if any(row["kind"] != "AGENT" or not proposal_siblings(proposal_task,
+            (json.loads(row["observation_json"]).get("request", {}).get("task_context") or {}).get("key", {}), version) for row in busy) else None
+    def _participant_busy(self, run_id, role, **kwargs) -> bool:
+        return self._participant_wait_reason(run_id, role, **kwargs) is not None
     def _busy_gpu_uuids(self, exclude_workflow: str | None = None) -> tuple[str, ...]:
         rows = self.store.inspect("SELECT a.workflow_id,COALESCE(json_extract(f.payload_json,'$.execution_contract.resource_grant'),(SELECT json_extract(t.payload_json,'$.resource_grant') FROM workflow_transitions t WHERE t.run_id=a.run_id AND t.workflow_id=a.workflow_id AND json_extract(t.payload_json,'$.attempt_id')=a.attempt_id AND json_type(t.payload_json,'$.resource_grant')='object')) resource_grant FROM execution_attempts a JOIN research_facts f ON f.run_id=a.run_id AND f.fact_type='ExperimentPreregistered' AND f.execution_id=a.execution_id WHERE a.kind='PROCESS' AND a.state='OPEN'")
         return tuple(sorted({uuid for row in rows if row["workflow_id"] != exclude_workflow and row["resource_grant"] is not None
@@ -1402,7 +1408,8 @@ class WorkflowHost:
             has_goal_verdict=bool(by_kind.get("GoalVerdictRecorded")), open_obligation_count=0)
     def _drive_batches(self, run_id: str) -> bool:
         from .policy import _dependencies_ready
-        contract = self._research_contract(run_id); pending = False; executions = []
+        contract = self._research_contract(run_id); pending = False; executions = []; agent_work = []
+        def dispatch(*args): agent_work.append(args)
         priority = self.interaction.priority_roles(run_id)
         components = sorted(contract.components, key=lambda item: item.owner_role not in priority)
         cursor = self._batch_cursors.get(run_id, 0) % len(components)
@@ -1421,14 +1428,14 @@ class WorkflowHost:
             if not _dependencies_ready(selected_component, {item.component_id: item for item in snapshot.components}): continue
             if batch is None:
                 if not selected_component.proposal_terminal:
-                    self._drive_expert_proposal(run_id, component_id, role); pending = True
+                    self._drive_expert_proposal(run_id, component_id, role, dispatch=dispatch); pending = True
                 continue
             leader = self.interaction.leader_round(run_id, component_id)
             designated = leader or self.interaction.debate.designated_round(run_id, component_id)
             if designated is not None and designated["cycle"] > batch.cycle:
                 pending = True
                 if not self.interaction.blocks_next_cycle(run_id, component_id, designated["cycle"]):
-                    self._drive_expert_proposal(run_id, component_id, role, cycle=designated["cycle"],
+                    self._drive_expert_proposal(run_id, component_id, role, dispatch=dispatch, cycle=designated["cycle"],
                         parent_hypothesis_id=designated["parent_hypothesis_id"],
                         restart_from_hypothesis=designated.get("restart_from_hypothesis", False))
                 continue
@@ -1446,11 +1453,11 @@ class WorkflowHost:
                     if self._expert_success(task) is None:
                         if self._expert_task_exhausted(run_id, task):
                             self._record_expert_final_failure(run_id, component_id, role, task, "batch_close_exhausted")
-                        else: self._expert_agent_step(run_id, run_id, task, role, component_id, family)
+                        else: dispatch(run_id, run_id, task, role, component_id, family)
                         break
                 else:
                     if not self._batch_control_closed(run_id, component_id, role) and not self.interaction.blocks_next_cycle(run_id, component_id, batch.cycle + 1):
-                        self._drive_expert_proposal(run_id, component_id, role, cycle=batch.cycle + 1,
+                        self._drive_expert_proposal(run_id, component_id, role, dispatch=dispatch, cycle=batch.cycle + 1,
                             parent_hypothesis_id=None if history.selected_tip is None else history.selected_tip["node_id"])
                 continue
             _, _, terminal = self._batch_context(run_id, component_id, role, batch.cycle)
@@ -1487,12 +1494,12 @@ class WorkflowHost:
                     design = ResearchNodeTask(key=replace(key, node_kind=ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT))
                     task = ResearchNodeTask(key=key) if self._expert_success(design) is not None else design
                     if self._expert_task_exhausted(run_id, task): self._record_expert_final_failure(run_id, component_id, role, task, "execution_node_exhausted")
-                    else: self._expert_agent_step(run_id, run_id, task, role, component_id,
+                    else: dispatch(run_id, run_id, task, role, component_id,
                         str(history.hypotheses[batch.members[chain]]["payload"]["method_family_id"]))
                 elif decision.command == Command.LINK_EVIDENCE.value:
                     self._link_evidence(run_id, component_id, current.experiment_id)
                 elif decision.command == Command.RECORD_ASSESSMENT.value:
-                    if not self._ensure_expert_analysis(run_id, component_id, current.experiment_id): continue
+                    if not self._ensure_expert_analysis(run_id, component_id, current.experiment_id, dispatch=dispatch): continue
                     analysis = self._expert_success(ResearchNodeTask(key=replace(key, node_kind=ResearchNodeKind.RESULT_ANALYSIS)))
                     raw = {} if analysis is None else json.loads(analysis["observation_json"])["response"]["typed_candidate"]
                     goal_done = (self.shared_acceptance.qualifies(run_id, current.goal_evaluation) if self.shared_acceptance.enabled(run_id)
@@ -1505,7 +1512,9 @@ class WorkflowHost:
                 task = ResearchNodeTask(key=ResearchNodeKey(run_id=run_id, component_id=component_id, expert_slot=role,
                     cycle=batch.cycle, node_kind=ResearchNodeKind.ADJUDICATE))
                 if self._expert_task_exhausted(run_id, task): self._record_expert_final_failure(run_id, component_id, role, task, "adjudication_exhausted")
-                else: self._expert_agent_step(run_id, run_id, task, role, component_id)
+                else: dispatch(run_id, run_id, task, role, component_id)
+        from .expert_batch import dispatch_batch_agents
+        dispatch_batch_agents(self, agent_work)
         # The existing creation journal is the queue: exact Leader round first,
         # then submission order across every component and chain. Admission and
         # per-dispatch resource checks remain in Policy and _start_process.
@@ -1514,6 +1523,7 @@ class WorkflowHost:
         return pending
     def _drive_active(self, run: Mapping[str, Any]) -> None:
         run_id = str(run["run_id"])
+        self._agent_scheduling[run_id] = {"observed_at": time.time(), "tasks": {}}
         if self._begin_shared_goal_stop(run_id): return
         self._drive_rendezvous(run_id); current = self.store.latest_transition(run_id)
         if current is None or current["state"] != RunState.ACTIVE.value: return
@@ -1830,7 +1840,7 @@ class WorkflowHost:
     def _drive_expert_proposal(self, run_id, component_id, role, **kwargs):
         from .expert_batch import drive_expert_proposal
         drive_expert_proposal(self, run_id, component_id, role, **kwargs)
-    def _ensure_expert_analysis(self, run_id: str, component_id: str, experiment_id: str | None = None) -> bool:
+    def _ensure_expert_analysis(self, run_id: str, component_id: str, experiment_id: str | None = None, *, dispatch=None) -> bool:
         contract = self._research_contract(run_id); component = contract.component(component_id)
         if component is None: raise OperationalHalt(f"unknown analysis component {component_id!r}")
         outcomes = [row for row in self.store.list_facts(run_id, "CanonicalOutcomeAccepted")
@@ -1852,7 +1862,7 @@ class WorkflowHost:
         if self._expert_task_exhausted(run_id, task):
             self._record_expert_final_failure(run_id, component_id, role, task, "result_analysis_exhausted")
             return True
-        self._expert_agent_step(run_id, run_id, task, role, component_id,
+        (dispatch or self._expert_agent_step)(run_id, run_id, task, role, component_id,
             str(outcome["payload"]["method_family_id"]))
         return False
     def _expert_experiment_ordinal(self, run_id: str, component_id: str,
@@ -2075,13 +2085,20 @@ class WorkflowHost:
 
     def _expert_agent_step(self, run_id: str, owner_id: str, task: ResearchNodeTask | AuxiliaryTask,
                            role: str, component_id: str, method_family_id: str | None = None) -> None:
+        def note(reason):
+            observed = self._agent_scheduling.setdefault(run_id, {"observed_at": time.time(), "tasks": {}})
+            observed["tasks"][task.command_id] = {"command_id": task.command_id, "role": role,
+                "component_id": component_id, "chain": getattr(getattr(task, "key", None), "chain", None),
+                "reason": reason}
+        note("checking")
         if self._tick_deadline is not None and self._agent_dispatches and time.monotonic() >= self._tick_deadline:
-            return  # No intent/effect has been created; continue after servicing control.
+            return note("dispatch_yield")  # No intent/effect has been created; continue after servicing control.
         self._diagnostic_context = {"phase": "agent_request", "run_id": run_id, "command_id": task.command_id}
         run_state = self.store.latest_transition(run_id)["state"]
-        if run_state in _TERMINAL_RUNS or task.command_id in self.resource_recovery.blocked(run_id): return
-        if run_state == RunState.ACTIVE.value and self._provider_retry_pending(run_id): return
-        if run_state == RunState.STOPPING.value and not (self._batch_enabled(run_id) and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT): return
+        if run_state in _TERMINAL_RUNS: return note("run_stopped")
+        if task.command_id in self.resource_recovery.blocked(run_id): return note("resource_recovery")
+        if run_state == RunState.ACTIVE.value and self._provider_retry_pending(run_id): return note("provider_backoff")
+        if run_state == RunState.STOPPING.value and not (self._batch_enabled(run_id) and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT): return note("run_stopped")
         command = (AgentCommand.PAPER_READ if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.PAPER_READ
             else AgentCommand.GRAPH_EVOLVE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GRAPH_EVOLVE
             else AgentCommand.FINAL_REPORT if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT
@@ -2094,24 +2111,28 @@ class WorkflowHost:
             raise OperationalHalt("selected expert task is Host/Runner-owned")
         chain = getattr(task.key, "chain", None) if isinstance(task, ResearchNodeTask) else None
         if isinstance(task, ResearchNodeTask) and not self._expert_attempts(task):
-            if command is AgentCommand.LITERATURE_REVIEW and self._literature_cycle_paused(run_id, role, component_id, task.key.cycle): return
+            if command is AgentCommand.LITERATURE_REVIEW and self._literature_cycle_paused(run_id, role, component_id, task.key.cycle): return note("participant_paused")
             if command is not AgentCommand.LITERATURE_REVIEW and self._participant_paused(run_id, role, component_id, command.value,
-                    chain or ("1" if command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT else None)): return
-        if command is AgentCommand.LEADER and self._participant_paused(run_id, role, component_id, command.value): return
-        if self._at_capacity(run_id) or command is not AgentCommand.PAPER_READ and self._participant_busy(run_id, role,
-                execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
-                component_id=component_id, chain=chain, proposal_task=task): return
-        if self._tick_deadline is not None and isinstance(task, ResearchNodeTask) and self._cycle_reports_enabled(run_id):
-            if not self._prepare_role_view(run_id, role, task): return
+                    chain or ("1" if command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT else None)): return note("participant_paused")
+        if command is AgentCommand.LEADER and self._participant_paused(run_id, role, component_id, command.value): return note("participant_paused")
         contract = self._research_contract(run_id); attempts = self._expert_attempts(task)
-        if any(row["state"] == "OPEN" for row in attempts) or self._agent_attempts_exhausted(contract, list(attempts)): return
+        if any(row["state"] == "OPEN" for row in attempts): return note("active")
+        if self._agent_attempts_exhausted(contract, list(attempts)): return note("attempts_exhausted")
         if command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
             previous = AgentRequest.from_dict(json.loads(attempts[-1]["observation_json"])["request"])
             if any(self.store.latest_transition(item["exp_id"])["state"] != ExperimentState.TERMINAL.value
                     for item in self._owned_tool_experiments(previous)):
                 # Runner/collection continue independently. A timed-out Agent
                 # need not be relaunched just to wait for the same owned work.
-                return
+                return note("experiment_wait")
+        if self._at_capacity(run_id): return note("agent_capacity")
+        if command is not AgentCommand.PAPER_READ:
+            reason = self._participant_wait_reason(run_id, role,
+                execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
+                component_id=component_id, chain=chain, proposal_task=task)
+            if reason is not None: return note(reason)
+        if self._tick_deadline is not None and isinstance(task, ResearchNodeTask) and self._cycle_reports_enabled(run_id):
+            if not self._prepare_role_view(run_id, role, task): return note("preparing_workspace")
         try: replay_context = infrastructure_retry_request(self.store, owner_id, task.command_id)
         except ValueError as exc: raise OperationalHalt(str(exc)) from exc
         replay_request = None if replay_context is None else replay_context[0]; repeat_retrieval = False if replay_context is None else replay_context[1]
@@ -2162,7 +2183,7 @@ class WorkflowHost:
         if (replay_request is None or repeat_retrieval) and retrieve and self.literature_io is not None:
             query = LiteratureQuery.from_dict(json.loads(next(item for item in inputs if item.ref.endswith("--literature-query")).content_bytes()))
             read = self._read_literature(run_id, "retrieve", task.command_id, query)
-            if read is None: return
+            if read is None: return note("preparing_literature")
             self._literature_jobs.pop(("retrieve", task.command_id))
             attempt_started_at = read["started_at"]
             preflight_diagnostics = dict(read["diagnostics"])
@@ -2257,6 +2278,7 @@ class WorkflowHost:
         # Waiting for owned Processes, retrieval or an existing Attempt is not
         # a dispatch. Counting those visits can starve ready peers every tick.
         self._agent_dispatches += 1
+        note("budget_exhausted" if rejected else "admitted")
         self._diagnostic_context = {"phase": "agent_launch", "run_id": run_id, "command_id": task.command_id, "attempt_id": attempt_id}
         if rejected:
             self._agent_failure(request, AttemptTerminalReason.FAILED, "profile_budget_exhausted", retryable=False, details={"budget_rejected": True})

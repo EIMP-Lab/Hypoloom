@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 7 concurrency: Web projects separate Agent/Process/review and expert
+  chain occupancy, pending handoffs and still-open execution sessions. Actual
+  Host admission reasons are disposable, fresh per-pass STATUS observations;
+  old Hosts remain unknown. Batch results/adjudication precede new work with
+  expert rotation through the existing admission rules. Original-order replay
+  fails the real Host/CPU priority case; revised dispatch closes both experiments.
+  Shared work is deduplicated by its command ID within the pass. 233 distinct
+  focused checks pass without skips; Web screenshots and retained-run read-only
+  projections verified. Reopen the observer for new backend fields.
+  No speculative candidates, changed limits, persistent queue or retained-run
+  migration. [Design and validation](../qualification.md#concurrency-observations-and-result-first-dispatch-2026-10-07).
+
 - October 7 compact working tiles: Agent RPM moves into a robot-head tooltip
   and accessible label; experiments add a clock beside their elapsed capsule.
   Shared fixed columns align Agent, Process and Grounding tiles. Existing RPM

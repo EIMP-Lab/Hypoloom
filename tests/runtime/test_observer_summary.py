@@ -91,6 +91,38 @@ def test_open_process_keeps_chain_active_and_deduplicates_its_execution_agent(tm
     assert result["experts"][0]["active_chains"] == result["totals"]["active_chains"] == 1
 
 
+def test_capacity_and_handoff_projection_separates_review_and_open_controller(tmp_path):
+    from hypoloom.contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
+    from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+    contract = {"budget": {"max_active_agents": 4, "max_active_processes": 2, "max_active_reviews": 1},
+        "methodology": {"controls": {"research_loop": EXPERT_LOOP_RESEARCH_LOOP}}}
+    creation = _transition(1, kind="EXPERIMENT", identity="exp", at=20, payload={
+        "role": "scientist", "component_id": "primary.score", "chain": "mechanism", "execution_node_command_id": "execution"})
+    creation['command_type'] = 'CREATE_EXPERIMENT'
+    process = {"kind": "PROCESS", "attempt_id": "cpu", "run_id": "r", "workflow_id": "exp",
+        "state": "OPEN", "started_at": 21}
+    controller = _attempt("execution", node="EXPERIMENT_EXECUTION", state="OPEN")
+    review = _attempt("review", node="ANSWER_RENDEZVOUS", state="OPEN", chain=None)
+    args = dict(facts=[_fact('GoalDefined', 'goal', {'research_contract': contract})],
+        transitions=[creation], attempts=[process, controller, review], agent_aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION)
+    value = _summary(tmp_path, **args)
+    assert value['concurrency']['slots'] == {'AGENT': {'used': 1, 'limit': 4},
+        'PROCESS': {'used': 1, 'limit': 2}, 'REVIEW': {'used': 1, 'limit': 1}}
+    wait = value['experts'][0]['execution_wait']
+    assert (wait['open_controllers'], wait['handed_off'], wait['oldest_controller_seconds']) == (1, 0, 80)
+    controller.update(state='CLOSED', terminal_reason='SUCCEEDED', ended_at=25)
+    observation = json.loads(controller['observation_json'])
+    observation['request']['schema_version'] = CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+    observation['response'] = {'typed_candidate': {'waiting_for_experiment_id': 'exp'}}
+    controller['observation_json'] = json.dumps(observation)
+    value = _summary(tmp_path, **args)
+    assert value['concurrency']['slots']['AGENT']['used'] == 0
+    wait = value['experts'][0]['execution_wait']
+    assert (wait['open_controllers'], wait['handed_off'], wait['pending_experiments']) == (0, 1, 1)
+    args['agent_aci_version'] = None
+    assert _summary(tmp_path, **args)['concurrency']['slots']['AGENT']['limit'] is None
+
+
 def test_logical_retry_cost_reuses_closed_accounting_and_separates_reservations(tmp_path):
     rows = [_attempt("failed", command_id="design", reason="FAILED"),
             _attempt("good", command_id="design", start=25),

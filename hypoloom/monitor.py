@@ -1544,7 +1544,7 @@ def build_monitor_snapshot(
         transitions=transition_rows, attempts=raw_attempts, reading_commands=reading_commands,
         experts=[asdict(item) for item in experts],
         graph=product_graph([asdict(item) for item in hypotheses], transition_rows),
-        observed_at=observed_at, created_at=run["created_at"]) if _include_overview else {}
+        observed_at=observed_at, created_at=run["created_at"], agent_aci_version=run["agent_aci_version"]) if _include_overview else {}
     oracle = (Oracle(root / "state.sqlite", root / "artifacts").audit(run_id).to_dict()
         if _oracle is None else dict(_oracle))
     return MonitorSnapshot(
@@ -1582,6 +1582,7 @@ _STATUS_COHERENCE_FIELDS = (
 _HOST_STATUS_FIELDS = (
     "quiescent_for_backup",
     "agent_usage",
+    "agent_scheduling",
     "resource_waits",
     "resource_blocked",
     "process_activity",
