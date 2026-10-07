@@ -148,7 +148,7 @@ main { width: min(1700px, 100%); margin: 0 auto; padding: clamp(1rem, 2.4vw, 2.4
 .view-tabs [role="tab"] { border-color: transparent; background: transparent; color: var(--muted); }
 .view-tabs [role="tab"][aria-selected="true"] { border-color: var(--accent); background: #0E1A33; color: var(--accent); }
 .view-tabs .help-actions { display: flex; gap: 0.45rem; align-items: center; margin-left: auto; }
-.view-tabs .language-button { border-color: var(--accent); color: var(--accent); }
+.view-tabs .language-button, .view-tabs .trends-button { border-color: var(--accent); color: var(--accent); }
 .view-tabs .help-button { border-color: #6B5836; background: #201C12; color: var(--amber); }
 .view-tabs .help-button:hover { border-color: var(--amber); color: var(--amber); }
 .help-actions .text-size { display: flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -446,7 +446,7 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
   .view-tab-group { width: 100%; }
   .view-tab-group [role="tab"] { flex: 1; }
   .view-tabs .help-actions { flex-wrap: wrap; width: 100%; margin-left: 0; }
-  .view-tabs .help-actions .help-button { flex: 1; }
+  .view-tabs .help-actions .help-button, .view-tabs .help-actions .trends-button { flex: 1; }
   .filter-grid, .filter-grid.shared-goal { grid-template-columns: 1fr; }
   .mission { grid-template-columns: 1fr; }
   .mission-meta { text-align: left; }

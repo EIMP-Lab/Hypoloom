@@ -1,5 +1,9 @@
 # Current Hypoloom development state
 
+- October 7 trend-button colors: Run trends shares the language toggle's accent
+  colors and retains its mobile flex layout. Browser inspection confirms matching
+  normal/hover/focus colors; the existing trend interaction regression passes.
+
 - October 7 Telegram templates/briefings: admitted `report_language` selects
   Chinese/English, blank lines and small icons; elapsed replaces Dashboard URLs.
   `run_briefing` is opt-in through existing events (included in public templates),
