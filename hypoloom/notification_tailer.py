@@ -3,8 +3,8 @@
 The only writes are logs and atomic per-sink cursors under a disjoint output
 root. Cursors are delivery progress, never research authority. Remote success
 followed by a crash before cursor replacement can duplicate a notification.
-Telegram uses the documented JSON sendMessage API, without paid broadcasts:
-https://core.telegram.org/bots/api#sendmessage
+Telegram uses sendMessage or a multipart sendPhoto with caption, without paid
+broadcasts: https://core.telegram.org/bots/api#sendphoto
 """
 from __future__ import annotations
 
@@ -19,12 +19,13 @@ import re
 import socket
 import ssl
 import stat
+import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -34,9 +35,12 @@ from .credentials import (TELEGRAM_BOT_TOKEN_KEY, TELEGRAM_CHAT_ID_KEY, Credenti
                           credential, read_credentials_file)
 from .observation_api import PRODUCT_EVENT_TYPES, build_product_observation
 from .state_store import StateStore
+from .notification_templates import briefing_text, due_briefing, event_text
+from .observer_trends import _time
+from .notification_plot import briefing_photo
 
 
-_EVENT_TYPES = PRODUCT_EVENT_TYPES
+_EVENT_TYPES = PRODUCT_EVENT_TYPES | {"run_briefing"}
 _LEVELS = {"debug": 10, "info": 20, "warning": 30, "warn": 30, "error": 40, "critical": 50}
 
 
@@ -161,8 +165,22 @@ def _proxy_address(url: str) -> tuple[str, int]:
 
 
 def post_json(url: str, document: Mapping[str, Any], *, headers: Mapping[str, str], timeout: float,
-              proxy_url: str | None = None) -> HTTPResponse:
+              proxy_url: str | None = None, photo: bytes | None = None) -> HTTPResponse:
     """Bounded POST; optional explicit CONNECT, no ambient proxy or redirects."""
+    if photo is None:
+        body = json.dumps(document, ensure_ascii=False).encode("utf-8")
+        content_type = "application/json"
+    else:
+        # Fixed field names and filename; no caller-supplied multipart headers.
+        boundary = "hypoloom-" + os.urandom(18).hex()
+        fields = []
+        for key in ("chat_id", "caption"):
+            fields.append((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n'
+                + str(document[key]) + "\r\n").encode("utf-8"))
+        fields.append((f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="run-trends.png"'
+            '\r\nContent-Type: image/png\r\n\r\n').encode("ascii") + photo + b"\r\n")
+        body = b"".join(fields) + f"--{boundary}--\r\n".encode("ascii")
+        content_type = f"multipart/form-data; boundary={boundary}"
     parts = urlsplit(url)
     proxy = None if proxy_url is None else _proxy_address(proxy_url)
     if proxy is not None and parts.scheme == "https":
@@ -180,8 +198,8 @@ def post_json(url: str, document: Mapping[str, Any], *, headers: Mapping[str, st
         path = parts.path or "/"
         if parts.query:
             path += "?" + parts.query
-        connection.request("POST", path, body=json.dumps(document, ensure_ascii=False).encode("utf-8"),
-                           headers={"Content-Type": "application/json", **headers})
+        connection.request("POST", path, body=body,
+                           headers={"Content-Type": content_type, **headers})
         phase = "response"
         response = connection.getresponse()
         body = response.read(65537)
@@ -411,7 +429,7 @@ class NotificationTailer:
     def _remote(self, sink: str) -> tuple[str, dict[str, str], str | None]:
         return notification_remote(sink, self.sinks[sink], self.environ)
 
-    def _deliver(self, sink: str, event: Mapping[str, Any], remote) -> None:
+    def _deliver(self, sink: str, event: Mapping[str, Any], remote, observation=None) -> None:
         if sink == "log":
             path = self.log_path
             assert path is not None
@@ -428,65 +446,31 @@ class NotificationTailer:
             return
         url, headers, chat_id = remote
         document = event
+        photo = None
         if sink == "telegram":
-            # Only public identifiers/status, never operator text or raw logs.
-            payload = event.get("payload", {})
-            summary = " · ".join(str(payload[key]) for key in ("role", "node", "experiment_id", "outcome", "verdict", "error_code") if payload.get(key) is not None)
-            text = f"Hypoloom {event['type']}\nRun: {self.run_id}\nEvent: {event['event_id']}"
-            if event["type"] == "notification_backlog":
-                text += "\nEarlier routine notifications: " + ", ".join(f"{key}: {value}" for key, value in payload["counts"].items())
-                text += "\nThis summarizes earlier events; consult Web/TUI for the current state."
-            if summary: text += "\n" + summary
-            if event["type"] in {"grounding_question", "grounding_answered"}:
-                requested = event["type"] == "grounding_question"
-                text += "\n👤 Human decision requested" if requested else "\n✅ Human answer recorded"
-                ordinal = payload.get("ordinal")
-                if type(ordinal) is int and ordinal > 0:
-                    text += f"\nQuestion: {ordinal}"
-                if requested:
-                    text += ("\nTUI: press h → Review answer → Submit answer."
-                             "\nWeb: choose Browser in the TUI decision form for an operator answer link."
-                             "\nTelegram replies do not submit an answer.")
-                else:
-                    text += "\nView the recorded answer and current run state in TUI/Web."
-            if event["type"] == "resource_blocked":
-                text += "\nGPU infrastructure blocked: " + str(event.get("code", "unknown")) + ". Existing experiments continue. Repair the bound pool, then use TUI g or hypoloom resource-recheck."
-            if event["type"] == "resource_rechecked":
-                text += "\nGPU pool rechecked. Blocked nodes may retry within their existing budgets."
-            if event["type"] in {"provider_auth_cooldown", "provider_waiting"}:
-                until = payload.get("next_retry_at", payload.get("cooldown_until"))
-                when = (datetime.fromtimestamp(float(until), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-                    if type(until) in (int, float) else "unknown; operator action required")
-                text += (f"\n⚠️ API unavailable: {payload.get('reason', 'auth_failed')} (HTTP {payload.get('http_status')})."
-                    f"\nNext recovery attempt: {when}. This is not a quota reset estimate."
-                    "\nSubmitted experiments continue. TUI: p; CLI: hypoloom provider-retry-clear."
-                    "\nTo switch API, select a protected connection file with --settings.")
-            if event["type"] in {"provider_auth_resumed", "provider_retry_requested"}:
-                text += "\nProvider retry requested by operator. Access is not yet confirmed; awaiting a successful response."
-            if event["type"] == "provider_recovered":
-                text += "\n✅ API response received; provider availability recovered. Research progress remains subject to task and budget limits."
-            if event["type"].startswith("literature_"):
-                text += f"\nLiterature service: {payload.get('active_service', payload.get('service', 'openalex'))}; {payload.get('reason') or event['type']}."
-                if payload.get("active_service") == "crossref": text += "\nCrossref fallback succeeded; OpenAlex recovery remains unconfirmed."
-                if payload.get("requires_operator"):
-                    text += "\nOperator action required. Repair the literature connection, then use Literature retry in Web/TUI or provider-retry-clear --service openalex."
-                elif payload.get("next_retry_at") is not None:
-                    text += "\nNext attempt: " + datetime.fromtimestamp(payload['next_retry_at'], timezone.utc).isoformat()
-                if event["type"] == "literature_recovered": text += "\nAn actual retrieval succeeded; research remains subject to task and budget limits."
-            dashboard = self.sinks.get("dashboard", {})
-            if dashboard.get("enabled") and dashboard.get("host", "127.0.0.1") in {"127.0.0.1", "localhost"}:
-                # The owning service supplies its actual bound port, including
-                # None on bind failure. Standalone delivery cannot discover it.
-                port = self.dashboard_port() if self.dashboard_port is not None else dashboard.get("port")
-                if type(port) is int and 1 <= port <= 65535:
-                    label = "local/tunnel" if self.dashboard_port is not None else "configured; local/tunnel"
-                    text += f"\nDashboard ({label}): http://127.0.0.1:{port}/"
-                else:
-                    text += "\nDashboard: see TUI Web / local access or Host startup log for the current address."
-            if len(text) > 4096:
+            if event["type"] == "run_briefing":
+                try:
+                    photo = briefing_photo(self.state_root, self.run_id,
+                        observed_at=_time(event["created_at"]), language=event["payload"]["run"]["report_language"])
+                except (OSError, ValueError, ImportError, sqlite3.Error, subprocess.SubprocessError):
+                    # No remote request has started. A plotting failure must not
+                    # prevent the status summary; transport failures still retry.
+                    photo = None
+                text = briefing_text(event, chart_available=photo is not None)
+                if len(text.encode("utf-16-le")) // 2 > 1024:
+                    photo = None
+                    text = briefing_text(event, chart_available=False)
+            else:
+                text = event_text(event, observation or {})
+            if len(text.encode("utf-16-le")) // 2 > 4096:
                 raise NotificationError("Telegram event identity exceeds message limit")
-            document = {"chat_id": chat_id, "text": text}
+            if photo is None:
+                document = {"chat_id": chat_id, "text": text}
+            else:
+                url = url.rsplit("/", 1)[0] + "/sendPhoto"
+                document = {"chat_id": chat_id, "caption": text}
         options = {"proxy_url": self.proxy_url} if self.proxy_url is not None and urlsplit(url).scheme == "https" else {}
+        if photo is not None: options["photo"] = photo
         response = self.transport(url, document, headers=headers, timeout=10.0, **options)
         check_delivery_response(response, sink, now=self.clock())
 
@@ -495,6 +479,7 @@ class NotificationTailer:
         observation = (build_product_observation(self.state_root, self.run_id)
                        if self.observation_reader is None else self.observation_reader())
         events = sorted(observation["events"], key=lambda event: (event["source"], event["source_id"], event["revision"]))
+        if briefing := due_briefing(observation): events.append(briefing)
         routine = {"run_started", "new_best_result", "expert_round_done", "stage_started", "stage_finished",
                    "hypothesis_added", "experiment_started", "experiment_submitted", "experiment_finished"}
         for sink in ("log", "telegram", "webhook"):
@@ -554,7 +539,7 @@ class NotificationTailer:
                             "payload": {"counts": dict(sorted(Counter(e["type"] for e in batch).items()))}}
                     phase = "log_write" if sink == "log" else "transport"
                     self._update_health(sink, last_attempt_at=self.clock())
-                    self._deliver(sink, event, remote)
+                    self._deliver(sink, event, remote, observation)
                     next_cursor = dict(cursor)
                     for source in batch:
                         key = f"{source['source']}:{source['source_id']}"

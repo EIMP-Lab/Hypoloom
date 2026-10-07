@@ -292,7 +292,7 @@ def test_log_without_filter_delivers_all_known_events_and_reports_error_severity
     assert len(rows) == 1 and json.loads(rows[0])["type"] == "error"
 
 
-def test_telegram_notice_has_safe_summary_and_dashboard_link_without_note_text(tmp_path, monkeypatch):
+def test_telegram_notice_has_safe_summary_and_elapsed_without_note_text(tmp_path, monkeypatch):
     config = _notify(telegram=True)
     config["sinks"]["dashboard"] = {"enabled": True, "host": "127.0.0.1", "port": 8765}
     event = _event()
@@ -306,12 +306,12 @@ def test_telegram_notice_has_safe_summary_and_dashboard_link_without_note_text(t
     assert not result.errors
     text = documents[-1]["text"]
     assert "optimizer" in text and "RESULT_ANALYSIS" in text
-    assert "http://127.0.0.1:8765/" in text
+    assert text.endswith("⏱ Elapsed: unknown") and "Dashboard" not in text
     assert "private operator text" not in text and "private-token" not in text
 
 
 @pytest.mark.parametrize("port", [0, None])
-def test_standalone_dynamic_dashboard_notice_points_to_local_access(tmp_path, monkeypatch, port):
+def test_standalone_notice_omits_dashboard_address(tmp_path, monkeypatch, port):
     config = _notify(telegram=True)
     config["sinks"]["dashboard"] = {"enabled": True}
     if port is not None:
@@ -325,11 +325,11 @@ def test_standalone_dynamic_dashboard_notice_points_to_local_access(tmp_path, mo
 
     result = _tailer(tmp_path, environ={"TEST_BOT": "123:test-bot", "TEST_CHAT": "test-chat"}, transport=transport).poll_once()
     assert not result.errors
-    assert "TUI Web / local access" in messages[0] and "Host startup log" in messages[0]
+    assert "Dashboard" not in messages[0] and "Elapsed: unknown" in messages[0]
     assert "http://127.0.0.1:" not in messages[0]
 
 
-def test_managed_dashboard_notice_follows_live_listener_after_bind_recovery(tmp_path, monkeypatch):
+def test_managed_notice_omits_dashboard_even_after_bind_recovery(tmp_path, monkeypatch):
     config = _notify(telegram=True)
     config["sinks"]["dashboard"] = {"enabled": True, "port": 8765}
     events = [_event()]
@@ -344,11 +344,12 @@ def test_managed_dashboard_notice_follows_live_listener_after_bind_recovery(tmp_
     tailer = _tailer(tmp_path, environ={"TEST_BOT": "123:test-bot", "TEST_CHAT": "test-chat"},
         transport=transport, dashboard_port=lambda: live_port)
     assert not tailer.poll_once().errors
-    assert "Host startup log" in messages[0] and ":8765/" not in messages[0]
+    assert "Dashboard" not in messages[0] and ":8765/" not in messages[0]
     live_port = 43210
     events.append(_event(2))
     assert not tailer.poll_once().errors
-    assert "http://127.0.0.1:43210/" in messages[1]
+    assert "http://127.0.0.1:43210/" not in messages[1]
+    assert "Elapsed: unknown" in messages[1]
     assert "#token=" not in messages[1]
 
 

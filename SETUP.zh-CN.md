@@ -45,7 +45,7 @@ Code CLI。托管启动还需要可访问的 user-systemd。控制进程使用 P
 
 ```bash
 conda env create --prefix ./.conda/envs/hypoloom --file environment.yml
-conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,dev]'
+conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,notify,dev]'
 ./.conda/envs/hypoloom/bin/python -c \
   'import sqlite3; print(sqlite3.sqlite_version); assert sqlite3.sqlite_version_info >= (3, 51, 3)'
 ./.conda/envs/hypoloom/bin/hypoloom --help

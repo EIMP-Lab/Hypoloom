@@ -332,7 +332,13 @@ def build_product_observation(state_root: str | Path, run_id: str, *,
         experiments.append({"experiment_id": identity, "state": head["state"], "revision": head["revision"],
             "outcome": outcome, "attempts": [{key: row[key] for key in ("attempt_id", "kind", "state", "terminal_reason", "started_at", "ended_at")} for row in own]})
     from .final_report import accepted_report_view
+    contract = snapshot["goal"].get("research_contract", {})
+    language = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("language", {})
+    run = {key: snapshot["status"].get(key) for key in
+           ("run_state", "goal_verdict", "required_component_count", "required_assessment_count")}
+    run["report_language"] = language.get("report_language", contract.get("goal", {}).get("language", "en"))
     return {"run_id": run_id, "observed_at": snapshot["observed_at"], "summary": snapshot["overview"],
+            "run": run,
             "graph": product_graph(snapshot["hypotheses"], transitions), "experts": experts,
             "experiments": experiments, "participant_controls": controls, "final_report": accepted_report_view(run_id, attempts),
             "events": product_events(run_id, facts, transitions, attempts, commands=commands)}

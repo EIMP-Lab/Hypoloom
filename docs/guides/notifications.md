@@ -25,13 +25,12 @@ See [API recovery](provider-recovery.md) for TUI/Web/CLI controls. Other
 supported template events include
 new results, interaction starts, round completion, errors and run completion.
 
-The Profile dashboard uses an OS-selected port by default (`port: 0`). When
-the Host owns both services, Telegram notices use the dashboard's actual bound
-port without sending its bearer token. If its listener is unavailable, or an
-independent `notify` process cannot know the dynamic port, the notice directs
-you to TUI **Web / local access** or the Host startup log. Standalone delivery
-may display an explicitly configured fixed port, labeled as configured; that
-is not a liveness check. Use the locally displayed token URL to authenticate.
+Telegram event templates follow the admitted Profile's `language.yaml.report_language`:
+`zh` / `zh-*` use Chinese, other languages use English. The legacy fallback is
+`goal.language`. Each entry is separated by a blank line, with a few event icons.
+The footer shows elapsed wall time since run creation (including waits/offline
+time, frozen at terminal transition), or unknown when unavailable. It does not
+include Dashboard addresses. Obtain the authenticated Web address locally.
 
 ```bash
 hypoloom notify --state-root /absolute/state/run --run-id RUN_ID \
@@ -56,12 +55,10 @@ test proves local request behavior, not actual delivery to a public recipient.
 但请求重试不会被当作已经恢复。通知按状态或原因变化发送，不逐次失败刷屏；
 切换步骤见[API 状态与恢复](provider-recovery.zh-CN.md)。公开模板仍默认关闭 Telegram。
 
-Dashboard 默认使用动态端口（`port: 0`）。Host 同时管理看板和通知时，Telegram
-提醒使用实际监听端口，不发送 bearer 令牌。监听不可用，或独立 `notify` 无法获知
-动态端口时，提醒会引导查看 TUI 的 **Web / local access** 或 Host 启动日志。
-独立通知可展示明确配置的固定端口，并标为 configured；这不代表已验证服务存活。
-认证请使用本地展示的令牌地址。
-
+Telegram 模板沿用准入 Profile 的 `language.yaml.report_language`：`zh` / `zh-*`
+使用中文，其余使用英文；旧合同回退到 `goal.language`。条目之间空一行，少量 emoji
+标识事件。末尾改为从运行创建起的累计时长（包括等待／离线时间；终态后冻结），数据
+不可用时标为未知，不再显示 Dashboard 地址。Web 认证地址请在本地查看。
 
 For managed `/autoresearch init`, the caller's notification environment is not
 inherited. Inline Profile fields work without an additional credential option.
@@ -77,6 +74,74 @@ webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出
 `--notification-output-root` 指定。预览不会发送通知；凭据缺失会在启动前报错。
 旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
 源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。
+
+## Twelve-hour run briefings / 每 12 小时运行简报
+
+Add `run_briefing` to `events.telegram` in the private Profile **before init**;
+both public templates include it, while Telegram remains disabled by default.
+The existing observer sends the latest briefing at each 12-hour elapsed boundary,
+using the observation timestamp, independently of the browser. The Host observer
+or standalone notification process must be running. The first briefing is due at
+12 hours, not on startup. After downtime, only the latest due window is sent;
+terminal runs stop briefings. `run_finished` remains the completion notification.
+Retry/backoff and the existing per-sink cursor apply: acknowledgment advances the
+window, so ordinary restart does not repeat it. Delivery remains at-least-once;
+a crash after remote success but before saving the cursor can duplicate a message.
+No scheduler table, research fact, periodic LLM request or additional agent slot
+is introduced. Log/webhook subscriptions can select the same summary event.
+
+The summary shows **cumulative** GOAL verdict and assessed/required components,
+hypothesis graph node/relation/state counts, experiment states, and tokens.
+Assessed components are not a claim of success. Reported, observed-unsettled and
+reserved tokens remain separate; reservations are not usage, failed reported
+usage is already included in reported tokens, and unknown counts can overlap.
+It does not transmit research prose, question/answer bodies or operator notes.
+
+The optional PNG uses the existing Web trend projection for the **last 12 hours**:
+total and expert RPM (at most the 8 busiest experts, with all included in total),
+Grounding/other activity, and recorded Agent/experiment occupancy and bucket peaks.
+RPM includes retries, uses explicit bucket averages and leaves missing capture
+as gaps with a known lower bound. Occupancy is recorded bound Attempts, not an OS
+liveness check. UTC timestamps and bucket width are printed on the chart. Summary
+and trend reads use the same cutoff time but separate read-only transactions;
+ongoing activity can settle between those reads.
+
+Install `pip install -e '.[monitor,notify,dev]'` for charts; transports themselves
+use the standard library. For Chinese images, install a system CJK font such as
+Noto Sans CJK (`fonts-noto-cjk` on Debian/Ubuntu). Plotting runs in a disposable
+subprocess with a 15-second timeout, following bounded diagnostic inspection.
+Missing dependency/font, timeout or drawing failure falls back to one text
+briefing. A PNG and caption use one acknowledged
+[Telegram sendPhoto](https://core.telegram.org/bots/api#sendphoto) request; if the
+caption exceeds its 1,024-character limit, send the full text summary instead.
+A remote photo-delivery failure follows normal retries, without sending another
+text message that could duplicate an ambiguously acknowledged photo.
+
+中文：在**新 init 前**把 `run_briefing` 加入私有 Profile 的 `events.telegram` 列表。
+两份公开模板已包含，但 Telegram 仍默认关闭。从运行创建时间起，每满 12 小时发送
+一份简报，第一次不会立即发；由现有观察服务触发，与浏览器是否打开无关，Host 观察
+服务或独立通知进程需要保持运行。离线恢复只补最新一份；终态停止简报，结束通知
+仍为 `run_finished`。复用原通知游标、重试和退避；发送成功后才推进游标。普通重启
+不重复，远端成功与本地保存之间崩溃仍可能重复。没有新调度表、研究事实或 LLM 调用，
+不占 Agent 并发额度。
+
+文字为**累计状态**：GOAL 判定／必要组件已评估数、假设图节点／关系／状态、实验
+状态、token 用量。已评估不等于目标达成；已记录、未结算观测、预算预留分别展示，
+预留不是消耗，失败尝试的已知消耗已计入已记录总量，用量未知计数可能重叠。
+不发送研究正文、人工问答正文或操作备注。
+
+附图为**最近 12 小时**的总量／逐专家 RPM（最多展示请求最多的 8 位专家，总量包含
+全部专家）、Grounding／其他任务、Agent／实验并发记录及桶内峰值。RPM 含重试，
+显示桶宽和 UTC 时间；采集缺失留空并保留下界，不补零。并发是已绑定 Attempt 记录，
+不表示进程当前存活。文字与曲线使用同一观测截止时间、不同只读事务，期间任务可能结算。
+
+图像需要 `notify` 可选依赖（matplotlib）；中文还需系统 CJK 字体，如 Noto Sans CJK。
+推荐安装命令已包含该依赖。绘图在临时子进程中执行，最长 15 秒；诊断扫描也有界。
+缺少依赖／字体、超时、绘图失败或图片说明超长时，退回一条文字简报。远端图片发送
+失败仍按原机制重试，避免不确定的发送结果引发额外文字重复通知。
+
+这些变更适用于新运行及其通知服务。已有运行保留原准入订阅和绑定的运行代码，
+更新工作区不会修改它们，也不支持通过迁移旧运行来启用新功能。
 
 ## Server-side Clash proxy / 服务器 Clash 代理
 

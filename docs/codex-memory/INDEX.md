@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Telegram templates and twelve-hour briefings](../qualification.md#telegram-templates-and-twelve-hour-briefings-2026-10-07):
+  Profile report language, spaced event entries, elapsed footer; scheduled summary
+  reuses existing projections/cursor, optional bounded PNG and original retries.
+  [Configuration and delivery limits](../guides/notifications.md).
+
 - [Runtime trends and default issue attachments](../qualification.md#runtime-trends-and-default-issue-attachments-2026-10-07):
   read-only interval/request projections, interactive Web charts, automatic
   anonymous JSON/CSV exports, existing relay capture and explicit missing data.

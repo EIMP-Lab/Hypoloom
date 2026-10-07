@@ -176,7 +176,7 @@ def test_concurrent_dashboards_use_distinct_ports_tokens_and_lifetimes(tmp_path,
             socket.create_connection(("127.0.0.1", server.server_port), timeout=0.1)
 
 
-def test_managed_telegram_uses_actual_dynamic_port_without_access_token(tmp_path):
+def test_managed_telegram_uses_elapsed_instead_of_dynamic_address(tmp_path):
     root = configured(tmp_path, telegram=True)
     messages = []
 
@@ -190,7 +190,9 @@ def test_managed_telegram_uses_actual_dynamic_port_without_access_token(tmp_path
         services.poll_once()
         server = services.dashboards["notifications"]
         assert messages
-        assert all(f"http://127.0.0.1:{server.server_port}/" in message for message in messages)
+        # This admitted Profile has English prompts but Chinese reports.
+        assert all("已运行：" in message and "未知" not in message for message in messages)
+        assert all("Dashboard" not in message and f":{server.server_port}/" not in message for message in messages)
         assert all(server.access_token not in message and "#token=" not in message for message in messages)
         assert not services.errors.getvalue()
     finally:

@@ -2,6 +2,53 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Telegram templates and twelve-hour briefings (2026-10-07)
+
+[Notification design and configuration](guides/notifications.md#twelve-hour-run-briefings--每-12-小时运行简报)
+reuse admitted `report_language`, the existing monitor summary/graph, Web trend
+projection and per-sink cursor. Event entries have blank lines and restrained
+icons; elapsed run wall time replaces the Dashboard footer. A disposable
+`run_briefing` event uses the latest 12-hour elapsed window as its source revision.
+No new research fact, scheduler store, counter, LLM request or agent slot is added.
+Terminal runs stop briefings; restart coalesces missed windows. Both public
+Profiles subscribe while keeping Telegram disabled until configured.
+
+Briefings carry cumulative GOAL/graph/experiment/token counts and a last-12-hour
+PNG with total/expert RPM and Agent/experiment occupancy/peaks. Missing capture
+remains unknown; reservations are not consumption. Optional matplotlib and CJK
+fonts render in a bounded subprocess; unavailable charts fall back to text before
+transport. `sendPhoto` caption and image share one acknowledgement, the existing
+retry/backoff and at-least-once cursor semantics. A remote failure does not trigger
+a second text send. TLS verification, explicit CONNECT proxy and no-redirect
+behavior use the original transport. No real Telegram message was sent.
+
+Focused selections and reruns reconcile to **186 distinct passes, zero skips,
+no unresolved failures**. They cover language precedence, spacing/privacy/elapsed,
+12-hour boundaries, missed windows, terminal stop, subscription and message caps,
+image fallback, safe retry, real Chinese/English PNGs and axis ranges, local
+multipart HTTP/verified CONNECT, existing observers, trend API, Profiles/docs and
+runtime bundles. An obsolete Dashboard assertion was updated for the requested
+footer; fixture assertions were corrected to use Chinese report language and
+retain a genuinely complete final RPM bucket. Visual inspection caught a clipped
+Y-axis before completion; the regression checks bounds and missing-data gaps.
+
+A real Host closure uses only a future **observation** clock for the 12-hour
+boundary, then closes 12 Agent Attempts and one CPU Process with one canonical
+outcome. Notification reads leave rows unchanged; terminal elapsed time freezes,
+no further briefing is emitted, Oracle passes and owned groups are absent.
+A separate native CC/local-provider closure has 15 Agents, one CPU Process,
+one outcome, 35 recorded requests, zero OPEN Attempts and zero live owned groups.
+Source, isolated wheel install and fresh runtime bundle match **189 package
+files**. Undefined-name/import and whitespace checks pass. Chinese/English PNGs
+were visually inspected using synthetic preview data.
+
+Evidence: `.local/qualification/telegram-briefings-20261007/`; native roots are
+under `/tmp/hl-nbn/` and the last focused Host closure under `/tmp/hl-nb4/`.
+This is focused feature qualification, not full G1–G5 promotion or paid/GPU
+qualification. Retained research runs, admitted subscriptions, private Profiles,
+bundles and running services were not modified. Old runs do not gain this
+feature by updating the development checkout; use a newly configured run.
+
 ## Runtime trends and default issue attachments (2026-10-07)
 
 [Design](design/issue-report-evidence.md#runtime-trends-2026-10-07) reuses bound

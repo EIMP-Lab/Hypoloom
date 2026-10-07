@@ -111,13 +111,14 @@ class ObserverServices:
                 "FROM workflow_transitions WHERE workflow_id=t.workflow_id)")
             self._excluded_runs = {row["run_id"] for row in heads if row["state"] in {"COMPLETED", "FAILED", "CANCELLED"}}
 
-    def _post(self, url, document, *, headers, timeout, proxy_url=None):
+    def _post(self, url, document, *, headers, timeout, proxy_url=None, photo=None):
         if self._shutdown_deadline is not None:
             remaining = self._shutdown_deadline - time.monotonic()
             if remaining <= 0:
                 raise NotificationError("shutdown delivery window ended; cursor retained for retry")
             timeout = min(timeout, remaining)
         options = {} if proxy_url is None else {"proxy_url": proxy_url}
+        if photo is not None: options["photo"] = photo
         return self._transport(url, document, headers=headers, timeout=timeout, **options)
 
     def _dashboard(self, run_id, config):

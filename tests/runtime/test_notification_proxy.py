@@ -10,7 +10,6 @@ from pathlib import Path
 import select
 import socket
 import socketserver
-import ssl
 import subprocess
 import sys
 import threading
@@ -42,7 +41,7 @@ def local_connections_only(monkeypatch):
 
 
 @contextmanager
-def _receiver(*, tls=None, status=200, body=b'{"ok":true}'):
+def _receiver(*, tls=None, status=200, body=b'{"ok":true}', raw=False):
     received = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -50,8 +49,9 @@ def _receiver(*, tls=None, status=200, body=b'{"ok":true}'):
             pass
 
         def do_POST(self):
+            request = self.rfile.read(int(self.headers["Content-Length"]))
             received.append((self.path, dict(self.headers),
-                json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                request if raw else json.loads(request)))
             self.send_response(status)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -154,6 +154,32 @@ def test_actual_connect_verified_tls_then_json_post(tls_pair, monkeypatch):
     assert (path, body) == ("/send?test=1", {"text": "TEST only"})
     assert headers["Host"] == "example.org" and headers["X-Test"] == "local-only"
     assert "Proxy-Authorization" not in headers
+
+
+@pytest.mark.parametrize("proxied", [False, True])
+def test_actual_multipart_photo_preserves_caption_png_and_verified_proxy(tls_pair, monkeypatch, proxied):
+    from email.parser import BytesParser
+    from email.policy import default
+    context, certificate = tls_pair
+    monkeypatch.setenv("SSL_CERT_FILE", str(certificate))
+    photo = b"\x89PNG\r\n\x1a\nLOCAL-ONLY"
+    document = {"chat_id": "TEST recipient", "caption": "📋 中文简报\n\n⏱ 已运行：0 天 12:00:00"}
+    with _receiver(tls=context if proxied else None, raw=True) as (port, received), _connect_proxy(port) as (proxy, tunnels):
+        url = "https://example.org/botTEST/sendPhoto" if proxied else f"http://127.0.0.1:{port}/botTEST/sendPhoto"
+        response = notifier.post_json(url, document, headers={}, timeout=2.5,
+            photo=photo, proxy_url=proxy if proxied else None)
+    assert response == notifier.HTTPResponse(200, b'{"ok":true}') and len(received) == 1
+    assert len(tunnels) == int(proxied)
+    if proxied:
+        assert b"botTEST" not in b"".join([tunnels[0][0], *tunnels[0][1]])
+    path, headers, body = received[0]
+    assert path.endswith("/sendPhoto")
+    parsed = BytesParser(policy=default).parsebytes(("Content-Type: " + headers["Content-Type"] + "\r\n\r\n").encode() + body)
+    fields = {part.get_param("name", header="Content-Disposition"): part for part in parsed.iter_parts()}
+    assert fields["caption"].get_payload(decode=True).decode() == document["caption"]
+    assert fields["chat_id"].get_payload(decode=True).decode() == document["chat_id"]
+    assert fields["photo"].get_payload(decode=True) == photo
+    assert fields["photo"].get_content_type() == "image/png" and fields["photo"].get_filename() == "run-trends.png"
 
 
 @pytest.mark.parametrize("failure", ["unknown-ca", "wrong-hostname"])

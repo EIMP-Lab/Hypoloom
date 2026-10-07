@@ -25,7 +25,8 @@ institutional = [
     "playwright>=1.51,<2",
 ]
 notify = [
-    # Notification transports use the standard library.
+    # Transports use the standard library; only briefing charts need matplotlib.
+    "matplotlib>=3.9,<4",
 ]
 monitor = [
     "textual>=0.50",

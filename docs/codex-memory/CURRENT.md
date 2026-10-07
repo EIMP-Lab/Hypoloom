@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 7 Telegram templates/briefings: admitted `report_language` selects
+  Chinese/English, blank lines and small icons; elapsed replaces Dashboard URLs.
+  `run_briefing` is opt-in through existing events (included in public templates),
+  every 12 elapsed hours, latest missed window only, stopped at terminal state.
+  Reuses summary/graph/trends and sink cursor; no research writes or Agent/LLM use.
+  Optional matplotlib/CJK PNG via one sendPhoto/caption, bounded render with text
+  fallback before transport. 186 focused checks pass/no skips; Host/CPU and native
+  15-Agent/one-Process closure have no residue. 189 package files match wheel/bundle.
+  No real Telegram sends or retained/private Profile/service mutations.
+  [Guide](../guides/notifications.md) and
+  [qualification](../qualification.md#telegram-templates-and-twelve-hour-briefings-2026-10-07).
+
 - October 7 runtime trends: Web plots recorded experiment/Agent occupancy and
   peaks, total/expert/Grounding/other bucket RPM from existing Attempt intervals
   and relay timestamps. Browser lifetime does not affect collection; missing
