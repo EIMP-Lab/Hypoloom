@@ -5,6 +5,27 @@ English · [简体中文](runtime-recovery.zh-CN.md)
 New runs use ACI 29. Existing runs keep their pinned runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
 
+## Web observation freshness
+
+The Web observer reads its last complete observation while the next one is
+prepared in the background. **Preparing snapshot** means the first read is still
+in progress. **Connected · updating** means the connection works and a replacement
+is being prepared. **Data …s old** reports the age of the data, even when HTTP
+requests succeed. **Refresh failed** preserves the previous observation while
+the server retries. **Poll timeout** describes the browser request, not an
+experiment deadline or proof that the Host has stopped.
+
+The browser polls every three seconds after each response, allows eight seconds
+per request, and marks data older than 15 seconds as stale. Hidden tabs pause
+polling. Returning to the tab requests an update. History and selected details
+load independently, so a slow detail does not stop status polling.
+
+Backend observer fixes require reopening the monitor to load the updated Python
+code; reloading the browser only reloads Web assets. Reopen the monitor for the
+same state root and run ID and use its new startup URL. Leaving the monitor with
+`q` does not stop the Host or its experiments. Do not resume or migrate a run to
+update its observer.
+
 ## Completion and final-report evidence
 
 Implementation completion checks the actual sources and cumulative Git patch

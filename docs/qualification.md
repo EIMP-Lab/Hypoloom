@@ -2,6 +2,62 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Responsive observer polling (2026-10-07)
+
+Read-only diagnosis of `MERC-causal-202610062043` reproduced 6–13 second
+observation builds, including an 8.16 second build after trace-cache warmup.
+The old request waited for that work and the shared TUI projection lock, while
+the browser aborted after eight seconds. Its seven-second stale threshold also
+included the three-second delay before the next request. The refresh body was
+about 1.9 MB. These are local samples, not Edge/network latency percentiles.
+
+The repair reuses the existing process-local `ObserverRefresh` cache and its
+single-transaction snapshot/activity pair. Web polling returns the last complete
+pair immediately while one background reader coalesces refreshes with the TUI.
+Cold reads return 202/pending; failed builds retain old data with explicit error
+and bounded retry. Closing the observer stops new work and prevents late cache
+publication. Synchronous snapshot, history and detail interfaces remain available.
+Existing Host STATUS backoff, coherence checks and independent historical Oracle
+audits are unchanged; observation work never gains a writer capability.
+
+The browser's existing `observed_at` can suppress retransmission of the same
+cached pair. An unchanged reply still carries actual data age, refresh/error
+state and the historical audit observation. It is only a transport hint after
+bearer authentication, not a revision, durable marker, or scientific authority.
+New pairs use negotiated gzip; selected detail requests own their timeout and
+cannot hold up status polling. Product views decode existing rows once within
+their read transaction, and detail helpers reuse those decoded values.
+
+The browser retains the eight-second transport timeout and exponential retry.
+Data becomes stale after 15 seconds (poll interval + request timeout + four
+seconds of margin), using server-reported age rather than the arrival time of a
+cached reply. Pending generation, stale data, refresh failure, authentication
+failure and network timeout have distinct labels in both languages. This changes
+neither Agent RPM ownership nor the user-selected pulse timing and appearance.
+
+Validation evidence is under `.local/qualification/observer-poll-20261007/`.
+**221 distinct checks pass, with no skips**: 132 backend checks, 87 compatibility
+checks (12 overlap), ten browser polling/view cases and four documentation
+checks. Two final polling cases and three final provider-control cases also pass
+after preserving control-button refreshes on successful polls. Coverage includes
+blocked cold/warm reads, concurrent request sharing, error recovery, close during
+an in-flight read, authentication, compression, actual browser timeout/cached-age
+behavior, selected-detail isolation, TUI, both languages and scoped controls.
+JavaScript syntax, Ruff undefined-name checks and Git whitespace checks pass.
+
+A temporary, separately owned observer read the retained run without changing
+its Host or existing monitor: 16 HTTP polls took 2.7–119 ms, with no timeout.
+The first two replies were 202/pending; three complete replies compressed roughly
+1.9 MB to 249–252 KB; unchanged replies were 222–223 bytes while the audit was
+pending and about 1.6 KB afterward. Data age still reached 16.4 seconds during
+initial background work, which correctly remains stale; fast HTTP is not a claim
+of fresh research data. The temporary server was closed afterward.
+`retained-run-http.json` records these local samples, not an Edge/network SLO.
+`product-equivalence.json` compares the old and new activity builders in one
+read-only transaction: all 341 events, 18 experiments and remaining fields match.
+Reopening the existing monitor is required to activate its new Python backend.
+This is an observer repair, not a G0–G5 candidate freeze or a retained-run upgrade.
+
 ## PR 5 incomplete scientific coverage (2026-10-07)
 
 Integrate PR #5 at `00206353` as a result-classification repair. A successful

@@ -15,8 +15,10 @@ only operator-submitted ANSWER requests through the existing Host socket.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hmac
 import json
+import math
 import secrets
 import select
 import socket
@@ -279,10 +281,27 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
         content_type: str,
         *,
         headers: Sequence[tuple[str, str]] = (),
+        compress: bool = False,
     ) -> None:
         if self.observer.is_closing:
             self.close_connection = True
             return
+        if compress:
+            headers = (*headers, ('Vary', 'Accept-Encoding'))
+            for encoding in self.headers.get('Accept-Encoding', '').split(','):
+                name, *parameters = encoding.split(';')
+                if name.strip().lower() != 'gzip': continue
+                quality = 1.0
+                try:
+                    for parameter in parameters:
+                        key, _, value = parameter.strip().partition('=')
+                        if key.lower() == 'q': quality = float(value)
+                except ValueError:
+                    quality = 0.0
+                if 0 < quality <= 1 and len(body) >= 1024:
+                    body = gzip.compress(body, compresslevel=1)
+                    headers = (*headers, ('Content-Encoding', 'gzip'))
+                break
         self.send_response(status.value)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -373,17 +392,34 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
                     ensure_ascii=False, separators=(',', ':')).encode()
                 self._send(HTTPStatus.OK, body, 'application/json; charset=utf-8')
                 return
-            observation = self.observer.refresh_reader.get()
+            previous = self.headers.get('X-Hypoloom-Observed-At')
+            if previous is not None:
+                previous = float(previous)
+                if not math.isfinite(previous): raise ValueError('invalid observation time')
+            observation = self.observer.refresh_reader.poll()
+            snapshot = observation['snapshot']
+            if snapshot is None:
+                code = HTTPStatus.SERVICE_UNAVAILABLE if observation['observation']['state'] == 'error' else HTTPStatus.ACCEPTED
+                self._send(code, json.dumps(observation).encode(), 'application/json; charset=utf-8')
+                return
+            if previous == snapshot.observed_at:
+                # The client's existing observation time only avoids retransmission;
+                # it grants no access and never substitutes for a run revision.
+                body = json.dumps({'unchanged': True, 'observation': observation['observation'],
+                    'oracle': snapshot.oracle}, ensure_ascii=False, separators=(',', ':')).encode()
+                self._send(HTTPStatus.OK, body, 'application/json; charset=utf-8', compress=True)
+                return
             activity = {key: value for key, value in self._selected_product(observation['activity']).items() if key != 'summary'}
             for key, limit in (('events', 100), ('experiments', 50)):
                 activity[key], activity[key + '_page'] = self._history_page(activity[key], limit=limit)
-            body = json.dumps({'snapshot': observation['snapshot'].to_dict(), 'activity': activity},
+            body = json.dumps({'snapshot': snapshot.to_dict(), 'activity': activity,
+                'observation': observation['observation']},
                 ensure_ascii=False, separators=(',', ':')).encode()
         except ValueError:
             self._send(HTTPStatus.BAD_REQUEST, b'{"error":"invalid refresh request"}\n', 'application/json'); return
         except (MonitorError, OSError, sqlite3.Error, StateStoreError):
             self._send(HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"refresh unavailable"}\n', 'application/json'); return
-        self._send(HTTPStatus.OK, body, 'application/json; charset=utf-8')
+        self._send(HTTPStatus.OK, body, 'application/json; charset=utf-8', compress=True)
 
     def _product(self, name: str) -> None:
         if not self._require_authorization(): return

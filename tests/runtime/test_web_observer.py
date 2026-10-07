@@ -157,9 +157,10 @@ def _request(
     *,
     token: str | None = None,
     body: bytes | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
     host, port = server.server_address[:2]
-    headers = {}
+    headers = dict(headers or {})
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     connection = http.client.HTTPConnection(str(host), int(port), timeout=5)

@@ -55,11 +55,11 @@ def _object(value: object) -> dict[str, Any]:
 
 
 def _observation(row):
-    return _object(row.get("observation_json", row.get("observation")))
+    return _object(row.get("observation", row.get("observation_json")))
 
 
 def _payload(row):
-    return _object(row.get("payload_json", row.get("payload")))
+    return _object(row.get("payload", row.get("payload_json")))
 
 
 def _time(value):

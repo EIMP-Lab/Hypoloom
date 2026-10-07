@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Responsive observer polling](../qualification.md#responsive-observer-polling-2026-10-07):
+  shared background refresh, truthful cached-data age, conditional/compressed
+  replies and independent details; [user guidance](../guides/runtime-recovery.md#web-observation-freshness).
+
 - [PR 5 incomplete scientific coverage](../qualification.md#pr-5-incomplete-scientific-coverage-2026-10-07):
   Profile-owned classification, raw/accepted result distinction, unchanged
   iteration boundary and real Host/CPU closure; [configuration](../guides/research-workflow.md#incomplete-component-comparisons).

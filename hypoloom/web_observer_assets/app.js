@@ -2,8 +2,8 @@
   "use strict";
 
   const POLL_INTERVAL_MS = 3000;
-  const STALE_AFTER_MS = 7000;
   const REQUEST_TIMEOUT_MS = 8000;
+  const STALE_AFTER_MS = POLL_INTERVAL_MS + REQUEST_TIMEOUT_MS + 4000;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const SESSION_TOKEN_KEY = "hypoloom-observer-token";
   const LANGUAGE_STORAGE_KEY = "hypoloom.language";
@@ -100,6 +100,8 @@
   const state = {
     snapshot: null,
     lastSuccessAt: 0,
+    observation: null,
+    pollError: null,
     selectedKey: null,
     topology: [],
     topologyMode: "component",
@@ -263,6 +265,31 @@
     if (kind !== "live" && state.snapshot) {
       setText("provider-title", t("API status unconfirmed · observation stale"));
     }
+  }
+
+  function updateConnection(force = false) {
+    if (document.hidden) return;
+    let kind = "live", message = t("CONNECTED");
+    const observed = state.observation;
+    const age = observed && Number.isFinite(observed.age_seconds)
+      ? observed.age_seconds * 1000 + Date.now() - state.lastSuccessAt
+      : state.lastSuccessAt ? Date.now() - state.lastSuccessAt : 0;
+    if (state.pollError) {
+      kind = state.snapshot && !state.pollError.startsWith("TOKEN ") ? "stale" : "error";
+      message = t(state.pollError);
+    } else if (observed?.state === "error") {
+      kind = state.snapshot ? "stale" : "error";
+      message = t("REFRESH FAILED · RETRYING");
+    } else if (!state.snapshot) {
+      kind = "connecting";
+      message = t("PREPARING SNAPSHOT");
+    } else if (age > STALE_AFTER_MS) {
+      kind = "stale";
+      message = t(observed?.refreshing ? "DATA {0}s OLD · UPDATING" : "DATA {0}s OLD", Math.floor(age / 1000));
+    } else if (observed?.refreshing) {
+      message = t("CONNECTED · UPDATING");
+    }
+    if (force || connection.dataset.state !== kind || connectionText.textContent !== message) setConnection(kind, message);
   }
 
   function statusClass(value) {
@@ -3739,6 +3766,7 @@
     try {
       const headers = {};
       if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+      if (Number.isFinite(state.snapshot?.observed_at)) headers["X-Hypoloom-Observed-At"] = String(state.snapshot.observed_at);
       const response = await window.fetch("/api/refresh", {
         method: "GET",
         cache: "no-store",
@@ -3747,35 +3775,65 @@
         signal: controller.signal,
       });
       if (response.status === 401) {
+        state.pollError = accessToken ? "TOKEN REJECTED" : "TOKEN REQUIRED";
         setConnection("error", accessToken ? t("TOKEN REJECTED") : t("TOKEN REQUIRED"));
         announce(t("Snapshot access was not authorized. Open the startup URL containing its token fragment."));
         return;
       }
       if (!response.ok) throw new Error(t("snapshot endpoint returned {0}", response.status));
       const refresh = await response.json();
+      if (response.status === 202 && refresh.observation?.state === "pending") {
+        state.pollFailures = 0;
+        state.pollError = null;
+        // A restarted observer has not yet supplied a replacement for retained
+        // browser data. Keep its original age; a pending reply is not freshness.
+        if (!state.snapshot) {
+          state.lastSuccessAt = Date.now();
+          state.observation = refresh.observation;
+        } else if (state.observation) {
+          state.observation = {...state.observation, state: "ready", refreshing: true};
+        }
+        updateConnection(true);
+        return;
+      }
       const snapshot = refresh.snapshot;
-      if (!snapshot || typeof snapshot !== "object" || typeof snapshot.run_id !== "string") {
+      if (refresh.unchanged === true && !Number.isFinite(refresh.observation?.age_seconds)) {
+        throw new Error(t("snapshot response has an invalid shape"));
+      }
+      if (!(refresh.unchanged === true && state.snapshot) &&
+          (!snapshot || typeof snapshot !== "object" || typeof snapshot.run_id !== "string")) {
         throw new Error(t("snapshot response has an invalid shape"));
       }
       state.lastSuccessAt = Date.now();
       state.pollFailures = 0;
+      state.pollError = null;
+      state.observation = refresh.observation || null;
       if (document.hidden) return;
-      render(snapshot, refresh.activity);
+      if (refresh.unchanged === true) {
+        if (refresh.oracle) state.snapshot = {...state.snapshot, oracle: refresh.oracle};
+        renderHud(state.snapshot);
+        renderVisibleViews();
+      } else {
+        render(snapshot, refresh.activity);
+      }
+      updateConnection(true);
       if (state.activeView === "workbench" && state.workbenchKind !== "reliability") {
-        const input = JSON.stringify([snapshot.status?.run_revision, snapshot.fact_counts, snapshot.overview?.totals, workbenchQuery()]);
+        const current = state.snapshot;
+        const input = JSON.stringify([current.status?.run_revision, current.fact_counts, current.overview?.totals, workbenchQuery()]);
         if (state.renderInputs.get("workbench-fetch") !== input) {
           state.renderInputs.set("workbench-fetch", input);
-          await loadWorkbench();
+          // Selected details own their timeout and request identity; they must
+          // not delay the next status poll.
+          void loadWorkbench();
         }
       }
       if (document.hidden) return;
-      setConnection("live", t("CONNECTED"));
-      announce(t("Observed run {0} at revision {1}", snapshot.run_id, object(snapshot.status).run_revision ?? "unknown"));
+      announce(t("Observed run {0} at revision {1}", state.snapshot.run_id, object(state.snapshot.status).run_revision ?? "unknown"));
     } catch (error) {
       if (document.hidden) return;
       state.pollFailures += 1;
-      const message = error && error.name === "AbortError" ? t("POLL TIMEOUT") : "RECONNECTING";
-      setConnection(state.snapshot ? "stale" : "error", message);
+      state.pollError = error && error.name === "AbortError" ? "POLL TIMEOUT" : "RECONNECTING";
+      updateConnection(true);
       announce(t("Snapshot poll failed; the last successful read remains visible and may be stale."));
     } finally {
       window.clearTimeout(timeout);
@@ -4181,10 +4239,8 @@
     state.renderInputs.clear();
     if (state.snapshot) render(state.snapshot, state.product);
     if (!drawer.hidden && state.drawerMode === "detail") renderResearchDetail();
-    setConnection(connectionState, connectionState === "live" ? t("CONNECTED")
-      : connectionState === "connecting" ? t("CONNECTING")
-      : connectionState === "stale" && state.lastSuccessAt ? t("STALE {0}s · RETRYING", Math.floor((Date.now() - state.lastSuccessAt) / 1000))
-      : connectionMessage);
+    if (document.hidden) setConnection(connectionState, connectionMessage);
+    else updateConnection(true);
     // Keep operator drafts, reviewed answers, pending request IDs and current
     // tab/filter selections. Language selection never sends an operation.
     humanButtons();
@@ -4244,15 +4300,10 @@
     }
   });
 
-  window.setInterval(() => {
-    if (document.hidden) return;
-    if (state.lastSuccessAt && Date.now() - state.lastSuccessAt > STALE_AFTER_MS) {
-      const seconds = Math.floor((Date.now() - state.lastSuccessAt) / 1000);
-      setConnection("stale", t("STALE {0}s · RETRYING", seconds));
-    }
-  }, 1000);
+  window.setInterval(updateConnection, 1000);
 
   if (!accessToken) {
+    state.pollError = "TOKEN REQUIRED";
     setConnection("error", t("TOKEN REQUIRED"));
   }
   setActiveView("operations");

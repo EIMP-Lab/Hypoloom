@@ -561,9 +561,18 @@ def browser(tmp_path: Path, request):
     window.fetch = async (path, options = {}) => {
       window.fixtureRequests.push([options.method || 'GET', path, options.headers?.Authorization]);
       const query = new URL(path, 'http://observer.invalid');
-      if (query.pathname === '/api/refresh' && window.fixtureDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureDelay));
+      if (query.pathname === '/api/refresh') window.fixtureObservedAt = options.headers?.['X-Hypoloom-Observed-At'];
+      if (query.pathname === '/api/refresh' && window.fixtureDelay) await new Promise((resolve, reject) => {
+        const abort = () => {clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError'));};
+        const timer = setTimeout(() => {options.signal?.removeEventListener('abort', abort); resolve();}, window.fixtureDelay);
+        if (options.signal?.aborted) abort();
+        else options.signal?.addEventListener('abort', abort, {once:true});
+      });
+      if (query.pathname === '/api/details' && window.fixtureDetailDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureDetailDelay));
       if (['/api/events','/api/experiments'].includes(query.pathname) && window.fixtureHistoryDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureHistoryDelay));
       if (query.pathname === '/api/refresh' && window.fixtureError) return {ok:false, status:503};
+      if (query.pathname === '/api/refresh' && window.fixtureRefresh) return {
+        ok:true, status:window.fixtureRefreshStatus || 200, json:async () => structuredClone(window.fixtureRefresh)};
       const data = query.pathname === '/assets/messages.json' ? fixture.messages
         : query.pathname === '/api/refresh' ? {snapshot: fixture.snapshot, activity: fixture.activity}
         : query.pathname === '/api/events' ? {events:[{type:'OLDER_EVENT', event_id:'old-event', payload:{}}], events_page:{offset:100, limit:100,total:101,has_more:false}}
@@ -587,7 +596,10 @@ def browser(tmp_path: Path, request):
     };
     """
     )
-    operator = getattr(request, "param", False)
+    initial_pending = getattr(request, 'param', False) == 'pending'
+    operator = False if initial_pending else getattr(request, "param", False)
+    if initial_pending:
+        mock += "window.fixtureRefreshStatus=202; window.fixtureRefresh={snapshot:null,activity:null,observation:{state:'pending',age_seconds:null,refreshing:true}};"
     # The data-URL fixture lacks secure-context randomUUID; actual product URLs
     # are loopback HTTP. Supply the browser crypto operation for this fixture.
     if operator:
@@ -659,7 +671,8 @@ def browser(tmp_path: Path, request):
             },
         )
         driver.wait(
-            "document.querySelector('#total-skills strong')?.textContent === '2'"
+            "document.querySelector('#connection-text').textContent === 'PREPARING SNAPSHOT'" if initial_pending
+            else "document.querySelector('#total-skills strong')?.textContent === '2'"
         )
         yield driver
         assert not driver.errors
@@ -1805,6 +1818,84 @@ def test_browser_history_pages_audit_age_and_failed_refresh_keep_evidence(browse
     page.wait("!document.querySelector('#product-events').textContent.includes('OLDER_EVENT')")
     page.click("#experiments-latest")
     page.wait("document.querySelector('#experiment-queue').textContent.includes('experiment-a')")
+
+
+@pytest.mark.parametrize('browser', ['pending'], indirect=True)
+def test_browser_cold_poll_and_authentication_states(browser):
+    page = browser
+    before = page.evaluate('fixtureRequests.length')
+    page.wait(f'fixtureRequests.length > {before}')
+    assert page.text('#connection-text') == 'PREPARING SNAPSHOT'
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'connecting'
+    page.evaluate('window.fixtureRefresh=null')
+    page.wait("document.querySelector('#total-skills strong')?.textContent === '2'")
+    page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
+    page.evaluate('window.fixtureRefresh={}; window.fixtureRefreshStatus=401')
+    page.wait("document.querySelector('#connection-text').textContent === 'TOKEN REJECTED'")
+    time.sleep(1.2)
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'error'
+    assert page.text('#connection-text') == 'TOKEN REJECTED'
+    page.evaluate('window.fixtureRefresh=null; window.fixtureRefreshStatus=200')
+    page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
+
+
+def test_browser_cached_poll_tracks_data_age_and_preserves_evidence(browser):
+    page = browser
+    page.click('#total-hypotheses')
+    page.wait("document.querySelectorAll('.graph-node').length === 2")
+    page.evaluate("window.retainedGraph=document.querySelector('.graph-node'); window.fixtureRefresh={unchanged:true, observation:{state:'ready', age_seconds:4, refreshing:true}, oracle:{ok:null,issues:[],observation:{state:'pending'}}}")
+    page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED · UPDATING'")
+    assert page.evaluate("window.fixtureObservedAt === String(fixture.snapshot.observed_at)")
+    assert page.evaluate("window.retainedGraph === document.querySelector('.graph-node')")
+    assert 'AUDIT PENDING' in page.text('#oracle-state')
+    page.evaluate("window.fixtureRefresh.observation.age_seconds=40")
+    page.wait("document.querySelector('#connection-text').textContent.includes('40s OLD')")
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'stale'
+    # A successful HTTP reply containing old data must not make it live again.
+    before = page.evaluate('fixtureRequests.length')
+    page.wait(f'fixtureRequests.length > {before}')
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'stale'
+    assert page.evaluate("window.retainedGraph === document.querySelector('.graph-node')")
+    page.evaluate("window.fixtureRefresh.observation.state='error'")
+    page.wait("document.querySelector('#connection-text').textContent === 'REFRESH FAILED · RETRYING'")
+    page.evaluate("window.fixtureRefreshStatus=202; window.fixtureRefresh={snapshot:null,activity:null,observation:{state:'pending',age_seconds:null,refreshing:true}}")
+    before = page.evaluate('fixtureRequests.length')
+    page.wait(f'fixtureRequests.length > {before}')
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'stale'
+    assert page.evaluate("window.retainedGraph === document.querySelector('.graph-node')")
+    page.evaluate("window.fixtureRefreshStatus=200; window.fixtureRefresh={snapshot:fixture.snapshot,activity:fixture.activity,observation:{state:'ready',age_seconds:0,refreshing:false}}")
+    page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
+
+
+def test_browser_slow_valid_poll_and_real_timeout_are_distinct(browser):
+    page = browser
+    page.evaluate('window.fixtureDelay=5500')
+    before = page.evaluate('fixtureRequests.length')
+    page.wait(f'fixtureRequests.length > {before}')
+    time.sleep(4.3)  # More than seven seconds since the preceding good read.
+    assert page.evaluate("document.querySelector('#connection').dataset.state") == 'live'
+    time.sleep(1.5)
+    assert page.text('#connection-text') == 'CONNECTED'
+    page.evaluate('window.fixtureDelay=9000')
+    before = page.evaluate('fixtureRequests.length')
+    page.wait(f'fixtureRequests.length > {before}')
+    page.wait("document.querySelector('#connection-text').textContent === 'POLL TIMEOUT'")
+    time.sleep(1.2)
+    assert page.text('#connection-text') == 'POLL TIMEOUT'
+    page.evaluate('window.fixtureDelay=0')
+    page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
+
+
+def test_browser_slow_selected_detail_does_not_block_polling(browser):
+    page = browser
+    page.evaluate('window.fixtureDetailDelay=9000')
+    page.click('#total-skills')
+    before = page.evaluate("fixtureRequests.filter(row => row[1] === '/api/refresh').length")
+    page.wait(f"fixtureRequests.filter(row => row[1] === '/api/refresh').length > {before}")
+    first = time.monotonic()
+    page.wait(f"fixtureRequests.filter(row => row[1] === '/api/refresh').length > {before + 1}")
+    assert time.monotonic() - first < 5
+    assert page.text('#connection-text') == 'CONNECTED'
 
 
 def test_browser_literature_download_reasons_keep_unknown_and_attempt_context(browser):

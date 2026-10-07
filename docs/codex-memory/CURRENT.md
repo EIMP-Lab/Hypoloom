@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 7 observer polling: Web uses the existing complete observation cache
+  while one background reader coalesces builds with TUI/full readers. Cold reads
+  are pending; failures retain aged data, and close prevents late publication.
+  Existing observed_at suppresses unchanged payloads; gzip reduces new payloads.
+  Browser freshness follows data age (15 seconds), keeps the eight-second request
+  deadline, and separates detail loading from polling. Decoded rows are reused;
+  Host STATUS/audit semantics and research state are unchanged. 221 distinct
+  focused checks pass without skips; 16 local retained-run HTTP reads take
+  2.7–119 ms with no timeout, with old/new activity projections identical.
+  Reopen the monitor for the backend fix; browser reload only updates assets.
+  [Design and validation](../qualification.md#responsive-observer-polling-2026-10-07).
+
 - October 7 PR #5 integration: merge `00206353` as a Profile-owned component
   result-classification fix. Matching existing-artifact completeness predicates
   yields INCONCLUSIVE; raw validation values remain, while accepted outcomes omit
