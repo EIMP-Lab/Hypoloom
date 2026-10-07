@@ -170,7 +170,7 @@ def provider_retry_status(host, run_id: str) -> dict[str, Any]:
     # Durable gate view: closed Attempts carry the failure, an operator
     # clear transition ends it early. No in-memory authority, so a
     # reopened Host computes the identical gate.
-    from .provider_observation import provider_retry_gate
+    from .provider_observation import PROVIDER_TRANSIENT, provider_retry_gate
     cleared = host.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
         "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
     rows = host.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
@@ -192,7 +192,7 @@ def provider_retry_status(host, run_id: str) -> dict[str, Any]:
     traffic.select(cleared)
     boundary = max([cleared or 0, *(gate['attempt_ended_at'] for gate in status['gates'])])
     recovered_at = traffic.recovered_after(boundary)
-    if (all(gate['class'] == 'rate_limited' for gate in status['gates'])
+    if (all(gate['class'] in PROVIDER_TRANSIENT for gate in status['gates'])
             and recovered_at is not None):
         status.update(pending=False, state='ready', requires_operator=False,
             reason=None, next_retry_at=None, recovered_at=recovered_at,

@@ -2,6 +2,70 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Mixed usage accounting and temporary provider failures (2026-10-08)
+
+The [repair design](design/context-management-and-recovery.md) addresses the
+latest Grounding rejection on base `2aa60b0`. Read-only replay of the retained
+CLI output fails with the original adapter's `invalid_provider_metadata` and
+succeeds with adapter `claude-code-bwrap/71`: **4,546,310 input +118,357 output
+=4,666,667 tokens**, with the original reported cost. The complete model ledger
+matches the wire categories; outer usage omitted compaction and repeated an
+earlier input, moving uncached and cached counts in opposite directions.
+The subsequent HTTP 500 is now classified as temporary service unavailability.
+
+The existing model ledger, wire validator, context observation and shared API
+backoff remain the authorities. A narrowly recognized empty terminal SSE supplies
+neither a context anchor nor proof of recovery. Mixed-category reconciliation
+requires exact model/cost/wire agreement; malformed, partial, unknown and
+inconsistent evidence, output reductions and explicit total/budget violations
+retain rejection. Upstream 500/502/503/504 uses existing transient backoff;
+local transport failures, authentication, quota and bounded final-report rules
+retain their separate behavior. No new persistent mechanism or migration.
+
+Validation and its boundaries:
+
+- Focused implementation selection: **166 passed / one fixture failure**; the
+  new reader fixture used unpadded exchange directory names. Correcting it and
+  rerunning the affected/adjacent selection gives **122 passed / zero skips**.
+  Original failures and replay outputs are retained.
+- Native CC/local-provider selection: **40 passed / zero skips**, including
+  partial and empty stream-to-JSON accounting, quota/connection recovery and
+  six consecutive remote 429, local-queue or remote 503 failures. Each recovery
+  closes through the real Host and one CPU Process. The six native roots total
+  **88 Agent +6 Process Attempts and six canonical outcomes**, all COMPLETED,
+  with passing original Oracles and zero OPEN/pending effects or live owned groups.
+  A later independent row/process census confirms those closure counts and that
+  all **94 recorded groups** are absent.
+- The final observer edit recognizes content supplied directly in start events,
+  preventing a nonempty response from matching the empty-stream predicate.
+  Final affected checks give **103 passed / two setup errors**: both real-relay
+  fixtures are blocked at TCP socket creation by the newly restricted execution
+  environment (`EPERM`). Native evidence above predates this last edit.
+- Final G1 static checks pass; full offline execution stops at **568 passed /
+  eight failures** under `--maxfail=8`. These encounter denied TCP sockets,
+  read-only `/var/tmp`, or Host startup reporting `EPERM`. Full G1 is incomplete.
+  Re-auditing native parsers in this environment also fails: a direct bwrap
+  probe reports denied `NETLINK_ROUTE` creation. Preserve those failed rechecks;
+  they do not replace the original successful native Oracle reports.
+- The wheel builds without downloads; isolated install and fresh bundle match
+  the checkout's **189 package files**. Installed and bundled CLI help, MCP
+  initialize/tools-list and existing runtime identity checks pass outside the
+  checkout. This packaging check does not start a Host.
+- Documentation/Profile/MCP selection: **nine passed / one failed**; the
+  Host-backed MCP fixture reaches revision 7 instead of 9 because both candidate
+  compile Processes fail at bwrap `NETLINK_ROUTE` creation, as their retained
+  stderr confirms. The MCP wire protocol checks pass. Two adapter-identity
+  regressions also pass; the failing Host assertion was not changed.
+
+Evidence: `.local/qualification/provider-repair-20261008/` (JUnit, original/final
+replays, installation and native census); native roots: `/tmp/hl-pr8/`.
+This is a bounded repair with incomplete final-environment qualification, not
+G1–G5 promotion. No paid provider/GPU call, retained-run write, resume or migration
+occurred. The cancelled research run keeps its original bundle and state; future
+runs from the repaired code receive the change. User guides cover
+[accounting/context](guides/context-management.md) and
+[API recovery](guides/provider-recovery.md).
+
 ## Telegram templates and twelve-hour briefings (2026-10-07)
 
 [Notification design and configuration](guides/notifications.md#twelve-hour-run-briefings--每-12-小时运行简报)

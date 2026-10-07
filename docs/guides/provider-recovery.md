@@ -33,6 +33,13 @@ three waves. Authentication recovery still uses the existing infrastructure
 attempt allowance. Concurrent failures count as one wave.
 Explicit quota exhaustion without a retry time waits for an operator immediately.
 
+New Hosts also classify explicit upstream HTTP 500/502/503/504 as
+`service_unavailable`. These failures use the same automatic backoff and
+Retry-After handling as transient 429, without exhausting individual research
+nodes. Authentication and quota rules remain separate. Local transport/cleanup
+failures are not inferred to be remote service outages. A zero-usage terminal
+stream with no model or content cannot confirm API recovery.
+
 Provider availability failures retain closed Attempts and their actual/unknown
 accounting, but do not exhaust each research node. Cost, token, wallclock and
 cancellation limits still apply. Submitted CPU/GPU Processes continue through

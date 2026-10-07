@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/70"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/71"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2096,15 +2096,13 @@ def _normalized_provider_usage(
         dominates_outer = complete is not None and all(new >= old for new, old in zip(
                     (complete[0], complete[1], complete[2], complete[4]),
                     (uncached, cache_creation, cache_read, output_tokens)))
-        # CC can instead add an interrupted stream-start input to the JSON
-        # fallback a second time. Permit a downward input correction only when
-        # the exact ledger/cost is independently corroborated by complete wire
-        # exchanges; observations alone never become a bill. Other ledger
-        # regressions, unknown cache semantics and explicit total_tokens retain
-        # the existing conservative validation.
+        # Compaction omitted from outer usage and repeated fallback inputs can
+        # move uncached/cache categories in opposite directions. Reconcile only
+        # against the exact model bill, matching cost and complete wire usage.
+        # Output reductions, unknown semantics and explicit total_tokens retain
+        # the existing conservative validation; observations never become a bill.
         corroborated = (complete is not None and matching_cost and not dominates_outer
-            and complete[4] == output_tokens
-            and all(new <= old for new, old in zip(complete[:3], (uncached, cache_creation, cache_read)))
+            and complete[4] >= output_tokens
             and _wire_corroborates_model_usage(observed_wire_exchanges, model, complete))
         if complete is not None and matching_cost and (dominates_outer or corroborated):
             if diagnostics is not None:
@@ -2146,8 +2144,11 @@ def _wire_corroborates_model_usage(
     model: str,
     complete: tuple[int, int, int, int, int, int],
 ) -> bool:
-    from .provider_observation import summarize_exchanges
+    from .provider_observation import empty_generation_response, summarize_exchanges
     generations = [item for item in exchanges or () if item.get("request_path") == "/v1/messages"]
+    if any(empty_generation_response(item) and item["requested_model"] != model for item in generations):
+        return False
+    generations = [item for item in generations if not empty_generation_response(item)]
     if not generations or any(item.get("served_models") != [model]
         or item.get("usage_valid") is not True
         or not isinstance(item.get("context_capacity") or {}, Mapping)

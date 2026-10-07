@@ -16,7 +16,8 @@ INPUT_TOO_LONG_PHRASES = (
     "prompt is too long", "prompt too long", "context length exceeded",
     "maximum context length", "input is too long")
 
-PROVIDER_UNAVAILABLE = frozenset({"auth_failed", "rate_limited", "quota_exhausted"})
+PROVIDER_TRANSIENT = frozenset({"rate_limited", "service_unavailable"})
+PROVIDER_UNAVAILABLE = PROVIDER_TRANSIENT | {"auth_failed", "quota_exhausted"}
 # Local queue expiry retries its task without claiming a remote outage.
 PROVIDER_DEFERRED = PROVIDER_UNAVAILABLE | {"local_request_queue"}
 PROVIDER_RETRY_DELAYS = (60, 120, 240, 480, 900)
@@ -36,7 +37,8 @@ def provider_status_text(status, *, language="en"):
     if state == "ready": return tr("API dispatch available.")
     if state == "recovering": return tr("Trying API recovery with one pending task; access is not yet confirmed.")
     reason = {"auth_failed": "authentication rejected", "rate_limited": "rate limit (quota cause unconfirmed)",
-        "quota_exhausted": "quota exhausted", "connection_configuration": "connection configuration unavailable"}.get(status.get("reason"), "provider rejected access")
+        "quota_exhausted": "quota exhausted", "service_unavailable": "provider temporarily unavailable",
+        "connection_configuration": "connection configuration unavailable"}.get(status.get("reason"), "provider rejected access")
     until = status.get("next_retry_at")
     if until is None:
         until = max((g["until"] for g in status.get("gates", []) if type(g.get("until")) in (int, float)), default=None)
@@ -89,7 +91,13 @@ class ProviderObservation:
                     self.provider_error_code = "rate_limited"
                 elif any(phrase in message for phrase in INPUT_TOO_LONG_PHRASES):
                     self.provider_error_code = "input_too_long"
-        if kind == "content_block_delta" and self.first_content_at is None:
+        # Some compatible providers put content directly in a start event.
+        # Its absence is also used to distinguish an empty terminal SSE.
+        block = value.get("content_block")
+        start_content = (kind == "content_block_start" and isinstance(block, dict)
+            and any(v for k, v in block.items() if k != "type"))
+        message_content = kind in {"message_start", "message"} and isinstance(message, dict) and message.get("content")
+        if (kind == "content_block_delta" or start_content or message_content) and self.first_content_at is None:
             self.first_content_at = time.time()
 
     def _stop(self, value):
@@ -146,12 +154,36 @@ class ProviderObservation:
             "message_complete": self.message_complete, "first_content_at": self.first_content_at}
 
 
+def empty_generation_response(exchange):
+    """Recognize the observed zero-usage terminal SSE, not a model response.
+
+    Keep its raw exchange, but do not use an absent model/content as recovery
+    or input measurement. Missing/partial/invalid usage remains unknown.
+    """
+    usage = exchange.get("usage")
+    headers = exchange.get("response_headers")
+    return (exchange.get("request_path") == "/v1/messages"
+        and isinstance(exchange.get("requested_model"), str) and bool(exchange["requested_model"])
+        and exchange.get("upstream_status") == 200
+        and isinstance(headers, dict) and headers.get("content-type") == "text/event-stream"
+        and exchange.get("response_body_complete") is True
+        and exchange.get("message_complete") is True and exchange.get("usage_valid") is True
+        and exchange.get("served_models") == [] and exchange.get("stop_reason") == "end_turn"
+        and "first_content_at" in exchange and exchange["first_content_at"] is None
+        and exchange.get("failure_reason") is None and exchange.get("provider_error_code") is None
+        and isinstance(usage, dict)
+        and all(type(usage.get(key)) is int and usage[key] == 0 for key in ("input_tokens", "output_tokens"))
+        and all(type(usage.get(key, 0)) is int and usage.get(key, 0) == 0 for key in _TOKEN_FIELDS))
+
+
 def summarize_exchanges(exchanges):
     """Complete observed generation usage, separate from terminal billing."""
     from .context_management import input_usage
     result = dict.fromkeys((*_TOKEN_FIELDS, "total_tokens", "completed_requests", "unmeasured_requests"), 0)
     for exchange in exchanges:
         if exchange.get("request_path") != "/v1/messages":
+            continue
+        if empty_generation_response(exchange):
             continue
         usage = exchange.get("usage")
         if (exchange.get("upstream_status") != 200
@@ -218,11 +250,11 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         if recovery is not None and (started(row) < started(recovery) or row.get("attempt_id") == recovery.get("attempt_id")):
             continue
         until = None
-        if row.get("code") in {"rate_limited", "quota_exhausted"}:
+        if row.get("code") in PROVIDER_TRANSIENT | {"quota_exhausted"}:
             retry_at = row.get("retry_at")
             if type(retry_at) in (int, float) and math.isfinite(retry_at):
                 until = float(retry_at)
-            elif row.get("code") == "rate_limited":
+            elif row.get("code") in PROVIDER_TRANSIENT:
                 until = float(ended_at) + provider_retry_delay(1)
         elif row.get("code") == "auth_failed" and cooldown_seconds >= 0:
             until = float(ended_at) + cooldown_seconds
@@ -240,10 +272,10 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         if item["started_at"] >= last_end:
             rounds += 1
         last_end = max(last_end, item["attempt_ended_at"])
-        if item['class'] == 'rate_limited':
+        if item['class'] in PROVIDER_TRANSIENT:
             item['until'] = max(item['until'], item['attempt_ended_at'] + provider_retry_delay(rounds))
             item['pending'] = item['until'] > now
-    operator = (rounds >= attempt_limit and any(item['class'] != 'rate_limited' for item in gates)
+    operator = (rounds >= attempt_limit and any(item['class'] not in PROVIDER_TRANSIENT for item in gates)
         or any(item["until"] is None for item in gates))
     waiting = operator or any(item["pending"] for item in gates)
     recovering = not waiting and (bool(gates) or cleared_at is not None and recovered_at is None)
@@ -322,15 +354,16 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         # Credential rejected (rolling quota window or rotation). The Host owns
         # the cooldown length; the exchange only proves the rejection class.
         return {"code": "auth_failed", "http_status": status}
-    if status == 429 or code == "rate_limited":
+    if status in (429, 500, 502, 503, 504) or code in PROVIDER_TRANSIENT:
+        transient = "service_unavailable" if status in (500, 502, 503, 504) or code == "service_unavailable" else "rate_limited"
         ended_at = last.get("ended_at")
         if type(ended_at) not in (int, float) or not math.isfinite(ended_at):
-            return {"code": "rate_limited", "http_status": status}
+            return {"code": transient, "http_status": status}
         headers = last.get("response_headers") or {}
         seconds = retry_after_seconds(headers.get("retry-after"), now=ended_at)
         # No trusted reset time: bounded ordinary retry delay, existing caps apply.
         seconds = float(provider_retry_delay(1)) if seconds is None else seconds
-        return {"code": "rate_limited", "http_status": status,
+        return {"code": transient, "http_status": status,
             "retry_after_seconds": seconds, "retry_at": ended_at + seconds}
     return None
 
@@ -372,6 +405,7 @@ def read_exchanges(directory, *, latest_generation_only=False, latest_context_on
                 if (data.get("upstream_status") == 200 and data.get("message_complete") is True
                         and data.get("response_body_complete") is True
                         and data.get("usage_valid") is not False
+                        and not empty_generation_response(data)
                         and input_usage(data.get("usage") or {}, input_usage_semantics) is not None):
                     break
         except (OSError, ValueError, UnicodeError, RecursionError):

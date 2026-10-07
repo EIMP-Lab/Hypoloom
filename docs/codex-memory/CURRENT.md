@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 8 provider repair: adapter 71 reconciles mixed cache/input changes only
+  with exact model/cost/wire agreement; empty terminal SSE supplies no context
+  anchor or recovery proof. Upstream 500/502/503/504 reuses transient API backoff.
+  Original Grounding replay now accepts the complete 4,666,667-token bill.
+  Native 40 checks pass before the final start-content observation edit: 88 Agents,
+  six CPU Processes/outcomes, no residue. Final affected checks: 103 pass/two TCP
+  setup errors; G1 stops at 568 pass/eight environment failures. New sandbox also
+  blocks bwrap Oracle replays. Wheel/install/bundle match 189 files; CLI/MCP pass.
+  Retained runs unchanged; no final full-qualification claim.
+  [Design](../design/context-management-and-recovery.md) and
+  [evidence](../qualification.md#mixed-usage-accounting-and-temporary-provider-failures-2026-10-08).
+
 - October 7 trend-button colors: Run trends shares the language toggle's accent
   colors and retains its mobile flex layout. Browser inspection confirms matching
   normal/hover/focus colors; the existing trend interaction regression passes.

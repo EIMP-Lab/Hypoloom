@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Mixed usage accounting and temporary provider failures](../qualification.md#mixed-usage-accounting-and-temporary-provider-failures-2026-10-08):
+  exact model/cost/wire reconciliation, empty SSE context/recovery exclusion,
+  existing transient backoff for upstream 5xx; original replay and native CPU
+  closure, with explicit final sandbox/qualification limits.
+  [Design](../design/context-management-and-recovery.md) and
+  [operator guidance](../guides/provider-recovery.md).
+
 - [Telegram templates and twelve-hour briefings](../qualification.md#telegram-templates-and-twelve-hour-briefings-2026-10-07):
   Profile report language, spaced event entries, elapsed footer; scheduled summary
   reuses existing projections/cursor, optional bounded PNG and original retries.

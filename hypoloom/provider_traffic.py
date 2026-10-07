@@ -5,7 +5,7 @@ from collections import deque
 import threading
 import time
 
-from .provider_observation import provider_failure, provider_retry_delay
+from .provider_observation import PROVIDER_UNAVAILABLE, empty_generation_response, provider_failure, provider_retry_delay
 
 
 class ProviderDeferred(Exception):
@@ -97,7 +97,7 @@ class ProviderTraffic:
             if permit['connection'] == self.connection:
                 failure = provider_failure([exchange])
                 now = self.clock()
-                if failure and failure['code'] in {'rate_limited', 'auth_failed', 'quota_exhausted'}:
+                if failure and failure['code'] in PROVIDER_UNAVAILABLE:
                     bucket['reason'] = failure['code']
                     self.last_failure = max(self.last_failure or 0, self.wall_clock())
                     if permit['at'] >= bucket['failed_at']:
@@ -114,7 +114,8 @@ class ProviderTraffic:
                         and exchange.get('upstream_status') == 200
                         and exchange.get('message_complete') is True
                         and exchange.get('response_body_complete') is True
-                        and exchange.get('failure_reason') is None):
+                        and exchange.get('failure_reason') is None
+                        and not empty_generation_response(exchange)):
                     start = permit['started_at']
                     if self.last_failure is None or start >= self.last_failure:
                         self.last_success = max(self.last_success or (0, 0), (start, self.wall_clock()))

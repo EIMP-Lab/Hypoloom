@@ -13,6 +13,7 @@ from .diagnostics import (
 from .domain import AttemptTerminalReason
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask
 from .literature import LiteratureQuery, admit_literature_query_plan
+from .provider_observation import PROVIDER_UNAVAILABLE
 
 
 RETRYABLE_MODEL_FAILURES = frozenset({
@@ -89,7 +90,7 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
             return None
         return "INFRASTRUCTURE" if bounded_context else None
     if failure.get("code") in {"input_too_long", "token_budget_exceeded"}: return None
-    if failure.get("code") in {"rate_limited", "auth_failed", "quota_exhausted"}: return "INFRASTRUCTURE"
+    if failure.get("code") in PROVIDER_UNAVAILABLE: return "INFRASTRUCTURE"
     correction = diagnostics.get("structured_output_correction") or {}
     if (bounded_context and not failure and not correction.get("error") and correction.get("status") == "unresolved"
             and type(correction.get("rejected_count")) is int and correction["rejected_count"] > 0):

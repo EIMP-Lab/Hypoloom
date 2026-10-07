@@ -107,6 +107,14 @@ Provider usage can be final or partial; transcript readings are labeled separate
 A working allowance does not make an unknown provider window known. Cached input
 still occupies context.
 
+A complete zero-usage terminal stream without a model or content is not a
+measured zero-token request. It leaves the preceding valid capacity observation
+in place and cannot confirm API recovery. For invocation accounting, the CLI's
+complete model ledger may correct mixed input/cache changes and omitted
+compaction output only when the recorded request usage and reported cost agree
+exactly. Unknown or inconsistent accounting remains rejected; budget limits still
+use the validated total.
+
 ## Recovery
 
 Capacity reconstruction spends `budget.max_infrastructure_retries` in
@@ -154,7 +162,7 @@ reinterpret already OPEN session bindings.
 |---|---|
 | Local capacity, explicit oversized input or failed native summary | Close/charge/archive the invocation, capture code, then reconstruct within existing infrastructure retry and total budgets. |
 | HTTP 200, zero output, `max_tokens` | Record an anomaly; infer capacity only with a configured window and near-window usage. Normal nonzero output truncation is separate. |
-| Authentication, rate or quota failure | Existing shared [API recovery](provider-recovery.md); submitted experiments continue. |
+| Authentication, rate, quota or temporary upstream service failure | Existing shared [API recovery](provider-recovery.md); submitted experiments continue. |
 | Recovery exhausted | Show node and reason. API retry cannot reopen a finalized node or bypass required scientific acceptance. |
 
 The next invocation queries owned experiments before submission. Replaying a

@@ -226,6 +226,7 @@ def input_usage(usage: Mapping[str, Any], semantics: str = "separate_cache") -> 
 
 def latest_context(exchanges, policy=None) -> dict[str, Any]:
     """Latest generation exchange, never accumulated invocation accounting."""
+    from .provider_observation import empty_generation_response
     last = next((item for item in reversed(exchanges) if item.get("request_path") == "/v1/messages"), None)
     if last is None:
         return dict(policy or {})
@@ -235,12 +236,13 @@ def latest_context(exchanges, policy=None) -> dict[str, Any]:
     capacity = last.get("context_capacity") or {}
     complete = last.get("message_complete") is True and last.get("response_body_complete") is True
     if policy.get("capacity_measurement_version", 0) >= 25:
-        if last.get("usage_valid") is False:
+        if last.get("usage_valid") is False or empty_generation_response(last):
             tokens = None
         observed = next((item for item in reversed(exchanges)
             if item.get("request_path") == "/v1/messages" and item.get("upstream_status") == 200
             and item.get("message_complete") is True and item.get("response_body_complete") is True
             and item.get("usage_valid") is not False
+            and not empty_generation_response(item)
             and input_usage(item.get("usage") or {}, policy.get("input_usage_semantics", "separate_cache")) is not None), None)
         observed_usage = (observed or {}).get("usage") or {}
         observed_tokens = input_usage(observed_usage, policy.get("input_usage_semantics", "separate_cache"))

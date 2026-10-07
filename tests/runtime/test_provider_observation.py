@@ -142,7 +142,7 @@ def test_auth_rejection_is_classified_without_message_sniffing():
     # A later success clears a transient rejection, as with other classes.
     assert provider_failure([{"upstream_status": 403, "ended_at": 100},
         {"upstream_status": 200, "ended_at": 200}]) is None
-    assert provider_failure([{"upstream_status": 500, "ended_at": 100}]) is None
+    assert provider_failure([{"upstream_status": 500, "ended_at": 100}])["code"] == "service_unavailable"
 
 
 def test_provider_retry_gate_episodes_clear_and_disabled():

@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Mapping
 
+import pytest
+
 from hypoloom.agent_budget import fold_agent_attempts
 from hypoloom.agent_sessions import _session_cost_state
 from hypoloom.claude_agent_host import _session_usage_view
@@ -24,7 +26,8 @@ def _normalized_input(usage):
         "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
 
 
-def test_native_model_usage_includes_fallback_json_and_closes_report_cpu_and_billing(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("fallback_kind", ["partial", "empty"])
+def test_native_model_usage_includes_fallback_json_and_closes_report_cpu_and_billing(tmp_path: Path, monkeypatch, fallback_kind):
     start_provider = shared_retry._start_provider
     send_response = provider_fixture._send_response
     fallback = {"started": False, "completed": False}
@@ -60,6 +63,10 @@ def test_native_model_usage_includes_fallback_json_and_closes_report_cpu_and_bil
                 handler.send_response(200)
                 handler.send_header("Content-Type", "text/event-stream")
                 handler.end_headers()
+                if fallback_kind == "empty":
+                    from test_provider_repair import EMPTY_STREAM
+                    handler.wfile.write(EMPTY_STREAM)
+                    return
                 provider_fixture._send_event(handler, "message_start", {
                     "type": "message_start", "message": {
                         "id": f"msg_partial_fallback_{request_number}", "type": "message",
@@ -100,12 +107,12 @@ def test_native_model_usage_includes_fallback_json_and_closes_report_cpu_and_bil
     monkeypatch.setattr(shared_retry, "_start_provider", start)
     shared_retry.test_native_shared_final_report_retries_with_one_common_input_and_same_session(tmp_path)
     assert fallback["started"] and fallback["completed"]
-    evidence = _assert_closed_billing(tmp_path)
+    evidence = _assert_closed_billing(tmp_path, fallback_kind=fallback_kind)
     assert evidence["final_attempts"][1]["attempt_id"] == fallback["attempt_id"]
     (tmp_path / "model-usage-accounting-evidence.json").write_text(json.dumps(evidence, indent=2))
 
 
-def _assert_closed_billing(tmp_path: Path):
+def _assert_closed_billing(tmp_path: Path, *, fallback_kind="partial"):
     """Read-only assertions also support explicit rechecking of ended fixtures."""
     attempts = _rows(tmp_path / "state/state.sqlite", "SELECT * FROM execution_attempts ORDER BY started_at")
     finals = [(row, json.loads(row["observation_json"])) for row in attempts if row["kind"] == "AGENT"
@@ -162,7 +169,7 @@ def _assert_closed_billing(tmp_path: Path):
             if _normalized_input(outer["usage"]) > model_input:
                 assert diagnostics["provider_usage_normalization"]["corroborated_by"] == "complete_wire_exchanges"
             else:
-                assert _normalized_input(outer["usage"]) in {4, 29}
+                assert _normalized_input(outer["usage"]) in ({4, 5, 29} if fallback_kind == "empty" else {4, 29})
             accounting = diagnostics["provider_accounting"]
             assert charge.source == "response"
             assert charge.tokens == accounting["token_usage"]["total_tokens"]
@@ -191,15 +198,23 @@ def _assert_closed_billing(tmp_path: Path):
     responses = sorted((accepted_root / "provider").glob("*/response.body"))
     assert len(responses) == 6
     partial = responses[-2].read_text()
-    assert "event: message_start" in partial and "event: message_stop" not in partial
-    partial_start = next(json.loads(line[5:])["message"]["usage"]
-        for line in partial.splitlines() if line.startswith("data:")
-        and json.loads(line[5:]).get("type") == "message_start")
-    assert partial_start == {"input_tokens": 17, "cache_creation_input_tokens": 3,
-        "cache_read_input_tokens": 5, "output_tokens": 0}
-    duplicated_start = tuple(-partial_start[key] for key in (
-        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
-    assert outer_omission in {(17, 3, 5, 7), (0, 0, 0, 0), duplicated_start}
+    if fallback_kind == "empty":
+        from test_provider_repair import EMPTY_STREAM
+        assert partial.encode() == EMPTY_STREAM
+        # Empty SSE can repeat the preceding ordinary one-input snapshot;
+        # it contains no model response or billable tokens of its own.
+        assert outer_omission in {(17, 3, 5, 7), (16, 3, 5, 7), (0, 0, 0, 0), (-1, 0, 0, 0)}
+        assert accepted[1]["diagnostics"]["provider_observed_usage"]["completed_requests"] == 5
+    else:
+        assert "event: message_start" in partial and "event: message_stop" not in partial
+        partial_start = next(json.loads(line[5:])["message"]["usage"]
+            for line in partial.splitlines() if line.startswith("data:")
+            and json.loads(line[5:]).get("type") == "message_start")
+        assert partial_start == {"input_tokens": 17, "cache_creation_input_tokens": 3,
+            "cache_read_input_tokens": 5, "output_tokens": 0}
+        duplicated_start = tuple(-partial_start[key] for key in (
+            "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+        assert outer_omission in {(17, 3, 5, 7), (0, 0, 0, 0), duplicated_start}
     complete = json.loads(responses[-1].read_text())
     assert complete["usage"] == {"input_tokens": 17, "cache_creation_input_tokens": 3,
                                  "cache_read_input_tokens": 5, "output_tokens": 7}

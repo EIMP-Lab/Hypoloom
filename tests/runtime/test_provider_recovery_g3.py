@@ -92,7 +92,7 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             server.shutdown(); server.server_close(); thread.join(timeout=5)
 
 
-@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue'])
+@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue', 'remote_503'])
 def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_path, monkeypatch, failure_kind):
     from hypoloom import provider_observation
     # Accelerate only the shared recovery policy, not Host/Process/model clocks.
@@ -102,11 +102,12 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
     provider, thread = _start_provider(scenario, 'local-rpm-key')
     post, rejected = provider.RequestHandlerClass.do_POST, []
     def overload(handler):
-        if failure_kind == 'remote_429' and len(rejected) < 6:
+        if failure_kind in {'remote_429', 'remote_503'} and len(rejected) < 6:
             handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
             rejected.append(time.time())
-            body = b'{"error":{"code":"429","message":"Too Many Requests"}}'
-            handler.send_response(429)
+            status = 503 if failure_kind == 'remote_503' else 429
+            body = json.dumps({'error': {'code': str(status), 'message': 'Temporarily unavailable'}}).encode()
+            handler.send_response(status)
             handler.send_header('Content-Type', 'application/json')
             handler.send_header('Content-Length', str(len(body)))
             handler.end_headers()
@@ -152,6 +153,10 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             assert len(rejected) == 6
             assert host.store.latest_transition(run_id)['state'] == 'COMPLETED'
             attempts = host.store.list_attempts()
+            if failure_kind == 'remote_503':
+                failures = [json.loads(a['observation_json']) for a in attempts if a['terminal_reason'] == 'FAILED']
+                assert len(failures) == 6
+                assert all(a['diagnostics']['provider_failure']['code'] == 'service_unavailable' for a in failures)
             processes = [a for a in attempts if a['kind'] == 'PROCESS']
             assert len(processes) == 1 and processes[0]['terminal_reason'] == 'SUCCEEDED'
             assert len(host.store.list_facts(run_id, 'CanonicalOutcomeAccepted')) == 1

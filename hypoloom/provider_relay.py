@@ -513,7 +513,7 @@ class ProviderRelay:
                         except ProviderDeferred as exc:
                             if exc.retry_after is not None:
                                 capture.data['response_headers'] = {'retry-after': str(math.ceil(exc.retry_after))}
-                            raise _RelayRejected(503 if exc.code == 'local_request_queue' else 429, exc.code) from None
+                            raise _RelayRejected(503 if exc.code in {'local_request_queue', 'service_unavailable'} else 429, exc.code) from None
                         capture.data['upstream_started_at'] = traffic_ticket[1]['started_at']
                         upstream.timeout = relay._remaining()
                         stage = "upstream_connect"
@@ -662,8 +662,9 @@ class ProviderRelay:
                 or capture.request_document is None):
             return
         data = capture.data
+        from .provider_observation import empty_generation_response
         if (data.get("upstream_status") != 200 or data.get("failure_reason") is not None
-                or data.get("response_body_complete") is not True):
+                or data.get("response_body_complete") is not True or empty_generation_response(data)):
             return
         from .context_management import counting_material, usage_anchor
         if data.get("request_path") == "/v1/messages/count_tokens":
