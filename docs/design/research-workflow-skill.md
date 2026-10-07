@@ -7,6 +7,45 @@ Status: implemented, 2026-09-28; qualification is recorded in
 The user authorized implementation and submission to dev. Finer time
 instrumentation remains excluded; existing research runs remain unchanged.
 
+## Experiment supply and memory feedback (2026-10-07)
+
+A retained-run read-only sample covered 21.2 hours, 21 submitted experiments and
+seven accepted single-member batches. Mean GPU Process concurrency was 1.48;
+this is process occupancy, not whole-device utilization on shared GPUs. Design
+invocations had a 36.7-minute median. All 21 submissions included estimates, but
+17 of 18 closed Processes had unknown coverage despite retaining attributed peak
+samples. Later estimates repeatedly treated the old admitted budget as sufficient
+because the resource projection hid these known samples. Three reserve-pressure
+interruptions and two script failures also extended experiment turnaround.
+
+Reuse the current batch reader to give proposal and manager requests actual
+accepted width, three recent batches and OPEN chain counts. Keep these observations
+advisory. Strengthen both proposal wings and synthesis to develop independent,
+evidence-backed mechanisms within existing bounds; informative refutations remain
+scientific progress. Do not force candidates, reserve idle slots, bypass dependencies
+or add a queue. The existing Host already interleaves independent chains.
+
+Extend the existing resource-history projection with an attributed observed peak
+lower bound. Complete calibration still requires the original full-coverage checks;
+unknown samples remain unknown and cannot enable sharing or release initial floors.
+The resolver continues to consume the original calibrated field and exact workload
+references. Agents see enough evidence to revise undersized estimates, without
+silently treating nearby workloads as identical or changing accepted requests.
+Unestimated-workload history expansion was considered, then excluded after checking
+the actual source submissions: it was not the failure in this run.
+
+Stage guidance reuses retained implementations, comparison-compatible baselines
+and successful checks, hands off precise execution work, and chooses informative
+LOCAL scope before freezing it. GOAL coverage stays complete. Trial/phase timing
+uses ordinary experiment logs; no telemetry service or profiling of retained
+processes is introduced. Existing raw rows, batch validation, Git plugin versions
+and tests suffice: no additional assurance mechanism, persistent state or authority
+is needed. Changes reach new runs/plugins through the existing runtime bundle.
+
+Validation and limits: [qualification](../qualification.md#experiment-supply-and-memory-feedback-2026-10-07).
+Scripted/native closure checks establish integration, not a measured improvement
+in real-model hypothesis quality or CUDA throughput.
+
 ## 1. Problem and scope
 
 The retained MERC-causal-202609281629 Grounding succeeded, including native

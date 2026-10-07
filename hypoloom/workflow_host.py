@@ -1066,6 +1066,8 @@ class WorkflowHost:
         facts = self.store.list_facts(run_id); goal = next(item for item in facts if item["fact_type"] == "GoalDefined")
         context = {"max_hypotheses_per_round": {role: batch_limits(document, role)["forks"] for role in contract.role_ids},
             "effective_max_forks": {role: self._effective_batch_forks(run_id, role) for role in contract.role_ids},
+            "exploration_progress": [self._batch_history(run_id, str(c.component_id), c.owner_role).exploration_progress(
+                self._active_expert_chains(run_id, c.owner_role)) for c in contract.components],
             "source_report_refs": [source.ref], "enabled": True,
             "graph": [{"fact_id": item["fact_id"], "fact_type": item["fact_type"], "payload": item["payload"]} for item in facts if item is not goal]}
         settings = document["methodology"].get("controls", {}).get("product", {}).get("methodology", {}).get("graph_evolution", {})

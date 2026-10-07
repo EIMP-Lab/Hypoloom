@@ -713,6 +713,13 @@ def test_manager_acceptance_changes_only_next_frozen_hypothesis_batch(batch_host
     limits = [json.loads(next(item for item in AgentRequest.from_dict(request).input_artifacts
         if item.ref.endswith("--expert-config")).content_bytes())["effective_max_forks"] for request in synthesis]
     assert limits == [2, 1]
+    configs = [json.loads(next(item for item in AgentRequest.from_dict(request).input_artifacts
+        if item.ref.endswith("--expert-config")).content_bytes()) for request in synthesis]
+    assert [c["exploration_progress"]["accepted_hypotheses"] for c in configs] == [0, 2]
+    manager_contexts = [json.loads(next(item for item in AgentRequest.from_dict(item["request"]).input_artifacts
+        if item.ref.endswith("--manager-context")).content_bytes()) for item in managers]
+    assert [[b["hypothesis_count"] for b in c["exploration_progress"][0]["recent_batches"]]
+            for c in manager_contexts] == [[2], [2, 1]]
     report = Oracle(host.store.database_path, host.publisher.root).audit("batch-host")
     assert report.ok, report.to_dict()
 

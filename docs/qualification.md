@@ -2,6 +2,57 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Experiment supply and memory feedback (2026-10-07)
+
+The user authorized implementation, commit and push after read-only performance
+analysis. [Design](design/research-workflow-skill.md#experiment-supply-and-memory-feedback-2026-10-07)
+reuses accepted batches, Attempts and resource samples. Existing research Hosts,
+plugins, resource requests and the live shared pool remain unchanged.
+
+Proposal and graph-manager inputs now expose actual accepted width and bounded
+recent batch history through the existing BatchHistory reader. Guidance seeks
+independent evidence-backed mechanisms within admitted ceilings, distinguishes
+informative negative results from duplicate work, and improves incremental
+implementation, comparison-compatible reuse and execution handoff. These are
+Agent decision aids; no new scheduler, fixed candidate quota or scientific gate.
+
+All 21 inspected retained-run submissions had estimates. Of 18 closed Processes,
+17 had unknown coverage but retained attributed samples. The existing projection
+hid those samples, and subsequent source estimates explicitly reused smaller
+admitted budgets because they reported no own-use peak. Resource history now
+retains observed_peak_lower_bound_bytes while preserving sample_peak_bytes=null
+and unknown coverage. Exact workload matching, initial floors, calibration,
+sharing, pressure protection and the admission arithmetic are unchanged. The
+briefly considered unestimated-history expansion was removed as unrelated scope.
+
+Replaying the original resource projection in the new real Host regression fails
+at the missing lower bound. The final regression samples 16,000 MiB, then unknown
+coverage; it exposes the lower bound without calibration, rejects an incompatible
+source, previews and submits an explicitly revised 20,032 MiB estimate, closes the
+repair and checks exact replay plus Oracle. Both the original retained source
+records and the isolated regression failures remain under `.local/`; no retained
+experiment was resumed, submitted, migrated or profiled.
+
+Evidence: `.local/qualification/throughput-20261007/`. Final focused selections
+reconcile to **262 distinct passes, zero skips and no unresolved failures**:
+resource policy/interfaces, shared-pool feedback and repair, batch/manager/parallel
+Host closure, stage routing, proposal instructions, documentation and runtime bundles.
+One native CC/local-provider/CPU closure passes; an independent raw-row/process
+census finds **15 Agent Attempts, one CPU Process, one outcome, zero OPEN Attempts
+and zero live owned process groups**. It uses a scripted local provider, not a paid
+model or a physical GPU. Source, wheel installation and fresh bundle match across
+178 Python/skill files. Undefined-name and Git whitespace checks pass.
+
+Initial fixture setup used an overlong Unix socket path and an older ACI without
+preview arguments; short temporary roots and the appropriate existing fixture
+version correct these setup errors. Two shared-goal cases correctly rejected
+runtime drift while source was being narrowed during parallel validation. The
+unchanged final source passes both reruns and the two-chain CPU closure; assertions
+and runtime protection were not relaxed. The count above reconciles selections
+and reruns, not a single green full-suite invocation. This is not a G0–G5 freeze,
+real-model strategy evaluation or measured CUDA throughput gain. Improvements
+reach new runs/plugins; existing runtime pinning remains authoritative.
+
 ## Responsive observer polling (2026-10-07)
 
 Read-only diagnosis of `MERC-causal-202610062043` reproduced 6–13 second

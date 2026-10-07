@@ -14,6 +14,17 @@ mechanisms. One candidate remains appropriate when evidence is limited, work is
 dependent, or alternatives only change hyperparameters. Explain this choice in
 the existing candidate's `claim` or `assumptions`; do not add a new output field.
 
+New requests also carry bounded `exploration_progress`: accepted batch and
+hypothesis counts, the last three batch widths, and current OPEN chain counts.
+The Host derives these from the existing accepted batch history and Attempts.
+These are request-time observations, not live GPU utilization or a ready-work
+queue. Proposal wings and SYNTHESIS actively consider independent mechanisms
+within the admitted limit; one mechanism per chain does not mean one chain per
+expert. Independent chains can overlap preparation and experiment execution.
+Unused width needs a scientific explanation, not filler candidates. The manager
+compares actual width with the configured ceiling before changing capacity and
+treats informative refutations as verified exploration.
+
 | Setting | Meaning |
 | --- | --- |
 | `max_hypotheses_per_round` | Configured candidate ceiling per expert/round |

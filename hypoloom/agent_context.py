@@ -1149,6 +1149,9 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
         if host._batch_enabled(run_id):
             config["inner_loop_limits"] = batch_limits(contract_document, role)
             config["effective_max_forks"] = host._effective_batch_forks(run_id, role)
+            if task.key.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL:
+                config["exploration_progress"] = host._batch_history(run_id, component_id, role).exploration_progress(
+                    host._active_expert_chains(run_id, role))
     context_plan = {"production": component_is_production(contract_document, component_id)}
     _, root_environment = execution_read_root_projection(config["execution"], context_plan,
         generic=bool(raw_component.get("result", {}).get("deferred")) or host.shared_acceptance.enabled(run_id))

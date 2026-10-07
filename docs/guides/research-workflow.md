@@ -97,6 +97,23 @@ revised criteria belong to a new/revised hypothesis. After ablations, explain wh
 uncertainty another full evaluation resolves. Framework code does not choose the
 scientific strategy or enforce dataset-specific thresholds.
 
+## Reducing experiment turnaround
+
+Later iterations begin from the retained implementation and accepted analysis.
+Keep working loaders, parsers and still-applicable checks; record the exact
+entrypoint, selected variants and remaining execution work in existing notes.
+An accepted long-running submission uses the existing Host handoff to free its
+Agent slot. Independent accepted chains have their own preparation tasks.
+
+Before freezing a LOCAL measurement, choose a small informative comparison when
+the methodology permits. Full GOAL evaluation retains every accepted seed, arm,
+dataset and check. Reuse a baseline only when provenance, data/splits, seeds,
+protocol and required artifacts match and existing submission access permits it.
+Incomplete trials do not become a complete claim. Ordinary experiment logs should
+show planned trial counts and bounded phase/trial timings, so low GPU utilization
+can be investigated before changing scientific settings or resource parallelism.
+These are Agent workflow improvements, not an automatic speedup guarantee.
+
 ## Evolution and version selection
 
 Experts may update their own skill through `SELF_EVOLVE`; the manager may update

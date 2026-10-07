@@ -5,6 +5,12 @@ before deciding whether to submit, replace, wait or hand off. Reuse successful
 preparation and inspect the original failure evidence before editing. Distinguish
 resource queueing, provider faults, implementation failures and scientific results.
 
+Use the retained entrypoint, implementation notes and completed checks as the
+handoff. Recheck changed or unresolved paths, rather than redesigning working
+code. After an accepted long-running submission, use the existing Host handoff
+to release the Agent slot; do not remain in a polling loop. Preparation of another
+accepted independent chain belongs to its own Host task and workspace.
+
 Follow existing resource-planning, experiment-repair and Host tool instructions.
 Do not launch GPU experiments directly, create competing schedulers or repeatedly
 poll a Host-owned running Process. A waiting handoff is not a scientific outcome.

@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 7 experiment supply: proposal/manager inputs reuse BatchHistory for
+  actual accepted width and bounded recent progress. Guidance favors independent
+  evidence-backed chains, informative refutations and incremental experiment work.
+  Resource history retains known attributed lower bounds despite unknown coverage;
+  calibration, admission arithmetic, sharing and pressure protection are unchanged.
+  All 21 retained submissions were estimated; unestimated-history expansion was
+  excluded. Original projection replay fails; final focused selections reconcile
+  to 262 passes/no skips, including native 15-Agent/one-CPU closure without residue.
+  Two source-drift fixture failures pass on the stable final source. Source/install/
+  bundle match 178 files. New runs/plugins only; no measured CUDA speedup claim.
+  [Design and validation](../qualification.md#experiment-supply-and-memory-feedback-2026-10-07).
+
 - October 7 observer polling: Web uses the existing complete observation cache
   while one background reader coalesces builds with TUI/full readers. Cold reads
   are pending; failures retain aged data, and close prevents late publication.

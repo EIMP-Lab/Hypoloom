@@ -16,6 +16,18 @@ Separate source claims, your interpretation and uncertainty. Design hypotheses
 that distinguish plausible explanations with feasible experiments; preserve the
 accepted goal and declared local/GOAL measurement choices.
 
+For hypothesis batches, use the admitted effective_max_forks and the actual
+exploration_progress. Develop independent evidence-backed alternatives when
+available, keeping one mechanism per chain. Each can have a small discriminating
+experiment; one running chain need not prevent another chain's preparation.
+Do not bundle dependent steps as independent hypotheses or fill slots with
+hyperparameter variants. Explain unused width in existing claim/assumptions.
+
+Choose the smallest informative LOCAL comparison permitted by the methodology
+before freezing its measurement. Reserve costly full matrices for questions
+that need them; formal GOAL evaluation still requires all accepted seeds, arms,
+datasets and checks. Screening evidence never substitutes for those obligations.
+
 This stage does not require an evaluator, code changes or test fixtures merely
 to satisfy a shared workflow. Hand off precise assumptions, evidence references
 and discriminating tests using the current node's supplied response schema.

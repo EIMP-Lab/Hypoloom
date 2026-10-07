@@ -409,6 +409,70 @@ def test_unknown_owned_sample_does_not_raise_repair_budget(
     assert history[0]["sample_peak_bytes"] is None
 
 
+@pytest.fixture
+def planning_execution(shared_pool, monkeypatch, request):
+    monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", 27)
+    return request.getfixturevalue("execution")
+
+
+def test_partial_process_peak_guides_next_estimate_without_becoming_calibration(
+    planning_execution, shared_pool, monkeypatch,
+):
+    host, request, arguments, free, measurement = _configured(planning_execution, shared_pool, monkeypatch)
+    first = host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)
+    original, handle = _running(host, first)
+    free[GPU_A.uuid] = 5000
+    host.tick()
+    measurement["complete"] = False
+    host.shared_gpu.sampled_at.clear()
+    host.tick()
+    process, _ = _close(host, first, handle)
+    _until(host, lambda: bool(host.store.list_facts(request.run_id, "EvidenceLinked")))
+    before = host.store.inspect("SELECT * FROM workflow_commands")
+    history = host.handle_agent_tool(request.attempt_id, "get_resources", {})["measurements"]
+    assert host.store.inspect("SELECT * FROM workflow_commands") == before
+    assert len(history) == 1
+    observed = history[0]
+    assert observed["attempt_id"] == process["attempt_id"]
+    assert observed["workload"] == arguments["resource_estimate"]["workload"]
+    assert observed["observed_peak_lower_bound_bytes"] == 16000 * MIB
+    assert observed["sample_peak_bytes"] is None
+    assert observed["measurement_status"] == "unknown"
+    assert host._resource_experience(request.run_id, request.role, request.component_id,
+        request.method_family_id)["measurements"] == history
+    # Neither a different scope nor explicit IDs can manufacture comparability.
+    assert host.shared_gpu.measurements(request.run_id, "other", request.component_id, request.method_family_id) == []
+    from hypoloom.agent_aci import AgentACIError
+    wrong = gpu_arguments(arguments, ids=(process["attempt_id"],))["resource_estimate"]
+    wrong["workload"] = {"program": "different"}
+    with pytest.raises(AgentACIError, match="matching workload"):
+        host.handle_agent_tool(request.attempt_id, "get_resources", {"resource_estimate": wrong})
+    proposal = gpu_arguments(arguments, peak=20032)
+    preview = host.handle_agent_tool(request.attempt_id, "get_resources", {
+        "resource_estimate": proposal["resource_estimate"]})["budget_preview"]
+    assert preview["measurement_attempt_ids"] == [process["attempt_id"]]
+    assert preview["calibrated_measurements"] == 0
+    assert preview["sharing"] == "exclusive"
+    assert preview["resolved_workload_memory_mib"] == 20032
+    assert host.store.find_fact(request.run_id, "ExperimentPreregistered", first["exp_id"]) == original
+    repair_args = {**proposal, "replaces_experiment_id": first["exp_id"]}
+    repair = host.handle_agent_tool(request.attempt_id, "submit_experiment", repair_args)
+    repaired_spec, repaired_handle = _running(host, repair)
+    assert repaired_spec["payload"]["execution_contract"]["resource_intent"]["workload_memory_mib"] == 20032
+    measurement["complete"] = True
+    host.shared_gpu.sampled_at.clear()
+    host.tick()
+    _close(host, repair, repaired_handle, success=True, arguments=proposal)
+    with monkeypatch.context() as replay:
+        replay.setattr(host.shared_gpu, "resolve_arguments", lambda *a: pytest.fail("replay reselected memory history"))
+        assert host.handle_agent_tool(request.attempt_id, "submit_experiment", repair_args) == repair
+    host._finish_fake_agent(request, FakeAgent().invoke(request))
+    _until(host, lambda: host.store.latest_transition(request.run_id)["state"] == "COMPLETED")
+    assert all(row["state"] == "CLOSED" for row in host.store.list_attempts())
+    report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
+    assert report.ok, report.to_dict()
+
+
 def test_wrong_workload_and_owner_scope_cannot_reuse_measurement(
     execution, shared_pool, monkeypatch
 ):

@@ -33,6 +33,16 @@ Prefer same-workload attributed peaks, then explained scaling from nearby
 measurements, then conservative workload accounting. Device used/free memory is
 shared pressure, never this experiment's own use. Unknown or partial own-use
 samples remain unknown. Pressure cancellation alone is not an observed OOM.
+History includes observed_peak_lower_bound_bytes when an attributed sample
+exists, even if another sample/device was unknown. This is a diagnostic lower
+bound, not a complete maximum or proof of workload comparability.
+Unknown coverage keeps sample_peak_bytes=null even when a lower bound is known.
+Use these observations to investigate an undersized estimate and explain your
+next workload estimate in basis. A successful admission is not a measurement:
+do not reuse its budget as evidence that actual demand fits it. Review lower
+bounds from nearby workloads when scaling, and use measurement_attempt_ids only
+for exact comparable labels. Do not relabel sources or use partial coverage to
+reduce margins or enable sharing. An omitted estimate cannot learn comparable bounds.
 Do not invent a precise estimate; an omitted estimate keeps the Profile initial
 workload budget (or its floor when no initial value is configured) and is
 explicitly unestimated. A bounded measurement is useful when feasible.

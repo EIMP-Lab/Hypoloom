@@ -295,7 +295,7 @@ def _device_peak_memory_mib(usage: Mapping[object, object]) -> int | None:
     return latest_or_peak
 
 
-def _owned_peak_bytes(raw: Mapping[str, object]) -> int | None:
+def _owned_peak_bytes(raw: Mapping[str, object], *, complete_coverage: bool = True) -> int | None:
     usage = raw.get("resource_usage")
     devices = [usage] if isinstance(usage, Mapping) else usage
     if not isinstance(devices, list) or not devices:
@@ -304,15 +304,18 @@ def _owned_peak_bytes(raw: Mapping[str, object]) -> int | None:
     for device in devices:
         owned = device.get("owned_memory") if isinstance(device, Mapping) else None
         if not isinstance(owned, Mapping):
-            return None
+            if complete_coverage: return None
+            continue
         count, unknown = owned.get("sample_count"), owned.get("unknown_sample_count")
         peak = owned.get("peak")
-        if (not _valid_memory_mib(count) or count == 0 or type(unknown) is not int or unknown != 0
+        if (not _valid_memory_mib(count) or count == 0 or type(unknown) is not int or unknown < 0
+                or (complete_coverage and unknown != 0)
                 or not isinstance(peak, Mapping) or peak.get("complete") is not True
                 or peak.get("reason") is not None or not _valid_memory_mib(peak.get("resident_bytes"))):
-            return None
+            if complete_coverage: return None
+            continue
         peaks.append(peak["resident_bytes"])
-    return max(peaks)
+    return max(peaks, default=None)
 
 
 def summarize_resource_measurements(
@@ -322,7 +325,7 @@ def summarize_resource_measurements(
 
     Host supplies the allowed run/role/component/family scope. The workload map
     and existing Attempt ID remain to select immutable sources on later replay.
-    Unknown coverage remains diagnostic; it supplies no measured memory value.
+    Unknown coverage supplies only a diagnostic lower bound, never calibration.
     """
     if type(limit) is not int or limit <= 0:
         raise ValueError("limit must be a positive integer")
@@ -346,6 +349,7 @@ def summarize_resource_measurements(
             "admitted_workload_memory_mib": admitted if _valid_memory_mib(admitted) and admitted > 0 else None,
             "oom": raw.get("oom") is True, "terminal_status": raw["terminal_status"],
             "ended_at": _finite_number(raw.get("ended_at")), "sample_peak_bytes": peak,
+            "observed_peak_lower_bound_bytes": _owned_peak_bytes(raw, complete_coverage=False),
             "measurement_status": "complete" if peak is not None else "unknown"})
     if accepted and all(item["ended_at"] is not None for item in accepted):
         accepted.sort(key=lambda item: (-item["ended_at"], item["attempt_id"]))

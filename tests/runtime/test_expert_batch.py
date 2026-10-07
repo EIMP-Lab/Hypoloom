@@ -49,6 +49,21 @@ def test_new_cycle_does_not_overwrite_prior_selected_binding():
     assert history.latest.cycle == 2
 
 
+def test_exploration_progress_counts_accepted_width_and_scopes_active_chains():
+    rows, facts = [], []
+    for cycle in range(1, 6):
+        members = {f"chain-{n}": f"h-{cycle}-{n}" for n in range(1, 3 if cycle == 1 else 2)}
+        rows.append(_batch(cycle, members))
+        facts.extend(_fact(h, None if cycle == 1 else f"h-{cycle - 1}-1") for h in members.values())
+        if cycle < 5: rows.append(_selection(cycle, "chain-1", f"h-{cycle}-1"))
+    history = BatchHistory.from_rows("run", "c", "r", rows, facts)
+    progress = history.exploration_progress({("c", "chain-1"), ("other", "chain-1")})
+    assert progress == {"component_id": "c", "role": "r", "accepted_batches": 5,
+        "accepted_hypotheses": 6, "active_chains": 1,
+        "recent_batches": [{"cycle": n, "hypothesis_count": 1, "adjudicated": n < 5} for n in (3, 4, 5)]}
+    assert BatchHistory.from_rows("run", "c", "r", [], []).exploration_progress(set())["recent_batches"] == []
+
+
 @pytest.mark.parametrize("mutate", ["duplicate", "missing_fact", "wrong_selection", "wrong_parent", "skipped_cycle"])
 def test_batch_reader_rejects_incoherent_accepted_relations(mutate):
     rows = [_batch(1, {"a": "ha"})]

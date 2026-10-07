@@ -128,6 +128,17 @@ class BatchHistory:
     def latest(self) -> AcceptedBatch | None:
         return self.batches[-1] if self.batches else None
 
+    def exploration_progress(self, active_chains: set[tuple[str, str]]) -> dict[str, Any]:
+        """Bounded request-time advice; accepted batches remain the authority."""
+        return {
+            "component_id": self.component_id, "role": self.role,
+            "accepted_batches": len(self.batches),
+            "accepted_hypotheses": len(self.hypotheses),
+            "active_chains": sum(component == self.component_id for component, _ in active_chains),
+            "recent_batches": [{"cycle": batch.cycle, "hypothesis_count": len(batch.members),
+                "adjudicated": batch.selection is not None} for batch in self.batches[-3:]],
+        }
+
     @property
     def selected_tip(self) -> Mapping[str, Any] | None:
         # A newer unfinished batch cannot silently replace an accepted binding.

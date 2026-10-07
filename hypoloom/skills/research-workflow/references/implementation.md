@@ -5,6 +5,22 @@ source and relevant existing implementation. Reuse components whose assumptions
 match; investigate remaining integration gaps. Accepted shared acceptance is
 read-only. Preserve the exact measurement already declared by the hypothesis.
 
+For later iterations, begin with the retained implementation and accepted analysis.
+Identify the scientific change, edit that path and reuse still-applicable parser,
+data-loading and integration work. Do not rebuild a working harness or repeat a
+literature review without an unresolved question. In existing implementation
+notes, identify the entrypoint, selected variants, checks already run and exact
+remaining execution work so EXECUTION can submit without rediscovering the design.
+
+Reuse a baseline or completed trial only when its source, data/splits, seed,
+training/evaluation protocol and required artifacts match the current comparison
+and existing submission rules permit access. Otherwise recompute it. Never merge
+partial trials into a complete claim or reuse a checkpoint as an independent run.
+Use the selected configuration to report the planned trial count and bounded
+phase/trial timing in ordinary logs. For unexpectedly low GPU utilization, measure
+data preparation, training, evaluation and artifact checks separately before
+changing batch sizes or parallelism; preserve scientific settings and Host grants.
+
 Change actual target files and test those changes in the selected environment.
 Exercise meaningful scientific and integration behavior, including invalid or
 boundary inputs where relevant. Scratch-only success does not validate the

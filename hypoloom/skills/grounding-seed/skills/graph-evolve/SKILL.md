@@ -13,9 +13,17 @@ records, cite and follow those records. Native Claude session compaction may
 manage context length, but never claim an unobserved compaction or erase history.
 
 For each proposed effective_max_forks change, cite the expert and actual cycle
-evidence. Sustained absence of verified exploration, repeated unproductive
-hypotheses or duplication may justify reducing future chain counts; consistent
-accepted progress may justify increasing them. Keep every proposed value in
+evidence. Compare the supplied exploration_progress with the admitted limits:
+recent_batches reports actual accepted hypothesis counts, not configured width;
+active_chains is a request-time OPEN-work observation, not GPU utilization.
+Raising a limit that the expert does not use cannot by itself increase supply.
+Explain the unused width and encourage independent, evidence-backed alternatives
+within existing limits before requesting more capacity. A valid negative result
+that eliminates an explanation is verified exploration, not automatically
+unproductive work. Repeated unchanged tests, unresolved dependencies or actual
+duplication may justify reducing future chain counts; consistent accepted
+progress may justify increasing them. Empty GPU slots alone are not scientific
+evidence and do not justify weak hypotheses. Keep every proposed value in
 [1, max_hypotheses_per_round] using the admitted request bound. Avoid rewarding
 operational failures as discoveries or replacing scientific assessments with
 manager scores. Preserve all already accepted batches and current requests.

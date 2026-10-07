@@ -85,6 +85,13 @@ When exposed in DESIGN or EXECUTION, `mcp__host-tools__get_resources` provides
 timestamped authorized capacity and this expert's bounded measured history.
 Initial injected snapshots remain historical; live queries do not rewrite them.
 DESIGN receives only that read-only query, never submit or cancel privileges.
+A known observed_peak_lower_bound_bytes remains advisory when coverage is unknown;
+it does not become sample_peak_bytes or establish safe sharing. Investigate
+differences between this lower bound and the requested budget. Submit an
+explained estimate for the next workload. Prior successful admission does not
+prove that the workload fit its requested budget. Exact measurement_attempt_ids
+still require matching workload labels; nearby workloads inform explained
+scaling only, not automatic comparability.
 
 Never choose, name, rank, or request a UUID, device
 index, device node, runtime prefix, mount, or environment variable; those

@@ -38,6 +38,18 @@ cover model, data/shapes, precision, batch and execution phases. A successful
 Process is evidence of execution, not proof that the scientific goal was met.
 The percentages are engineering policy, not measured universal optima.
 
+In the bounded `measurements` history, `observed_peak_lower_bound_bytes` retains the
+largest known attributed per-device sample even when other samples/devices are
+unknown. This diagnostic can reveal that the requested budget was below observed
+use; it does not establish the full-run maximum or workload comparability.
+Unknown coverage keeps `sample_peak_bytes: null`, cannot release the initial
+floor, and cannot enable sharing. Exact `measurement_attempt_ids` still require
+matching workload labels. Explain the next estimate using the actual workload;
+the admission resolver and its complete-coverage requirements remain unchanged.
+No process identity, foreign-owner history or device-wide usage becomes an owned
+measurement. A successful admission does not prove that actual demand fit its
+requested budget. Updating the checkout does not change retained runs.
+
 ### Device reserve
 
 New templates use these settings under `methodology.yaml` → `budget`:

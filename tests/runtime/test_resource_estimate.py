@@ -88,7 +88,8 @@ def test_measurements_keep_only_bounded_owned_evidence_and_do_not_mutate_sources
     assert projected == [{"attempt_id": "process-1", "workload": dict(sorted(WORKLOAD.items())),
         "admitted_workload_memory_mib": 8000, "oom": False,
         "terminal_status": "SUCCEEDED", "ended_at": 1.0,
-        "sample_peak_bytes": 9000 * MIB, "measurement_status": "complete"}]
+        "sample_peak_bytes": 9000 * MIB, "observed_peak_lower_bound_bytes": 9000 * MIB,
+        "measurement_status": "complete"}]
     encoded = json.dumps(projected)
     for forbidden in ("private", "SECRET", "processes", "ancestry", "gpu_uuid", '"pid"'):
         assert forbidden not in encoded
@@ -137,6 +138,23 @@ def test_one_unknown_device_invalidates_plural_attempt_learning():
     raw = attempt()
     raw["resource_usage"].append({"used_memory_mib": 40000})
     assert summarize_resource_measurements([raw])[0]["sample_peak_bytes"] is None
+
+
+def test_partial_history_exposes_only_a_lower_bound_without_calibrating_or_releasing_initial_floor():
+    raw = attempt(peak_bytes=16000 * MIB)
+    raw["resource_usage"][0]["owned_memory"]["unknown_sample_count"] = 1
+    raw["resource_usage"].append({"used_memory_mib": 40000})
+    measured = summarize_resource_measurements([raw])
+    assert measured[0]["observed_peak_lower_bound_bytes"] == 16000 * MIB
+    assert measured[0]["sample_peak_bytes"] is None
+    assert measured[0]["measurement_status"] == "unknown"
+    from hypoloom.resource_experience import explain_workload_memory
+    budget = explain_workload_memory(1024, estimate(peak_memory_mib=2200,
+        measurement_attempt_ids=["process-1"]), measured, initial_memory_mib=8192, adaptive=True)
+    assert budget["resolved_workload_memory_mib"] == 8192
+    assert budget["initial_floor_active"] is True
+    assert budget["calibrated_measurements"] == 0
+    assert budget["sharing"] == "exclusive"
 
 
 def test_oom_raises_prior_budget_but_pressure_alone_does_not():

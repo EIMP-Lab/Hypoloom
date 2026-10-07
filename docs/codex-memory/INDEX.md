@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Experiment supply and memory feedback](../qualification.md#experiment-supply-and-memory-feedback-2026-10-07):
+  actual batch widths for proposals/managers, retained attributed lower bounds
+  without weaker calibration, incremental implementation and scoped reuse.
+  [Design](../design/research-workflow-skill.md#experiment-supply-and-memory-feedback-2026-10-07)
+  distinguishes tested Host/native closure from unmeasured real-model/GPU gains.
+
 - [Responsive observer polling](../qualification.md#responsive-observer-polling-2026-10-07):
   shared background refresh, truthful cached-data age, conditional/compressed
   replies and independent details; [user guidance](../guides/runtime-recovery.md#web-observation-freshness).

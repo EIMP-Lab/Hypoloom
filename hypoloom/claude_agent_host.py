@@ -3291,10 +3291,15 @@ def _instruction(
                 "Each hypotheses item contains only chain_id and candidate; candidate is one complete falsifiable HypothesisCandidate. "
                 "Keep this wrapper even for a single hypothesis. "
                 "Use unique chain_id values and do not exceed the admitted effective_max_forks. "
-                "Choose multiple candidates when distinct evidence-backed mechanisms have independently testable predictions "
-                "and affordable experiments. A single candidate is appropriate when evidence is limited, work is dependent, "
-                "or alternatives are only ordinary hyperparameter variants. Explain the choice briefly in the existing rationale. "
-                "The candidate limit is a ceiling, not a target; FORWARD/BACKWARD arguments are not separate hypotheses. "
+                "Actively seek distinct evidence-backed mechanisms up to that bound; retain multiple candidates when "
+                "their predictions and affordable experiments can be tested independently. Read exploration_progress "
+                "in the expert config: configured capacity and actual accepted hypothesis counts are different. "
+                "Independent chains let the Host prepare one experiment while another runs; do not serialize them "
+                "merely because execution capacity is temporarily occupied. A single candidate is appropriate when "
+                "evidence is limited, work depends on a pending result, or alternatives are only hyperparameter variants. "
+                "When leaving available width unused, explain the scientific reason briefly in a candidate's existing "
+                "claim or assumptions. Never invent weak candidates to fill slots. FORWARD/BACKWARD arguments are not "
+                "separate hypotheses; each chain isolates one mechanism, not the entire batch. "
                 "The following component, role, method-family and lineage constraints apply to every member candidate. "
                 if _expected_output_schema(request) == "HypothesisSet/v1"
                 else "one falsifiable HypothesisCandidate. "
@@ -3330,6 +3335,12 @@ def _instruction(
             )
         else:
             raise AgentHostError("hypothesis proposal has an unsupported subkind")
+        if request.schema_version >= 14:
+            direction += (
+                " Within effective_max_forks, consider independently testable alternative mechanisms and their "
+                "smallest discriminating experiments in this wing's summary. One mechanism per chain does not "
+                "require one chain per batch. Preserve uncertainty and dependency limits; do not pad the set."
+            )
         return common + (
             direction
             + " Return only one ExpertLoopCandidate with task_kind HYPOTHESIS_PROPOSAL, a concise "
