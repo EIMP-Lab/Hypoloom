@@ -50,11 +50,11 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     assert period == '1.89s'
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=live-rpm] .agent-tile-light')).animationDuration") == '1.4s'
     assert page.text('#grounding-state') == 'RUN'
-    assert page.text('[data-attempt=live-rpm] .agent-tile-metric') == '🎛️'
+    assert page.evaluate("document.querySelector('[data-attempt=live-rpm] .agent-tile-metric svg') !== null")
     assert 'Request rate: 4 RPM' in page.evaluate("document.querySelector('[data-attempt=live-rpm] .agent-tile-metric').title")
     assert 'Request rate: 4 RPM' in page.evaluate("document.querySelector('[data-attempt=live-rpm]').getAttribute('aria-label')")
     assert 'RPM' not in page.text('[data-attempt=live-rpm]')
-    assert page.text('[data-attempt=rpm-process] .agent-tile-metric') == '🕒'
+    assert page.evaluate("document.querySelector('[data-attempt=rpm-process] .agent-tile-metric svg') !== null")
     assert page.text('[data-attempt=rpm-process] .agent-tile-value') == '9m'
     assert 'elapsed 9m' in page.evaluate("document.querySelector('[data-attempt=rpm-process] .agent-tile-metric').title")
     page.wait("document.querySelectorAll('.agent-tile.tile-enter').length === 0")
@@ -135,7 +135,7 @@ def test_stale_poll_stops_rpm_animation_and_clears_live_values(browser):
     page.wait("document.querySelector('#connection').dataset.state === 'stale'")
     assert page.text('#run-rpm') == page.text('#grounding-rpm') == '—'
     assert page.evaluate("document.documentElement.dataset.rpmFresh") == 'false'
-    assert page.text('[data-attempt=stale-rpm] .agent-tile-metric') == '🎛️'
+    assert page.evaluate("document.querySelector('[data-attempt=stale-rpm] .agent-tile-metric svg') !== null")
     assert 'Request rate: — RPM' in page.evaluate("document.querySelector('[data-attempt=stale-rpm] .agent-tile-metric').title")
     assert 'no fresh Host traffic observation' in page.evaluate("document.querySelector('[data-attempt=stale-rpm]').getAttribute('aria-label')")
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=stale-rpm] .agent-tile-light')).animationName") == 'none'

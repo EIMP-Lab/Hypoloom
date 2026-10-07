@@ -1438,6 +1438,61 @@
     }));
   }
 
+  /*
+   * Lucide bot and clock icon shapes: https://lucide.dev/icons/{bot,clock}
+   * ISC License
+   * Copyright (c) 2026 Lucide Icons and Contributors
+   *
+   * Permission to use, copy, modify, and/or distribute this software for any
+   * purpose with or without fee is hereby granted, provided that the above
+   * copyright notice and this permission notice appear in all copies.
+   *
+   * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+   * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+   * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+   * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+   * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+   * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+   * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+   *
+   * The clock icon is derived from Feather, under the MIT License:
+   * Copyright (c) 2013-present Cole Bemis
+   *
+   * Permission is hereby granted, free of charge, to any person obtaining a copy
+   * of this software and associated documentation files (the "Software"), to deal
+   * in the Software without restriction, including without limitation the rights
+   * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   * copies of the Software, and to permit persons to whom the Software is
+   * furnished to do so, subject to the following conditions:
+   *
+   * The above copyright notice and this permission notice shall be included in all
+   * copies or substantial portions of the Software.
+   *
+   * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   * SOFTWARE.
+   */
+  function workingTileIcon(kind) {
+    const icon = svgElement("svg", {
+      viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+      "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", focusable: "false",
+    });
+    if (kind === "AGENT") {
+      icon.append(
+        svgElement("path", {d: "M12 8V4H8"}),
+        svgElement("rect", {width: 16, height: 12, x: 4, y: 8, rx: 2}),
+        svgElement("path", {d: "M2 14h2 M20 14h2 M15 13v2 M9 13v2"}),
+      );
+    } else {
+      icon.append(svgElement("circle", {cx: 12, cy: 12, r: 10}), svgElement("path", {d: "M12 6v6l4 2"}));
+    }
+    return icon;
+  }
+
   function workingTile(attempt, role) {
     let entry = state.workingTiles.get(attempt.attempt_id);
     if (entry) return entry;
@@ -1450,8 +1505,9 @@
     tile.type = "button";
     tile.dataset.attempt = attempt.attempt_id;
     tile.dataset.kind = attempt.kind;
-    const metric = element('span', 'agent-tile-metric', attempt.kind === 'AGENT' ? '🎛️' : '🕒');
+    const metric = element('span', 'agent-tile-metric');
     metric.setAttribute('aria-hidden', 'true');
+    metric.append(workingTileIcon(attempt.kind));
     tile.append(light, bar, metric);
     tile.addEventListener("click", () => {
       if (role === null) { openRemoteDetail('attempt', {attempt_id:attempt.attempt_id}); return; }

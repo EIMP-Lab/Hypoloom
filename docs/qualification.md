@@ -25,6 +25,25 @@ were visually inspected. The observer on port 44361 serves the current assets.
 JavaScript syntax, Ruff undefined-name and Git whitespace checks pass. No
 research-run or Host mutation.
 
+The user then requested a robot-head trial because the small robot emoji was
+hard to distinguish. Replace both emoji with the matching Lucide
+[bot](https://lucide.dev/icons/bot) and [clock](https://lucide.dev/icons/clock)
+SVG outlines at 0.85 rem (15.3 px with default font settings), using the existing
+SVG renderer and fixed columns. Keep a shared muted color, exact RPM tooltips,
+elapsed capsule and all pulse behavior. Inline shapes require no new dependency
+or external asset request; applicable ISC and Feather MIT notices accompany
+the shapes in app.js. Follow-up evidence:
+`.local/qualification/web-tile-svg-20261007/`.
+
+SVG follow-up: **seven passed, zero skipped** (three existing browser RPM/phase
+cases and four documentation checks). Updated only the former emoji-presence
+assertions for SVG; retained traffic, tooltip, alignment, language, stale and
+pulse expectations. Desktop and 390 px Chinese card screenshots were inspected;
+both icons measure 15.296875 px square. The live observer's app.js/style.css
+match the checkout; syntax, Ruff undefined-name and whitespace checks pass.
+These browser checks use Chromium fixtures; the user will judge appearance in
+their Edge session. No research-run or Host mutation.
+
 ## Web pulse appearance refinement (2026-10-07)
 
 After enabling animations in Edge, the user confirmed the new frequency is

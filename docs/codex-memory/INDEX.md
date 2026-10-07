@@ -1,7 +1,7 @@
 # Development memory index
 
 - [Compact Agent and experiment tile icons](../qualification.md#compact-agent-and-experiment-tile-icons-2026-10-07):
-  equal-size instrument/clock suffixes, exact RPM tooltips and accessible labels,
+  equal-size robot/clock SVG suffixes, exact RPM tooltips and accessible labels,
   with existing pulse appearance, timing and observation boundaries preserved.
 
 - [Web pulse appearance refinement](../qualification.md#web-pulse-appearance-refinement-2026-10-07):

@@ -485,7 +485,8 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .grounding-badge { margin-left: auto; font-size: .65rem; color: var(--cyan); }
 .grounding-card details { margin-top: .6rem; }
 .grounding-card details > .detail-link { display: block; margin-top: .4rem; }
-.agent-tile-metric { display: flex; align-items: center; justify-content: center; font-size: .7rem; line-height: 1; }
+.agent-tile-metric { display: flex; align-items: center; justify-content: center; color: var(--muted); line-height: 1; }
+.agent-tile-metric svg { display: block; width: .85rem; height: .85rem; }
 .subagent-title { margin: 0; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
 .agent-tile-list { display: flex; flex-wrap: wrap; gap: .3rem; margin: .3rem 0 .65rem; }
 .agent-tile {

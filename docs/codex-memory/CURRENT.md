@@ -1,10 +1,13 @@
 # Current Hypoloom development state
 
-- October 7 compact working tiles: Agent RPM moves into a 🎛️ tooltip and
-  accessible label; experiments add 🕒 beside their existing elapsed capsule.
+- October 7 compact working tiles: Agent RPM moves into a robot-head tooltip
+  and accessible label; experiments add a clock beside their elapsed capsule.
   Shared fixed columns align Agent, Process and Grounding tiles. Existing RPM
   ownership, unknown/stale semantics, subtle lights and phase timing remain.
-  Ten focused checks pass without skips; screenshot and served assets verified.
+  Follow-up replaces emoji with matching Lucide SVG outlines at 0.85 rem, using
+  the existing renderer and embedding applicable ISC/MIT notices in app.js.
+  Seven focused checks pass without skips; desktop/mobile screenshots and
+  served assets verified. Visual preference awaits the user's Edge trial.
   [Validation](../qualification.md#compact-agent-and-experiment-tile-icons-2026-10-07).
 
 - October 7 pulse appearance preference: after enabling Edge animations, the

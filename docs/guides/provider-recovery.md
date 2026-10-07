@@ -86,11 +86,11 @@ records remain visible; no samples is not a 100% success rate. These are executi
 observations, not scientific quality scores.
 
 Web Agent child tiles use RPM for their exact execution Attempt. Their trailing
-🎛️ icon shows the current RPM, in-flight and queued counts on hover; an experiment
-tile ends with 🕒 and keeps elapsed time in its capsule. Both tile types have the
-same dimensions. The accessible Agent label includes the request-rate observation.
-An expert or
-Grounding main light uses its aggregate RPM; these totals are never added again
+robot-head icon shows the current RPM, in-flight and queued counts on hover; an
+experiment tile ends with a clock and keeps elapsed time in its capsule. Both
+icons use matching SVG outlines and the same dimensions, independent of emoji
+fonts. The accessible Agent label includes the request-rate observation.
+An expert or Grounding main light uses its aggregate RPM; these totals are never added again
 to the run total. For positive RPM, child period is `0.8 + 1.2 / sqrt(RPM)` seconds; main
 period is 1.35 times that curve. At equal RPM the main light is slower; differing
 aggregate and child rates need not preserve that ordering. Process tiles use
