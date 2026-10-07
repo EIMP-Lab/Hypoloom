@@ -485,8 +485,7 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .grounding-badge { margin-left: auto; font-size: .65rem; color: var(--cyan); }
 .grounding-card details { margin-top: .6rem; }
 .grounding-card details > .detail-link { display: block; margin-top: .4rem; }
-.agent-tile-rpm { color: var(--muted); font-size: .58rem; font-variant-numeric: tabular-nums; }
-.agent-tile-rpm::after { content: " RPM"; }
+.agent-tile-metric { display: flex; align-items: center; justify-content: center; font-size: .7rem; line-height: 1; }
 .subagent-title { margin: 0; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
 .agent-tile-list { display: flex; flex-wrap: wrap; gap: .3rem; margin: .3rem 0 .65rem; }
 .agent-tile {
@@ -501,6 +500,7 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
   letter-spacing: normal;
 }
 .agent-tile:hover { border-color: var(--line-bright); color: var(--text); }
+.agent-tile[data-attempt] { display: inline-grid; grid-template-columns: .45rem 3.3rem .85rem; }
 .agent-tile-light { width: 0.45rem; height: 0.45rem; border-radius: 2px; background: var(--expert-accent); flex: none; }
 .agent-tile-bar { position: relative; width: 3.3rem; height: 0.95rem; overflow: hidden; border: 1px solid var(--line-bright); border-radius: 999px; background: var(--bg); }
 .agent-tile-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--expert-accent) 32%, transparent); transition: width 0.3s ease; }

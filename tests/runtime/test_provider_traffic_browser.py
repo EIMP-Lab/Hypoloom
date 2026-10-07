@@ -34,6 +34,8 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
         role:'expert-a',task_scope:'expert',owner_role:'expert-a',command:'LITERATURE_REVIEW',
         started_at:fixture.snapshot.observed_at-10});
       fixture.snapshot.attempts.push({attempt_id:'ground-rpm',kind:'AGENT',state:'OPEN',task_scope:'run',command:'GROUNDING'});
+      fixture.snapshot.attempts.push({attempt_id:'rpm-process',kind:'PROCESS',state:'OPEN',
+        role:'expert-a',task_scope:'expert',owner_role:'expert-a',command:'EXECUTE',started_at:fixture.snapshot.observed_at-540});
       fixture.snapshot.overview.grounding={state:'active',attempt_ids:['ground-rpm'],active_readers:0,elapsed_seconds:10,accounting:{reported_tokens:21},activity:[]};""")
     page.evaluate('fixture.snapshot.overview.grounding.reliability=' + json.dumps(summary['grounding']['reliability']))
     page.wait("document.querySelector('#run-rpm').textContent === '9'")
@@ -48,7 +50,16 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     assert period == '1.89s'
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=live-rpm] .agent-tile-light')).animationDuration") == '1.4s'
     assert page.text('#grounding-state') == 'RUN'
-    assert page.text('[data-attempt=live-rpm] .agent-tile-rpm') == '4'
+    assert page.text('[data-attempt=live-rpm] .agent-tile-metric') == '🎛️'
+    assert 'Request rate: 4 RPM' in page.evaluate("document.querySelector('[data-attempt=live-rpm] .agent-tile-metric').title")
+    assert 'Request rate: 4 RPM' in page.evaluate("document.querySelector('[data-attempt=live-rpm]').getAttribute('aria-label')")
+    assert 'RPM' not in page.text('[data-attempt=live-rpm]')
+    assert page.text('[data-attempt=rpm-process] .agent-tile-metric') == '🕒'
+    assert page.text('[data-attempt=rpm-process] .agent-tile-value') == '9m'
+    assert 'elapsed 9m' in page.evaluate("document.querySelector('[data-attempt=rpm-process] .agent-tile-metric').title")
+    page.wait("document.querySelectorAll('.agent-tile.tile-enter').length === 0")
+    sizes = page.evaluate("['live-rpm','rpm-process','ground-rpm'].map(id=>{const r=document.querySelector(`[data-attempt='${id}']`).getBoundingClientRect();return [r.width,r.height]})")
+    assert all(size == pytest.approx(sizes[0]) for size in sizes[1:])
     page.evaluate("document.querySelector('#grounding-agent-panel').scrollIntoView({block:'center'})")
     page.screenshot(tmp_path / 'grounding-card.png')
     page.evaluate("fixture.snapshot.status.provider_traffic.by_expert['expert-a'].rpm=16; fixture.snapshot.status.provider_traffic.rpm=21")
@@ -60,6 +71,8 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     assert page.text('#run-rpm') == '21' and page.text('.expert-rpm-value') == '16'
     assert page.text('#grounding-state') == 'RUN'
     assert '仅本运行' in page.evaluate("document.querySelector('#run-rpm').title")
+    assert '请求速率：4 RPM' in page.evaluate("document.querySelector('[data-attempt=live-rpm] .agent-tile-metric').title")
+    assert '耗时 9m' in page.evaluate("document.querySelector('[data-attempt=rpm-process] .agent-tile-metric').title")
     assert '最终交付' in page.evaluate("document.querySelector('#grounding-agent-card [data-preview-metric=node_delivery]').title")
     assert '2/2' in page.text('#grounding-agent-card [data-preview-metric=node_delivery]')
     page.call('Emulation.setEmulatedMedia', {'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
@@ -68,6 +81,8 @@ def test_rpm_cards_grounding_and_run_refresh_without_double_counting(browser, tm
     page.call('Emulation.setEmulatedMedia', {'features':[]})
     page.call('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    mobile_sizes = page.evaluate("['live-rpm','rpm-process'].map(id=>{const r=document.querySelector(`[data-attempt='${id}']`).getBoundingClientRect();return [r.width,r.height]})")
+    assert mobile_sizes[0] == pytest.approx(mobile_sizes[1])
     page.screenshot(tmp_path / 'rpm-mobile.png')
     page.evaluate("fixture.snapshot.status.provider_traffic.by_expert['expert-a'].rpm=0; fixture.snapshot.status.provider_traffic.by_attempt['live-rpm'].rpm=0")
     page.wait("document.querySelector('.expert-rpm-value').textContent === '0'")
@@ -120,7 +135,9 @@ def test_stale_poll_stops_rpm_animation_and_clears_live_values(browser):
     page.wait("document.querySelector('#connection').dataset.state === 'stale'")
     assert page.text('#run-rpm') == page.text('#grounding-rpm') == '—'
     assert page.evaluate("document.documentElement.dataset.rpmFresh") == 'false'
-    assert page.text('[data-attempt=stale-rpm] .agent-tile-rpm') == '—'
+    assert page.text('[data-attempt=stale-rpm] .agent-tile-metric') == '🎛️'
+    assert 'Request rate: — RPM' in page.evaluate("document.querySelector('[data-attempt=stale-rpm] .agent-tile-metric').title")
+    assert 'no fresh Host traffic observation' in page.evaluate("document.querySelector('[data-attempt=stale-rpm]').getAttribute('aria-label')")
     assert page.evaluate("getComputedStyle(document.querySelector('[data-attempt=stale-rpm] .agent-tile-light')).animationName") == 'none'
 
 

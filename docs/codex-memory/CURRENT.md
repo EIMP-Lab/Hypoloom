@@ -1,5 +1,12 @@
 # Current Hypoloom development state
 
+- October 7 compact working tiles: Agent RPM moves into a 🎛️ tooltip and
+  accessible label; experiments add 🕒 beside their existing elapsed capsule.
+  Shared fixed columns align Agent, Process and Grounding tiles. Existing RPM
+  ownership, unknown/stale semantics, subtle lights and phase timing remain.
+  Ten focused checks pass without skips; screenshot and served assets verified.
+  [Validation](../qualification.md#compact-agent-and-experiment-tile-icons-2026-10-07).
+
 - October 7 pulse appearance preference: after enabling Edge animations, the
   user accepted the new frequency but requested the original visual treatment.
   Restore 0.45/0.55 rem child/main lights, opacity 0.35–1 and original halos;

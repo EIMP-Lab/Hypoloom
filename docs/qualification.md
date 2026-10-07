@@ -2,6 +2,29 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Compact Agent and experiment tile icons (2026-10-07)
+
+Agent tiles replace the visible RPM number/suffix with a trailing 🎛️ icon;
+the exact Attempt RPM and existing in-flight/queued observation remain in
+the icon/tile tooltip and the accessible button label. Experiment tiles add
+a trailing 🕒 icon, with elapsed time retained in the capsule and tooltip.
+Both kinds reuse the same fixed light/value/icon columns; Grounding Agent
+tiles use the same layout. The overflow-count tile keeps its existing layout.
+No changes to the retained subtle lights, frequency curve, animation timing,
+request accounting or run state. English/Chinese labels follow the existing
+translation renderer; stale traffic remains explicitly unknown in the tooltip.
+
+Existing browser checks cover icon semantics, exact traffic ownership, desktop
+and 390 px equal dimensions, language switching, elapsed-time wording and stale
+observations. Evidence: `.local/qualification/web-tile-icons-20261007/`.
+
+Focused validation: **ten passed, zero skipped** (six browser checks covering
+traffic, working tiles and language behavior, plus four documentation checks).
+The existing phase-continuity regression passes unchanged; the rendered icons
+were visually inspected. The observer on port 44361 serves the current assets.
+JavaScript syntax, Ruff undefined-name and Git whitespace checks pass. No
+research-run or Host mutation.
+
 ## Web pulse appearance refinement (2026-10-07)
 
 After enabling animations in Edge, the user confirmed the new frequency is

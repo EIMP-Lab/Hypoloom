@@ -629,9 +629,11 @@
     document.querySelectorAll('.agent-tile[data-attempt]').forEach(tile => {
       if (tile.dataset.kind !== 'AGENT') return;
       const own = traffic.by_attempt ? object(traffic.by_attempt[tile.dataset.attempt] || {rpm:0,in_flight:0,queued:0}) : {};
-      fill(tile.querySelector('.agent-tile-rpm'), own);
+      const metric = tile.querySelector('.agent-tile-metric');
+      metric.title = `${t("Request rate: {0} RPM", fresh && valid(own.rpm) ? own.rpm : "—")}\n${describe(own)}`;
       pulse(tile.querySelector('.agent-tile-light'), own, false);
-      tile.title = `${tile.dataset.workTitle || ''}\n${describe(own)}`;
+      tile.title = `${tile.dataset.workTitle || ''}\n${metric.title}`;
+      tile.setAttribute('aria-label', `${tile.dataset.workLabel || ''} · ${metric.title}`);
     });
     document.querySelectorAll(".expert-preview[data-expert-role]").forEach(card => {
       const counts = object(object(traffic.by_expert)[card.dataset.expertRole] || {rpm: 0, in_flight: 0, queued: 0});
@@ -1448,8 +1450,9 @@
     tile.type = "button";
     tile.dataset.attempt = attempt.attempt_id;
     tile.dataset.kind = attempt.kind;
-    tile.append(light, bar);
-    if (attempt.kind === 'AGENT') tile.append(element('span', 'agent-tile-rpm', '—'));
+    const metric = element('span', 'agent-tile-metric', attempt.kind === 'AGENT' ? '🎛️' : '🕒');
+    metric.setAttribute('aria-hidden', 'true');
+    tile.append(light, bar, metric);
     tile.addEventListener("click", () => {
       if (role === null) { openRemoteDetail('attempt', {attempt_id:attempt.attempt_id}); return; }
       byId("filter-expert").value = role || '';
@@ -1518,7 +1521,9 @@
     }
     tile.title = lines.join("\n");
     tile.dataset.workTitle = tile.title;
-    tile.setAttribute("aria-label", `${label}: ${valueText}`);
+    tile.dataset.workLabel = `${label}: ${valueText}`;
+    tile.setAttribute("aria-label", tile.dataset.workLabel);
+    if (isProcess) tile.querySelector('.agent-tile-metric').title = lines[1];
   }
 
   function pauseNotice(pause, inDebate) {

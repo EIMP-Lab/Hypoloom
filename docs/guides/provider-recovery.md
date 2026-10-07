@@ -85,7 +85,11 @@ buttons open evidence filtered to that scope. Denominators, unknowns and exclude
 records remain visible; no samples is not a 100% success rate. These are execution
 observations, not scientific quality scores.
 
-Web Agent child tiles use RPM for their exact execution Attempt. An expert or
+Web Agent child tiles use RPM for their exact execution Attempt. Their trailing
+🎛️ icon shows the current RPM, in-flight and queued counts on hover; an experiment
+tile ends with 🕒 and keeps elapsed time in its capsule. Both tile types have the
+same dimensions. The accessible Agent label includes the request-rate observation.
+An expert or
 Grounding main light uses its aggregate RPM; these totals are never added again
 to the run total. For positive RPM, child period is `0.8 + 1.2 / sqrt(RPM)` seconds; main
 period is 1.35 times that curve. At equal RPM the main light is slower; differing
