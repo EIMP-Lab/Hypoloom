@@ -1575,40 +1575,7 @@ def _validate_iteration_input(request: AgentRequest, candidate: ExpertLoopCandid
         facts[name] = payload
     if any(facts["spec"].get(field) != facts["outcome"].get(field) for field in ("experiment_id", "execution_id", "method_family_id", "result_kind")):
         raise AgentACIError("invalid_iteration_input", "current analysis outcome differs from its preregistration")
-    outcome = facts["outcome"]
-    comparable = outcome.get("outcome") in {"SUCCESS", "CLEAN_REFUTATION"}
-    scientific_inconclusive = False
-    if outcome.get("outcome") == "INCONCLUSIVE":
-        evaluation_ref = f"{request.command_id}--current-evaluation"
-        process_ref = f"{request.command_id}--current-process"
-        evaluations = [item for item in request.input_artifacts
-                       if item.ref == evaluation_ref and item.media_type == "application/json"]
-        processes = [item for item in request.input_artifacts
-                     if item.ref == process_ref and item.media_type == "application/json"]
-        if (len(evaluations) == 1 and len(processes) == 1
-                and evaluation_ref in request.immutable_context_refs
-                and process_ref in request.immutable_context_refs):
-            try:
-                evaluation = _json_object(evaluations[0].content_bytes(), "current analysis evaluation")
-                process = _json_object(processes[0].content_bytes(), "current analysis process")
-            except AgentACIError:
-                evaluation = process = None
-            scientific_inconclusive = (
-                isinstance(evaluation, Mapping)
-                and isinstance(process, Mapping)
-                and facts["spec"].get("result_kind") == "metric"
-                and evaluation.get("outcome") == "INCONCLUSIVE"
-                and evaluation.get("criterion_met") is None
-                and evaluation.get("metric_value") is None
-                and evaluation.get("validation_error") is None
-                and evaluation.get("execution_integrity_error") is None
-                and process.get("terminal_reason") == "SUCCEEDED"
-                and process.get("execution_id") == outcome.get("execution_id")
-                and outcome.get("validation_code") is None
-                and outcome.get("metric_value") is None
-                and outcome.get("logical_artifacts") == []
-            )
-    if not comparable and not scientific_inconclusive:
+    if facts["outcome"].get("outcome") not in {"SUCCESS", "CLEAN_REFUTATION"}:
         raise AgentACIError("invalid_iteration_candidate", "ITERATE requires an accepted scientific comparison, not operational repair")
     if f"{request.command_id}--current-outcome" not in candidate.supporting_refs:
         raise AgentACIError("invalid_iteration_candidate", "ITERATE must cite its current accepted outcome")

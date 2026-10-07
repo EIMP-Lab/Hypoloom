@@ -10348,13 +10348,13 @@ def _audit_component_result(
                 (fact_id,),
             )
         )
-    marker_inconclusive = (
-        actual_outcome == "INCONCLUSIVE"
+    condition_applicable = (
+        actual_outcome in {*_COMPARABLE_OUTCOMES, "INCONCLUSIVE"}
         and component.inconclusive_if is not None
         and attempt is not None
         and attempt["terminal_reason"] == "SUCCEEDED"
     )
-    if actual_outcome not in _COMPARABLE_OUTCOMES and not marker_inconclusive:
+    if actual_outcome not in _COMPARABLE_OUTCOMES and not condition_applicable:
         if payload.get("metric_value") is not None:
             issues.append(
                 OracleIssue(
@@ -10425,7 +10425,7 @@ def _audit_component_result(
     if not artifacts_valid:
         return _ComponentResult(actual_outcome, None, None, implementation, config)
     condition_matches = (
-        marker_inconclusive
+        condition_applicable
         and logical is not None
         and _inconclusive_condition_matches(root, logical, component.inconclusive_if or {}, fact_id, issues)
     )

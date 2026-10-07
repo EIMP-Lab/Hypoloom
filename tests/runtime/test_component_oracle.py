@@ -433,6 +433,98 @@ def _metric_component(
     )
 
 
+def test_oracle_recomputes_inconclusive_condition_before_trusting_outcome(
+    tmp_path: Path,
+) -> None:
+    component = _ComponentContract(
+        component_id="primary.matrix",
+        tier="primary",
+        owner_role="researcher",
+        proposer_roles=("researcher",),
+        dependencies=(),
+        required_inputs=(),
+        result_kind="metric",
+        metric_name="score",
+        metric_direction="MAXIMIZE",
+        metric_target="0",
+        seeds=(),
+        arms=(),
+        trial_ids=(),
+        required_artifacts=("evaluation_summary",),
+        artifact_counts={"evaluation_summary": 1},
+        required_metrics=("score",),
+        inconclusive_if={
+            "artifact": "evaluation_summary",
+            "path": "coverage.full_matrix_complete",
+            "equals": False,
+        },
+    )
+    artifact = {
+        "run_id": "run",
+        "experiment_id": "experiment",
+        "execution_id": "execution",
+        "attempt_id": "attempt",
+        "artifact_kind": "RESULT",
+        "path": "run/experiment/execution/attempt/RESULT",
+    }
+    publication = tmp_path / artifact["path"]
+    publication.mkdir(parents=True)
+    (publication / "evaluation_summary.json").write_text(
+        json.dumps({"coverage": {"full_matrix_complete": False}}),
+        encoding="utf-8",
+    )
+    (publication / "result.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {"evaluation_summary": "evaluation_summary.json"},
+                "trials": [{"seed": 0, "clean": True, "metrics": {"score": -100}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    outcome = {"fact_id": "outcome-fact"}
+    payload = {
+        "outcome": "CLEAN_REFUTATION",
+        "metric_value": "-100",
+        "logical_artifacts": [
+            {"logical_artifact": "evaluation_summary", "paths": ["evaluation_summary.json"]}
+        ],
+        "evaluator_version": "component-result/9",
+    }
+    candidate = {
+        "outcome": "CLEAN_REFUTATION",
+        "evaluator_version": "component-result/9",
+        "metric_value": "-100",
+        "criterion_met": False,
+        "validation_error": None,
+        "execution_integrity_error": None,
+    }
+    issues: list[OracleIssue] = []
+
+    result = _audit_component_result(
+        tmp_path,
+        component,
+        {},
+        {"evaluator_version": "component-result/9"},
+        outcome,
+        payload,
+        artifact,
+        {"attempt": {"terminal_reason": "SUCCEEDED"}},
+        None,
+        [outcome],
+        {"outcome-fact": {"outcome": candidate}},
+        issues,
+    )
+
+    assert result.outcome == "INCONCLUSIVE"
+    assert {
+        "outcome_scientific_verdict_mismatch",
+        "outcome_metric_value_mismatch",
+        "outcome_logical_artifact_mismatch",
+        "accept_outcome_candidate_mismatch",
+    } <= {issue.code for issue in issues}
+
+
 @pytest.mark.parametrize(
     ("evaluator_version", "accepted_outcome", "expect_mismatch"),
     [
