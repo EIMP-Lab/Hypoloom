@@ -2,6 +2,48 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Runtime trends and default issue attachments (2026-10-07)
+
+[Design](design/issue-report-evidence.md#runtime-trends-2026-10-07) reuses bound
+Attempt intervals, task ownership and existing relay timestamps. No durable
+state, additional collector, Host scheduling change or retained-run mutation.
+The original relay also passes the blocked-response timestamp regression, so
+the initially considered extra metadata write was removed rather than expanding
+the recording path. There is no baseline recording defect claim.
+
+Focused validation covers occupancy/peaks, minute boundaries, partial buckets,
+retries versus local deferrals, reader ownership and a role named `other`, missing/
+malformed/linked/bounded capture, CSV gaps, default run-wide exports despite a
+single selected Attempt, public aliases, size limits, authenticated HTTP and
+unchanged source rows. Browser checks cover chart/range/legend/keyboard controls,
+literal untrusted labels, unknown lower bounds, retained charts on read failure,
+continued ordinary polling, English/Chinese and a 390 px viewport.
+
+Final selections and the unchanged failed-case rerun reconcile to **195 distinct
+passes, zero skips and no unresolved failures**, including 34 actual-browser
+checks. This is not a claim that every initial invocation was green.
+
+The actual Host/CPU support closure verifies automatically exported charts from
+terminal evidence. A separate native CC/local-scripted-provider closure ends
+15 Agents and one CPU Process with one outcome, zero OPEN Attempts and no live
+owned groups. Its trend projection counts 35 recorded requests and a Process
+peak of one. Source, isolated wheel install and fresh bundle match 183 Python,
+skill and Web asset files. Undefined-name/import and Git whitespace checks pass.
+
+A read-only retained-run sample recovers 1,309 minute buckets, 3,834 requests,
+three expert series and an experiment peak of three. One cold projection took
+4.56 seconds; a subsequent real authenticated HTTP request took 0.438 seconds.
+These are local observations, not latency percentiles. JSON/CSV are about
+0.85 MiB combined. Bounds and missing diagnostics still apply to larger runs.
+
+Evidence remains in `.local/qualification/runtime-trends-20261007/`. Initial
+fixture method/task names and response framing mistakes are retained and fixed.
+A TUI language-switch assertion failed once in the broader regression selection
+and passed unchanged on isolated rerun; no TUI behavior or assertion was changed.
+This is focused feature qualification, not a full G1–G5 promotion or paid/GPU
+performance evaluation. Reopen the observer to use the API; no research Host
+restart or cross-version migration is needed.
+
 ## Experiment supply and memory feedback (2026-10-07)
 
 The user authorized implementation, commit and push after read-only performance

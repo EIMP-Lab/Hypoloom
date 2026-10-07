@@ -299,6 +299,20 @@ to export a support bundle. Research text, free-form errors and local paths
 are filtered by default; private content requires an explicit
 `--include-private-data`. Exports are never uploaded automatically.
 
+In Web, **Run trends** shows experiment/Agent concurrency and total/per-expert
+RPM across the run. Choose a time range, toggle request series, and inspect a
+time bucket with the pointer or slider. Solid occupancy lines show bucket-end
+counts; dashed lines show peaks. RPM is averaged within each bucket, includes
+retries, and leaves gaps for unavailable capture. These recorded intervals do
+not establish process liveness. The data comes from server records even while
+the browser is closed. Reopen the observer after updating to load the new API;
+old runs are readable where their diagnostic evidence exists.
+
+Run-scoped downloads automatically include `runtime-trends.json` and
+`runtime-trends.csv`, regardless of the selected Attempt scope. Public copies
+replace expert names with aliases. Package limits and missing capture remain
+explicit in `report.json`; no extra checkbox is needed.
+
 `--recent-failures` selects the last three failing commands by failure time,
 their retries, the first unrecovered failure's retry chain, recorded final-report
 Attempts and goal/outcome/verdict sources. The package distinguishes the

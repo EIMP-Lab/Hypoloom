@@ -22,6 +22,12 @@ def test_support_retains_real_terminal_sources_without_mutating_closed_host(shar
     expected_usage = usage_projection(attempts, future_attempts=0, future_budget=None, document=contract)
     public, public_files = build_support_bundle(root, RUN_ID, recent_failures=True)
     private, files = build_support_bundle(root, RUN_ID, recent_failures=True, include_private_data=True)
+    for package in (public_files, files):
+        trends = json.loads(package["runtime-trends.json"])
+        assert trends["terminal"]
+        assert max(p["experiments_peak"] for p in trends["points"]) > 0
+        assert trends["points"][-1]["experiments"] == trends["points"][-1]["agents"] == 0
+        assert b"experiments_peak" in package["runtime-trends.csv"]
     debug = json.loads(files["debug.json"])
     assert private["budget_usage"]["observed_lower_bound"] == expected_usage["observed_lower_bound"]
     assert private["budget_usage"]["profile_cumulative"]["cost"] == expected_usage["profile_cumulative"]["cost"]

@@ -212,6 +212,12 @@ def support_readme(report, projection):
         "Observed costs are distinct from charged/reserved amounts; unknown usage is not zero spend.", ""]
     lines += ["- " + action for action in coverage.get("next_steps", [])]
     lines.append("")
+    if trends := report.get("trends"):
+        lines += ["## Runtime trends", "",
+            "Run-wide experiment/Agent occupancy and recorded request RPM are included by default, regardless of Attempt selection.",
+            f"Files: {', '.join(trends.get('files', [])) or 'unavailable or omitted by package limits'}.",
+            "RPM is a bucket average including retries; missing capture is unknown, with recorded lower bounds retained.",
+            "Occupancy follows recorded bound Attempt intervals, not historical OS liveness. JSON includes coverage; CSV contains the same plotted values.", ""]
     if report.get("issue_description"):
         lines += ["## Submitted description", ""]
         for field, value in report["issue_description"].items():

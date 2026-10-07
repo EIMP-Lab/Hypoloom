@@ -4118,6 +4118,150 @@
     }
   });
 
+  const trendsDialog = byId("trends-dialog");
+  let trendsData = null, trendsController = null, trendsTimer = null;
+  let trendIndices = [], trendSeries = [], hiddenTrendSeries = new Set();
+  const trendColors = ["#78dcff", "#e5b66f", "#b69cff", "#73e0b1", "#ff97bd", "#b3ce70", "#8aafff", "#efa07e"];
+  const trendTime = at => new Date(at * 1000).toLocaleString(uiLanguage, {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
+  const trendNumber = value => value == null ? "—" : Number(value).toLocaleString(uiLanguage, {maximumFractionDigits:2});
+  function trendSvg(tag, attributes = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+    return node;
+  }
+  function renderTrendChart(id, series) {
+    const root = byId(id); root.replaceChildren();
+    const width = Math.max(280, Math.round(root.getBoundingClientRect().width || 900)), height = 220, left = 40, right = 15, top = 15, bottom = 35;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const values = series.flatMap(s => trendIndices.map(i => s.values[i])).filter(v => Number.isFinite(v));
+    const ceiling = Math.max(1, Math.ceil(values.reduce((highest, value) => Math.max(highest, value), 0)));
+    const svg = trendSvg("svg", {viewBox:`0 0 ${width} ${height}`, role:"img", "aria-label":id === "trends-rpm" ? t("Requests per minute") : t("Experiment and Agent concurrency")});
+    const x = j => left + (j / Math.max(1, trendIndices.length - 1)) * plotWidth;
+    const y = value => top + plotHeight * (1 - value / ceiling);
+    for (let i = 0; i <= 4; i++) {
+      const value = ceiling * i / 4;
+      svg.append(trendSvg("line", {x1:left, x2:width-right, y1:y(value), y2:y(value), class:"trend-grid"}));
+      const label = trendSvg("text", {x:left-8, y:y(value)+4, "text-anchor":"end"}); label.textContent = trendNumber(value); svg.append(label);
+    }
+    if (trendIndices.length) {
+      const ticks = width < 500 ? [0, trendIndices.length-1] : [0, Math.floor((trendIndices.length-1)/2), trendIndices.length-1];
+      ticks.forEach((j, k) => {
+        const label = trendSvg("text", {x:x(j), y:height-9, "text-anchor":k === 0 ? "start" : k === ticks.length-1 ? "end" : "middle"});
+        label.textContent = trendTime(trendsData.points[trendIndices[j]].until); svg.append(label);
+      });
+    }
+    series.forEach(s => {
+      let path = "", connected = false;
+      trendIndices.forEach((i, j) => {
+        const value = s.values[i];
+        if (!Number.isFinite(value)) { connected = false; return; }
+        if (!connected) svg.append(trendSvg("circle", {cx:x(j), cy:y(value), r:2, fill:s.color}));
+        path += `${connected ? "L" : "M"}${x(j)},${y(value)} `; connected = true;
+      });
+      svg.append(trendSvg("path", {d:path, fill:"none", stroke:s.color, "stroke-width":s.dashed ? 1.4 : 2.4,
+        "stroke-dasharray":s.dashed ? "5 5" : "none", "vector-effect":"non-scaling-stroke"}));
+    });
+    svg.append(trendSvg("line", {class:"trend-crosshair", x1:left, x2:left, y1:top, y2:height-bottom}));
+    svg.addEventListener("pointermove", event => {
+      const rect = svg.getBoundingClientRect();
+      const j = Math.round((((event.clientX-rect.left) / rect.width * width)-left) / plotWidth * (trendIndices.length-1));
+      byId("trends-cursor").value = String(Math.max(0, Math.min(trendIndices.length-1, j)));
+      inspectTrendPoint();
+    });
+    root.append(svg);
+  }
+  function inspectTrendPoint() {
+    if (!trendIndices.length) return;
+    const j = Number(byId("trends-cursor").value), index = trendIndices[j], point = trendsData.points[index];
+    document.querySelectorAll(".trend-crosshair").forEach(line => {
+      const x = 40 + j / Math.max(1, trendIndices.length-1) * (line.ownerSVGElement.viewBox.baseVal.width - 55);
+      line.setAttribute("x1", x); line.setAttribute("x2", x);
+    });
+    const content = byId("trends-inspect"); content.replaceChildren();
+    content.append(element("strong", "", `${trendTime(point.at)} – ${trendTime(point.until)}`));
+    content.append(element("p", "", t("Experiments: {0} (peak {1}) · Agents: {2} (peak {3})", point.experiments, point.experiments_peak, point.agents, point.agents_peak)));
+    const metrics = element("div", "trend-values");
+    trendSeries.forEach(s => {
+      if (hiddenTrendSeries.has(s.key)) return;
+      const value = s.values[index];
+      const label = value == null ? t("unknown; recorded ≥{0} RPM", trendNumber(s.lower[index])) : `${trendNumber(value)} RPM`;
+      const row = element("span", "", `${s.label}: ${label}`); row.style.color = s.color; metrics.append(row);
+    });
+    content.append(metrics);
+  }
+  function renderTrends() {
+    if (!trendsData) return;
+    const range = byId("trends-range").value;
+    const since = range === "all" ? -Infinity : trendsData.ended_at - Number(range);
+    trendIndices = trendsData.points.map((_, i) => i).filter(i => trendsData.points[i].until >= since);
+    byId("trends-content").hidden = !trendIndices.length;
+    const coverage = object(trendsData.coverage);
+    byId("trends-coverage").textContent = t("{0} s buckets · {1} recorded requests · {2} Attempts with incomplete capture. Gaps are unknown; known lower bounds remain available below. Data is included in Report issue.",
+      trendsData.interval_seconds, coverage.request_count ?? 0, coverage.incomplete_attempts ?? 0);
+    const concurrency = [
+      {key:"experiments", label:t("Experiments"), color:trendColors[0]},
+      {key:"agents", label:"Agents", color:trendColors[1]},
+    ];
+    const legend = byId("trends-concurrency-legend"); legend.replaceChildren();
+    concurrency.forEach(s => { const label = element("span", "", s.label); label.style.color=s.color; legend.append(label); });
+    renderTrendChart("trends-concurrency", concurrency.flatMap(s => [
+      {...s, values:trendsData.points.map(p => p[s.key])},
+      {...s, dashed:true, values:trendsData.points.map(p => p[s.key+"_peak"])},
+    ]));
+    trendSeries = [{key:"run", label:t("Total RPM"), color:trendColors[0],
+      values:trendsData.points.map(p => p.rpm), lower:trendsData.points.map(p => p.rpm_lower_bound)},
+      ...trendsData.experts.map((s, i) => ({key:`expert:${s.role}`, label:s.role, color:trendColors[(i+1)%trendColors.length], values:s.rpm, lower:s.rpm_lower_bound})),
+      ...["grounding", "other"].map((key, i) => ({key, label:key === "grounding" ? "Grounding" : t("Other run tasks"), color:["#8cabbc", "#df9b9b"][i], values:trendsData[key].rpm, lower:trendsData[key].rpm_lower_bound}))];
+    const rpmLegend = byId("trends-rpm-legend"); rpmLegend.replaceChildren();
+    trendSeries.forEach(s => {
+      const button = element("button", "", s.label); button.type="button"; button.style.color=s.color;
+      button.setAttribute("aria-pressed", String(!hiddenTrendSeries.has(s.key)));
+      button.addEventListener("click", () => {
+        if (hiddenTrendSeries.has(s.key)) hiddenTrendSeries.delete(s.key); else hiddenTrendSeries.add(s.key);
+        renderTrends();
+      }); rpmLegend.append(button);
+    });
+    renderTrendChart("trends-rpm", trendSeries.filter(s => !hiddenTrendSeries.has(s.key)));
+    byId("trends-cursor").max = String(Math.max(0, trendIndices.length-1));
+    inspectTrendPoint();
+  }
+  async function loadTrends() {
+    if (!trendsDialog.open || trendsController) return;
+    clearTimeout(trendsTimer);
+    const controller = new AbortController(); trendsController = controller;
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    byId("refresh-trends").disabled = true;
+    byId("trends-status").textContent = t("Reading recorded runtime trends…");
+    try {
+      const response = await fetch("/api/trends", {headers:{Authorization:`Bearer ${accessToken}`}, signal:controller.signal, cache:"no-store"});
+      if (!response.ok) throw new Error("unavailable");
+      const data = await response.json();
+      if (!trendsDialog.open || controller.signal.aborted) return;
+      trendsData = data;
+      renderTrends();
+      byId("trends-cursor").value = byId("trends-cursor").max;
+      inspectTrendPoint();
+      byId("trends-status").textContent = t("Observed {0}. Refreshes every minute while open.", trendTime(data.observed_at));
+    } catch (_error) {
+      if (trendsDialog.open) byId("trends-status").textContent = t("Trends unavailable. Any previous chart is retained; use Refresh trends to retry.");
+    } finally {
+      clearTimeout(timeout); trendsController = null;
+      byId("refresh-trends").disabled = false;
+      if (trendsDialog.open) trendsTimer = setTimeout(loadTrends, 60000);
+    }
+  }
+  byId("open-trends").addEventListener("click", () => { trendsDialog.showModal(); loadTrends(); });
+  byId("close-trends").addEventListener("click", () => trendsDialog.close());
+  trendsDialog.addEventListener("close", () => { clearTimeout(trendsTimer); trendsController?.abort(); });
+  byId("refresh-trends").addEventListener("click", loadTrends);
+  byId("trends-range").addEventListener("change", () => { renderTrends(); byId("trends-cursor").value=byId("trends-cursor").max; inspectTrendPoint(); });
+  byId("trends-cursor").addEventListener("input", inspectTrendPoint);
+  let trendResizeFrame = null;
+  window.addEventListener("resize", () => {
+    if (!trendsDialog.open || trendResizeFrame) return;
+    trendResizeFrame = requestAnimationFrame(() => { trendResizeFrame = null; renderTrends(); });
+  });
+
   let supportRequest = 0;
   let supportController = null;
   function supportOptions(format) {
@@ -4238,6 +4382,7 @@
     button.title = t(uiLanguage === "en" ? "Switch to Chinese" : "Switch to English");
     state.renderInputs.clear();
     if (state.snapshot) render(state.snapshot, state.product);
+    if (trendsDialog.open) renderTrends();
     if (!drawer.hidden && state.drawerMode === "detail") renderResearchDetail();
     if (document.hidden) setConnection(connectionState, connectionMessage);
     else updateConnection(true);

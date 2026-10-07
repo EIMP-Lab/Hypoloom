@@ -1839,6 +1839,57 @@ def test_browser_cold_poll_and_authentication_states(browser):
     page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
 
 
+def test_browser_run_trends_interaction_unknowns_and_responsive_layout(browser, tmp_path):
+    page = browser
+    points = [dict(at=1800000000+i*60, until=1800000060+i*60,
+        experiments=i%3, experiments_peak=3, agents=(i%4)+1, agents_peak=5,
+        rpm=8 if i != 58 else None, rpm_lower_bound=8 if i != 58 else 2) for i in range(120)]
+    values = [3] * 120
+    data = dict(observed_at=1800007200, ended_at=1800007200, interval_seconds=60, points=points,
+        coverage=dict(request_count=950, incomplete_attempts=1),
+        experts=[dict(role="expert <script>injected=true</script>", rpm=values, rpm_lower_bound=values)],
+        grounding=dict(rpm=values, rpm_lower_bound=values), other=dict(rpm=[2]*120, rpm_lower_bound=[2]*120))
+    page.evaluate("window.trendFixture=" + json.dumps(data))
+    page.evaluate("""window.trendCalls=0; window.baseFetch=window.fetch;
+      window.fetch=async (path, options) => {
+        if (path !== '/api/trends') return baseFetch(path, options);
+        trendCalls++; fixtureRequests.push(['GET',path,options.headers.Authorization]);
+        if(window.trendError) return {ok:false,status:503};
+        return {ok:true,status:200,json:async()=>structuredClone(trendFixture)};
+      };""")
+    assert page.evaluate("trendCalls") == 0
+    page.click("#open-trends")
+    page.wait("document.querySelectorAll('#trends-rpm svg path').length === 4")
+    assert "950" in page.text("#trends-coverage")
+    assert page.evaluate("window.injected === undefined")
+    page.evaluate("document.querySelector('#trends-cursor').value=58; document.querySelector('#trends-cursor').dispatchEvent(new Event('input'))")
+    assert "unknown; recorded ≥2 RPM" in page.text("#trends-inspect")
+    page.click("#trends-rpm-legend button")
+    assert page.evaluate("document.querySelectorAll('#trends-rpm svg path').length") == 3
+    assert page.evaluate("document.querySelector('#trends-rpm-legend button').getAttribute('aria-pressed')") == "false"
+    page.evaluate("document.querySelector('#trends-range').value='3600'; document.querySelector('#trends-range').dispatchEvent(new Event('change'))")
+    assert int(page.evaluate("document.querySelector('#trends-cursor').max")) < 119
+    before = page.evaluate("fixtureRequests.filter(r=>r[1]==='/api/refresh').length")
+    page.wait(f"fixtureRequests.filter(r=>r[1]==='/api/refresh').length > {before}")
+    page.evaluate("window.trendError=true")
+    page.click("#refresh-trends")
+    page.wait("document.querySelector('#trends-status').textContent.includes('unavailable')")
+    assert page.evaluate("document.querySelectorAll('#trends-rpm svg path').length") == 3
+    page.screenshot(tmp_path / "trends-desktop.png")
+    page.click("#close-trends")
+    page.click("#language-toggle")
+    page.evaluate("window.trendError=false")
+    page.click("#open-trends")
+    page.wait("document.querySelector('#trends-status').textContent.includes('观测时间')")
+    assert page.text("#trends-title") == "运行趋势"
+    page.call("Emulation.setDeviceMetricsOverride", {"width":390, "height":844, "deviceScaleFactor":1, "mobile":False})
+    assert page.evaluate("document.querySelector('#trends-dialog').scrollWidth <= document.querySelector('#trends-dialog').clientWidth")
+    page.screenshot(tmp_path / "trends-mobile.png")
+    page.click("#close-trends")
+    assert page.evaluate("fixtureRequests.filter(r=>r[1]==='/api/trends').every(r=>r[2]==='Bearer browser-fixture-token')")
+    assert not page.errors
+
+
 def test_browser_cached_poll_tracks_data_age_and_preserves_evidence(browser):
     page = browser
     page.click('#total-hypotheses')

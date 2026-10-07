@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 7 runtime trends: Web plots recorded experiment/Agent occupancy and
+  peaks, total/expert/Grounding/other bucket RPM from existing Attempt intervals
+  and relay timestamps. Browser lifetime does not affect collection; missing
+  capture stays unknown with lower bounds. No new sampler, persisted counters,
+  Host change or retained-run write. Original relay replay confirms its existing
+  early timestamp save. Default support copies include run-wide JSON/CSV with
+  public aliases and explicit limits. 195 distinct checks pass without skips,
+  including 34 browser cases; native closure has 15 Agents/one CPU Process,
+  35 requests and no residue. 183 source/install/bundle files match.
+  Reopen the observer for the new endpoint.
+  [Design](../design/issue-report-evidence.md#runtime-trends-2026-10-07) and
+  [validation](../qualification.md#runtime-trends-and-default-issue-attachments-2026-10-07).
+
 - October 7 experiment supply: proposal/manager inputs reuse BatchHistory for
   actual accepted width and bounded recent progress. Guidance favors independent
   evidence-backed chains, informative refutations and incremental experiment work.

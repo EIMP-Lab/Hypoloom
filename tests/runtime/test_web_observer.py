@@ -54,6 +54,30 @@ _SECURITY_HEADERS = {
 }
 
 
+def test_trends_http_is_authenticated_run_bound_and_read_only(tmp_path):
+    from test_observer_trends import _seed, _exchange
+    from hypoloom.observer_trends import build_run_trends
+    _seed(tmp_path)
+    _exchange(tmp_path, "a", 1, upstream_started_at=1010)
+    before = _row_census(tmp_path / "state.sqlite")
+    server = create_server(tmp_path, "trends", token=_TOKEN, port=0)
+    thread = _start(server)
+    try:
+        assert _request(server, "GET", "/api/trends")[0] == 401
+        assert _request(server, "GET", "/api/trends?run_id=other", token=_TOKEN)[0] == 400
+        code, headers, body = _request(server, "GET", "/api/trends", token=_TOKEN)
+        assert code == 200 and headers["cache-control"] == "no-store"
+        data = json.loads(body)
+        assert data["run_id"] == "trends" and data["non_authoritative"]
+        expected = build_run_trends(tmp_path, "trends", now=data["observed_at"])
+        assert data == expected
+        with server._trends_lock:
+            assert _request(server, "GET", "/api/trends", token=_TOKEN)[0] == 429
+    finally:
+        _stop(server, thread)
+    assert _row_census(tmp_path / "state.sqlite") == before
+
+
 class _IdAuditParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()

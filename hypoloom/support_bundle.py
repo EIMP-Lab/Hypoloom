@@ -12,6 +12,7 @@ import json
 import os
 import re
 import stat
+import sqlite3
 import time
 import zipfile
 from collections.abc import Mapping
@@ -371,7 +372,7 @@ unavailable older data and sanitized copies remain explicit in the report.
         "limited": False,
         "source_read_only": True, "restorable_backup": False,
         "completeness": "observed_files_only",
-        "limitations": ["No historical data is reconstructed.",
+        "limitations": ["Missing historical records are not reconstructed.",
             "Live files are separate observations, not an atomic backup.",
             "Missing end records mean interrupted or unknown capture.",
             "Known credentials and raw environment variables are excluded even from private copies.",
@@ -596,6 +597,33 @@ unavailable older data and sanitized copies remain explicit in the report.
             "inspection_errors": errors})
 
     try:
+        from .observer_trends import build_run_trends, trends_csv
+        from .state_store import StateStoreError
+        report["trends"] = {"available": False, "scope": "run", "files": []}
+        if run_id is not None:
+            try:
+                trends = build_run_trends(root, run_id)
+                trends = _sanitize(trends, set(), secrets)
+                if not include_private_data:
+                    trends = public.clean(trends)
+                report["trends"].update(available=True, coverage=trends["coverage"],
+                    interval_seconds=trends["interval_seconds"], point_count=len(trends["points"]))
+                for name, raw in (("runtime-trends.json", json.dumps(trends, ensure_ascii=False,
+                        separators=(",", ":")).encode()), ("runtime-trends.csv", trends_csv(trends))):
+                    item = {"source": "existing_attempts_and_provider_metadata", "path": name,
+                            "sensitivity": "operational_metadata"}
+                    try:
+                        if len(raw) > max_file_bytes:
+                            raise SupportBundleError("file_size_limit")
+                        write(name, raw)
+                        item.update(status="included", reason="run_wide_trend_projection")
+                        report["trends"]["files"].append(name)
+                    except SupportBundleError as exc:
+                        report["limited"] = True
+                        item.update(status="omitted", reason=str(exc))
+                    attachments.append(item)
+            except (OSError, ValueError, sqlite3.Error, StateStoreError):
+                report["trends"]["reason"] = "recorded_trends_unavailable"
         artifacts = projection["related_records"]["artifacts"]
         trees = []
 

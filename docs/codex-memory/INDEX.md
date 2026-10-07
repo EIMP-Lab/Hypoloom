@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Runtime trends and default issue attachments](../qualification.md#runtime-trends-and-default-issue-attachments-2026-10-07):
+  read-only interval/request projections, interactive Web charts, automatic
+  anonymous JSON/CSV exports, existing relay capture and explicit missing data.
+  [Design](../design/issue-report-evidence.md#runtime-trends-2026-10-07).
+
 - [Experiment supply and memory feedback](../qualification.md#experiment-supply-and-memory-feedback-2026-10-07):
   actual batch widths for proposals/managers, retained attributed lower bounds
   without weaker calibration, incremental implementation and scoped reuse.

@@ -129,6 +129,7 @@ class WebObserverServer(ThreadingHTTPServer):
         self._active_request_lock = threading.Lock()
         self._active_requests: set[socket.socket] = set()
         self._support_lock = threading.Lock()
+        self._trends_lock = threading.Lock()
         self._answer_token: str | None = None
         self._provider_token: str | None = None
         self._literature_token: str | None = None
@@ -421,6 +422,24 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"refresh unavailable"}\n', 'application/json'); return
         self._send(HTTPStatus.OK, body, 'application/json; charset=utf-8', compress=True)
 
+    def _trends(self) -> None:
+        if not self._require_authorization(): return
+        if urlsplit(self.path).query:
+            self._send(HTTPStatus.BAD_REQUEST, b'{"error":"trends has no selectors"}', 'application/json')
+            return
+        if not self.observer._trends_lock.acquire(blocking=False):
+            self._send(HTTPStatus.TOO_MANY_REQUESTS, b'{"error":"trends being prepared"}', 'application/json')
+            return
+        try:
+            from .observer_trends import build_run_trends
+            result = build_run_trends(self.observer.state_root, self.observer.run_id)
+            self._send(HTTPStatus.OK, json.dumps(result, separators=(',', ':')).encode(),
+                       'application/json; charset=utf-8', compress=True)
+        except (ValueError, OSError, sqlite3.Error, StateStoreError):
+            self._send(HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"trends unavailable"}', 'application/json')
+        finally:
+            self.observer._trends_lock.release()
+
     def _product(self, name: str) -> None:
         if not self._require_authorization(): return
         try:
@@ -602,6 +621,9 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             return
         if path == '/api/refresh':
             self._refresh()
+            return
+        if path == '/api/trends':
+            self._trends()
             return
         if path == "/api/snapshot":
             self._snapshot()

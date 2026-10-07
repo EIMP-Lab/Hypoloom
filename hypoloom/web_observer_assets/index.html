@@ -117,6 +117,7 @@
         <button id="tab-workbench" role="tab" type="button" aria-controls="view-workbench" aria-selected="false" data-view="workbench" data-i18n>Workbench</button>
       </div>
       <div class="help-actions">
+        <button id="open-trends" class="help-button" type="button" data-i18n>Run trends</button>
         <button id="language-toggle" class="language-button" type="button" lang="zh-CN" title="Switch to Chinese" disabled>中文</button>
         <label class="text-size"><span data-i18n>Text size
           </span><select id="text-size">
@@ -392,10 +393,27 @@
     </dl>
   </dialog>
 
+  <dialog id="trends-dialog" aria-labelledby="trends-title">
+    <div class="support-content">
+      <div class="support-heading"><h2 id="trends-title" data-i18n>Run trends</h2><button id="close-trends" type="button" data-i18n>Close</button></div>
+      <p class="panel-copy" data-i18n>Recorded on the server, independent of this browser. Occupancy is recorded Attempt activity, not proof of process liveness. RPM includes retries and is averaged within each time bucket; missing capture is not zero.</p>
+      <div class="trend-controls"><label><span data-i18n>Time range</span> <select id="trends-range"><option value="3600" data-i18n>Last hour</option><option value="21600" data-i18n>Last 6 hours</option><option value="86400" data-i18n>Last 24 hours</option><option value="all" selected data-i18n>Entire run</option></select></label><button id="refresh-trends" type="button" data-i18n>Refresh trends</button></div>
+      <p id="trends-status" role="status" aria-live="polite"></p>
+      <p id="trends-coverage" class="panel-copy"></p>
+      <div id="trends-content" hidden>
+        <section class="trend-card"><h3 data-i18n>Experiment and Agent concurrency</h3><p class="panel-copy" data-i18n>Solid: occupancy at bucket end. Dashed: peak within bucket.</p><div id="trends-concurrency-legend" class="trend-legend"></div><div id="trends-concurrency" class="trend-chart"></div></section>
+        <section class="trend-card"><h3 data-i18n>Requests per minute</h3><div id="trends-rpm-legend" class="trend-legend"></div><div id="trends-rpm" class="trend-chart"></div></section>
+        <label class="trend-scrubber"><span data-i18n>Inspect time bucket</span><input id="trends-cursor" type="range" min="0" max="0" value="0"></label>
+        <div id="trends-inspect" class="trend-inspect" aria-live="polite"></div>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="support-dialog" aria-labelledby="support-title">
     <div class="support-content">
       <div class="support-heading"><h2 id="support-title" data-i18n>Report an issue</h2><button id="close-support" type="button" data-i18n>Close</button></div>
       <p data-i18n>Prepare a diagnostic copy for a maintainer. Nothing is uploaded.</p>
+      <p class="panel-copy" data-i18n>Run-wide trend data (JSON and CSV) is included automatically, including when only recent failures are selected. Missing data and package limits are reported.</p>
       <div class="support-options">
         <label><span data-i18n>Evidence scope</span><select id="support-scope"><option value="failures" data-i18n>Recent failures and retries</option><option value="run" data-i18n>All recorded attempts</option></select></label>
         <label><span data-i18n>Package limit</span><select id="support-limit"><option value="5">5 MiB</option><option value="20" selected>20 MiB</option><option value="50">50 MiB</option></select></label>

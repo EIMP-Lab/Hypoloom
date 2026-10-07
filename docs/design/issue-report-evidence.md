@@ -70,3 +70,39 @@ Authoring worktrees, complete datasets and historical live-process state are not
 implicitly copied. The collection window bounds attachment traversal, not total
 database diagnosis, redaction or ZIP time. Large-run performance beyond these
 bounded regression samples remains a measured follow-up, not a latency guarantee.
+
+## Runtime trends (2026-10-07)
+
+The Web **Run trends** button plots experiment/Agent occupancy, total request
+RPM, each expert's RPM, Grounding and other run tasks. Ownership reuses
+`attempt_scopes`, including reader commissions. The source is existing bound
+Attempt intervals and each relay exchange's `upstream_started_at`. The existing
+relay already saves that field before waiting for response headers; replay with
+the original relay confirms it, so no recording-path change is needed.
+
+No extra collector, table, historical snapshot or parallel counter is needed.
+Collection is independent of browser polling and survives observer restarts in
+the existing diagnostic files. Historical files without an upstream timestamp
+are not assigned an invented one. Missing/unreadable/bounded capture makes the
+overlapping RPM buckets unknown; recorded counts remain available as lower
+bounds. Diagnostics are best effort, not proof of complete provider-account
+activity. Closed pre-spawn attempts do not count as occupied processes. Bound
+OPEN intervals are recorded occupancy, not proof of historical OS liveness.
+
+The authenticated, run-bound `/api/trends` reads only on demand. The dialog
+refreshes once a minute independently of regular polls, supports time-range and
+series selection, pointer/keyboard inspection, both languages and small screens.
+At most 1,440 minute-or-coarser buckets cover the entire run; per-bucket peaks
+preserve short overlaps. RPM is requests divided by the bucket's duration in
+minutes (including retries and partial final buckets), distinct from the live
+HUD's sliding 60-second rate. File inspection is bounded to 100,000 entries/five
+seconds after database projection; the bound and missing coverage are explicit.
+
+Every run-scoped support export attempts `runtime-trends.json` and
+`runtime-trends.csv`, even for one selected Attempt or recent failures. Public
+copies reuse the existing role/run aliases and contain no prompts, endpoints or
+paths. Both files obey package/file limits; `report.trends` and the inventory
+disclose unavailable or omitted data. Startup-only exports have no run history.
+No Host or retained state is changed. A current observer can reconstruct old
+runs where the existing evidence is present. Reopen the observer to load the new
+endpoint and assets.

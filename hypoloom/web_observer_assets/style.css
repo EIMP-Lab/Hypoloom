@@ -396,6 +396,22 @@ dialog::backdrop { background: rgba(2, 6, 16, 0.76); backdrop-filter: blur(3px);
 #human-pending button { flex-shrink: 0; }
 @media (max-width: 600px) { .human-pending { align-items: stretch; flex-direction: column; } }
 .support-content { padding: 1.4rem; }
+#trends-dialog { width: min(1100px, 96vw); max-width: 96vw; max-height: 92vh; overflow: auto; }
+#trends-dialog .support-heading { position: sticky; top: 0; z-index: 1; padding: .4rem 0; background: #08101f; }
+.trend-controls, .trend-legend, .trend-values { display: flex; gap: .65rem 1rem; flex-wrap: wrap; align-items: center; }
+.trend-controls label { display: flex; align-items: center; gap: .6rem; }
+.trend-card { border: 1px solid var(--line); border-radius: .65rem; padding: .8rem; margin: .8rem 0; min-width: 0; }
+.trend-card h3 { margin: 0 0 .5rem; }
+.trend-chart svg { display: block; width: 100%; min-height: 130px; touch-action: pan-y; }
+.trend-chart text { fill: var(--muted); font: 11px sans-serif; }
+.trend-grid { stroke: var(--line); stroke-width: 1; }
+.trend-crosshair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; pointer-events: none; }
+.trend-legend { font-size: .8rem; }
+.trend-legend button { padding: .25rem .5rem; font-size: .75rem; }
+.trend-legend button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+.trend-scrubber { display: grid; gap: .4rem; }
+.trend-scrubber input { width: 100%; }
+.trend-inspect { margin-top: .65rem; font-size: .8rem; overflow-wrap: anywhere; }
 .support-heading, .support-actions { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
 .support-heading h2 { margin: 0; }
 .support-options { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: .8rem; margin: 1rem 0; }
