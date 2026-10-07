@@ -6520,6 +6520,7 @@ class _ComponentContract:
     artifact_counts: Mapping[str, int]
     required_metrics: tuple[str, ...]
     artifact_validators: tuple[Mapping[str, Any], ...] = ()
+    inconclusive_if: Mapping[str, Any] | None = None
     target_overlay_policy: str | None = None
     deferred_measurement: bool = False
 
@@ -8522,6 +8523,24 @@ def _read_goal_component_contract(
                 str(component_id),
             )
             artifact_validators = ()
+        inconclusive_if = requirements.get("inconclusive_if")
+        if inconclusive_if is not None:
+            if (
+                not isinstance(inconclusive_if, Mapping)
+                or set(inconclusive_if) != {"artifact", "path", "equals"}
+                or not _trimmed_text(inconclusive_if.get("artifact"))
+                or not _trimmed_text(inconclusive_if.get("path"))
+                or isinstance(inconclusive_if.get("equals"), (Mapping, list, tuple))
+                or inconclusive_if.get("artifact") not in required_artifacts
+            ):
+                bad(
+                    "component_protocol_mismatch",
+                    f"{location} protocol inconclusive condition is invalid",
+                    str(component_id),
+                )
+                inconclusive_if = None
+            else:
+                inconclusive_if = dict(inconclusive_if)
 
         required_inputs: list[_ComponentInput] = []
         raw_inputs = item.get("required_inputs")
@@ -8609,6 +8628,7 @@ def _read_goal_component_contract(
                 artifact_counts=artifact_counts,
                 required_metrics=required_metrics,
                 artifact_validators=artifact_validators,
+                inconclusive_if=inconclusive_if,
                 deferred_measurement=deferred,
                 target_overlay_policy=(
                     result.get("target_overlay_policy")
@@ -10338,7 +10358,13 @@ def _audit_component_result(
                 (fact_id,),
             )
         )
-    if actual_outcome not in _COMPARABLE_OUTCOMES:
+    condition_applicable = (
+        actual_outcome in {*_COMPARABLE_OUTCOMES, "INCONCLUSIVE"}
+        and component.inconclusive_if is not None
+        and attempt is not None
+        and attempt["terminal_reason"] == "SUCCEEDED"
+    )
+    if actual_outcome not in _COMPARABLE_OUTCOMES and not condition_applicable:
         if payload.get("metric_value") is not None:
             issues.append(
                 OracleIssue(
@@ -10379,15 +10405,6 @@ def _audit_component_result(
             root, logical, component, fact_id, issues
         )
     )
-    fact_logical = _logical_artifact_paths(payload)
-    if logical is None or fact_logical != logical:
-        issues.append(
-            OracleIssue(
-                "outcome_logical_artifact_mismatch",
-                "outcome logical artifact inventory differs from result.json and publication bytes",
-                (fact_id,),
-            )
-        )
     if family is not None and family != spec_payload.get("method_family_id"):
         issues.append(
             OracleIssue(
@@ -10417,8 +10434,26 @@ def _audit_component_result(
         )
     if not artifacts_valid:
         return _ComponentResult(actual_outcome, None, None, implementation, config)
-    expected_outcome = "SUCCESS" if criterion else "CLEAN_REFUTATION"
-    if payload.get("metric_value") != metric_value:
+    condition_matches = (
+        condition_applicable
+        and logical is not None
+        and _inconclusive_condition_matches(root, logical, component.inconclusive_if or {}, fact_id, issues)
+    )
+    if condition_matches:
+        criterion = None
+    fact_logical = _logical_artifact_paths(payload)
+    expected_outcome = "INCONCLUSIVE" if condition_matches else ("SUCCESS" if criterion else "CLEAN_REFUTATION")
+    expected_metric = None if criterion is None else metric_value
+    expected_logical = {} if criterion is None else (logical or {})
+    if logical is None or fact_logical != expected_logical:
+        issues.append(
+            OracleIssue(
+                "outcome_logical_artifact_mismatch",
+                "outcome logical artifact inventory differs from result.json and publication bytes",
+                (fact_id,),
+            )
+        )
+    if payload.get("metric_value") != expected_metric:
         issues.append(
             OracleIssue(
                 "outcome_metric_value_mismatch",
@@ -10437,7 +10472,7 @@ def _audit_component_result(
     expected_candidate = {
         "outcome": expected_outcome,
         "evaluator_version": spec_payload.get("evaluator_version"),
-        "metric_value": metric_value,
+        "metric_value": expected_metric,
         "criterion_met": criterion,
         "validation_error": None,
         "execution_integrity_error": None,
@@ -10454,7 +10489,7 @@ def _audit_component_result(
             )
         )
     return _ComponentResult(
-        expected_outcome, criterion, metric_value, implementation, config
+        expected_outcome, criterion, expected_metric, implementation, config
     )
 
 
@@ -10620,6 +10655,35 @@ def _component_artifact_map(
             )
         )
     return logical, family, implementation, config
+
+
+def _inconclusive_condition_matches(
+    root: Path,
+    logical: Mapping[str, tuple[str, ...]],
+    condition: Mapping[str, Any],
+    fact_id: str,
+    issues: list[OracleIssue],
+) -> bool:
+    artifact = condition.get("artifact")
+    dotted = condition.get("path")
+    paths = logical.get(str(artifact), ())
+    if not isinstance(artifact, str) or not isinstance(dotted, str) or len(paths) != 1:
+        issues.append(OracleIssue("component_inconclusive_condition_mismatch", "inconclusive condition does not select one declared artifact", (fact_id,)))
+        return False
+    path = _publication_file(root, paths[0])
+    try:
+        if path is None:
+            raise ValueError("condition artifact path is not a publication file")
+        value: Any = json.loads(path.read_bytes(), object_pairs_hook=_unique_json_object, parse_constant=_reject_json_constant)
+        for part in dotted.split("."):
+            if not part or not isinstance(value, Mapping) or part not in value:
+                raise ValueError("declared JSON path is absent")
+            value = value[part]
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        issues.append(OracleIssue("component_inconclusive_condition_mismatch", str(exc), (fact_id,)))
+        return False
+    expected = condition.get("equals")
+    return type(value) is type(expected) and value == expected
 
 
 def _component_metric_from_trials(

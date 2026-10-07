@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -243,6 +244,45 @@ def _run(
 
 def _trace(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+@pytest.mark.parametrize("complete, expected", [(False, None), (True, False)])
+def test_protocol_owned_incomplete_coverage_is_inconclusive_not_refutation(
+    tmp_path: Path, complete: bool, expected: bool | None,
+) -> None:
+    output = tmp_path / "inconclusive-output"
+    output.mkdir()
+    (output / "evaluation_summary.json").write_text(
+        json.dumps({"coverage": {"full_matrix_complete": complete}}), encoding="utf-8"
+    )
+    (output / "resolved_config.json").write_text("{}", encoding="utf-8")
+    patch_bytes = b"patch"
+    (output / "implementation.patch").write_bytes(patch_bytes)
+    (output / "result.json").write_text(json.dumps({
+        "artifacts": {
+            "evaluation_summary": "evaluation_summary.json",
+            "resolved_config": "resolved_config.json",
+            "implementation_patch": "implementation.patch",
+        },
+        "identity": {"implementation_sha256": hashlib.sha256(patch_bytes).hexdigest()},
+        "trials": [{"seed": 0, "clean": True, "metrics": {"score": -100}}],
+    }), encoding="utf-8")
+    component = {
+        "id": "primary.score", "result": {"kind": "metric", "metric": "score",
+        "direction": "MAXIMIZE", "target": "0"}, "seeds": [],
+        "required_artifacts": ["implementation_patch", "evaluation_summary", "resolved_config"],
+    }
+    protocol = {"result_kind": "metric", "requirements": {
+        "required_metrics": ["score"], "required_artifacts": component["required_artifacts"],
+        "inconclusive_if": {"artifact": "evaluation_summary", "path": "coverage.full_matrix_complete", "equals": False},
+        "artifact_validators": [],
+    }}
+    validated = validate_component_result(component, protocol, output)
+    assert validated["criterion_met"] is expected
+    # Raw validation measurements remain available; the Host owns omission of
+    # comparable metric/artifact claims from an accepted INCONCLUSIVE outcome.
+    assert validated["metric_value"] == "-100"
+    assert set(validated["logical_artifacts"]) == set(component["required_artifacts"])
 
 
 def test_paired_two_by_three_runs_real_modules_and_normalizes_exact_inventory(

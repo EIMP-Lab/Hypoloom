@@ -77,6 +77,8 @@ def component_result_contract(component: Mapping[str, Any], protocol: Mapping[st
         },
         "artifact_validators": list(parts["requirements"].get("artifact_validators", [])),
     }
+    if parts["requirements"].get("inconclusive_if") is not None:
+        result["inconclusive_if"] = parts["requirements"]["inconclusive_if"]
     if parts["kind"] == "metric":
         result["trial_item"] = {
             "type": "object",

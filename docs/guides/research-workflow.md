@@ -51,6 +51,33 @@ accepted sources and retained work. Optional `/acceptance/WORK_NOTES.md` is draf
 material, not scientific evidence or a declared parser source. This skill does
 not change context limits, add a paid summarizer or introduce RAG storage.
 
+## Incomplete component comparisons
+
+For Profile-owned component-result protocols, an optional condition can distinguish
+incomplete scientific coverage from a valid negative comparison. Declare it under
+`methodology.yaml.experiments.protocols.<name>.requirements`, for example:
+
+```yaml
+inconclusive_if:
+  artifact: evaluation_summary
+  path: coverage.full_matrix_complete
+  equals: false
+```
+
+The component selects that protocol through `experiment_kind`. The artifact must
+already belong to its required artifact inventory and resolve to one JSON file;
+the dotted field must exist. Matching uses the scalar's type and value. Normal
+execution, identity, artifact and trial checks still apply first: this condition
+does not turn malformed output or a failed Process into valid science. It applies
+to component-result evaluation, not deferred or shared measurement parsers.
+
+A match produces INCONCLUSIVE. The accepted outcome carries no comparable metric
+or logical artifact claims; published raw output remains available for analysis.
+Analysis can finish with COMPLETE. Same-chain ITERATE still requires SUCCESS or
+CLEAN_REFUTATION; an invalid choice uses the existing correction/retry allowance.
+This change does not automatically rerun missing comparisons. Existing runs keep
+their frozen runtime and admitted Profile.
+
 ## Before costly experiments
 
 Use a small meaningful case through the actual implementation and evaluator,

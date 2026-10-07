@@ -2,6 +2,64 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## PR 5 incomplete scientific coverage (2026-10-07)
+
+Integrate PR #5 at `00206353` as a result-classification repair. A successful
+Process with otherwise valid output can contain a Profile-declared indication
+that the scientific comparison is incomplete. Matching `inconclusive_if` makes
+its criterion unknown and its accepted outcome INCONCLUSIVE. Validation retains
+raw measurements/artifact mappings; the Host omits comparable metric and logical
+artifact claims from the accepted outcome. Published bytes remain available.
+Oracle recomputes the condition for SUCCESS, CLEAN_REFUTATION and INCONCLUSIVE,
+so an incorrect comparable label cannot bypass the completeness check.
+
+The exact reproducible failure is a valid negative placeholder score accompanied
+by a false completeness field becoming CLEAN_REFUTATION. The failed asset is the
+interpretation from published component result bytes to CanonicalOutcomeAccepted,
+not the artifact's persistence. Git, identities, transactions, atomic writes and
+type checks preserve those bytes but cannot express this Profile's scientific
+completeness rule; tests verify a rule but do not supply it for each protocol.
+The smallest addition is one optional predicate in existing protocol requirements,
+selecting one already-declared JSON artifact and an existing dotted field. There
+is no separate marker file, counter, persisted queue or new outcome authority.
+Maintenance is the admission/Host/Oracle interpretation and its ordinary tests;
+the predicate can retire with the component-result path if a future existing
+measurement evaluator owns the same semantics. No additional assurance layer.
+
+Keep the latest PR's original iteration boundary: INCONCLUSIVE permits analysis
+and COMPLETE, but not same-chain ITERATE. A mistaken ITERATE is a correctable
+model-choice failure under existing retry limits; repeated failure closes the
+analysis without rewriting the outcome or submitting another experiment. This
+does not relax trial completeness, artifact validation, execution or integrity
+failures, or extend the predicate to deferred/common measurement parsers.
+
+Integration adds real Host/CPU coverage through Profile admission, publication,
+analysis, assessment and terminal cleanup: normal incomplete closure, correction
+from ITERATE to COMPLETE, exhausted ITERATE retries, and complete below-target
+coverage retaining CLEAN_REFUTATION. Count exact experiments, Processes, outcomes,
+analysis Attempts and residue; preserve immutable analysis inputs and audit with
+the existing Oracle. Evidence: `.local/qualification/pr5-incomplete-coverage-20261007/`.
+The first new fixture omitted the existing `experiments.protocols` nesting;
+correct the fixture without changing admission or behavioral assertions.
+Replaying only the original component-result interpreter against the same admitted
+Profile reproduces CLEAN_REFUTATION where the new Host case expects INCONCLUSIVE;
+`original-interpreter.xml` retains that expected failure. Invalid trials, missing
+condition fields and malformed JSON still fail result validation.
+
+Final integration validation: **438 distinct checks passed, zero skipped**.
+The main selection has 394 passes across component validation/admission/Oracle,
+trial driving, analysis retry, ACI/multichain, the four new Host scenarios,
+runtime bundles and documentation. Five final result-boundary checks include
+three additional cases and two repeated cases with stronger raw-value assertions.
+Another 41 passes cover shared acceptance, deferred measurement and retained
+experiment-revision Host paths. The four new scenarios each publish exactly one
+CPU Process result and close one experiment/outcome, with six analysis Attempts
+in total (three successful, three intentionally rejected), unchanged inputs,
+zero OPEN Attempts, pending effects or owned process residue, and clean Oracles.
+Ruff undefined-name and Git whitespace checks pass. No full G1/paid qualification
+or retained-run restart/migration is claimed. Correct the PR description to these
+actual semantics and retain its original commits in the dev merge.
+
 ## Concurrency observations and result-first dispatch (2026-10-07)
 
 The first three concurrency improvements use existing Attempts, experiment

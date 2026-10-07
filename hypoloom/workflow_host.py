@@ -4319,9 +4319,12 @@ class WorkflowHost:
         elif validation_error is not None: scientific = ScientificOutcome.EXECUTION_FAILURE
         elif reason is AttemptTerminalReason.CANCELLED: scientific = ScientificOutcome.CANCELLED
         elif reason is not AttemptTerminalReason.SUCCEEDED: scientific = ScientificOutcome.EXECUTION_FAILURE
+        elif validated_result is not None and validated_result["criterion_met"] is None:
+            scientific = ScientificOutcome.INCONCLUSIVE
         else: scientific = ScientificOutcome.SUCCESS if validated_result and validated_result["criterion_met"] else ScientificOutcome.CLEAN_REFUTATION
-        metric_value = None if validated_result is None else validated_result["metric_value"]
-        logical = () if validated_result is None else tuple(LogicalArtifact(
+        scientific_result = scientific in {ScientificOutcome.SUCCESS, ScientificOutcome.CLEAN_REFUTATION}
+        metric_value = None if validated_result is None or not scientific_result else validated_result["metric_value"]
+        logical = () if validated_result is None or not scientific_result else tuple(LogicalArtifact(
             logical_artifact=name, paths=validated_result["logical_artifacts"][name])
             for name in component.required_artifacts)
         candidate = {"outcome": scientific.value, "evaluator_version": payload["evaluator_version"],

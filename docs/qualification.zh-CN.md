@@ -2,6 +2,49 @@
 
 [English](qualification.md) · 简体中文
 
+## PR 5 不完整科学覆盖（2026-10-07）
+
+合入 PR #5 的 `00206353`，范围是结果分类修复：Process 成功、结果校验合格，
+且命中 Profile 的 `inconclusive_if` 时，将判据置为未知，正式结果记为
+INCONCLUSIVE。校验层保留原始指标和产物映射；Host 在正式结果中不填写可比较
+指标及逻辑产物引用，已发布文件仍然保留。Oracle 对 SUCCESS、CLEAN_REFUTATION
+和 INCONCLUSIVE 都重新核对条件，错误的可比较标签不能绕过完整性判定。
+
+可复现问题是：合法的负占位分数伴随 false 完整性字段，却被解释为科学反驳。
+出错边界是“已发布组件结果 → CanonicalOutcomeAccepted”的语义解释，不是
+文件持久化。Git、身份、事务、原子写入和类型检查能保存字节，但不能表达这个
+Profile 的科学覆盖规则；测试验证规则，不能替各协议提供规则。因此最小新增
+内容仅为既有协议 requirements 内的可选条件，读取一个已声明 JSON 产物中的
+既有字段，不增加标记文件、计数器、持久队列或结果权威。维护成本限于准入、
+Host、Oracle 的解释及普通回归；未来已有测量验收器承接相同语义且旧组件路径
+退役时，可一起移除此条件。
+
+保留最新版 PR 的迭代边界：INCONCLUSIVE 可以分析并 COMPLETE，不能在同链
+ITERATE。错误选择按现有模型重试规则纠正；耗尽后结束分析，不重写实验结果，
+不因此再提交实验。不放宽 trial 完整性、产物、执行和完整性检查，也不将本条件
+扩展到 deferred／共同测量解析器。
+
+新增真实 Host／CPU 回归，从 Profile 准入贯通发布、分析、评估和收尾：不完整
+正常结束、ITERATE 改正为 COMPLETE、ITERATE 重试耗尽，以及覆盖完整但未达标
+仍为 CLEAN_REFUTATION。独立检查实验、Process、结果、分析 Attempt 数量和
+残留，保持分析输入不可变并运行既有 Oracle。证据：
+`.local/qualification/pr5-incomplete-coverage-20261007/`。
+首次新增场景漏写既有 `experiments.protocols` 层级，修正测试准备条件，未修改
+准入规则或放宽行为断言。最终验证结果见英文对应章节。
+对同一已准入 Profile 仅回放原组件结果解释器，仍将预期 INCONCLUSIVE 判为
+CLEAN_REFUTATION；预期失败保留在 `original-interpreter.xml`。无效 trial、
+条件字段缺失和 JSON 损坏继续被拒绝。
+
+最终集成验证 **438 项不同检查通过、零跳过**：主选集 394 项涵盖组件验证、准入、
+Oracle、trial 执行、分析重试、ACI／多链、新增 Host 场景、运行时打包及文档。
+末轮 5 项结果边界检查包含 3 个新增用例和 2 个增强原始值断言后的重复用例；
+另有 41 项覆盖共同验收、deferred 测量及旧版实验修复 Host 路径。四个新场景
+各自产生一个 CPU Process 结果、一个实验及正式结果，总计六次分析 Attempt
+（三次成功、三次预期拒绝），输入保持不变，开放 Attempt、待处理副作用和自有
+进程残留均为零，Oracle 全部通过。Ruff 未定义名称和 Git 空白检查通过。
+未运行完整 G1／付费资格测试，未重启或迁移保留运行。PR 说明同步修正，dev
+合并保留原提交历史。
+
 ## 并发观测与结果优先调度（2026-10-07）
 
 实施并发方案前三项：复用 Attempt、实验转移、已接纳交接与准入限额，Web 显示

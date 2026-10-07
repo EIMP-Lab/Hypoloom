@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 7 PR #5 integration: merge `00206353` as a Profile-owned component
+  result-classification fix. Matching existing-artifact completeness predicates
+  yields INCONCLUSIVE; raw validation values remain, while accepted outcomes omit
+  comparable metrics/logical references. Oracle rechecks comparable labels too.
+  Keep INCONCLUSIVE analysis/COMPLETE and the existing refusal of same-chain
+  ITERATE. Host/CPU regressions cover normal closure, choice correction/exhaustion
+  and complete negative comparisons. Original-interpreter replay reproduces the
+  wrong refutation; 438 distinct checks pass without skips, including four CPU
+  closures with no residue. No retained-run or parser migration.
+  [Design and validation](../qualification.md#pr-5-incomplete-scientific-coverage-2026-10-07).
+
 - October 7 concurrency: Web projects separate Agent/Process/review and expert
   chain occupancy, pending handoffs and still-open execution sessions. Actual
   Host admission reasons are disposable, fresh per-pass STATUS observations;

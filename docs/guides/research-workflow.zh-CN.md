@@ -40,6 +40,29 @@
 `/acceptance/WORK_NOTES.md` 是草稿，不是科学证据或解析器源文件。此 skill 不修改
 上下文上限，不新增付费摘要器或 RAG 存储。
 
+## 不完整的组件对比
+
+对 Profile 定义的组件结果协议，可在
+`methodology.yaml.experiments.protocols.<名称>.requirements` 中声明可选条件，
+区分“科学覆盖不足”和“有效的负向对比”，例如：
+
+```yaml
+inconclusive_if:
+  artifact: evaluation_summary
+  path: coverage.full_matrix_complete
+  equals: false
+```
+
+组件通过 `experiment_kind` 选择该协议。指定产物必须已在必需产物清单内，且对应
+一个 JSON 文件；点分隔字段必须存在，匹配同时比较标量的类型和值。执行、身份、
+产物及 trial 的原有检查仍先执行，条件不会将格式错误或失败的 Process 变成
+有效科学结果。本条件适用于组件结果验收，不适用于 deferred 或共同测量解析器。
+
+命中时结果为 INCONCLUSIVE，正式结果不携带可比较指标或逻辑产物引用，发布的
+原始输出仍可供分析。分析可以 COMPLETE；同链 ITERATE 仍要求 SUCCESS 或
+CLEAN_REFUTATION，选错时使用原有纠正／重试额度。此改动不自动补跑缺少的对比。
+已有运行保持其冻结运行时和已准入 Profile。
+
 ## 自进化与版本选择
 
 专家通过 `SELF_EVOLVE` 修改自己的技能；管理侧通过 `GRAPH_EVOLVE` 修改自己的副本。

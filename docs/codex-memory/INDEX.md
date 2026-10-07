@@ -1,5 +1,9 @@
 # Development memory index
 
+- [PR 5 incomplete scientific coverage](../qualification.md#pr-5-incomplete-scientific-coverage-2026-10-07):
+  Profile-owned classification, raw/accepted result distinction, unchanged
+  iteration boundary and real Host/CPU closure; [configuration](../guides/research-workflow.md#incomplete-component-comparisons).
+
 - [Concurrency observations and result-first dispatch](../qualification.md#concurrency-observations-and-result-first-dispatch-2026-10-07):
   independent occupancy, actual admission reasons, handoff visibility and
   result-first expert rotation; retained Hosts keep their original runtime.

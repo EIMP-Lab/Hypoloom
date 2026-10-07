@@ -91,6 +91,22 @@ def _assert_code(error: pytest.ExceptionInfo[ComponentResultValidationError], co
     assert error.value.code == code, str(error.value)
 
 
+@pytest.mark.parametrize("invalid", ["trials", "missing_field", "invalid_json"])
+def test_inconclusive_condition_preserves_result_validation(tmp_path, invalid):
+    component = _metric_component(artifacts=["summary"])
+    protocol = _protocol("metric", metrics=["score"], artifacts=["summary"])
+    protocol["requirements"]["inconclusive_if"] = {
+        "artifact": "summary", "path": "coverage.complete", "equals": False}
+    summary = {"coverage": {} if invalid == "missing_field" else {"complete": False}}
+    _write_result(tmp_path, {
+        "artifacts": {"summary": "summary.json"},
+        "trials": [] if invalid == "trials" else _single_trial(0),
+    }, {"summary.json": "{" if invalid == "invalid_json" else json.dumps(summary)})
+    with pytest.raises(ComponentResultValidationError) as error:
+        validate_component_result(component, protocol, tmp_path)
+    _assert_code(error, "invalid_trials" if invalid == "trials" else "invalid_inconclusive_condition")
+
+
 def test_paired_n3_recomputes_mean_delta_and_checks_declared_identity(
     tmp_path: Path,
 ) -> None:
