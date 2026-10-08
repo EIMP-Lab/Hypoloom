@@ -340,6 +340,7 @@ def _batch(args, access, dialogue, selected, modes, output, input_fn):
                 input_fn=input_fn, dialogue=dialogue,
                 output=output, modes=modes, cancelled=cancelled)
             rows.append(row)
+            access.finish_preparation("preparation", provider)
             if stop:
                 break
         summary = _finish_summary(args, selected, rows, modes, output)
@@ -377,7 +378,6 @@ def run(args, *, input_fn=input, output=print, launch_session=None):
     if not selected:
         _finish_summary(args, [], [], modes, output)
         return 0
-    if len(selected) > 8: raise ValueError("prepare at most eight platforms per batch; run another batch afterward")
     if args.non_interactive and not samples: raise ValueError("non-interactive preparation requires a sample")
     if all(modes.get(provider) in {"public_only", "disabled"} for provider in selected):
         _finish_summary(args, selected, [{"provider": provider, "state": modes[provider], "samples": []}

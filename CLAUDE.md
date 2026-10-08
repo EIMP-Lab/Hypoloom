@@ -7,6 +7,13 @@ Use `/autoresearch-monitor` to choose an existing run and open its observer,
 including after restarting CC. `/autoresearch monitor` remains supported.
 After successful init, show the generated CC and full terminal monitor commands.
 
+Research sessions do not edit Hypoloom framework source, dependencies, Git metadata
+or CC controls. The project hook restricts file writes and wraps Bash/Monitor in
+bubblewrap with read-only source; only `.local/`, `profiles/local/` and `state/`
+are writable mounts. Direct file-tool edits of state remain prohibited. If isolation
+cannot start, report the prerequisite failure; never retry outside it or change hooks.
+Framework repairs belong in a separate authorized development session.
+
 The default control interpreter is `$PWD/.conda/envs/hypoloom/bin/python` with
 SQLite at least 3.51.3. GPU/experiment Python is a separately reviewed runtime.
 An absent `HYPOLOOM_RUNTIME_FAMILY` assertion is allowed. A nonempty value other
@@ -27,6 +34,11 @@ locations without values, `prepare` validates filled template contents in memory
 (`--start` performs the authorized managed sequence). Read-only previews create
 no Host or state. The public credential template is `config/hypoloom.env.example`;
 the private default remains `.local/credentials/hypoloom.env`. Model auth is separate.
+
+Inspect generates `interaction.questions` in `--ui-language en|zh-CN`. Relay them
+unchanged, save the original answers under `.local/`, and use `answer_argv` to
+translate them into the existing CLI choices. Do not redesign the question pages,
+invent publisher batches, or interpret these answers as the final launch approval.
 
 Existing runs remain read-only without explicit operation authorization.
 Their frozen runtime determines their execution identity. Never migrate a run

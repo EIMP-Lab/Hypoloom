@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Deterministic init and research source boundary](../qualification.md#deterministic-init-and-research-source-boundary-2026-10-08):
+  fixed bilingual questions and raw-answer conversion, all-publisher iteration
+  under the existing tab limit, read-only research shell source mounts, native
+  CPU closure, installation parity and outstanding environment qualification.
+  [Design and enforcement justification](../design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08).
+
 - [Grounding completion and recovery](../qualification.md#grounding-completion-and-recovery-2026-10-08):
   scientific/framework test separation, existing schema view, retained authoring
   helpers, recent-work continuation and deadline advice; original/fixed replay,

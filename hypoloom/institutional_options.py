@@ -62,8 +62,6 @@ def preparation_selection(values, modes):
         return []
     if any(name not in PROVIDERS.values() for name in selected):
         raise ValueError("unsupported preparation platform")
-    if len(selected) > 8:
-        raise ValueError("prepare at most eight platforms per batch; run another batch afterward")
     return selected
 
 

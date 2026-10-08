@@ -68,8 +68,8 @@ Prepare only、启动失败或创建结果未确认时，不能宣称启动成�
 off 与机构连接或机构专用配置同时提供会被拒绝，请在更改选择时移除冲突参数。
 
 启用后，**必须在交互式会话中确认出版社候选名单**。inspect 将
-`institutional_prepare_provider` 列为缺失项，返回候选选项，优先展示 IEEE、ACM、
-Elsevier / ScienceDirect、Springer。可多选、自定义、明确接受推荐的三家或跳过。
+`institutional_prepare_provider` 列为缺失项；程序固定展示三组出版社，每组三项
+加“本组不选”。可多选，全部九家也可一次选择；不再由模型自由分组或拆批。
 ACM 虽推荐优先公开获取，仍必须作为可选项展示；只选择 Windows client 不代表
 已经选择出版社，未回答前程序不生成准备或启动命令。已明确回答的名单随重查保留，
 不重复询问。重复传 `--institutional-prepare-provider <平台>` 携带准确名单，
@@ -223,3 +223,19 @@ Host 参数及既有读取器继续作为配置来源；运行时保护不会因
 通知预检只验证本地配置。Telegram 已开启仍应显示为**投递未验证**，实际接口
 成功响应后才确认可用。显式连接/消息测试及 Web/TUI 状态说明见
 [通知指南](notifications.md#delivery-health-and-recovery--投递状态与恢复)。
+
+init 的初始问卷由 inspect 的 `interaction.questions` 固定生成；中文会话传入
+`--ui-language zh-CN`。CC 原样展示，将 AskUserQuestion 返回的原始 `answers`
+对象写入 `.local/` JSON 文件，再执行生成的 `answer_argv`。程序保留已选项和运行
+标识，转换成既有 CLI 参数并校验。缺失、改名、过期或矛盾答案不能推进初始化；
+问卷之外需补齐的配置列于 `configuration_required`。这不代替最后的启动确认。
+
+出版社固定分为三组，每组三项加“本组不选”。一次可以选择全部九个出版社，
+无需让模型拆批；程序顺序处理并按需回收已结束的自有标签，同时保留八个标签
+上限，不关闭用户原有标签，不清除登录 cookie。
+
+研究会话不能修改 Hypoloom 框架源码。现有项目 Hook 将 Bash/Monitor 包在 Linux
+bubblewrap 中，整个仓库只读，仅 `.local/`、`profiles/local/`、`state/` 可写；
+Write/Edit/NotebookEdit 仍禁止直接编辑 state。该约束不自动批准命令，也不替代
+Host 的运行权限。隔离缺失或不可用时明确失败，不退回无隔离执行。框架修复使用
+独立获授权的开发会话。更新 Hook 注册后重启 CC；已停止及历史运行保持不变。

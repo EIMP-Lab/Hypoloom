@@ -195,7 +195,7 @@ def test_hypoloom_non_pre_hooks_import_no_legacy_and_write_no_legacy_run(
     ("payload", "expected"),
     [
         (
-            {"tool_name": "Write", "tool_input": {"file_path": "{repo}/ok.txt"}},
+            {"tool_name": "Write", "tool_input": {"file_path": "{repo}/.local/ok.txt"}},
             0,
         ),
         (
@@ -219,7 +219,7 @@ def test_hypoloom_non_pre_hooks_import_no_legacy_and_write_no_legacy_run(
                 "tool_name": "Write",
                 "tool_input": {"file_path": "{repo}/.claude/settings.json"},
             },
-            0,
+            2,
         ),
         (
             {"tool_name": "Write", "tool_input": {"file_path": "{hypoloom}/ok.txt"}},
@@ -261,7 +261,7 @@ def test_hypoloom_non_pre_hooks_import_no_legacy_and_write_no_legacy_run(
         (
             {
                 "tool_name": "Bash",
-                "tool_input": {"command": "rm -rf scratch", "cwd": "{repo}"},
+                "tool_input": {"command": "rm -rf .local/scratch", "cwd": "{repo}"},
             },
             0,
         ),
@@ -328,7 +328,7 @@ def test_every_runtime_family_uses_hypoloom_pre_safety(
         args=("pre",),
         payload={
             "tool_name": "Write",
-            "tool_input": {"file_path": str(REPO_ROOT / "legacy-hook-safe.txt")},
+            "tool_input": {"file_path": str(REPO_ROOT / ".local/legacy-hook-safe.txt")},
         },
         family=family,
         block_legacy=True,
@@ -393,7 +393,7 @@ def test_tracked_settings_register_only_hypoloom_guard_and_mcp(tmp_path: Path) -
     assert set(settings["mcpServers"]) == {"hypoloom"}
     assert "dispatch.py pre" in rendered
     assert "dispatch.py post" not in rendered
-    assert "not a shell sandbox" in settings["_comment"]
+    assert "No unsandboxed fallback" in settings["_comment"]
     assert "checked-in .claude/skills or .claude/hooks" in settings["_comment"]
 
     mcp = settings["mcpServers"]["hypoloom"]

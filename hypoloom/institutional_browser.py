@@ -310,6 +310,17 @@ class PlaywrightInstitutionalBrowser:
         page.close(run_before_unload=False)
         return True
 
+    def finish_preparation(self, provider):
+        """Allow eviction of this owned tab after an explicit preparation decision.
+
+        Called on the browser worker. Cookies and foreign tabs are untouched;
+        _room_for_tab remains the single authority for the eight-tab limit.
+        """
+        prior = self._tabs.get(provider)
+        if prior is not None:
+            self._tabs[provider] = (prior[0], prior[1], False)
+            self._pdf_pending.pop(provider, None)
+
     def prepare(self, provider, *, focus=True, timeout_seconds=120):
         """Open a platform's public access entry without treating it as a paper."""
         entry = provider_entry_url(provider)
@@ -331,6 +342,7 @@ class PlaywrightInstitutionalBrowser:
                     return {"state": "fetch_unavailable", "reason": reason}
             else:
                 page = prior[0]
+                self._tabs[provider] = (page, prior[1], True)
             if focus: page.bring_to_front()
             try:
                 verification = page.evaluate(_INSPECT).get("verification", False)

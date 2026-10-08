@@ -506,6 +506,9 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
 
 
 @pytest.mark.parametrize("selection,expected", [
+    ([part for name in ("IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis")
+      for part in ("--institutional-prepare-provider", name)],
+     ["IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis"]),
     (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
       "--institutional-prepare-provider", "Springer"], ["IEEE", "ScienceDirect", "Springer"]),
     (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
@@ -561,9 +564,6 @@ def test_init_common_preparation_roundtrips_without_changing_research(checkout, 
     (["--institutional-browser-mode", "off", "--institutional-prepare-provider", "IEEE"], "enabled"),
     (["--institutional-browser-mode", "client", "--institutional-prepare-provider", "none",
       "--institutional-prepare-provider", "IEEE"], "none"),
-    (["--institutional-browser-mode", "client",
-      *[part for name in ("IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis")
-        for part in ("--institutional-prepare-provider", name)]], "eight"),
 ])
 def test_preparation_conflicts_fail_before_resources(checkout, capsys, extra, message):
     repo, overrides = checkout

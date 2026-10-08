@@ -68,6 +68,11 @@ def test_preparation_is_bounded_to_owned_tabs_and_preserves_the_users_tab(browse
     original = adapter._tabs[providers[0]][0]
     assert adapter.prepare(providers[0])["state"] == "opened"
     assert adapter._tabs[providers[0]][0] is original
+    adapter.finish_preparation(providers[0])
+    assert adapter.prepare(providers[8])["state"] == "opened"
+    assert original.is_closed() and len(adapter._tabs) == 8
+    assert providers[0] not in adapter._tabs and providers[8] in adapter._tabs
+    assert not user_page.is_closed()
     adapter.close()
     assert not user_page.is_closed()
 

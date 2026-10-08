@@ -524,6 +524,15 @@ class InstitutionalAccess:
                 if item.scope[0] == run_id and item.provider == provider and item.preparation:
                     del self._items[key]
 
+    def finish_preparation(self, run_id, provider):
+        """Retire the transient request and serialize tab retirement with CDP work."""
+        with self._lock:
+            self.discard_preparation(run_id, provider)
+            # Small test/custom backends may not own browser tabs.
+            finish = getattr(self.backend, "finish_preparation", None)
+            if finish is not None:
+                self._executor.submit(finish, provider)
+
     def _acquire(self, item, force, focus, import_path):
         try:
             remaining = max(.001, item.deadline - self.clock())

@@ -246,6 +246,11 @@ class RunAccess:
             if run_id in self.instances:
                 self.instances[run_id].discard_preparation(run_id, provider)
 
+    def finish_preparation(self, run_id, provider):
+        with self.lock:
+            if run_id in self.instances:
+                self.instances[run_id].finish_preparation(run_id, provider)
+
     def close(self):
         try:
             with self.lock: self.sync(set())

@@ -27,6 +27,51 @@ class PreparationBackend(Backend):
         return {"state": "opened"}
 
 
+def test_all_nine_publishers_advance_on_one_worker_with_bounded_owned_tabs(tmp_path, monkeypatch):
+    """Real queue/preparation/browser tab lifecycle, synthetic page transport."""
+    import threading
+    from hypoloom.cli import build_parser
+    class Page:
+        def __init__(self): self.closed = False
+        def is_closed(self): return self.closed
+        def close(self, **kwargs): self.closed = True
+        def set_default_timeout(self, *args): pass
+        def bring_to_front(self): pass
+        def evaluate(self, *args): return {}
+    class Browser(PlaywrightInstitutionalBrowser):
+        def __init__(self):
+            super().__init__("http://127.0.0.1:9222")
+            self.threads, self.visited, self.peaks = set(), [], []
+            self.foreign = Page()
+        def check_connection(self, **kwargs): return {"state": "ready"}
+        def _connect(self): return self
+        def new_page(self): return Page()
+        def _navigate(self, *args): return None
+        def prepare(self, provider, **kwargs):
+            self.threads.add(threading.get_ident())
+            result = super().prepare(provider, **kwargs)
+            self.visited.append(provider); self.peaks.append(len(self._tabs))
+            return result
+        def finish_preparation(self, provider):
+            self.threads.add(threading.get_ident())
+            super().finish_preparation(provider)
+    browser = Browser()
+    access = InstitutionalAccess(browser, provider_modes=ALL_PROVIDERS_AUTO)
+    monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda args: access)
+    providers = [p["provider"] for p in provider_catalog()]
+    args = build_parser().parse_args(["institutional", "prepare", "--repository", str(tmp_path),
+        "--institutional-browser-url", "http://127.0.0.1:9222",
+        *[part for provider in providers for part in ("--provider", provider)]])
+    output = []
+    assert run(args, input_fn=lambda _: "p", output=output.append) == 0
+    summary = json.loads(output[-1])
+    assert browser.visited == providers and len(browser.threads) == 1
+    assert threading.get_ident() not in browser.threads and max(browser.peaks) == 8
+    assert [row["provider"] for row in summary["preparation_summary"]] == providers
+    assert set(summary["provider_modes"].values()) == {"public_only"}
+    assert summary["remaining_providers"] == [] and not browser.foreign.closed
+
+
 def test_empty_catalog_opens_platform_without_admitting_homepage_or_sample_bytes():
     backend = PreparationBackend(); backend.state = "available"
     access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)

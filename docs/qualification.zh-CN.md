@@ -2,6 +2,45 @@
 
 [English](qualification.md) · 简体中文
 
+## 确定的 init 与研究源码隔离（2026-10-08）
+
+按[设计](design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08)
+将初始问卷和答案转换交给程序，复用 inspect、CLI 参数、出版社目录、标签回收和
+bubblewrap。九家出版社可一次选择、顺序准备；最多八个自有标签，已完成标签
+按需回收，不关闭用户标签或清除 cookie。文件工具限于私有配置、工作目录及既有
+memory；Bash/Monitor 的框架挂载只读，只开放本地工作、配置和 state，文件工具
+仍不能直接编辑 state。不新增运行权威、不自动批准命令、不允许无隔离重试。
+已在本地设置注册 NotebookEdit；重启 CC 后完整生效。开发使用独立获授权会话。
+该边界不宣称隔离任意同用户服务，也不保证模型及服务响应耗时。
+
+证据位于 `.local/qualification/init-determinism-20261008/`：
+
+- 原 HEAD 回放复现九家选择被拒绝、框架路径 Write 被允许；当前回放均修正。
+  先前 init 日志没有证实受 Git 跟踪源码被修改。
+- 初始定向选择 203 项通过；会话与交接选择 65 项通过、五项 opt-in 跳过。
+  不将这些重叠选择相加作为唯一用例总数。
+- 最终定向选择 **117 项通过、无跳过**：真实只读挂载、私有写入及 Git 读取，
+  Bash/Python/重定向/复制/移动拒绝源码写入，固定双语问卷、完整与矛盾答案、
+  新建 Profile 和 GPU 授权，真实获取线程上的九家顺序准备及八标签限制。
+- 初版挂载误伤 Git 对 `/dev/null` 的访问，修复为保留设备挂载语义；实际包装后的
+  `bootstrap inspect` 已返回问卷，没有写 Profile、探测供应商或启动 Host。
+- **九家出版社的真实 Host/CPU 闭环通过**（临时目录、fake 研究适配器、模拟浏览器
+  响应）：独立计数为一次 CREATE_RUN、两个成功 Agent、两个成功 CPU Process，
+  零开放 Attempt／待处理效果，无存活进程组、准备目录或 Host socket。
+  之前被本地 socket 权限阻止的执行仍保留为失败证据。
+- 源码、wheel、独立安装、新运行包的 **190 个文件**逐字节一致；从 `/tmp` 导入
+  安装包／保留包的 CLI、MCP 和问卷模块通过，编译、未定义名称和 diff 检查通过。
+
+边界：更广定向执行 216 项通过、三项 socket／Host 启动失败；bundle 检查 43 项
+通过、一项 Host 启动被拒绝。两项既有原生 G3 在 TCP 创建处 EPERM。八 worker
+完整 G1 在失败及 worker 长时间未收尾后中断，没有最终汇总，且早于最后的定向修正，
+不能算最终候选完整通过。默认 Playwright Chromium 缺失；系统 Chrome 的验证在
+Playwright 启动／连接中未完成后被中断，真实浏览器／Windows 验收尚未合格。
+未放宽检查，未进行付费、GPU 或历史运行操作，不宣称资格晋级或真实模型加速。
+
+实现保留在 dev 工作区。本会话获授权后执行暂存，但 `.git` 被当前环境只读挂载，
+无法创建 `index.lock`；未完成提交或推送。
+
 ## Grounding 收尾与恢复（2026-10-08）
 
 Adapter 72 按[设计](design/research-workflow-skill.zh-CN.md#grounding-收尾与可恢复编写2026-10-08)

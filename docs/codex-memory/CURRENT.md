@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 8 init/source boundary: inspect generates bilingual fixed questions and
+  converts raw answers through existing CLI/admission. All nine publishers iterate
+  on one preparation owner; completed owned tabs are reclaimable under the unchanged
+  eight-tab bound. Root research file tools are private-only; Bash/Monitor use
+  bubblewrap read-only framework mounts, with no unisolated retry or auto-approval.
+  Local NotebookEdit registration updated; restart CC. Original/fixed replay and
+  117 final focused checks pass. Nine-publisher Host closes one CREATE, two Agents,
+  two CPU Processes with zero residue. Wheel/install/bundle match 190 files.
+  G1/G3 and physical browser qualification retain environment failures; no paid/GPU,
+  retained-run mutation or latency claim. Changes remain uncommitted on dev because
+  staging fails on read-only `.git`; no push completed by this session.
+  [Design](../design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08)
+  / [validation](../qualification.md#deterministic-init-and-research-source-boundary-2026-10-08).
+
 - October 8 Grounding completion: adapter 72 separates scientific parser tests
   from Host comparison checks, exposes the existing schema read-only, retains
   helper/candidate drafts, prioritizes recent recovery work and adds an advisory
@@ -7,8 +21,8 @@
   Initial runtime 91 passes; broader runs retain socket/bwrap/read-only failures.
   Final targeted 28 pass; source/wheel/install/fresh bundle match 189 files and
   CLI/MCP pass. G1/G3 remain environment-limited; no paid/GPU or latency claim.
-  Retained runs unchanged. Git staging is blocked by read-only `.git`; changes
-  remain uncommitted on dev. [Design](../design/research-workflow-skill.md#grounding-completion-and-recoverable-authoring-2026-10-08)
+  Retained runs unchanged. These earlier changes are now committed as `a67eec1`;
+  the earlier uncommitted status is superseded. [Design](../design/research-workflow-skill.md#grounding-completion-and-recoverable-authoring-2026-10-08)
   / [validation](../qualification.md#grounding-completion-and-recovery-2026-10-08).
 
 - October 8 authorized development-run retirement: deleted the reviewed 32

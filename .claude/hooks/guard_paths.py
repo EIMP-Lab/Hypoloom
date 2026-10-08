@@ -43,14 +43,14 @@ def check(raw: str) -> int:
     tool = payload.get("tool_name") or payload.get("tool") or ""
     tool_input = payload.get("tool_input") or {}
     if not isinstance(tool_input, dict):
-        if tool in {"Write", "Edit", "Bash", "Monitor"}:
+        if tool in {"Write", "Edit", "NotebookEdit", "Bash", "Monitor"}:
             return _deny(f"{tool} tool_input must be a JSON object")
         return 0
 
     from hypoloom import hook_safety
 
-    if tool in {"Write", "Edit"}:
-        target = tool_input.get("file_path") or tool_input.get("path") or ""
+    if tool in {"Write", "Edit", "NotebookEdit"}:
+        target = tool_input.get("file_path") or tool_input.get("notebook_path") or tool_input.get("path") or ""
         base = tool_input.get("cwd") or payload.get("cwd") or REPO_ROOT
         allowed, reason = hook_safety.is_write_allowed(
             target,
@@ -70,7 +70,15 @@ def check(raw: str) -> int:
             repo_root=REPO_ROOT,
             base_dir=base,
         )
-        return 0 if allowed else _deny(reason)
+        if not allowed:
+            return _deny(reason)
+        try:
+            wrapped = hook_safety.research_shell_command(command, repo_root=REPO_ROOT, base_dir=base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            return _deny(f"cannot protect research source: {exc}")
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "updatedInput": {**tool_input, "command": wrapped}}}, ensure_ascii=False))
+        return 0
 
     # Read-only tools and Agent/AskUserQuestion have no direct generic file
     # effect here. Workflow admission and authority belong to the resident Host.

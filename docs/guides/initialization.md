@@ -80,10 +80,18 @@ behavior. Existing direct launch/serve scripts may still omit the mode. Off reje
 conflicting connection or institutional-specific options; remove those options
 when changing the selection.
 
+Init uses the fixed `interaction.questions` returned by inspect (`--ui-language en`
+or `zh-CN`). CC relays these unchanged and saves the original AskUserQuestion
+`answers` object in `.local/`. The generated `answer_argv` accepts that JSON path,
+retains prior choices/identity, and performs the existing admission checks. Partial,
+renamed, stale or contradictory answers fail without starting a run. Configuration
+that is not a question is reported in `configuration_required`.
+
 After enabling access, **confirm the publisher list in the interactive session**.
-Inspect reports `institutional_prepare_provider` as missing and supplies its choices,
-showing IEEE, ACM, Elsevier / ScienceDirect and Springer first. Select publishers,
-explicitly accept the recommended IEEE/ScienceDirect/Springer set, or skip.
+The catalog is shown in three stable groups of three publishers, each with an
+explicit “None in this group” option. All nine may be selected together; the program
+processes them sequentially with at most eight owned browser tabs. Recommendations
+never count as an answer; there is no model-designed batching step.
 ACM is selectable even though its recommendation is public-first with optional login.
 Choosing Windows client mode alone does not select publishers; no preparation or launch
 command is generated until the list is supplied. Previously explicit answers are retained.
@@ -278,3 +286,11 @@ Notification preflight validates local configuration only. An enabled Telegram s
 is **delivery unverified** until an actual response is observed. See [notification
 checks and recovery](notifications.md#delivery-health-and-recovery--投递状态与恢复)
 for explicit access/message tests and live Web/TUI status.
+
+Research sessions cannot edit framework source through file tools or ordinary shell
+writes. The existing project hook wraps Bash/Monitor in Linux bubblewrap, mounting
+the repository read-only except `.local/`, `profiles/local/` and `state/`. Direct
+Write/Edit/NotebookEdit to state remain blocked. This does not auto-approve commands
+or replace Host authority. A missing/unavailable bubblewrap is an explicit error,
+with no unsandboxed retry. Use a separate authorized development session for repairs.
+Restart CC after updating hook registration; stopped/historical runs are unchanged.

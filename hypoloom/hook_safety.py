@@ -24,6 +24,9 @@ _BASH_BLACKLIST = (
     re.compile(r"\brm\s+-rf?\s+\$HOME", re.IGNORECASE),
     re.compile(r"git\s+push\s+(--force|-f)\b", re.IGNORECASE),
     re.compile(r"git\s+reset\s+--hard", re.IGNORECASE),
+    re.compile(r"\bgit\s+clean\b", re.IGNORECASE),
+    re.compile(r"\bgit\s+branch\s+.*(?:-D|--delete)\b"),
+    re.compile(r"(?:^|[\s;/])dd\s", re.IGNORECASE),
     re.compile(r"\bcurl\b.*\|\s*(sh|bash)\b", re.IGNORECASE),
     re.compile(r"\bwget\b.*\|\s*(sh|bash)\b", re.IGNORECASE),
 )
@@ -37,7 +40,6 @@ _INDIRECT_COMMANDS = frozenset({
 })
 _SHELL_COMMANDS = frozenset({"bash", "dash", "sh", "zsh"})
 _CONTROL_OPERAND_VERBS = frozenset({"chmod", "chown", "chgrp"})
-_COMMAND_SEPARATOR = re.compile(r"&&|\|\||[;|&\n]")
 _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _GLOB_CHARS = frozenset("*?[")
 _DYNAMIC_SHELL_CHARS = frozenset("$`")
@@ -89,7 +91,7 @@ def write_roots(
 
     selected = os.environ if environment is None else environment
     repo = Path(repo_root).resolve(strict=False)
-    roots = [repo, *_memory_roots(selected)]
+    roots = [repo / ".local", repo / "profiles/local", *_memory_roots(selected)]
     deduplicated: list[Path] = []
     for root in roots:
         if root not in deduplicated:
@@ -170,6 +172,42 @@ def is_bash_allowed(command: object) -> tuple[bool, str]:
     return True, ""
 
 
+def research_shell_command(command: str, *, repo_root, base_dir=None) -> str:
+    """Make framework source read-only for Bash/Monitor and their children.
+
+    This reuses the runtime's required Linux bubblewrap. There is deliberately
+    no unsandboxed fallback and no permissionDecision=allow in the hook.
+    Network/user service authority is unchanged; this is a source-write boundary.
+    """
+    repo = Path(repo_root).resolve(strict=True)
+    base = Path(base_dir or repo).resolve(strict=True)
+    argv = ["/usr/bin/bwrap", "--die-with-parent", "--bind", "/", "/", "--dev-bind", "/dev", "/dev",
+            "--ro-bind", str(repo), str(repo)]
+    for relative in (".local", "profiles/local", "state"):
+        path = repo / relative
+        if path.resolve(strict=False) != path or path.is_symlink():
+            raise ValueError(f"research writable directory must not be a symlink: {path}")
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        argv += ["--bind", str(path), str(path)]
+    return shlex.join([*argv, "--chdir", str(base), "--", "/bin/bash", "-c", command])
+
+
+def _shell_statements(command: str):
+    # Tokenize before splitting, so quoted pipes and multiline Python/heredoc
+    # bodies do not produce spurious unterminated-quote errors.
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    tokens = []
+    for token in lexer:
+        if token and all(c in ";&|\n" for c in token):
+            if tokens: yield tokens
+            tokens = []
+        else:
+            tokens.append(token)
+    if tokens: yield tokens
+
+
 def _glob_prefix(token: str) -> str:
     prefix: list[str] = []
     for character in token:
@@ -223,13 +261,11 @@ def is_destructive_command_safe(
         ):
             return False, "cannot safely resolve destructive targets after cd/pushd"
 
-    for statement in _COMMAND_SEPARATOR.split(command):
-        if not statement.strip():
-            continue
-        try:
-            tokens = shlex.split(statement, posix=True)
-        except ValueError as exc:
-            return False, f"cannot parse shell command safely: {exc}"
+    try:
+        statements = list(_shell_statements(command))
+    except ValueError as exc:
+        return False, f"cannot parse shell command safely: {exc}"
+    for tokens in statements:
         index = 0
         while index < len(tokens) and _ENV_ASSIGNMENT.match(tokens[index]):
             index += 1

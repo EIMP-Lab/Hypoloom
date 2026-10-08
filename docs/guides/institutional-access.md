@@ -795,8 +795,9 @@ without fixed samples retain `not_checked`.
 Failed platforms do not prevent preparing others. Unresolved sample failures return
 a nonzero exit code but are not a research-start gate. With
 `--non-interactive --sample <DOI-or-URL>`, check the existing session without waiting
-for terminal input. `--list` does not connect. Prepare at most eight platforms per
-batch; close the command and start another batch as needed. No research Host/run,
+for terminal input. `--list` does not connect. Select any supported publishers in one preparation command. The program processes
+them sequentially and makes completed owned tabs available for eviction, retaining
+the limit of eight simultaneous owned tabs and leaving user tabs/cookies intact. No research Host/run,
 Attempt, Profile, model call or source archive is created. Bootstrap review provides
 `institutional_preparation` and a complete `institutional_preparation_argv`.
 Repeated bootstrap `--institutional-prepare-provider` replaces the list; `none`

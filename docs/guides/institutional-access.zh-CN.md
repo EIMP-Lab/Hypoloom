@@ -147,7 +147,8 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 其他未配置固定样本的平台仍记为 `not_checked`，不显示已登录。
 个别平台失败后继续其他平台；仍有失败的样本时命令返回非零，不阻止后续研究启动。
 `--non-interactive --sample <DOI或URL>` 只验证现有会话，不等待终端输入。
-`--list` 只列目录，不连接浏览器。每批最多八个平台，结束后可继续下一批。
+`--list` 只列目录，不连接浏览器。一次可选择目录中的全部出版社；程序顺序处理，将已结束的平台标签标为可回收，
+继续遵守最多八个自有标签的上限，不关闭用户原有标签或清除 cookie。
 初始化审阅通过 `institutional_preparation` 展示名单，`institutional_preparation_argv`
 给出完整命令。init 用重复的 `--institutional-prepare-provider` 自定义名单，用 `none`
 跳过集中准备；这与关闭机构功能的 `off` 不同。只有明确选择准备才打开浏览器。

@@ -602,6 +602,8 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--pool-device-uuid", action="append", help="reviewed full pool membership, independent of this run's subset")
             command.add_argument("--pool-reserve-mib", type=int)
         if action == "inspect":
+            command.add_argument("--ui-language", choices=("en", "zh-CN"), default="en")
+            command.add_argument("--answers-file", help="unedited answers from the generated AskUserQuestion payload; never starts a run")
             command.add_argument("--offline", action="store_true")
             command.add_argument("--version-timeout", type=float, default=DEFAULT_TIMEOUT)
             for option in command._actions:
@@ -630,6 +632,13 @@ def main(argv=None) -> int:
                 raise ValueError("inspect is read-only; review and use launch --start")
             from .bootstrap_inspect import inspect
             result = inspect(args, repository)
+            from .bootstrap_questions import apply_answers, interaction
+            if args.answers_file:
+                response = json.loads(Path(args.answers_file).read_text())
+                apply_answers(args, result, response)
+                args.answers_file = None
+                result = inspect(args, repository)
+            result["interaction"] = interaction(args, result, repository)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
             return 0
         elif args.action == "paths":

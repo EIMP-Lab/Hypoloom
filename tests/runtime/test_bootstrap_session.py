@@ -249,7 +249,8 @@ def test_session_rejects_implicit_publisher_defaults_before_preparation(prepared
     assert not (repo / "state").exists()
 
 
-def test_session_explicit_reply_reaches_real_host_cpu_and_clean_terminal(checkout, tmp_path, monkeypatch, capsys, record_property):
+@pytest.mark.parametrize("all_publishers", [False, True])
+def test_session_explicit_reply_reaches_real_host_cpu_and_clean_terminal(checkout, tmp_path, monkeypatch, capsys, record_property, all_publishers):
     """Real sockets/CLI/CREATE/Host/Process/Oracle; fake research adapter, no paid calls.
 
     Only systemd transport and publisher browser operations are replaced.
@@ -263,8 +264,10 @@ def test_session_explicit_reply_reaches_real_host_cpu_and_clean_terminal(checkou
     monkeypatch.setattr(RunBrowser, "check_connection", lambda *a, **kw: {"state": "ready"})
     monkeypatch.setattr(RunBrowser, "prepare", lambda *a, **kw: {"state": "opened"})
     monkeypatch.setattr(institutional_handoff, "RELEASE_SECONDS", .02)
+    from hypoloom.institutional_access import provider_catalog
+    selected = [p["provider"] for p in provider_catalog()] if all_publishers else ["IEEE", "ACM"]
     argv = [*arguments(repo, [], "launch", template=None), "--institutional-browser-mode", "client",
-            "--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ACM"]
+            *[part for provider in selected for part in ("--institutional-prepare-provider", provider)]]
     assert bootstrap.main(argv) == 0
     capsys.readouterr()
     args = bootstrap.build_parser().parse_args(["session", *argv[1:]])
@@ -295,7 +298,15 @@ def test_session_explicit_reply_reaches_real_host_cpu_and_clean_terminal(checkou
     root = eventually(lambda: next((path for path in (repo / "state").glob("institutional-prepare-*")
                                     if (path / "control.sock").exists()), None))
     try:
-        finish_platforms(root)
+        if all_publishers:
+            for provider in selected:
+                wait(root, "waiting_for_user", provider)
+                answer(root, "public_only", provider)
+            review = wait(root, "awaiting_launch")
+            assert [row["provider"] for row in review["summary"]["preparation_summary"]] == selected
+            assert review["summary"]["remaining_providers"] == []
+        else:
+            finish_platforms(root)
         assert calls == [] and not state.exists()
         assert reply(root, "Start now").status == "accepted"
         thread.join(20)

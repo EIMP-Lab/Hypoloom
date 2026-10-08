@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Hypoloom-only project settings. Copy deliberately to .claude/settings.json. The Hook and MCP prefer explicitly inherited qualified interpreters and otherwise use the qualified project-local .conda environment; /autoresearch init can complete an approved Start-now flow in the current interaction without requiring shell exports or a second terminal. A newly copied settings file is fully active on the next Claude session, but that cache boundary is not a Host/run prerequisite. The PreToolUse hook is a generic interactive backstop: it path-scopes direct destructive commands and Write/Edit, denies configured workflow state/run roots and direct rewrites of checked-in .claude/skills or .claude/hooks controls, but is not a shell sandbox and cannot prove arbitrary interpreter-based effects. Workflow experts and experiments receive their actual authority and OS containment from the resident Hypoloom Host. No root hook discovers or mutates an existing run. Existing runs retain their own runtime bundle.",
+  "_comment": "Hypoloom research-session settings. Copy deliberately to .claude/settings.json; restart Claude Code after changing hook registration. PreToolUse limits Write/Edit/NotebookEdit to .local, profiles/local and Claude memory; workflow state remains Host-owned. Bash/Monitor run through the existing Linux bubblewrap with the entire repository read-only except .local, profiles/local and state. Source, Git metadata, dependencies and checked-in .claude/skills or .claude/hooks remain read-only. No unsandboxed fallback or automatic permission approval. This is a framework-source write boundary, not isolation from arbitrary same-user services. Research experts retain their Host sandbox. Use a separate authorized development session for source changes; existing runs retain their runtime bundle.",
   "permissions": {
     "additionalDirectories": [],
     "allow": [
@@ -37,7 +37,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Read|Glob|Grep|Write|Edit|Bash|Monitor|Agent|AskUserQuestion",
+        "matcher": "Read|Glob|Grep|Write|Edit|NotebookEdit|Bash|Monitor|Agent|AskUserQuestion",
         "hooks": [
           {
             "type": "command",

@@ -108,18 +108,18 @@ disable a Hook, expand permissions or loop through equivalent shell forms.
 
 ### 2. Fill only missing choices and review
 
-**Institutional access choice.** If `missing` includes `institutional_browser_mode`,
-ask using `choices.institutional_browser_mode`, translating descriptions for the user.
-Do not infer off from silence or placement from the server OS; if needed, ask enablement and placement separately.
-Return one explicit mode and retain prior choices/identity. Off keeps public/OA retrieval, disabling institutional acquisition.
-A supplied legacy URL answers placement and retains unmanaged behavior. Use `launch_argv` only after all missing choices resolve.
+**Program-owned questions and answers.** Pass `--ui-language zh-CN` for a Chinese interaction,
+otherwise `--ui-language en`. Send `interaction.questions` unchanged to AskUserQuestion; do not regroup, translate, rename or extend it.
+Save the original returned `answers` object to a private `.local/` JSON file using Write;
+run `interaction.answer_argv` unchanged, replacing only `<answers.json>` with that path.
+The program returns the next questions/commands. Never fill unanswered fields, drop choices, split publishers or reconstruct argv.
+If the user cancels, stop. Partial/stale/invalid answers cannot start anything; show the error
+and use the same generated questions for correction. `configuration_required` identifies missing
+configuration outside the displayed questions; use the documented configuration entry, not source rediscovery.
 
-**Publisher selection requires an interactive answer.** When `missing` includes `institutional_prepare_provider`,
-use `AskUserQuestion` with `choices.institutional_prepare_provider`; show IEEE, ACM, ScienceDirect and Springer explicitly.
-Allow multiple publishers/custom catalog choices or skip. Recommendations are suggestions, never an implicit answer.
-Choosing client mode, adopting a Profile or using a previous run's list does not confirm the current list.
-Carry an already explicit answer through repeated `--institutional-prepare-provider`; `none` means skip. Do not ask again.
-The program withholds preparation/launch commands until the list is supplied. Never fill it from defaults or bypass inspect.
+Publishers use fixed groups of three plus an empty-group option. All may be selected; the program handles iteration and the eight-tab bound.
+Placement, Profile selection and recommendations never imply a publisher answer. Already explicit
+CLI choices are retained and not asked again. Do not bypass inspect or treat an answer file as launch approval.
 Unselected institutional routes stay disabled; public retrieval is independent. For unattended stability, use
 `--institutional-prepare-failure-mode public_only`; see [details](references/init-details.md).
 

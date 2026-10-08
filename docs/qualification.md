@@ -2,6 +2,63 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Deterministic init and research source boundary (2026-10-08)
+
+The [design](design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08)
+reuses inspect/ordinary CLI choices, the publisher catalog, the existing tab limiter
+and bubblewrap. Initial questions and answer translation are program-owned; nine
+publishers can be prepared sequentially. Completed owned tabs become reclaimable
+without closing foreign tabs or clearing cookies. Research file tools are limited
+to private configuration/work and existing memory roots; Bash/Monitor mount the
+framework read-only, retaining writable private configuration, work and state.
+Host-owned state still cannot be edited directly with file tools. No automatic
+permission approval, unisolated retry, new authority file or retained-run migration.
+The existing project settings registration was updated locally for NotebookEdit;
+restart CC to load the complete registration. Framework development uses a separate
+explicitly authorized session. This is source-write containment, not containment
+of arbitrary same-user services or a measured bound on model/service latency.
+
+Evidence: `.local/qualification/init-determinism-20261008/`.
+
+- Original HEAD rejects all nine publishers and permits a framework Write path;
+  the retained original/fixed replay shows both corrected. The observed init had
+  no confirmed tracked-source modification.
+- Initial regression selection: 203 passes; session/handoff/runtime selection:
+  65 passes, five opt-in skips. These are scoped observations, not a combined
+  unique-test or complete-qualification count.
+- Final targeted selection: **117 passed, no skips**. It includes native mount
+  enforcement for shell/Python/redirection/copy/move, positive private writes and
+  Git reads; original native tool fields and manual permission flow; fixed bilingual
+  questions, all/none/subset/stale/conflicting answers, new Profile choices and GPU
+  authorization; nine sequential publishers on the real acquisition worker with
+  synthetic pages, at most eight owned tabs, fixed outcome collection and docs.
+- The source-only mount initially broke Git access to `/dev/null`; preserve the
+  existing device mount semantics. Actual wrapped `bootstrap inspect` now returns
+  the next question without writing a Profile, probing a provider or starting a Host.
+- **Nine-publisher real Host/CPU closure passes** in a disposable directory using
+  the existing fake research adapter and synthetic browser responses. Independent
+  census: one CREATE_RUN, two successful Agents, two successful CPU Processes,
+  zero open Attempts/pending effects, no surviving process groups, preparation root
+  or Host socket. Earlier executions denied local sockets remain recorded as failures.
+- Final source, wheel, isolated install and fresh bundle match **190 package files**;
+  installed/bundled CLI help, MCP initialize/tools-list and question-module import
+  pass from `/tmp`. Compilation, undefined-name and whitespace checks pass.
+
+Limits: broader focused execution reports 216 passes/three socket or Host-start
+failures, and bundle-restart qualification reports 43 passes/one denied Host start.
+Two existing native G3 selections fail at local TCP creation with EPERM. The earlier
+full G1 attempt (eight workers) was interrupted after failures and stalled worker
+completion, producing no final aggregate; it preceded the last focused corrections
+and is not a full final-candidate pass. Default Playwright Chromium is absent;
+the system-Chrome attempt stalled during Playwright startup/connection and was
+interrupted, so physical browser/Windows acceptance remains unqualified. No checks
+were relaxed, no paid/GPU lane or historical research operation was performed, and
+no qualification promotion or real-model speedup is claimed.
+
+Implementation is in the dev working tree. Authorized staging failed because this
+execution environment mounts `.git` read-only (`index.lock: Read-only file system`);
+no commit or push was completed by this session.
+
 ## Grounding completion and recovery (2026-10-08)
 
 Adapter 72 implements the general authoring/completion changes in the
