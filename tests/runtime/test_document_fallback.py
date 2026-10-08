@@ -130,6 +130,45 @@ def test_host_discovers_public_pdf_without_locator_and_archives_exact_bytes(syst
     assert transport.calls == before
 
 
+@pytest.mark.parametrize("lookup", ["openalex", "crossref"])
+@pytest.mark.parametrize("outcome,status", [("HTTP_FAILURE", 429), ("FALLBACK_EMPTY", None)])
+@pytest.mark.parametrize("wrong_pdf", [False, True])
+def test_batch_locator_history_does_not_skip_independent_public_discovery(
+        system, tmp_path, monkeypatch, lookup, outcome, status, wrong_pdf):
+    from hypoloom.grounding_web import GroundingWeb
+    from tests.runtime.test_grounding_web import Transport, _response
+    from tests.runtime.test_institutional_browser import _pdf
+    host, request, metadata, _, backend, papers = system
+    trace = [{"bibliographic_identity": "doi:" + DOI, "events": [
+        {"stage": "fallback_lookup", "outcome": outcome, "http_status": status}]}]
+    monkeypatch.setattr("hypoloom.paper_sources.packet_download_trace", lambda *_: trace)
+    work = {"doi": DOI, "display_name": "Controlled selected method", "locations": [
+        {"is_oa": True, "pdf_url": OA}] if lookup == "openalex" else []}
+    crossref = {"message": {"DOI": DOI, "title": ["Controlled selected method"],
+        "link": [{"URL": OA, "content-type": "application/pdf"}]}}
+    original = _pdf("10.1038/wrong" if wrong_pdf else DOI)
+    transport = Transport({URL: _response(URL, b"denied", status_code=403),
+        LOOKUPS[0]: _response(LOOKUPS[0], json.dumps(work).encode(), media_type="application/json"),
+        LOOKUPS[1]: _response(LOOKUPS[1], json.dumps(crossref).encode(), media_type="application/json"),
+        OA: _response(OA, original, media_type="application/pdf")})
+    host.grounding_web = GroundingWeb(transport)
+    result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
+    assert not metadata.calls and not backend.calls  # The old locator is not retried.
+    fetched = [call[1] for call in transport.calls if call[0] == "fetch"]
+    assert fetched == [URL, *LOOKUPS[:1 if lookup == "openalex" else 2], OA]
+    if wrong_pdf:
+        assert result["status"] == "unavailable" and not papers.sources
+    else:
+        assert result["status"] == "available" and result["acquisition_source"] == "metadata"
+        archive = tmp_path / "history-archive"; archive.mkdir()
+        papers.archive(archive)
+        assert (archive / result["original_path"].lstrip("/")).read_bytes() == original
+        assert papers.sources[0]["acquisition_source"] == "metadata"
+    before = list(transport.calls)
+    assert web_tool(host, request, "web_fetch", {"mode": "document", "url": URL}) == result
+    assert transport.calls == before
+
+
 def test_challenged_pdf_is_not_retried_and_other_oa_copy_is_verified(monkeypatch):
     from time import monotonic
     from hypoloom.document_fallback import acquire_public_pdf

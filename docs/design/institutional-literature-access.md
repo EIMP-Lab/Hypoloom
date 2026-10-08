@@ -1,5 +1,53 @@
 # Institutional literature access
 
+## Selected-paper discovery after locator failure — 2026-10-08
+
+Read-only replay of four retained literature batches found seven exact-DOI
+locator HTTP 429 events. With those original diagnostics, a later selected-paper
+request skipped public metadata discovery after its direct request failed. The
+same controlled PDF was acquired after removing only the prior locator event.
+The failed asset is the interpretation of the existing download trace at the
+batch-to-document boundary: a locator attempt is not a completed public search.
+This is an ordinary control-flow defect; the existing trace provenance and
+ordinary regressions suffice. No new marker, journal or admission authority is
+needed. Fixture success does not establish real OA availability of these papers.
+
+Keep batch and selected-document trace origins distinct. Existing locator history
+suppresses only another call to that locator; it cannot suppress OpenAlex/Crossref
+metadata and validated arXiv alternatives. A prior selected-document discovery
+still prevents repeated work in that Attempt. Locator cooldowns, HTTP/time limits,
+URL rejection, identity checks, manual choices and source publication are retained.
+
+The existing `/papers/INDEX.md` derives candidate URLs, identities, titles, years,
+batch availability and observed institutional policy from the admitted packet
+and current access owner. These lines are metadata for selection, not source refs
+or proof of access; restoration continues to use observed admitted sources only.
+The current Agent selects papers for specific questions, at most two per existing
+document call. The Host owns acquisition and bounded waiting; preparation choices
+do not enqueue all missing candidates. Instructions now describe this capability.
+
+Reuse `acquisition_source` in ordinary source metadata, tool replies and archives:
+`public_http` denotes the ordinary HTTP downloader, `metadata`, `fallback` and
+`arxiv` identify public discovery routes, `browser` identifies the institutional
+browser path, `manual_import` identifies an authorized import and `elsevier_api`
+identifies the configured article API. These are transport observations, not
+license/entitlement claims. Cache/reader reuse preserves the observation; old
+sources without it remain unknown. Availability, actual page reading and the
+scientific interpretation remain distinct.
+
+The four saved packets cover 119 entries/82 identities; the Grounding batch has
+32 candidates but only three initial PDFs, all in the latest stratum. An expert's
+single foundational result is titled "Identifying Euler equations estimated by
+non-linear IV/GMM". Its relevance needs scientific review; passing an age-bin
+validator alone cannot establish it. Keep broad historical discovery and use
+targeted academic follow-up for missing methods/evaluation evidence. Do not change
+the frozen query contract, time quotas or budgets without a relevance comparison.
+Future equal-budget topic comparisons should count pertinent selected papers,
+critical questions with full-text evidence, duplicate acquisitions, model calls
+and elapsed time, not raw result count. No paid-model relevance or speed gain is
+claimed by this repair. Adapter 73 applies the instructions to new runs; retained
+research bundles and states are unchanged.
+
 The [follow-up preparation and bounded recovery design](institutional-access-preparation.md)
 specifies publisher preparation before a run, durable operator skip/preferences
 through existing controls, finite acquisition windows and shared OA fallback.

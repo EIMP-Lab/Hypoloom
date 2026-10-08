@@ -1127,3 +1127,16 @@ Hook 输入改写使用 [Claude Code PreToolUse updatedInput](https://code.claud
 保留原工具参数且不返回自动批准。已有破坏性命令拒绝规则继续生效；研究会话另拒绝
 Git clean、删分支和 dd，避免包装后的命令改变原项目 ask 规则对这些操作的保护。
 新挂载保留 `/dev` 的设备语义，避免只读源码检查误伤 Git 对 `/dev/null` 的访问。
+
+## Springer Nature 统一机构入口（2026-10-08）
+
+将既有 Springer 改为 Springer Nature；删除单独的 Nature 准备项。两个文章域名及
+10.1007／10.1038 DOI 前缀共享现有 provider 路由和访问模式，目录投影自动去重。
+机构登录仍使用原 wayf.springernature.com 入口，redirect_uri 仍为 link.springer.com，
+原固定 DOI 样本保留。Nature 文章的 DOI 提取仍按实际 nature.com 域名识别，不能把
+品牌分组合并误作 DOI 前缀合并。样本可读仍不等于全平台订阅权限。
+
+复用现有 provider_name 归一化、preparation_selection 去重和模式冲突校验。旧
+Springer／Nature 参数作为新运行的输入别名；不同别名提供不同模式时拒绝，不能
+静默选择其中之一。当前目录为八个准备入口，固定问卷末组两项加不选选项。已有
+运行不改名、不迁移，历史资格记录保留其原来实际测试的九项名称和数量。

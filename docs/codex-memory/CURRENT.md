@@ -1,5 +1,26 @@
 # Current Hypoloom development state
 
+- October 8 selected-paper retrieval: adapter 73 separates batch locator history
+  from selected-document discovery; 429/empty locator results no longer skip
+  independent public metadata/arXiv paths. Existing index derives candidate URLs,
+  availability and access modes; source records preserve acquisition route through
+  cache/reader/archive reuse without asserting entitlement or reading. Targeted
+  academic follow-up complements historical discovery; query quotas are unchanged.
+  479 distinct checks pass, 25 fixed historical replays match expectations, and
+  two real Host/CC/CPU closures have 18 Agents/one Process each with no residue.
+  Source/wheel/install/fresh bundle match 190 files. No live SSO, paid-model quality
+  claim, full promotion or retained-run mutation.
+  [Design](../design/institutional-literature-access.md#selected-paper-discovery-after-locator-failure--2026-10-08)
+  / [validation](../qualification.md#selected-paper-discovery-and-acquisition-observations-2026-10-08).
+
+- October 8 Springer Nature entry: one preparation/access group covers Springer
+  Link and Nature, retaining the exact Springer institution-finder URL and sample.
+  Old names alias the unified group; conflicting modes are rejected. The current
+  catalog has eight entries. Focused checks and all-provider Host/CPU closure pass;
+  no physical SSO/browser qualification or retained-run migration.
+  [Design](../design/institutional-access-preparation.md#springer-nature-统一机构入口2026-10-08)
+  / [validation](../qualification.md#springer-nature-institutional-entry-2026-10-08).
+
 - October 8 init/source boundary: inspect generates bilingual fixed questions and
   converts raw answers through existing CLI/admission. All nine publishers iterate
   on one preparation owner; completed owned tabs are reclaimable under the unchanged
@@ -9,8 +30,8 @@
   117 final focused checks pass. Nine-publisher Host closes one CREATE, two Agents,
   two CPU Processes with zero residue. Wheel/install/bundle match 190 files.
   G1/G3 and physical browser qualification retain environment failures; no paid/GPU,
-  retained-run mutation or latency claim. Changes remain uncommitted on dev because
-  staging fails on read-only `.git`; no push completed by this session.
+  retained-run mutation or latency claim. These earlier changes are now committed
+  as `6f706c6`; the previous uncommitted status is superseded.
   [Design](../design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08)
   / [validation](../qualification.md#deterministic-init-and-research-source-boundary-2026-10-08).
 

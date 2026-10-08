@@ -2,6 +2,74 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Selected-paper discovery and acquisition observations (2026-10-08)
+
+The [repair](design/institutional-literature-access.md#selected-paper-discovery-after-locator-failure--2026-10-08)
+separates prior batch DOI-locator attempts from selected-paper public discovery.
+It retains existing service cooldowns, request/time bounds, source rejection,
+identity checks, operator modes and ordinary archive ownership. Adapter 73 adds
+selection guidance; the existing paper index derives candidate metadata/access
+hints. Ordinary source records preserve acquisition route through reader/cache
+reuse. Browser transport is not a subscription claim; legacy missing metadata
+stays unknown. Broad query schema/time quotas are unchanged.
+
+Private evidence is in `.local/qualification/literature-acquisition-20261008/`;
+original diagnostic evidence remains in
+`.local/analysis/literature-replay-20261008/` at its original location.
+
+- Exact retained packets and seven original locator 429 records drive 25 controlled
+  replays. Previously all seven selected sources skipped metadata discovery;
+  after repair all seven supplied exact-DOI PDFs are acquired and archived, with
+  no additional HTTP on reuse. Seven wrong-DOI controls remain rejected. The four
+  auto/public-only controls now acquire their public fixture without browser work.
+  The HTTP/PDF fixtures do not prove real availability of the historical papers.
+- Final selections reconcile to **479 distinct passes, no failures or skips**:
+  355 focused adapter/bundle/document/reader cases, 136 integration cases and two
+  native cases, with overlap counted once. New regressions cover locator 429 and
+  empty results, OpenAlex/Crossref alternatives, arXiv, wrong PDF identity,
+  no repeated locator work, candidate policy hints without enqueue, and source
+  route retention. Initial failures exposed cache reuse dropping route metadata;
+  the existing validated-cache path now retains it and both regressions pass.
+- Both native cases use real Host/Claude Code with a scripted local provider and
+  controlled HTTP/browser responses. Each closes **18 successful Agents**,
+  including three readers, and **one successful CPU Process** with a canonical
+  outcome. Oracle reports no issues. Independent SQL/process/filesystem census
+  confirms zero open Attempts, surviving process groups or paper-staging entries;
+  the 14 source observations per case consistently retain metadata/browser route.
+- **190 package files** match source, wheel, isolated installation and a fresh
+  runtime bundle. Both isolated CLI entries work and report adapter 73. Undefined
+  name and whitespace checks pass.
+
+This is focused repair verification, not full G1–G5 promotion. No retained research
+state, real browser session, credentials, paid-model or GPU run was changed.
+The saved four-packet review motivates targeted academic follow-up but does not
+measure scientific relevance improvement or runtime speedup. Per-publisher live
+SSO/entitlement checks and equal-budget model/topic comparisons remain separate
+acceptance work when their prerequisites are available.
+
+## Springer Nature institutional entry (2026-10-08)
+
+The [follow-up](design/institutional-access-preparation.md#springer-nature-统一机构入口2026-10-08)
+merges Springer and Nature into one Springer Nature preparation/access group.
+The original institution-finder URL and fixed public sample remain unchanged;
+Nature's homepage is no longer a separate preparation entry. Existing name
+normalization accepts both old names, deduplicates selection and rejects
+conflicting legacy modes. Nature DOI inference remains specific to Nature URLs.
+The current catalog has eight entries; earlier nine-entry evidence below describes
+the preceding implementation. Existing frozen research runs are unchanged.
+
+Focused selections pass: 162 tests with nine existing opt-in skips; 134 tests;
+64 selection/credentials/observer/document-fallback/TUI tests; and, after the final
+URL-identity guard, 68 selection/access/question tests. These overlapping groups
+are not a unique-test total. The disposable all-provider real Host/CPU case also
+passes: one CREATE_RUN, two successful Agents, two successful CPU Processes, zero
+open Attempts/pending effects, and removed preparation root/Host socket.
+JUnit evidence for the 64-test group and Host closure is retained in
+`.local/qualification/init-determinism-20261008/springer-nature-{final,host}.xml`.
+Documentation checks pass (four tests); the 58 opt-in Chromium cases are skipped.
+No physical institutional SSO/Chromium test, paid/GPU lane or full qualification
+promotion is claimed for this follow-up.
+
 ## Deterministic init and research source boundary (2026-10-08)
 
 The [design](design/institutional-access-preparation.md#确定的-init-交互与研究源码隔离2026-10-08)

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from .control_protocol import ControlResponse
-from .institutional_access import PROVIDERS, PROVIDER_MODES, article_url, publisher
+from .institutional_access import PROVIDERS, PROVIDER_MODES, article_url, provider_name, publisher
 from .lifecycle import Command, RunState, WORKFLOW_DEFINITION_VERSION
 
 DURABLE_ACTIONS = {"skip", "restore", "mode"}
@@ -34,7 +34,9 @@ def bind(host):
 
 
 def control(host, request):
-    payload = request.payload
+    payload = dict(request.payload)
+    if isinstance(payload.get("provider"), str):
+        payload["provider"] = provider_name(payload["provider"])
     action = payload.get("action")
     fields = {"run_id", "provider", "action"}
     if action == "mode": fields.add("mode")

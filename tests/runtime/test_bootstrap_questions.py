@@ -25,14 +25,15 @@ def test_native_answers_reach_exact_review_and_session_without_start(checkout, c
     monkeypatch.setattr(bootstrap, "start_fresh", lambda *a, **k: pytest.fail("answer started research"))
     interaction = first["interaction"]
     questions = interaction["questions"]
-    assert len(questions) == 3 and all(len(q["options"]) == 4 and q["multiSelect"] for q in questions)
-    all_names = [o["label"] for q in questions for o in q["options"][:3]]
-    assert all_names == ["IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis"]
+    assert [len(q["options"]) for q in questions] == [4, 4, 3]
+    assert all(q["multiSelect"] for q in questions)
+    all_names = [o["label"] for q in questions for o in q["options"][:-1]]
+    assert all_names == ["IEEE", "ACM", "ScienceDirect", "Springer Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis"]
     answers = {}
     expected = []
     for question in questions:
         labels = [o["label"] for o in question["options"]]
-        picked = labels[:3] if choice == "all" else labels[-1:] if choice == "none" else labels[1:2]
+        picked = labels[:-1] if choice == "all" else labels[-1:] if choice == "none" else labels[1:2]
         answers[question["question"]] = ", ".join(picked)
         if choice != "none": expected.extend(picked)
     source = tmp_path / "answers.json"

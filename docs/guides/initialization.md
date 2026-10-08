@@ -88,8 +88,8 @@ renamed, stale or contradictory answers fail without starting a run. Configurati
 that is not a question is reported in `configuration_required`.
 
 After enabling access, **confirm the publisher list in the interactive session**.
-The catalog is shown in three stable groups of three publishers, each with an
-explicit “None in this group” option. All nine may be selected together; the program
+The catalog is shown in stable groups of up to three platforms, each with an
+explicit “None in this group” option. All eight may be selected together; the program
 processes them sequentially with at most eight owned browser tabs. Recommendations
 never count as an answer; there is no model-designed batching step.
 ACM is selectable even though its recommendation is public-first with optional login.

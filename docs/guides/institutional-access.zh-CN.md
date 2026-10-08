@@ -8,6 +8,16 @@
 
 ## 出版社验证与 DOI 后备查询
 
+init 中选择出版社表示允许使用对应机构通道，不会逐个检索出版社或下载所有缺失全文。
+Agent 根据研究问题选择论文 URL，调用 `web_fetch(mode="document")`。文献包中的
+`PDF_UNAVAILABLE` 只是首批获取结果，之后仍可尝试独立公开来源及已启用的浏览器通道。
+首批 DOI 定位服务失败不再阻断其他尚未尝试的公开来源。
+
+新来源记录保留 `acquisition_source`：`public_http`、`metadata`、`fallback`、`arxiv`
+表示公开获取路径，`browser`、`manual_import`、`elsevier_api` 分别表示浏览器、人工导入
+和已配置的文章 API。浏览器获取本身不证明使用了机构订阅，公开 HTTP 也可能受网络
+授权影响。旧记录缺少此字段时保持未知。全文可用不代表已阅读或理解。
+
 论文详情页可打开，不代表 PDF 请求不会遇到 Cloudflare 验证。公共下载收到明确的
 挑战响应头后，Hypoloom 会在读取正文前结束该请求，在既有下载记录中保留
 `PDF_CHALLENGE`／`CHALLENGE`，并在原有期限内尝试剩余的公开来源。
@@ -109,7 +119,7 @@ Windows 专用浏览器仍可用于其他平台。[官方全文接口](https://d
 
 没有研究运行或待下载论文时，也可先准备常用平台。Windows 客户端先在服务器
 进入 init，**在交互式问题中确认出版社名单**，再使用程序生成的单运行准备命令和
-Windows 入口。问题须展示 IEEE、ACM、ScienceDirect、Springer，可选其他平台或跳过；
+Windows 入口。问题须展示 IEEE、ACM、ScienceDirect、Springer Nature，可选其他平台或跳过；
 只选择 client 模式不等于接受推荐名单。未回答时，inspect 的 `missing` 包含
 `institutional_prepare_provider`，不返回准备／启动命令。已明确回答的名单随重查保留。
 未选择的机构渠道保持禁用，公开／OA 获取独立可用。仅列目录或在原生 Linux
@@ -128,7 +138,7 @@ python -m hypoloom institutional prepare \
 | IEEE | 是 | 复用有效会话，必要时在浏览器认证。 |
 | ACM | 否，可选 | 公开全文优先；不将登录作为读取论文的前提。 |
 | Elsevier / ScienceDirect | 是 | 参数可使用 `ScienceDirect` 或 `Elsevier`。 |
-| Springer | 是 | 直接打开官方机构选择页，搜索学校后认证。 |
+| Springer Nature | 是 | 直接打开官方机构选择页，搜索学校后认证。 |
 
 独立命令不指定平台/样本时采用上述三个默认准备平台；已设为 `public_only` 或 `disabled` 的平台不默认准备。
 重复 `--provider <平台>` 替换默认名单，可加入 ACM 或目录中其他平台；`--provider none`
@@ -137,12 +147,12 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 不代表每次程序下载都成功；显式选择 ACM 后才启用其机构浏览器回退。
 
 整个批次复用一个浏览器目录及可选的 `--institutional-library-url` 学校交互入口；
-不提供学校入口时打开平台默认访问入口；Springer 使用官方机构选择页，其他平台使用
+不提供学校入口时打开平台默认访问入口；Springer Nature 使用官方机构选择页，其他平台使用
 出版社首页。学校选择、SSO/MFA 仍在浏览器内完成，不保存账号密码。
 可以输入该平台有权限的 DOI 或规范论文 URL 验证样本，也可传重复的 `--sample`。
 提供样本时先检查当前会话，全部样本可读就跳过登录提示；公开样本可读不证明机构认证。
 需要人工处理时，终端支持 `s` 跳过、`p` 仅公开获取、`q` 结束本批；回车完成或重新检查
-原样本。IEEE、ScienceDirect、Springer 和可选 ACM 未指定样本时，回车／init 中回复
+原样本。IEEE、ScienceDirect、Springer Nature 和可选 ACM 未指定样本时，回车／init 中回复
 **完成**后自动验证固定公开 DOI；不会提前用公开样本成功代替人工登录机会。
 其他未配置固定样本的平台仍记为 `not_checked`，不显示已登录。
 个别平台失败后继续其他平台；仍有失败的样本时命令返回非零，不阻止后续研究启动。
@@ -157,9 +167,15 @@ ACM 的默认来自[2026 年开放获取公告](https://www.acm.org/about-acm/ac
 审阅；独立使用命令时需自行带到后续启动参数中。结果不自动持久化或更改现有运行。
 准备不创建 run、Attempt、Profile 或科研归档，不调用模型。
 
-### Springer 机构入口与 PDF 人机验证
+### Springer Nature 机构入口与 PDF 人机验证
 
-Springer 默认直接打开[官方机构选择页](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F)。
+Springer Nature 统一覆盖 `link.springer.com` 与 `nature.com` 的准备和访问策略。
+机构登录地址保持不变；不再把 Nature 首页作为独立准备入口。旧 CLI 名称
+`Springer`、`Nature` 兼容映射为 `Springer Nature`，重复选择只准备一次。旧参数若
+分别指定矛盾模式（如 Springer=auto 与 Nature=disabled），程序拒绝并要求明确
+统一模式，不静默扩大访问选择。已有运行继续使用其冻结包，不进行迁移。
+
+Springer Nature 默认直接打开[官方机构选择页](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F)。
 在 **Find your institution** 中输入学校名称并选择机构，再完成学校认证。若旧批次
 停在首页，可在同一专用浏览器标签打开这个入口；新版入口对新批次生效，不要求更新
 Windows 助手或重建 init。自定义学校图书馆入口仍优先，重复“打开登录”仍保留已有页。
@@ -194,7 +210,7 @@ HTML 全文只有通过正文和论文身份校验才可使用；研究仍可走
 | --- | --- |
 | IEEE | [10.1109/ACCESS.2019.2902267](https://ieeexplore.ieee.org/document/8654603/) |
 | ScienceDirect | [10.1016/j.softx.2024.101723](https://www.sciencedirect.com/science/article/pii/S2352711024000943) |
-| Springer | [10.1007/s10664-020-09851-6](https://link.springer.com/article/10.1007/s10664-020-09851-6) |
+| Springer Nature | [10.1007/s10664-020-09851-6](https://link.springer.com/article/10.1007/s10664-020-09851-6) |
 | ACM（主动选择时） | [10.1145/945445.945450](https://dl.acm.org/doi/10.1145/945445.945450) |
 
 这些是公开全文连通性样本，与学校或科研课题无关；IEEE Access 是
@@ -397,7 +413,7 @@ Host 提供已有本地通知日志时，最近观察还会显示最后最多 1 
 
 ```text
 --institutional-provider-mode IEEE=auto
---institutional-provider-mode Springer=public_only
+--institutional-provider-mode "Springer Nature=public_only"
 --institutional-acquisition-seconds 120
 --institutional-manual-seconds 600
 ```
@@ -453,7 +469,7 @@ SSH 存活检测（15 秒、连续三次），不能承诺瞬时释放。原生�
 自己启动的专用浏览器与 SSH，保留登录目录；不接管上一次运行遗留的浏览器进程。
 
 ```bash
-python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
+python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider "Springer Nature"
 # client 模式使用 init 生成的准备命令及 Windows 入口。
 python -m hypoloom institutional connections --state-root /path/to/selected-run --run-id RUN-ID --request-id CREATE-REQUEST-ID
 ```
@@ -995,7 +1011,7 @@ sink时，Host把`literature_access`事件写入原有`events.jsonl`，包含pro
 ```text
 /autoresearch init
 优先保证无人值守稳定性，使用 Windows 客户端模式。
-ScienceDirect 和 ACM 设置为 public_only；IEEE 和 Springer 保留 auto，先做准备。
+ScienceDirect 和 ACM 设置为 public_only；IEEE 和 Springer Nature 保留 auto，先做准备。
 使用 --institutional-prepare-failure-mode public_only。
 准备失败或未完成的平台自动转为仅公开，保留失败原因，不反复要求登录或重试。
 完成后停在最终启动配置审阅，等待我选择 Start now。
@@ -1015,7 +1031,7 @@ Windows 接入和你选择保留的机构平台准备仍可能需要一次人工
 需要专门测试所有出版社时，使用常规审阅策略：
 
 1. 在已更新的服务器仓库中新开 CC 会话，运行 `/autoresearch init`。
-2. 选择 Windows 客户端模式及 IEEE、ScienceDirect、Springer、ACM（ACM 需主动选择）。
+2. 选择 Windows 客户端模式及 IEEE、ScienceDirect、Springer Nature、ACM（ACM 需主动选择）。
    在所选 Windows 上用新版原文件执行本次生成的 Setup／Connect 入口一次；
    先关闭旧专用浏览器，不沿用旧助手的接入授权。
 3. 每个平台打开后，在需要时完成机构认证，回 CC 回复 **完成**。已有登录态可直接完成；

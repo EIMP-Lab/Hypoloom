@@ -26,10 +26,10 @@ def start(tmp_path, monkeypatch, *, fail_second=False):
     monkeypatch.setattr(RunBrowser, "check_connection", lambda *a, **kw: {"state": "ready"})
     def prepare(self, provider, **kw):
         observed["calls"].append(provider)
-        return {"state": "failed" if provider == "Springer" and observed["failed"] else "opened"}
+        return {"state": "failed" if provider == "Springer Nature" and observed["failed"] else "opened"}
     monkeypatch.setattr(RunBrowser, "prepare", prepare)
     args = build_parser().parse_args(["institutional", "prepare", "--repository", str(tmp_path),
-        "--agent-session", "--institutional-browser-mode", "client", "--provider", "IEEE", "--provider", "Springer",
+        "--agent-session", "--institutional-browser-mode", "client", "--provider", "IEEE", "--provider", "Springer Nature",
         "--institutional-prepare-failure-mode", "review", "--state-root", scope["state_root"],
         "--run-id", scope["run_id"], "--request-id", scope["request_id"]])
     output, codes, errors = [], [], []
@@ -73,22 +73,22 @@ def test_retry_preserves_control_browser_scope_and_completed_publishers(tmp_path
             "request_id": scope["request_id"], "preparation_root": root})
         answer(root, "skip", "IEEE")
         first = wait(root, "awaiting_launch")
-        assert first["summary"]["remaining_providers"] == ["Springer"]
+        assert first["summary"]["remaining_providers"] == ["Springer Nature"]
         assert [r["state"] for r in first["summary"]["preparation_summary"]] == ["skipped", "failed"]
         assert first["remaining_preparation_argv"][-3:] == ["retry", "--state-root", str(root)]
         assert thread.is_alive() and not Path(scope["state_root"]).exists()
         observed["failed"] = False
         parsed = build_parser().parse_args(first["remaining_preparation_argv"][4:])
         assert run(parsed, output=lambda _: None) == 0
-        wait(root, "waiting_for_user", "Springer")
+        wait(root, "waiting_for_user", "Springer Nature")
         current = connections(scope["state_root"], scope["run_id"], scope["request_id"], preparation_root=root)
         assert current["scope"] == initial["scope"] == scope
         assert current["connections"][0]["socket_path"] == initial["connections"][0]["socket_path"]
-        assert observed["calls"] == ["IEEE", "Springer", "Springer"]
-        answer(root, "skip", "Springer")
+        assert observed["calls"] == ["IEEE", "Springer Nature", "Springer Nature"]
+        answer(root, "skip", "Springer Nature")
         final = wait(root, "awaiting_launch")
         assert final["remaining_preparation_argv"] == []
-        assert [r["provider"] for r in final["summary"]["preparation_summary"]] == ["IEEE", "Springer"]
+        assert [r["provider"] for r in final["summary"]["preparation_summary"]] == ["IEEE", "Springer Nature"]
         assert len(list((tmp_path / "state").iterdir())) == 1
         answer(root, "finish")
         thread.join(4)
@@ -103,7 +103,7 @@ def test_handoff_and_abandonment_release_without_creating_research(tmp_path, mon
     if ending == "expire": monkeypatch.setattr(institutional_handoff, "HANDOFF_SECONDS", .2)
     root, scope, observed, output, codes, errors, thread = start(tmp_path, monkeypatch)
     try:
-        for provider in ("IEEE", "Springer"):
+        for provider in ("IEEE", "Springer Nature"):
             wait(root, "waiting_for_user", provider)
             answer(root, "skip", provider)
         view = wait(root, "awaiting_launch")
@@ -134,7 +134,7 @@ def test_normal_review_expiry_preserves_failed_sample_and_exit_code(tmp_path, mo
         wait(root, "waiting_for_user", "IEEE")
         answer(root, "skip", "IEEE")
         view = wait(root, "awaiting_launch")
-        assert view["summary"]["remaining_providers"] == ["Springer"]
+        assert view["summary"]["remaining_providers"] == ["Springer Nature"]
         thread.join(4)
         assert not thread.is_alive() and not errors and codes == [1]
         events = [json.loads(line) for line in output if line.startswith("{")]
@@ -166,7 +166,7 @@ def test_preparation_hands_off_to_real_host_and_terminal_survives_host_exit(tmp_
     monkeypatch.setattr(institutional_handoff, "_launched", actual_check)
     process = None
     try:
-        for provider in ("IEEE", "Springer"):
+        for provider in ("IEEE", "Springer Nature"):
             wait(root, "waiting_for_user", provider)
             answer(root, "skip", provider)
         wait(root, "awaiting_launch")

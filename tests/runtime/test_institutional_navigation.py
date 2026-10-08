@@ -56,7 +56,7 @@ def test_platform_connection_errors_keep_the_same_safe_diagnostics(failure, reas
     browser = PlaywrightInstitutionalBrowser("http://127.0.0.1:9222")
     def fail(): raise failure
     browser._connect = fail
-    result = browser.prepare("Springer") if operation == 'prepare' else browser.fetch(URL)
+    result = browser.prepare("Springer Nature") if operation == 'prepare' else browser.fetch(URL)
     assert result == {"state": "browser_unavailable", "reason": reason}
     assert 'SECRET' not in str(result) and browser._deadline is None
 
@@ -88,7 +88,7 @@ def test_platform_page_errors_do_not_claim_a_disconnected_browser(operation, fai
     page = SimpleNamespace(set_default_timeout=lambda *a: None, bring_to_front=fail)
     browser._connect = lambda: SimpleNamespace(new_page=fail if operation == "new_page" else lambda: page)
     browser._navigate = lambda *a: None
-    assert browser.prepare("Springer") == {"state": "browser_unavailable", "reason": reason}
+    assert browser.prepare("Springer Nature") == {"state": "browser_unavailable", "reason": reason}
     assert "SECRET" not in str(browser.prepare("ScienceDirect"))
 
 

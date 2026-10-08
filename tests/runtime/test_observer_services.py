@@ -49,7 +49,7 @@ def test_live_literature_transitions_reuse_local_log_without_research_writes_or_
         records = [json.loads(line) for line in log.read_text().splitlines()]
         events = [e for e in records if e["type"] == "literature_access"]
         assert [e["payload"]["to"] for e in events] == ["queued", "checking", "login_required"]
-        assert all(e["payload"]["provider"] == "Nature" and e["payload"]["url"] == URL for e in events)
+        assert all(e["payload"]["provider"] == "Springer Nature" and e["payload"]["url"] == URL for e in events)
         service.poll_once()
         assert log.read_text().count('"type": "literature_access"') == 3
         assert _row_census(root / "state.sqlite") == before

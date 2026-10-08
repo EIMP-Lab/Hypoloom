@@ -12,6 +12,14 @@ for login. Unavailable, skipped, denied or timed-out sources remain explicit evi
 gaps. Use permitted academic search for alternatives, preserve the actual source
 and version, and never substitute another paper under the missing paper's citation.
 An OA copy does not establish that it is the publisher's final version.
+Time strata supply historical candidates, not a scientific relevance ranking.
+Choose papers for specific evidence questions. Use targeted academic follow-up
+when broad discovery misses the task's methods or evaluation details; do not
+broaden that targeted query merely to fill older year bins. A batch missing PDF
+can still be selected through web_fetch(mode=document, url=...). Consult the
+candidate URLs and observed access modes in /papers/INDEX.md. Acquisition route,
+full-text availability, actual page reading and interpretation are separate;
+older sources without route metadata remain unknown.
 Separate source claims, your interpretation and uncertainty. Design hypotheses
 that distinguish plausible explanations with feasible experiments; preserve the
 accepted goal and declared local/GOAL measurement choices.

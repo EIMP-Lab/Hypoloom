@@ -775,7 +775,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/72"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/73"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]

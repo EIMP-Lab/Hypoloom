@@ -271,7 +271,7 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             assert summary['preparation_summary'][0]['state'] == 'verification_required'
             assert summary['remaining_preparation_argv'] == [] and failed.closed
             modes = summary['provider_modes']
-            assert modes == {'Nature': 'public_only'}
+            assert modes == {'Springer Nature': 'public_only'}
         host.institutional_access = InstitutionalAccess(backend, provider_modes=modes)
         host.configuration["institutional_access"] = host.institutional_access.configuration
         if institutional_oa == 'arxiv-challenge':
@@ -413,6 +413,10 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
                     'challenged_urls': challenged, 's2_requests': len(metadata.calls), 'trace': trace}, indent=2))
             if institutional_oa != "browser":
                 assert all("version_note" in source for sources in scenario.sources.values() for source in sources)
+            expected_source = ("browser" if institutional_oa == "browser" else "arxiv" if arxiv_oa else
+                               "metadata" if institutional_oa in {"metadata", "preparation-failure"} else "fallback")
+            assert all(source["acquisition_source"] == expected_source
+                       for sources in scenario.sources.values() for source in sources)
             assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if arxiv_oa or institutional_oa in {'preparation-failure', 'browser'} else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)

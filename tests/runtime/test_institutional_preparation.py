@@ -27,7 +27,7 @@ class PreparationBackend(Backend):
         return {"state": "opened"}
 
 
-def test_all_nine_publishers_advance_on_one_worker_with_bounded_owned_tabs(tmp_path, monkeypatch):
+def test_all_publishers_advance_on_one_worker_with_bounded_owned_tabs(tmp_path, monkeypatch):
     """Real queue/preparation/browser tab lifecycle, synthetic page transport."""
     import threading
     from hypoloom.cli import build_parser
@@ -76,11 +76,11 @@ def test_empty_catalog_opens_platform_without_admitting_homepage_or_sample_bytes
     backend = PreparationBackend(); backend.state = "available"
     access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
-        assert len(access.status("preparation")["groups"]) == len(PROVIDERS)
-        access.control("preparation", "Nature", "open")
+        assert len(access.status("preparation")["groups"]) == len(set(PROVIDERS.values()))
+        access.control("preparation", "Springer Nature", "open")
         pump(access, lambda: access.status("preparation")["groups"][0]["preparation"]["state"] == "opened", runs=("preparation",))
-        assert backend.calls[0][0] == "Nature"
-        access.control("preparation", "Nature", "verify", url=URL)
+        assert backend.calls[0][0] == "Springer Nature"
+        access.control("preparation", "Springer Nature", "verify", url=URL)
         pump(access, lambda: access.status("preparation")["groups"][0]["preparation"]["state"] == "sample_verified", runs=("preparation",))
         status = access.status("preparation")
         assert status["available"] == 0 and all(not g["papers"] for g in status["groups"])
@@ -95,16 +95,16 @@ def test_empty_catalog_opens_platform_without_admitting_homepage_or_sample_bytes
 def test_springer_entry_is_institution_discovery_not_a_document_source():
     from hypoloom.institutional_access import publisher
     entry = 'https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F'
-    selected = next(p for p in provider_catalog() if p['provider'] == 'Springer')
+    selected = next(p for p in provider_catalog() if p['provider'] == 'Springer Nature')
     assert selected['entry_url'] == entry
     access = InstitutionalAccess(PreparationBackend(), provider_modes=ALL_PROVIDERS_AUTO)
     try:
-        result = access.control('preparation', 'Springer', 'open')
-        assert next(g for g in result['groups'] if g['provider'] == 'Springer')['entry_url'] == entry
+        result = access.control('preparation', 'Springer Nature', 'open')
+        assert next(g for g in result['groups'] if g['provider'] == 'Springer Nature')['entry_url'] == entry
         assert next(iter(access._items.values())).url == entry
         assert publisher(entry) is None
         with pytest.raises(ValueError): article_url(entry)
-        with pytest.raises(ValueError): access.control('preparation', 'Springer', 'verify', url=entry)
+        with pytest.raises(ValueError): access.control('preparation', 'Springer Nature', 'verify', url=entry)
     finally:
         access.close()
 
@@ -128,7 +128,7 @@ def test_list_is_read_only_and_browser_options_reject_saml_metadata(monkeypatch)
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda args: pytest.fail("catalog connected a browser"))
     output = []
     assert run(build_parser().parse_args(["institutional", "prepare", "--list"]), output=output.append) == 0
-    assert len(json.loads(output[0])) == len(PROVIDERS)
+    assert len(json.loads(output[0])) == len(set(PROVIDERS.values()))
     with pytest.raises(ValueError, match="SAML metadata"):
         PlaywrightInstitutionalBrowser("http://127.0.0.1:9222", library_url="https://idp.xidian.edu.cn/idp/shibboleth")
     assert "msedge.exe" in windows_browser_command(9222) and "Test-Path" in windows_browser_command(9222)
@@ -157,7 +157,7 @@ def test_readable_sample_reuses_session_without_login_prompt(tmp_path, monkeypat
     assert not list(tmp_path.iterdir()) and backend.closed
 
 
-@pytest.mark.parametrize('provider', ['IEEE', 'ScienceDirect', 'Springer', 'ACM'])
+@pytest.mark.parametrize('provider', ['IEEE', 'ScienceDirect', 'Springer Nature', 'ACM'])
 def test_completion_automatically_checks_one_public_doi_without_claiming_subscription(tmp_path, monkeypatch, provider):
     from hypoloom.cli import build_parser
     from hypoloom.institutional_access import publisher
@@ -282,7 +282,7 @@ def test_summary_separates_browser_html_from_pdf_and_strips_source_queries():
     from hypoloom.document_fallback import public_url
     source = public_url('https://publisher.example/paper?token=PRIVATE#secret')
     assert source == 'https://publisher.example/paper'
-    text = render_results([{'provider': 'Springer', 'state': 'sample_verified', 'samples': [
+    text = render_results([{'provider': 'Springer Nature', 'state': 'sample_verified', 'samples': [
         {'state': 'sample_verified', 'media_type': 'text/plain', 'source_url': source,
          'page_count': 1, 'acquisition_source': 'browser'}]}])
     assert '网页全文，不代表已下载 PDF' in text and 'PRIVATE' not in text
@@ -295,14 +295,14 @@ def test_mixed_sample_results_explain_document_identity_without_claiming_downloa
     class Mixed(PreparationBackend):
         def fetch(self, url, **kwargs):
             name = publisher(url)
-            if name == 'Springer': return super().fetch(url, **kwargs)
+            if name == 'Springer Nature': return super().fetch(url, **kwargs)
             if name == 'ScienceDirect': return {'state': 'verification_required'}
             return {'state': 'identity_unconfirmed', **({'reason': 'article_identity_unconfirmed'} if name == 'IEEE' else {})}
     backend = Mixed(); backend.state = 'available'
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO))
     parser = build_parser(); output = []
     args = parser.parse_args(['institutional', 'prepare', '--provider', 'IEEE', '--provider', 'ScienceDirect',
-                             '--provider', 'Springer', '--provider', 'ACM',
+                             '--provider', 'Springer Nature', '--provider', 'ACM',
                              '--institutional-prepare-failure-mode', failure_mode])
     assert run(args, input_fn=lambda _: '', output=output.append) == 1
     summary = json.loads(output[-1]); text = output[-2]
@@ -315,11 +315,11 @@ def test_mixed_sample_results_explain_document_identity_without_claiming_downloa
     assert summary['preparation_failure_mode'] == failure_mode
     if failure_mode == 'public_only':
         assert summary['remaining_preparation_argv'] == []
-        assert summary['provider_modes'] == {**dict.fromkeys(['IEEE', 'ScienceDirect', 'ACM'], 'public_only'), 'Springer': 'auto'}
+        assert summary['provider_modes'] == {**dict.fromkeys(['IEEE', 'ScienceDirect', 'ACM'], 'public_only'), 'Springer Nature': 'auto'}
         assert text.count('运行策略：仅公开') == 3
     else:
         assert parser.parse_args(summary['remaining_preparation_argv'][4:]).provider == ['IEEE', 'ScienceDirect', 'ACM']
-        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer', 'ACM'], 'auto')
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer Nature', 'ACM'], 'auto')
     assert backend.closed
 
 
@@ -328,9 +328,9 @@ def test_platform_without_fixed_sample_keeps_manual_completion_unverified(monkey
     backend = PreparationBackend()
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO))
     output = []
-    assert run(build_parser().parse_args(['institutional', 'prepare', '--provider', 'Nature']),
+    assert run(build_parser().parse_args(['institutional', 'prepare', '--provider', 'Wiley']),
                input_fn=lambda _: '', output=output.append) == 0
-    assert [c[0] for c in backend.calls] == ['Nature']
+    assert [c[0] for c in backend.calls] == ['Wiley']
     assert json.loads(output[-1])['preparation_summary'][0]['state'] == 'not_checked'
 
 
@@ -343,14 +343,14 @@ def test_common_preparation_supports_skip_public_only_and_no_false_login(monkeyp
     answers = iter(["s", "p", ""])
     output = []
     assert run(args, input_fn=lambda _: next(answers), output=output.append) == 0
-    assert [call[0] for call in backend.calls[:3]] == ["IEEE", "ScienceDirect", "Springer"]
+    assert [call[0] for call in backend.calls[:3]] == ["IEEE", "ScienceDirect", "Springer Nature"]
     assert len(backend.calls) == 4
     summary = json.loads(output[-1])
     assert [(p["provider"], p["state"]) for p in summary["preparation_summary"]] == [
-        ("IEEE", "skipped"), ("ScienceDirect", "public_only"), ("Springer", "sample_verified")]
+        ("IEEE", "skipped"), ("ScienceDirect", "public_only"), ("Springer Nature", "sample_verified")]
     assert summary['preparation_summary'][2]['samples'][0]['sample_scope'] == 'public_full_text'
     assert summary["provider_mode_argv"] == ["--institutional-provider-mode", "IEEE=auto",
-        "--institutional-provider-mode", "ScienceDirect=public_only", "--institutional-provider-mode", "Springer=auto"]
+        "--institutional-provider-mode", "ScienceDirect=public_only", "--institutional-provider-mode", "Springer Nature=auto"]
     assert backend.closed
 
 
@@ -382,7 +382,7 @@ def test_partial_samples_retry_only_gaps_after_operator_action(monkeypatch):
         return ""
     output = []
     assert run(args, input_fn=login, output=output.append) == 0
-    assert [call[0] for call in backend.calls] == [URL, SECOND, "Nature", SECOND]
+    assert [call[0] for call in backend.calls] == [URL, SECOND, "Springer Nature", SECOND]
     assert len(prompts) == 1
     row = json.loads(output[-1])["preparation_summary"][0]
     assert row["state"] == "sample_verified" and len(row["samples"]) == 2
@@ -395,13 +395,13 @@ def test_unavailable_sample_is_reported_and_other_platforms_continue(monkeypatch
     backend = PreparationBackend(); backend.state = state
     access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda args: access)
-    args = build_parser().parse_args(["institutional", "prepare", "--provider", "Nature", "--provider", "IEEE", "--sample", URL])
+    args = build_parser().parse_args(["institutional", "prepare", "--provider", "Springer Nature", "--provider", "IEEE", "--sample", URL])
     output = []
     assert run(args, input_fn=lambda _: "", output=output.append) == 1
     rows = json.loads(output[-1])["preparation_summary"]
-    assert [(r["provider"], r["state"]) for r in rows] == [("Nature", state), ("IEEE", state)]
+    assert [(r["provider"], r["state"]) for r in rows] == [("Springer Nature", state), ("IEEE", state)]
     remaining = build_parser().parse_args(json.loads(output[-1])["remaining_preparation_argv"][4:])
-    assert remaining.provider == ["Nature", "IEEE"] and remaining.sample == [URL]
+    assert remaining.provider == ["Springer Nature", "IEEE"] and remaining.sample == [URL]
     assert backend.closed
 
 
@@ -441,7 +441,7 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
         def prepare(self, provider, **kwargs):
             self.calls.append((provider, kwargs))
             return {"state": "browser_unavailable"} if provider == "ScienceDirect" or (
-                ending == "timeout" and provider == "Springer") else {"state": "opened"}
+                ending == "timeout" and provider == "Springer Nature") else {"state": "opened"}
     backend = Failing(); backend.state = "available"
     access = InstitutionalAccess(backend, clock=lambda: monotonic() * 100, acquisition_seconds=30, poll_seconds=1, provider_modes=ALL_PROVIDERS_AUTO)
     monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: access)
@@ -460,11 +460,11 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
     summary = json.loads(output[-1])
     if failure_mode == 'public_only':
         assert summary['remaining_preparation_argv'] == []
-        assert summary['provider_modes'] == {**dict.fromkeys(['ACM', 'ScienceDirect', 'Springer'], 'public_only'), 'IEEE': 'auto'}
+        assert summary['provider_modes'] == {**dict.fromkeys(['ACM', 'ScienceDirect', 'Springer Nature'], 'public_only'), 'IEEE': 'auto'}
     else:
         remaining = parser.parse_args(summary["remaining_preparation_argv"][4:])
-        assert remaining.provider == ["ScienceDirect", "Springer"]
-        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=auto", "ScienceDirect=auto", "Springer=auto"]
+        assert remaining.provider == ["ScienceDirect", "Springer Nature"]
+        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=auto", "ScienceDirect=auto", "Springer Nature=auto"]
         assert remaining.institutional_browser_url == args.institutional_browser_url
         assert remaining.institutional_manual_seconds == 80 and remaining.repository == str(tmp_path)
     assert summary["preparation_summary"][0]['state'] == 'sample_verified'
@@ -476,7 +476,7 @@ def test_failed_platforms_remain_retryable_after_completion_or_interruption(tmp_
         monkeypatch.setattr("hypoloom.institutional_prepare.build", lambda _: InstitutionalAccess(recovered, provider_modes=ALL_PROVIDERS_AUTO))
         retried = []
         assert run(remaining, input_fn=lambda _: "", output=retried.append) == 0
-        assert [call[0] for call in recovered.calls[::2]] == ["ScienceDirect", "Springer"]
+        assert [call[0] for call in recovered.calls[::2]] == ["ScienceDirect", "Springer Nature"]
         assert len(recovered.calls) == 4
         assert json.loads(retried[-1])["remaining_preparation_argv"] == []
         assert recovered.closed and not list(tmp_path.iterdir())

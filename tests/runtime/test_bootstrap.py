@@ -262,8 +262,8 @@ def test_inspect_requires_publisher_answer_before_executable_plan(checkout, caps
     pending = json.loads(capsys.readouterr().out)
     assert pending["status"] == "needs_input" and pending["missing"] == ["institutional_prepare_provider"]
     candidates = pending["choices"]["institutional_prepare_provider"]
-    assert [p["value"] for p in candidates[:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer"]
-    assert {p["value"] for p in candidates} == {"IEEE", "ACM", "ScienceDirect", "Springer", "Nature",
+    assert [p["value"] for p in candidates[:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer Nature"]
+    assert {p["value"] for p in candidates} == {"IEEE", "ACM", "ScienceDirect", "Springer Nature",
                                               "Wiley", "SAGE", "Oxford", "Taylor & Francis", "none"}
     assert all(p["description"] for p in candidates)
     assert "launch_argv" not in pending and "init_session_argv" not in pending
@@ -279,7 +279,7 @@ def test_inspect_requires_publisher_answer_before_executable_plan(checkout, caps
     plan = selected["effective_configuration"]["institutional_preparation"]
     assert plan["selected"] == ["ACM"]
     modes = {p["provider"]: p["mode"] for p in plan["catalog"]}
-    assert modes["ACM"] == "auto" and modes["IEEE"] == modes["Springer"] == "disabled"
+    assert modes["ACM"] == "auto" and modes["IEEE"] == modes["Springer Nature"] == "disabled"
     assert modes["ScienceDirect"] == ("public_only" if mode_flags else "disabled")
     command = selected["init_session_argv"] if mode == "client" else selected["launch_argv"]
     assert bootstrap.build_parser().parse_args(command[4:]).institutional_prepare_provider == ["ACM"]
@@ -501,25 +501,25 @@ def test_compact_review_preserves_executable_institutional_preparation(checkout,
     argv = review["institutional_preparation_argv"]
     assert argv[1:5] == ["-m", "hypoloom", "institutional", "prepare"]
     parsed = cli_parser().parse_args([*argv[3:], "--provider", "IEEE"])
-    assert parsed.institutional_provider_mode == ["IEEE=public_only", "ScienceDirect=auto", "Springer=auto"]
+    assert parsed.institutional_provider_mode == ["IEEE=public_only", "ScienceDirect=auto", "Springer Nature=auto"]
     assert not (repo / "state").exists() and not (repo / "profiles/local").exists()
 
 
 @pytest.mark.parametrize("selection,expected", [
-    ([part for name in ("IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis")
+    ([part for name in ("IEEE", "ACM", "ScienceDirect", "Springer Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis")
       for part in ("--institutional-prepare-provider", name)],
-     ["IEEE", "ACM", "ScienceDirect", "Springer", "Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis"]),
+     ["IEEE", "ACM", "ScienceDirect", "Springer Nature", "Wiley", "SAGE", "Oxford", "Taylor & Francis"]),
     (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
-      "--institutional-prepare-provider", "Springer"], ["IEEE", "ScienceDirect", "Springer"]),
+      "--institutional-prepare-provider", "Springer Nature"], ["IEEE", "ScienceDirect", "Springer Nature"]),
     (["--institutional-prepare-provider", "IEEE", "--institutional-prepare-provider", "ScienceDirect",
-      "--institutional-prepare-provider", "Springer", "--institutional-prepare-provider", "ACM"],
-     ["IEEE", "ScienceDirect", "Springer", "ACM"]),
+      "--institutional-prepare-provider", "Springer Nature", "--institutional-prepare-provider", "ACM"],
+     ["IEEE", "ScienceDirect", "Springer Nature", "ACM"]),
     (["--institutional-prepare-provider", "Elsevier", "--institutional-prepare-provider", "Wiley"],
      ["ScienceDirect", "Wiley"]),
     (["--institutional-prepare-provider", "none"], []),
     (["--institutional-provider-mode", "ScienceDirect=public_only",
       "--institutional-provider-mode", "ACM=public_only", "--institutional-prepare-provider", "IEEE",
-      "--institutional-prepare-provider", "Springer"], ["IEEE", "Springer"]),
+      "--institutional-prepare-provider", "Springer Nature"], ["IEEE", "Springer Nature"]),
 ])
 @pytest.mark.parametrize('failure_mode', ['review', 'public_only'])
 def test_init_common_preparation_roundtrips_without_changing_research(checkout, capsys, monkeypatch, selection, expected, failure_mode):
@@ -538,7 +538,7 @@ def test_init_common_preparation_roundtrips_without_changing_research(checkout, 
     plan = review["effective_configuration"]["institutional_preparation"]
     assert plan["selected"] == expected
     assert plan['failure_mode'] == failure_mode
-    assert [p["provider"] for p in plan["catalog"][:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer"]
+    assert [p["provider"] for p in plan["catalog"][:4]] == ["IEEE", "ACM", "ScienceDirect", "Springer Nature"]
     assert plan["catalog"][1]["recommended_prepare"] is False
     assert plan["library_url"] == "https://library.example.edu/"
     assert bootstrap.main([part for part in review["launch_argv"][4:] if part != '--summary']) == 0

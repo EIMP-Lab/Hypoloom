@@ -46,8 +46,8 @@ def options(args):
 
 
 def add_preparation_argument(parser, flag="--institutional-prepare-provider"):
-    parser.add_argument(flag, action="append", type=provider_name, choices=(*PROVIDERS.values(), "none"),
-                        help="replace common defaults (explicit list required by init inspect/session); repeat for platforms, Elsevier aliases ScienceDirect; none skips preparation")
+    parser.add_argument(flag, action="append", type=provider_name, choices=(*dict.fromkeys(PROVIDERS.values()), "none"),
+                        help="replace common defaults (explicit list required by init inspect/session); repeat for platforms; Springer and Nature alias Springer Nature, Elsevier aliases ScienceDirect; none skips preparation")
     parser.add_argument("--institutional-prepare-failure-mode", choices=("review", "public_only"), default="review",
                         help="review failures, or use public_only for failed/unvisited platforms before launch review")
 
@@ -56,7 +56,7 @@ def preparation_selection(values, modes):
     if values is None:
         return [p["provider"] for p in provider_catalog()
                 if p["recommended_prepare"] and modes.get(p["provider"]) not in {"public_only", "disabled"}]
-    selected = list(dict.fromkeys(values))
+    selected = list(dict.fromkeys(provider_name(value) for value in values))
     if "none" in selected:
         if len(selected) != 1: raise ValueError("preparation none cannot be combined with other platforms or samples")
         return []

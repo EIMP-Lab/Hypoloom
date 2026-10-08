@@ -70,7 +70,7 @@ def test_wait_deduplicates_provider_and_recovers_without_reprompting_every_paper
         access.request(SCOPE, URL)
         access.request(SCOPE, URL)
         access.request(SCOPE, SECOND)
-        access.control("run", "Nature", "open")
+        access.control("run", "Springer Nature", "open")
         pump(access, lambda: access.peek(SCOPE, URL)["reason"] == "login_required")
         for _ in range(5):
             access.tick({"run"})
@@ -177,7 +177,7 @@ def test_transient_backoff_caps_and_resets_after_recovery(reason):
     access = InstitutionalAccess(backend, clock=lambda: clock[0], manual_seconds=1800, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
-        access.control("run", "Nature", "retry")
+        access.control("run", "Springer Nature", "retry")
         item = access._items[(*SCOPE, URL)]
         for delay in (30, 60, 120, 300, 300):
             pump(access, lambda: item.state == "fetch_unavailable")
@@ -213,7 +213,7 @@ def test_auth_poll_and_operator_retry_reset_transient_backoff():
         access.tick({"run"})
         pump(access, lambda: item.state == "fetch_unavailable")
         assert item.next_check == 90
-        access.control("run", "Nature", "retry", url=URL)
+        access.control("run", "Springer Nature", "retry", url=URL)
         item = access._items[(*SCOPE, URL)]
         pump(access, lambda: item.state == "fetch_unavailable")
         assert item.next_check == 60, "operator retry starts a fresh backoff"
@@ -356,7 +356,7 @@ def test_import_requested_during_inflight_check_is_not_lost():
     try:
         access.request(SCOPE, URL)
         access.tick({"run"}); assert entered.wait(1)
-        access.control("run", "Nature", "import", url=URL, path="/home/user/paper.pdf")
+        access.control("run", "Springer Nature", "import", url=URL, path="/home/user/paper.pdf")
         release.set()
         pump(access, lambda: access.status("run")["available"] == 1)
         assert backend.calls == [("/home/user/paper.pdf", URL)]
@@ -373,7 +373,7 @@ def test_real_host_control_status_and_stop_preserve_research_revision(reading_ho
     access.request(scope_for(parent), URL)
     head = host.store.latest_transition(parent.run_id)
     response = host.handle(ControlRequest(1, "open-literature", None, "LITERATURE_ACCESS",
-        {"run_id": parent.run_id, "provider": "Nature", "action": "open"}))
+        {"run_id": parent.run_id, "provider": "Springer Nature", "action": "open"}))
     assert response.status == "accepted"
     assert host.store.latest_transition(parent.run_id) == head
     status = host.handle(ControlRequest(1, "literature-status", None, "STATUS", {"run_id": parent.run_id}))
@@ -389,7 +389,7 @@ def test_real_host_control_status_and_stop_preserve_research_revision(reading_ho
         {"run_id": parent.run_id, "cause": "fixture cleanup"}))
     assert stopped.status == "accepted"
     rejected = host.handle(ControlRequest(1, "retry-stopped-literature", None, "LITERATURE_ACCESS",
-        {"run_id": parent.run_id, "provider": "Nature", "action": "retry"}))
+        {"run_id": parent.run_id, "provider": "Springer Nature", "action": "retry"}))
     assert rejected.status == "rejected"
     host.running_agents.clear()
     host.tick()
@@ -429,7 +429,7 @@ def test_document_tool_admits_recovered_fulltext_and_archives_exact_bytes(tmp_pa
 
 @pytest.mark.parametrize("mode", ["auto", "public_only", "disabled"])
 def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp_path, mode):
-    backend = Backend(); access = InstitutionalAccess(backend, provider_modes={"Nature": mode})
+    backend = Backend(); access = InstitutionalAccess(backend, provider_modes={"Springer Nature": mode})
     request = replace(default_request(AgentCommand.GROUNDING), schema_version=20, required_output_schema="GroundingCandidate/v3")
     papers = PaperWorkspace(tmp_path, request)
     class Public:
@@ -443,7 +443,9 @@ def test_public_pdf_never_opens_browser_and_security_failure_is_not_bypassed(tmp
         running_agents={request.attempt_id: SimpleNamespace(tool_workspace=SimpleNamespace(papers=papers))},
         _agent_tool_request=lambda *a, **k: None, web_tool_results={})
     try:
-        assert web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})["status"] == "available"
+        result = web_tool(host, request, "web_fetch", {"mode": "document", "url": URL})
+        assert result["status"] == "available"
+        assert result["acquisition_source"] == papers.sources[0]["acquisition_source"] == "public_http"
         public.bad = True
         failure = web_tool(host, request, "web_fetch", {"mode": "document", "url": SECOND})
         assert failure["error"]["code"] == "unsafe_url"
@@ -513,7 +515,7 @@ def test_web_literature_actions_require_scoped_grant_and_send_clean_payload(tmp_
     root = tmp_path / "absent"
     server = create_server(root, "selected", port=0, token=_TOKEN)
     thread = _start(server)
-    values = {"provider": "Nature", "action": "import", "url": URL, "path": "/home/user/paper.pdf"}
+    values = {"provider": "Springer Nature", "action": "import", "url": URL, "path": "/home/user/paper.pdf"}
     try:
         assert server._literature_token is None
         assert post(values)[0] == 403
@@ -525,14 +527,14 @@ def test_web_literature_actions_require_scoped_grant_and_send_clean_payload(tmp_
         for origin in ("https://example.invalid", "null", "http://example.invalid", "http://[broken"):
             assert post(values, literature_token=grant, origin=origin)[0] in {400, 403}
         assert post(values, literature_token=grant, content_type="text/plain")[0] == 415
-        for bad in ({}, {"provider": "Nature"}, {"provider": "", "action": "open"},
-                    {"provider": "Nature", "action": "fetch"},
-                    {"provider": "Nature", "action": []},
-                    {"provider": "Nature", "action": "import"},
-                    {"provider": "Nature", "action": "import", "url": URL, "path": "relative.pdf"},
-                    {"provider": "Nature", "action": "open", "url": ""},
-                    {"provider": "Nature", "action": "open", "run_id": "foreign"},
-                    {"provider": "Nature", "action": "open", "password": "secret"}):
+        for bad in ({}, {"provider": "Springer Nature"}, {"provider": "", "action": "open"},
+                    {"provider": "Springer Nature", "action": "fetch"},
+                    {"provider": "Springer Nature", "action": []},
+                    {"provider": "Springer Nature", "action": "import"},
+                    {"provider": "Springer Nature", "action": "import", "url": URL, "path": "relative.pdf"},
+                    {"provider": "Springer Nature", "action": "open", "url": ""},
+                    {"provider": "Springer Nature", "action": "open", "run_id": "foreign"},
+                    {"provider": "Springer Nature", "action": "open", "password": "secret"}):
             assert post(bad, literature_token=grant)[0] == 400
         assert post(values, literature_token=grant, path="/api/human-answer")[0] == 403  # scopes do not cross
         assert post(values, literature_token=grant, path="/api/provider-retry")[0] == 403
@@ -546,7 +548,7 @@ def test_web_literature_actions_require_scoped_grant_and_send_clean_payload(tmp_
             assert request.command == "LITERATURE_ACCESS"
             assert request.request_id.startswith("web-literature-")
             # run_id comes from the bound observer; no credentials travel in the payload.
-            assert request.payload == {"run_id": "selected", "provider": "Nature", "action": "import",
+            assert request.payload == {"run_id": "selected", "provider": "Springer Nature", "action": "import",
                 "url": URL, "path": "/home/user/paper.pdf"}
         assert not root.exists()
     finally:

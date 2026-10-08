@@ -18,14 +18,14 @@ import re
 
 
 PROVIDERS = {
-    "nature.com": "Nature", "link.springer.com": "Springer",
+    "nature.com": "Springer Nature", "link.springer.com": "Springer Nature",
     "ieeexplore.ieee.org": "IEEE", "sciencedirect.com": "ScienceDirect",
     "dl.acm.org": "ACM", "onlinelibrary.wiley.com": "Wiley",
     "journals.sagepub.com": "SAGE", "academic.oup.com": "Oxford",
     "tandfonline.com": "Taylor & Francis",
 }
 # Presentation/default preparation only; routing requires a selected provider mode.
-COMMON_PREPARATION = {"IEEE": True, "ACM": False, "ScienceDirect": True, "Springer": True}
+COMMON_PREPARATION = {"IEEE": True, "ACM": False, "ScienceDirect": True, "Springer Nature": True}
 PROVIDER_MODES = {"auto", "public_only", "disabled"}
 # Public full-text probes, not subscription/authentication tests. Publisher
 # sources and selection rationale: docs/guides/institutional-access.md#fixed-samples
@@ -33,17 +33,18 @@ PREPARATION_SAMPLES = {
     "IEEE": "10.1109/ACCESS.2019.2902267",
     "ACM": "10.1145/945445.945450",
     "ScienceDirect": "10.1016/j.softx.2024.101723",
-    "Springer": "10.1007/s10664-020-09851-6",
+    "Springer Nature": "10.1007/s10664-020-09851-6",
 }
 
 
 def provider_name(value):
-    return "ScienceDirect" if value == "Elsevier" else value
+    return {"Elsevier": "ScienceDirect", "Springer": "Springer Nature", "Nature": "Springer Nature"}.get(value, value)
 
 
 def provider_entry_url(provider):
     # Public authentication navigation only; never a supported article source.
-    if provider == "Springer":
+    provider = provider_name(provider)
+    if provider == "Springer Nature":
         return "https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F"
     entry = next(("https://" + domain + "/" for domain, name in PROVIDERS.items() if name == provider), None)
     if entry is None: raise ValueError("unsupported institutional provider")
@@ -59,7 +60,7 @@ def provider_catalog():
             for name in dict.fromkeys([*COMMON_PREPARATION, *PROVIDERS.values()])]
 
 
-DOI_PROVIDERS = {"10.1038": "Nature", "10.1007": "Springer", "10.1109": "IEEE",
+DOI_PROVIDERS = {"10.1038": "Springer Nature", "10.1007": "Springer Nature", "10.1109": "IEEE",
     "10.1016": "ScienceDirect", "10.1145": "ACM", "10.1002": "Wiley", "10.1111": "Wiley",
     "10.1177": "SAGE", "10.1093": "Oxford", "10.1080": "Taylor & Francis"}
 MAX_DOCUMENT_BYTES = 24 * 1024 * 1024
@@ -156,7 +157,9 @@ def identity_from_url(url: str) -> str:
     path = parts.path.removesuffix(".pdf")
     if parts.hostname == "doi.org":
         return "doi:" + path.lstrip("/")
-    if publisher(url) == "Nature" and path.startswith("/articles/"):
+    host = parts.hostname or ""
+    if (publisher(url) == "Springer Nature" and (host == "nature.com" or host.endswith(".nature.com"))
+            and path.startswith("/articles/")):
         return "doi:10.1038/" + path.removeprefix("/articles/")
     match = re.search(r"/(10\.\d{4,9}/.+)$", path)
     return "doi:" + match.group(1) if match else ""
@@ -239,7 +242,12 @@ class InstitutionalAccess:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not low <= value <= high:
                 raise ValueError(f"{name} must be finite and between {low} and {high}")
         self.acquisition_seconds, self.manual_seconds = acquisition_seconds, manual_seconds
-        self.provider_modes = dict(provider_modes or {})
+        self.provider_modes = {}
+        for name, mode in (provider_modes or {}).items():
+            provider = provider_name(name)
+            if provider in self.provider_modes and self.provider_modes[provider] != mode:
+                raise ValueError("conflicting institutional provider modes")
+            self.provider_modes[provider] = mode
         if any(provider not in PROVIDERS.values() or mode not in PROVIDER_MODES
                for provider, mode in self.provider_modes.items()):
             raise ValueError("unknown institutional provider or mode")
@@ -287,7 +295,7 @@ class InstitutionalAccess:
 
     def _apply_choices(self, run_id):
         modes, skipped = self.read_choices(run_id)
-        for provider in PROVIDERS.values():
+        for provider in dict.fromkeys(PROVIDERS.values()):
             if modes.get(provider, self.provider_modes.get(provider, "disabled")) != "auto":
                 self._manual_until.pop((run_id, provider), None)
         for key, item in list(self._items.items()):
@@ -382,6 +390,8 @@ class InstitutionalAccess:
         except ValueError:
             self._transition(item, "identity_unconfirmed", "document_validation_failed")
             return
+        if "acquisition_source" in source.document:
+            document["acquisition_source"] = source.document["acquisition_source"]
         if self._cache_size(document) > MAX_CACHE_BYTES:
             self._transition(item, "failed", "cache_limit")
             return
@@ -460,6 +470,7 @@ class InstitutionalAccess:
                     "available": sum(p["state"] == "available" for g in groups.values() for p in g["papers"])}
 
     def control(self, run_id, provider, action, *, url=None, path=None):
+        provider = provider_name(provider)
         if not isinstance(action, str) or action not in {"open", "retry", "import", "verify"}:
             raise ValueError("unsupported institutional action")
         if provider not in PROVIDERS.values(): raise ValueError("unsupported institutional provider")
@@ -557,6 +568,8 @@ class InstitutionalAccess:
                                          identity=item.identity)
             if item.preparation == "verify":
                 document["acquisition_source"] = "public_pdf" if public else "browser"
+            else:
+                document["acquisition_source"] = "manual_import" if import_path else "browser"
             return "available", document, "document_verified"
         except ValueError as exc:
             state = "identity_unconfirmed" if str(exc) == "identity_unconfirmed" else "failed"

@@ -119,7 +119,7 @@ _WEB_TOOLS = (
          "scope": {"type": "string", "enum": ["web", "academic"]},
          "max_results": {"type": "integer", "minimum": 1, "maximum": 10}},
          "required": ["query"], "additionalProperties": False}},
-    {"name": "web_fetch", "description": "Retrieve a public HTTPS source. mode=document prepares readable source files and returns source_ref; copy that value as paper_ref to reuse the document or submit read_papers. Report missing evidence honestly.",
+    {"name": "web_fetch", "description": "Retrieve a selected HTTPS source: reuse admitted originals, try public/OA full text, then enabled institutional access when needed. mode=document accepts a paper landing/DOI URL, prepares readable source files and returns source_ref; copy that value as paper_ref to reuse the document or submit read_papers. Select at most two sources per call; the Host handles bounded waiting. PDF_UNAVAILABLE in a discovery packet does not rule out later access. Report unavailable results as evidence gaps; acquisition_source identifies the retrieval route, not subscription entitlement or proof of reading.",
      "inputSchema": {"type": "object", "properties": {
          "url": {"type": "string", "minLength": 1},
          "mode": {"type": "string", "enum": ["document"]},

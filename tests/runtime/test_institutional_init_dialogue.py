@@ -46,11 +46,11 @@ def test_connection_failure_is_one_batch_result_without_platform_attempts(monkey
     assert summary["connection"]["state"] == "waiting_for_client"
     assert {row["state"] for row in summary["preparation_summary"]} == {"not_checked"}
     if failure_mode == 'public_only':
-        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer'], 'public_only')
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer Nature'], 'public_only')
         assert summary['remaining_preparation_argv'] == []
         assert summary['next_actions'] == ['review_launch_configuration']
     else:
-        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer'], 'auto') and summary['remaining_preparation_argv']
+        assert summary['provider_modes'] == dict.fromkeys(['IEEE', 'ScienceDirect', 'Springer Nature'], 'auto') and summary['remaining_preparation_argv']
 
 
 def test_terminal_eof_is_reported_without_claiming_login_or_leaking_browser(monkeypatch):
@@ -97,7 +97,7 @@ def test_background_preparation_accepts_dialogue_and_cleans_control(tmp_path, mo
         status = eventually(waiting)
         assert status["provider"] == "IEEE"
         assert len(status['completion_samples']) == 1 and [c[0] for c in backend.calls] == ['IEEE']
-        rejected = request(root, "PREPARATION_ANSWER", {"provider": "Springer", "action": answer})
+        rejected = request(root, "PREPARATION_ANSWER", {"provider": "Springer Nature", "action": answer})
         assert rejected.status != "accepted"
         accepted = request(root, "PREPARATION_ANSWER", {"provider": "IEEE", "action": answer})
         assert accepted.status == "accepted"
@@ -214,7 +214,7 @@ def test_sample_skip_prevents_later_platform_ticks_from_fetching_it_again(tmp_pa
     backend.fetch = challenged
     output, results = [], []
     worker = threading.Thread(target=lambda: results.append(run(arguments('--agent-session',
-        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer'), output=output.append)))
+        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer Nature'), output=output.append)))
     worker.start()
     root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
         if v.startswith('{') and 'state_root' in json.loads(v)), None))
@@ -224,9 +224,9 @@ def test_sample_skip_prevents_later_platform_ticks_from_fetching_it_again(tmp_pa
             'sample': '10.1016/explicit.manual.sample'}).status == 'accepted'
         eventually(lambda: request(root).result.get('sample_url'))
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': action}).status == 'accepted'
-        eventually(lambda: request(root).result.get('provider') == 'Springer'
+        eventually(lambda: request(root).result.get('provider') == 'Springer Nature'
             and request(root).result.get('state') == 'waiting_for_user')
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'action': 'complete'}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer Nature', 'action': 'complete'}).status == 'accepted'
         worker.join(4)
         assert not worker.is_alive() and results == [0]
         assert len(attempts) == 1, 'a skipped sample was fetched while preparing another platform'
@@ -250,7 +250,7 @@ def test_fixed_sample_challenge_advances_without_manual_download_or_background_r
     backend.fetch = challenged
     output, results = [], []
     worker = threading.Thread(target=lambda: results.append(run(arguments('--agent-session',
-        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer',
+        '--repository', str(tmp_path), '--provider', 'ScienceDirect', '--provider', 'Springer Nature',
         '--institutional-prepare-failure-mode', failure_mode), output=output.append)))
     worker.start()
     root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
@@ -258,15 +258,15 @@ def test_fixed_sample_challenge_advances_without_manual_download_or_background_r
     try:
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user')
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'action': 'complete'}).status == 'accepted'
-        eventually(lambda: request(root).result.get('provider') == 'Springer'
+        eventually(lambda: request(root).result.get('provider') == 'Springer Nature'
             and request(root).result.get('state') == 'waiting_for_user')
         time.sleep(.1)
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'action': 'complete'}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer Nature', 'action': 'complete'}).status == 'accepted'
         worker.join(4)
         assert not worker.is_alive() and results == [1]
         summary = json.loads(output[-1]); rows = summary['preparation_summary']
         assert [r['state'] for r in rows] == ['verification_required', 'sample_verified']
-        assert summary['provider_modes'] == {'ScienceDirect': 'public_only' if failure_mode == 'public_only' else 'auto', 'Springer': 'auto'}
+        assert summary['provider_modes'] == {'ScienceDirect': 'public_only' if failure_mode == 'public_only' else 'auto', 'Springer Nature': 'auto'}
         assert bool(summary['remaining_preparation_argv']) == (failure_mode == 'review')
         assert len(attempts) == 1 and backend.closed and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))
@@ -285,7 +285,7 @@ def test_finish_during_automatic_sample_check_prevents_next_platform(tmp_path, m
     backend.fetch = blocked
     output, codes = [], []
     worker = threading.Thread(target=lambda: codes.append(run(arguments('--agent-session',
-        '--repository', str(tmp_path), '--provider', 'IEEE', '--provider', 'Springer'), output=output.append)))
+        '--repository', str(tmp_path), '--provider', 'IEEE', '--provider', 'Springer Nature'), output=output.append)))
     worker.start(); root = None
     try:
         root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
@@ -298,7 +298,7 @@ def test_finish_during_automatic_sample_check_prevents_next_platform(tmp_path, m
         release.set(); worker.join(5)
         assert not worker.is_alive() and codes == [0]
         assert json.loads(output[-1])['preparation_state'] == 'finished'
-        assert not any(c[0] == 'Springer' for c in backend.calls)
+        assert not any(c[0] == 'Springer Nature' for c in backend.calls)
         assert backend.closed and not root.exists() and not list(tmp_path.rglob('state.sqlite'))
         assert all(item.document is None for item in access._items.values())
     finally:
@@ -331,7 +331,7 @@ def test_background_retries_connection_then_verifies_sample_through_cli(tmp_path
     access.check_connection = check
     output, results, errors = [], [], []
     def worker():
-        try: results.append(run(arguments("--agent-session", "--repository", str(tmp_path), "--provider", "Nature"), output=output.append))
+        try: results.append(run(arguments("--agent-session", "--repository", str(tmp_path), "--provider", "Springer Nature"), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = eventually(lambda: next((Path(json.loads(v)["state_root"]) for v in output if v.startswith('{') and "state_root" in json.loads(v)), None))
@@ -345,10 +345,10 @@ def test_background_retries_connection_then_verifies_sample_through_cli(tmp_path
         assert json.loads(capsys.readouterr().out)["result"]["state"] == "waiting_for_connection"
         assert cli("retry_connection") == 0
         eventually(lambda: request(root).result.get("state") == "waiting_for_user")
-        assert cli("verify", "--provider", "Nature", "--sample", URL) == 0
+        assert cli("verify", "--provider", "Springer Nature", "--sample", URL) == 0
         thread.join(5)
         assert not thread.is_alive() and not errors and results == [0]
-        assert [c[0] for c in backend.calls] == ["Nature", URL]
+        assert [c[0] for c in backend.calls] == ["Springer Nature", URL]
         assert len(checks) == 2
         assert json.loads(output[-1])["preparation_summary"][0]["state"] == "sample_verified"
         assert backend.closed and not root.exists()

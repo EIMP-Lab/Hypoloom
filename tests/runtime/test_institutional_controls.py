@@ -20,7 +20,7 @@ def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_
     access.request(scope, URL)
     revision = host.store.latest_transition(parent.run_id)["revision"]
     request = ControlRequest(1, "skip-paper", revision, "LITERATURE_ACCESS",
-        {"run_id": parent.run_id, "provider": "Nature", "action": "skip", "url": URL})
+        {"run_id": parent.run_id, "provider": "Springer Nature", "action": "skip", "url": URL})
     accepted = host.handle(request)
     assert accepted.status == "accepted"
     assert host.handle(request).revision == accepted.revision
@@ -43,10 +43,10 @@ def test_run_choices_are_transactional_idempotent_and_recover_without_reopening_
     assert response.status == "accepted"
     assert restored.request(scope, URL)["status"] == "pending"
     changed = host.handle(ControlRequest(1, "public-only", response.revision, "LITERATURE_ACCESS",
-        {"run_id": parent.run_id, "provider": "Nature", "action": "mode", "mode": mode}))
+        {"run_id": parent.run_id, "provider": "Springer Nature", "action": "mode", "mode": mode}))
     assert changed.status == "accepted"
     assert restored.request(scope, SECOND)["reason"] == mode
-    assert restored.configuration["provider_modes"]["Nature"] == "auto", "frozen launch configuration stays unchanged"
+    assert restored.configuration["provider_modes"]["Springer Nature"] == "auto", "frozen launch configuration stays unchanged"
     assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == 3
 
 
@@ -67,12 +67,12 @@ def test_skip_during_download_discards_result_but_allows_explicit_import(reading
         access.tick({parent.run_id})
         assert entered.wait(1)
         result = host.handle(ControlRequest(1, "skip-inflight", host.store.latest_transition(parent.run_id)["revision"],
-            "LITERATURE_ACCESS", {"run_id": parent.run_id, "provider": "Nature", "action": "skip", "url": URL}))
+            "LITERATURE_ACCESS", {"run_id": parent.run_id, "provider": "Springer Nature", "action": "skip", "url": URL}))
         assert result.status == "accepted"
         release.set()
         pump(access, lambda: access._flight is None, runs=(parent.run_id,))
         assert access.peek(scope, URL)["reason"] == "skipped"
-        access.control(parent.run_id, "Nature", "import", url=URL, path="/fixture.pdf")
+        access.control(parent.run_id, "Springer Nature", "import", url=URL, path="/fixture.pdf")
         pump(access, lambda: access.status(parent.run_id)["available"] == 1, runs=(parent.run_id,))
         assert access.peek(scope, URL)["content"] == document()["content"]
     finally:
@@ -94,12 +94,12 @@ def test_real_host_restart_recovers_choices_without_replaying_manual_window(tmp_
             reply = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", _pilot_payload(tmp_path, Path(target), run_id)))
             assert reply.status == "accepted", reply
             reply = host.handle(ControlRequest(1, "skip", reply.revision, "LITERATURE_ACCESS",
-                {"run_id": run_id, "provider": "Nature", "action": "skip", "url": URL}))
+                {"run_id": run_id, "provider": "Springer Nature", "action": "skip", "url": URL}))
             assert reply.status == "accepted", reply
             reply = host.handle(ControlRequest(1, "mode", reply.revision, "LITERATURE_ACCESS",
                 {"run_id": run_id, "provider": "IEEE", "action": "mode", "mode": "public_only"}))
             assert reply.status == "accepted", reply
-            host.institutional_access._manual_until[(run_id, "Springer")] = host.institutional_access.clock() + 600
+            host.institutional_access._manual_until[(run_id, "Springer Nature")] = host.institutional_access.clock() + 600
         finally:
             host.close()
         restarted = WorkflowHost(tmp_path / "state", institutional_access=InstitutionalAccess(Backend(), provider_modes=ALL_PROVIDERS_AUTO))

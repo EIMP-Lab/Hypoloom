@@ -150,7 +150,7 @@ def test_elsevier_uses_existing_private_profile_projection_and_init_selection(ch
     assert check["full_text_access"] == "not_checked" and not check["network_probe_performed"]
     from hypoloom.institutional_options import preparation
     view = preparation(args)
-    assert view["selected"] == ["IEEE", "Springer"]
+    assert view["selected"] == ["IEEE", "Springer Nature"]
     assert view["api_providers"] == ["ScienceDirect"]
     assert "synthetic" not in json.dumps(view) + json.dumps(check) + json.dumps(adapter.configuration)
     args.institutional_prepare_provider = ["ScienceDirect"]

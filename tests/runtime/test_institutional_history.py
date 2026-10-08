@@ -10,7 +10,7 @@ def test_existing_log_projection_is_bounded_scoped_and_does_not_write(tmp_path):
     event = {'run_id': 'r', 'type': 'literature_access', 'payload': {
         'provider': 'IEEE', 'to': 'available', 'reason_code': 'document_verified'}}
     records = [event, {**event, 'run_id': 'other'}, {**event, 'payload': {
-        'provider': 'Springer', 'to': 'sample_verified', 'reason_code': 'sample_verified'}},
+        'provider': 'Springer Nature', 'to': 'sample_verified', 'reason_code': 'sample_verified'}},
         {**event, 'type': 'something_else'}, None, event]
     raw = b'bad json\n' + b'\n'.join(json.dumps(e).encode() for e in records) + b'\n{"partial":'
     log.write_bytes(raw)

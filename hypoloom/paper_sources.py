@@ -102,12 +102,13 @@ def source_paths(source: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 class PaperWorkspace:
-    def __init__(self, parent: Path, request: AgentRequest):
+    def __init__(self, parent: Path, request: AgentRequest, *, access=None):
         parent.mkdir(parents=True, exist_ok=True)
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", request.attempt_id): raise ValueError("invalid paper Attempt identity")
         self.root = parent / request.attempt_id
         self.root.mkdir(mode=0o700)
         self.request = request
+        self.access = access
         self.sources: list[dict[str, Any]] = []
         self.omitted: list[dict[str, str]] = []
         self.archive_mounts: dict[str, Path] = {}
@@ -121,9 +122,35 @@ class PaperWorkspace:
         content += "Copy source_ref exactly into web_fetch or read_papers paper_ref; a URL is not a paper_ref.\n\n"
         content += "\n".join(json.dumps(source, ensure_ascii=False) for source in self.sources)
         if self.omitted: content += "\n\nUnavailable in this Attempt:\n" + json.dumps(self.omitted, ensure_ascii=False)
+        content += self._selection_index()
         temporary = self.root / ".INDEX.tmp"
         temporary.write_text(content, encoding="utf-8")
         temporary.replace(self.root / "INDEX.md")
+
+    def _selection_index(self) -> str:
+        from .institutional_access import publisher, scope_for
+        from .literature import LiteraturePacket
+        lines = []
+        access = getattr(self, "access", None)
+        for artifact in self.request.input_artifacts:
+            if not artifact.ref.endswith("--literature-packet"): continue
+            for paper in LiteraturePacket.from_bytes(artifact.content_bytes()).papers:
+                url = paper.landing_uri or paper.source_uri
+                provider = publisher(url) if url else None
+                mode = (access.automatic_reason(scope_for(self.request), url, paper.bibliographic_identity,
+                    institution=True) or "auto") if access is not None and provider else "not_enabled"
+                # A derived selection hint, never an admitted source or reading claim.
+                lines.append("- " + json.dumps({"identity": paper.bibliographic_identity,
+                    "title": paper.title, "year": paper.year, "stratum": paper.stratum.value,
+                    "batch_full_text": paper.retrieval_disposition.value,
+                    "url": url, "institutional_provider": provider, "institutional_mode": mode}, ensure_ascii=False))
+        if not lines: return ""
+        return ("\n\n## Discovery candidates (metadata only)\n\n"
+            "Select papers needed for a specific evidence question; request their URL with web_fetch(mode=document). "
+            "Do not pass a DOI or URL as paper_ref. Batch PDF_UNAVAILABLE is not a final access decision. "
+            "Modes are observed when this index is rendered, not proof of login or entitlement; the tool rechecks policy. "
+            "Only selected papers may use enabled institutional access. Time strata do not establish scientific relevance.\n\n"
+            + "\n".join(lines) + "\n")
 
     def add(self, document: Mapping[str, Any], *, source_ref: str, acquisition: str) -> dict[str, Any]:
         prior = next((s for s in self.sources if s["source_ref"] == source_ref), None)
@@ -145,7 +172,7 @@ class PaperWorkspace:
         size = sum(map(len, files))
         if len(self.sources) >= MAX_SOURCES or self.total_bytes + size > MAX_SOURCE_BYTES:
             raise AgentACIError("paper_source_limit", "Attempt paper preparation exceeded 32 sources or 64 MiB; use existing sources")
-        source = {name: document[name] for name in ("url", "requested_url", "title", "media_type", "version_note") if name in document}
+        source = {name: document[name] for name in ("url", "requested_url", "title", "media_type", "version_note", "acquisition_source") if name in document}
         source.update(source_ref=source_ref, acquisition_attempt_id=acquisition,
                       directory=f"source-{len(self.sources) + 1:04d}", page_count=len(pages),
                       empty_text_pages=[i for i, page in enumerate(pages, 1) if not page.strip()])
@@ -277,7 +304,8 @@ def history_input(host, run_id: str, role: str, component_id: str, command_id: s
 
 def prepare_sources(host, workspace, retrieval=None) -> None:
     if workspace.request.schema_version < 20: return
-    papers = PaperWorkspace(host.state_root / "paper-staging", workspace.request)
+    papers = PaperWorkspace(host.state_root / "paper-staging", workspace.request,
+                            access=getattr(host, "institutional_access", None))
     workspace.papers = papers
     if workspace.request.schema_version >= 25 and workspace.request.attempt_ordinal > 1:
         # Same-task retries keep already authorized, published sources. In
@@ -307,7 +335,8 @@ def prepare_sources(host, workspace, retrieval=None) -> None:
             paper = traces[artifact.artifact_ref]
             try:
                 papers.add({"content": artifact.content, "pages": artifact.pages, "media_type": artifact.media_type,
-                    "url": paper.pdf_trace.final_uri, "requested_url": paper.pdf_trace.source_uri, "title": paper.title},
+                    "url": paper.pdf_trace.final_uri, "requested_url": paper.pdf_trace.source_uri, "title": paper.title,
+                    "acquisition_source": "public_http"},
                     source_ref=workspace.attempt_id + ":" + artifact.artifact_ref, acquisition=workspace.attempt_id)
             except AgentACIError:
                 papers.omitted.append({"packet_ref": artifact.artifact_ref, "reason": "paper_source_limit"})
@@ -384,6 +413,7 @@ def restore_sources(host, workspace) -> None:
                     admitted[source["source_ref"]] = source
     papers = object.__new__(PaperWorkspace)
     papers.root, papers.request = root, request
+    papers.access = getattr(host, "institutional_access", None)
     papers.sources, papers.omitted, papers.archive_mounts, papers.total_bytes = [], [], {}, 0
     for line in index.read_text().splitlines():
         if not line.startswith("{"): continue
@@ -442,9 +472,14 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                         if paper.bibliographic_identity.startswith("doi:") else None):
                 if url: known[url] = paper
     prior_tools = tuple(host.web_tool_results.get(request.attempt_id, ()))
-    traces = [*packet_download_trace(host, request), *(trace for call in prior_tools for trace in call.get("literature_download_trace", ()))]
+    tool_traces = [trace for call in prior_tools for trace in call.get("literature_download_trace", ())]
+    traces = [*packet_download_trace(host, request), *tool_traces]
     located = {trace["bibliographic_identity"] for trace in traces
                if any(e.get("stage") == "fallback_lookup" and e.get("outcome") != "RATE_LIMITED" for e in trace.get("events", ()))}
+    # A batch locator attempt cannot suppress independent metadata/arXiv discovery.
+    # Only a previous selected-document call has executed that whole path.
+    discovered = {trace["bibliographic_identity"] for trace in tool_traces
+                  if any(e.get("stage") == "fallback_lookup" for e in trace.get("events", ()))}
     if slots is None:
         if not hasattr(web, "document_slots"): web.document_slots = BoundedSemaphore(2)
         slots = web.document_slots
@@ -503,14 +538,16 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                                           deadline=deadline, http_calls=http_calls)
                 else:
                     result = read_document(web, item["url"], deadline, http_calls)
+                result = {**result, "acquisition_source": "elsevier_api" if api is not None else "public_http"}
                 if publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"} and not public_full_text(result):
                     raise GroundingWebError("full_text_unconfirmed", "Publisher HTML is not confirmed full text")
                 if (api is None and publisher(item["url"]) and result["media_type"] in {"text/html", "application/xhtml+xml"}
-                        and identity not in located):
+                        and identity not in discovered):
                     # Keep readable HTML if no PDF is available; prefer actual PDF
                     # bytes without extending this request's existing work budget.
                     events = []
-                    pdf = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls)
+                    pdf = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls,
+                                    use_locator=identity not in located)
                     if events: observations.append({"bibliographic_identity": identity, "events": events})
                     if pdf is not None: return pdf
                 return result
@@ -525,9 +562,10 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                             http_status=exc.http_status))
                     observations.append({"bibliographic_identity": identity, "events": events})
                 error = {"code": exc.code, "message": str(exc)[:1024]}
-            if identity not in located:
+            if identity not in discovered:
                 events = []
-                result = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls)
+                result = open_copy(io, web, item["url"], identity, title, rejected, events, deadline, http_calls,
+                                   use_locator=identity not in located)
                 if events: observations.append({"bibliographic_identity": identity, "events": events})
                 if result is not None: return result
             if api is not None:
@@ -557,7 +595,7 @@ def web_tool(host, request, tool, arguments, *, defer=False):
                 return result
             text = "\n\n".join(f"--- Physical page {n} ---\n{page}" if result["media_type"] == "application/pdf" else page
                                for n, page in enumerate(result["pages"], 1))
-            return {key: result[key] for key in ("url", "requested_url", "title", "media_type")} | {
+            return {key: result[key] for key in ("url", "requested_url", "title", "media_type", "acquisition_source") if key in result} | {
                 "text": text[:maximum], "truncated": len(text) > maximum, "source_is_untrusted": True,
                 "text_scope": "pdf_physical_pages" if result["media_type"] == "application/pdf" else "document_text"}
         return (web.web_search(arguments["query"], max_results=arguments.get("max_results", 5), scope=arguments.get("scope", "web"))

@@ -25,10 +25,25 @@ exists. For a targeted scholarly question use `web_search(scope="academic")`
 when offered; keep broad QUERY_PLAN coverage unchanged. Unpaywall supplies
 DOI-to-open-text locations, not topic search.
 
+Treat the initial time strata as historical discovery, not a relevance ranking.
+Check how a candidate bears on the current task before selecting it. If the broad
+packet misses a specific method, assumption or evaluation question, use targeted
+academic follow-up in this turn; do not broaden that question merely to fill old
+year bins. Reuse pertinent prior sources instead of repeating their downloads.
+Judge coverage by the unresolved evidence questions, not a target paper count.
+
 Choose close reading when abstracts cannot settle a method, assumption,
 contradiction, implementation choice or evaluation protocol. Inspect
 `/papers/INDEX.md` when available. `web_fetch(mode="document", url=...)` prepares
 bounded originals and text; `paper_ref` reuses an admitted exact source.
+The index also lists discovery candidates with their URL, batch full-text status
+and observed institutional mode. `PDF_UNAVAILABLE` is a batch result, not a final
+decision: request a needed paper's URL even if its initial PDF fetch failed.
+Select at most two sources per call. The Host handles public/OA discovery and
+enabled institutional access within existing limits; do not browse every missing
+candidate or poll for login. `acquisition_source` describes the retrieval route;
+browser use does not prove subscription entitlement, and missing route metadata
+in older sources stays unknown. Only an available source_ref permits reading.
 Use Read/Grep on its page index and relevant definitions, methods, experimental
 details or appendices. Cite the acquisition source_ref and physical one-based
 page with a short excerpt; distinguish published statements, interpretation

@@ -92,7 +92,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
     def worker():
         try: codes.append(run(arguments('--agent-session', '--repository', str(tmp_path),
             '--institutional-connect-timeout', '3', '--provider', 'IEEE', '--provider', 'ScienceDirect',
-            '--provider', 'Springer', '--provider', 'ACM'), output=output.append))
+            '--provider', 'Springer Nature', '--provider', 'ACM'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = None; observer = None
@@ -108,7 +108,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
             assert request(root).result['connection']['reason_code'] == 'cdp_endpoint_unavailable'
             assert observer.poll() is None
             reachable.set()  # No retry reply: the program must discover recovery itself.
-        for provider in ('IEEE', 'ScienceDirect', 'Springer', 'ACM'):
+        for provider in ('IEEE', 'ScienceDirect', 'Springer Nature', 'ACM'):
             text, error = observer.communicate(timeout=15)
             assert observer.returncode == 0, error
             assert provider + ' 页面已打开' in text
@@ -136,7 +136,7 @@ def test_real_relay_opens_next_platforms_after_idle_user_answer(tmp_path, monkey
         assert not thread.is_alive() and not errors and codes == [0]
         summary = json.loads(output[-1])
         assert [r['state'] for r in summary['preparation_summary']] == ['sample_verified'] * 4
-        assert downloads == ['IEEE', 'ScienceDirect', 'Springer', 'ACM']
+        assert downloads == ['IEEE', 'ScienceDirect', 'Springer Nature', 'ACM']
         assert all(r['samples'][0]['sample_scope'] == 'public_full_text' for r in summary['preparation_summary'])
         assert summary['remaining_preparation_argv'] == []
         assert not user_page.is_closed() and not backend._tabs and not root.exists()
@@ -221,7 +221,7 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
     monkeypatch.setattr('hypoloom.institutional_prepare.build', lambda _: access)
     output, results, errors = [], [], []
     def worker():
-        try: results.append(run(arguments('--agent-session', '--repository', str(tmp_path), '--provider', 'Nature'), output=output.append))
+        try: results.append(run(arguments('--agent-session', '--repository', str(tmp_path), '--provider', 'Springer Nature'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = None
@@ -232,7 +232,7 @@ def test_real_browser_connection_and_dialogue_share_worker_and_preserve_user_tab
         view = request(root).result
         assert (view.get('reason_code') == 'verification_required') == challenge
         assert ('打开时检测到人机验证' in render(view)) == challenge
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Nature', 'action': 'verify', 'sample': URL}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer Nature', 'action': 'verify', 'sample': URL}).status == 'accepted'
         thread.join(15)
         assert not thread.is_alive() and not errors and results == [0]
         assert json.loads(output[-1])['preparation_summary'][0]['state'] == 'sample_verified'
@@ -283,7 +283,7 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
     output, codes = [], []
     thread = threading.Thread(target=lambda: codes.append(run(arguments('--agent-session',
         '--repository', str(tmp_path), '--provider', 'IEEE', '--provider', 'ScienceDirect',
-        '--provider', 'Springer'), output=output.append)))
+        '--provider', 'Springer Nature'), output=output.append)))
     thread.start(); root = None
     try:
         root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
@@ -295,14 +295,14 @@ def test_real_control_disconnect_between_platforms_recovers_with_browser_left_op
             and json.loads(v).get('state') == 'browser_unavailable'), None))
         assert failure['reason_code'] in {'browser_target_closed', 'cdp_connection_closed', 'cdp_endpoint_unavailable'}
         reachable.set()
-        for provider in ('ScienceDirect', 'Springer'):
+        for provider in ('ScienceDirect', 'Springer Nature'):
             eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
                 and request(root).result.get('provider') == provider)
             assert request(root, 'PREPARATION_ANSWER', {'provider': provider, 'reply': '完成'}).status == 'accepted'
         thread.join(10)
         assert not thread.is_alive() and codes == [0]
         assert json.loads(output[-1])['remaining_preparation_argv'] == []
-        assert downloads == ['IEEE', 'ScienceDirect', 'Springer']
+        assert downloads == ['IEEE', 'ScienceDirect', 'Springer Nature']
         assert not user_page.is_closed() and not backend._tabs and not root.exists()
         assert not list(tmp_path.rglob('state.sqlite'))
     finally:

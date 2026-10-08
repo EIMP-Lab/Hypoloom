@@ -2,6 +2,15 @@
 
 English · [简体中文](reading-and-proposals.zh-CN.md)
 
+The paper index includes discovery candidates with their URL, initial full-text
+availability and observed institutional mode. These candidates are metadata, not
+admitted reading sources. Select papers for explicit evidence questions; the
+existing document tool handles public/OA/institutional acquisition in bounded
+calls of at most two sources. A missing batch PDF is not a final access decision.
+Historical time strata do not rank scientific relevance: use targeted academic
+follow-up for gaps in methods, assumptions or evaluation. Preserve source/version
+and page citations, and distinguish acquisition route, availability and reading.
+
 New ACI-26 runs can execute one expert's FORWARD and BACKWARD arguments at the
 same time. The Host records FORWARD first, so both wings retain the same admitted
 Leader advice. It starts BACKWARD when ordinary Agent capacity and budgets permit.

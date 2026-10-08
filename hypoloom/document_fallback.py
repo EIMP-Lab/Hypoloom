@@ -197,12 +197,12 @@ def acquire_public_pdf(web, identity, *, deadline, http_calls, events, title="",
     return None, title
 
 
-def open_copy(io, web, url, identity, title, rejected, events, deadline, http_calls):
+def open_copy(io, web, url, identity, title, rejected, events, deadline, http_calls, *, use_locator=True):
     if not identity.startswith("doi:") or monotonic() >= deadline:
         return None
     from .paper_sources import _source_rejected
     observed = []
-    locate = (lambda remaining: io.locate_doi(identity, events, timeout_seconds=remaining)) if io is not None else None
+    locate = (lambda remaining: io.locate_doi(identity, events, timeout_seconds=remaining)) if io is not None and use_locator else None
     document, _ = acquire_public_pdf(web, identity, title=title, deadline=deadline,
         http_calls=http_calls, events=observed, locate=locate,
         reject=lambda target: target == url or _source_rejected(target, rejected))

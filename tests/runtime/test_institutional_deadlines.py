@@ -20,7 +20,7 @@ def test_background_auth_finishes_without_operator_and_does_not_reopen_for_new_p
         assert len(backend.calls) == 1
         assert access.status("run")["pending"] == 0
         backend.state = "available"
-        access.control("run", "Nature", "retry")
+        access.control("run", "Springer Nature", "retry")
         pump(access, lambda: access.status("run")["available"] == 2)
     finally:
         access.close()
@@ -59,7 +59,7 @@ def test_new_papers_and_repeated_calls_never_extend_manual_window():
     access = InstitutionalAccess(Backend(), clock=lambda: clock[0], provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
-        access.control("run", "Nature", "open")
+        access.control("run", "Springer Nature", "open")
         pump(access, lambda: access.peek(SCOPE, URL)["reason"] == "login_required")
         assert access.peek(SCOPE, URL)["status"] == "pending"
         clock[0] = 550
@@ -91,7 +91,7 @@ def test_retry_replaces_inflight_request_instead_of_admitting_old_result():
         access.tick({"run"})
         assert entered.wait(1)
         old = access._items[(*SCOPE, URL)]
-        access.control("run", "Nature", "retry", url=URL)
+        access.control("run", "Springer Nature", "retry", url=URL)
         assert access._items[(*SCOPE, URL)] is not old
         release.set()
         pump(access, lambda: access.peek(SCOPE, URL).get("reason") == "access_denied")

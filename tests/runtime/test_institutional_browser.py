@@ -60,18 +60,20 @@ def test_preparation_is_bounded_to_owned_tabs_and_preserves_the_users_tab(browse
     adapter, context = browser
     user_page = context.pages[0]
     context.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body="Institutional preparation"))
-    providers = list(PROVIDERS.values())
-    for name in providers[:8]:
+    providers = list(dict.fromkeys(PROVIDERS.values()))
+    assert len(providers) == 8
+    for name in providers:
         assert adapter.prepare(name)["state"] == "opened"
     assert len(adapter._tabs) == 8
-    assert adapter.prepare(providers[8])["state"] == "tab_limit"
+    assert not adapter._room_for_tab(), "all eight unfinished owned tabs must be retained"
     original = adapter._tabs[providers[0]][0]
     assert adapter.prepare(providers[0])["state"] == "opened"
     assert adapter._tabs[providers[0]][0] is original
     adapter.finish_preparation(providers[0])
-    assert adapter.prepare(providers[8])["state"] == "opened"
+    assert adapter._room_for_tab()
+    assert adapter.prepare(providers[0])["state"] == "opened"
     assert original.is_closed() and len(adapter._tabs) == 8
-    assert providers[0] not in adapter._tabs and providers[8] in adapter._tabs
+    assert adapter._tabs[providers[0]][0] is not original
     assert not user_page.is_closed()
     adapter.close()
     assert not user_page.is_closed()
@@ -88,11 +90,11 @@ def test_springer_preparation_opens_institution_finder_and_preserves_it(browser,
                       body='<form>Find your institution: <input name="search"></form>')
     context.route('**/*', respond)
     expected = library_url or 'https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F'
-    assert adapter.prepare('Springer') == {'state': 'opened'}
-    page = adapter._tabs['Springer'][0]
+    assert adapter.prepare('Springer Nature') == {'state': 'opened'}
+    page = adapter._tabs['Springer Nature'][0]
     assert page.url == expected
-    assert adapter.prepare('Springer') == {'state': 'opened'}
-    assert navigations == [expected] and adapter._tabs['Springer'][0] is page
+    assert adapter.prepare('Springer Nature') == {'state': 'opened'}
+    assert navigations == [expected] and adapter._tabs['Springer Nature'][0] is page
 
 
 def test_real_downloaded_pdf_doi_overrules_correct_landing_page_metadata(browser):
@@ -169,7 +171,7 @@ def test_login_is_not_fulltext_and_operator_completion_is_observed_without_navig
     assert len(requests) == before, "waiting must inspect the tab, not restart authentication"
     page_state[0] = article('<div class="c-article-body"><h2>Methods</h2><p>' +
         "Verified method and result. " * 130 + '</p><h2>References</h2><p>Known source</p></div>')
-    adapter._tabs["Nature"][0].reload()
+    adapter._tabs["Springer Nature"][0].reload()
     result = adapter.fetch(URL)
     assert result["state"] == "available" and result["document"]["media_type"] == "text/plain"
     assert "Verified method" in result["document"]["pages"][0]
@@ -235,7 +237,7 @@ def test_real_navigation_failure_retries_and_never_reuses_an_old_article(browser
     assert result == {'state': 'fetch_unavailable', 'reason': 'network_error'}
     # Chromium commits its error document asynchronously after rejecting goto.
     # Let it settle, as it does before the Host's next 30-second poll.
-    adapter._tabs['Nature'][0].wait_for_selector('#main-frame-error', timeout=5000)
+    adapter._tabs['Springer Nature'][0].wait_for_selector('#main-frame-error', timeout=5000)
     failed[0] = False
     assert adapter.fetch(URL)['state'] == 'available'
 
@@ -251,7 +253,7 @@ def test_real_intermediate_and_login_pages_require_positive_login_evidence(brows
     page.goto(target)
     # Inspect the destination directly: route.fulfill(302) does not intercept
     # the next hop, and this test must not resolve or contact a real publisher.
-    adapter._tabs['Nature'] = (page, URL, False)
+    adapter._tabs['Springer Nature'] = (page, URL, False)
     result = adapter.fetch(URL)
     assert result['state'] == expected
     assert 'SECRET' not in str(result)

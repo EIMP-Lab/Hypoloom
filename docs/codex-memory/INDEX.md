@@ -1,5 +1,15 @@
 # Development memory index
 
+- [Selected-paper discovery and acquisition observations](../qualification.md#selected-paper-discovery-and-acquisition-observations-2026-10-08):
+  historical batch 429 replay, source selection hints and truthful retrieval-route
+  metadata; 479 distinct checks, 25 fixed replays and two native Host/reader/CPU
+  closures. [Design](../design/institutional-literature-access.md#selected-paper-discovery-after-locator-failure--2026-10-08).
+
+- [Springer Nature institutional entry](../qualification.md#springer-nature-institutional-entry-2026-10-08):
+  unified selection and article routes, unchanged institution-finder URL, legacy
+  aliases and conflict handling; current eight-entry catalog and focused validation.
+  [Design](../design/institutional-access-preparation.md#springer-nature-统一机构入口2026-10-08).
+
 - [Deterministic init and research source boundary](../qualification.md#deterministic-init-and-research-source-boundary-2026-10-08):
   fixed bilingual questions and raw-answer conversion, all-publisher iteration
   under the existing tab limit, read-only research shell source mounts, native

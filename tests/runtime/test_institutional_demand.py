@@ -20,7 +20,8 @@ from tests.runtime.test_institutional_access import ALL_PROVIDERS_AUTO, Backend,
 from tests.runtime.test_literature import FakeFetcher, _papers, _query
 
 
-def test_metadata_packet_does_not_eagerly_queue_unselected_papers(tmp_path):
+@pytest.mark.parametrize("mode", ["auto", "public_only"])
+def test_metadata_packet_does_not_eagerly_queue_unselected_papers(tmp_path, mode):
     candidates = [replace(p, landing_uri=URL, source_uri=URL, pdf_uri=None) for p in _papers()]
     retrieval = FixedLiteratureIO(FakeFetcher(papers=candidates,
         resolutions={"www.nature.com": ("93.184.216.34",)})).retrieve(_query())
@@ -29,13 +30,18 @@ def test_metadata_packet_does_not_eagerly_queue_unselected_papers(tmp_path):
         required_output_schema="GroundingCandidate/v3", input_artifacts=(EmbeddedInput.from_bytes(
             "test--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes()),))
     backend = Backend()
-    access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
+    access = InstitutionalAccess(backend, provider_modes=dict.fromkeys(ALL_PROVIDERS_AUTO, mode))
     workspace = SimpleNamespace(request=request)
     try:
         prepare_sources(SimpleNamespace(state_root=tmp_path, institutional_access=access), workspace, retrieval)
         access.tick({request.run_id})
         assert access.status(request.run_id)["pending"] == 0
         assert not backend.calls and not access._items
+        index = (workspace.papers.root / 'INDEX.md').read_text()
+        choices = [json.loads(line[2:]) for line in index.splitlines() if line.startswith('- {')]
+        assert len(choices) == 3 and not workspace.papers.sources
+        assert all(c['institutional_mode'] == mode and c['url'] == URL
+                   and c['batch_full_text'] == 'PDF_UNAVAILABLE' and 'source_ref' not in c for c in choices)
     finally:
         if hasattr(workspace, "papers"): workspace.papers.close()
         access.close()
@@ -54,6 +60,7 @@ def test_explicit_peer_requests_share_fetch_but_not_scope_or_identity(already_av
         access.request(peer, URL)
         pump(access, lambda: "content" in access.peek(peer, URL))
         assert len(backend.calls) == 1 and access.peek(peer, URL)["content"] == PDF
+        assert access.peek(peer, URL)["acquisition_source"] == "browser"
         assert access.request(("another-run", *peer[1:]), URL)["status"] == "pending"
         wrong = access.request((SCOPE[0], "wrong", "component"), URL, identity="doi:10.1038/another-paper")
         assert wrong["reason"] == "identity_unconfirmed" and "content" not in wrong
@@ -63,7 +70,7 @@ def test_explicit_peer_requests_share_fetch_but_not_scope_or_identity(already_av
 
 def test_preferences_do_not_evict_verified_bytes_before_failures():
     backend = Backend(); backend.state = "available"
-    access = InstitutionalAccess(backend, provider_modes={"Nature": "auto", "ScienceDirect": "public_only"})
+    access = InstitutionalAccess(backend, provider_modes={"Springer Nature": "auto", "ScienceDirect": "public_only"})
     try:
         access.request(SCOPE, URL)
         pump(access, lambda: access.status(SCOPE[0])["available"] == 1)
@@ -79,8 +86,9 @@ def test_manually_imported_bytes_are_not_reused_across_experts():
     backend = Backend(); access = InstitutionalAccess(backend, provider_modes=ALL_PROVIDERS_AUTO)
     try:
         access.request(SCOPE, URL)
-        access.control(SCOPE[0], "Nature", "import", url=URL, path="/fixture/authorized.pdf")
+        access.control(SCOPE[0], "Springer Nature", "import", url=URL, path="/fixture/authorized.pdf")
         pump(access, lambda: access.status(SCOPE[0])["available"] == 1)
+        assert access.peek(SCOPE, URL)["acquisition_source"] == "manual_import"
         assert access.request((SCOPE[0], "peer", "component"), URL)["status"] == "pending"
     finally:
         access.close()
@@ -134,6 +142,7 @@ def test_one_mcp_call_waits_then_delivers_or_finishes_without_human_input(tmp_pa
         assert len(backend.calls) == 1
         if backend_state == "available" and mode == 'document':
             assert result["status"] == "available" and len(papers.sources) == 1
+            assert result["acquisition_source"] == papers.sources[0]["acquisition_source"] == "browser"
             archive = tmp_path / "archive"; archive.mkdir()
             papers.archive(archive)
             assert (archive / result["original_path"].lstrip("/")).read_bytes() == PDF

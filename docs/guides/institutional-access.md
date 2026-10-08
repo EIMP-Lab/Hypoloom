@@ -10,6 +10,19 @@ available bytes do not establish that an Agent read a paper.
 
 ## Publisher challenges and DOI fallback
 
+Selecting publishers during init permits their institutional routes; it does not
+search each publisher or download every missing candidate. The Agent selects a
+needed paper's URL with `web_fetch(mode="document")`. A batch `PDF_UNAVAILABLE`
+result can still be followed by independent public discovery and enabled browser
+access. A failed batch DOI locator no longer blocks untried public sources.
+
+New source records retain `acquisition_source`: `public_http`, `metadata`,
+`fallback` and `arxiv` describe public retrieval; `browser`, `manual_import` and
+`elsevier_api` describe the other acquisition routes. Browser access does not by
+itself prove institutional subscription, and public HTTP may benefit from network
+entitlements. Older sources without this field remain unknown. Available full
+text is not evidence of reading or understanding.
+
 Public PDF requests can receive a Cloudflare challenge even when the article
 landing page works. Hypoloom detects the explicit challenge response before
 reading its body, records `PDF_CHALLENGE` / `CHALLENGE` in the existing download
@@ -337,7 +350,7 @@ browser and SSH children on retirement, preserving the login profile. A live
 browser owned by an older helper is not adopted for another run.
 
 ```bash
-python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider Springer
+python -m hypoloom institutional prepare --institutional-browser-mode local --provider IEEE --provider "Springer Nature"
 # For client mode, use init's generated preparation and Windows entry commands.
 python -m hypoloom institutional connections --state-root /path/to/selected-run --run-id RUN-ID --request-id CREATE-REQUEST-ID
 ```
@@ -741,7 +754,7 @@ require checks on those machines; see [qualification](../qualification.md#run-sc
 
 For a Windows client, start server init, confirm the publisher list in the interactive
 question, and use its generated scoped preparation and Windows entry commands.
-IEEE, ACM, ScienceDirect and Springer must be offered; selecting client mode alone
+IEEE, ACM, ScienceDirect and Springer Nature must be offered; selecting client mode alone
 does not accept the recommended list. You can select other catalog entries or skip.
 Until you answer, inspect reports `institutional_prepare_provider` as missing and
 returns no preparation/launch command. An existing explicit answer is retained on
@@ -762,7 +775,7 @@ The existing catalog shows four common platforms first:
 | IEEE | Yes | Reuse valid sessions; authenticate in the browser if needed. |
 | ACM | No, optional | Public full text first; login is not a reading prerequisite. |
 | Elsevier / ScienceDirect | Yes | Both names are accepted by preparation and mode arguments. |
-| Springer | Yes | Open the official institution finder, then authenticate with the institution. |
+| Springer Nature | Yes | Open the official institution finder, then authenticate with the institution. |
 
 With no platform/sample arguments the standalone command selects these three preparation
 defaults, excluding platforms set to `public_only` or `disabled`. Repeated `--provider <platform>`
@@ -781,7 +794,7 @@ retrieval remain independent. With preparation set to `none`, only explicitly
 configured provider modes remain enabled. Existing runs retain their frozen policy.
 
 Choose one browser profile and optional `--institutional-library-url` for the batch.
-Without a library URL, preparation opens Springer's official institution finder
+Without a library URL, preparation opens Springer Nature's official institution finder
 or the other publishers' homepages. Institution selection,
 SSO and MFA remain browser operations; no account/password store is added. Supply
 sample DOI/canonical article URLs interactively or using repeatable `--sample`.
@@ -789,7 +802,7 @@ Supplied samples are checked first; if all are readable, no login prompt appears
 A readable public sample is not proof of institutional authentication. At a manual
 prompt, `s` skips, `p` selects public-only access, `q` ends the batch, and Enter
 finishes or rechecks supplied samples. With no supplied sample, IEEE, ScienceDirect,
-Springer and optional ACM automatically check a fixed public DOI after Enter (or
+Springer Nature and optional ACM automatically check a fixed public DOI after Enter (or
 `完成` in init). Defaults never bypass the manual login opportunity. Other platforms
 without fixed samples retain `not_checked`.
 Failed platforms do not prevent preparing others. Unresolved sample failures return
@@ -807,9 +820,17 @@ readable samples, authentication/verification requirements and unavailable resul
 Merge returned `provider_modes` / `provider_mode_argv` by platform into subsequent
 launch choices and re-review; standalone users must pass these options themselves.
 
-### Springer institution access and PDF challenges
+### Springer Nature institution access and PDF challenges
 
-Springer preparation opens the [official institution finder](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F).
+Springer Nature is one preparation and access-policy group covering both
+`link.springer.com` and `nature.com`. Its institutional login URL is unchanged;
+Nature's homepage is no longer a separate preparation entry. Old `Springer` and
+`Nature` CLI names are aliases for `Springer Nature` and deduplicate to one entry.
+Conflicting old modes (for example, Springer=auto and Nature=disabled) are rejected;
+choose one explicit group mode. Existing runs retain their frozen runtime.
+
+
+Springer Nature preparation opens the [official institution finder](https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2F).
 Search **Find your institution**, select the institution and complete its login.
 An existing batch on the homepage can use this URL in the same dedicated browser
 tab. New batches use the updated entry; the Windows helper and init need no reinstall
@@ -855,7 +876,7 @@ allows optional manual recovery. Do not rerun init repeatedly to clear a CAPTCHA
 | --- | --- |
 | IEEE | [10.1109/ACCESS.2019.2902267](https://ieeexplore.ieee.org/document/8654603/) |
 | ScienceDirect | [10.1016/j.softx.2024.101723](https://www.sciencedirect.com/science/article/pii/S2352711024000943) |
-| Springer | [10.1007/s10664-020-09851-6](https://link.springer.com/article/10.1007/s10664-020-09851-6) |
+| Springer Nature | [10.1007/s10664-020-09851-6](https://link.springer.com/article/10.1007/s10664-020-09851-6) |
 | ACM, when selected | [10.1145/945445.945450](https://dl.acm.org/doi/10.1145/945445.945450) |
 
 These public full-text probes are independent of the institution and research topic.
@@ -926,7 +947,7 @@ launch arguments for future runs without adding preferences to research Profiles
 
 ```text
 --institutional-provider-mode IEEE=auto
---institutional-provider-mode Springer=public_only
+--institutional-provider-mode "Springer Nature=public_only"
 --institutional-acquisition-seconds 120
 --institutional-manual-seconds 600
 ```
@@ -1220,7 +1241,7 @@ For an explicit unattended-stability priority, send this in a new CC session:
 ```text
 /autoresearch init
 Prioritize unattended stability with Windows client mode.
-Use public_only for ScienceDirect and ACM; keep IEEE and Springer on auto and prepare them.
+Use public_only for ScienceDirect and ACM; keep IEEE and Springer Nature on auto and prepare them.
 Use --institutional-prepare-failure-mode public_only.
 Convert failed or unfinished preparation platforms to public-only and retain the failure reasons.
 Stop at final launch review and wait for my Start now decision.
@@ -1243,7 +1264,7 @@ the current scoped helper for new init; retained runs are not changed.
 To specifically test every publisher, use the ordinary review policy:
 
 1. Open a new CC session in the updated server checkout and run `/autoresearch init`.
-2. Select Windows client mode and IEEE, ScienceDirect, Springer and ACM (select ACM
+2. Select Windows client mode and IEEE, ScienceDirect, Springer Nature and ACM (select ACM
    explicitly). On the chosen Windows PC, run this init's exact generated Setup/Connect
    entry once, using the current original script. Close any old dedicated browser first.
 3. Finish authentication where needed and reply `完成` for each platform. Existing

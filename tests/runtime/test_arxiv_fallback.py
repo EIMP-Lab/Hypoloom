@@ -205,15 +205,21 @@ def test_matching_preprint_without_publisher_doi_and_with_author_initials():
     assert acquire(web)[0]['url'] == PDF
 
 
-def test_host_delivers_and_archives_arxiv_without_browser_and_reuses_source(system, tmp_path):
+@pytest.mark.parametrize("prior_batch_lookup", [False, True])
+def test_host_delivers_and_archives_arxiv_without_browser_and_reuses_source(system, tmp_path, monkeypatch, prior_batch_lookup):
     host, request, _, _, backend, papers = system
     web, transport, original = setup()
     url = 'https://doi.org/' + DOI
     transport.responses[url] = _response(url, b'denied', status_code=403)
     host.grounding_web, host.literature_io = web, None
+    if prior_batch_lookup:
+        monkeypatch.setattr("hypoloom.paper_sources.packet_download_trace", lambda *_: [{
+            "bibliographic_identity": "doi:" + DOI, "events": [{"stage": "fallback_lookup",
+                "outcome": "HTTP_FAILURE", "http_status": 429}]}])
     result = web_tool(host, request, 'web_fetch', {'mode': 'document', 'url': url})
     assert result['status'] == 'available' and result['url'] == PDF and result['requested_url'] == url
     assert 'arXiv 2401.01234v2' in result['version_note'] and not backend.calls
+    assert result['acquisition_source'] == 'arxiv'
     archive = tmp_path / 'archive'; archive.mkdir()
     papers.archive(archive)
     assert (archive / result['original_path'].lstrip('/')).read_bytes() == original

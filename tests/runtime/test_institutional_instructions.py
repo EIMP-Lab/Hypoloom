@@ -64,7 +64,7 @@ def test_cli_instructions_replies_and_expired_batch_do_not_create_research(tmp_p
         assert "IEEE 页面已打开" in emitted[-1] and "仅公开" in emitted[-1]
         view = request(root).result
         assert view["reply_argv"][-2:] == ["--provider", "IEEE"]
-        assert cli("reply", "--text", "完成", "--provider", "Springer") == 1
+        assert cli("reply", "--text", "完成", "--provider", "Springer Nature") == 1
         assert cli("reply", "--text", "继续连接", "--provider", "IEEE") == 1
         assert cli("reply", "--text", "仅公开", "--provider", "IEEE") == 0
         thread.join(5)
@@ -95,7 +95,7 @@ def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform
     def worker():
         try:
             codes.append(run(arguments('--agent-session', '--repository', str(tmp_path),
-                '--provider', 'ScienceDirect', '--provider', 'Springer'), output=output.append))
+                '--provider', 'ScienceDirect', '--provider', 'Springer Nature'), output=output.append))
         except BaseException as exc: errors.append(exc)
     thread = threading.Thread(target=worker); thread.start()
     root = eventually(lambda: next((Path(json.loads(v)['state_root']) for v in output
@@ -110,13 +110,13 @@ def test_challenge_reason_reaches_fixed_instructions_and_stays_with_its_platform
         assert [call[0] for call in backend.calls] == ['ScienceDirect']
         assert request(root, 'PREPARATION_ANSWER', {'provider': 'ScienceDirect', 'reply': reply}).status == 'accepted'
         eventually(lambda: request(root).result.get('state') == 'waiting_for_user'
-            and request(root).result.get('provider') == 'Springer')
+            and request(root).result.get('provider') == 'Springer Nature')
         assert 'verification_required' != request(root).result.get('reason_code')
         assert '打开时检测到人机验证' not in render(request(root).result)
         from hypoloom.institutional_access import provider_entry_url
-        assert provider_entry_url('Springer') in render(request(root).result)
+        assert provider_entry_url('Springer Nature') in render(request(root).result)
         assert 'Find your institution' in render(request(root).result)
-        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer', 'reply': '完成'}).status == 'accepted'
+        assert request(root, 'PREPARATION_ANSWER', {'provider': 'Springer Nature', 'reply': '完成'}).status == 'accepted'
         thread.join(5)
         assert not thread.is_alive() and not errors and codes == [0]
         assert [r['state'] for r in json.loads(output[-1])['preparation_summary']] == [expected, 'sample_verified']
@@ -130,7 +130,7 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
     ready_access(monkeypatch)
     monkeypatch.setattr("hypoloom.institutional_prepare.PreparationDialogue", lambda _: PreparationDialogue(.3))
     args = arguments("--agent-session", "--repository", str(tmp_path), "--provider", "IEEE",
-        "--provider", "Nature", "--institutional-manual-seconds", "70",
+        "--provider", "Springer Nature", "--institutional-manual-seconds", "70",
         "--institutional-connect-timeout", "7", "--institutional-provider-mode", "ACM=public_only")
     output, codes = [], []
     thread = threading.Thread(target=lambda: codes.append(run(args, output=output.append)))
@@ -145,8 +145,8 @@ def test_timeout_generates_exact_remaining_command_with_updated_modes(tmp_path, 
         summary = json.loads(output[-1])
         assert summary["preparation_state"] == "input_timeout"
         remaining = build_parser().parse_args(summary["remaining_preparation_argv"][4:])
-        assert remaining.provider == ["Nature"] and remaining.agent_session
-        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=public_only", "Nature=auto"]
+        assert remaining.provider == ["Springer Nature"] and remaining.agent_session
+        assert remaining.institutional_provider_mode == ["ACM=public_only", "IEEE=public_only", "Springer Nature=auto"]
         assert remaining.institutional_manual_seconds == 70 and remaining.institutional_connect_timeout == 7
         assert remaining.repository == str(tmp_path) and remaining.institutional_browser_url == args.institutional_browser_url
         assert not root.exists() and not list(tmp_path.rglob("state.sqlite"))
