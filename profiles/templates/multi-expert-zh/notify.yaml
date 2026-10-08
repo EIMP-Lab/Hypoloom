@@ -13,4 +13,5 @@ sinks:
     host: 127.0.0.1
     port: 0  # 由系统分配空闲端口；填写 1–65535 可固定端口。
 events:
-  telegram: [grounding_question, grounding_answered, new_best_result, leader_started, debate_started, expert_round_done, provider_waiting, provider_retry_requested, provider_recovered, literature_waiting, literature_retry_requested, literature_recovered, error, run_finished, run_briefing]
+  # new_best_result：实验首次测量／同组指标刷新；goal_verdict_recorded：整体 GOAL 判定。
+  telegram: [grounding_question, grounding_answered, new_best_result, goal_verdict_recorded, leader_started, debate_started, expert_round_done, provider_waiting, provider_retry_requested, provider_recovered, literature_waiting, literature_retry_requested, literature_recovered, error, run_finished, run_briefing]

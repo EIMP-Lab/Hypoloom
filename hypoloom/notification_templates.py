@@ -1,4 +1,4 @@
-"""Bilingual, status-only Telegram presentation of existing observer projections."""
+"""Bilingual Telegram summaries of existing observer status and measurements."""
 from __future__ import annotations
 
 import math
@@ -41,7 +41,7 @@ _TITLES = {
     "debate_aborted": ("⚠️", "辩论中止", "Debate aborted"),
     "debate_restarts_finished": ("💬", "辩论后重启已结束", "Post-debate restarts finished"),
     "debate_restarts_designated": ("💬", "辩论后重启已指定", "Post-debate restarts designated"),
-    "new_best_result": ("🏆", "发现更优结果", "New best result"),
+    "new_best_result": ("📏", "实验指标记录", "Experiment metric recorded"),
     "goal_verdict_recorded": ("🎯", "GOAL 判定已记录", "GOAL verdict recorded"),
     "provider_waiting": ("⚠️", "API 等待恢复", "API waiting for recovery"),
     "provider_retry_requested": ("🔄", "已请求 API 重试", "API retry requested"),
@@ -95,11 +95,20 @@ def _when(value, zh):
 
 
 def event_text(event, observation):
-    """Never include research prose, operator notes, credentials or access URLs."""
+    """Render status and metric labels/values; omit research bodies, notes and secrets."""
     zh = chinese(observation)
     def tr(cn, en): return cn if zh else en
     kind, payload = event["type"], event.get("payload", {})
     icon, cn, en = _TITLES.get(kind, ("🔔", kind, kind))
+    if kind == "new_best_result" and "previous_outcome_id" in payload:
+        icon, cn, en = (("📏", "首次有效测量", "First valid measurement") if payload["previous_outcome_id"] is None else
+                        ("📈", "同组指标刷新", "Comparable metric improved"))
+    if kind == "goal_verdict_recorded":
+        icon, cn, en = {
+            "GOAL_MET": ("🎯", "整体 GOAL 已达成", "Overall GOAL met"),
+            "GOAL_NOT_MET": ("🎯", "整体 GOAL 未达成", "Overall GOAL not met"),
+            "INCONCLUSIVE": ("🎯", "整体 GOAL 尚不能确定", "Overall GOAL inconclusive"),
+        }.get(payload.get("verdict"), (icon, cn, en))
     items = [f"{icon} Hypoloom · {tr(cn, en)} ({kind})",
              tr("运行：", "Run: ") + event["run_id"], tr("事件：", "Event: ") + event["event_id"]]
     for key, cn, en in (("role", "专家", "Expert"), ("node", "阶段", "Stage"),
@@ -108,6 +117,34 @@ def event_text(event, observation):
         if payload.get(key) is not None:
             value = _status(str(payload[key]), zh) if key in {"state", "verdict", "outcome"} else payload[key]
             items.append(f"{tr(cn, en)}: {value}")
+    if kind == "new_best_result":
+        unknown = tr("未知", "unknown")
+        metric = payload.get("metric") or {}
+        scope = {"LOCAL": tr("LOCAL（局部实验）", "LOCAL (local experiment)"),
+                 "GOAL": tr("GOAL（目标评估实验）", "GOAL (goal evaluation experiment)")}.get(payload.get("evaluation_scope"), unknown)
+        direction = {"MAXIMIZE": tr("越大越好", "higher is better"),
+                     "MINIMIZE": tr("越小越好", "lower is better")}.get(metric.get("direction"), unknown)
+        comparison = {"VALUE": tr("直接值", "value"), "DELTA_FROM_BASELINE": tr("相对基线的差值", "delta from baseline"),
+                      "RELATIVE_DELTA_FROM_BASELINE": tr("相对基线的变化率", "relative delta from baseline")}.get(payload.get("measurement_comparison"), unknown)
+        previous = payload.get("previous_metric_value")
+        previous = unknown if previous is None else str(previous)
+        if "previous_outcome_id" in payload and payload["previous_outcome_id"] is None:
+            previous = tr("无（本组首次测量）", "none (first measurement in this group)")
+        target_met = payload.get("metric_target_met")
+        target_status = tr("已达到", "met") if target_met is True else tr("未达到", "not met") if target_met is False else unknown
+        operator = {"MAXIMIZE": "≥", "MINIMIZE": "≤"}.get(metric.get("direction"), "?")
+        # Only the short metric label is presented, not its parser or research prose.
+        label = " ".join(str(metric.get("name", unknown)).split())[:160]
+        items.extend([
+            tr("组件：", "Component: ") + str(payload.get("component_id", unknown)),
+            tr("实验范围：", "Experiment scope: ") + scope,
+            tr("比较范围：同一组件及相同的冻结评估条件。", "Comparison: same component and frozen evaluation conditions."),
+            tr("指标：", "Metric: ") + f"{label} · {comparison} · {direction}",
+            tr("本组前次最佳：", "Previous group best: ") + previous,
+            tr("本次测量：", "Current measurement: ") + str(payload.get("metric_value", unknown)),
+            tr("实验指标阈值：", "Experiment metric threshold: ") + f"{operator} {metric.get('target', unknown)} · {target_status}",
+            tr("本通知仅报告实验指标；整体 GOAL 是否达成以独立 GOAL 判定为准。",
+               "This reports an experiment metric; overall GOAL attainment requires a separate GOAL verdict.")])
     if kind == "notification_backlog":
         items.extend([", ".join(f"{key}: {value}" for key, value in payload["counts"].items()),
             tr("这是历史事件摘要；当前状态请查看 Web/TUI。", "This summarizes earlier events; consult Web/TUI for the current state.")])

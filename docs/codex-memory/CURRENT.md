@@ -1,5 +1,14 @@
 # Current Hypoloom development state
 
+- October 8 metric notifications distinguish first valid measurements from strict
+  comparable improvements, showing declared scope, prior/current values and the
+  experiment threshold through the existing MetricSpec evaluator. GOAL messages
+  use only GoalVerdictRecorded; public templates subscribe with Telegram disabled.
+  Event IDs/revisions, grouping and sink cursors are unchanged. Focused checks and
+  a real Host/CPU closure pass; no retained-run change or real Telegram delivery.
+  [Semantics](../guides/notifications.md#experiment-metrics-and-goal-verdicts--实验指标与-goal-判定)
+  / [validation](../qualification.md#experiment-metric-and-goal-notifications-2026-10-08).
+
 - October 8 selected-paper retrieval: adapter 73 separates batch locator history
   from selected-document discovery; 429/empty locator results no longer skip
   independent public metadata/arXiv paths. Existing index derives candidate URLs,

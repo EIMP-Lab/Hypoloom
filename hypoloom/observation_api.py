@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_budget import charged_cost, fold_agent_attempts
+from .domain import MetricDirection, MetricSpec
 from .monitor import MonitorError, build_monitor_snapshot
 from .state_store import StateStore
 
@@ -95,7 +96,11 @@ def _best_results(run_id, facts, commands):
         events.append(_event("best-result", row["fact_id"], 1, "new_best_result", row["created_at"], run_id,
             component_id=outcome["component_id"], experiment_id=outcome["experiment_id"], outcome_id=outcome["outcome_id"],
             fact_id=row["fact_id"], preregistration_ref=spec_ref, metric=metric, metric_value=outcome["metric_value"],
-            comparison_scope="component_and_frozen_evaluation", previous_outcome_id=None if previous is None else previous[1]["outcome_id"]))
+            comparison_scope="component_and_frozen_evaluation", previous_outcome_id=None if previous is None else previous[1]["outcome_id"],
+            previous_metric_value=None if previous is None else previous[1]["metric_value"],
+            evaluation_scope=(spec.get("goal_evaluation") or {}).get("scope"),
+            measurement_comparison=(spec.get("measurement") or {}).get("comparison", "VALUE"),
+            metric_target_met=MetricSpec(name=metric["name"], direction=MetricDirection(metric["direction"]), target=metric["target"]).accepts(value)))
     return events
 
 

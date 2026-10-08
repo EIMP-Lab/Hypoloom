@@ -2,6 +2,40 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Experiment metric and GOAL notifications (2026-10-08)
+
+The [notification update](guides/notifications.md#experiment-metrics-and-goal-verdicts--实验指标与-goal-判定)
+fixes a reproducible presentation ambiguity: the first accepted metric in a
+comparison group previously displayed “New best result,” even without a previous
+measurement or a GOAL verdict. First measurement and strict improvement now have
+separate bilingual titles, component/declared scope, prior/current values and the
+experiment metric threshold. Threshold status reuses `MetricSpec.accepts`;
+`GoalVerdictRecorded` alone supplies the separate overall GOAL notification.
+No new fact, schema, group key, event type/identity/revision or cursor is introduced.
+
+Validation covers MAXIMIZE/MINIMIZE, ties/worse results, zero/negative values,
+threshold equality, CLEAN_REFUTATION, parser/group boundaries, LOCAL/GOAL/legacy
+unknown scope, bilingual text, historical events independent of later GOAL state,
+all three GOAL verdicts, and subscription/cursor restart compatibility. The
+notification/observer/public-Profile selection passes **109 checks**, plus four
+documentation structure/link checks (**113 distinct passes**). Whitespace checks pass.
+
+```bash
+python -B -m pytest -q tests/runtime/test_best_result_events.py \
+  tests/runtime/test_notification_briefings.py tests/runtime/test_notification_tailer.py \
+  tests/runtime/test_observation_api.py tests/test_public_profiles.py -p no:cacheprovider
+```
+
+This includes the existing real Host/CPU closure with a scripted research agent:
+one canonical experiment outcome and an overall GOAL verdict produce separate
+locally captured messages. Run state reaches COMPLETED, notification reads leave
+research rows unchanged, Oracle passes, all Attempts close and owned process
+groups are absent. The restarted measurement sink does not repeat confirmed
+events. No message reaches Telegram; transport is replaced locally. Both public
+Profiles keep Telegram disabled while adding the GOAL verdict subscription.
+Retained runs, private Profiles, frozen bundles and active services are unchanged.
+This is focused feature validation, not full G1–G5 or paid/GPU qualification.
+
 ## Selected-paper discovery and acquisition observations (2026-10-08)
 
 The [repair](design/institutional-literature-access.md#selected-paper-discovery-after-locator-failure--2026-10-08)

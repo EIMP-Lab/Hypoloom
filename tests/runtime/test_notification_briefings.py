@@ -9,6 +9,7 @@ import pytest
 from hypoloom import notification_tailer as notifier
 from hypoloom.notification_templates import briefing_text, due_briefing, event_text
 from hypoloom.observation_api import PRODUCT_EVENT_TYPES, build_product_observation
+from test_best_result_events import best, sources
 from test_notification_tailer import _notify, _tailer, _cursor, _event, _create_profile_run
 from test_web_observer import _row_census
 from test_shared_acceptance_host import shared_host as shared_host, completed, RUN_ID
@@ -59,6 +60,69 @@ def test_all_event_templates_have_spacing_safe_fields_and_elapsed(language):
         assert ("运行：" if language == "zh-CN" else "Run: ") in text
         assert "Dashboard" not in text and "http" not in text and "private" not in text
         assert len(text.encode("utf-16-le")) // 2 <= 4096
+
+
+@pytest.mark.parametrize("language", ["zh-CN", "en"])
+@pytest.mark.parametrize("scope", [None, "LOCAL", "GOAL"])
+def test_first_measurement_and_improvement_show_scope_values_and_threshold(language, scope):
+    facts, commands = sources([0, 5])
+    for row in facts[::2]:
+        if scope is not None: row["payload"]["goal_evaluation"] = {"scope": scope}
+    view = observation(language=language)
+    # A later global verdict must not be attributed to a historical metric event.
+    view["run"]["goal_verdict"] = "GOAL_MET"
+    first, improved = [event_text(event, view) for event in best(facts, commands)]
+    assert ("首次有效测量" if language == "zh-CN" else "First valid measurement") in first
+    assert ("同组指标刷新" if language == "zh-CN" else "Comparable metric improved") in improved
+    assert ("本组前次最佳：0" if language == "zh-CN" else "Previous group best: 0") in improved
+    assert ("本次测量：5" if language == "zh-CN" else "Current measurement: 5") in improved
+    assert ("≥ 5 · 未达到" if language == "zh-CN" else "≥ 5 · not met") in first
+    assert ("≥ 5 · 已达到" if language == "zh-CN" else "≥ 5 · met") in improved
+    for text in (first, improved):
+        assert "component-a" in text and "score" in text
+        assert ("实验范围：" if language == "zh-CN" else "Experiment scope: ") + (scope or ("未知" if language == "zh-CN" else "unknown")) in text
+        assert ("独立 GOAL 判定" if language == "zh-CN" else "separate GOAL verdict") in text
+        assert "整体 GOAL 已达成" not in text and "Overall GOAL met" not in text
+
+
+@pytest.mark.parametrize("language", ["zh-CN", "en"])
+def test_minimized_relative_metric_and_legacy_unknown_details(language):
+    facts, commands = sources([6, 5], direction="MINIMIZE", deferred=True)
+    for row in facts[::2]: row["payload"]["measurement"]["comparison"] = "RELATIVE_DELTA_FROM_BASELINE"
+    event = best(facts, commands)[1]
+    text = event_text(event, observation(language=language))
+    assert ("≤ 5 · 已达到" if language == "zh-CN" else "≤ 5 · met") in text
+    assert ("变化率" if language == "zh-CN" else "relative delta") in text
+    assert ("越小越好" if language == "zh-CN" else "lower is better") in text
+    legacy = event_text(_event(kind="new_best_result"), observation(language=language))
+    assert ("实验指标记录" if language == "zh-CN" else "Experiment metric recorded") in legacy
+    assert ("本组前次最佳：未知" if language == "zh-CN" else "Previous group best: unknown") in legacy
+    assert "首次" not in legacy and "First valid" not in legacy
+
+
+@pytest.mark.parametrize("verdict,cn,en", [("GOAL_MET", "整体 GOAL 已达成", "Overall GOAL met"),
+    ("GOAL_NOT_MET", "整体 GOAL 未达成", "Overall GOAL not met"),
+    ("INCONCLUSIVE", "整体 GOAL 尚不能确定", "Overall GOAL inconclusive")])
+def test_goal_notification_uses_its_own_accepted_verdict(verdict, cn, en):
+    event = _event(kind="goal_verdict_recorded")
+    event["payload"] = {"verdict": verdict}
+    for language, title in (("zh-CN", cn), ("en", en)):
+        view = observation(language=language)
+        view["run"]["goal_verdict"] = "GOAL_MET"
+        assert title in event_text(event, view)
+
+
+def test_measurement_delivery_keeps_existing_subscription_and_cursor(tmp_path, monkeypatch):
+    facts, commands = sources([0, 5, 5, 4])
+    view = observation()
+    view["events"] = best(facts, commands)
+    config, calls, transport = setup(monkeypatch, view)
+    config["events"]["telegram"] = ["new_best_result"]
+    assert _tailer(tmp_path, environ=ENV, transport=transport).poll_once().delivered["telegram"] == 2
+    assert "首次有效测量" in calls[0][1]["text"] and "同组指标刷新" in calls[1][1]["text"]
+    assert json.loads(_cursor(tmp_path, "telegram").read_text()) == {"best-result:fact-e1": 1, "best-result:fact-e2": 1}
+    assert _tailer(tmp_path, environ=ENV, transport=transport).poll_once().delivered["telegram"] == 0
+    assert len(calls) == 2
 
 
 def test_report_language_comes_from_admitted_contract_and_source_stays_readonly(tmp_path):
@@ -241,7 +305,7 @@ def test_real_host_cpu_closure_uses_observed_time_and_stops_briefings(shared_hos
     root = host.state_root
     config = _notify(telegram=True)
     config["sinks"].pop("log")
-    config["events"]["telegram"] = ["run_briefing", "run_finished"]
+    config["events"]["telegram"] = ["run_briefing", "run_finished", "new_best_result", "goal_verdict_recorded"]
     monkeypatch.setattr(notifier, "load_notification_config", lambda *_: config)
     monkeypatch.setattr(notifier, "briefing_photo", lambda *a, **k: PNG)
     observed = monitor.time.time() + 43201
@@ -266,11 +330,15 @@ def test_real_host_cpu_closure_uses_observed_time_and_stops_briefings(shared_hos
     assert final["run"]["goal_verdict"] == "GOAL_MET"
     assert final["summary"]["elapsed_seconds"] < 43200
     assert final["summary"]["totals"]["experiments"]["total"] == 1
-    assert tailer.poll_once().delivered["telegram"] == 1
+    assert tailer.poll_once().delivered["telegram"] == 3
     observed += 43200 * 5
     assert tailer.poll_once().delivered["telegram"] == 0
     assert _row_census(root / "state.sqlite") == before
     assert calls[-1][0].endswith("/sendMessage") and "run_finished" in calls[-1][1]["text"]
+    metric_notice = next(document["text"] for _, document in calls if "new_best_result" in document.get("text", ""))
+    goal_notice = next(document["text"] for _, document in calls if "goal_verdict_recorded" in document.get("text", ""))
+    assert "First valid measurement" in metric_notice and "GOAL (goal evaluation experiment)" in metric_notice
+    assert "Overall GOAL met" in goal_notice and "Overall GOAL met" not in metric_notice
     assert Oracle(root / "state.sqlite", root / "artifacts").audit(RUN_ID).ok
     attempts = host.store.list_attempts(run_id=RUN_ID)
     assert all(a["state"] == "CLOSED" for a in attempts)

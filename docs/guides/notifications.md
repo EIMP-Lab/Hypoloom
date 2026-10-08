@@ -75,6 +75,47 @@ webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出
 旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
 源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。
 
+## Experiment metrics and GOAL verdicts / 实验指标与 GOAL 判定
+
+`new_best_result` remains the subscription name, with two distinct titles:
+**First valid measurement** when a comparison group has no prior accepted value,
+and **Comparable metric improved** for a strict improvement over that group's best.
+Ties and worse values do not trigger it. Accepted metric outcomes can be `SUCCESS`
+or `CLEAN_REFUTATION`; a useful measurement need not meet its experiment threshold.
+Groups use the same component, metric/target, measurement declaration, frozen parser
+bytes, trial plan, upstream outcomes and evaluator version. A changed group starts
+its own first measurement; there is no cross-component or overall GOAL ranking.
+
+Each notice shows the component, declared experiment scope (`LOCAL`, `GOAL`, or
+unknown for older records), metric/comparison form/direction, previous and current
+values, and whether the experiment metric reaches its threshold. This threshold
+uses the existing metric evaluator, not the overall GOAL verdict. A `GOAL` experiment
+scope likewise does not establish that the whole goal has been met.
+
+Subscribe separately to `goal_verdict_recorded` for **Overall GOAL met**, **Overall
+GOAL not met**, or **Overall GOAL inconclusive**, taken only from the recorded GOAL
+verdict. Both public templates include this event with Telegram still disabled.
+For future runs, include both events in your private Profile before init. Existing
+admitted subscriptions and retained runtime bundles do not change automatically.
+The metric event type, IDs and revisions are unchanged, preserving delivery cursors.
+Metric labels and values are included; research bodies and parser code are omitted.
+
+中文：原 `new_best_result` 订阅继续有效，但标题区分为 **首次有效测量** 和
+**同组指标刷新**。每个可比组的首条有效结果会通知；之后只有严格改善才通知，持平
+或变差不触发。`SUCCESS` 和 `CLEAN_REFUTATION` 的有效指标均可参与，因此首次测量
+或同组刷新仍可能未达到实验阈值。可比组由组件、指标及阈值、测量声明、冻结解析器
+内容、试验计划、上游结果和评估器版本共同决定；条件变化后重新建立本组起点。
+
+通知展示组件、实验范围（`LOCAL`／`GOAL`／旧记录未知）、指标及比较方式、优化方向、
+前次最佳、本次数值和实验阈值是否达到。这里的达标仅指实验指标；即使范围为 `GOAL`，
+也不表示整体目标已达成。整体结果由独立的 `goal_verdict_recorded` 通知表达：
+**整体 GOAL 已达成／未达成／尚不能确定**，严格采用已记录的 GOAL 判定。
+
+两份公开模板已加入 GOAL 判定订阅，Telegram 仍默认关闭。新运行请在 init 前把两个
+事件都加入私有 Profile；现有运行的冻结订阅和运行时不会自动升级。沿用原事件 ID、
+版本和通知游标，不因文案升级重发已确认事件。通知包括指标名称和数值，不发送
+研究正文或解析器代码。
+
 ## Twelve-hour run briefings / 每 12 小时运行简报
 
 Add `run_briefing` to `events.telegram` in the private Profile **before init**;

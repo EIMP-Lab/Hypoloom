@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Experiment metric and GOAL notifications](../qualification.md#experiment-metric-and-goal-notifications-2026-10-08):
+  first measurement versus strict group improvement; scope, values and experiment
+  threshold without inferred GOAL success; independent verdict titles and unchanged
+  event cursors. [Configuration](../guides/notifications.md#experiment-metrics-and-goal-verdicts--实验指标与-goal-判定).
+
 - [Selected-paper discovery and acquisition observations](../qualification.md#selected-paper-discovery-and-acquisition-observations-2026-10-08):
   historical batch 429 replay, source selection hints and truthful retrieval-route
   metadata; 479 distinct checks, 25 fixed replays and two native Host/reader/CPU
