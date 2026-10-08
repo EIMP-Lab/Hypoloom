@@ -1,9 +1,31 @@
 # Current Hypoloom development state
 
+- October 8 Grounding completion: adapter 72 separates scientific parser tests
+  from Host comparison checks, exposes the existing schema read-only, retains
+  helper/candidate drafts, prioritizes recent recovery work and adds an advisory
+  near the unchanged deadline. Original recovery replay fails; new replay passes.
+  Initial runtime 91 passes; broader runs retain socket/bwrap/read-only failures.
+  Final targeted 28 pass; source/wheel/install/fresh bundle match 189 files and
+  CLI/MCP pass. G1/G3 remain environment-limited; no paid/GPU or latency claim.
+  Retained runs unchanged. Git staging is blocked by read-only `.git`; changes
+  remain uncommitted on dev. [Design](../design/research-workflow-skill.md#grounding-completion-and-recoverable-authoring-2026-10-08)
+  / [validation](../qualification.md#grounding-completion-and-recovery-2026-10-08).
+
+- October 8 authorized development-run retirement: deleted the reviewed 32
+  terminal MERC roots and 32 notification roots, releasing about 923 GiB;
+  project allocation is now 12.97 GiB and volume usage 74%. Separate private
+  extracts retain nine regression entry points, original/fixed provider inputs,
+  18 disk failures and 35 authored reports in about 6.6 MiB. After deletion the
+  independent provider replay still matches; four documentation checks pass.
+  Qualification evidence and shared GPU service remain. Full G2 replay of this
+  retired cohort is unavailable; current qualification gaps and the production
+  Git clone amplification fix remain outstanding. No new qualification promotion.
+  [Scope and limits](../qualification.md#development-run-evidence-extraction-2026-10-08).
+
 - October 8 provider repair: adapter 71 reconciles mixed cache/input changes only
   with exact model/cost/wire agreement; empty terminal SSE supplies no context
   anchor or recovery proof. Upstream 500/502/503/504 reuses transient API backoff.
-  Original Grounding replay now accepts the complete 4,666,667-token bill.
+  Original Grounding replay now accepts the complete 4,664,667-token bill.
   Native 40 checks pass before the final start-content observation edit: 88 Agents,
   six CPU Processes/outcomes, no residue. Final affected checks: 103 pass/two TCP
   setup errors; G1 stops at 568 pass/eight environment failures. New sandbox also

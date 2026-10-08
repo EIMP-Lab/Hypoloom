@@ -41,15 +41,27 @@ only after checking its assumptions against the current goal.
 
 The native Stop hook already validates final JSON and performs isolated parser
 smoke tests. Agents should use the resulting feedback instead of writing another
-generic schema validator. Scientific tests are still necessary: qualifying and
-violating cases, strict-boundary cases, missing evidence and mandatory validity.
+generic schema validator. `/runtime/output-schema.json` exposes the identical
+schema directly. Scientific tests still cover raw calculations, task-specific
+boundaries, missing evidence and every mandatory validity condition. For each
+validity mutation, assert its individual check changes and unrelated checks stay
+as expected; a low overall score alone is insufficient. The Host already tests
+strict numeric equality, comparison operators and ALL/ANY: do not construct
+complex raw samples just to repeat those framework comparisons.
 A passing smoke test proves that the parser interface works, not goal success.
 Accepted shared evaluators remain read-only after Grounding.
 
 After retries, clarification or context recovery, use the current request,
 accepted sources and retained work. Optional `/acceptance/WORK_NOTES.md` is draft
-material, not scientific evidence or a declared parser source. This skill does
-not change context limits, add a paid summarizer or introduce RAG storage.
+material, not scientific evidence or a declared parser source. Keep reusable
+fixture generators, test helpers and candidate drafts under `/acceptance/work/`;
+`/tmp` disappears between invocations. Recheck current inputs before reuse and
+omit helpers/notes/drafts from `parser_files`. Once scientific checks and smoke
+inputs are ready, submit the complete final JSON; writing it to a file alone is
+not submission. Grounding tool calls can receive an advisory during the last
+20% of the remaining invocation budget, capped at five minutes, to leave time
+for Stop corrections. It cannot interrupt a long model response or extend the
+deadline. This skill does not change context limits or add paid summarization.
 
 ## Incomplete component comparisons
 

@@ -30,11 +30,13 @@ def _argv(tmp_path, *, endpoint=True, patterns=(), max_output_bytes=65536, schem
         input_artifacts=(EmbeddedInput.from_bytes("node--expert-config", "application/json",
             json.dumps({"node_runtime": {"safety": {"bash": {"deny_patterns": list(patterns)}}}}).encode()),))
     schema = {"type": "object", "required": ["typed_candidate"]}
+    schema_path = tmp_path / "output-schema.json"
+    schema_path.write_text(json.dumps(schema))
     return full_cc_runtime.full_cc_argv(
         bwrap=Path("/usr/bin/bwrap"), executable=tmp_path / "claude", request=request,
         model="mimo-v2.5-pro", workspace=_workspace(tmp_path), provider_socket=tmp_path / "provider.sock",
         host_socket=None, output_socket=tmp_path / "output.sock" if endpoint else None,
-        output_schema=schema, extra_paths=()), schema
+        output_schema=schema, output_schema_path=schema_path, extra_paths=()), schema
 
 
 def test_aci25_advisory_preserves_bash_denial_and_stop_hook(tmp_path):
@@ -57,6 +59,7 @@ def test_native_output_socket_hooks_and_budgeted_stdlib_client(tmp_path, pattern
     assert argv[argv.index("--output-format") + 1] == "stream-json"
     triples = tuple(zip(argv, argv[1:], argv[2:]))
     for source, destination in ((str(Path(native_output.__file__).resolve()), "/runtime/native_output.py"),
+                                (str(tmp_path / "output-schema.json"), "/runtime/output-schema.json"),
                                 (str(tmp_path / "output.sock"), "/output-validation.sock")):
         assert ("--ro-bind", source, destination) in triples
         assert ("--bind", source, destination) not in triples

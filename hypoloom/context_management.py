@@ -301,15 +301,21 @@ def recovery_tool_notes(content: bytes, session_id: str, *, rich: bool = False) 
                 results.append({"tool_use_id": str(block.get("tool_use_id", ""))[:128], "tool": name,
                     "input_excerpt": arguments, "is_error": block.get("is_error") is True,
                     "excerpt": text, "truncated": text != body})
-    # Keep a recent tail, the last observed error, and distinct early source/check
-    # operations. Bounded selection is an observation, never a reading claim.
+    # Keep the recent tail, last error, recent commands/edits and one source
+    # anchor. Fill from the end: old discovery must not crowd out completed work.
+    # These bounded observations remain unaccepted, not a reading claim.
     selected = set(range(max(0, len(results) - 4), len(results)))
     for predicate, count in ((lambda item: item["is_error"], 1),
-            (lambda item: item["tool"] in {"Bash", "Write", "Edit", "MultiEdit"}, 3)):
+            (lambda item: item["tool"] == "Bash", 3),
+            (lambda item: item["tool"] in {"Write", "Edit", "MultiEdit"}, 3)):
         matches = [i for i, item in enumerate(results) if predicate(item)]
         selected.update(matches[-count:])
-    seen = set()
-    for index, item in enumerate(results):
+    first_source = next((i for i, item in enumerate(results) if item["tool"] == "Read"), None)
+    if first_source is not None:
+        selected.add(first_source)
+    seen = {(results[i]["tool"], results[i]["input_excerpt"]) for i in selected}
+    for index in range(len(results) - 1, -1, -1):
+        item = results[index]
         signature = (item["tool"], item["input_excerpt"])
         if len(selected) >= 12: break
         if index not in selected and signature not in seen:

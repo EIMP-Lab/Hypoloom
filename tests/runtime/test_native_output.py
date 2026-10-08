@@ -99,6 +99,40 @@ def test_missing_advisory_telemetry_does_not_disable_output_validation(tmp_path)
         server.close()
 
 
+@pytest.mark.parametrize("capacity_notice", ["Capacity observation " * 200, None, RuntimeError("unavailable")],
+    ids=["capacity", "missing", "unavailable"])
+def test_grounding_deadline_advisory_keeps_validation_and_correction_budget(tmp_path, capacity_notice):
+    def capacity():
+        if isinstance(capacity_notice, Exception):
+            raise capacity_notice
+        return capacity_notice
+
+    server = _server(tmp_path, deadline=time.monotonic() + 1000,
+        acceptance_smoke=True, parser_source_root=tmp_path, context_notice=capacity)
+    try:
+        def notice():
+            return native_output.call_context_notice(str(server.socket_path), session_id="session-owned",
+                max_request_bytes=4096, timeout_seconds=2)
+        early = notice().get("hookSpecificOutput", {}).get("additionalContext", "")
+        assert "existing deadline" not in early
+        # Advance to the last portion without timing-dependent sleeps. The real
+        # transport and ordinary Stop validator still use this future deadline.
+        server.deadline_at = time.monotonic() + 100
+        late = notice()["hookSpecificOutput"]["additionalContext"]
+        assert "existing deadline" in late and "/acceptance" in late
+        assert len(late.encode()) <= 1536
+        assert server.snapshot()["call_count"] == server.snapshot()["rejected_count"] == 0
+        assert not server.snapshot()["accepted"]
+        assert _call(server, INVALID)["decision"] == "block"
+        assert _call(server) == {}
+        assert server.snapshot()["call_count"] == 2
+        server.deadline_at = time.monotonic() - 1
+        with pytest.raises(ValueError, match="deadline"):
+            _call(server)
+    finally:
+        server.close()
+
+
 def test_context_advisory_cannot_cross_attempt_session_boundary(tmp_path):
     server = _server(tmp_path, context_notice=lambda: "private progress")
     try:

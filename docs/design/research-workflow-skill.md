@@ -7,6 +7,52 @@ Status: implemented, 2026-09-28; qualification is recorded in
 The user authorized implementation and submission to dev. Finer time
 instrumentation remains excluded; existing research runs remain unchanged.
 
+## Grounding completion and recoverable authoring (2026-10-08)
+
+The inspected invocation timed out after a 3,000-second budget without reaching
+native Stop, despite a reported 50/50 local test pass and a draft final candidate.
+The union of provider-message intervals occupied 98.2% of its elapsed time.
+One 631.7-second response exhausted 32,000 output tokens and produced an empty
+Write call. A separate schema-checking script duplicated the Host validator.
+Fixture generators and candidate helpers under `/tmp` disappeared on the next
+invocation; bounded continuation selected old discovery ahead of useful recent
+work. This is an authoring/completion problem, not evidence for larger budgets
+or weaker scientific criteria. Provider intervals include compaction.
+
+Reuse existing mechanisms at their current boundaries:
+
+1. Separate task-specific raw calculations, scientific boundaries and validity
+   mutations from Host-tested comparison operators, strict numeric equality and
+   ALL/ANY reduction. A validity mutation asserts the individual check and its
+   unaffected peers, so the raw sample need not satisfy every performance target.
+   Each scientific condition still needs a qualifying case; below-target smoke
+   remains interface evidence only. No acceptance rule or validator is removed.
+2. Render the existing `_output_schema` into the private invocation directory and
+   mount it read-only at `/runtime/output-schema.json`. It is a disposable view of
+   the same value passed to native Stop and embedded in the prompt, not a second
+   schema definition, accepted artifact or verification authority. Existing
+   private-directory lifetime and read-only bwrap mounts suffice; no additional
+   digest, checkpoint, gate or validation protocol is needed.
+3. Keep reusable tests, generators and candidate drafts in the existing writable
+   `/acceptance/work/` directory, with concise optional `WORK_NOTES.md`. Only
+   declared parser sources are accepted; helpers remain drafts. Current inputs
+   and session/capacity admission still govern reuse. Within the existing 12-note
+   limit, retain recent commands/edits, the last error and one source anchor, then
+   fill from recent distinct operations instead of earliest discovery.
+4. Shared-evaluator Grounding reuses PreToolUse context notices to report time
+   remaining during the last 20% of the initial remaining wall budget, capped at
+   five minutes. The deadline is unchanged; notices consume no correction round
+   and confer no acceptance. Missing capacity telemetry does not suppress the
+   time advisory. It cannot interrupt an already-running long model response.
+
+Submit complete JSON once scientific checks and smoke inputs are ready; use real
+Stop feedback for corrections. Guidance favors coherent source edits to avoid
+losing a whole implementation to one token cutoff. No model/effort defaults,
+output caps, retry counts, session-resume admission or live run bundles change.
+No wall-time improvement is claimed without bounded real-model comparison.
+
+Validation: [qualification](../qualification.md#grounding-completion-and-recovery-2026-10-08).
+
 ## Experiment supply and memory feedback (2026-10-07)
 
 A retained-run read-only sample covered 21.2 hours, 21 submitted experiments and

@@ -1,5 +1,17 @@
 # Development memory index
 
+- [Grounding completion and recovery](../qualification.md#grounding-completion-and-recovery-2026-10-08):
+  scientific/framework test separation, existing schema view, retained authoring
+  helpers, recent-work continuation and deadline advice; original/fixed replay,
+  environment-limited native qualification and unchanged retained runs.
+  [Design](../design/research-workflow-skill.md#grounding-completion-and-recoverable-authoring-2026-10-08).
+
+- [Development run evidence extraction](../qualification.md#development-run-evidence-extraction-2026-10-08):
+  reusable private diagnosis/regression evidence remains after the authorized
+  deletion of 32 old run roots and their notification roots; completed space
+  measurements, preserved failures, unavailable full historical G2 replay, and
+  current-candidate qualification gaps.
+
 - [Mixed usage accounting and temporary provider failures](../qualification.md#mixed-usage-accounting-and-temporary-provider-failures-2026-10-08):
   exact model/cost/wire reconciliation, empty SSE context/recovery exclusion,
   existing transient backoff for upstream 5xx; original replay and native CPU

@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/71"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/72"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -620,8 +620,13 @@ class ClaudeAgentHost:
                 self._tool_servers[request.attempt_id] = endpoint
                 resources.callback(self._tool_servers.pop, request.attempt_id, None)
                 host_socket = endpoint.socket_path
+            output_schema = _output_schema(request, tool_workspace=True)
+            # Disposable read-only view of the same schema used by Stop. It is
+            # neither an accepted artifact nor a separately maintained contract.
+            output_schema_path = endpoint_root / "output-schema.json"
+            output_schema_path.write_bytes(canonical_json(output_schema) + b"\n")
             output_validator = NativeOutputValidator(endpoint_root / "output.sock",
-                output_schema=_output_schema(request, tool_workspace=True),
+                output_schema=output_schema,
                 session_id=tool_workspace.binding["session_id"],
                 max_failed_validations=structured_output_validation_cap(request),
                 max_request_bytes=max(4 * 1024 * 1024, request.budget.max_output_bytes * 2),
@@ -639,7 +644,7 @@ class ClaudeAgentHost:
             launch_argv = full_cc_argv(bwrap=self.bwrap_path, executable=self.claude_executable,
                 request=request, model=model, workspace=tool_workspace,
                 provider_socket=relay.socket_path, host_socket=host_socket,
-                output_schema=_output_schema(request, tool_workspace=True), extra_paths=self.runtime_paths,
+                output_schema=output_schema, output_schema_path=output_schema_path, extra_paths=self.runtime_paths,
                 runtime_prefix=runtime_prefix, read_roots=read_roots,
                 network_socket=network_socket, output_socket=output_validator.socket_path,
                 protected_paths=() if self.settings_path is None else (self.settings_path,))
@@ -2920,6 +2925,10 @@ def _prompt(
             "reference before acceptance. Do not reconstruct or retype encoded reference IDs. "
             "All other identity fields retain their exact supplied values.\n")
     if request.schema_version >= 11:
+        if tool_workspace:
+            instruction += (
+                "\nThe identical output schema is readable at /runtime/output-schema.json. "
+                "Use that file directly when inspecting fields; do not extract it from conversation logs.\n")
         instruction += (
             "\nFinish with exactly one complete JSON object as your ordinary final response, "
             "without markdown fences or surrounding prose. Do not invoke StructuredOutput. "
@@ -3008,8 +3017,9 @@ def _instruction(
         "identifies the bounded MODEL/output failure that introduced the correction; an exact "
         "infrastructure replay may preserve that input across later Attempts. Correct the reported "
         "failure, reconstruct any unavailable rejected candidate, and "
-        "independently check the complete response against the supplied JSON schema before final "
-        "submission. After any validation error, submit the complete corrected object, not just changed fields; "
+        "review required fields and exact constrained values in the supplied JSON schema. "
+        "Use the existing Host validation feedback; do not build a second generic output validator. "
+        "After any validation error, submit the complete corrected object, not just changed fields; "
         "preserve unaffected required fields and their fixed constraints. "
         "When it contains a candidate-validation-error, correct that exact error and do "
         "not repeat the rejected field combination. When a correction contains "

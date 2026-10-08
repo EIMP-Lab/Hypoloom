@@ -186,6 +186,8 @@ class NativeOutputValidator:
         self.max_failed_validations = max_failed_validations
         self.max_request_bytes = max_request_bytes
         self.deadline_at = deadline_at
+        self._deadline_notice_window = (min(300.0, max(0.0, deadline_at - time.monotonic()) * 0.2)
+            if acceptance_smoke else 0.0)
         self.diagnostics = diagnostics
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
@@ -262,9 +264,20 @@ class NativeOutputValidator:
                 notice = self.context_notice() if self.context_notice is not None else None
             except Exception:
                 # Missing telemetry does not weaken Stop validation or block tools.
+                notice = None
+            notices = []
+            remaining = self.deadline_at - time.monotonic()
+            if 0 < remaining <= self._deadline_notice_window:
+                notices.append(
+                    f"Grounding has about {math.ceil(remaining)} seconds left before its existing deadline. "
+                    "Preserve reusable tests and the draft final JSON under /acceptance, update work notes, "
+                    "and submit the complete final JSON as soon as scientific checks and smoke inputs are ready. "
+                    "Leave time for native Stop corrections; do not weaken criteria or treat drafts as accepted.")
+            if isinstance(notice, str) and notice:
+                notices.append(notice)
+            if not notices:
                 return {}
-            if not isinstance(notice, str) or not notice:
-                return {}
+            notice = "\n".join(notices)
             notice = notice.encode("utf-8")[:1536].decode("utf-8", errors="ignore")
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": notice}}
         return self._validate(document)

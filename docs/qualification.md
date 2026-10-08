@@ -2,13 +2,120 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Grounding completion and recovery (2026-10-08)
+
+Adapter 72 implements the general authoring/completion changes in the
+[design](design/research-workflow-skill.md#grounding-completion-and-recoverable-authoring-2026-10-08):
+task-specific validity tests, a read-only view of the existing output schema,
+retained working helpers/candidate drafts, recent-work recovery notes and an
+advisory near the existing deadline. Scientific acceptance, isolation, correction
+limits, model/effort and resume-capacity checks are unchanged. Retained research
+runs were not modified, restarted or migrated.
+
+Private evidence is in `.local/qualification/grounding-completion-20261008/`.
+Validation distinguishes successful checks from environment-blocked execution:
+
+- Original-HEAD selector replay fails the recent-success regression; the new
+  selector retains the success, error and source anchor within 12 chronological
+  observations. Existing redaction and session-ownership checks remain.
+- Initial runtime selection: **91 passed**, including real Unix-socket deadline
+  notices, missing capacity telemetry, unchanged correction counts, expiry,
+  read-only mount construction and retained drafts. Later broader execution in
+  this restricted environment reports **289 passed, 29 failed, one setup error**:
+  Unix/TCP socket operations and `/var/tmp` writes were denied. The earlier pass
+  does not erase these later failures.
+- Focused integration: **141 passed, 17 failed**. Native Grounding recovery is
+  blocked at local TCP creation; classification, optimization and reproduction
+  parser checks and other parser isolation checks encounter bwrap NETLINK_ROUTE
+  denial or Unix-socket denial. These are not native-closure passes. The extended
+  G3 case exercises retained helper execution and the actual schema-file view
+  when the required environment is available.
+- Final targeted checks: **28 passed**, including unchanged strict comparison
+  and mandatory-validity semantics, retained helper/candidate bytes, capture of
+  only declared parser sources, and documentation structure.
+- Wheel build and no-dependency installation succeed. **189 package files** are
+  byte-identical across source, wheel, isolated install and a fresh preserved
+  bundle. CLI help and MCP initialize/tools-list succeed from `/tmp` for both
+  installed and bundled imports; no research Host is launched by these checks.
+
+The full G1 selection was attempted with four workers and a 30-failure limit;
+compilation, undefined-name checks and diff whitespace checks pass. After repeated
+environment failures and prolonged worker shutdown, the invocation was interrupted
+(exit 130); it produced no final JUnit aggregate. G1 is incomplete, not passed.
+Environment failures prevent a full qualification claim. Full historical G2 is
+unavailable for the retired cohort. No paid/GPU lane was started, and no real-model
+latency reduction or new qualification promotion is claimed. Re-run native G3
+and the complete G1 suite in an environment permitting the existing isolation
+and local endpoints before relying on release-level qualification.
+
+## Development run evidence extraction (2026-10-08)
+
+Current tracked code defines runtime behavior; qualification claims still belong
+to the tested Git revision, environment and scope. Development runs from older
+versions provide failure examples and design context, not automatic qualification
+of today's HEAD. They do not all need permanent full-run retention after their
+owner explicitly retires the data and the evidence still needed is separated.
+
+The October 8 storage review inspected 32 terminal MERC runs: 28 CANCELLED and
+four FAILED, with no OPEN Attempts at observation. Their roots occupied about
+923.02 GiB; private session Git copies accounted for 831.41 GiB. They were not all
+empty failures: the records contained 300 canonical outcomes and 203 successful
+Process Attempts. The owner explicitly authorized deleting the exact reviewed
+cohort, including model checkpoints and original experiment data, after the
+evidence extraction. Terminal state alone was not treated as disposal authority.
+
+Private extracts are separate from `state/`, under
+`.local/qualification/development-run-evidence-20261008/`:
+
+| Material | Retained purpose and limit |
+|---|---|
+| `qualification-topics.csv` | Nine existing G0/G2/G3/G4 regression entry points and their limits. It indexes tests; it is not another qualification authority. |
+| `provider-accounting/` | Exact recorded CLI output, request, evaluator and small exchange observations, plus a replay that does not open a historical run. Original request bodies and credentials files are not copied. |
+| `workspace-failures.json` and Git measurements | The 18 original workspace-preparation failures and the measured object-copy amplification. The production clone fix and its storage regression remain outstanding. |
+| `final-reports/` | 35 historical authored reports with source paths in `final-report-sources.json`; these are not newly verified scientific results. |
+| Run summaries, sizes and source references | Preserve the observed inventory and historical citations without copying databases, checkpoints or private session repositories. These summaries cannot reproduce a complete run Oracle audit. |
+| `proposed-cleanup.json` | The exact approved 32 run roots and corresponding notification roots, retained directories, information lost and completed execution measurements. |
+
+The independent provider replay reproduces the original adapter 70 rejection
+on Git `2aa60b0` and adapter 71 acceptance on `d092130`. Both results match the
+existing original/fixed replay records. The accepted bill is 4,546,310 input
+plus 118,357 output, or **4,664,667 tokens**; this corrects the earlier prose
+arithmetic without changing the recorded result. The extracted evidence occupies
+about 6.6 MiB. Existing qualification logs, JUnit results and original failures
+stay in their existing `.local/qualification/` locations.
+
+After explicit owner approval, all **32 run roots and 32 notification roots**
+were deleted. A fresh read-only database census confirmed the terminal states,
+all 2,494 Agent and 305 Process Attempts closed, and no control sockets; separate
+systemd inspection found no research Host units or entries in the research slice.
+The deletion used the exact reviewed paths. The three institutional-preparation
+directories outside that list remain. The shared GPU pool stayed active, and
+qualification/analysis evidence, Profiles, configuration, credentials, Claude
+session storage and the project Git repository remain in place.
+
+Post-deletion inspection finds no selected paths left, all 35 extracted reports
+present, and the independent provider replay still matching its pre-deletion
+result. Settled filesystem observations show about **923.02 GiB released**,
+project allocation reduced to **12.97 GiB**, and volume usage reduced from
+**100% to 74%**. The four documentation checks pass. Earlier sections describe
+their original observations; references to the retired run roots are historical
+citations, not claims that the complete raw runs remain available.
+
+The current code baseline still has the final-environment qualification gaps
+listed below. This extraction does not rerun full G1, native Host/GPU or paid
+canaries, and does not promote the candidate. The retired cohort's full G2 replay
+is now unavailable; removal or summary replay does not count as a G2 pass. Future
+retained qualification samples should exercise bounded current-version Host/Process
+closure under the existing G0–G5 rules. Existing security, publication and
+irreversible-operation controls remain unchanged.
+
 ## Mixed usage accounting and temporary provider failures (2026-10-08)
 
 The [repair design](design/context-management-and-recovery.md) addresses the
 latest Grounding rejection on base `2aa60b0`. Read-only replay of the retained
 CLI output fails with the original adapter's `invalid_provider_metadata` and
 succeeds with adapter `claude-code-bwrap/71`: **4,546,310 input +118,357 output
-=4,666,667 tokens**, with the original reported cost. The complete model ledger
+=4,664,667 tokens**, with the original reported cost. The complete model ledger
 matches the wire categories; outer usage omitted compaction and repeated an
 earlier input, moving uncached and cached counts in opposite directions.
 The subsequent HTTP 500 is now classified as temporary service unavailability.

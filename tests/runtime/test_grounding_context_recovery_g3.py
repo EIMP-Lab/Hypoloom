@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from hypoloom.agent_aci import with_output_digest
+from hypoloom.claude_agent_host import _output_schema
 from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
 from hypoloom.oracle import Oracle
@@ -65,6 +66,8 @@ class _DiscoveryScenario(_AcceptanceScenario):
                 self.recovered_draft = True
             if "repair_check" in results:
                 assert _REPAIRED in _result_text(results["repair_check"])
+            if "inspect_schema" in results:
+                assert json.loads(_result_text(results["inspect_schema"])) == _output_schema(request, tool_workspace=True)
         except AssertionError as exc:
             self.errors.append(str(exc))
         return len(self.requests)
@@ -84,22 +87,27 @@ class _DiscoveryScenario(_AcceptanceScenario):
                 sample = {"suites": {name: {"candidate": "smoke", "labels": [0, 1, 0, 1],
                     "predictions": [0, 0, 0, 0]} for name in ("suite_one", "suite_two")}}
                 return (("draft_notes", "Write", {"file_path": "/acceptance/WORK_NOTES.md",
-                    "content": "Both suites use four labels. Interface discovery complete; next: repair denominator in evaluate.py; run --self-test.\n"}),
-                    ("draft_smoke", "Write", {"file_path": "/acceptance/smoke/predictions.json", "content": json.dumps(sample)}))
+                    "content": "Both suites use four labels. Interface discovery complete; next: repair denominator in evaluate.py; run work/test_parser.py.\n"}),
+                    ("draft_smoke", "Write", {"file_path": "/acceptance/smoke/predictions.json", "content": json.dumps(sample)}),
+                    ("draft_helper", "Write", {"file_path": "/acceptance/work/test_parser.py",
+                        "content": "import runpy, sys\nsys.argv = ['evaluate.py', '--self-test']\nrunpy.run_path('/acceptance/evaluate.py', run_name='__main__')\n"}),
+                    ("draft_candidate", "Write", {"file_path": "/acceptance/work/scientific-draft.json",
+                        "content": json.dumps(self.responses[request.attempt_id].typed_candidate)}))
             if step == self.discovery_count + 3:
-                return (("discovery_failure", "Bash", {"command": "python3 /acceptance/evaluate.py --self-test", "timeout": 10000}),)
+                return (("discovery_failure", "Bash", {"command": "python3 /acceptance/work/test_parser.py", "timeout": 10000}),)
             raise AssertionError("first exploration should close at the injected capacity boundary")
         assert len(self.grounding_attempts) == 2
         if step == 1:
             return (("inspect_retained", "Bash", {"command":
-                "cat /acceptance/WORK_NOTES.md && test -f /acceptance/smoke/predictions.json && grep 'denominator =' /acceptance/evaluate.py && echo DRAFT_RETAINED",
+                "cat /acceptance/WORK_NOTES.md && test -f /acceptance/smoke/predictions.json && test -f /acceptance/work/scientific-draft.json && grep 'denominator =' /acceptance/evaluate.py && echo DRAFT_RETAINED",
                 "timeout": 10000}),
-                ("read_retained", "Read", {"file_path": "/acceptance/evaluate.py"}))
+                ("read_retained", "Read", {"file_path": "/acceptance/evaluate.py"}),
+                ("inspect_schema", "Bash", {"command": "cat /runtime/output-schema.json", "timeout": 10000}))
         if step == 2:
             return (("repair_retained", "Edit", {"file_path": "/acceptance/evaluate.py",
                 "old_string": "denominator = len(rows['labels']) + 1", "new_string": "denominator = len(rows['labels'])"}),)
         if step == 3:
-            return (("repair_check", "Bash", {"command": "python3 /acceptance/evaluate.py --self-test", "timeout": 10000}),)
+            return (("repair_check", "Bash", {"command": "python3 /acceptance/work/test_parser.py", "timeout": 10000}),)
         return self._structured(request)
 
 
@@ -165,6 +173,8 @@ def test_native_long_grounding_rebuild_inspects_draft_then_closes_cpu_goal(tmp_p
             assert "/acceptance/evaluate.py" in json.dumps(continuation)
             assert _BROKEN in json.dumps(continuation)
             assert "WORK_NOTES.md" in json.dumps(continuation)
+            assert "/acceptance/work/test_parser.py" in json.dumps(continuation)
+            assert "/acceptance/work/scientific-draft.json" in json.dumps(continuation)
             first_exchanges = read_exchanges(tmp_path / "state/diagnostics/agents" / _RUN / injected[0] / "provider")
             # Reproduces the old byte-as-token false-positive shape. The complete
             # synthetic usage anchor allows a large wire request before injection.

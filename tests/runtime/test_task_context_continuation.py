@@ -282,12 +282,37 @@ def test_rich_recovery_preserves_sources_ranges_checks_error_and_redacts_credent
     assert "do-not-expose" not in encoded and "unrelated secret" not in encoded
 
 
+def test_rich_recovery_retains_recent_success_instead_of_early_discovery():
+    operations = [("Read", {"file_path": f"/workspace/discovery-{i}"}, "old exploration", False)
+        for i in range(16)]
+    operations += [("Bash", {"command": "python /acceptance/work/test_parser.py"}, "50 scientific checks passed", False)]
+    operations += [("Edit", {"file_path": f"/acceptance/draft-{i}"}, "draft updated", False) for i in range(4)]
+    operations += [("Bash", {"command": "python inspect_schema.py"}, "missing content", True)]
+    operations += [("Read", {"file_path": f"/acceptance/recent-{i}"}, "recent interface", False) for i in range(5)]
+    rows = []
+    for index, (tool, arguments, output, failed) in enumerate(operations):
+        rows.extend([
+            {"sessionId": "own", "message": {"content": [{"type": "tool_use", "id": str(index), "name": tool, "input": arguments}]}},
+            {"sessionId": "own", "message": {"content": [{"type": "tool_result", "tool_use_id": str(index), "content": output, "is_error": failed}]}}])
+    notes = recovery_tool_notes(b"\n".join(json.dumps(row).encode() for row in rows), "own", rich=True)
+    assert len(notes) <= 12
+    assert any(item["excerpt"] == "50 scientific checks passed" for item in notes)
+    assert any(item["excerpt"] == "missing content" and item["is_error"] for item in notes)
+    assert any("/acceptance/recent-0" in item["input_excerpt"] for item in notes)
+    assert sum(item["excerpt"] == "old exploration" for item in notes) == 1
+    assert [int(item["tool_use_id"]) for item in notes] == sorted(int(item["tool_use_id"]) for item in notes)
+
+
 def test_grounding_retry_keeps_acceptance_drafts_and_remounts_published_papers(tmp_path):
     manager = _manager(tmp_path)
     request = replace(acceptance_exchange()[0], schema_version=25, required_adapter_version="claude-code-bwrap/63")
     first = manager.prepare(request, None)
     (first.acceptance_root / "evaluate.py").write_text("print('unfinished evaluator')\n")
     (first.acceptance_root / "progress.md").write_text("Confirmed input interface; next check empty predictions.\n")
+    (first.acceptance_root / "work").mkdir()
+    helper = b"print('retained scientific tests')\n"
+    (first.acceptance_root / "work/test_parser.py").write_bytes(helper)
+    (first.acceptance_root / "work/final.json").write_text('{"draft":true}\n')
     first.papers = PaperWorkspace(manager.state_root / "paper-staging", request)
     source = first.papers.add({"content": b"exact-paper", "media_type": "text/plain", "pages": ("Methods: causal prefix",)},
         source_ref=request.attempt_id + ":web-document-1", acquisition=request.attempt_id)
@@ -303,7 +328,12 @@ def test_grounding_retry_keeps_acceptance_drafts_and_remounts_published_papers(t
     assert second.papers.sources[0]["archive_attempt_id"] == request.attempt_id
     assert (second.papers.archive_mounts["source-0001"] / "pages.txt").read_text().find("causal prefix") >= 0
     notes = continuation_observation(manager.publisher, prior, second)
-    assert {item["path"] for item in notes["available_drafts"]} == {"/acceptance/evaluate.py", "/acceptance/progress.md"}
+    assert {item["path"] for item in notes["available_drafts"]} == {
+        "/acceptance/evaluate.py", "/acceptance/progress.md", "/acceptance/work/test_parser.py", "/acceptance/work/final.json"}
+    assert (second.acceptance_root / "work/test_parser.py").read_bytes() == helper
+    assert (second.acceptance_root / "work/final.json").read_text() == '{"draft":true}\n'
+    captured = second.capture_workspace(candidate=acceptance_exchange()[1].typed_candidate)
+    assert {item["path"] for item in captured} == {"evaluate.py"}
     assert notes["session_action"] == "reconstruct_task"
     assert "accepted" in notes["authority"]
     second.papers.close()
