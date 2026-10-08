@@ -114,6 +114,20 @@ read-only links, and the operator actions.
 
 ## 🚀 Start here
 
+### Write a Profile
+
+A Profile consists of six YAML files (goal, experts, methodology, language,
+notify and safety). Use the templates as a guide and obtain API keys by
+registering on the respective providers' official websites. Fill literature
+keys and notification tokens directly in the private Profile, keeping files
+mode 0600; no separate env is required. Admission strips plaintext secrets
+from the run contract and Agent inputs, and only the Host reads the original
+YAML. Keep public templates blank and do not pass secrets through `--set` or
+chat. The full construction rules are in [profiles/README](profiles/README.md)
+and [SETUP](SETUP.md).
+
+### Set up the environment
+
 Use Linux with bubblewrap, Git and a current Claude Code CLI. The pinned
 [environment.yml](environment.yml) supplies Python 3.12 and a suitable SQLite;
 GPU experiments use a separately selected CUDA environment.
@@ -124,33 +138,14 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,de
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
-Open Claude Code in this checkout and use `/autoresearch init`. Select a local
+### Run Hypoloom
+
+Open Claude Code in the project and use `/autoresearch init`. Select a local
 Profile or a bilingual template, review the target/data paths, exact model,
 credentials, budgets and CPU/GPU allocation, then choose **Prepare only** or
 **Start now**. The latter uses the tracked `manage_host.py` helper and
 user-systemd to start a Host, verify `control.sock`, create the reviewed run and
 return status in the same interaction. No CLI `init` subcommand is required.
-
-| Configuration entry | Location |
-|---|---|
-| Private credential setup | [config/README.md](config/README.md) |
-| Credential fields | Included as empty fields in the six-file Profile templates |
-| Your private keys/tokens | `profiles/local/<name>/methodology.yaml` and `notify.yaml` (0600, Git-ignored) |
-| Topic templates / your Profiles | `profiles/templates/` / `profiles/local/<name>/` |
-
-Init previews filled template values through the existing validator before
-writing. The `hypoloom.bootstrap` helper derives launch arguments and performs
-the managed sequence; model choices do not change the required checks.
-
-A Profile is six YAML files (goal, experts, methodology, language, notify and
-safety); init previews your model selector and target/data/runtime bindings,
-then writes the reviewed files into a new `profiles/local/<name>` without
-overwriting existing Profiles. Fill literature keys and notification tokens
-directly in the private Profile, keeping files mode 0600; no separate env is
-required. Admission strips values before persistence or Agent inputs, and only
-Host consumers read the original YAML. Keep public templates blank and do not
-pass secrets through `--set` or chat. The full construction rules are in
-[profiles/README](profiles/README.md) and [SETUP](SETUP.md).
 
 The default Run ID is `<profile>-<YYYYMMDDHHMM>` and Request ID is that identity
 plus `-create-1`; state roots are unique. Model authentication requires a pinned

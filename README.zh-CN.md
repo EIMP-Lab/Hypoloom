@@ -98,6 +98,15 @@ Agent 及其上下文相对预算的用量、观测 token 与该专家的可靠�
 
 ## 🚀 快速开始
 
+### 撰写profile
+Profile 由六个 YAML 文件组成(goal、experts、methodology、language、notify、
+safety)参照模板撰写，秘钥在对应官网注册获取。文献密钥和通知 token 直接填写在
+私有 Profile 中，保持文件权限 0600，无需维护单独 env。准入会剥离明文，不进入
+运行契约或 Agent 输入，只有 Host 读取原 YAML。公开模板保持空白，真实值不通过
+`--set` 或对话传递。完整构建规则见
+[profiles/README](profiles/README.md) 与 [SETUP](SETUP.zh-CN.md)。
+
+### 配置环境
 需要 Linux、bubblewrap、Git 与当前的 Claude Code CLI。固定的
 [environment.yml](environment.yml) 提供 Python 3.12 与合适的 SQLite;GPU 实验使用
 单独选择的 CUDA 环境。
@@ -108,30 +117,12 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,de
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
-在本检出中打开 Claude Code 并使用 `/autoresearch init`。选择本地 Profile 或双语
+### 运行Hypoloom
+在项目中打开 Claude Code 并使用 `/autoresearch init`。选择本地 Profile 或双语
 模板,审查目标/数据路径、确切模型、凭据、预算与 CPU/GPU 分配,然后选择
 **Prepare only** 或 **Start now**。后者使用受跟踪的 `manage_host.py` 助手与
 user-systemd 启动 Host、验证 `control.sock`、创建已审查的运行,并在同一会话中返回
 状态,无需 CLI `init` 子命令。
-
-| 配置入口 | 位置 |
-|---|---|
-| 个人凭据配置说明 | [config/README.md](config/README.md) |
-| 凭据空白字段 | 已包含在六文件 Profile 模板中 |
-| 私有密钥及 token | `profiles/local/<name>/methodology.yaml` 和 `notify.yaml`（0600、Git 忽略） |
-| 课题模板 / 本地 Profile | `profiles/templates/` / `profiles/local/<name>/` |
-
-init 会先在内存中填写模板并复用既有校验器检查，再写入新 Profile。
-`hypoloom.bootstrap` 辅助程序统一生成启动参数、执行托管启动顺序；更换基模
-不会改变这些必要检查。
-
-Profile 由六个 YAML 文件组成(goal、experts、methodology、language、notify、
-safety);init 先预览模型选择器与目标/数据/运行时路径的绑定，确认后写入新的
-`profiles/local/<name>`，且拒绝覆盖已有 Profile。文献密钥和通知 token 直接填写在
-私有 Profile 中，保持文件权限 0600，无需维护单独 env。准入会剥离明文，不进入
-运行契约或 Agent 输入，只有 Host 读取原 YAML。公开模板保持空白，真实值不通过
-`--set` 或对话传递。完整构建规则见
-[profiles/README](profiles/README.md) 与 [SETUP](SETUP.zh-CN.md)。
 
 默认 Run ID 为 `<profile>-<YYYYMMDDHHMM>`,
 Request ID 为该标识加 `-create-1`;状态根唯一。模型认证需要固定的精确选择器,以及
