@@ -100,3 +100,33 @@ def test_gpu_answer_authorizes_only_displayed_devices_and_detects_changed_invent
     result["checks"]["gpu_inventory"]["devices"].pop()
     bootstrap_questions.apply_answers(args, result, answer)
     assert args.gpu_device_uuid == ["GPU-a", "GPU-b"] and args.managed_pool
+
+
+@pytest.mark.parametrize("selected", ["configured-model", "replacement-model"])
+def test_model_selection_is_explicit_and_survives_next_inspect(selected, tmp_path):
+    args = bootstrap.build_parser().parse_args(["inspect", "--cpu-only"])
+    result = {"missing": ["claude_model"], "choices": {"claude_model": "configured-model"}}
+    question = bootstrap_questions.questions(args, result)[0][1]
+    assert "configured-model" in question["question"]
+    assert args.claude_model is None
+    bootstrap_questions.apply_answers(args, result, {question["question"]: selected})
+    result["missing"] = []
+    interaction = bootstrap_questions.interaction(args, result, tmp_path)
+    again = bootstrap.build_parser().parse_args(interaction["inspect_argv"][4:])
+    assert again.claude_model == selected
+
+
+def test_inspect_does_not_silently_accept_settings_model(checkout, capsys, monkeypatch):
+    repo, _ = checkout
+    monkeypatch.setattr(bootstrap_inspect, "_auth", lambda *a: {
+        "status": "ready", "auth_source": "settings", "settings_path": "/tmp/synthetic-settings.json",
+        "configured_default": {"claude_model": "configured-model"}})
+    monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
+    argv = ["inspect", "--repository", str(repo), "--cpu-only", "--offline", "--claude-executable", "/bin/true",
+        "--institutional-browser-mode", "off"]
+    assert bootstrap.main(argv) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert "claude_model" in result["missing"] and result["choices"]["claude_model"] == "configured-model"
+    assert any(q["header"] == "Base model" for q in result["interaction"]["questions"])
+    assert bootstrap.main([*argv, "--claude-model", "explicit-model"]) == 0
+    assert "claude_model" not in json.loads(capsys.readouterr().out)["missing"]

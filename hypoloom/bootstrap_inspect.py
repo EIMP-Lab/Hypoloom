@@ -163,8 +163,10 @@ def inspect(args, repository: Path) -> dict:
             if args.claude_executable: args.claude_executable = str(Path(args.claude_executable).resolve())
             if not args.claude_executable: missing.append("claude_executable")
             default = auth.get("configured_default") or {}
-            args.claude_model = args.claude_model or default.get("claude_model")
-            if not args.claude_model: missing.append("claude_model")
+            if not args.claude_model:
+                missing.append("claude_model")
+                if default.get("claude_model"):
+                    result.setdefault("choices", {})["claude_model"] = default["claude_model"]
             args.literature_adapter = "openalex"
     if args.allow_gpu and not args.gpu_device_uuid: missing.append("gpu_device_uuid")
     if args.allow_gpu and not (args.managed_pool or args.gpu_pool_socket):

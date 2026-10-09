@@ -25,6 +25,8 @@ def add_parser(subparsers):
     add_arguments(prepare, connection=True)
     prepare.add_argument("--credentials-file", help="existing private literature Profile or dotenv; secret values never belong in argv")
     prepare.add_argument("--literature-proxy-domain", action="append", default=[])
+    prepare.add_argument("--literature-default-route", choices=("direct", "auto", "proxy_only"))
+    prepare.add_argument("--literature-direct-domain", action="append", default=[])
     prepare.add_argument("--literature-pdf-fallback", choices=("semantic-scholar", "unpaywall"), default="semantic-scholar")
     prepare.add_argument("--unpaywall-email-file", help="existing contact-email file for the explicitly selected Unpaywall fallback")
     prepare.add_argument("--repository", help="checkout containing the server Compose configuration")

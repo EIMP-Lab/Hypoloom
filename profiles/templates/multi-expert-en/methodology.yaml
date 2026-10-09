@@ -6,6 +6,11 @@ literature:
   enabled: true
   tools: [web_search, web_fetch]
   max_sources: 8
+  default_route: direct  # No proxy required; optionally auto or proxy_only.
+  # Set proxy_url in your private Profile when needed; auto needs no domain list.
+  # proxy_url: "http://127.0.0.1:7890"
+  # proxy_domains: []  # Exact-host proxy-only overrides.
+  # direct_domains: [] # Exact-host direct-only overrides; no overlap allowed.
   # Fill only in your ignored local Profile (mode 0600), never in this template.
   # Host-only values: omitted from admitted contracts and Agent inputs.
   openalex_api_key: ""

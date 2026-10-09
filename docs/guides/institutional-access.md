@@ -93,6 +93,36 @@ destination IP and normal hostname TLS verification, so the proxy's domain rules
 may not select the intended node: test its exit configuration separately. All
 existing time, size, cancellation and private-address restrictions still apply.
 
+### Optional automatic routing
+
+Unconfigured users stay direct and need no VPN. Existing `proxy_domains` remain
+proxy-only, with other hosts direct. In the private `literature` section, set
+`default_route: auto` with `proxy_url` to use direct first and a configured proxy
+as a backup; no domain inventory is required. `default_route: proxy_only` sends
+all eligible literature requests through that endpoint. Exact `proxy_domains`
+and `direct_domains` override the default and must not overlap. No publisher is
+universally assigned a route. CLI equivalents are `--literature-default-route`
+and repeatable `--literature-direct-domain` / `--literature-proxy-domain`.
+
+Auto routing allows at most two paths under the original deadline, reserving half
+for the alternative. Only connection interruptions and TCP/TLS/header/body
+timeouts qualify. HTTP responses (including 403/429/5xx), authentication,
+challenges, TLS certificate/protocol errors, unsafe addresses and cancellation
+never rotate routes. Existing service recovery still applies. A successful proxy
+fallback is preferred for five minutes in this router's memory (256 hosts maximum);
+expiry/restart returns to direct-first. Proxy-only hosts never fall back direct.
+Local DNS and public-address validation remain necessary on both paths.
+
+Init displays literature policy separately from Telegram and browser settings.
+Agent search diagnostics and PDF download events retain safe route/duration/failure
+observations, never endpoints, keys or URL query strings. Missing older observations
+stay unknown; using a proxy does not establish its VPN exit or subscription rights.
+Changed policy/domain selections apply to new runs only.
+
+Expert MAIN coverage failures feed the exact consumed query and missing age strata
+back to bounded query planning, including after restart. Coverage repair, network
+availability and missing PDF handling remain separate; coverage checks are retained.
+
 ## Elsevier API
 
 ScienceDirect can use the official Article Retrieval API independently of the

@@ -85,7 +85,7 @@ def _model(v: _Validator, value: Mapping[str, Any], location: str) -> None:
 
 def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
     definitions = {
-        "literature": {"enabled", "tools", "max_sources", "credentials_file", "proxy_domains"},
+        "literature": {"enabled", "tools", "max_sources", "credentials_file", "proxy_domains", "direct_domains", "default_route"},
         "inner_loop": {"max_iterations_per_hypothesis", "repair_attempts"},
         "graph_evolution": {"enabled", "stagnation_rounds"},
         "memory": {"max_transcript_bytes", "max_plugin_bytes", "max_memory_bytes", "retention",
@@ -99,11 +99,14 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
         for key, item in selected.items():
             location = f"methodology.yaml.{section}.{key}"
             if key == "enabled": v.boolean(item, location)
-            elif key == "proxy_domains":
+            elif key in {"proxy_domains", "direct_domains"}:
                 from .literature_proxy import LiteratureProxyRouter
                 domains = v.strings(item, location)
                 try: LiteratureProxyRouter.validate_domains(tuple(domains))
                 except ValueError: v.error(location, "expected unique exact public HTTPS hostnames, without wildcards, ports or paths")
+            elif key == "default_route":
+                if item not in ("direct", "auto", "proxy_only"):
+                    v.error(location, "expected direct, auto or proxy_only")
             elif key == "tools":
                 if any(tool not in {"web_search", "web_fetch", "read_papers"} for tool in v.strings(item, location)):
                     v.error(location, "literature tools must be web_search, web_fetch or read_papers")
@@ -117,6 +120,12 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
                 if not PurePosixPath(text).is_absolute() or "\x00" in text:
                     v.error(location, "expected an absolute credentials file path, never a secret literal")
             else: v.number(item, location, integer=True, zero=key == "repair_attempts")
+        if section == "literature":
+            proxy = selected.get("proxy_domains", [])
+            direct = selected.get("direct_domains", [])
+            if (isinstance(proxy, list) and isinstance(direct, list)
+                    and {s.lower() for s in proxy if isinstance(s, str)} & {s.lower() for s in direct if isinstance(s, str)}):
+                v.error("methodology.yaml.literature", "direct_domains and proxy_domains must not overlap")
     interaction = v.object(value.get("interaction", {}), {"leader", "debate", "observer"}, "methodology.yaml.interaction")
     for section, fields in {"leader": {"enabled", "check_after", "min_rounds_before_leader"},
             "debate": {"enabled", "rounds", "min_interval_seconds", "min_new_outcomes"},

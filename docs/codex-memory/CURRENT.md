@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 9 follow-up: adapter 75 adds opt-in literature `auto` / `proxy_only`
+  default routing and exact direct overrides; unconfigured traffic stays direct
+  and old proxy-domain selections remain proxy-only. Auto routes share a deadline,
+  preserve TLS/public-address checks and never rotate on HTTP/auth/challenge errors.
+  Expert MAIN coverage loss now invalidates its exact consumed query plan and
+  repairs through existing bounded attempts, including after restart. Init asks
+  for an unspecified base model instead of silently adopting settings. Existing
+  Grounding methods add aggregate/detail contradiction controls; parser smoke is
+  still structural, not proof of arbitrary scientific correctness. Existing runs
+  and private profiles remain unchanged. 357 distinct focused/native checks pass;
+  two Host/CPU closures have 47 Agents/six Processes and no durable open Attempts.
+  Package/install/bundle match 193 files. Full G1 stops at local-socket EPERM
+  after 299 passes; the earlier parallel attempt was interrupted, no promotion.
+  Qualification is recorded in the
+  [follow-up evidence](../qualification.md#literature-routing-and-query-recovery-2026-10-09).
+
 - October 9 implementation: adapter 74 delivers invocation-local validated output
   and revalidates changed repeated Stop text. Current-experiment timing/performance
   references evolve through existing owner plugins; optional NVML diagnostics do

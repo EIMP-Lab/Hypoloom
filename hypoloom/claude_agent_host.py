@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/74"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/75"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -3439,6 +3439,9 @@ def _instruction(
             "fuzzy-search suffixes, filesystem or URL paths, Markdown, implementation "
             "identifiers, or prose instructions in query. Do not force a recent dataset, "
             "benchmark, model, or product name into every historical stratum. "
+            "If an input ending --literature-query-coverage-error or --grounding-query-coverage-error "
+            "is present, revise that exact failed query using its missing strata and diagnostic. "
+            "Preserve relevance; broaden methodological terminology without adding unrelated fields. "
             + ("Do not emit control instructions." if full_cc else
                "Do not use tools, network retrieval, files, slash commands, MCP, plugins, or emit control instructions.")
         )

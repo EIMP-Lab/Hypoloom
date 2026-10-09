@@ -554,6 +554,45 @@ separately rather than weakening unrelated assertions.
 
 ## Independent search and optional routing — 2026-10-05
 
+### Run-comparison repairs — 2026-10-09
+
+The retained October 8/9 comparison reproduces two independent failures: expert
+MAIN retrieval can lose age coverage after a successful/deferred query probe,
+and otherwise useful public downloads can fail on the user's direct route.
+The faster Grounding also omitted a task-specific aggregate/detail consistency
+check. Faster completion alone is not scientific qualification.
+
+Implementation scope:
+
+- Reuse the consumed query Attempt and MAIN failure to invalidate only that
+  expert/cycle's plan. Feed the actual missing coverage back to query planning,
+  with existing retry limits and restart reconstruction, as Grounding already
+  does. Network recovery remains distinct from scientific/query repair.
+- Keep unconfigured literature traffic direct and existing `proxy_domains`
+  proxy-only. Add an explicit default route (`direct`, `auto`, `proxy_only`)
+  and exact-domain direct overrides. `auto` tries direct then the user's proxy
+  only for transport failures, under one deadline. It never changes routes for
+  authentication, challenges, rate limits, certificate or URL validation errors.
+  Recent successful fallback routing may be reused briefly in memory; no durable
+  routing ledger, mandatory VPN, provider-specific assumptions or node rotation.
+- Keep proxy endpoints in the existing private credential source. Propagate only
+  policy through init/admission/Host/browser preparation. Record safe route
+  observations through existing transport/download diagnostics, including failed
+  attempts; a proxy connection does not establish its exit node or entitlement.
+- Make the existing init questions offer the configured model or an explicit
+  replacement, and summarize literature routing independently of Telegram.
+- Strengthen the existing Grounding skill's goal-derived scientific tests:
+  independently recompute aggregates, mutate contradictory redundant evidence,
+  and test both consistent and inconsistent controls. Preserve task generality
+  and the existing parser/Stop validator; do not add a metric schema or claim
+  structural smoke execution proves scientific correctness.
+
+Validation uses focused offline/fault-injection regressions, actual Host and
+CPU closure where the environment permits, and source/package parity. Existing
+runs and private profiles remain unchanged. No new authority, digest, checkpoint
+or acceptance gate is needed: existing Attempts, budget accounting, network
+deadlines, peer validation and ordinary regression tests own these boundaries.
+
 The remaining reproducible availability gap is OpenAlex-only keyword discovery:
 PDF fallbacks cannot help when no papers have been selected. Add anonymous Crossref
 keyword discovery after transient primary failures, within the same search deadline

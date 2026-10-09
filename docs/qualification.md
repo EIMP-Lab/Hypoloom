@@ -2,6 +2,68 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Literature routing and query recovery (2026-10-09)
+
+The [follow-up design](design/institutional-literature-access.md#run-comparison-repairs--2026-10-09)
+responds to the retained MiMo/Kimi comparison. Adapter 75 preserves default-direct
+and existing proxy-only domain selections, adding explicit `auto` / `proxy_only`
+defaults and exact direct overrides. Auto uses at most two routes under one
+deadline, with bounded five-minute in-memory preferences. HTTP responses,
+authentication, challenges, TLS errors, unsafe addresses and cancellation never
+switch routes. Existing source rereading, public-IP CONNECT and peer/TLS checks
+remain; safe route observations flow through ordinary retrieval diagnostics.
+
+Expert MAIN coverage failures now invalidate only their exact consumed plan,
+feeding actual missing strata to bounded query repair, including on restart.
+The Oracle joins each MAIN to its referenced successful plan and still checks
+owner/cycle, exact query bytes, prior completion and packet correspondence.
+Init explicitly asks for an unspecified model, retains explicit CLI selections
+and displays literature routing separately. Public templates stay direct.
+
+The Grounding method derives scientific tests from the goal, recomputes aggregates
+and mutates both detail and summary evidence. Generic isolated parser controls
+include consistent weighted aggregates and contradictory detail/report/weights.
+This improves the supplied method, not a universal guarantee about model-authored
+science. Historical generated evaluators and retained owner plugins are unchanged.
+No extra acceptance schema, durable route ledger or qualification gate is added.
+
+Evidence: `.local/qualification/literature-routing-20261009/`.
+
+- Focused implementation selection: **343 passed**. Final affected selection:
+  **192 passed**; their union is **348 distinct tests**, with no skips. They cover
+  route deadlines/cache expiry, metadata/PDF/Web transport, proxy/source privacy,
+  exact-host redirect/peer checks, profile/init/preparation argument propagation,
+  query repair/restart/exhaustion and Oracle causation, parser isolation, templates
+  and documentation. The original expert-repair test exposed the Oracle's old
+  single-plan assumption before the exact-reference join was corrected.
+- An earlier combined invocation had 82 passes and 34 setup errors because its
+  explicit `/var/tmp` mount fixture was read-only. The affected Host fixture now
+  uses a disposable checkout-local qualification directory outside sandbox `/tmp`;
+  no assertion, isolation or production path check was weakened.
+- Source, wheel, isolated install and fresh disposable bundle match **193 package
+  files**. Installed/bundled CLI and MCP help entry points pass; adapter is 75.
+  The active environment, private settings, research runs and browser/VPN/Telegram
+  configuration were not changed. No paid provider, public-network quality,
+  institutional SSO or GPU throughput claim is made.
+
+- **Nine native checks pass**, bringing the focused/native union to **357 distinct
+  passing tests**. Two real Claude Code/Host/Runner CPU closures independently
+  reconcile to **47 CLOSED/SUCCEEDED Agents, six CLOSED/SUCCEEDED Processes, six
+  canonical outcomes and two goal verdicts**, with zero durable open Attempts.
+  Their existing assertions also check process-group cleanup, actual reading,
+  downstream summary consumption, evaluator repair and final publication. The
+  additional two-invocation parser-feedback probe checks same-session recovery
+  and contradictory/missing evidence through the production parser boundary.
+  These use local scripted providers, not paid model-quality sampling.
+- **Full G1 remains environment-blocked.** The parallel invocation showed failures
+  and stopped making progress; it was interrupted (exit 130) without a final JUnit
+  report. The unchanged candidate's serial first-error diagnostic records **299
+  passed / one failed** in `g1-serial.xml`: creating the local HTTP fixture socket
+  in `test_analysis_candidate_recovery_g3` fails with `PermissionError: EPERM`
+  before any model invocation. This does not establish causes for every earlier
+  parallel failure, and is not a full G1 pass. Compilation, undefined-name checks
+  and diff checks pass. No G4/G5 or formal promotion is claimed.
+
 ## Experiment methods and expert skill library (2026-10-09)
 
 The [implementation](design/experiment-methods-and-skill-observation.md) uses the

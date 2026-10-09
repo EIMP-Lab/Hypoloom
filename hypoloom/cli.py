@@ -77,6 +77,10 @@ def _add_literature_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--literature-search-fallback", choices=("crossref", "none"), default="crossref")
     parser.add_argument("--literature-proxy-domain", action="append", default=[],
                         help="exact HTTPS hostname routed through private HYPOLOOM_LITERATURE_PROXY; default direct")
+    parser.add_argument("--literature-default-route", choices=("direct", "auto", "proxy_only"),
+                        help="default literature route; auto uses direct then configured proxy within one deadline")
+    parser.add_argument("--literature-direct-domain", action="append", default=[],
+                        help="exact literature HTTPS hostname that must remain direct")
     parser.add_argument("--unpaywall-email-file", help="existing contact-email file for explicitly selected Unpaywall PDF fallback")
     parser.add_argument("--literature-pdfinfo", default="/usr/bin/pdfinfo")
     parser.add_argument("--literature-pdftotext", default="/usr/bin/pdftotext")
@@ -105,6 +109,12 @@ def _profile_literature_source(args, report) -> None:
         if getattr(args, "literature_proxy_domain", None) and tuple(args.literature_proxy_domain) != tuple(domains):
             raise ValueError("literature proxy domains conflict with the Profile")
         args.literature_proxy_domain = list(domains)
+    for key, argument in (("direct_domains", "literature_direct_domain"), ("default_route", "literature_default_route")):
+        if key in settings:
+            current = getattr(args, argument, None)
+            if current and current != settings[key]:
+                raise ValueError("literature routing conflicts with the Profile")
+            setattr(args, argument, settings[key])
     source = settings.get("credentials_file")
     if source is None:
         return
@@ -115,7 +125,8 @@ def _profile_literature_source(args, report) -> None:
 
 def _literature_adapter(args: argparse.Namespace) -> object | None:
     if args.literature_adapter == "offline":
-        if getattr(args, "literature_proxy_domain", None):
+        if (getattr(args, "literature_proxy_domain", None) or getattr(args, "literature_direct_domain", None)
+                or getattr(args, "literature_default_route", None) not in (None, "direct")):
             raise ValueError("literature proxy routing requires the online literature adapter")
         if args.literature_pdf_fallback != "semantic-scholar" or args.unpaywall_email_file is not None:
             raise ValueError("Unpaywall requires --literature-adapter openalex and explicit PDF fallback selection")

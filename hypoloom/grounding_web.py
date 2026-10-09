@@ -13,6 +13,7 @@ import base64
 import ipaddress
 import re
 import socket
+import ssl
 import time
 from contextlib import nullcontext
 from html.parser import HTMLParser
@@ -27,12 +28,13 @@ from .literature_proxy import LiteratureProxyRouter, connect_tunnel, validate_re
 
 class GroundingWebError(ValueError):
     def __init__(self, code: str, message: str, *, http_status: int | None = None,
-                 transport_phase: str | None = None, received_bytes: int = 0) -> None:
+                 transport_phase: str | None = None, received_bytes: int = 0, network_routes: tuple = ()) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.http_status = http_status
         self.transport_phase = transport_phase
         self.received_bytes = received_bytes
+        self.network_routes = network_routes
 
 
 class WebTransport(Protocol):
@@ -71,11 +73,12 @@ class PublicHttpsTransport:
         timeout = self.timeout_seconds if timeout_seconds is None else min(self.timeout_seconds, timeout_seconds)
         deadline = time.monotonic() + max(0, timeout)
         try:
-            result = run_network_operation("hypoloom.grounding_web:_fetch_in_process",
-                {"uri": canonical, "approved_addresses": list(approved_addresses), "max_bytes": max_bytes,
-                 "headers": self.request_headers(canonical), "deadline": deadline,
-                 "proxy_url": None if self.proxy_router is None else self.proxy_router.for_url(canonical)},
-                deadline=deadline, max_output_bytes=(max_bytes * 4 // 3) + 65536, cancel_event=cancel_event)
+            def call(proxy_url, route_deadline):
+                return run_network_operation("hypoloom.grounding_web:_fetch_in_process",
+                    {"uri": canonical, "approved_addresses": list(approved_addresses), "max_bytes": max_bytes,
+                     "headers": self.request_headers(canonical), "deadline": route_deadline, "proxy_url": proxy_url},
+                    deadline=route_deadline, max_output_bytes=(max_bytes * 4 // 3) + 65536, cancel_event=cancel_event)
+            result = (self.proxy_router or LiteratureProxyRouter()).request(canonical, call, deadline=deadline)
         except NetworkOperationError as error:
             raise _network_error(error) from None
         return _fetch_response(result)
@@ -188,6 +191,11 @@ class PublicHttpsTransport:
                 "retry_after": response.getheader("Retry-After"), "proxy_tunnel_address": tunnel_address}
         except (TimeoutError, socket.timeout) as exc:
             raise timed_out() from exc
+        except ssl.SSLError:
+            raise GroundingWebError("tls_error", "TLS verification or protocol failed", transport_phase=phase) from None
+        except (OSError, http.client.RemoteDisconnected, http.client.IncompleteRead):
+            raise GroundingWebError("connection_failed", "web connection interrupted",
+                transport_phase=phase, received_bytes=size, http_status=status) from None
         finally:
             connection.close()
 
@@ -195,14 +203,14 @@ class PublicHttpsTransport:
 def _network_error(error: NetworkOperationError, *, phase: str | None = None) -> GroundingWebError:
     return GroundingWebError(error.code, "web network operation ended",
         http_status=error.http_status, transport_phase=error.transport_phase or phase,
-        received_bytes=error.received_bytes)
+        received_bytes=error.received_bytes, network_routes=getattr(error, "network_routes", ()))
 
 
 def _fetch_response(value: dict[str, Any]) -> FetchResponse:
     return FetchResponse(requested_uri=value["requested_uri"], status_code=value["status_code"],
         peer_address=value["peer_address"], media_type=value["media_type"], content_length=value["content_length"],
         location=value["location"], body=base64.b64decode(value["body_b64"], validate=True),
-        proxy_tunnel_address=value.get("proxy_tunnel_address"))
+        proxy_tunnel_address=value.get("proxy_tunnel_address"), network_routes=value.get("network_routes", ()))
 
 
 def _resolve_in_process(payload: dict[str, Any]) -> dict[str, Any]:
@@ -383,7 +391,7 @@ class GroundingWeb:
                     raise GroundingWebError("transport_failed", "web response does not bind its requested URL")
                 router = getattr(self.transport, "proxy_router", None)
                 validate_response_peer(response, addresses,
-                    proxy_expected=router is not None and router.routes(uri))
+                    proxy_expected=False if router is None else router.peer_policy(uri))
                 if self.clock() >= deadline:
                     raise GroundingWebError("timed_out", "web work window expired")
                 if len(response.body) > self.max_response_bytes:

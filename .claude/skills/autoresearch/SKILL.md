@@ -92,6 +92,11 @@ for an explicit CPU choice; `--nonpooled` selects nonpooled GPU scheduling.
 Explicit external endpoints use the existing `--gpu-pool-socket`, namespace
 and server-UID options. None of these modes is a silent fallback.
 
+Do not copy a settings-file model into `--claude-model` as if the user selected it.
+When no model has been explicitly chosen, inspect emits the fixed base-model
+question. Pass its answer through the ordinary answer-file flow; selecting a
+different model does not change the provider credentials or settings file.
+
 Inspection discovers paths, authentication/model defaults, the project pool,
 GPU inventory and supervisor readiness. It admits the selected Profile and
 validates complete launch choices with the existing validators. It performs

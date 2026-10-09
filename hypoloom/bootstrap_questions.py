@@ -56,6 +56,11 @@ def questions(args, result):
         if options:
             add("profile", f"Choose a Profile ({', '.join(profiles) or 'none'}). New options use name {name}; for another name enter name from template ({', '.join(templates)}).",
                 f"选择 Profile（{', '.join(profiles) or '暂无'}）。新建选项使用名称 {name}；其他名称请输入 名称 from 模板（{', '.join(templates)}）。", "Profile", options)
+    if "claude_model" in missing and (model := result.get("choices", {}).get("claude_model")):
+        add("claude_model", f"Which base model should this run use? Configured default: {model}. Select it or enter another exact model ID supported by this provider. Profile role overrides remain effective.",
+            f"本次运行使用哪个基模？当前配置为 {model}。可沿用，或直接输入当前供应商支持的其他准确模型 ID；Profile 中的角色覆盖仍然生效。", "Base model", [
+            (model, model, model, "Use the displayed configured model", "沿用当前配置的模型"),
+            ("Cancel", "取消", None, "Stop initialization", "停止初始化")])
     if "execution_mode" in missing:
         add("execution_mode", "Which compute resources may this run use?", "本次运行允许使用哪些计算资源？", "Compute", [
             ("CPU only", "仅 CPU", False, "Do not allocate GPUs", "不分配 GPU"),
@@ -78,7 +83,7 @@ def questions(args, result):
         add("gpu_scheduling_mode", "How should the authorized GPUs be scheduled?", "如何调度已授权的 GPU？", "Scheduling", [
             ("Managed shared pool", "托管共享池", "managed", "Review this project's shared pool", "检查本项目共享池"),
             ("Nonpooled", "不使用共享池", "nonpooled", "Explicit nonpooled allocation", "明确使用非池化分配")])
-    # Missing credentials/executable/model are actionable configuration problems,
+    # Missing credentials/executable/default model are configuration problems,
     # not secrets or paths to collect through multiple-choice guesses.
     return rows[:4]
 
@@ -119,6 +124,11 @@ def apply_answers(args, result, response):
                 if not separator or template not in result["paths"]["profile_templates"]:
                     raise ValueError("select an existing Profile or enter: new-name from template-name")
                 changes.update(profile=name, template=template)
+        elif field == "claude_model":
+            if value is None: raise ValueError("initialization cancelled; no run was created")
+            if not isinstance(value, str) or len(value) > 256 or any(c.isspace() or ord(c) < 33 for c in value):
+                raise ValueError("enter one exact model ID supported by the configured provider")
+            changes[field] = value
         elif field == "execution_mode":
             if not isinstance(value, bool): raise ValueError("choose a displayed compute mode")
             changes["allow_gpu"] = value

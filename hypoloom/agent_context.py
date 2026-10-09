@@ -1323,6 +1323,23 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             plan, query = host._expert_literature_query(plan_task, "literature MAIN lacks a successful query plan", "stored literature query plan is invalid")
             ref = f"{plan['attempt_id']}--literature-query"
         inputs.append(EmbeddedInput.from_bytes(ref, LITERATURE_PACKET_MEDIA_TYPE, canonical_json(query.to_dict())))
+        if task.key.subkind is ResearchNodeSubkind.QUERY_PLAN:
+            prior_plan = next((row for row in reversed(host._expert_attempts(task))
+                if row["terminal_reason"] == "SUCCEEDED"), None)
+            gap = None if prior_plan is None else host._literature_query_gap(task, prior_plan)
+            if gap is not None:
+                observation = json.loads(gap["observation_json"])
+                prior_request = AgentRequest.from_dict(observation["request"])
+                query_input = next(item for item in prior_request.input_artifacts
+                    if item.ref == f"{prior_plan['attempt_id']}--literature-query")
+                inputs.append(EmbeddedInput.from_bytes(f"{gap['attempt_id']}--literature-query-coverage-error",
+                    "application/json", canonical_json({"source_attempt_id": gap["attempt_id"],
+                        "query_plan_attempt_id": prior_plan["attempt_id"],
+                        "rejected_query": json.loads(query_input.content_bytes()),
+                        "failure_code": observation["failure_code"],
+                        "missing_strata": observation.get("literature_missing_strata", []),
+                        "diagnostic": observation.get("literature_diagnostic"),
+                        "instruction": "Revise this query to cover the missing strata before literature retrieval. Preserve the scientific topic and use broader methodological terms where necessary."})))
     if isinstance(task, ResearchNodeTask) and task.key.node_kind in {ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT, ResearchNodeKind.EXPERIMENT_EXECUTION}:
         if method_family_id is None: raise OperationalHalt("design node lacks a selected method family")
         config["required_experiment_spec"] = {"evaluator_version": OUTCOME_ADAPTER_VERSION,

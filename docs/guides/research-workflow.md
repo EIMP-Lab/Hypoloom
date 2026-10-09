@@ -63,6 +63,16 @@ not submission. Grounding tool calls can receive an advisory during the last
 for Stop corrections. It cannot interrupt a long model response or extend the
 deadline. This skill does not change context limits or add paid summarization.
 
+When evidence contains both details and an aggregate, independently recompute
+using the goal's population and weights. If both representations are required,
+test their agreement: reported 0.70 with all contributing observations 0.10 must
+not qualify. Mutate each side separately and keep consistent positive controls;
+assert the relevant check or recomputed measurement changes. Field presence and
+positive fixtures alone are insufficient. Keep executable tests in
+`/acceptance/work/` and actual commands/relationships in existing work notes.
+This is an evolvable Grounding method, not a universal metric format or a promise
+that structural smoke validation proves scientific correctness.
+
 ## Incomplete component comparisons
 
 For Profile-owned component-result protocols, an optional condition can distinguish

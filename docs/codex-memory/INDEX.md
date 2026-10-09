@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Literature routing and query recovery](../qualification.md#literature-routing-and-query-recovery-2026-10-09):
+  opt-in automatic routing, exact direct/proxy overrides, actual route diagnostics,
+  bounded expert query repair, explicit init model choice and Grounding semantic
+  counterexamples. [Design](../design/institutional-literature-access.md#run-comparison-repairs--2026-10-09)
+  / [configuration](../guides/institutional-access.zh-CN.md#检索后备与可选服务器代理).
+
 - [Experiment methods and skill observation](../design/experiment-methods-and-skill-observation.md):
   invocation-file output handoff, current-design performance methods, owner-local
   skill evolution, optional device telemetry and Web usage/evolution projections.

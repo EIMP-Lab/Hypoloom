@@ -36,6 +36,11 @@ def render(args, result, summary):
         "Notification checks are local configuration checks only; delivery is unverified. No test message is sent.",
         "Telegram is outbound-only. Interactive grounding waits for an answer and continues consuming the run wall-clock budget.",
         value("Literature preflight", result.get("literature_preflight")),
+        value("Literature routing (independent of Telegram/browser)", {
+            "default_route": getattr(args, "literature_default_route", None) or "direct",
+            "proxy_only_domains": getattr(args, "literature_proxy_domain", []),
+            "direct_domains": getattr(args, "literature_direct_domain", [])}),
+        "Literature auto routing uses a configured proxy only after eligible network failures; routes are not connectivity or subscription guarantees.",
         value("Literature arguments (paths only; no credential contents)", _literature_arguments(args)),
         value("Institutional routing", effective["institutional_access"]),
         render_results(summary["preparation_summary"], summary["provider_modes"]),

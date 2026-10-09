@@ -222,8 +222,10 @@ class CrossrefSearch:
         self._clock = clock
         self._next_request_at = 0.0
         self._retry_at = 0.0
+        self.network_routes = []
 
     def search(self, query, *, deadline, cancel_event=None) -> tuple[SearchPaper, ...]:
+        self.network_routes = []
         if not isinstance(query, LiteratureQuery):
             raise LiteratureQueryError('Crossref search requires a LiteratureQuery')
         if isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline):
@@ -289,13 +291,15 @@ class CrossrefSearch:
                     cancel_event=cancel_event, proxy_router=self._proxy_router)
             else:
                 result = self._transport.get(**arguments)
-        except LiteratureError:
+        except LiteratureError as exc:
+            self.network_routes.extend(exc.network_routes[:max(0, 128-len(self.network_routes))])
             raise
         except Exception:
             raise LiteratureFetchError('Crossref metadata transport failed') from None
         self._remaining(deadline, cancel_event)
         if not isinstance(result, OpenAlexResponse):
             raise LiteratureFetchError('Crossref response is invalid')
+        self.network_routes.extend(result.network_routes[:max(0, 128-len(self.network_routes))])
         if result.status_code != 200:
             from .provider_observation import retry_after_seconds
             delay = retry_after_seconds(result.retry_after, now=time.time())

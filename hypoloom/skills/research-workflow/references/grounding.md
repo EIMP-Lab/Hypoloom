@@ -23,6 +23,31 @@ need tests. Derive checks from raw evidence rather than a producer's passed flag
 Test identities and configuration contents when required, not just row counts
 or file existence. Do not assume classification, particular seeds or a layout.
 
+Start the scientific tests from the goal and evidence relationships, before
+choosing the parser implementation. When both details and an aggregate are
+provided, independently recompute the aggregate from the required underlying
+observations, weights and population. Use explicit, justified numeric tolerances.
+Do not accept two individually well-formed but contradictory representations.
+Avoid requiring redundant producer fields when one existing evidence source is
+sufficient; if the task requires both, check their agreement.
+
+For example, a reported mean of 0.70 with every contributing observation equal
+to 0.10 must not qualify merely because 0.70 exceeds the target. Pair this negative
+case with a consistent control, using the same declared parser files and raw
+interface. Mutate each side separately: inconsistent detail must trigger the
+relevant validity check or change the recomputed measurement; an unsupported
+producer aggregate must never remain the accepted measurement. Also test missing
+and duplicate observations, task-required group/weight correspondence and
+aggregation order when relevant. These are examples of general evidence
+relationships, not a required metric, data schema or new acceptance format.
+
+Keep executable scientific tests/fixture helpers under /acceptance/work/ so
+context recovery can rerun them. Record concise tested relationships and actual
+commands in WORK_NOTES.md; reference them from the existing Grounding summary.
+Do not treat self-written positive fixtures, a shorter parser, fewer model calls
+or a successful structural smoke test as proof that the scientific conditions
+were checked. Preserve these invariants when evolving this method.
+
 Use the exact parser interface and smoke locations in the runtime instruction.
 The native Stop hook already checks final JSON and runs the declared parser in
 production isolation. Inspect /runtime/output-schema.json directly when needed;

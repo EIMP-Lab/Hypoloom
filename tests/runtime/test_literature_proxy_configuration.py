@@ -171,3 +171,53 @@ def test_proxy_endpoint_cannot_be_put_in_bootstrap_set(checkout, capsys):
     output = capsys.readouterr()
     assert PROXY not in output.err + output.out
     assert "private Profile" in output.err
+
+
+@pytest.mark.parametrize("mode", ["auto", "proxy_only"])
+def test_default_route_and_direct_overrides_survive_profile_launch_and_preparation(checkout, capsys, mode):
+    root, path = _profile(checkout, capsys, domains=["required.example.org"])
+    content = yaml.safe_load(path.read_text())
+    content["literature"].update(default_route=mode, direct_domains=["direct.example.org"])
+    path.write_text(yaml.safe_dump(content))
+    report = admit_profile(root, run_id="auto-routing")
+    assert report.admitted, report.to_dict()
+    argv = [*arguments(checkout[0], [], "launch", template=None),
+        "--literature-adapter", "openalex", "--institutional-browser-mode", "client",
+        "--institutional-prepare-provider", "IEEE"]
+    assert bootstrap.main(argv) == 0
+    raw = capsys.readouterr().out
+    assert PROXY not in raw
+    result = json.loads(raw)
+    commands = [result["commands"][key] for key in ("host_start", "profile_check", "start")]
+    commands.append(result["effective_configuration"]["institutional_preparation_argv"])
+    for command in commands:
+        assert command[command.index("--literature-default-route")+1] == mode
+        assert command[command.index("--literature-direct-domain")+1] == "direct.example.org"
+    args = cli.build_parser().parse_args(commands[-1][3:])
+    retry = _remaining_command(args, ["IEEE"], {"IEEE": "auto"})
+    router = proxy_router_from_args(cli.build_parser().parse_args(retry[4:]))
+    assert router.policy("https://required.example.org") == "proxy_only"
+    assert router.policy("https://direct.example.org") == "direct"
+    assert router.policy("https://unknown.example.org") == mode
+
+
+def test_auto_with_endpoint_needs_no_user_domain_inventory(tmp_path):
+    args = _args(_private(tmp_path))
+    args.literature_default_route = "auto"
+    router = cli._literature_adapter(args).fetcher._proxy_router
+    assert router.policy("https://arxiv.org") == "auto"
+    assert router.configuration["proxy_domains"] == []
+    args.literature_direct_domain = ["arxiv.org"]
+    args.literature_proxy_domain = ["arxiv.org"]
+    with pytest.raises(LiteratureProxyError, match="overlap"):
+        proxy_router_from_args(args)
+
+
+def test_profile_rejects_conflicting_domain_routes_before_launch(checkout, capsys):
+    root, path = _profile(checkout, capsys, domains=["Arxiv.org"])
+    value = yaml.safe_load(path.read_text())
+    value["literature"]["direct_domains"] = ["arxiv.org"]
+    path.write_text(yaml.safe_dump(value))
+    report = admit_profile(root, run_id="conflicting-routes")
+    assert not report.admitted
+    assert "overlap" in json.dumps(report.to_dict()) and PROXY not in json.dumps(report.to_dict())

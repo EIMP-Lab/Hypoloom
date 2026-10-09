@@ -129,12 +129,12 @@ def _pdf_locator(args):
 def preparation_literature_arguments(args):
     """Carry only existing source paths and fallback choice into prepare/retry."""
     result = []
-    for name in ("credentials_file", "literature_pdf_fallback", "unpaywall_email_file"):
+    for name in ("credentials_file", "literature_pdf_fallback", "unpaywall_email_file", "literature_default_route"):
         value = getattr(args, name, None)
         if value is not None:
             result += ["--" + name.replace("_", "-"), str(value)]
-    return result + [value for domain in getattr(args, "literature_proxy_domain", ())
-                     for value in ("--literature-proxy-domain", domain)]
+    return result + [value for name in ("literature_proxy_domain", "literature_direct_domain")
+                    for domain in getattr(args, name, ()) for value in ("--" + name.replace("_", "-"), domain)]
 
 
 def preview(args, repository=None):

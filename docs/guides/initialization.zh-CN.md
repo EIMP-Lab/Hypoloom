@@ -24,8 +24,11 @@ PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
 省略 Profile 或执行模式可以先发现选项。共享 GPU 将 `--cpu-only` 换为
 `--allow-gpu --managed-pool`，并为每个明确授权的 UUID 添加 `--gpu-device-uuid`。
 `--nonpooled` 表示明确选择非池 GPU，仍须通过 Profile 的预算规则。
-模型与认证默认值来自选中的 CC 配置，仅作为审阅建议；核对 Profile 覆盖，已选其他
-模型时传入 `--claude-model`。
+认证来源和候选模型来自选中的 CC 配置。未显式传入 `--claude-model` 时，固定问题
+会显示当前模型，允许沿用或自由输入当前供应商支持的准确模型 ID；不会自动替用户
+选择。已显式指定则不再询问。此选择只影响新运行，不修改 CC settings；最后仍需
+核对 Profile 的角色覆盖。init 也会单独展示文献默认路由及域名覆盖，与 Telegram
+和机构浏览器的网络配置分开说明。
 
 检查返回缺失选择、阻断原因、生效配置与阶段耗时；Profile 已准备时还返回
 `launch_argv` 参数数组。使用所选的 control Python 运行检查，依赖结果才对应实际解释器。

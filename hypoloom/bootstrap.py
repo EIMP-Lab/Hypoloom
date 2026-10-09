@@ -167,11 +167,11 @@ def write_profile(destination: Path, texts: dict[str, str]) -> None:
 def _literature_arguments(args) -> list[str]:
     names = ("literature_adapter", "credentials_file", "openalex_api_key_file", "unpaywall_email_file",
              "literature_pdf_fallback", "literature_pdfinfo", "literature_pdftotext", "literature_timeout",
-             "literature_max_response_bytes", "literature_max_pdf_bytes", "literature_max_pdf_pages", "literature_search_fallback")
+             "literature_max_response_bytes", "literature_max_pdf_bytes", "literature_max_pdf_pages", "literature_search_fallback", "literature_default_route")
     return [value for name in names if getattr(args, name, None) is not None
             for value in ("--" + name.replace("_", "-"), str(getattr(args, name)))] + [
-                value for domain in getattr(args, "literature_proxy_domain", ())
-                for value in ("--literature-proxy-domain", domain)]
+                value for name in ("literature_proxy_domain", "literature_direct_domain")
+                for domain in getattr(args, name, ()) for value in ("--" + name.replace("_", "-"), domain)]
 
 
 def model_review(contract: dict, host_model: str) -> dict:

@@ -151,6 +151,7 @@ class LiteratureError(ValueError):
         retry_after_seconds: float | None = None,
         transport_phase: str | None = None,
         received_bytes: int = 0,
+        network_routes: tuple = (),
     ) -> None:
         super().__init__(message)
         self.code = self.default_code if code is None else code
@@ -175,6 +176,7 @@ class LiteratureError(ValueError):
         if type(received_bytes) is not int or received_bytes < 0:
             raise ValueError("received byte count must be nonnegative")
         self.transport_phase, self.received_bytes = transport_phase, received_bytes
+        self.network_routes = network_routes
 
 
 class LiteratureQueryError(LiteratureError):
@@ -995,6 +997,7 @@ class FetchResponse:
     location: str | None
     body: bytes
     proxy_tunnel_address: str | None = None
+    network_routes: tuple = ()
 
     def __post_init__(self) -> None:
         _uri_parts(self.requested_uri, "fetch response requested_uri")
@@ -1485,6 +1488,7 @@ class OpenAlexResponse:
     content_length: int | None
     body: bytes
     retry_after: str | None = None
+    network_routes: tuple = ()
 
     def __post_init__(self) -> None:
         if (
@@ -1590,12 +1594,15 @@ def _network_http_get(uri, headers, timeout_seconds, max_bytes, *,
                       approved_addresses=None, cancel_event=None, proxy_router=None):
     from .network_io import run_network_operation
     deadline = time.monotonic() + timeout_seconds
-    return run_network_operation("hypoloom.grounding_web:_fetch_in_process", {
-        "uri": uri, "headers": dict(headers), "deadline": deadline,
-        "approved_addresses": approved_addresses, "max_bytes": max_bytes,
-        "proxy_url": None if proxy_router is None else proxy_router.for_url(uri),
-    }, deadline=deadline, max_output_bytes=4 * ((max_bytes + 2) // 3) + 65536,
-       cancel_event=cancel_event)
+    def call(proxy_url, route_deadline):
+        return run_network_operation("hypoloom.grounding_web:_fetch_in_process", {
+            "uri": uri, "headers": dict(headers), "deadline": route_deadline,
+            "approved_addresses": approved_addresses, "max_bytes": max_bytes,
+            "proxy_url": proxy_url,
+        }, deadline=route_deadline, max_output_bytes=4 * ((max_bytes + 2) // 3) + 65536,
+           cancel_event=cancel_event)
+    from .literature_proxy import LiteratureProxyRouter
+    return (proxy_router or LiteratureProxyRouter()).request(uri, call, deadline=deadline)
 
 
 def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_bytes, *, cancel_event=None, proxy_router=None):
@@ -1605,7 +1612,7 @@ def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_by
                                  timeout_seconds, max_bytes, cancel_event=cancel_event, proxy_router=proxy_router)
         return OpenAlexResponse(status_code=value["status_code"], media_type=value["media_type"],
             content_length=value["content_length"], body=base64.b64decode(value["body_b64"], validate=True),
-            retry_after=value["retry_after"])
+            retry_after=value["retry_after"], network_routes=value.get("network_routes", ()))
     except NetworkOperationError as exc:
         if exc.code == "cleanup_failed":
             raise LiteratureFetchError("Network worker could not be reaped",
@@ -1619,7 +1626,8 @@ def _metadata_https_get(provider, host, target, headers, timeout_seconds, max_by
                     "cancelled": LiteratureFailureCode.PDF_DEADLINE}.get(exc.code, LiteratureFailureCode.PDF_TRANSPORT)
         raise LiteratureFetchError(f"{provider} transport failed ({exc.code})", code=code,
                                    http_status=exc.http_status, transport_phase=exc.transport_phase,
-                                   received_bytes=exc.received_bytes) from None
+                                   received_bytes=exc.received_bytes,
+                                   network_routes=getattr(exc, "network_routes", ())) from None
 
 
 def _pdf_locator_get(provider: str, host: str, target: str, headers: Mapping[str, str],
@@ -2442,22 +2450,26 @@ class OpenAlexLiteratureFetcher:
                 self._primary_failure = None
                 self._primary_failure_rounds = 0
                 self._primary_retry_at = 0.0
-                self.last_search_observation = {"service": "openalex", "available": True}
+                self.last_search_observation.update(service="openalex", available=True)
                 return papers
         primary = {**service_failure(error), "retry_after_seconds": max(0.0, self._primary_retry_at - self._clock())}
-        self.last_search_observation = {**primary, "fallback_service": "crossref", "fallback_available": False}
+        self.last_search_observation.update(**primary, fallback_service="crossref", fallback_available=False)
         # All waits and both backends share one absolute operation deadline.
         try:
             papers = fallback.search(query, deadline=deadline, cancel_event=self._cancel_event)
         except LiteratureError as exc:
-            self.last_search_observation.update(fallback_reason=exc.code.value.lower(), fallback_http_status=exc.http_status)
+            self.last_search_observation.update(fallback_reason=exc.code.value.lower(), fallback_http_status=exc.http_status,
+                fallback_network_routes=list(getattr(fallback, "network_routes", ())))
             if exc.code in {LiteratureFailureCode.NETWORK_CLEANUP_FAILED, LiteratureFailureCode.PDF_DEADLINE}:
                 raise
             raise LiteratureFetchError("primary and backup literature search unavailable",
                 code=error.code, http_status=error.http_status, attempt_count=error.attempt_count,
                 retry_after_seconds=max(max(0.0, self._primary_retry_at - self._clock()), exc.retry_after_seconds or 0),
-                transport_phase=error.transport_phase, received_bytes=error.received_bytes) from None
+                transport_phase=error.transport_phase, received_bytes=error.received_bytes,
+                network_routes=error.network_routes) from None
         self.last_search_observation["fallback_available"] = True
+        if getattr(fallback, "network_routes", ()):
+            self.last_search_observation["fallback_network_routes"] = list(fallback.network_routes)
         return papers
 
     def _search_openalex(self, query: LiteratureQuery, *, deadline: float) -> Iterable[SearchPaper]:
@@ -2684,6 +2696,9 @@ class OpenAlexLiteratureFetcher:
                     max_bytes=self.max_response_bytes,
                     **({"cancel_event": self._cancel_event} if isinstance(self._transport, StdlibOpenAlexTransport) else {}),
                 )
+                if isinstance(response, OpenAlexResponse) and response.network_routes:
+                    observed = self.last_search_observation.setdefault("network_routes", [])
+                    observed.extend(response.network_routes[:max(0, 128-len(observed))])
                 return self._response_works(response, quota)
             except (TimeoutError, socket.timeout):
                 failure = LiteratureFetchError(
@@ -2700,6 +2715,9 @@ class OpenAlexLiteratureFetcher:
                     code=LiteratureFailureCode.OPENALEX_HTTP,
                 )
             last_failure = failure
+            if failure.network_routes:
+                observed = self.last_search_observation.setdefault("network_routes", [])
+                observed.extend(failure.network_routes[:max(0, 128-len(observed))])
             if (
                 not _openalex_failure_is_retryable(failure)
                 or attempt_count >= total_attempts
@@ -2898,7 +2916,8 @@ class OpenAlexLiteratureFetcher:
                 peer_address=value["peer_address"], media_type=value["media_type"],
                 content_length=value["content_length"], location=value["location"],
                 body=base64.b64decode(value["body_b64"], validate=True),
-                proxy_tunnel_address=value.get("proxy_tunnel_address"))
+                proxy_tunnel_address=value.get("proxy_tunnel_address"),
+                network_routes=value.get("network_routes", ()))
         except NetworkOperationError as exc:
             code = {"timed_out": LiteratureFailureCode.PDF_TIMEOUT,
                     "cancelled": LiteratureFailureCode.PDF_DEADLINE,
@@ -2908,7 +2927,8 @@ class OpenAlexLiteratureFetcher:
                     "response_limit": LiteratureFailureCode.PDF_RESPONSE_LIMIT}.get(exc.code, LiteratureFailureCode.PDF_TRANSPORT)
             raise LiteratureFetchError(f"PDF request failed ({exc.code})", code=code,
                                        http_status=exc.http_status, transport_phase=exc.transport_phase,
-                                       received_bytes=exc.received_bytes) from None
+                                       received_bytes=exc.received_bytes,
+                                       network_routes=getattr(exc, "network_routes", ())) from None
 
 
 def _http_content_length(
@@ -3131,6 +3151,7 @@ def _openalex_attempt_failure(
         attempt_count=attempt_count,
         retry_after_seconds=failure.retry_after_seconds,
         transport_phase=failure.transport_phase, received_bytes=failure.received_bytes,
+        network_routes=failure.network_routes,
     )
 
 
@@ -3497,6 +3518,7 @@ def _download_event(
         "http_status": None if error is None else error.http_status,
         **({"transport_phase": error.transport_phase, "received_bytes": error.received_bytes}
            if error is not None and error.transport_phase is not None else {}),
+        **({"network_routes": list(error.network_routes)} if error is not None and error.network_routes else {}),
     })
 
 
@@ -3714,7 +3736,7 @@ class FixedLiteratureIO:
             "max_response_bytes", "max_retries", "retry_backoff_seconds",
             "poppler_timeout_seconds", "poppler_max_pdf_bytes",
             "poppler_max_text_bytes", "poppler_max_summary_chars",
-            "search_fallback", "proxy_domains", "proxy_policy",
+            "search_fallback", "proxy_domains", "proxy_policy", "default_route", "direct_domains",
         }
         if set(raw) - allowed:
             raise LiteratureValidationError(
@@ -4138,6 +4160,7 @@ class FixedLiteratureIO:
                     batch_http_calls=batch_http_calls,
                     paper_http_calls=paper_http_calls,
                     deadline=deadline,
+                    events=events,
                 )
                 self.check_cancelled()
                 if self._clock() >= deadline:
@@ -4263,6 +4286,7 @@ class FixedLiteratureIO:
         batch_http_calls: list[int],
         paper_http_calls: list[int],
         deadline: float,
+        events: list | None = None,
     ) -> tuple[str, str, bytes]:
         current = source_uri
         visited: set[str] = set()
@@ -4311,10 +4335,14 @@ class FixedLiteratureIO:
                 raise LiteratureFetchError("PDF fetch returned a non-FetchResponse value")
             if response.requested_uri != uri:
                 raise LiteratureFetchError("PDF fetch response changed requested_uri")
+            if events is not None and response.network_routes:
+                events.append({"stage": "transport", "outcome": "HTTP_RESPONSE",
+                    "source_host": urlsplit(uri).hostname, "failure_code": None,
+                    "http_status": response.status_code, "network_routes": list(response.network_routes)})
             from .literature_proxy import validate_response_peer
             router = getattr(self.fetcher, "_proxy_router", None)
             validate_response_peer(response, addresses,
-                proxy_expected=router is not None and router.routes(uri))
+                proxy_expected=False if router is None else router.peer_policy(uri))
             if response.status_code in _REDIRECT_STATUSES:
                 if response.location is None:
                     raise LiteratureFetchError("PDF redirect omitted Location")

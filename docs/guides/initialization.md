@@ -26,9 +26,13 @@ PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
 Omit the Profile or execution mode to discover choices. For shared GPU scheduling,
 replace `--cpu-only` with `--allow-gpu --managed-pool` and repeat
 `--gpu-device-uuid` for the explicitly approved UUIDs. `--nonpooled` is an explicit
-alternative, subject to the existing Profile budget rules. Model/auth defaults
-are proposals from the selected CC source; review Profile overrides and supply
-`--claude-model` when another selector was chosen.
+alternative, subject to the existing Profile budget rules. Authentication and the
+candidate model come from the selected CC source. Without an explicit
+`--claude-model`, a fixed question offers that model or a freely entered exact
+model ID supported by the provider. It does not silently accept the default.
+An explicit selector is not asked again; settings files remain unchanged and
+Profile role overrides remain effective. Final review lists literature routing
+separately from Telegram and institutional-browser configuration.
 
 Inspection returns missing choices, blockers, effective configuration, phase
 timings and, for a prepared Profile, a `launch_argv` array. Run inspection with

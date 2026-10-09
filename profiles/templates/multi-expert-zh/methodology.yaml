@@ -6,6 +6,11 @@ literature:
   enabled: true
   tools: [web_search, web_fetch]
   max_sources: 8
+  default_route: direct  # 无需代理的用户保留此值；可选 auto 或 proxy_only。
+  # 需要代理时，在本地 Profile 填 proxy_url；auto 无须枚举域名。
+  # proxy_url: "http://127.0.0.1:7890"
+  # proxy_domains: []  # 精确域名覆盖：仅代理。
+  # direct_domains: [] # 精确域名覆盖：仅直连；不能与上项重叠。
   # 仅在 Git 忽略的本地 Profile（0600）中填写，勿修改公开模板。
   # 仅 Host 读取：不进入准入契约或 Agent 输入。
   openalex_api_key: ""

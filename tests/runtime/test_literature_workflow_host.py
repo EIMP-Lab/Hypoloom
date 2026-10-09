@@ -278,7 +278,10 @@ class _RetrievalClock:
 
 @pytest.fixture
 def mount_root() -> Path:
-    with tempfile.TemporaryDirectory(prefix="hypoloom-literature-host-", dir="/var/tmp") as raw:
+    # Outside sandboxed /tmp, but inside the writable checkout on restricted hosts.
+    parent = REPOSITORY / ".local" / "qualification"
+    parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="literature-host-", dir=parent) as raw:
         yield Path(raw)
 
 
@@ -2277,6 +2280,76 @@ def test_query_plan_probe_defers_transport_failure_to_literature_main(
         assert plans[0]["terminal_reason"] == mains[0]["terminal_reason"] == "SUCCEEDED"
         assert len(fetcher.queries) == 4
         assert Oracle(host.state_root / "state.sqlite", host.state_root / "artifacts").audit(run_id).ok
+    finally:
+        host.close()
+
+
+@pytest.mark.parametrize("restart,exhaust", [(False, False), (True, False), (False, True)])
+def test_expert_main_coverage_gap_replans_exact_query_with_bounded_recovery(tmp_path, mount_root, restart, exhaust):
+    class ChangedCatalog(_LiteratureFetcher):
+        def search(self, query):
+            papers = tuple(super().search(query))
+            # Grounding succeeds, expert probe succeeds, actual MAIN loses coverage.
+            if len(self.queries) == 4 or exhaust and len(self.queries) >= 4:
+                return papers[-1:]
+            return papers
+
+    class RepairingAgent:
+        def invoke(self, request):
+            response = FakeAgent().invoke(request)
+            gap = next((item for item in request.input_artifacts
+                        if item.ref.endswith("--literature-query-coverage-error")), None)
+            if gap is not None:
+                feedback = json.loads(gap.content_bytes())
+                assert feedback["missing_strata"] == ["FOUNDATIONAL", "INTERMEDIATE"]
+                candidate = dict(response.typed_candidate)
+                candidate["query"] = "machine learning"
+                return _redigest(replace(response, typed_candidate=candidate))
+            return response
+
+    run_id = "expert-query-repair"
+    fetcher = ChangedCatalog()
+    root = tmp_path / "state"
+    host = WorkflowHost(root, literature_io=FixedLiteratureIO(fetcher))
+    host.agent = RepairingAgent()
+    try:
+        host.initialize()
+        payload = _payload(tmp_path, mount_root, run_id)
+        payload["research_contract"]["budget"]["max_retries"] = 1
+        assert host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", payload)).status == "accepted"
+        if restart:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                host.tick()
+                failed = [row for row in host.store.list_attempts()
+                          if _is_research_node_attempt(row, ResearchNodeSubkind.MAIN) and row["state"] == "CLOSED"]
+                if failed: break
+                time.sleep(.005)
+            assert len(failed) == 1 and failed[0]["terminal_reason"] == "FAILED"
+            host.close()
+            host = WorkflowHost(root, literature_io=FixedLiteratureIO(fetcher))
+            host.agent = RepairingAgent()
+            host.initialize()
+        _drive(host, run_id)
+        rows = host.store.list_attempts()
+        plans = [r for r in rows if _is_research_node_attempt(r, ResearchNodeSubkind.QUERY_PLAN)]
+        mains = [r for r in rows if _is_research_node_attempt(r, ResearchNodeSubkind.MAIN)]
+        assert len(plans) == 2 and plans[0]["terminal_reason"] == "SUCCEEDED"
+        assert len(mains) == (1 if exhaust else 2)
+        assert mains[0]["terminal_reason"] == "FAILED"
+        feedback = json.loads(next(i.content_bytes() for i in _request(plans[1]).input_artifacts
+                                   if i.ref.endswith("--literature-query-coverage-error")))
+        assert feedback["source_attempt_id"] == mains[0]["attempt_id"]
+        assert feedback["query_plan_attempt_id"] == plans[0]["attempt_id"]
+        if not exhaust:
+            assert mains[1]["terminal_reason"] == "SUCCEEDED"
+            query = next(i for i in _request(mains[1]).input_artifacts if i.ref.endswith("--literature-query"))
+            assert query.ref == f"{plans[1]['attempt_id']}--literature-query"
+            assert json.loads(query.content_bytes())["query"] == "machine learning"
+        else:
+            assert plans[1]["terminal_reason"] == "FAILED"
+        assert all(row["state"] == "CLOSED" for row in rows)
+        assert Oracle(root / "state.sqlite", root / "artifacts").audit(run_id).ok
     finally:
         host.close()
 

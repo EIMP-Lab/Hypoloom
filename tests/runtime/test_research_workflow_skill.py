@@ -188,7 +188,7 @@ def test_existing_runtime_identity_covers_common_entry_and_references(tmp_path, 
     assert module.installed_run_version().runtime_environment_id != before
 
 
-@pytest.mark.parametrize("domain", ["classification", "optimization", "reproduction"])
+@pytest.mark.parametrize("domain", ["classification", "optimization", "reproduction", "aggregation"])
 def test_task_specific_parsers_keep_distinct_layouts_and_scientific_semantics(tmp_path, domain):
     """Interface compatibility, not a claim about model-authored parser quality."""
     from hypoloom.native_output import parser_smoke
@@ -210,6 +210,19 @@ result = {'measurements': {'accuracy': sum(a == b for a, b in zip(truth, predict
 result = {'measurements': {'objective': x * x}, 'checks': {'valid': x >= 0}}
 """
         cases = [({"x": 0}, True), ({"x": 1}, False), ({"x": -0.5}, False)]
+    elif domain == "aggregation":
+        relative = "measurements/details.json"
+        criteria = [{"name": "mean", "operator": "GT", "target": "0.5"}]
+        compute = """import math
+weights, values = raw['weights'], raw['values']
+mean = sum(w*v for w,v in zip(weights, values)) / sum(weights)
+result = {'measurements': {'mean': mean}, 'checks': {'valid':
+    len(weights) == len(values) == 2 and math.isclose(mean, raw['reported'], abs_tol=1e-9)}}
+"""
+        cases = [({'weights': [1, 3], 'values': [0.4, 0.8], 'reported': 0.7}, True),
+            ({'weights': [1, 3], 'values': [0.1, 0.1], 'reported': 0.7}, False),
+            ({'weights': [1, 3], 'values': [0.4, 0.8], 'reported': 0.9}, False),
+            ({'weights': [1, 1], 'values': [0.4, 0.8], 'reported': 0.7}, False)]
     else:
         relative = "observations/reproduced.json"
         criteria = [{"name": "reproduced", "operator": "IS_TRUE"}]
@@ -239,3 +252,5 @@ result = {'measurements': {}, 'checks': {
             source_root=root, test_root=root / "sandbox", timeout_seconds=5, max_bytes=65536)
         assert result is not None and result["error"] is None, result
         assert evaluate_shared_acceptance(accepted, result["observation"]) is expected
+        if domain == "aggregation":
+            assert result["observation"]["checks"]["valid"] is expected

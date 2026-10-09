@@ -1604,15 +1604,24 @@ class WorkflowHost:
                      and not (isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING
                          and json.loads(row["observation_json"]).get("response", {}).get("typed_candidate", {}).get("clarification") is not None)), None)
 
-        if (accepted is not None and isinstance(task, AuxiliaryTask)
-                and task.kind is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
-                and self._grounding_query_gap(task.run_id, accepted) is not None):
+        if (accepted is not None and query_plan
+                and self._literature_query_gap(task, accepted) is not None):
             return None
         return accepted
 
     def _grounding_query_gap(self, run_id: str, plan: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        return self._literature_query_gap(
+            AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id), plan)
+
+    def _literature_query_gap(self, task: ResearchNodeTask | AuxiliaryTask, plan: Mapping[str, Any]) -> Mapping[str, Any] | None:
         """An actual retrieval failure invalidates only the exact consumed plan."""
-        attempts = self._expert_attempts(self._grounding_task(run_id))
+        if isinstance(task, AuxiliaryTask):
+            if task.kind is not AuxiliaryRequestKind.GROUNDING_QUERY_PLAN: return None
+            main = self._grounding_task(task.run_id)
+        else:
+            if task.key.node_kind is not ResearchNodeKind.LITERATURE_REVIEW or task.key.subkind is not ResearchNodeSubkind.QUERY_PLAN: return None
+            main = ResearchNodeTask(key=replace(task.key, subkind=ResearchNodeSubkind.MAIN))
+        attempts = self._expert_attempts(main)
         if not attempts:
             return None
         row = attempts[-1]
@@ -2196,11 +2205,14 @@ class WorkflowHost:
                 details: dict[str, object] = {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}
                 if (diagnostic := bounded_diagnostic_text(str(exc))) is not None: details["literature_diagnostic"] = diagnostic
                 if exc.http_status is not None: details["literature_http_status"] = exc.http_status
+                if exc.network_routes: details["literature_network_routes"] = list(exc.network_routes)
+                if preflight_diagnostics: details["preflight_diagnostics"] = preflight_diagnostics
                 details["failure_stage"] = "literature_retrieval"
                 from .literature_recovery import service_failure
                 service = service_failure(exc)
                 if service is not None: details["literature_service"] = {**service, "observed_at": time.time()}
                 coverage_failure = isinstance(exc, LiteratureCoverageError)
+                if coverage_failure: details["literature_missing_strata"] = [value.value for value in exc.missing_strata]
                 literature_failure = (f"literature_{exc.code.value.lower()}", details, service is not None or literature_failure_retryable(exc))
             except Exception as exc:
                 literature_failure = ("literature_adapter_failed", {"literature_failure_class": type(exc).__name__, "literature_retrieval_seconds": read["seconds"]}, True)
@@ -2211,10 +2223,12 @@ class WorkflowHost:
                     "observed_at": time.time()}
                 packet_input = EmbeddedInput.from_bytes(f"{task.command_id}--literature-packet", LITERATURE_PACKET_MEDIA_TYPE, retrieval.packet.to_bytes())
                 inputs = (*inputs, packet_input); immutable_context_refs = (*immutable_context_refs, packet_input.ref)
-        if coverage_failure and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GROUNDING:
-            # Record the real pre-model Grounding failure. The next plan reads
-            # this exact request/diagnostic; no copied model response or charge.
-            plan_task = AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)
+        if coverage_failure and retrieve:
+            # The next plan reads this exact pre-model failure. Reuse each
+            # task's existing bounded plan/MAIN attempts, including on restart.
+            plan_task = (AuxiliaryTask(kind=AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, run_id=run_id)
+                if isinstance(task, AuxiliaryTask) else
+                ResearchNodeTask(key=replace(task.key, subkind=ResearchNodeSubkind.QUERY_PLAN)))
             can_replan = not self._agent_attempts_exhausted(contract, self._expert_attempts(plan_task))
             literature_failure = ("invalid_candidate", literature_failure[1], can_replan)
         self._check_agent_runtime()

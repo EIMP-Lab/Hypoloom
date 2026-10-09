@@ -467,6 +467,9 @@ def _attempt_detail(root, run_id, attempts, selectors):
         corrections=summary["corrections"], turns=summary["turns"], raw_turns=summary["raw_turns"], truncated=truncated,
         trace_evidence=read_attempt_evidence(root, run_id, row))
     result["literature_download_trace"] = _object(observation.get("preflight_diagnostics")).get("literature_download_trace")
+    result["literature_search"] = (_object(observation.get("preflight_diagnostics")).get("literature_search")
+        or _object(observation.get("diagnostics")).get("literature_search"))
+    result["literature_network_routes"] = observation.get("literature_network_routes")
     return result
 
 
