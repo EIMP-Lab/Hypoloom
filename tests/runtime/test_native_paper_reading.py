@@ -14,7 +14,7 @@ from hypoloom.domain import AgentCommand
 from hypoloom.expert_loop import ResearchNodeTask
 from hypoloom.grounding_web import GroundingWeb
 from hypoloom.oracle import Oracle
-from test_claude_file_tool_cli import _installed_claude, _tool_results, _result_text
+from test_claude_file_tool_cli import _installed_claude, _tool_results, _result_text, native_prompt
 from test_claude_final_report_g3 import _FinalReportHostScenario
 from test_claude_multichain_g3 import _payload
 from test_full_cc_host_g3 import _new_host, _start_provider
@@ -37,6 +37,16 @@ class ReadingScenario(_FinalReportHostScenario):
         self.nonce = "method-page-" + secrets.token_hex(12)
         self.sources = {}; self.results = {}; self.readers = set()
         self.source_retries = set()
+        # Different disciplines/depths travel through the existing free-text
+        # commission. This scripted provider checks delivery, not reading quality.
+        self.questions = (
+            "精读，用于人工智能在线预测：推理只能使用已观测前缀。解释方法动机、设计和证据；"
+            "核查未来信息依赖，引用系数原文，说明适用条件、阅读范围和缺口。",
+            "Targeted check for numerical analysis: quote the exact coefficient label and identify "
+            "its assumptions and validity boundaries; report pages read and missing proof evidence.",
+            "Screening for an ecology review: identify the research object and contribution, quote "
+            "the coefficient label, and state whether the supplied evidence establishes relevance.",
+        )
         # The local provider can finish a reader before bounded Host dispatch
         # starts the third one. Hold its first response until the test observes
         # all three real reader processes; cancellation still uses the Host.
@@ -48,6 +58,17 @@ class ReadingScenario(_FinalReportHostScenario):
         try:
             step = self.steps[request.attempt_id]
             if request.command is AgentCommand.PAPER_READ and step == 1:
+                from hypoloom.full_cc_runtime import full_cc_instruction
+                prompt = native_prompt(document)
+                assert full_cc_instruction(request) in prompt["instruction"]
+                inputs = prompt["rendered_inputs"]
+                assert len(inputs) == 3
+                assert all(item["ref"].endswith(("--expert-config", "--paper-question", "--paper-context"))
+                    for item in inputs), "reader inherited unrelated expert context"
+                commission = json.loads(next(item["content_utf8"] for item in inputs
+                    if item["ref"].endswith("--paper-question")))
+                index = int(commission["reading_id"].removeprefix("question-"))
+                assert commission["question"] == self.questions[index]
                 assert self.readers_ready.wait(30), "three native reader processes were not admitted"
             results = _tool_results(document)
             if _main(request):
@@ -123,7 +144,7 @@ class ReadingScenario(_FinalReportHostScenario):
             if logical_step == (4 if self.correct_errors else 2):
                 return (("submit_readers", "mcp__host-tools__read_papers", {"action": "submit", "readings": [
                     {"reading_id": f"question-{i}", "paper_ref": self.sources[request.attempt_id][i % len(self.sources[request.attempt_id])]["source_ref"],
-                     "question": f"Independent method question {i}: quote the exact coefficient label and state the limitation."} for i in range(3)]}),)
+                     "question": self.questions[i]} for i in range(3)]}),)
             if self.results.get(request.attempt_id, {}).get("terminal"): return self._structured(request)
             return ((f"reading_wait_{step}_call", "mcp__host-tools__read_papers", {"action": "wait", "max_wait_seconds": 10}),)
         return super()._unscoped_tool_calls(number)

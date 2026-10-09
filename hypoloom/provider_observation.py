@@ -6,7 +6,6 @@ import math
 import re
 import time
 from typing import Any
-from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 
@@ -16,7 +15,7 @@ INPUT_TOO_LONG_PHRASES = (
     "prompt is too long", "prompt too long", "context length exceeded",
     "maximum context length", "input is too long")
 
-PROVIDER_TRANSIENT = frozenset({"rate_limited", "service_unavailable"})
+PROVIDER_TRANSIENT = frozenset({"rate_limited", "service_unavailable", "usage_window_exhausted"})
 PROVIDER_UNAVAILABLE = PROVIDER_TRANSIENT | {"auth_failed", "quota_exhausted"}
 # Local queue expiry retries its task without claiming a remote outage.
 PROVIDER_DEFERRED = PROVIDER_UNAVAILABLE | {"local_request_queue"}
@@ -29,7 +28,7 @@ def provider_retry_delay(rounds):
 
 def provider_status_text(status, *, language="en"):
     from functools import partial
-    from .ui_i18n import translate
+    from .ui_i18n import format_local_time, translate
     tr = partial(translate, language=language)
     if not status:
         return tr("API status unknown: a live Host observation is required.")
@@ -37,12 +36,13 @@ def provider_status_text(status, *, language="en"):
     if state == "ready": return tr("API dispatch available.")
     if state == "recovering": return tr("Trying API recovery with one pending task; access is not yet confirmed.")
     reason = {"auth_failed": "authentication rejected", "rate_limited": "rate limit (quota cause unconfirmed)",
+        "usage_window_exhausted": "usage window quota exhausted",
         "quota_exhausted": "quota exhausted", "service_unavailable": "provider temporarily unavailable",
         "connection_configuration": "connection configuration unavailable"}.get(status.get("reason"), "provider rejected access")
     until = status.get("next_retry_at")
     if until is None:
         until = max((g["until"] for g in status.get("gates", []) if type(g.get("until")) in (int, float)), default=None)
-    when = (datetime.fromtimestamp(until, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    when = (format_local_time(until)
         if until is not None and not status.get("requires_operator") else "operator action required")
     return tr("API unavailable: {0}. New Agent dispatch paused. Next attempt: {1}. Submitted experiments continue.", tr(reason), tr(when))
 
@@ -85,7 +85,13 @@ class ProviderObservation:
             error = value.get("error")
             if isinstance(error, dict):
                 message = str(error.get("message", ""))[:4096].lower()
-                if error.get("type") in {"insufficient_quota", "quota_exceeded", "usage_limit_exceeded"}:
+                # This observed permission_error explicitly promises renewal of
+                # the same finite window. Its duration is not a remaining delay.
+                if error.get("type") == "permission_error" and re.match(
+                        r"you've reached your ([1-9][0-9]*-hour) usage limit\.\s+"
+                        r"your quota will reset when the current \1 window ends\.", message.strip()):
+                    self.provider_error_code = "usage_window_exhausted"
+                elif error.get("type") in {"insufficient_quota", "quota_exceeded", "usage_limit_exceeded"}:
                     self.provider_error_code = "quota_exhausted"
                 elif error.get("type") == "rate_limit_error":
                     self.provider_error_code = "rate_limited"
@@ -350,12 +356,13 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at) if type(ended_at) in (int, float) else None
         return {"code": code, "http_status": status,
             **({"retry_at": ended_at + seconds, "retry_after_seconds": seconds} if seconds is not None else {})}
-    if status in (401, 403) or code == 'auth_failed':
-        # Credential rejected (rolling quota window or rotation). The Host owns
-        # the cooldown length; the exchange only proves the rejection class.
+    if (status == 401 or status == 403 and code != "usage_window_exhausted" or code == 'auth_failed'):
+        # An explicit temporary window can explain 403; it never overrides 401.
+        # Ordinary authentication failures retain the Host's configured delay.
         return {"code": "auth_failed", "http_status": status}
     if status in (429, 500, 502, 503, 504) or code in PROVIDER_TRANSIENT:
-        transient = "service_unavailable" if status in (500, 502, 503, 504) or code == "service_unavailable" else "rate_limited"
+        transient = ("service_unavailable" if status in (500, 502, 503, 504) else
+                     code if code in PROVIDER_TRANSIENT else "rate_limited")
         ended_at = last.get("ended_at")
         if type(ended_at) not in (int, float) or not math.isfinite(ended_at):
             return {"code": transient, "http_status": status}

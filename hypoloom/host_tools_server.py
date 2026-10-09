@@ -134,7 +134,8 @@ _READING_TOOLS = ({"name": "read_papers", "description": "Submit independent que
         "action": {"type": "string", "enum": ["submit", "status", "wait", "cancel"]},
         "readings": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "object", "properties": {
             "reading_id": {"type": "string", "minLength": 1, "maxLength": 64}, "paper_ref": {"type": "string", "description": "Copy the exact source_ref from a successful web_fetch document result or /papers/INDEX.md. A URL, DOI or paper title is not an admitted source_ref."},
-            "question": {"type": "string", "minLength": 1, "maxLength": 4000}},
+            "question": {"type": "string", "minLength": 1, "maxLength": 4000,
+                "description": "Self-contained commission: include the research question, relevant discipline/task constraints, reading purpose (screening, targeted check or close reading), and specific evidence questions. Readers receive this question and the selected source, not your conversation or skills. Request applicability conditions and source/page evidence; do not prescribe the conclusion. Use close reading for central method/theory or transfer judgments, a targeted check for local facts."}},
             "required": ["reading_id", "paper_ref", "question"], "additionalProperties": False}},
         "reading_ids": {"type": "array", "maxItems": 32, "uniqueItems": True, "items": {"type": "string"}},
         "max_wait_seconds": {"type": "number", "minimum": 0, "maximum": 600}},

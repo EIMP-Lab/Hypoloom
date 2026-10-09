@@ -2,6 +2,44 @@
 
 [English](qualification.md) · 简体中文
 
+## 窗口额度恢复与本地重试时间（2026-10-09）
+
+适配器 77 按[设计](design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间)
+识别明确说明小时窗口额度耗尽、同一窗口结束后恢复的 403 错误，复用原自动退避
+与 Retry-After 处理；普通认证和缺少恢复依据的额度耗尽保留原保护。TUI 的 API
+及服务重试提示统一显示本地时间和 UTC 偏移，原始时间戳与调度不变。
+
+**395 个不同用例通过**，包括实际 TUI／浏览器显示、上海／UTC／纽约冬夏时区、
+六轮拒绝、重启、真实 relay 与两个原生 Host／CPU 闭环。共 30 个关闭的 Agent
+（22 个成功、8 个预期服务拒绝）、2 个成功关闭的 Process、2 个规范结果，32 个
+进程组全部退出，Oracle 无问题；未调用付费模型或 GPU。193 个包文件在源码、
+wheel、独立安装和新运行包之间一致，CLI/MCP 启动及静态检查通过。
+
+完整 G1 尝试在 884 项通过、3 项失败后停止：过期的适配器版本断言已更新，其
+205 项所属测试全部通过；其余两项在未修改的 `5bfec51` 也可复现，分别是测试替身
+缺少 `exploration_progress` 和已有 Host 文件超过行数预算。不放宽检查，完整 G1
+仍未通过，不宣称全量晋级。详细记录与原始失败见
+[验证记录](qualification.md#window-quota-recovery-and-local-retry-times-2026-10-09)。
+本次交付包含前述阅读指引；既有研究运行和私有 Profile 均未修改。
+
+## 独立论文阅读方法（2026-10-09）
+
+适配器 76 按[设计](design/tool-guided-reading-and-parallel-proposals.md#11-独立阅读的方法与深度2026-10-09)
+实施助手共有阅读指引、专家生成的学科／任务委托，以及初筛、定向核查和精读。
+沿用现有 `question`、摘要、权限和调度，不新增完整阅读认证或输出格式。
+
+**103 项针对性测试与 1 项原生集成测试通过，共 104 个不同用例。** 真实
+Claude Code／Host 使用本地脚本供应商，验证三名并行助手收到完整指引及各自的
+中英文、多学科委托，读取原文，交给专家收集，并完成后续 CPU 实验与发布。
+独立核对得到 18 个成功关闭的 Agent、1 个成功关闭的 Process、1 个规范结果、
+1 个目标判定；19 个进程组全部退出，论文暂存为空，Oracle 无问题或待处理效果。
+
+首轮系统 Python 因第三方同名 `tests` 包而无法收集，原始报告保留；使用项目
+固定环境后通过。证据位于 `.local/qualification/paper-reading-methods-20261009/`，
+详见[完整验证记录](qualification.md#independent-paper-reading-methods-2026-10-09)。
+未进行付费模型、GPU 或完整 G1–G5 晋级验证，不宣称真实模型阅读质量或速度提升。
+既有研究运行、私有 Profile 和冻结专家插件保持原样，新运行获得新指引。
+
 ## 实验方法与专家技能库（2026-10-09）
 
 按[设计](design/experiment-methods-and-skill-observation.md)完成 adapter 74：验证后的

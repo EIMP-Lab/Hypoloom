@@ -1,5 +1,25 @@
 # Current Hypoloom development state
 
+- October 9 window quota repair: adapter 77 recognizes explicit hourly-window
+  renewal on 403 and reuses transient retries; ordinary auth/quota controls stay.
+  TUI API/service times share local-zone formatting with explicit offsets.
+  395 distinct focused/native checks pass; two CPU closures have 30 closed Agents,
+  two closed Processes and no live groups. Package/install/bundle match 193 files.
+  G1 stops at 884 passes/three failures: the adapter assertion is fixed; missing
+  exploration_progress in a test double and Host LOC overflow also fail at 5bfec51.
+  No full promotion, paid/GPU test or retained-run/private-profile change.
+  [Design](../design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间) /
+  [validation](../qualification.md#window-quota-recovery-and-local-retry-times-2026-10-09).
+
+- October 9 paper-reading methods: adapter 76 adds shared depth/type-aware reader
+  guidance and self-contained task/discipline commissions through existing question
+  and summary fields. Expert skills guide independent batches and owner synthesis.
+  103 focused checks plus one native Host/CPU closure pass: 18 Agents/one Process,
+  no open Attempts or live groups. Scripted delivery is not scientific-quality
+  evidence; no full promotion or retained-run/private-profile changes.
+  [Design](../design/tool-guided-reading-and-parallel-proposals.md#11-独立阅读的方法与深度2026-10-09) /
+  [validation](../qualification.md#independent-paper-reading-methods-2026-10-09).
+
 - October 9 follow-up: adapter 75 adds opt-in literature `auto` / `proxy_only`
   default routing and exact direct overrides; unconfigured traffic stays direct
   and old proxy-domain selections remain proxy-only. Auto routes share a deadline,

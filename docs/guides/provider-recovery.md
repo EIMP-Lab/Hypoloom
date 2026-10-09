@@ -19,10 +19,26 @@ for API access. Missing live Host status means availability is unknown.
 | `recovering` | One pending task may try the API; recovery is not yet confirmed. | Wait for its response; repeated clicks do not prove recovery. |
 | Unknown / stale | The interface lacks a fresh Host observation. | Check Host liveness; Web recovery controls remain disabled. |
 
-401/403 means authentication was rejected. 429 alone does not establish quota
+Ordinary 401/403 means authentication was rejected. 429 alone does not establish quota
 exhaustion. Explicit quota error types are classified separately. A valid
 Retry-After is a time to try again, not proof of a quota reset. Unknown reset
 times and remaining balances are not inferred.
+
+Adapter 77 recognizes the observed 403 `permission_error` that explicitly says
+an hourly usage window is exhausted and quota resets when that same window ends.
+It becomes `usage_window_exhausted` and uses the existing automatic
+60/120/240/480/900-second backoff, then one retry every 15 minutes; longer valid
+Retry-After wins. "5-hour" describes the window, not five more hours to wait.
+Generic permission failures, HTTP 401, and quota exhaustion without this renewal
+evidence retain their existing authentication/operator rules. No balance query or
+undocumented provider reset header is assumed. Existing runs retain their frozen
+classification and recovery policy.
+
+TUI API and service retry times use the TUI process's local timezone with an
+explicit offset, for example `2026-10-09 22:05:20+08:00`. Web uses the browser's
+local timezone. Updating the observer changes presentation; stored timestamps and
+Host scheduling do not change. The displayed time is the next attempt, not a
+claim about the provider's actual reset time.
 
 The existing authentication delay remains `budget.provider_auth_cooldown_seconds`
 (18000 seconds by default). Zero removes that timed delay; it does not disable

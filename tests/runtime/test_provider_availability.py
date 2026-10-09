@@ -147,7 +147,8 @@ def test_submitted_process_is_collected_during_api_wait_and_not_repeated(batch_h
     assert report.ok, report.to_dict()
 
 
-def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_host, monkeypatch):
+@pytest.mark.parametrize("code,status", [("rate_limited", 429), ("usage_window_exhausted", 403)])
+def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_host, monkeypatch, code, status):
     host = batch_host
     original = host._accept_agent_response
     offset = [0]
@@ -158,7 +159,7 @@ def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_
     def reject(request, response, **kwargs):
         rejected.append(request)
         host._agent_failure(request, AttemptTerminalReason.FAILED, "nonzero_exit", retryable=True,
-            details={"diagnostics": {"provider_failure": {"code": "rate_limited", "http_status": 429, "retry_at": time.time() + 60}}})
+            details={"diagnostics": {"provider_failure": {"code": code, "http_status": status, "retry_at": time.time() + 60}}})
     monkeypatch.setattr(host, "_accept_agent_response", reject)
     for count in range(1, 7):
         _until(host, lambda: len(rejected) == count)

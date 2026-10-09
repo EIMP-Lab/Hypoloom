@@ -50,8 +50,35 @@ page with a short excerpt; distinguish published statements, interpretation
 and missing evidence. Text extraction can lose equations, figures and scans.
 Never claim those were inspected when only extracted text was delivered.
 
-If `read_papers` is offered, submit only already-defined independent
-source/question pairs with stable reading_id values. Host readers share normal
+Choose reading depth for each evidence question. Screening establishes relevance;
+a targeted check traces a local fact through its necessary definitions, methods,
+results or appendices. Close-read central methods, theories and transfer claims:
+connect the paper's motivation, mechanism or argument, evidence and limitations.
+Paper types can be mixed; theory needs assumptions, claims and proof strategy,
+not necessarily experiments. Apply the same method when reading directly.
+
+For delegation, write a self-contained `question` within its existing 4000-character
+limit: compact research context, relevant discipline, necessary task constraints,
+reading purpose/depth and specific evidence questions. Readers receive only this
+commission and its source, not your conversation, goal, focus, memory or skills.
+Carry relevant user reading preferences into the question; do not copy full
+history, the shared reading template or a desired conclusion. Ask for applicability,
+source/pages, actual reading scope and unresolved evidence. If a prior answer
+leaves a decision-critical gap, commission that precise follow-up or check it yourself.
+
+Select disciplinary emphasis from the actual task and your focus. For AI/ML,
+consider data/split leakage, training versus inference information, fair baselines,
+ablations, compute cost and reproducibility where relevant. For a causal or online
+task, explicitly ask about future information or bidirectional context when relevant.
+Other disciplines use their own assumptions and evidence standards; do not impose
+AI benchmarks on them. Preserve the author's objective, contrary evidence and
+unexpected relevant findings as well as answers to your task-specific questions.
+
+If `read_papers` is offered and several substantial questions are independent,
+prefer batching those source/question pairs for isolated reading when budgets
+permit. Direct reading remains appropriate for a small lookup, adequate existing
+notes, dependent questions or unavailable delegation. Do not fill an assistant quota.
+Submit only already-defined independent pairs with stable reading_id values. Host readers share normal
 Agent capacity and this expert/run's budgets; their count is dynamic, not two.
 Use status or bounded wait to collect answers; check important excerpts yourself
 and synthesize the comparison. A newly discovered prerequisite goes back to you
@@ -62,7 +89,7 @@ or report the limitation. Collect or cancel all readers before finishing.
 Copy the returned `source_ref` into `paper_ref`; do not substitute a URL or DOI.
 For example, after `web_fetch(mode="document", url=...)` returns an available
 document, call `read_papers(action="submit", readings=[{"reading_id":"method-check",
-"paper_ref":RETURNED_SOURCE_REF,"question":"Which assumptions support this method?"}])`.
+"paper_ref":RETURNED_SOURCE_REF,"question":"Targeted check for online prediction: which assumptions does this method require, and does inference use future observations? Cite pages and state reading scope and gaps."}])`.
 Submit takes only `action` and `readings`, without `wait_for_completion`. Inspect
 `read_papers(action="status")`, collect with `read_papers(action="wait",
 max_wait_seconds=10)`, or cancel with `read_papers(action="cancel")`.

@@ -145,9 +145,11 @@ def _resume_snapshot(tmp_path):
 @pytest.mark.parametrize("switch", [False, True])
 def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch, switch):
     from hypoloom import provider_resume_tui as form
+    from hypoloom.ui_i18n import format_local_time
     from hypoloom.tui import HypoloomVNextMonitor, SummaryPanel
     from textual.widgets import Button, Input, Static
     root, snapshot = _resume_snapshot(tmp_path)
+    expected_time = format_local_time(snapshot.status["provider_retry"]["gates"][0]["until"])
     calls = []
 
     def send(path, request, *, timeout):
@@ -170,9 +172,11 @@ def test_tui_banner_and_confirm_send_exact_clear_request(tmp_path, monkeypatch, 
             await pilot.pause()
             summary = app.query_one("#summary", SummaryPanel)._rendered_content or ""
             assert "API COOLDOWN" in summary and "dispatch paused" in summary
+            assert expected_time in summary
             await pilot.press("p")
             screen = app.screen
             assert isinstance(screen, form.ProviderResumeScreen)
+            assert expected_time in str(screen.query_one("#provider-current-status", Static).render())
             assert app.focused.id == "provider-resume-close"
             await pilot.press("enter")  # Default action leaves the cooldown alone.
             assert not isinstance(app.screen, form.ProviderResumeScreen) and not calls

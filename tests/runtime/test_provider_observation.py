@@ -1,6 +1,71 @@
 import json
+import pytest
 
 from hypoloom.provider_observation import INPUT_TOO_LONG_PHRASES, ProviderObservation
+
+
+WINDOW_ERROR = {"type": "error", "error": {"type": "permission_error", "message":
+    "You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends."}}
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("retry_after,delay", [(None, 60), ("120", 120),
+    ("Thu, 01 Jan 1970 00:05:00 GMT", 200)])
+def test_explicit_window_exhaustion_is_retryable_without_guessing_reset(stream, retry_after, delay):
+    from hypoloom.provider_observation import provider_failure
+    parser = ProviderObservation()
+    body = json.dumps(WINDOW_ERROR).encode()
+    wire = b"data: " + body + b"\n\n" if stream else body
+    for offset in range(0, len(wire), 7):
+        parser.feed(wire[offset:offset + 7])
+    observed = parser.finish()
+    assert observed["provider_error_code"] == "usage_window_exhausted"
+    assert "message" not in observed and "5-hour" not in json.dumps(observed)
+    failure = provider_failure([{**observed, "upstream_status": 403, "ended_at": 100,
+        "response_headers": {} if retry_after is None else {"retry-after": retry_after}}])
+    assert failure == {"code": "usage_window_exhausted", "http_status": 403,
+        "retry_after_seconds": delay, "retry_at": 100 + delay}
+    assert provider_failure([{**observed, "upstream_status": 401, "ended_at": 100}]) == {
+        "code": "auth_failed", "http_status": 401}
+
+
+@pytest.mark.parametrize("kind,message", [
+    ("permission_error", "Permission denied; update your API key."),
+    ("permission_error", "You've reached your 5-hour usage limit."),
+    ("permission_error", "Quota exhausted. Purchase extra usage or upgrade your plan."),
+    ("permission_error", WINDOW_ERROR["error"]["message"].replace("current 5-hour", "current 6-hour")),
+    ("authentication_error", WINDOW_ERROR["error"]["message"]),
+])
+def test_window_classification_does_not_relax_other_authentication_failures(kind, message):
+    from hypoloom.provider_observation import provider_failure
+    parser = ProviderObservation()
+    parser.feed(json.dumps({"type": "error", "error": {"type": kind, "message": message}}).encode())
+    assert provider_failure([{**parser.finish(), "upstream_status": 403, "ended_at": 100}]) == {
+        "code": "auth_failed", "http_status": 403}
+
+
+@pytest.mark.parametrize("tz,stamp,expected", [
+    ("Asia/Shanghai", 1791554720, "2026-10-09 22:05:20+08:00"),
+    ("UTC", 1791554720, "2026-10-09 14:05:20+00:00"),
+    ("America/New_York", 0, "1969-12-31 19:00:00-05:00"),
+    ("America/New_York", 1791554720, "2026-10-09 10:05:20-04:00"),
+])
+def test_provider_and_service_retry_times_use_same_local_offset(monkeypatch, tz, stamp, expected):
+    import time
+    from hypoloom.provider_observation import provider_status_text
+    from hypoloom.tui import _service_time
+    with monkeypatch.context() as env:
+        env.setenv("TZ", tz)
+        time.tzset()
+        try:
+            assert _service_time(stamp) == expected
+            status = {"state": "cooldown", "reason": "usage_window_exhausted", "next_retry_at": stamp}
+            assert expected in provider_status_text(status)
+            translated = provider_status_text(status, language="zh-CN")
+            assert expected in translated and "当前时间窗口额度已耗尽" in translated
+        finally:
+            env.undo()
+            time.tzset()
 
 
 def test_input_too_long_phrase_constant_is_the_single_shared_source():

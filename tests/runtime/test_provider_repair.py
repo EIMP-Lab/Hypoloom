@@ -206,27 +206,31 @@ def test_local_failures_and_other_statuses_do_not_claim_temporary_server_outage(
     assert provider_failure([exchange]) is None
 
 
-def test_server_failure_defers_next_real_relay_request_without_forwarding(tmp_path, upstream):
+@pytest.mark.parametrize("window", [False, True])
+def test_server_failure_defers_next_real_relay_request_without_forwarding(tmp_path, upstream, window):
     from hypoloom.provider_observation import provider_status_text
-    clock = [100.0]
-    traffic = ProviderTraffic(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    from test_provider_observation import WINDOW_ERROR
+    traffic = ProviderTraffic()
     root = tmp_path / "diagnostics"
     relay = _relay(tmp_path, upstream, diagnostics=RuntimeDiagnostics(root),
         traffic_binding=(traffic, ("run", "grounding"), None))
     try:
-        upstream.status = 503
-        upstream.body = b'{"error":{"type":"ServiceUnavailableError"}}'
+        upstream.status = 403 if window else 503
+        upstream.body = json.dumps(WINDOW_ERROR).encode() if window else b'{"error":{"type":"ServiceUnavailableError"}}'
         upstream.extra_headers = {"Retry-After": "120"}
-        assert _request(relay)[0] == 503
-        assert _request(relay)[0] == 503
+        assert _request(relay)[0] == upstream.status
+        assert _request(relay)[0] == (429 if window else 503)
     finally:
         relay.close()
     assert len(upstream.calls) == 1
     assert traffic.snapshot()["in_flight"] == traffic.snapshot()["queued"] == 0
     exchanges = read_exchanges(root / "provider")
     assert exchanges[1]["request_bytes_forwarded"] == 0
-    assert exchanges[1]["failure_reason"] == "service_unavailable"
-    assert provider_failure(exchanges)["code"] == "service_unavailable"
-    status = {"state": "cooldown", "reason": "service_unavailable", "next_retry_at": 220}
-    assert "provider temporarily unavailable" in provider_status_text(status)
-    assert "模型服务暂时不可用" in provider_status_text(status, language="zh-CN")
+    code = "usage_window_exhausted" if window else "service_unavailable"
+    assert exchanges[1]["failure_reason"] == code
+    failure = provider_failure(exchanges)
+    assert failure["code"] == code and failure["retry_after_seconds"] <= 120
+    assert exchanges[1]["response_headers"]["retry-after"] == "120"
+    status = {"state": "cooldown", "reason": code, "next_retry_at": 220}
+    assert ("usage window quota exhausted" if window else "provider temporarily unavailable") in provider_status_text(status)
+    assert ("当前时间窗口额度已耗尽" if window else "模型服务暂时不可用") in provider_status_text(status, language="zh-CN")

@@ -489,7 +489,7 @@
     const terminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(snapshot.status?.run_state);
     const labels = {ready: t("API dispatch available"), cooldown: t("API cooling down"), waiting_operator: t("API waiting for operator"), recovering: t("Trying API recovery")};
     setText("provider-title", terminal ? t("Run ended") : retry ? labels[retry.state] || t("API status") : t("API status unknown"));
-    const reasons = {auth_failed: t("Authentication rejected"), rate_limited: t("Rate limit; quota cause unconfirmed"), service_unavailable: t("Provider temporarily unavailable"), quota_exhausted: t("Quota exhausted"), connection_configuration: t("Connection configuration unavailable")};
+    const reasons = {auth_failed: t("Authentication rejected"), rate_limited: t("Rate limit; quota cause unconfirmed"), service_unavailable: t("Provider temporarily unavailable"), usage_window_exhausted: t("Usage window quota exhausted"), quota_exhausted: t("Quota exhausted"), connection_configuration: t("Connection configuration unavailable")};
     setText("provider-description", terminal ? t("No API recovery is available for an ended run.")
       : !retry ? t("Live Host status is unavailable. API availability cannot be confirmed.")
       : retry.state === "ready" ? t("Normal dispatch is allowed, subject to task and budget limits.")

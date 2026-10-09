@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .ui_i18n import tr
+from .ui_i18n import format_local_time, tr
 
 import base64
 import math
@@ -1449,7 +1449,7 @@ class EvidencePanel(CockpitPanel):
 
 
 def _service_time(value):
-    return time.strftime("%m-%d %H:%M:%S", time.localtime(value)) if type(value) in (int, float) else "unknown"
+    return format_local_time(value)
 
 
 def _literature_status_lines(value, *, terminal=False):

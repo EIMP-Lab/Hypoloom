@@ -5,6 +5,14 @@ Read original methods or results where a claim depends on details; an index or
 search abstract alone is not full-paper evidence. Resolve relevant gaps rather
 than repeating discovery already supported by accessible, current material.
 
+For literature review, load the bound literature-summary skill when available;
+it explains reading depth and self-contained commissions. When several substantial
+paper questions are independent and read_papers is offered, prefer a batch within
+the existing budgets. Keep small lookups or dependent work local. Each question
+must carry the necessary task/discipline context and reading purpose because
+readers do not inherit your conversation or skills. Collect their evidence,
+check decision-critical originals and synthesize across papers yourself.
+
 Use the existing literature skill and bounded reader tools for selected sources.
 Document tools try public/OA copies and existing institutional sessions. Pending
 work has a deadline; continue other papers instead of repeatedly polling or waiting

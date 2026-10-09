@@ -1,5 +1,16 @@
 # Development memory index
 
+- [Window quota recovery and local retry times](../design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间):
+  explicit hourly renewal uses existing transient backoff; ordinary auth/quota
+  controls remain. TUI local offsets, actual relay/Host/CPU evidence and baseline
+  G1 failures are recorded in [qualification](../qualification.md#window-quota-recovery-and-local-retry-times-2026-10-09).
+
+- [Independent paper reading methods](../design/tool-guided-reading-and-parallel-proposals.md#11-独立阅读的方法与深度2026-10-09):
+  shared reading method, task/discipline commissions, screening/targeted/close
+  reading and owner synthesis through existing interfaces; new runs only.
+  [Guide](../guides/reading-and-proposals.md#reading-method-and-depth) /
+  [104 focused/native checks and limits](../qualification.md#independent-paper-reading-methods-2026-10-09).
+
 - [Literature routing and query recovery](../qualification.md#literature-routing-and-query-recovery-2026-10-09):
   opt-in automatic routing, exact direct/proxy overrides, actual route diagnostics,
   bounded expert query repair, explicit init model choice and Grounding semantic

@@ -2,8 +2,19 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+
+
+def format_local_time(value: object) -> str:
+    """Display an epoch in the observer process's local zone, with its offset."""
+    if type(value) not in (int, float):
+        return "unknown"
+    try:
+        return datetime.fromtimestamp(value, timezone.utc).astimezone().isoformat(sep=" ", timespec="seconds")
+    except (ValueError, OverflowError, OSError):
+        return "unknown"
 
 
 @lru_cache(maxsize=1)

@@ -114,7 +114,7 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
     failure = _failure_diagnostics(details).get("provider_failure")
     if isinstance(failure, Mapping) and failure.get("code") in {"context_capacity", "compaction_failed"}:
         return "context_reconstruction"
-    if isinstance(failure, Mapping) and failure.get("code") in {"input_too_long", "token_budget_exceeded", "rate_limited", "auth_failed", "quota_exhausted"}:
+    if isinstance(failure, Mapping) and failure.get("code") in PROVIDER_UNAVAILABLE | {"input_too_long", "token_budget_exceeded"}:
         return "provider_admission"
     if _failure_diagnostics(details).get("provider_subtype") == "error_max_structured_output_retries": return "provider_structured_output"
     if code in RETRYABLE_MODEL_FAILURES: return "provider_output"
@@ -134,8 +134,8 @@ def operational_agent_failure(observation: Mapping[str, Any]) -> bool:
     if observation.get("failure_code") not in RETRYABLE_AGENT_FAILURES | {"host_restart"}:
         return False
     failure = _failure_diagnostics(observation).get("provider_failure") or {}
-    return (failure.get("code") in {"input_too_long", "context_capacity", "compaction_failed",
-            "empty_output_limit", "rate_limited", "quota_exhausted", "auth_failed", "token_budget_exceeded"}
+    return (failure.get("code") in PROVIDER_UNAVAILABLE | {"input_too_long", "context_capacity", "compaction_failed",
+            "empty_output_limit", "token_budget_exceeded"}
         or observation.get("failure_code") in RETRYABLE_INFRASTRUCTURE_FAILURES | {"host_restart"})
 
 

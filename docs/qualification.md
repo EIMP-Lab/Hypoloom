@@ -2,6 +2,94 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Window quota recovery and local retry times (2026-10-09)
+
+Adapter 77 implements the [bounded repair](design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间).
+An observed 403 permission error explicitly describing exhaustion and renewal of
+the same hourly window becomes `usage_window_exhausted`. It uses the existing
+transient backoff and trusted Retry-After handling, without inferring the reset
+instant from the window duration. Ordinary authentication and unqualified quota
+exhaustion retain their controls. Provider admission/context classification reuses
+the existing unavailable set. TUI API and service times share a local formatter
+with an explicit offset; browser-local display and stored epochs are unchanged.
+
+Evidence: `.local/qualification/provider-window-20261009/`.
+
+- **395 distinct focused/native checks pass**: `focused.xml` (171),
+  `integration.xml` (25, including eight repeated focused cases), `adapter.xml`
+  (205), and `native.xml` (two). These cover split JSON/SSE error parsing,
+  conservative authentication counterexamples, Retry-After seconds/HTTP dates,
+  relay-local deferral without another remote call, six recovery waves, restart,
+  ownership/attempt budgets, actual TUI banner/dialog and browser language/time
+  display. Shanghai, UTC and New York winter/summer offsets are checked.
+- Original classification and display failures remain in `original.xml`/log.
+  One initial relay assertion incorrectly expected local HTTP 503; the relay's
+  unchanged local status is 429 for this class. After correcting that expectation,
+  `original-relay.xml` still reproduces the actual `auth_failed` misclassification.
+  The retained original response body independently replays as a 60-second window
+  retry (`historical-replay.json`); no research record is rewritten.
+- Real Claude Code/Host/relay/CPU integration closes two runs: six 403 window
+  failures recover without any operator command, and ordinary quota exhaustion
+  retains explicit endpoint switching. Independent census records **30 CLOSED
+  Agents (22 successful, eight expected provider failures), two successful CLOSED
+  Processes and two canonical outcomes**. All 32 recorded process groups are
+  absent; Oracles have no issues/open Attempts/pending effects, and traffic queues
+  drain. The fixtures use local scripted providers, not paid models or GPUs.
+- **193 package files** match source, wheel, isolated install and a fresh bundle.
+  Installed/bundled CLI and MCP help entry points pass from `/tmp`. Compilation,
+  undefined-name and whitespace checks pass. No shared environment is installed
+  over, and no existing research run or private Profile is changed.
+- The parallel G1 attempt was stopped after **884 passes and three failures**;
+  `g1.xml` and the interrupted log are retained. The adapter-version assertion is
+  updated to 77 and its whole 205-test file passes. The remaining two failures
+  reproduce unchanged in detached **5bfec51** (`baseline.xml`): the Leader-input
+  test double lacks `exploration_progress`, and the pre-existing 4691-line
+  `workflow_host.py` exceeds its 4650-line allocation. Neither test is weakened
+  or its limit raised. **Full G1 remains incomplete; no G0–G5 promotion is claimed.**
+
+The preceding paper-reading guidance is included in this development delivery.
+Its separate 104-check adapter-76 evidence remains below. Runtime behavior changes
+apply to new runs; reopening an observer from this source updates time display
+without migrating the retained Host.
+
+## Independent paper reading methods (2026-10-09)
+
+Adapter 76 implements the [reading-method design](design/tool-guided-reading-and-parallel-proposals.md#11-独立阅读的方法与深度2026-10-09):
+shared PAPER_READ guidance, task/discipline context in the existing question,
+screening/targeted/close reading, mixed contribution types and explicit evidence,
+applicability and reading gaps. Expert skills guide independent batch delegation
+and owner synthesis; the tool's question description exposes the commission
+requirements even without a skill load. No new input/output fields, scheduler,
+reading-completeness validator or permission changes are introduced.
+
+Evidence: `.local/qualification/paper-reading-methods-20261009/`.
+
+- **103 focused tests pass**, covering reader admission, context/capabilities,
+  dynamic capacity, collection, cancellation/recovery, source archival, native
+  runtime instructions, owner plugin creation/evolution, literature tools and
+  documentation. Results are in `focused.xml` and `focused.log`.
+- **One real Claude Code/Host/CPU integration passes** in `native.xml`. Three
+  simultaneous readers receive the shared instruction and their exact existing
+  question, including Chinese AI close reading, numerical-analysis targeted
+  checking and ecology screening. Provider-side assertions verify the received
+  prompt and three allowed inputs; source text is actually read, answers are
+  collected and the downstream CPU experiment and publication close.
+- The independent database/process census (`closure-observation.json`) finds
+  **18 successful CLOSED Agents, one successful CLOSED Process, one canonical
+  outcome and one goal verdict**. All 19 recorded process groups are absent;
+  paper staging is empty. The existing Oracle reports no issues, open Attempts,
+  pending effects or residue. Provider errors are empty.
+- The first invocation used system Python, whose unrelated installed `tests`
+  package prevented collection. Original `base-collection-*` reports are retained;
+  the successful runs use the project's pinned `.conda/envs/hypoloom` environment.
+  Compilation, undefined-name checks and whitespace checks pass.
+
+The native provider is a local script: this verifies delivery, isolation and
+closure, not model-driven reading quality, obedience, cost savings or speedup.
+No paid-model/GPU sample or full G1–G5 promotion was performed. Existing research
+runs, private Profiles and frozen owner plugins remain unchanged; new runs receive
+the new instructions. See the [user guide](guides/reading-and-proposals.md#reading-method-and-depth).
+
 ## Literature routing and query recovery (2026-10-09)
 
 The [follow-up design](design/institutional-literature-access.md#run-comparison-repairs--2026-10-09)

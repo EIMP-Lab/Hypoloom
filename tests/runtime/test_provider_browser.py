@@ -18,6 +18,18 @@ def test_reader_sees_quota_wait_without_write_access(browser):
     assert "cannot be confirmed" in browser.text("#provider-description")
 
 
+def test_window_quota_reason_is_localized_with_browser_local_retry_time(browser):
+    browser.call("Emulation.setTimezoneOverride", {"timezoneId": "Asia/Shanghai"})
+    browser.evaluate("Object.assign(fixture.snapshot.status, {run_state:'ACTIVE',provider_retry:{state:'cooldown',pending:true,reason:'usage_window_exhausted',requires_operator:false,next_retry_at:1791554720}})")
+    browser.wait("document.querySelector('#provider-description').textContent.includes('Usage window quota exhausted')")
+    assert "22:05:20" in browser.text("#provider-description")
+    assert "Quota reset time: unknown" in browser.text("#provider-description")
+    browser.click("#language-toggle")
+    browser.wait("document.querySelector('#provider-description').textContent.includes('当前时间窗口额度已耗尽')")
+    assert "22:05:20" in browser.text("#provider-description")
+    assert browser.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
+
+
 @pytest.mark.parametrize("browser", ["provider"], indirect=True)
 def test_operator_switch_retries_same_request_and_does_not_claim_recovered(browser):
     page = browser

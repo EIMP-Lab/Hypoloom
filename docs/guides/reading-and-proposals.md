@@ -106,6 +106,53 @@ evidence and incorporates it into its own summary. When no reader can start and
 wait reports capacity or budget limits, cancel unstarted questions and read the
 original serially or report the limitation. Readers cannot delegate recursively.
 
+## Reading method and depth
+
+New adapter-76 runs give every reader shared scientific reading guidance. The
+expert supplies a compact commission in the existing `question` (up to 4000
+characters): research context, relevant discipline and constraints, reading
+purpose, and specific evidence questions. Users need not write a prompt per
+paper. The expert carries applicable user preferences and its focus into the
+commission; readers do not inherit the expert's conversation, memory or skills.
+Independent substantial questions favor batch delegation within existing budgets;
+small lookups, adequate prior notes and dependent work can remain with the expert.
+
+| Purpose | Expected reading |
+| --- | --- |
+| Screening | Problem, contribution and conditions relevant to selection |
+| Targeted check | The definitions, methods, results or appendices needed for a specific fact |
+| Close reading | Motivation, mechanism or argument, validation and limitations, including supporting appendices |
+
+Central method/theory and transfer judgments call for close reading. An ordinary
+question without an explicit depth remains valid; the reader chooses sufficient
+coverage and states its scope. These are natural-language instructions, not new
+tool fields or mandatory report sections.
+
+Types may overlap: methods, theory, empirical studies, datasets/benchmarks and
+surveys. Method reading explains inputs/outputs, new versus inherited designs,
+module relationships and evidence. Theory reading explains definitions,
+assumptions, claims, proof strategy and validity boundaries; experiments are not
+required. Preserve the paper's own objective and contrary evidence.
+
+Discipline comes from the actual task. AI/ML commissions can emphasize split/data
+leakage, training versus inference, fair baselines, ablations, cost and
+reproducibility. Causal/online tasks should check future information where relevant.
+Other disciplines use their own evidence standards. For example:
+
+```text
+Close reading for AI/ML online prediction: inference may only use observed
+prefixes. Explain the paper's motivation, core design and evidence; determine
+whether it requires future observations in training or inference. State transfer
+conditions, counterevidence, source/pages, actual reading scope and unresolved gaps.
+```
+
+The existing summary holds the answer, evidence, applicability conditions and
+reading scope/gaps. Available full text or successful completion does not certify
+whole-paper reading or understanding. Extracted text may omit figures/equations;
+unverified details stay explicit. The expert checks decision-critical originals
+and integrates comparisons across papers. Existing runs keep their frozen
+instructions and owner plugins; updating the checkout does not alter them.
+
 ## Understanding the expert card
 
 Literature preparation runs before the review model starts. If a paper's landing

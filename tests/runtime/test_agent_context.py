@@ -69,6 +69,15 @@ def test_cli_compaction_diagnostics_keep_existing_classification_rules() -> None
     assert agent_failure_stage("nonzero_exit", stateful) == "provider_process"
 
 
+def test_window_quota_failure_stays_operational_provider_admission():
+    from hypoloom.agent_context import operational_agent_failure
+    details = {"diagnostics": {"provider_failure": {"code": "usage_window_exhausted", "http_status": 403}}}
+    assert agent_retry_class("nonzero_exit", details, retryable=True) == "INFRASTRUCTURE"
+    assert agent_failure_stage("nonzero_exit", details) == "provider_admission"
+    assert operational_agent_failure({"failure_code": "nonzero_exit", **details})
+    assert not operational_agent_failure({"failure_code": "archive_failed", **details})
+
+
 def test_allowed_supporting_refs_projection_is_bounded_and_safe() -> None:
     from hypoloom.agent_context import _allowed_supporting_refs
 
