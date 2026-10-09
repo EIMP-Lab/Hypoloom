@@ -69,6 +69,40 @@ def test_quota_classification_does_not_guess_from_429_and_preserves_retry_after(
     assert gate([{**known, "attempt_id": "quota", "started_at": 1, "ended_at": 10}], 20)["state"] == "cooldown"
 
 
+@pytest.mark.parametrize("business_code,reason", [("1309", "subscription_expired"), ("1313", "access_denied")])
+def test_glm_operator_wait_survives_reopen_and_scheduled_retry_finishes_cpu(batch_host, monkeypatch, business_code, reason):
+    host = batch_host
+    original = host._accept_agent_response
+    parser = ProviderObservation(service="glm_cn")
+    parser.feed(json.dumps({"type": "error", "error": {"code": business_code}}).encode())
+    rejected = provider_failure([{**parser.finish(), "provider_service": "glm_cn", "upstream_status": 429}])
+    monkeypatch.setattr(host, "_accept_agent_response", lambda request, response, **kw:
+        host._agent_failure(request, AttemptTerminalReason.FAILED, "nonzero_exit", retryable=True,
+            details={"diagnostics": {"provider_failure": rejected}}))
+    _until(host, lambda: host._provider_retry_status("batch-host")["state"] == "waiting_operator")
+    before = len(host.store.list_attempts())
+    for _ in range(3): host.tick()
+    assert len(host.store.list_attempts()) == before
+    assert not host._expert_final_failures("batch-host")
+    reopened = WorkflowHost(host.state_root, local_agent=host.agent)
+    try:
+        status = reopened._provider_retry_status("batch-host")
+        assert status["requires_operator"] and status["reason"] == reason
+        assert status["next_retry_at"] is None
+    finally: reopened.store.close()
+    monkeypatch.setattr(host, "_accept_agent_response", original)
+    scheduled = host.handle(ControlRequest(1, "retry-repaired-glm", None, "PROVIDER_RETRY_CLEAR",
+        {"run_id": "batch-host", "reason": "operator", "retry_at": time.time() + .05}))
+    assert scheduled.status == "accepted", scheduled
+    _complete(host)
+    assert host._provider_retry_status("batch-host")["state"] == "ready"
+    assert not host.store.list_attempts(state="OPEN")
+    assert len(host.store.list_facts("batch-host", "CanonicalOutcomeAccepted")) == 2
+    from hypoloom.oracle import Oracle
+    report = Oracle(host.store.database_path, host.publisher.root).audit("batch-host")
+    assert report.ok, report.to_dict()
+
+
 def test_local_admission_timeout_never_claims_remote_rate_limit():
     local = provider_failure([{'failure_reason': 'local_request_queue', 'upstream_status': None, 'ended_at': 10}])
     assert local == {'code': 'local_request_queue', 'http_status': None, 'source': 'local_admission'}

@@ -155,14 +155,15 @@ def test_retry_after_defers_queued_calls_without_spending_rpm_and_switch_keeps_w
     assert traffic.recovered_after(101)
 
 
-def test_explicit_quota_keeps_operator_control_and_old_connection_cannot_reblock():
+@pytest.mark.parametrize("code", ["quota_exhausted", "subscription_expired", "access_denied"])
+def test_explicit_quota_keeps_operator_control_and_old_connection_cannot_reblock(code):
     traffic = ProviderTraffic()
     old = acquire(traffic)
     traffic.finish(old, {'request_path': '/v1/messages', 'upstream_status': 429,
-        'provider_error_code': 'quota_exhausted', 'ended_at': time.time()})
+        'provider_error_code': code, 'ended_at': time.time()})
     with pytest.raises(ProviderDeferred) as caught:
         acquire(traffic)
-    assert caught.value.code == 'quota_exhausted' and caught.value.retry_after is None
+    assert caught.value.code == code and caught.value.retry_after is None
     traffic.select(1)
     late = traffic.acquire(model='model', owner=('expert', 'a'), connection=None,
         deadline=time.monotonic() + 10, cancelled=threading.Event())

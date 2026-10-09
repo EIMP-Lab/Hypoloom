@@ -1,5 +1,11 @@
 # Development memory index
 
+- [DeepSeek and GLM error recovery](../design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖):
+  official endpoint/business-code selection, operator-only account restrictions,
+  zoned reset times and existing journal/traffic recovery; no extra init questions.
+  [Validation](../qualification.md#deepseek-and-glm-error-recovery-2026-10-10)
+  records 650 focused/native cases, three CPU closures and fixture timing repair.
+
 - [Local provider rules and scheduled recovery](../design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试):
   endpoint/response-based rules, no init questions or probes, one Host-owned TUI
   appointment through the existing journal, local times and unchanged budgets.

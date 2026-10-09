@@ -23,11 +23,27 @@ def test_window_quota_reason_is_localized_with_browser_local_retry_time(browser)
     browser.evaluate("Object.assign(fixture.snapshot.status, {run_state:'ACTIVE',provider_retry:{state:'cooldown',pending:true,reason:'usage_window_exhausted',requires_operator:false,next_retry_at:1791554720}})")
     browser.wait("document.querySelector('#provider-description').textContent.includes('Usage window quota exhausted')")
     assert "22:05:20" in browser.text("#provider-description")
-    assert "Quota reset time: unknown" in browser.text("#provider-description")
+    assert "Next attempt:" in browser.text("#provider-description")
+    assert "Quota reset time:" not in browser.text("#provider-description")
     browser.click("#language-toggle")
     browser.wait("document.querySelector('#provider-description').textContent.includes('当前时间窗口额度已耗尽')")
     assert "22:05:20" in browser.text("#provider-description")
     assert browser.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
+
+
+@pytest.mark.parametrize("reason,en,zh", [
+    ("subscription_expired", "Subscription expired; renew or switch API", "套餐已到期"),
+    ("access_denied", "Access restricted; check permissions or contact the provider", "访问受限"),
+])
+def test_account_restrictions_show_operator_action_in_both_languages(browser, reason, en, zh):
+    import json
+    browser.evaluate("Object.assign(fixture.snapshot.status, " + json.dumps({"run_state": "ACTIVE",
+        "provider_retry": {"state": "waiting_operator", "pending": True, "reason": reason, "requires_operator": True}}) + ")")
+    browser.wait("document.querySelector('#provider-description').textContent.includes(" + json.dumps(en) + ")")
+    assert "Operator action required" in browser.text("#provider-description")
+    assert "Next attempt:" not in browser.text("#provider-description")
+    browser.click("#language-toggle")
+    browser.wait("document.querySelector('#provider-description').textContent.includes(" + json.dumps(zh) + ")")
 
 
 def test_browser_shows_tui_appointment_in_local_time_without_writes(browser):

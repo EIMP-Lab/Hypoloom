@@ -144,13 +144,26 @@ missing traffic observations remain unknown.
 
 ## Local provider rules and scheduled retries
 
-Adapter 78 selects shipped error rules from the connection URL and actual error.
+Adapter 79 selects shipped error rules from the connection URL and actual error.
 Init adds no provider questions or identity probes. Endpoint families include
-Kimi Code, MiMo API/Token Plan and Anthropic; unknown gateways keep compatible
+Kimi Code, MiMo API/Token Plan, Anthropic, DeepSeek and domestic/international GLM;
+unknown gateways keep compatible
 protocol/HTTP fallbacks. Model names do not identify gateways. The rules live in
 `provider_observation.py`, with official sources in the
 [design](../design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试).
 Updates ship with the application, not through model-generated answers.
+
+DeepSeek 402 means insufficient balance. GLM business codes distinguish balance,
+rate limits, service overload, expired subscriptions and access restrictions;
+HTTP 429 alone cannot distinguish them. Expired subscriptions and access
+restrictions wait for operator action, with localized guidance in TUI/Web.
+GLM quota messages with an explicit ISO date/time and UTC offset may supply the
+next retry instant; valid Retry-After takes precedence. Missing/ambiguous zones,
+durations or stale dates do not establish a reset. Short windows retain backoff;
+weekly/monthly limits without a usable reset wait for operator action. The usual
+backoff minimum and research budgets still apply. See the
+[coverage and sources](../design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖).
+These rules apply to new adapter-79 runs; existing frozen runs keep their version.
 
 Kimi's explicit weekly/monthly exhaustion becomes quota exhaustion without an
 inferred reset instant. MiMo 402 means insufficient balance; 429 alone cannot

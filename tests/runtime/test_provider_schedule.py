@@ -203,9 +203,11 @@ def test_tui_schedule_lost_reply_replay_and_cancel(tmp_path, monkeypatch, langua
         async with app.run_test(size=size) as pilot:
             await pilot.pause(); await pilot.press("p")
             app.screen.query_one("#provider-retry-time", Input).value = "30 分钟后"
+            await pilot.pause()  # The preview changes the small dialog's layout.
             app.screen.query_one("#provider-schedule-confirm").scroll_visible()
+            await pilot.wait_for_scheduled_animations()
+            assert await pilot.click("#provider-schedule-confirm")
             await pilot.pause()
-            await pilot.click("#provider-schedule-confirm"); await pilot.pause()
             assert len(calls) == 1 and "retry_at" in calls[0].payload
             await pilot.click("#provider-resume-confirm"); await pilot.pause()
             assert calls[0] == calls[1]
@@ -217,8 +219,9 @@ def test_tui_schedule_lost_reply_replay_and_cancel(tmp_path, monkeypatch, langua
             message = app.screen.query_one("#provider-resume-status", Static)
             assert message.region.bottom <= app.screen.query_one("#provider-resume-actions").region.y
             app.screen.query_one("#provider-schedule-cancel").scroll_visible()
+            await pilot.wait_for_scheduled_animations()
+            assert await pilot.click("#provider-schedule-cancel")
             await pilot.pause()
-            await pilot.click("#provider-schedule-cancel"); await pilot.pause()
             assert calls[-1].payload["retry_at"] is None
             assert not app.screen.status["provider_retry"]["scheduled_retry"]
     asyncio.run(exercise())

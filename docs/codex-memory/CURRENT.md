@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 10 DeepSeek/GLM coverage: adapter 79 selects their official Anthropic
+  endpoints, distinguishes balance/rate/overload/context errors, and keeps expired
+  subscriptions/access restrictions waiting for the operator. Explicitly zoned
+  GLM reset messages feed existing retry timing; ambiguous times are not guessed.
+  650 distinct focused/native cases pass, including three CPU closures with 42
+  Agents/three Processes and no live groups. 194 package files match. A reproduced
+  TUI test animation race is synchronized without changing product controls.
+  No full G1 promotion, paid-provider test or retained-run mutation.
+  [Design](../design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖) /
+  [validation](../qualification.md#deepseek-and-glm-error-recovery-2026-10-10).
+
 - October 10 provider rules/scheduling: adapter 78 selects local Kimi Code,
   MiMo and Anthropic error rules without init questions/probes. TUI appointments
   reuse the Host control journal; pause new requests, survive restart, and allow

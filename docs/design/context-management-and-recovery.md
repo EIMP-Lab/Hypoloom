@@ -416,3 +416,44 @@ retry_at（null 表示取消预约），与切换连接互斥。不建数据库�
 普通认证/授权、密钥、不可变运行版本和研究预算保护保留。适配器递增为 78；
 已有研究运行只读、不迁移。验证覆盖分类反例、真实 relay、控制重放/重启、定时
 更改/取消、在途请求、时区/DST、TUI 交互和真实 Host/CPU 闭合。
+
+## 2026-10-10：DeepSeek 与 GLM 错误覆盖
+
+本地构造响应复现了两个缺口：DeepSeek 402 未进入额度恢复；GLM 的 1113 欠费、
+1309 套餐到期被普通 429 规则归为短期限流，导致无效自动重试。失败发生在既有
+响应分类到恢复策略的边界；扩展原分类器、既有 Attempt 诊断和普通回归即可，
+无需新增码本 schema、调度器、恢复 gate 或持久化权威。
+
+适配器 79 依据官方 Anthropic 兼容入口自动选择规则：
+`api.deepseek.com/anthropic`、`open.bigmodel.cn/api/anthropic`、
+`api.z.ai/api/anthropic`。国内与国际 GLM 保留各自服务标识，共用已核对的业务码。
+未知中转站仍按通用协议处理，不根据 GLM/DeepSeek 模型名推断服务商。
+init 无新增问题或付费探测；已有研究版本不迁移。
+
+官方来源（2026-10-10 查阅）：
+- [DeepSeek 错误码](https://api-docs.deepseek.com/quick_start/error_codes/)与
+  [Anthropic 兼容入口](https://api-docs.deepseek.com/guides/anthropic_api)。
+- [智谱业务错误码](https://docs.bigmodel.cn/cn/api/api-code)与
+  [Claude Code 入口](https://docs.bigmodel.cn/cn/coding-plan/tool/claude)。
+- [Z.ai 业务错误码](https://docs.z.ai/api-reference/api-code)与
+  [Claude Code 入口](https://docs.z.ai/devpack/tool/claude)。
+
+DeepSeek 402 为余额不足。GLM 1113 为余额/资源包不足；1309、1314 为套餐到期；
+1220、1311、1313、1315 为权限、产品密钥或需供应商介入的访问限制。
+后两类分别显示 subscription_expired、access_denied，复用既有 waiting_operator，
+不因 Retry-After 自动解除。用户仍可明确预约重试或更换 API。
+1302 为限流，1200/1230/1234/1305 为临时服务错误，1261 进入既有上下文恢复；
+参数、模型和内容拒绝不伪装为全局 API 冷却。HTTP 401 或显式认证失败优先。
+
+GLM 1308、1316/1318/1320 的可再生窗口复用临时退避；1310、1317/1319/1321
+的周/月额度在恢复时间未知时等待用户。上述窗口/周期码可从官方文案中的
+next_flush_time 提取明确带 UTC 偏移或 Z 的 ISO 日期时间。文档未规定具体格式
+或默认时区，因此无偏移日期、单独时刻、时长、占位符、非法或过期日期均不推算。
+有效标准 Retry-After 优先；否则采用明确的未来重置时刻，并保留现有退避下限。
+缺失时继续原有短窗口退避或长周期人工恢复，TUI 定时重试仍可显式覆盖。
+
+解析结果只将数值 provider_retry_at 放进已有 exchange 诊断，再归入已有
+provider_failure.retry_at；Host 重启仍从 Attempt 记录恢复。原始文案不进入
+公开状态。Web 显示实际“下一次尝试”，去掉一律声称重置时间未知的固定句子。
+验证使用分块 JSON/SSE、真实本地 HTTP relay、Host/CPU 与原生 Claude Code；
+本地脚本响应不是供应商线上错误格式或实际额度重置的实测证据。

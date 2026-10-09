@@ -2,6 +2,61 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## DeepSeek and GLM error recovery (2026-10-10)
+
+Adapter 79 extends the [existing classifier](design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖)
+using official DeepSeek, BigModel and Z.ai Anthropic endpoints. DeepSeek 402
+enters quota recovery. GLM business codes distinguish rate/overload/context,
+balance, subscription expiry, permission/policy restrictions and renewable quotas.
+Expired subscriptions and access restrictions use the existing operator wait;
+HTTP 401 and explicit authentication failures keep precedence. No init questions,
+identity probe, new state table or separate scheduler is introduced.
+
+GLM's documented reset message may supply an explicitly zoned future ISO instant.
+Standard Retry-After takes precedence. Invalid, naive, stale or placeholder dates
+do not establish a reset; existing backoff, operator controls and budget limits
+remain. The numeric projection goes through existing exchange/Attempt diagnostics.
+Web/TUI identify restrictions, and Web no longer labels every reset as unknown.
+
+Evidence: `.local/qualification/deepseek-glm-20261010/`.
+
+- **650 distinct current cases pass**, reconciled by identity in
+  `test-reconciliation.json`: `focused.xml` has 646 passes/one TUI failure;
+  all four final TUI parameter identities pass in `tui-fixed.xml`; `native.xml`
+  adds three passes. This is a bounded selection, not one all-green invocation
+  or a full G1 pass. Coverage includes provider/protocol counterexamples, split
+  JSON/SSE, explicit and ambiguous times, a real local relay with no extra remote
+  request during cooldown, durable Host reopen, scheduled recovery, existing
+  auth/traffic controls, bilingual browser/TUI, adapter and bundle behavior.
+- **Three real Claude Code/Host/CPU closures** complete: DeepSeek balance rejection
+  followed by API switch; GLM expired subscription followed by API switch; and
+  six GLM window rejections with explicit reset instants followed by automatic
+  recovery. All three finish one canonical CPU outcome and have clean test Oracles.
+  Independent SQLite/process census (`closure-observation.json`) finds **42 CLOSED
+  Agents (33 successes, nine expected failures), three successful CLOSED Processes,
+  three outcomes and 45 absent process groups**. Counts include local queue
+  deferral separately from upstream rejection.
+- **194 package files** match source, wheel, isolated install and a fresh runtime
+  bundle; installed/bundled CLI and MCP help work outside the checkout
+  (`package-check.json`). Shared installs, private Profiles and retained research
+  roots are unchanged. Static and documentation checks pass.
+- `original.xml` reproduces eight classification/reset failures before repair.
+  `integration.xml` retains two fixture setup failures from an incorrect relay
+  constructor keyword; the corrected real-relay tests pass in `relay.xml` and
+  the final focused selection. The small Chinese TUI click failure also
+  reproduces unchanged in `tui-recheck.xml`: the fixture clicked while its
+  scroll/layout animation was pending. It now waits for the actual scheduled
+  animations and asserts that the click hit the button; recovery assertions
+  remain intact. All four sizes/languages pass after this fixture-only change.
+
+No paid supplier requests, deliberate live quota exhaustion or GPU qualification
+were performed. Local scripted responses validate the runtime path, not suppliers'
+actual production error shapes or quota reset behavior. Full G1 was not rerun;
+the two baseline failures documented in the
+[previous validation](#local-provider-rules-and-scheduled-recovery-2026-10-10)
+remain unresolved. No G1–G5 promotion is claimed. Existing frozen
+research runs keep their original adapters and are not migrated or resumed.
+
 ## Local provider rules and scheduled recovery (2026-10-10)
 
 Adapter 78 implements the [bounded design](design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试).

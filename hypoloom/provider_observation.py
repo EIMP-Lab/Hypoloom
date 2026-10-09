@@ -16,7 +16,8 @@ INPUT_TOO_LONG_PHRASES = (
     "maximum context length", "input is too long")
 
 PROVIDER_TRANSIENT = frozenset({"rate_limited", "service_unavailable", "usage_window_exhausted"})
-PROVIDER_UNAVAILABLE = PROVIDER_TRANSIENT | {"auth_failed", "quota_exhausted"}
+PROVIDER_OPERATOR_REQUIRED = frozenset({"subscription_expired", "access_denied"})
+PROVIDER_UNAVAILABLE = PROVIDER_TRANSIENT | PROVIDER_OPERATOR_REQUIRED | {"auth_failed", "quota_exhausted"}
 # Local queue expiry retries its task without claiming a remote outage.
 PROVIDER_DEFERRED = PROVIDER_UNAVAILABLE | {"local_request_queue"}
 PROVIDER_RETRY_DELAYS = (60, 120, 240, 480, 900)
@@ -46,7 +47,51 @@ def provider_service(base_url):
     if host in {"token-plan-cn.xiaomimimo.com", "token-plan-sgp.xiaomimimo.com",
                 "token-plan-ams.xiaomimimo.com"} and path == "/anthropic":
         return "mimo_token_plan"
+    if host == "api.deepseek.com" and path == "/anthropic": return "deepseek"
+    if path == "/api/anthropic":
+        if host == "open.bigmodel.cn": return "glm_cn"
+        if host == "api.z.ai": return "glm_global"
     return "generic"
+
+
+# Official business codes shared by BigModel/Z.ai, scoped to their own endpoints.
+# Long-period quotas without a usable reset retain operator recovery; explicitly
+# renewable short windows reuse ordinary transient backoff.
+_GLM_ERRORS = {
+    **dict.fromkeys(("1000", "1001", "1003", "1005"), "auth_failed"),
+    **dict.fromkeys(("1113", "1310", "1317", "1319", "1321"), "quota_exhausted"),
+    **dict.fromkeys(("1220", "1311", "1313", "1315"), "access_denied"),
+    **dict.fromkeys(("1200", "1230", "1234", "1305"), "service_unavailable"),
+    **dict.fromkeys(("1309", "1314"), "subscription_expired"),
+    **dict.fromkeys(("1308", "1316", "1318", "1320"), "usage_window_exhausted"),
+    "1261": "input_too_long", "1302": "rate_limited",
+}
+_GLM_RESET_CODES = frozenset({"1308", "1310", "1316", "1317", "1318", "1319", "1320", "1321"})
+
+
+def _glm_code(error, service):
+    value = error.get("code")
+    return str(value) if service in {"glm_cn", "glm_global"} and type(value) in (str, int) else None
+
+
+def _provider_reset_at(error, service):
+    """Extract only an explicitly zoned reset in a documented quota message.
+
+    The docs name next_flush_time but do not specify its zone/format. A naive
+    timestamp, duration or placeholder cannot establish an absolute instant.
+    """
+    if _glm_code(error, service) not in _GLM_RESET_CODES: return None
+    message = error.get("message")
+    if not isinstance(message, str): return None
+    match = re.search(r"(?:您的限额将在\s*|(?:Your limit will reset at|Resets at)\s+)"
+        r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d))"
+        r"(?=\s|[.。]|$)", message[:4096], re.IGNORECASE)
+    if match is None or match[1].endswith("-00:00"): return None
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(match[1].upper().replace("Z", "+00:00")).timestamp()
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def provider_error(error, *, service="generic"):
@@ -58,6 +103,8 @@ def provider_error(error, *, service="generic"):
     codes = {value for value in (kind, code) if isinstance(value, str)}
     if codes & {"authentication_error", "invalid_api_key"}:
         return "auth_failed"
+    if normalized := _GLM_ERRORS.get(_glm_code(error, service)):
+        return normalized
     # Preserve the observed compatible-gateway signature; duration is not delay.
     if (kind == "permission_error" or service == "kimi_code" and kind is None) and re.match(
             r"you've reached your ([1-9][0-9]*-hour) usage limit\.\s+"
@@ -96,6 +143,8 @@ def provider_status_text(status, *, language="en"):
     reason = {"auth_failed": "authentication rejected", "rate_limited": "rate limit (quota cause unconfirmed)",
         "usage_window_exhausted": "usage window quota exhausted",
         "quota_exhausted": "quota exhausted", "service_unavailable": "provider temporarily unavailable",
+        "subscription_expired": "subscription expired; renew or switch API",
+        "access_denied": "access restricted; check permissions or contact the provider",
         "connection_configuration": "connection configuration unavailable"}.get(status.get("reason"), "provider rejected access")
     until = status.get("next_retry_at")
     if until is None:
@@ -118,6 +167,7 @@ class ProviderObservation:
         self.first_content_at = None
         self.json_response = None
         self.provider_error_code = None
+        self.provider_retry_at = None
 
     def _event(self, value):
         if not isinstance(value, dict):
@@ -144,6 +194,7 @@ class ProviderObservation:
             error = value.get("error")
             if isinstance(error, dict):
                 self.provider_error_code = provider_error(error, service=self.service)
+                self.provider_retry_at = _provider_reset_at(error, self.service)
         # Some compatible providers put content directly in a start event.
         # Its absence is also used to distinguish an empty terminal SSE.
         block = value.get("content_block")
@@ -204,6 +255,7 @@ class ProviderObservation:
             "stop_reason": self.stop_reason, "usage": dict(self.usage),
             "usage_valid": not self.invalid_usage,
             "provider_error_code": self.provider_error_code,
+            **({"provider_retry_at": self.provider_retry_at} if self.provider_retry_at is not None else {}),
             "message_complete": self.message_complete, "first_content_at": self.first_content_at}
 
 
@@ -311,7 +363,7 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
                 until = float(ended_at) + provider_retry_delay(1)
         elif row.get("code") == "auth_failed" and cooldown_seconds >= 0:
             until = float(ended_at) + cooldown_seconds
-        if until is None and row.get("code") != "quota_exhausted":
+        if until is None and row.get("code") not in PROVIDER_OPERATOR_REQUIRED | {"quota_exhausted"}:
             continue
         gates.append({"class": row.get("code"), "attempt_id": row.get("attempt_id"),
             "http_status": row.get("http_status"), "attempt_ended_at": float(ended_at),
@@ -371,7 +423,9 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
     if status == 401 or code == "auth_failed":
         return {"code": "auth_failed", "http_status": status}
     service = last.get("provider_service", "generic")
-    if status == 402 and service in {"mimo_api", "mimo_token_plan"}:
+    if code in PROVIDER_OPERATOR_REQUIRED:
+        return {"code": code, "http_status": status}
+    if status == 402 and service in {"mimo_api", "mimo_token_plan", "deepseek"}:
         code = "quota_exhausted"
     if status == 529 and service == "anthropic":
         code = "service_unavailable"
@@ -405,9 +459,16 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         return {"code": "input_too_long" if near_window else "empty_output_limit",
             "http_status": status, "source": "provider_usage_inference" if near_window else "provider_response",
             "stop_reason": "max_tokens", "output_tokens": 0}
+    ended_at = last.get("ended_at")
+    seconds = None
+    if type(ended_at) in (int, float) and math.isfinite(ended_at):
+        seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at)
+        reset = last.get("provider_retry_at")
+        if (seconds is None and service in {"glm_cn", "glm_global"}
+                and code in {"usage_window_exhausted", "quota_exhausted"}
+                and type(reset) in (int, float) and math.isfinite(reset) and ended_at < reset <= 253402300799):
+            seconds = reset - ended_at
     if code == "quota_exhausted":
-        ended_at = last.get("ended_at")
-        seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at) if type(ended_at) in (int, float) else None
         return {"code": code, "http_status": status,
             **({"retry_at": ended_at + seconds, "retry_after_seconds": seconds} if seconds is not None else {})}
     if status == 403 and code != "usage_window_exhausted":
@@ -420,8 +481,6 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         ended_at = last.get("ended_at")
         if type(ended_at) not in (int, float) or not math.isfinite(ended_at):
             return {"code": transient, "http_status": status}
-        headers = last.get("response_headers") or {}
-        seconds = retry_after_seconds(headers.get("retry-after"), now=ended_at)
         # No trusted reset time: bounded ordinary retry delay, existing caps apply.
         seconds = float(provider_retry_delay(1)) if seconds is None else seconds
         return {"code": transient, "http_status": status,

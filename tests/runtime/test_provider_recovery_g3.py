@@ -15,7 +15,13 @@ from test_claude_measurement_g3 import _DeclaredScenario, _NoPublicWeb, _six_yam
 from test_full_cc_host_g3 import _installed_claude, _new_host, _start_provider
 
 
-def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_process(tmp_path):
+@pytest.mark.parametrize("service,status,error,expected", [
+    ("generic", 429, {"type": "insufficient_quota", "message": "Local fixture quota exhausted"}, "quota_exhausted"),
+    ("deepseek", 402, {"type": "invalid_request_error", "message": "Insufficient Balance"}, "quota_exhausted"),
+    ("glm_global", 429, {"code": "1309", "message": "Your GLM Coding Plan package has expired"}, "subscription_expired"),
+], ids=["generic", "deepseek", "glm_expired"])
+def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_process(tmp_path, monkeypatch, service, status, error, expected):
+    monkeypatch.setattr("hypoloom.provider_observation.provider_service", lambda _: service)
     executable = _installed_claude()
     scenario = _DeclaredScenario(tmp_path, "provider-recovery-" + secrets.token_hex(12))
     new_key = "local-recovery-key-" + secrets.token_hex(16)
@@ -25,8 +31,8 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
         def do_POST(self):
             self.rfile.read(int(self.headers.get("Content-Length", "0")))
             rejected.append(self.path)
-            body = b'{"type":"error","error":{"type":"insufficient_quota","message":"Local fixture quota exhausted"}}'
-            self.send_response(429)
+            body = json.dumps({"type": "error", "error": error}).encode()
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Retry-After", "0")
@@ -56,9 +62,10 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             deadline = time.monotonic() + 180
             while time.monotonic() < deadline:
                 host.tick()
-                status = host._provider_retry_status(run_id)
-                if switched is None and status["gates"]:
-                    assert status["reason"] in {"quota_exhausted", "rate_limited"}
+                retry_status = host._provider_retry_status(run_id)
+                if switched is None and retry_status["gates"]:
+                    assert retry_status["reason"] == expected
+                    if expected == "subscription_expired": assert retry_status["requires_operator"]
                     assert not host._expert_final_failures(run_id)
                     scheduled = host.handle(ControlRequest(1, "schedule-before-switch", None, "PROVIDER_RETRY_CLEAR",
                         {"run_id": run_id, "reason": "operator", "retry_at": time.time() + 3600}))
@@ -76,10 +83,10 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             failed = [row for row in attempts if row["terminal_reason"] != "SUCCEEDED"]
             assert failed and all(row["kind"] == "AGENT" for row in failed)
             failures = [json.loads(row["observation_json"])["diagnostics"]["provider_failure"] for row in failed]
-            assert any(item["code"] == "quota_exhausted" and item["http_status"] == 429 for item in failures)
+            assert any(item["code"] == expected and item["http_status"] == status for item in failures)
             # Scheduling can defer an already-open invocation before the switch.
             # That local admission is neither another remote rejection nor quota.
-            assert all(item["code"] in {"quota_exhausted", "rate_limited"} or
+            assert all(item["code"] == expected or
                 item == {"code": "local_request_queue", "http_status": None, "source": "local_admission"}
                 for item in failures)
             processes = [row for row in attempts if row["kind"] == "PROCESS"]
@@ -103,18 +110,19 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             server.shutdown(); server.server_close(); thread.join(timeout=5)
 
 
-@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue', 'remote_503', 'window_403', 'scheduled_window_403'])
+@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue', 'remote_503', 'window_403', 'scheduled_window_403', 'glm_reset'])
 def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_path, monkeypatch, failure_kind):
     from hypoloom import provider_observation
     # Accelerate only the shared recovery policy, not Host/Process/model clocks.
     scheduled_mode = failure_kind == 'scheduled_window_403'
     monkeypatch.setattr(provider_observation, 'PROVIDER_RETRY_DELAYS', (18000,) if scheduled_mode else (.02, .04, .08, .1, .2))
+    if failure_kind == 'glm_reset': monkeypatch.setattr(provider_observation, 'provider_service', lambda _: 'glm_cn')
     executable = _installed_claude()
     scenario = _DeclaredScenario(tmp_path, 'automatic-rpm-' + secrets.token_hex(12))
     provider, thread = _start_provider(scenario, 'local-rpm-key')
     post, rejected = provider.RequestHandlerClass.do_POST, []
     def overload(handler):
-        if failure_kind in {'remote_429', 'remote_503', 'window_403', 'scheduled_window_403'} and len(rejected) < (1 if scheduled_mode else 6):
+        if failure_kind != 'local_queue' and len(rejected) < (1 if scheduled_mode else 6):
             handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
             rejected.append(time.time())
             status = 503 if failure_kind == 'remote_503' else 429
@@ -122,6 +130,11 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             if failure_kind in {'window_403', 'scheduled_window_403'}:
                 from test_provider_observation import WINDOW_ERROR
                 status, body = 403, json.dumps(WINDOW_ERROR).encode()
+            if failure_kind == 'glm_reset':
+                from datetime import datetime, timezone
+                reset = datetime.fromtimestamp(time.time() + .5, timezone.utc).isoformat()
+                body = json.dumps({'type': 'error', 'error': {'code': '1308',
+                    'message': f'您的限额将在 {reset} 重置。'}}).encode()
             handler.send_response(status)
             handler.send_header('Content-Type', 'application/json')
             handler.send_header('Content-Length', str(len(body)))
@@ -179,11 +192,13 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             assert len(rejected) == (1 if scheduled_mode else 6)
             assert host.store.latest_transition(run_id)['state'] == 'COMPLETED'
             attempts = host.store.list_attempts()
-            if failure_kind in {'remote_503', 'window_403'}:
+            if failure_kind in {'remote_503', 'window_403', 'glm_reset'}:
                 failures = [json.loads(a['observation_json']) for a in attempts if a['terminal_reason'] == 'FAILED']
                 assert len(failures) == 6
-                code = 'usage_window_exhausted' if failure_kind == 'window_403' else 'service_unavailable'
+                code = 'usage_window_exhausted' if failure_kind in {'window_403', 'glm_reset'} else 'service_unavailable'
                 assert all(a['diagnostics']['provider_failure']['code'] == code for a in failures)
+                if failure_kind == 'glm_reset':
+                    assert all(0 < a['diagnostics']['provider_failure']['retry_after_seconds'] <= .5 for a in failures)
             processes = [a for a in attempts if a['kind'] == 'PROCESS']
             assert len(processes) == 1 and processes[0]['terminal_reason'] == 'SUCCEEDED'
             assert len(host.store.list_facts(run_id, 'CanonicalOutcomeAccepted')) == 1

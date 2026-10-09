@@ -5,7 +5,7 @@ from collections import deque
 import threading
 import time
 
-from .provider_observation import PROVIDER_UNAVAILABLE, empty_generation_response, provider_failure, provider_retry_delay
+from .provider_observation import PROVIDER_OPERATOR_REQUIRED, PROVIDER_UNAVAILABLE, empty_generation_response, provider_failure, provider_retry_delay
 
 
 class ProviderDeferred(Exception):
@@ -113,7 +113,8 @@ class ProviderTraffic:
                     if permit['at'] >= bucket['failed_at']:
                         bucket['failures'] += 1
                     bucket['failed_at'] = now
-                    if failure['code'] == 'quota_exhausted' and 'retry_at' not in failure:
+                    if (failure['code'] in PROVIDER_OPERATOR_REQUIRED
+                            or failure['code'] == 'quota_exhausted' and 'retry_at' not in failure):
                         bucket['halted'] = True
                     else:
                         delay = (self.auth_cooldown if failure['code'] == 'auth_failed' else
