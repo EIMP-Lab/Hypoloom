@@ -655,3 +655,22 @@ button:disabled { opacity: .4; cursor: default; }
 .institutional-ready { color: var(--green); }
 .institutional-import { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .institutional-import-path { flex: 1 1 18rem; min-width: 0; background: var(--panel-deep); color: var(--text); border: 1px solid var(--line); border-radius: .4rem; padding: .35rem .55rem; font-size: .72rem; }
+
+.skill-library-controls { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin: .8rem 0; }
+.skill-library-controls label { display: grid; gap: .3rem; font-size: .8rem; }
+.skill-library-controls select { max-width: 100%; }
+.skill-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.skill-frequency { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(2rem, 1fr) auto; gap: .5rem; align-items: center; margin: .45rem 0; }
+.skill-frequency button { text-align: left; overflow-wrap: anywhere; }
+.skill-frequency-track { background: var(--line); height: .45rem; border-radius: .3rem; }
+.skill-frequency-bar { display: block; height: 100%; background: var(--accent, #78dcff); border-radius: inherit; }
+.skill-trend { display: flex; align-items: end; gap: 2px; height: 120px; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.skill-trend-bar { flex: 1 1 0; min-width: 2px; padding: 0; background: var(--accent, #78dcff); border-radius: 3px 3px 0 0; }
+.skill-trend-bar[data-calls="0"] { background: var(--line); }
+.skill-trend-bar:hover, .skill-trend-bar:focus-visible { filter: brightness(1.4); outline: 2px solid var(--text); }
+.skill-evolution-list { margin: 1rem 0; }
+.skill-evolution-list > summary { cursor: pointer; font-weight: 600; }
+.skill-evolution { margin-top: .6rem; border-left: 3px solid var(--accent, #78dcff); }
+.skill-change { margin: .4rem 0; overflow-wrap: anywhere; }
+.skill-call { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; border-bottom: 1px solid var(--line); padding: .5rem 0; }
+@media (max-width: 700px) { .skill-charts { grid-template-columns: 1fr; } }

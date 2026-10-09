@@ -155,7 +155,56 @@ cost; there is no guaranteed speedup.
 
 Compare scientific correctness and accepted outcomes first, then existing total
 time, tokens, tool calls and correction records under matched task/model/budget
-conditions. No finer timing instrumentation is introduced. Exact reread counts
+conditions. Phase timing is authored by the task when applicable. Exact reread counts
 do not cover all Bash reads; unknown CLI pricing is not verified billing.
 See [qualification](../qualification.md) for actual coverage and limitations and
 the [design](../design/research-workflow-skill.md) for implementation rationale.
+
+## Current-experiment timing and performance
+
+For costly computation, the shared skill routes to a conditional performance
+reference. The task chooses meaningful work units and reuses its logs; it may add
+flushed stage/progress/duration messages and calculate estimates in its own code.
+Initialization, warmup, steady work, evaluation and artifact checks are separate.
+Current-design pilot measurements inform the initial timeout; current progress
+informs remaining time. Unknown convergence or future search stays unknown.
+Estimates never extend admitted deadlines or reduce required GOAL coverage.
+
+GPU diagnostics optionally retain device power draw/limit (mW), temperature (°C)
+and SM clock (MHz), alongside existing utilization/memory observations. Unsupported
+fields are absent. These device-level readings are not attributable Process energy
+or efficiency. Compare phase throughput/data wait before a bounded tuning probe;
+PyTorch-specific advice is loaded only when applicable. Resource authorization,
+scientific settings and the submit/handoff workflow remain unchanged.
+
+Reports retain workload conditions, original evidence and estimated/actual timing.
+SELF_EVOLVE/GRAPH_EVOLVE can change these methods and references within the owner's
+plugin. Accepted versions become selectable for later requests; existing bindings
+remain. Private numerical lessons are conditional, not automatic cross-run policy.
+
+## Expert skill library
+
+Choose **Skill library** on an expert card, or **Expert skill library** in the
+global summary. Both open the existing skills workbench. Filter by expert, research
+stage and the entire run or its last 1/6/24 hours. For a finished run, the window
+ends at its last recorded Agent activity. The stage filter applies to calls;
+evolution history follows the expert/time filters.
+
+The library shows observed native Skill calls, loaded/failed/unanswered results,
+frequency distribution and an interactive time chart. Calls link to their original
+invocation. Availability, prompt mentions, request bindings and reference-file reads
+are not Skill calls. Loading does not prove that the method was followed or useful.
+Replayed session history and duplicate tool IDs are excluded. Missing, bounded or
+live capture gives lower bounds; untimed calls are excluded from time windows/charts.
+Cold reads are bounded and cached, so coverage can improve on a later refresh.
+Browser opening time does not control recording. Deleted logs cannot be recovered.
+
+Evolution history separates accepted changes, no-change, failed and running
+attempts. It identifies changed skills and files, including references/scripts,
+and separates publication, later request binding and observed later calls. Open a
+skill to inspect its content, supporting files, whole-directory diff and usage.
+Concurrent bindings may use different versions. All views reuse existing logs,
+Attempt records and Git objects; they do not modify research state or create a
+second durable skills database. Existing research runs are not upgraded in place.
+
+See the [implementation design](../design/experiment-methods-and-skill-observation.md).

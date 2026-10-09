@@ -6,6 +6,10 @@ description: Estimate an experiment's per-device GPU memory from comparable work
 Expert: {{ROLE}}
 Focus: {{FOCUS}}
 
+For runtime estimates or throughput problems, use this plugin's research-workflow
+performance reference. It covers current-design measurements, phase logs and
+bounded tuning; this skill retains resource estimation and ownership rules.
+
 Use this skill for DESIGN or EXECUTION resource decisions, and when reporting or
 evolving a resource lesson. These instructions are stable strategy; injected
 resource experience is scoped evidence, and the initial capability snapshot is

@@ -1,5 +1,8 @@
 # Analysis, decisions and reports
 
+When reporting costly computation, follow [Progress and performance](performance.md)
+for estimate/actual differences, measured bottlenecks and scoped evolution evidence.
+
 Use accepted outcomes and original evidence relevant to the current question.
 Check metric direction, splits, aggregation, configuration and comparison scope
 before concluding that one result improves another. Identify missing evidence

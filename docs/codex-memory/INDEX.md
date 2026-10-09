@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Experiment methods and skill observation](../design/experiment-methods-and-skill-observation.md):
+  invocation-file output handoff, current-design performance methods, owner-local
+  skill evolution, optional device telemetry and Web usage/evolution projections.
+  [User guide](../guides/research-workflow.md#expert-skill-library) /
+  [501 focused checks and qualification limits](../qualification.md#experiment-methods-and-expert-skill-library-2026-10-09).
+
 - [Experiment metric and GOAL notifications](../qualification.md#experiment-metric-and-goal-notifications-2026-10-08):
   first measurement versus strict group improvement; scope, values and experiment
   threshold without inferred GOAL success; independent verdict titles and unchanged

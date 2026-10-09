@@ -52,7 +52,23 @@ def test_repeated_stop_revalidates_current_candidate(tmp_path):
         server.close()
 
 
-@pytest.mark.parametrize("change", ["message", "source", "session"])
+def test_repeated_stop_revalidates_changed_text_and_delivers_exact_file(tmp_path):
+    checks = []
+    server = _server(tmp_path, candidate_check=lambda output: checks.append(output))
+    try:
+        assert _call(server) == {}
+        revised = VALID.replace("1", "2")
+        assert _call(server, revised) == {}
+        assert [item["typed_candidate"]["count"] for item in checks] == [1, 2]
+        assert server.output_path.read_text() == server.accepted_text() == revised
+        assert server.output_path.stat().st_mode & 0o777 == 0o600
+        server.close()
+        assert server.accepted_text() == revised
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("change", ["source", "session", "invalid"])
 def test_repeated_stop_rejects_identity_or_source_drift(tmp_path, change):
     def check(output):
         if changed[0]:
@@ -62,10 +78,43 @@ def test_repeated_stop_rejects_identity_or_source_drift(tmp_path, change):
     try:
         assert _call(server) == {}
         changed[0] = change == "source"
-        with pytest.raises(ValueError, match="changed|source drift|session"):
-            _call(server, VALID.replace("1", "2") if change == "message" else VALID,
+        with pytest.raises(ValueError):
+            _call(server, INVALID if change == "invalid" else VALID,
                   session_id="foreign" if change == "session" else "session-owned")
         assert not server.snapshot()["accepted"]
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
+    finally:
+        server.close()
+
+
+def test_unaccepted_or_missing_output_file_cannot_supply_completion(tmp_path):
+    server = _server(tmp_path)
+    try:
+        server.output_path.write_text(VALID)
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
+        assert _call(server) == {}
+        server.output_path.unlink()
+        with pytest.raises(FileNotFoundError):
+            server.accepted_text()
+    finally:
+        server.close()
+
+
+def test_failed_replacement_write_invalidates_previous_acceptance(tmp_path, monkeypatch):
+    server = _server(tmp_path)
+    try:
+        assert _call(server) == {}
+        def failed(text):
+            raise OSError("disk full")
+        monkeypatch.setattr(server, "_write_output", failed)
+        with pytest.raises(ValueError):
+            _call(server, VALID.replace("1", "2"))
+        assert not server.snapshot()["accepted"]
+        assert server.snapshot()["call_count"] == 1
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
     finally:
         server.close()
 

@@ -27,6 +27,10 @@ Read only the applicable reference; do not execute all stages as a checklist:
 | analysis | [Analysis and reporting](references/analysis.md) |
 | evolution | [Method evolution](references/evolution.md) |
 
+For costly computation, uncertain completion time or an observed throughput
+problem, also read [Progress and performance](references/performance.md). Apply
+only the relevant workload guidance; ordinary reading/reporting needs no probe.
+
 Continue using the bound specialist skills for literature, resources, repairs,
 reports and interactions. Do not duplicate their procedures here. Host validators
 own output structure, parser isolation and result acceptance; no second generic

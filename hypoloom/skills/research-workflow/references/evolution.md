@@ -1,5 +1,10 @@
 # Method evolution
 
+For timing or throughput lessons, use [Progress and performance](performance.md).
+Its references are part of this same evolvable plugin. Improve the measurement
+or decision method from current-run evidence; keep workload-specific settings
+conditional and check later outcomes rather than claiming benefit at acceptance.
+
 Use closed Attempt evidence, accepted reports and original errors within your
 scope to identify a concrete recurring or costly methodological weakness. Check
 the report's premise against the source. API unavailability alone is not a skill

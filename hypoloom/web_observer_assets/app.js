@@ -115,6 +115,7 @@
     selectedExperiment: null,
     logSocket: null,
     workbenchKind: "skills",
+    skillFilters: {window: "", command: ""},
     reliabilityFilters: {role: "", node: "", model: ""},
     reliabilityMetric: "",
     workbenchOffset: 0,
@@ -1778,6 +1779,12 @@
         openLocalDetail("expert", {role: expert.role, name: t("Expert · {0}", expert.role)}));
       inspect.dataset.expertDetails = expert.role;
       identity.append(inspect);
+      const skills = actionButton(t("Skill library"), () => {
+        byId("filter-expert").value = expert.role;
+        openWorkbench("skills");
+      });
+      skills.dataset.expertSkills = expert.role;
+      identity.append(skills);
       const work = element("div", "expert-work");
       renderExpertActivity(work, summary, snapshot);
       const preview = element("div", "reliability-preview");
@@ -2753,7 +2760,7 @@
   }
 
   const WORKBENCH_TITLES = () => ({
-    skills: t("Skills & evolution"), literature: t("Literature"), sessions: t("Sessions & tools"),
+    skills: t("Expert skill library"), literature: t("Literature"), sessions: t("Sessions & tools"),
     interactions: t("Leader & Debate"), resources: t("Experiments & resources"),
     reliability: t("Execution reliability"), institutional: t("Institutional access"),
   });
@@ -2777,7 +2784,7 @@
       ["experiments", t("Experiments"), object(totals.experiments).total, "resources", t("Distinct experiment IDs")],
       ["hypotheses", t("Hypotheses"), totals.hypotheses, "map", t("Accepted hypothesis identities")],
       ["literature", t("Literature"), object(totals.literature).retrieved, "literature", t("{0} PDFs with extracted evidence", displayValue(object(totals.literature).pdf_available))],
-      ["skills", t("Skills"), object(totals.skills).count, "skills", t("{0} accepted/bound catalog", object(totals.skills).coverage || "unavailable")],
+      ["skills", t("Expert skill library"), object(totals.skills).count, "skills", t("{0} accepted/bound catalog", object(totals.skills).coverage || "unavailable")],
       ["evolutions", t("Effective evolution"), object(totals.evolutions).changed, "skills", t("{0} completed / {1} failed; changed commits only", displayValue(object(totals.evolutions).completed), displayValue(object(totals.evolutions).failed))],
       ["leader", "Leader", object(totals.leader).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.leader).active))],
       ["debate", "Debate", object(totals.debate).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.debate).active))],
@@ -2981,6 +2988,7 @@
     const parameters = {kind: state.workbenchKind, offset: state.workbenchOffset, limit: DETAIL_PAGE_SIZE};
     const role = selectedFilters().expert;
     if (role) parameters.role = role;
+    if (state.workbenchKind === "skills") Object.assign(parameters, state.skillFilters);
     if (["resources", "sessions"].includes(state.workbenchKind)) {
       const component = state.workbenchContext.component_id || selectedFilters().component;
       if (component) parameters.component_id = component;
@@ -3173,6 +3181,10 @@
       field("expert", item.role); field(t("accepted / bound version"), item.commit);
       field(t("current accepted / bound"), item.current); field("description", item.description);
       field(t("request bindings"), list(item.bindings).length);
+      const usage = object(item.usage);
+      field(t("Observed calls"), usage.calls === undefined ? "unavailable" : `${usage.coverage === "complete" ? "" : "≥"}${usage.calls}`);
+      field(t("Loaded / failed / unanswered"), [usage.succeeded, usage.failed, usage.unanswered].map(displayValue).join(" / "));
+      if (usage.last_called_at) field(t("Last call"), formatTimestamp(usage.last_called_at));
       card.append(element("p", "panel-copy", t("Publication and request binding do not prove a native Skill was loaded. Open adoption evidence for actual loads.")));
     } else if (kind === "literature") {
       card.append(actionButton(item.title || item.bibliographic_identity || t("Literature record"), () => openLocalDetail("literature", item), "record-title"));
@@ -3444,12 +3456,117 @@
     });
   }
 
+  function renderSkillCalls(parent, calls, truncated) {
+    if (truncated) parent.append(element("p", "panel-copy", t("Only the latest 200 observed calls are listed; totals include all inspected calls.")));
+    list(calls).forEach((call) => {
+      const row = element("div", "skill-call");
+      row.append(element("span", "", `${call.timestamp ? formatTimestamp(call.timestamp) : t("Time unavailable")} · ${call.command || "—"} · ${call.status}`));
+      row.append(actionButton(call.attempt_id, () => openRemoteDetail("attempt", {attempt_id: call.attempt_id})));
+      parent.append(row);
+    });
+    if (!list(calls).length) parent.append(element("p", "panel-copy", t("No calls observed in the retained capture. This does not prove the skill was unused.")));
+  }
+
+  function renderSkillEvolution(parent, events) {
+    const labels = {running: t("In progress"), failed: t("Failed"), unknown: t("Evidence unavailable"),
+      unchanged: t("Completed without changes"), accepted_change: t("Accepted change")};
+    list(events).forEach((event) => {
+      const row = element("article", "skill-evolution detail-card");
+      row.append(element("h4", "", `${event.role} · ${labels[event.status] || event.status}`));
+      row.append(element("p", "panel-copy", `${formatTimestamp(event.ended_at || event.started_at)} · ${event.command} · ${t("Cycle {0}", event.cycle ?? "—")}`));
+      if (event.base_commit && event.commit) row.append(element("p", "panel-copy", `${compact(event.base_commit, 12)} → ${compact(event.commit, 12)}`));
+      list(event.skills).forEach((skill) => {
+        const section = element("details", "skill-change");
+        section.append(element("summary", "", `${skill.name} · ${t("{0} changed files", list(skill.files).length)}`));
+        list(skill.files).forEach((file) => section.append(element("p", "panel-copy", `${file.change} · ${file.path}`)));
+        section.append(actionButton(t("View skill version"), () => openRemoteDetail("skill", {
+          role: event.role, name: skill.name, commit: event.commit,
+        })));
+        row.append(section);
+      });
+      if (event.changes_available === false && event.status === "accepted_change") row.append(element("p", "panel-copy", t("Accepted version recorded; changed files unavailable.")));
+      row.append(element("p", "panel-copy", t("{0} later bindings · ≥{1} observed later calls in this selection", event.later_bindings || 0, event.observed_later_calls || 0)));
+      row.append(actionButton(t("Inspect evolution session"), () => openRemoteDetail("attempt", {attempt_id: event.attempt_id})));
+      parent.append(row);
+    });
+    if (!list(events).length) parent.append(element("p", "panel-copy", t("No evolution attempts in this selection.")));
+  }
+
+  function renderSkillLibrary(data) {
+    const container = byId("skill-library");
+    const activity = object(data.activity);
+    const key = JSON.stringify([uiLanguage, activity, state.skillFilters]);
+    if (container.dataset.renderedKey === key) return;
+    const focus = container.contains(document.activeElement) ? document.activeElement.id : null;
+    container.dataset.renderedKey = key;
+    container.replaceChildren();
+    const controls = element("div", "skill-library-controls");
+    const stages = ["", "GROUNDING", "LITERATURE_REVIEW", "PROPOSE_HYPOTHESIS", "SYNTHESIS",
+      "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS", "CYCLE_REPORT", "SELF_EVOLVE", "GRAPH_EVOLVE"];
+    [["window", t("Time range"), [["", t("Entire run")], ["3600", t("Last hour of run")], ["21600", t("Last 6 hours of run")], ["86400", t("Last 24 hours of run")]]],
+     ["command", t("Research stage"), stages.map((stage) => [stage, stage || t("All stages")])]].forEach(([name, label, options]) => {
+      const field = element("label", "", label);
+      const select = element("select"); select.id = `skills-${name}`;
+      options.forEach(([value, text]) => { const option = element("option", "", text); option.value = value; select.append(option); });
+      select.value = state.skillFilters[name];
+      select.addEventListener("change", () => { state.skillFilters[name] = select.value; state.workbenchOffset = 0; loadWorkbench(); });
+      field.append(select); controls.append(field);
+    });
+    controls.append(actionButton(t("All experts"), () => { byId("filter-expert").value = ""; openWorkbench("skills"); }));
+    container.append(controls);
+    const coverage = activity.coverage || "unavailable";
+    container.append(element("p", "panel-copy skill-coverage", t("{0} · {1} observed calls · complete capture for {2}/{3} sessions · {4} untimed calls", coverage, activity.observed_calls ?? "?", object(activity.capture).complete ?? 0, activity.attempts ?? "?", activity.untimed_calls ?? "?")));
+    container.append(element("p", "panel-copy", t("Partial capture gives lower bounds. Binding is not a call; loading is not proof of following a skill or improving results.")));
+    if (activity.unmatched_calls) container.append(element("p", "panel-copy", t("{0} calls could not be assigned to a bound skill version.", activity.unmatched_calls)));
+    const charts = element("div", "skill-charts");
+    const frequency = element("section", "detail-card");
+    frequency.append(element("h3", "", t("Most frequently called skills")));
+    const ranked = list(activity.skills).slice(0, 20);
+    const maximum = Math.max(1, ...ranked.map((item) => item.calls || 0));
+    ranked.forEach((item) => {
+      const row = element("div", "skill-frequency");
+      row.append(actionButton(`${item.role} · ${item.name}`, () => item.entrypoint_available === false
+        ? openRemoteDetail("attempt", {attempt_id: item.last_attempt_id})
+        : openRemoteDetail("skill", {role: item.role, name: item.name, commit: item.last_called_commit})));
+      const track = element("div", "skill-frequency-track");
+      const bar = element("span", "skill-frequency-bar"); bar.style.width = `${100 * item.calls / maximum}%`; track.append(bar);
+      row.append(track, element("span", "", `${coverage === "complete" ? "" : "≥"}${item.calls}`));
+      frequency.append(row);
+    });
+    if (!ranked.length) frequency.append(element("p", "panel-copy", t("No calls observed in the retained capture. This does not prove the skill was unused.")));
+    const trend = element("section", "detail-card");
+    trend.append(element("h3", "", t("Calls over time")));
+    trend.append(element("p", "panel-copy", t("Calls per {0}-second interval; untimed calls are excluded.", activity.bin_seconds ?? "?")));
+    const plot = element("div", "skill-trend"); plot.setAttribute("aria-label", t("Calls over time"));
+    const caption = element("p", "panel-copy skill-trend-caption", t("Select a bar to inspect its interval."));
+    const peak = Math.max(1, ...list(activity.timeline).map((bin) => bin.calls || 0));
+    list(activity.timeline).forEach((bin) => {
+      const label = `${formatTimestamp(bin.started_at)} – ${formatTimestamp(bin.ended_at)} · ${t("{0} calls / {1} failures", bin.calls, bin.failed)}`;
+      const bar = actionButton("", () => { caption.textContent = label; }, "skill-trend-bar");
+      bar.style.height = `${Math.max(3, 100 * bin.calls / peak)}%`;
+      bar.dataset.calls = bin.calls; bar.title = label; bar.setAttribute("aria-label", label);
+      bar.addEventListener("focus", () => { caption.textContent = label; });
+      plot.append(bar);
+    });
+    trend.append(plot, caption); charts.append(frequency, trend); container.append(charts);
+    const evolution = element("details", "skill-evolution-list");
+    evolution.open = true;
+    evolution.append(element("summary", "", t("Evolution history")));
+    evolution.append(element("p", "panel-copy", t("Accepted changes describe file updates, not demonstrated improvements. The stage filter applies to calls; evolution history uses the expert and time filters.")));
+    renderSkillEvolution(evolution, activity.evolutions);
+    if (activity.evolutions_truncated) evolution.append(element("p", "panel-copy", t("Only the latest 200 evolution attempts are shown.")));
+    container.append(evolution);
+    if (focus) byId(focus)?.focus({preventScroll: true});
+  }
+
   function renderWorkbench() {
     const kind = state.workbenchKind;
     const data = object(state.workbenchData);
     byId("workbench-list").classList.toggle("execution-reliability", kind === "reliability");
     setText("workbench-title", WORKBENCH_TITLES()[kind]);
     document.querySelectorAll("[data-workbench]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.workbench === kind)));
+    byId("skill-library").hidden = kind !== "skills";
+    if (kind === "skills") renderSkillLibrary(data);
     if (kind === "reliability") { renderReliability(); return; }
     if (kind === "institutional") { renderInstitutional(); return; }
     const filters = selectedFilters();
@@ -3559,7 +3676,7 @@
     const evidenceStatus = data.available === false ? kind === "attempt" && data.attempt?.failure_code
       ? t("Recorded failure · session trace unavailable") : t("Evidence unavailable") : t("Read-only evidence");
     setText("research-detail-status", selected.data ? `${evidenceStatus}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? t(" · bounded response; more evidence exists") : ""}` : t("Reading run-bound evidence…"));
-    const names = kind === "skill" ? [["overview", "Version"], ["body", t("Skill content")], ["diff", t("Recent diff")], ["adoption", "Adoption"], ["files", t("Supporting files")]]
+    const names = kind === "skill" ? [["overview", "Version"], ["body", t("Skill content")], ["usage", t("Calls")], ["evolution", t("Evolution history")], ["diff", t("Recent diff")], ["adoption", "Adoption"], ["files", t("Supporting files")]]
       : kind === "attempt" ? [["overview", t("Attempt")], ["timeline", "Session / tools"], ["corrections", "Corrections"], ["execution", t("Execution evidence")]]
         : kind === "interaction" ? [["overview", "Overview"], ["timeline", "Stages / verdict"]]
           : [["overview", kind === "resource" ? "Estimate → admission → measured" : t("Evidence")]];
@@ -3612,9 +3729,14 @@
         const id = typeof attempt === "string" ? attempt : attempt.attempt_id;
         if (id) content.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}), "detail-link reliability-attempt-link"));
       });
+    } else if (kind === "skill" && state.detailTab === "usage") {
+      structuredDetail(content, data.usage || {coverage: "unavailable"});
+      renderSkillCalls(content, data.calls, data.calls_truncated);
+    } else if (kind === "skill" && state.detailTab === "evolution") {
+      renderSkillEvolution(content, data.evolutions);
     } else if (state.detailTab === "body") {
       if (data.body_truncated) content.append(element("p", "panel-copy", t("Skill body truncated at the response limit.")));
-      content.append(element("pre", "detail-code skill-body", data.body ?? t("Skill content unavailable for this accepted version.")));
+      content.append(element("pre", "detail-code skill-body", data.removed ? t("This skill was removed in the selected accepted version.") : data.body ?? t("Skill content unavailable for this accepted version.")));
     }
     else if (state.detailTab === "diff") {
       const diff = object(data.diff);
@@ -3967,6 +4089,7 @@
   }));
   byId("clear-filters").addEventListener("click", () => {
     filterIds.forEach((id) => { byId(id).value = ""; });
+    state.skillFilters = {window: "", command: ""};
     renderFilteredViews();
     if (state.activeView === "workbench") { state.workbenchOffset = 0; state.workbenchContext = {}; loadWorkbench(); }
     byId("filter-search").focus();

@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 9 implementation: adapter 74 delivers invocation-local validated output
+  and revalidates changed repeated Stop text. Current-experiment timing/performance
+  references evolve through existing owner plugins; optional NVML diagnostics do
+  not change scheduling. Web skill library adds actual invocation counts, time
+  trends and whole-skill evolution diffs over existing traces/Git. Retained runs
+  and private profiles remain unchanged. 501 distinct focused/browser/native
+  checks pass; native closure has 27 Agents/two CPU Processes and no residue.
+  Source/wheel/install/fresh bundle match 193 files. Full G1 stops at socket EPERM;
+  no full promotion, paid/GPU run or measured speedup claim.
+  [Design](../design/experiment-methods-and-skill-observation.md) /
+  [guide](../guides/research-workflow.md#expert-skill-library) /
+  [validation](../qualification.md#experiment-methods-and-expert-skill-library-2026-10-09).
+
 - October 8 metric notifications distinguish first valid measurements from strict
   comparable improvements, showing declared scope, prior/current values and the
   experiment threshold through the existing MetricSpec evaluator. GOAL messages

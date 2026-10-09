@@ -775,7 +775,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/73"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/74"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -796,6 +796,23 @@ def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> Non
         "enum": ["JOURNAL", "CONFERENCE"],
     }
     assert template.preferred_venues
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_native_provider_delivery_uses_the_validated_text_and_rejects_disagreement(mismatch):
+    request, _ = _claude_grounding_query_plan_request()
+    text = json.dumps({"typed_candidate": {"query": "current experiment evidence"}})
+    outer = json.dumps({"type": "result", "subtype": "success", "is_error": False,
+        "num_turns": 1, "total_cost_usd": 0,
+        "usage": {"input_tokens": 7, "output_tokens": 11}, "modelUsage": {"stub-model": {}},
+        "result": text.replace("current", "different") if mismatch else text}).encode()
+    response, failure, diagnostics = _provider_response(request, "stub-model", outer,
+        final_text_output=True, validated_text=text)
+    if mismatch:
+        assert response is None and failure == "invalid_structured_output"
+        assert "differs from validated" in diagnostics["provider_diagnostic"]
+    else:
+        assert response is not None and failure is None
 
 
 def test_aci10_grounding_query_plan_is_role_neutral_and_materializes_language() -> None:

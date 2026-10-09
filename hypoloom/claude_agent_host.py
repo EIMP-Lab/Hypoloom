@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/73"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/74"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -953,6 +953,7 @@ class ClaudeAgentHost:
         workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None
         final_text_output = handle._output_validator is not None
         final_candidate = None
+        validated_text = None
         if reason is None and stdout_size > output_limit:
             reason = AgentHostTerminalReason.INVALID_OUTPUT
             failure_code = "transport_output_too_large"
@@ -979,9 +980,13 @@ class ClaudeAgentHost:
                 failure_code = stream_failure
             if isinstance(outer, Mapping) and outer.get("subtype") == "success" and outer.get("is_error") is False:
                 try:
-                    final_candidate = decode_output(outer.get("result"),
+                    validated_text = handle._output_validator.accepted_text()
+                    if outer.get("result") != validated_text:
+                        raise ValueError("provider result differs from validated native output")
+                    final_candidate = decode_output(validated_text,
                         _output_schema(handle.request, tool_workspace=True))
-                except ValueError:
+                    diagnostics["native_output_delivery"] = "validated_invocation_file"
+                except (OSError, ValueError) as exc:
                     _, failure_code, parsed_diagnostics = _provider_response(
                         handle.request, handle.model, output or b"", final_text_output=True,
                         observed_wire_input_floor=wire_input_floor,
@@ -990,6 +995,8 @@ class ClaudeAgentHost:
                     )
                     diagnostics.update(parsed_diagnostics)
                     reason = AgentHostTerminalReason.INVALID_OUTPUT
+                    failure_code = failure_code or "invalid_provider_envelope"
+                    diagnostics["provider_diagnostic"] = bounded_diagnostic_text(str(exc))
         if reason is None:
             from .agent_aci import grounding_acceptance_request
             if handle.tool_workspace is not None and handle.request.command.value in {
@@ -1063,6 +1070,7 @@ class ClaudeAgentHost:
                     output,
                     workspace_artifacts=workspace_artifacts,
                     final_text_output=final_text_output,
+                    validated_text=validated_text,
                     observed_wire_input_floor=wire_input_floor,
                     observed_wire_exchanges=exchanges,
                     session_usage_baseline=handle._session_usage_baseline,
@@ -1087,7 +1095,6 @@ class ClaudeAgentHost:
                     failure_code = "invalid_provider_envelope"
                     diagnostics["provider_diagnostic"] = "native output validation was unavailable or prevented completion"
                     if handle.request.schema_version >= 24 and not snapshot.get("error"):
-                        from .diagnostics import bounded_diagnostic_text
                         rejected = [row.get("validation_error") for row in snapshot.get("rounds", ())
                             if row.get("status") == "rejected"]
                         if rejected and (message := bounded_diagnostic_text(rejected[-1])):
@@ -1454,6 +1461,7 @@ def _provider_response(
     *,
     workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None,
     final_text_output: bool = False,
+    validated_text: str | None = None,
     observed_wire_input_floor: object = None,
     observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
     session_usage_baseline: Mapping[str, object] | None = None,
@@ -1509,7 +1517,9 @@ def _provider_response(
         return None, "provider_error", diagnostics
     if final_text_output:
         try:
-            structured = decode_output(outer.get("result"), _output_schema(request,
+            if validated_text is not None and outer.get("result") != validated_text:
+                raise ValueError("provider result differs from validated native output")
+            structured = decode_output(validated_text if validated_text is not None else outer.get("result"), _output_schema(request,
                 tool_workspace=request.schema_version >= 11 or workspace_artifacts is not None))
         except ValueError as exc:
             diagnostics["provider_diagnostic"] = bounded_diagnostic_text(str(exc))

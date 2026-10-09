@@ -2,6 +2,60 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Experiment methods and expert skill library (2026-10-09)
+
+The [implementation](design/experiment-methods-and-skill-observation.md) uses the
+existing invocation validator, owner plugin Git history and captured native tool
+calls. Adapter 74 reads exact validated output from the private invocation file;
+changed repeated Stop text undergoes all existing checks. Conditional performance
+methods use current-design logs/pilots and can evolve within the owner's plugin.
+Optional device power, temperature and SM clock observations do not change resource
+admission. Web adds expert/global skill-library entries, observed-call distribution
+and time trends, complete skill-subtree diffs and evolution/adoption drill-down.
+No second durable usage ledger or acceptance authority is introduced.
+
+Evidence lives in `.local/qualification/skills-20261009/` and the original
+disposable native test root
+`/tmp/hypoloom-skills-native-final-20261009/test_native_resource_skill_que0/trial/`.
+
+- **501 distinct checks pass without skips:** 303 final focused output/adapter/
+  skill/document/Profile checks, 162 observer/bundle/device integration checks,
+  all 35 browser cases and one native two-cycle CPU closure. The four final JUnit
+  reports are `final-focused.xml`, `final-integration.xml`, `browser.xml` and
+  `native-cpu-final.xml`; their test identities do not overlap.
+- Regressions cover fully revalidated repeated output, failed writes and stale
+  acceptance, CLI/file disagreement, missing device telemetry, replay/duplicate
+  exclusion, owner/version association, untimed/incomplete captures, reference-only
+  evolution, deleted custom skills, failed/no-change evolution and browser filters.
+  A successful Skill tool result means loading was observed, not that advice was
+  followed or improved science. Read-only projection tests preserve database bytes.
+- The native closure uses the real Host/Claude Code, a scripted local provider,
+  an isolated pool with synthetic inventory, and real CPU Processes. Independent
+  census records **27 successful Agents, two successful Processes, two canonical
+  outcomes**, 27 complete transcripts and **29 absent process groups**. Oracle
+  reports no issues, open Attempts or pending effects; the owned pool socket/thread
+  closes. Four resource-planning calls all succeed; accepted evolution changes the
+  next cycle's loaded content and the Web view observes the later calls. No GPU
+  workload or paid provider is invoked.
+- The first native attempt failed because development edits changed the runtime
+  while the case ran. Its original `native-cpu.xml` remains; the final 99-second
+  run above passes with fixed source. Assertions and runtime protection are intact.
+- **193 package files** match source, wheel, isolated installation and a fresh
+  runtime bundle. Installed/bundled CLI and MCP initialization/tool discovery pass
+  from `/tmp`; the new module and both performance references are packaged. Skill
+  validation, compilation, undefined-name and whitespace checks pass.
+- Two parallel G1 attempts were interrupted after failures and stalled progress,
+  without a final JUnit aggregate. A bounded serial rerun records **299 passed /
+  one failed** in `g1-first-failure.xml`: creating the local scripted provider's
+  TCP socket raises `PermissionError: EPERM` before research starts. This
+  invocation-dependent restriction does not establish causes for every earlier
+  parallel failure. Full G1 is **incomplete**, not passed.
+
+Retained research runs, private Profiles and active services are unchanged. Reopen
+the Web observer to load the new backend; new runs receive the updated runtime and
+skill seeds. This is focused feature validation, not full G1–G5 promotion, physical
+GPU qualification or evidence of model-driven runtime/scientific improvement.
+
 ## Experiment metric and GOAL notifications (2026-10-08)
 
 The [notification update](guides/notifications.md#experiment-metrics-and-goal-verdicts--实验指标与-goal-判定)

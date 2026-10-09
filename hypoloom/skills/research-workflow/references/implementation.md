@@ -1,5 +1,8 @@
 # Implementation
 
+For costly or timing-sensitive computation, use [Progress and performance](performance.md)
+to make the current implementation observable and plan any necessary small probe.
+
 Read the accepted hypothesis, supplied interface declarations, actual evaluator
 source and relevant existing implementation. Reuse components whose assumptions
 match; investigate remaining integration gaps. Accepted shared acceptance is

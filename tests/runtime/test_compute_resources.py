@@ -368,6 +368,39 @@ def test_runtime_observation_is_typed_read_only_and_injectable(tmp_path: Path) -
         expected.free_memory_mib = 1  # type: ignore[misc]
 
 
+def test_optional_device_performance_samples_do_not_change_pressure_policy():
+    initial = GpuRuntimeObservation(uuid=GPU_A.uuid, total_memory_mib=24576,
+        free_memory_mib=10000, used_memory_mib=14576, utilization_percent=70,
+        power_draw_mw=210000, power_limit_mw=350000, temperature_c=65, sm_clock_mhz=1695)
+    tracker = GpuPressureTracker(initial_observation=initial, reserve_memory_mib=512, grace_seconds=2)
+    summary = tracker.summary.to_dict()
+    assert summary["gpu_latest_power_draw_mw"] == 210000
+    assert summary["gpu_latest_temperature_c"] == 65
+    assert not summary["pressure_exceeded"]
+    # Unsupported subsequent readings remain unknown, not stale measurements.
+    tracker.sample(replace(initial, power_draw_mw=None, power_limit_mw=None, temperature_c=None, sm_clock_mhz=None))
+    assert "gpu_latest_power_draw_mw" not in tracker.summary.to_dict()
+    assert not tracker.summary.pressure_exceeded
+    with pytest.raises(ValueError, match="power_draw_mw"):
+        replace(initial, power_draw_mw=-1)
+
+
+@pytest.mark.parametrize("result,value", [(0, 213000), (3, 0), (0, 0xFFFFFFFF)])
+def test_optional_nvml_query_preserves_milliwatt_units_and_missing_values(monkeypatch, result, value):
+    import ctypes
+    from hypoloom import compute_resources as module
+    def query(handle, output):
+        ctypes.cast(output, ctypes.POINTER(ctypes.c_uint))[0] = value
+        return result
+    monkeypatch.setattr(module, "_nvml_function", lambda *args: query)
+    assert module._nvml_optional_uint(None, "nvmlDeviceGetPowerUsage", None) == (
+        value if result == 0 and value != 0xFFFFFFFF else None)
+    def unavailable(*args):
+        raise ResourceUnavailable("unsupported")
+    monkeypatch.setattr(module, "_nvml_function", unavailable)
+    assert module._nvml_optional_uint(None, "nvmlDeviceGetPowerUsage", None) is None
+
+
 def test_runtime_observation_rejects_invalid_or_mismatched_provider_values(
     tmp_path: Path,
 ) -> None:

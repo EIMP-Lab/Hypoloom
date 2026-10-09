@@ -311,8 +311,18 @@ def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_pa
             assert oracle.open_attempt_count == oracle.pending_effect_count == 0
             assert oracle.artifact_counts["TRANSCRIPT"] == len(archives)
             assert not host.running and not host.running_agents and not host.projection_errors
+            from hypoloom.observer_details import read_observer_detail
+            library = read_observer_detail(host.state_root, run_id, "skills", role=role)
+            activity = library["activity"]
+            resource = next(item for item in activity["skills"] if item["name"] == "resource-planning")
+            assert resource["calls"] == resource["succeeded"] == len(scenario.skill_results) == 4
+            assert resource["failed"] == resource["unanswered"] == 0
+            changed = [item for item in activity["evolutions"] if item["status"] == "accepted_change"]
+            assert any(any(skill["name"] == "resource-planning" for skill in item["skills"]) for item in changed)
+            assert any(item["later_bindings"] > 0 and item["observed_later_calls"] > 0 for item in changed)
             evidence.update(agent_attempts=len(agents), process_attempts=len(processes), absent_process_groups=len(groups),
-                transcript_count=len(archives), transcripts=archives, first_plugin_update=first_update)
+                transcript_count=len(archives), transcripts=archives, first_plugin_update=first_update,
+                skill_calls=resource, skill_capture=activity["capture"])
             host.close()
             host = None
         assert not socket_path.exists() and not server.thread.is_alive()

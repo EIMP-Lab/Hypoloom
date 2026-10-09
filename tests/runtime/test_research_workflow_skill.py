@@ -35,7 +35,7 @@ def _grounding(manager, *, ordinal=1):
 def test_common_seed_is_identical_for_both_owners_and_includes_stage_files(tmp_path):
     expected = {p.relative_to(WORKFLOW_SKILL_ROOT).as_posix(): p.read_bytes()
         for p in WORKFLOW_SKILL_ROOT.rglob("*") if p.is_file()}
-    assert len(expected) == 7
+    assert len(expected) == 9
     assert len(expected["SKILL.md"]) < 2400
     for kind, role in (("expert", "numerical"), ("grounding", "grounding")):
         store = ExpertPluginStore(tmp_path, owner_kind=kind)
@@ -50,24 +50,25 @@ def test_common_seed_is_identical_for_both_owners_and_includes_stage_files(tmp_p
 
 
 @pytest.mark.parametrize("kind,role", [("expert", "alpha"), ("grounding", "grounding")])
-def test_workflow_evolves_only_in_owner_git_and_preserves_bound_views(tmp_path, kind, role):
+@pytest.mark.parametrize("changed_path", [ENTRY, "skills/research-workflow/references/performance.md"])
+def test_workflow_evolves_only_in_owner_git_and_preserves_bound_views(tmp_path, kind, role, changed_path):
     store = ExpertPluginStore(tmp_path, owner_kind=kind)
     base = store.ensure("run", role, "Method evolution")
     peer = ExpertPluginStore(tmp_path).ensure("run", "peer", "Independent")
     view = store.read("run", role, commit=base.commit, attempt_id="before", max_bytes=LIMIT)
-    original = (view.root / ENTRY).read_bytes()
+    original = (view.root / changed_path).read_bytes()
     update = store.prepare_update("run", role, commit=base.commit, attempt_id="evolve", command_id="evolve")
-    (update.root / ENTRY).write_bytes(original + b"\nCheck the actual evidence before adopting a report's lesson.\n")
+    (update.root / changed_path).write_bytes(original + b"\nCheck the actual evidence before adopting a report's lesson.\n")
     # Reconstruct after an interrupted authoring call using the same logical command.
     recovered = store.prepare_update("run", role, commit=base.commit, attempt_id="retry", command_id="evolve")
     accepted = store.finish_update(recovered, max_bytes=LIMIT)
     assert accepted.commit != base.commit
     assert store.finish_update(recovered, max_bytes=LIMIT) == accepted
-    assert (view.root / ENTRY).read_bytes() == original
+    assert (view.root / changed_path).read_bytes() == original
     assert ExpertPluginStore(tmp_path).ensure("run", "peer", "ignored") == peer
     later = store.read("run", role, commit=accepted.commit, attempt_id="later", max_bytes=LIMIT)
     try:
-        assert (later.root / ENTRY).read_bytes() != original
+        assert (later.root / changed_path).read_bytes() != original
     finally:
         later.close()
         view.close()

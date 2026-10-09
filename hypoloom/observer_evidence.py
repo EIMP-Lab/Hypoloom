@@ -44,6 +44,7 @@ def evidence_read_budget(max_reads=16):
 
 def _summary(coverage="unavailable", source=None, *, status="unknown", reason="current_stdout_unavailable", name=None):
     return {"coverage": coverage, "source": source, "tool_calls": 0, "tool_errors": 0,
+        "skill_calls": [], "skill_calls_truncated": False,
         "reading_calls": {"calls": 0, "rejected": 0, "unanswered": 0, "last_wait_reason": None},
         "counts_scope": "observed_current_invocation",
         "required_action": {"status": status, "name": name, "reason": reason}}
@@ -280,6 +281,21 @@ def read_attempt_evidence(root, run_id, row):
         result = _summary("complete" if complete else "partial", "runtime_diagnostics")
         result.update(tool_calls=len(uses), tool_errors=sum(
             result[1].get("is_error") is True for key, result in results.items() if key in uses))
+        for identity, (position, call, _) in uses.items():
+            if call.get("name") != "Skill":
+                continue
+            name = call.get("input", {}).get("skill")
+            if not isinstance(name, str) or len(name) > 256:
+                continue
+            if len(result["skill_calls"]) >= 1000:
+                result["skill_calls_truncated"] = True
+                result["coverage"] = "partial"
+                break
+            reply = results.get(identity)
+            answered = reply is not None and reply[0] > position
+            status = ("failed" if reply[1].get("is_error") is True else "succeeded") if answered else "unanswered"
+            result["skill_calls"].append({"name": name, "tool_use_id": identity,
+                "timestamp": call.get("timestamp"), "status": status})
         reading = result["reading_calls"]
         for identity, (position, call, _) in uses.items():
             if call.get("name") != "mcp__host-tools__read_papers": continue

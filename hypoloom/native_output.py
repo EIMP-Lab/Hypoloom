@@ -202,7 +202,9 @@ class NativeOutputValidator:
         self._connections: set[socket.socket] = set()
         self._status = "not_observed"
         self._accepted = False
-        self._accepted_message: str | None = None
+        # The invocation-owned result is handed to the adapter without asking
+        # the model to reproduce it. Sanitized diagnostics are never transport.
+        self.output_path = self.socket_path.with_suffix(".json")
         self._error: str | None = None
         self._rounds: list[dict[str, Any]] = []
         self._rejected = 0
@@ -295,8 +297,6 @@ class NativeOutputValidator:
             if not isinstance(document["last_assistant_message"], str):
                 raise ValueError("native output last_assistant_message must be text")
             repeated = self._accepted
-            if repeated and document["last_assistant_message"] != self._accepted_message:
-                raise ValueError("native output changed after acceptance")
             if self._rejected >= self.max_failed_validations:
                 raise ValueError("native output validation already completed")
             error = None
@@ -365,15 +365,15 @@ class NativeOutputValidator:
             if repeated and error is not None:
                 raise ValueError(error)
             ordinal = len(self._rounds) + 1
-            self._rounds.append({"ordinal": ordinal, "status": "accepted" if error is None else "rejected",
-                                 "validation_error": error})
-            self._accepted = error is None
             if error is None:
-                self._accepted_message = document["last_assistant_message"]
+                self._write_output(document["last_assistant_message"])
                 self._status = "recovered" if self._rejected else "first_pass"
             else:
                 self._rejected += 1
                 self._status = "unresolved"
+            self._accepted = error is None
+            self._rounds.append({"ordinal": ordinal, "status": "accepted" if error is None else "rejected",
+                                 "validation_error": error})
             if self.diagnostics is not None:
                 self.diagnostics.write_json(f"native-output/{ordinal:06d}.json", {
                     **document, **({"parser_smoke": smoke} if self.acceptance_smoke or self.measurement_smoke else {}),
@@ -388,6 +388,34 @@ class NativeOutputValidator:
                     " Repair the actual /workspace local C5 parser and /workspace/smoke fixtures; its output requires metric, value and optional baseline."
                     if self.measurement_smoke else "")}
             return {}
+
+    def _write_output(self, text: str) -> None:
+        descriptor, temporary = tempfile.mkstemp(prefix=".output-", dir=self.output_path.parent)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(text.encode("utf-8"))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.output_path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+    def accepted_text(self) -> str:
+        """Read the exact current result after Stop, including after close().
+
+        Invocation state remains authoritative for acceptance. A file alone can
+        never recover a cancelled, failed or unvalidated invocation.
+        """
+        with self._lock:
+            if not self._accepted or self._error is not None:
+                raise ValueError("native output was not accepted")
+            with self.output_path.open("rb") as stream:
+                raw = stream.read(self.max_request_bytes + 1)
+            if len(raw) > self.max_request_bytes:
+                raise ValueError("native output exceeds size limit")
+            text = raw.decode("utf-8")
+            _decode_output(text, self._validator)
+            return text
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:

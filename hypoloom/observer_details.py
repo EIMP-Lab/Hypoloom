@@ -6,7 +6,6 @@ run, or treats a mutable Git HEAD as an accepted version.
 """
 from __future__ import annotations
 
-import difflib
 import json
 import math
 import os
@@ -32,7 +31,7 @@ _MAX_TRACE_BYTES = 4 * 1024 * 1024
 _MAX_TEXT = 65536
 _SESSION_FIELDS = ("session_id", "parent_session_id", "scope", "chain", "cycle", "branch")
 _SELECTORS = {
-    "skills": {"role"}, "skill": {"role", "name", "commit", "base_commit"},
+    "skills": {"role", "command", "window"}, "skill": {"role", "name", "commit", "base_commit"},
     "literature": {"role"}, "sessions": {"role", "component_id", "session_id", "task_scope", "execution_role"},
     "attempt": {"attempt_id"}, "interactions": {"role"},
     "resources": {"role", "component_id", "experiment_id"},
@@ -292,6 +291,7 @@ def skill_catalog(state_root, run_id, attempts):
 
 
 def _skill(root, run_id, attempts, selectors):
+    from .observer_skills import skill_activity, skill_diff
     versions = [item for item in _version_sources(run_id, attempts) if item["role"] == selectors["role"]]
     commit = selectors.get("commit")
     if commit is None:
@@ -308,9 +308,11 @@ def _skill(root, run_id, attempts, selectors):
     name = selectors["name"]
     files = _files(root, run_id, version)
     path = f"skills/{name}/SKILL.md"
+    old = None if base is None else _files(root, run_id, {**version, "commit": base})
     if files is not None and path not in files:
-        raise MonitorError("skill entrypoint is not present at the bound commit")
-    body = None if files is None else files[path].decode("utf-8", errors="replace")
+        if old is None or path not in old:
+            raise MonitorError("skill entrypoint is not present at the bound commit")
+    body = None if files is None or path not in files else files[path].decode("utf-8", errors="replace")
     supporting = []
     for file_path, content in (files or {}).items():
         if not file_path.startswith(f"skills/{name}/") or file_path == path:
@@ -323,18 +325,26 @@ def _skill(root, run_id, attempts, selectors):
                            "truncated": text is not None and len(text) > _MAX_TEXT})
     diff = {"base_commit": base, "commit": commit, "available": False, "text": "", "truncated": False}
     if base is not None and files is not None:
-        old = _files(root, run_id, {**version, "commit": base})
-        if old is not None:
-            text = "".join(difflib.unified_diff(old.get(path, b"").decode("utf-8", errors="replace").splitlines(True),
-                files[path].decode("utf-8", errors="replace").splitlines(True), fromfile=f"{base}/{path}", tofile=f"{commit}/{path}"))
-            diff.update(available=True, text=text, truncated=len(text) > _MAX_TEXT)
+        diff = skill_diff(old, files, name, base, commit)
     # Publication and binding are separate. No native Skill invocation is inferred.
     adoption = [item for item in version["bindings"] if update is None or
                 (item["attempt_id"] != update["attempt_id"] and _time(item.get("started_at")) >= _time(update.get("ended_at")))]
+    activity = skill_activity(root, run_id, attempts, {"role": version["role"], "name": name, "commit": commit}, versions)
+    calls = [call for call in activity["calls"] if (call["name"], call["commit"]) == (name, commit)]
+    for item in adoption:
+        observed = [call for call in calls if call["attempt_id"] == item["attempt_id"]]
+        item["observed_native_calls"] = len(observed)
+        item["native_loaded"] = True if any(call["status"] == "succeeded" for call in observed) else None
     return {"role": version["role"], "name": name, "commit": commit, "available": files is not None,
+            "removed": files is not None and path not in files,
             "body": body, "body_truncated": body is not None and len(body) > _MAX_TEXT,
             "supporting_files": supporting[:100], "supporting_files_truncated": len(supporting) > 100,
             "diff": diff, "update_attempt": update, "adoption": adoption,
+            "usage": next((item for item in activity["versions"] if (item["name"], item["commit"]) == (name, commit)),
+                          {"calls": 0, "coverage": activity["coverage"]}),
+            "calls": calls, "calls_truncated": activity["calls_truncated"],
+            "evolutions": [event for event in activity["evolutions"]
+                           if any(item["name"] == name for item in event["skills"])],
             "versions": [{"commit": item["commit"], "current": item["current"]} for item in versions]}
 
 
@@ -419,6 +429,7 @@ def _trace_events(raw, *, deduplicate=True):
             seen.add(key)
             events.append({"type": block["type"], "role": event.get("type"),
                 "message_id": message.get("id"), "tool_use_id": identity,
+                "timestamp": event.get("timestamp"),
                 **{key: block[key] for key in ("name", "input", "content", "is_error", "text") if key in block}})
     # Suppress content of explicit config reads in addition to normal redaction.
     private_calls = {item["tool_use_id"] for item in events if item["type"] == "tool_use"
@@ -699,6 +710,9 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         raise ValueError("Attempt detail requires its identity")
     if selectors.get("task_scope") not in {None, "run", "expert", "unknown"}:
         raise ValueError("unsupported task scope")
+    if "window" in selectors and (not str(selectors["window"]).isdigit()
+            or not 1 <= int(selectors["window"]) <= 366 * 86400):
+        raise ValueError("invalid skill observation window")
     root = Path(state_root).resolve()
     with StateStore(root).readonly_connection() as db:
         db.execute("BEGIN")
@@ -719,9 +733,15 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources"} else []
         commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind == "resources" else []
     if kind == "skills":
+        from .observer_skills import skill_activity
         catalog = skill_catalog(root, run_id, attempts)
         values = [item for item in catalog.pop("skills") if not selectors.get("role") or item["role"] == selectors["role"]]
-        result = _page("skills", values, selectors, **catalog)
+        activity = skill_activity(root, run_id, attempts, selectors, catalog["versions"])
+        by_version = {(item["role"], item["name"], item["commit"]): item for item in activity.pop("versions")}
+        for item in values:
+            item["usage"] = by_version.get((item["role"], item["name"], item["commit"]),
+                {"calls": 0, "coverage": activity["coverage"]})
+        result = _page("skills", values, selectors, **catalog, activity=activity)
     elif kind == "skill":
         result = _skill(root, run_id, attempts, selectors)
     elif kind == "literature":

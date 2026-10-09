@@ -198,6 +198,17 @@ def _detail(query: dict[str, list[str]]) -> dict:
         result.update(
             skills=[dict(_SKILL, name="next-page-skill")] if offset else [_SKILL],
             total=51,
+            activity={"coverage": "partial", "observed_calls": 2, "attempts": 2,
+                "untimed_calls": 0, "bin_seconds": 60,
+                "skills": [{"role": "expert-a", "name": "resource-planning", "calls": 2,
+                            "last_called_commit": "accepted-v2"}],
+                "timeline": [{"started_at": 10, "ended_at": 70, "calls": 2, "failed": 1}],
+                "evolutions": [{"attempt_id": "attempt-a", "role": "expert-a", "command": "SELF_EVOLVE",
+                    "cycle": 2, "started_at": 10, "ended_at": 20, "base_commit": "accepted-v1",
+                    "commit": "accepted-v2", "status": "accepted_change", "changes_available": True,
+                    "later_bindings": 1, "observed_later_calls": 1,
+                    "skills": [{"name": "resource-planning", "files": [{
+                        "path": "skills/resource-planning/references/performance.md", "change": "modified"}]}]}]},
         )
     elif kind == "skill":
         result.update(
@@ -822,6 +833,29 @@ def test_browser_execution_reliability_filters_metrics_and_attempt_evidence(brow
     page.evaluate("fixture.snapshot.overview={}")
     page.wait("document.querySelector('#workbench-status').textContent.includes('Reliability unavailable')")
     assert "unavailable/unavailable" in page.text("#reliability-summary")
+
+
+def test_browser_expert_skill_library_filters_trend_and_evolution(browser, tmp_path):
+    page = browser
+    page.click('[data-expert-skills="expert-a"]')
+    page.wait("document.querySelector('.skill-frequency button') !== null")
+    assert page.evaluate("document.querySelector('#filter-expert').value") == "expert-a"
+    assert "2 observed calls" in page.text(".skill-coverage")
+    assert "lower bounds" in page.text("#skill-library")
+    page.click(".skill-trend-bar")
+    assert "2 calls / 1 failures" in page.text(".skill-trend-caption")
+    page.click(".skill-change summary")
+    assert "references/performance.md" in page.text(".skill-change")
+    page.evaluate("document.querySelector('#skills-window').value='3600'; document.querySelector('#skills-window').dispatchEvent(new Event('change'))")
+    page.wait("fixtureRequests.some(row => row[1].includes('window=3600') && row[1].includes('role=expert-a'))")
+    page.evaluate("document.querySelector('#skills-command').value='EXPERIMENT_EXECUTION'; document.querySelector('#skills-command').dispatchEvent(new Event('change'))")
+    page.wait("fixtureRequests.some(row => row[1].includes('command=EXPERIMENT_EXECUTION'))")
+    page.screenshot(tmp_path / "expert-skill-library.png")
+    page.click(".skill-frequency button")
+    page.wait("document.querySelector('[data-detail-tab=usage]') !== null")
+    page.click("[data-detail-tab=usage]")
+    assert "No calls observed" in page.text("#research-detail-content")
+    assert page.evaluate("window.injected === undefined")
 
 
 def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(

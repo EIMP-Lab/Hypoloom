@@ -137,6 +137,10 @@ class GpuRuntimeObservation:
     used_memory_mib: int
     utilization_percent: int | None
     system_reserved_memory_mib: int | None = None
+    power_draw_mw: int | None = None
+    power_limit_mw: int | None = None
+    temperature_c: int | None = None
+    sm_clock_mhz: int | None = None
 
     def __post_init__(self) -> None:
         _gpu_uuid(self.uuid)
@@ -165,6 +169,10 @@ class GpuRuntimeObservation:
             or not 0 <= self.utilization_percent <= 100
         ):
             raise ValueError("GPU runtime utilization_percent must be null or 0..100")
+        for name in ("power_draw_mw", "power_limit_mw", "temperature_c", "sm_clock_mhz"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"GPU runtime {name} must be null or a nonnegative integer")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -175,6 +183,9 @@ class GpuRuntimeObservation:
             "utilization_percent": self.utilization_percent,
             **({"system_reserved_memory_mib": self.system_reserved_memory_mib}
                if self.system_reserved_memory_mib is not None else {}),
+            **{name: getattr(self, name) for name in
+               ("power_draw_mw", "power_limit_mw", "temperature_c", "sm_clock_mhz")
+               if getattr(self, name) is not None},
         }
 
 
@@ -191,6 +202,10 @@ class GpuPressureSummary:
     gpu_latest_utilization_percent: int | None
     sample_count: int
     pressure_exceeded: bool
+    gpu_latest_power_draw_mw: int | None = None
+    gpu_latest_power_limit_mw: int | None = None
+    gpu_latest_temperature_c: int | None = None
+    gpu_latest_sm_clock_mhz: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -203,6 +218,10 @@ class GpuPressureSummary:
             "gpu_latest_utilization_percent": self.gpu_latest_utilization_percent,
             "sample_count": self.sample_count,
             "pressure_exceeded": self.pressure_exceeded,
+            **{name: getattr(self, name) for name in
+               ("gpu_latest_power_draw_mw", "gpu_latest_power_limit_mw",
+                "gpu_latest_temperature_c", "gpu_latest_sm_clock_mhz")
+               if getattr(self, name) is not None},
         }
 
 
@@ -265,6 +284,10 @@ class GpuPressureTracker:
             gpu_latest_utilization_percent=self._latest.utilization_percent,
             sample_count=self._sample_count,
             pressure_exceeded=self._pressure_exceeded,
+            gpu_latest_power_draw_mw=self._latest.power_draw_mw,
+            gpu_latest_power_limit_mw=self._latest.power_limit_mw,
+            gpu_latest_temperature_c=self._latest.temperature_c,
+            gpu_latest_sm_clock_mhz=self._latest.sm_clock_mhz,
         )
 
     def sample(self, observation: GpuRuntimeObservation) -> GpuPressureSummary:
@@ -798,9 +821,27 @@ def _nvml_runtime_observation(gpu_uuid: str) -> GpuRuntimeObservation:
             used_memory_mib=total_memory_mib - free_memory_mib,
             utilization_percent=utilization_percent,
             system_reserved_memory_mib=system_reserved,
+            power_draw_mw=_nvml_optional_uint(library, "nvmlDeviceGetPowerUsage", handle),
+            power_limit_mw=_nvml_optional_uint(library, "nvmlDeviceGetPowerManagementLimit", handle),
+            temperature_c=_nvml_optional_uint(library, "nvmlDeviceGetTemperature", handle, 0),
+            sm_clock_mhz=_nvml_optional_uint(library, "nvmlDeviceGetClockInfo", handle, 1),
         )
     finally:
         shutdown()
+
+
+def _nvml_optional_uint(library, name: str, handle, selector: int | None = None) -> int | None:
+    """Optional device queries cannot change capacity or make a sample fail."""
+    arguments = (handle,) if selector is None else (handle, selector)
+    signature = (ctypes.c_void_p,) + (() if selector is None else (ctypes.c_uint,))
+    try:
+        query = _nvml_function(library, (name,), (*signature, ctypes.POINTER(ctypes.c_uint)), ctypes.c_int)
+        value = ctypes.c_uint()
+        if query(*arguments, ctypes.byref(value)) == 0 and value.value != 0xFFFFFFFF:
+            return int(value.value)
+    except (ResourceUnavailable, OSError):
+        pass
+    return None
 
 
 def _nvml_inventory() -> ComputeCapabilities:
