@@ -30,6 +30,17 @@ def test_window_quota_reason_is_localized_with_browser_local_retry_time(browser)
     assert browser.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
 
 
+def test_browser_shows_tui_appointment_in_local_time_without_writes(browser):
+    browser.call("Emulation.setTimezoneOverride", {"timezoneId": "Asia/Shanghai"})
+    browser.evaluate("Object.assign(fixture.snapshot.status, {run_state:'ACTIVE',provider_retry:{state:'cooldown',pending:true,scheduled_retry:{retry_at:1791554720}}})")
+    browser.wait("document.querySelector('#provider-description').textContent.includes('API retry scheduled')")
+    assert "22:05:20" in browser.text("#provider-description")
+    browser.click("#language-toggle")
+    browser.wait("document.querySelector('#provider-description').textContent.includes('API 已预约')")
+    assert "自动重试已暂停" in browser.text("#provider-description")
+    assert browser.evaluate("fixtureRequests.every(r => r[0] === 'GET')")
+
+
 @pytest.mark.parametrize("browser", ["provider"], indirect=True)
 def test_operator_switch_retries_same_request_and_does_not_claim_recovered(browser):
     page = browser

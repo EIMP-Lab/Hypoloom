@@ -142,6 +142,46 @@ window and reports RPM as unknown during that interval. No additional durable
 request ledger is created. Existing frozen Hosts do not acquire these changes;
 missing traffic observations remain unknown.
 
+## Local provider rules and scheduled retries
+
+Adapter 78 selects shipped error rules from the connection URL and actual error.
+Init adds no provider questions or identity probes. Endpoint families include
+Kimi Code, MiMo API/Token Plan and Anthropic; unknown gateways keep compatible
+protocol/HTTP fallbacks. Model names do not identify gateways. The rules live in
+`provider_observation.py`, with official sources in the
+[design](../design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试).
+Updates ship with the application, not through model-generated answers.
+
+Kimi's explicit weekly/monthly exhaustion becomes quota exhaustion without an
+inferred reset instant. MiMo 402 means insufficient balance; 429 alone cannot
+distinguish request limits from plan exhaustion. Anthropic 529 and compatible
+overload types use temporary-service recovery. Authentication checks remain.
+Diagnostics retain the selected rule family without endpoint/credential exposure.
+Coverage is bounded, not a complete vendor catalog.
+
+Press **p**, enter a future local time, then choose **Schedule retry**. Examples:
+`2026-10-10 22:30`, today's `22:30`, `30m`, `2h`, or `30 分钟后`. The preview and
+appointment show the UTC offset and countdown. Past times are rejected, not moved
+to tomorrow. Daylight-saving folds/gaps require an explicit offset, for example
+`2026-11-01 01:30-04:00`.
+
+Scheduling pauses automatic API recovery and new provider requests until the
+Host consumes the appointment. In-flight responses and submitted experiments
+continue; research/Agent time limits remain. The appointment uses no Agent slot.
+At the due time one pending task may try; only a response confirms recovery.
+Failure resumes ordinary handling. No additional probing request is sent.
+
+A new time replaces the appointment. **Cancel schedule** restores ordinary
+recovery. **Try current API** and successful **Switch API** operations supersede
+it. An uncertain reply is retried with the same request ID, including scheduling
+and cancellation. The existing Host control journal preserves the appointment
+when the TUI closes. A normal Host restart consumes an overdue appointment once
+if the run remains eligible. It does not start an exited Host or retry a stopped,
+ended or wallclock-expired run. Web also displays the appointment.
+
+Scheduling requires a new adapter-78 run; an observer attached to an older frozen
+Host hides these controls. Existing runs are not migrated.
+
 ## Retry or switch the connection
 
 These controls require a live Host and a run in CREATED or ACTIVE state. They

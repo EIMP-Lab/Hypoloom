@@ -37,6 +37,12 @@ class ProviderTraffic:
         self.connection = None
         self.last_success = None
         self.last_failure = None
+        self.scheduled_until = None
+
+    def schedule(self, retry_at):
+        with self.condition:
+            self.scheduled_until = retry_at
+            self.condition.notify_all()
 
     def select(self, connection):
         with self.condition:
@@ -66,6 +72,10 @@ class ProviderTraffic:
                     now = self.clock()
                     if cancelled.is_set() or now >= deadline:
                         raise TimeoutError("provider request wait cancelled or expired")
+                    if self.scheduled_until is not None:
+                        # Only the Host consumes the durable appointment. An
+                        # old invocation must not race the one recovery task.
+                        raise ProviderDeferred('local_request_queue', max(0, self.scheduled_until - self.wall_clock()))
                     if bucket['halted'] or bucket['until'] > now:
                         raise ProviderDeferred(bucket['reason'], None if bucket['halted'] else bucket['until'] - now)
                     self._prune(bucket, now)

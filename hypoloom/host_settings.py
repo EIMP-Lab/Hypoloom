@@ -201,6 +201,12 @@ def provider_retry_status(host, run_id: str) -> dict[str, Any]:
     if error:
         status.update(pending=True, state="waiting_operator", requires_operator=True,
             reason="connection_configuration", connection_error=error, next_retry_at=None)
+    from .provider_recovery import scheduled_retry
+    schedule = scheduled_retry(host, run_id)
+    status.update(scheduling_supported=True, scheduled_retry=schedule)
+    traffic.schedule(None if schedule is None else schedule["retry_at"])
+    if schedule is not None:
+        status.update(pending=True, state="cooldown", requires_operator=False, next_retry_at=schedule["retry_at"])
     return status
 
 def provider_recovery_reused(host, run_id: str) -> bool:

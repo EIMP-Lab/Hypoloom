@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 10 provider rules/scheduling: adapter 78 selects local Kimi Code,
+  MiMo and Anthropic error rules without init questions/probes. TUI appointments
+  reuse the Host control journal; pause new requests, survive restart, and allow
+  one due recovery. Replace/cancel/immediate retry/switch retain normal controls.
+  618 distinct current focused/native cases pass; two CPU closures have 25 Agents,
+  two Processes/outcomes and no live groups. 194 package files match installation
+  and a fresh bundle. Full G1 stops at 373 passes/two baseline failures reproduced
+  at d6d62b6 (Host LOC allocation and missing exploration_progress in a test double).
+  No promotion, paid/GPU work or retained-run mutation.
+  [Design](../design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试) /
+  [validation](../qualification.md#local-provider-rules-and-scheduled-recovery-2026-10-10).
+
 - October 9 window quota repair: adapter 77 recognizes explicit hourly-window
   renewal on 403 and reuses transient retries; ordinary auth/quota controls stay.
   TUI API/service times share local-zone formatting with explicit offsets.

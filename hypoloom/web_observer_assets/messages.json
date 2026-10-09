@@ -1383,5 +1383,20 @@
   "Accepted changes describe file updates, not demonstrated improvements. The stage filter applies to calls; evolution history uses the expert and time filters.": "已接纳变更表示文件更新，不代表效果已经改善。阶段筛选用于调用统计；进化历史按专家和时间筛选。",
   "Only the latest 200 evolution attempts are shown.": "仅显示最近 200 条进化记录。",
   "{0} · {1} observed calls · complete capture for {2}/{3} sessions · {4} untimed calls": "{0} · 已观察 {1} 次调用 · 会话记录完整 {2}/{3} 个 · {4} 次调用时间未知",
-  "This skill was removed in the selected accepted version.": "此技能已在所选的已接纳版本中移除。"
+  "This skill was removed in the selected accepted version.": "此技能已在所选的已接纳版本中移除。",
+  "API retry scheduled for {0} ({1}s remaining). Automatic retries paused; submitted experiments continue.": "API 已预约于 {0} 重试（剩余 {1} 秒）。自动重试已暂停；已提交的实验继续运行。",
+  "Local time: {0}": "本地时间：{0}",
+  "Retry at: YYYY-MM-DD HH:MM, HH:MM, or 30m / 2h": "重试时间：年-月-日 时:分、时:分，或 30 分钟后 / 2h",
+  "Automatic retries pause until this time. Closing the TUI keeps the appointment.": "自动重试暂停至预约时间。关闭 TUI 不影响预约。",
+  "Schedule retry": "设置定时重试",
+  "Cancel schedule": "取消定时",
+  "Scheduled time: {0}": "预约时刻：{0}",
+  "Use a future local time; include an offset if daylight saving makes it ambiguous.": "请输入未来的本地时间；夏令时存在歧义时请附带 UTC 偏移。",
+  "Sending API recovery request…": "正在提交 API 恢复请求…",
+  "Schedule cancelled; automatic recovery policy restored.": "预约已取消；已恢复自动重试策略。",
+  "Retry scheduled for {0}.": "已预约于 {0} 重试。",
+  "Use YYYY-MM-DD HH:MM, today's HH:MM, or 30m / 2h.": "请输入年-月-日 时:分、今天的时:分，或 30 分钟后 / 2h。",
+  "Local time is missing or ambiguous; include a UTC offset such as +08:00.": "该本地时刻不存在或有夏令时歧义；请附带 +08:00 等 UTC 偏移。",
+  "Retry time is outside the supported range.": "重试时间超出支持范围。",
+  "Retry time must be in the future.": "重试时间必须晚于现在。"
 }

@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Local provider rules and scheduled recovery](../design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试):
+  endpoint/response-based rules, no init questions or probes, one Host-owned TUI
+  appointment through the existing journal, local times and unchanged budgets.
+  [Guide](../guides/provider-recovery.md#local-provider-rules-and-scheduled-retries) /
+  [validation](../qualification.md#local-provider-rules-and-scheduled-recovery-2026-10-10).
+
 - [Window quota recovery and local retry times](../design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间):
   explicit hourly renewal uses existing transient backoff; ordinary auth/quota
   controls remain. TUI local offsets, actual relay/Host/CPU evidence and baseline

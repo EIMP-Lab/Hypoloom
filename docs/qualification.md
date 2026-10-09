@@ -2,6 +2,68 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Local provider rules and scheduled recovery (2026-10-10)
+
+Adapter 78 implements the [bounded design](design/context-management-and-recovery.md#2026-10-10本地错误规则与一次性定时重试).
+Connection URLs select documented Kimi Code, MiMo API/Token Plan and Anthropic
+rules in the existing parser. Init adds no questions or model probes. Compatible
+error envelopes/type/code fields normalize to existing recovery classes; unknown
+gateways retain fallbacks. Authentication takes precedence over conflicting quota
+labels. No reset instant is inferred from a window duration or generic 429.
+
+TUI appointments reuse the existing transactional control journal and command IDs.
+The Host pauses new requests, consumes a due appointment once, and resumes ordinary
+recovery. Appointments survive normal Host restart; cancellation, immediate retry,
+connection switching, stop and wallclock expiry preserve their existing boundaries.
+Local-time parsing handles explicit offsets and rejects past times/DST ambiguity.
+The Web view displays appointments, while old Hosts expose no scheduling controls.
+Provider recovery is extracted into a counted helper: 150 lines transfer from
+host_settings' existing allocation, keeping the aggregate core budget unchanged.
+
+Evidence: `.local/qualification/provider-rules-schedule-20261010/`.
+
+- **618 distinct current cases pass**, reconciled in `test-reconciliation.json`:
+  `final-focused.xml` has 614 passes; `ui-final.xml` has 46 passes, including four
+  replacement small/large English/Chinese dialog cases; the final two native
+  identities pass across `native-final.xml` and `native-switch.xml`. Obsolete
+  pre-size-parameter UI identities are excluded. These are bounded selections,
+  not a full-suite pass. Coverage includes actual relay wire capture, generic
+  gateway/authentication counterexamples, unknown quota reset, same-request replay,
+  conflicting replay, cancel/replace/immediate retry, failed recovery, unavailable
+  connection, restart, expiry, in-flight admission, local offsets/DST, actual TUI
+  and browser interaction, adapter, init and package regressions.
+- **Two real Claude Code/Host/CPU closures**: the delayed window retry survives a
+  Host close/reinitialize and triggers exactly one clear; endpoint switching
+  supersedes an existing appointment. Both complete one CPU experiment and one
+  canonical outcome. Independent SQLite/process census finds **25 CLOSED Agents
+  (22 successful, three expected failures), two successful CLOSED Processes and
+  27 absent process groups**. Test Oracles are clean, and queues drain. Fixtures
+  use local scripted providers, not paid models or GPUs.
+- **194 files** match source, wheel, isolated install and fresh bundle byte for
+  byte (`package-final/check.json`). Installed/bundled CLI and MCP help pass from
+  outside the checkout. Undefined-name, whitespace and documentation checks pass.
+  No shared installation, private Profile or retained research run is changed.
+- Initial failures remain in their original logs/XML: local `mktime` rejects a
+  forced DST candidate in Shanghai; that candidate is now skipped. A recovering
+  API is now eligible for scheduling. Early mutation during native validation
+  triggered the existing runtime-drift check; the stable-source run passes.
+  A switching fixture's prior assertion excluded local request deferral introduced
+  by scheduling; the corrected assertion separately requires an actual remote
+  quota rejection and exact local-admission provenance. The real CPU closure
+  already succeeded before that assertion correction. An interrupted focused
+  run's iteration case passes both isolated recheck and final focused selection.
+  The two initial failed native roots retain one durable OPEN Attempt each;
+  `initial-residue.json` separately confirms neither has a live process group.
+  Those historical roots are not counted as completed closures or rewritten.
+- Full G1 was interrupted after **373 passes/two failures** (`g1.xml`). Both
+  reproduce at unchanged **d6d62b6** in `baseline.xml`: workflow_host exceeds its
+  unchanged 4,650-line allocation (4,691 baseline; 4,661 current), and a Leader
+  input test double lacks `exploration_progress`. The checks are not relaxed.
+  **Full G1 remains incomplete; no qualification promotion is claimed.**
+
+Runtime behavior applies to new adapter-78 runs. Existing frozen research Hosts
+are neither restarted nor migrated by this delivery.
+
 ## Window quota recovery and local retry times (2026-10-09)
 
 Adapter 77 implements the [bounded repair](design/context-management-and-recovery.md#2026-10-09窗口额度恢复与本地重试时间).

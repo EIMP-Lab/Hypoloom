@@ -60,9 +60,13 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
                 if switched is None and status["gates"]:
                     assert status["reason"] in {"quota_exhausted", "rate_limited"}
                     assert not host._expert_final_failures(run_id)
+                    scheduled = host.handle(ControlRequest(1, "schedule-before-switch", None, "PROVIDER_RETRY_CLEAR",
+                        {"run_id": run_id, "reason": "operator", "retry_at": time.time() + 3600}))
+                    assert scheduled.status == "accepted", scheduled
                     switched = host.handle(ControlRequest(1, "switch-api", None, "PROVIDER_RETRY_CLEAR",
                         {"run_id": run_id, "reason": "operator", "settings_path": str(selected)}))
                     assert switched.status == "accepted", switched
+                    assert switched.result["provider_retry"]["scheduled_retry"] is None
                 assert not scenario.errors, scenario.errors
                 if host.store.latest_transition(run_id)["state"] in {"COMPLETED", "FAILED", "CANCELLED"}: break
                 time.sleep(.01)
@@ -70,7 +74,14 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             assert host.store.latest_transition(run_id)["state"] == "COMPLETED"
             attempts = host.store.list_attempts()
             failed = [row for row in attempts if row["terminal_reason"] != "SUCCEEDED"]
-            assert failed and all(row["kind"] == "AGENT" and json.loads(row["observation_json"])["diagnostics"]["provider_failure"]["code"] in {"quota_exhausted", "rate_limited"} for row in failed)
+            assert failed and all(row["kind"] == "AGENT" for row in failed)
+            failures = [json.loads(row["observation_json"])["diagnostics"]["provider_failure"] for row in failed]
+            assert any(item["code"] == "quota_exhausted" and item["http_status"] == 429 for item in failures)
+            # Scheduling can defer an already-open invocation before the switch.
+            # That local admission is neither another remote rejection nor quota.
+            assert all(item["code"] in {"quota_exhausted", "rate_limited"} or
+                item == {"code": "local_request_queue", "http_status": None, "source": "local_admission"}
+                for item in failures)
             processes = [row for row in attempts if row["kind"] == "PROCESS"]
             assert len(processes) == 1 and processes[0]["terminal_reason"] == "SUCCEEDED"
             assert len(host.store.list_facts(run_id, "CanonicalOutcomeAccepted")) == 1
@@ -92,22 +103,23 @@ def test_native_quota_wait_switches_endpoint_and_finishes_exactly_one_cpu_proces
             server.shutdown(); server.server_close(); thread.join(timeout=5)
 
 
-@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue', 'remote_503', 'window_403'])
+@pytest.mark.parametrize('failure_kind', ['remote_429', 'local_queue', 'remote_503', 'window_403', 'scheduled_window_403'])
 def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_path, monkeypatch, failure_kind):
     from hypoloom import provider_observation
     # Accelerate only the shared recovery policy, not Host/Process/model clocks.
-    monkeypatch.setattr(provider_observation, 'PROVIDER_RETRY_DELAYS', (.02, .04, .08, .1, .2))
+    scheduled_mode = failure_kind == 'scheduled_window_403'
+    monkeypatch.setattr(provider_observation, 'PROVIDER_RETRY_DELAYS', (18000,) if scheduled_mode else (.02, .04, .08, .1, .2))
     executable = _installed_claude()
     scenario = _DeclaredScenario(tmp_path, 'automatic-rpm-' + secrets.token_hex(12))
     provider, thread = _start_provider(scenario, 'local-rpm-key')
     post, rejected = provider.RequestHandlerClass.do_POST, []
     def overload(handler):
-        if failure_kind in {'remote_429', 'remote_503', 'window_403'} and len(rejected) < 6:
+        if failure_kind in {'remote_429', 'remote_503', 'window_403', 'scheduled_window_403'} and len(rejected) < (1 if scheduled_mode else 6):
             handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
             rejected.append(time.time())
             status = 503 if failure_kind == 'remote_503' else 429
             body = json.dumps({'error': {'code': str(status), 'message': 'Temporarily unavailable'}}).encode()
-            if failure_kind == 'window_403':
+            if failure_kind in {'window_403', 'scheduled_window_403'}:
                 from test_provider_observation import WINDOW_ERROR
                 status, body = 403, json.dumps(WINDOW_ERROR).encode()
             handler.send_response(status)
@@ -140,10 +152,21 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             assert host.handle(ControlRequest(1, 'create', 0, 'CREATE_RUN', payload)).status == 'accepted'
             deadline = time.monotonic() + 240
             max_in_flight, max_rpm = 0, 0
+            appointment = None
             while time.monotonic() < deadline:
                 host.tick()
                 status = host.handle(ControlRequest(1, 'observe', None, 'STATUS', {'run_id': run_id})).result
                 assert not status['provider_retry']['requires_operator'], status['provider_retry']
+                if scheduled_mode and appointment is None and status['provider_retry']['gates']:
+                    at = time.time() + .5
+                    appointment = host.handle(ControlRequest(1, 'scheduled-retry', None, 'PROVIDER_RETRY_CLEAR',
+                        {'run_id': run_id, 'reason': 'operator', 'retry_at': at}))
+                    assert appointment.status == 'accepted', appointment
+                    host.close()
+                    host = _new_host(tmp_path, executable, f'http://127.0.0.1:{provider.server_port}', 'local-rpm-key')
+                    host.grounding_web = _NoPublicWeb()
+                    host.initialize()
+                    assert host._provider_retry_status(run_id)['scheduled_retry']['retry_at'] == at
                 if failure_kind == 'local_queue':
                     assert status['provider_retry']['state'] == 'ready'
                 traffic = status['provider_traffic']
@@ -153,7 +176,7 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
                 if host.store.latest_transition(run_id)['state'] in {'COMPLETED', 'FAILED', 'CANCELLED'}:
                     break
                 time.sleep(.01)
-            assert len(rejected) == 6
+            assert len(rejected) == (1 if scheduled_mode else 6)
             assert host.store.latest_transition(run_id)['state'] == 'COMPLETED'
             attempts = host.store.list_attempts()
             if failure_kind in {'remote_503', 'window_403'}:
@@ -168,7 +191,11 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             assert all(a['state'] == 'CLOSED' for a in attempts)
             assert all(not process_group_exists(a['process_group_id']) for a in attempts if a['process_group_id'] is not None)
             assert not host.running and not host.running_agents
-            assert not host.store.inspect("SELECT 1 FROM workflow_commands WHERE command_type='PROVIDER_RETRY_CLEAR'")
+            controls = host.store.inspect("SELECT command_id FROM workflow_commands WHERE command_type='PROVIDER_RETRY_CLEAR'")
+            assert len(controls) == (2 if scheduled_mode else 0)
+            if scheduled_mode:
+                assert {row['command_id'] for row in controls} == {'scheduled-retry', 'provider-scheduled-scheduled-retry'}
+                assert host._provider_retry_status(run_id)['scheduled_retry'] is None
             assert max_in_flight <= payload['research_contract']['budget']['provider_max_in_flight'] and 0 < max_rpm <= 60
             assert traffic['in_flight'] == traffic['queued'] == 0
             assert traffic['rpm'] == traffic['grounding']['rpm'] + traffic['other']['rpm'] + sum(v['rpm'] for v in traffic['by_expert'].values())
@@ -178,7 +205,8 @@ def test_native_six_transient_429s_recover_without_operator_and_finish_cpu(tmp_p
             assert report.open_attempt_count == report.pending_effect_count == 0
             (tmp_path / 'automatic-rpm-evidence.json').write_text(json.dumps({
                 'failure_kind': failure_kind, 'rejections': len(rejected), 'attempts': len(attempts), 'processes': len(processes),
-                'operator_commands': 0, 'max_in_flight': max_in_flight, 'max_rpm': max_rpm,
+                'operator_commands': 1 if scheduled_mode else 0, 'host_restarted': scheduled_mode,
+                'max_in_flight': max_in_flight, 'max_rpm': max_rpm,
                 'oracle_ok': report.ok, 'process_residue': 0}, indent=2))
     finally:
         if host is not None: host.close()

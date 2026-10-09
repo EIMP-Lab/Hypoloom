@@ -80,7 +80,7 @@ class _ExchangeCapture:
 
     def __init__(self, relay: ProviderRelay) -> None:
         from .provider_observation import ProviderObservation
-        self.observation = ProviderObservation()
+        self.observation = ProviderObservation(service=relay.provider_service)
         self.relay = relay
         self._counted_tokens = 0
         self.request_document = None
@@ -90,6 +90,7 @@ class _ExchangeCapture:
         self.writer = None
         self.errors: list[dict[str, str]] = []
         self.data: dict[str, Any] = {
+            "provider_service": relay.provider_service,
             "started_at": time.time(), "ended_at": None,
             "request_bytes_received": 0, "request_bytes_forwarded": 0,
             "response_bytes_received": 0, "response_bytes_forwarded": 0,
@@ -285,6 +286,8 @@ class ProviderRelay:
         traffic_binding=None,
     ) -> None:
         endpoint, credentials = validate_provider_connection(base_url, provider_environment)
+        from .provider_observation import provider_service
+        self.provider_service = provider_service(base_url)
         port = endpoint.port
         for limit in (max_request_bytes, max_response_bytes, max_requests):
             if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:

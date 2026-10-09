@@ -492,6 +492,7 @@
     const reasons = {auth_failed: t("Authentication rejected"), rate_limited: t("Rate limit; quota cause unconfirmed"), service_unavailable: t("Provider temporarily unavailable"), usage_window_exhausted: t("Usage window quota exhausted"), quota_exhausted: t("Quota exhausted"), connection_configuration: t("Connection configuration unavailable")};
     setText("provider-description", terminal ? t("No API recovery is available for an ended run.")
       : !retry ? t("Live Host status is unavailable. API availability cannot be confirmed.")
+      : retry.scheduled_retry ? t("API retry scheduled for {0} ({1}s remaining). Automatic retries paused; submitted experiments continue.", formatTimestamp(retry.scheduled_retry.retry_at), Math.max(0, Math.ceil(retry.scheduled_retry.retry_at - Date.now() / 1000)))
       : retry.state === "ready" ? t("Normal dispatch is allowed, subject to task and budget limits.")
       : retry.state === "recovering" ? t("One pending task may try the API. Access is not yet confirmed.")
       : t("{0}. New Agent dispatch paused; submitted experiments continue. {1} Quota reset time: unknown.", reasons[retry.reason] || t("API unavailable"), retry.requires_operator ? t("Operator action required.") : t("Next attempt: {0}.", formatTimestamp(retry.next_retry_at))));

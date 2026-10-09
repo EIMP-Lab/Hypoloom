@@ -26,6 +26,60 @@ def provider_retry_delay(rounds):
     return PROVIDER_RETRY_DELAYS[min(max(rounds - 1, 0), len(PROVIDER_RETRY_DELAYS) - 1)]
 
 
+def provider_service(base_url):
+    """Select local error rules from the connection, never the model's identity.
+
+    Sources and coverage: docs/design/context-management-and-recovery.md,
+    2026-10-10. Unknown gateways retain compatible-protocol rules.
+    """
+    from urllib.parse import urlsplit
+    try:
+        endpoint = urlsplit(base_url)
+        host, path = endpoint.hostname, endpoint.path.rstrip("/")
+        if endpoint.scheme not in {"http", "https"}: return "generic"
+    except (TypeError, ValueError):
+        return "generic"
+    if host in {"api.kimi.com", "api.kimi.ai"} and path in {"/coding", "/coding/v1"}:
+        return "kimi_code"
+    if host == "api.anthropic.com" and path in {"", "/v1"}: return "anthropic"
+    if host == "api.xiaomimimo.com" and path == "/anthropic": return "mimo_api"
+    if host in {"token-plan-cn.xiaomimimo.com", "token-plan-sgp.xiaomimimo.com",
+                "token-plan-ams.xiaomimimo.com"} and path == "/anthropic":
+        return "mimo_token_plan"
+    return "generic"
+
+
+def provider_error(error, *, service="generic"):
+    """The local codebook: normalize only documented/observed error evidence."""
+    message = str(error.get("message", ""))[:4096].lower().strip()
+    kind = error.get("type")
+    code = error.get("code")
+    if not isinstance(kind, str): kind = None
+    codes = {value for value in (kind, code) if isinstance(value, str)}
+    if codes & {"authentication_error", "invalid_api_key"}:
+        return "auth_failed"
+    # Preserve the observed compatible-gateway signature; duration is not delay.
+    if (kind == "permission_error" or service == "kimi_code" and kind is None) and re.match(
+            r"you've reached your ([1-9][0-9]*-hour) usage limit\.\s+"
+            r"your quota will reset when the current \1 window ends\.", message):
+        return "usage_window_exhausted"
+    if codes & {"insufficient_quota", "quota_exceeded", "usage_limit_exceeded"}:
+        return "quota_exhausted"
+    if service == "kimi_code" and kind in {None, "permission_error"} and (
+            message.startswith("you've reached your weekly (7-day) usage limit.") or
+            message.startswith("you've reached your monthly usage limit for this billing cycle.")):
+        return "quota_exhausted"
+    if codes & {"rate_limit_error", "rate_limit_exceeded"}:
+        return "rate_limited"
+    if codes & {"overloaded_error", "api_error", "timeout_error"}:
+        return "service_unavailable"
+    if (any(phrase in message for phrase in INPUT_TOO_LONG_PHRASES)
+            or code == "context_length_exceeded"
+            or service == "kimi_code" and "your request exceeded model token limit:" in message):
+        return "input_too_long"
+    return None
+
+
 def provider_status_text(status, *, language="en"):
     from functools import partial
     from .ui_i18n import format_local_time, translate
@@ -33,6 +87,10 @@ def provider_status_text(status, *, language="en"):
     if not status:
         return tr("API status unknown: a live Host observation is required.")
     state = status.get("state", "cooldown" if status.get("pending") else "ready")
+    if schedule := status.get("scheduled_retry"):
+        seconds = max(0, math.ceil(schedule["retry_at"] - time.time()))
+        return tr("API retry scheduled for {0} ({1}s remaining). Automatic retries paused; submitted experiments continue.",
+            format_local_time(schedule["retry_at"]), seconds)
     if state == "ready": return tr("API dispatch available.")
     if state == "recovering": return tr("Trying API recovery with one pending task; access is not yet confirmed.")
     reason = {"auth_failed": "authentication rejected", "rate_limited": "rate limit (quota cause unconfirmed)",
@@ -48,7 +106,8 @@ def provider_status_text(status, *, language="en"):
 
 
 class ProviderObservation:
-    def __init__(self):
+    def __init__(self, *, service="generic"):
+        self.service = service
         self.buffer = b""
         self.dropping_line = False
         self.models = set()
@@ -80,23 +139,11 @@ class ProviderObservation:
                 self._stop(delta.get("stop_reason"))
         if kind == "message_stop":
             self.message_complete = True
-        if kind == "error":
+        if kind == "error" or kind is None and isinstance(value.get("error"), dict):
             self.message_complete = False
             error = value.get("error")
             if isinstance(error, dict):
-                message = str(error.get("message", ""))[:4096].lower()
-                # This observed permission_error explicitly promises renewal of
-                # the same finite window. Its duration is not a remaining delay.
-                if error.get("type") == "permission_error" and re.match(
-                        r"you've reached your ([1-9][0-9]*-hour) usage limit\.\s+"
-                        r"your quota will reset when the current \1 window ends\.", message.strip()):
-                    self.provider_error_code = "usage_window_exhausted"
-                elif error.get("type") in {"insufficient_quota", "quota_exceeded", "usage_limit_exceeded"}:
-                    self.provider_error_code = "quota_exhausted"
-                elif error.get("type") == "rate_limit_error":
-                    self.provider_error_code = "rate_limited"
-                elif any(phrase in message for phrase in INPUT_TOO_LONG_PHRASES):
-                    self.provider_error_code = "input_too_long"
+                self.provider_error_code = provider_error(error, service=self.service)
         # Some compatible providers put content directly in a start event.
         # Its absence is also used to distinguish an empty terminal SSE.
         block = value.get("content_block")
@@ -321,6 +368,13 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
     last = next((item for item in reversed(exchanges) if item.get("request_path") != "/v1/messages/count_tokens"), exchanges[-1])
     code = last.get("provider_error_code") or last.get("failure_reason")
     status = last.get("upstream_status")
+    if status == 401 or code == "auth_failed":
+        return {"code": "auth_failed", "http_status": status}
+    service = last.get("provider_service", "generic")
+    if status == 402 and service in {"mimo_api", "mimo_token_plan"}:
+        code = "quota_exhausted"
+    if status == 529 and service == "anthropic":
+        code = "service_unavailable"
     if code == "local_request_queue" and status is None:
         return {"code": code, "http_status": None, "source": "local_admission"}
     if code in {"input_too_long", "token_budget_exceeded", "context_capacity"}:
@@ -356,7 +410,7 @@ def provider_failure(exchanges, *, fresh_session: bool | None = None):
         seconds = retry_after_seconds((last.get("response_headers") or {}).get("retry-after"), now=ended_at) if type(ended_at) in (int, float) else None
         return {"code": code, "http_status": status,
             **({"retry_at": ended_at + seconds, "retry_after_seconds": seconds} if seconds is not None else {})}
-    if (status == 401 or status == 403 and code != "usage_window_exhausted" or code == 'auth_failed'):
+    if status == 403 and code != "usage_window_exhausted":
         # An explicit temporary window can explain 403; it never overrides 401.
         # Ordinary authentication failures retain the Host's configured delay.
         return {"code": "auth_failed", "http_status": status}
@@ -395,7 +449,7 @@ def read_exchanges(directory, *, latest_generation_only=False, latest_context_on
             if "served_models" not in data:
                 source = child / "response.body"
                 if not source.is_symlink() and source.is_file():
-                    parser = ProviderObservation()
+                    parser = ProviderObservation(service=data.get("provider_service", "generic"))
                     with source.open("rb") as stream:
                         for _ in range(128):
                             chunk = stream.read(65536)

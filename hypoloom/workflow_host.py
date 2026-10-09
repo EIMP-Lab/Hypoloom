@@ -27,7 +27,7 @@ from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
-from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection, provider_recovery_reused
+from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
@@ -540,42 +540,9 @@ class WorkflowHost:
             "expected_revision": request.expected_revision, "command_type": command.value, "request": request.to_mapping()}, operation)
         return ControlResponse.accepted(request.request_id, stored.revision, stored.result or {})
     def _provider_retry_clear(self, request: ControlRequest) -> ControlResponse:
-        payload = request.payload
-        if payload.get("service") == "openalex": return self._literature_retry_clear(request)
-        if set(payload) not in ({"run_id", "reason"}, {"run_id", "reason", "settings_path"}): raise ValueError("PROVIDER_RETRY_CLEAR requires run_id, reason and optional settings_path")
-        run_id = payload["run_id"]
-        if not isinstance(run_id, str) or payload["reason"] != "operator":
-            raise ValueError("provider retry clear requires the operator reason")
-        def operation(tx: StateTransaction) -> Mapping[str, Any]:
-            head = tx.latest_transition(run_id)
-            if head is None or head["workflow_kind"] != "RUN": raise ValueError(f"unknown run {run_id!r}")
-            if head["state"] not in {RunState.CREATED.value, RunState.ACTIVE.value}:
-                raise ValueError("provider retry clear requires a CREATED or ACTIVE run")
-            if "settings_path" in payload:
-                from .host_settings import read_provider_connection
-                if not isinstance(payload["settings_path"], str): raise ValueError("settings_path must be an absolute file path")
-                if self.claude_agent_host is None: raise ValueError("API switching requires the provider Agent adapter")
-                self._check_agent_runtime()
-                try: read_provider_connection(Path(payload["settings_path"]))
-                except HostConfigurationError as exc: raise ValueError(str(exc)) from None
-            elif provider_recovery_reused(self, run_id):
-                return {'status': 'accepted', 'revision': head['revision'], 'result': {
-                    'run_id': run_id, 'run_state': head['state'], 'recovery_already_requested': True}}
-            row = self._transition_record(tx, run_id, run_id, "RUN", Command.PROVIDER_RETRY_CLEAR, RunState(head["state"]),
-                request.request_id, payload={"provider_retry_clear": {"reason": "operator", "cleared_at": time.time(),
-                    **({"settings_path": payload["settings_path"]} if "settings_path" in payload else {})}})
-            tx.append_transition(row)
-            return {"status": "accepted", "revision": row["revision"], "result": {"run_id": run_id,
-                "run_state": head["state"]}}
-        stored = self.store.execute_command({"command_id": request.request_id, "run_id": run_id, "workflow_id": run_id,
-            "expected_revision": request.expected_revision, "command_type": Command.PROVIDER_RETRY_CLEAR.value,
-            "request": request.to_mapping()}, operation)
-        if stored.status != "accepted":
-            error = stored.error or {"code": "rejected", "message": "provider retry clear rejected"}
-            return ControlResponse.failure(request.request_id, "rejected", str(error.get("code")), str(error.get("message")), stored.revision)
-        # Read the gate after the commit so the reply reflects the recorded clear.
-        return ControlResponse.accepted(request.request_id, stored.revision,
-            {**dict(stored.result or {}), "provider_retry": self._provider_retry_status(run_id)})
+        if request.payload.get("service") == "openalex": return self._literature_retry_clear(request)
+        from .provider_recovery import retry_control
+        return retry_control(self, request)
 
     def _literature_retry_clear(self, request):
         if set(request.payload) != {"run_id", "reason", "service"} or request.payload["reason"] != "operator":
@@ -864,6 +831,9 @@ class WorkflowHost:
             if run["state"] in _TERMINAL_RUNS or run["state"] == RunState.WAITING_HUMAN.value: continue
             if run["run_id"] in self.dispatch_errors and run["state"] != RunState.STOPPING.value: continue
             try:
+                from .provider_recovery import apply_scheduled_retry
+                if apply_scheduled_retry(self, run["run_id"]):
+                    run = self.store.latest_transition(run["run_id"])
                 if run["state"] == RunState.CREATED.value: self._activate(run["run_id"])
                 elif run["state"] == RunState.STOPPING.value: self._drive_stopping(run["run_id"])
                 elif run["state"] == RunState.COMPLETING.value: self._complete(run["run_id"])
