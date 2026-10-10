@@ -236,7 +236,11 @@ def latest_context(exchanges, policy=None) -> dict[str, Any]:
     capacity = last.get("context_capacity") or {}
     complete = last.get("message_complete") is True and last.get("response_body_complete") is True
     if policy.get("capacity_measurement_version", 0) >= 25:
-        if last.get("usage_valid") is False or empty_generation_response(last):
+        # Some streams start with zero usage and report input/cache only at the
+        # end. Keep that incomplete zero unknown, without hiding nonzero cache
+        # input or a valid completed zero, or borrowing the prior measurement.
+        if (last.get("usage_valid") is False or empty_generation_response(last)
+                or tokens == 0 and not complete):
             tokens = None
         observed = next((item for item in reversed(exchanges)
             if item.get("request_path") == "/v1/messages" and item.get("upstream_status") == 200

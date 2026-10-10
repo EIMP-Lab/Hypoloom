@@ -107,6 +107,13 @@ Provider usage can be final or partial; transcript readings are labeled separate
 A working allowance does not make an unknown provider window known. Cached input
 still occupies context.
 
+Some providers begin a streamed response with zero input usage and report the
+real input/cache totals only at the end. An incomplete zero is shown as pending
+or unavailable, with the last complete measurement and current estimate kept
+separate. It does not mean the Agent has no context. Nonzero partial input and
+valid final usage retain their measured values; this display rule does not
+change accounting or capacity limits.
+
 A complete zero-usage terminal stream without a model or content is not a
 measured zero-token request. It leaves the preceding valid capacity observation
 in place and cannot confirm API recovery. For invocation accounting, the CLI's

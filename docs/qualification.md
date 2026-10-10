@@ -2,6 +2,46 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Streaming zero input observation (2026-10-10)
+
+The [repair](design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10)
+keeps an incomplete zero input total unknown in the existing ACI-25+ context
+projection. The prior complete measurement and current estimate stay separate;
+positive partial/cache input and valid final zero retain their original meaning.
+Web/TUI describe missing current readings as pending or unavailable. Raw provider
+records, billing, capacity anchors, request limits and lifecycle controls are
+unchanged; there is no new protocol, state or model-specific branch.
+
+Evidence is under `.local/qualification/streaming-zero-input-20261010/`:
+
+- `original.xml` reproduces seven zero-input failures on the unchanged code,
+  while seven nonzero/cache/final-value controls pass.
+- **333 distinct runtime/browser cases pass without skips**: `focused.xml`
+  contains 331 cases and `browser-existing.xml` adds two existing browser cases.
+  Coverage includes message/body completion combinations, first and later
+  requests, cache semantics, valid final zero, empty terminal responses, billing,
+  capacity rejection, recovery and observer reads. Two real local relay tests
+  hold a split SSE response open, check bilingual TUI unknown/prior/estimate
+  fields, then release final usage. Two actual-browser tests verify the bilingual
+  Grounding card retains its prior reading without filling the current occupancy
+  bar, then switches to final usage. Existing expert-card behavior also passes.
+- `history-replay.json` replays the original start events read-only: 45 GLM
+  temporary zero readings become unknown; 142 MiMo positive readings and all
+  187 corresponding final projections are unchanged. Seven other captures lack
+  a message_start and are excluded from this comparison. No provider requests
+  are sent and no retained evidence is rewritten.
+- The wheel builds and all **194 package files** match source (`wheel-check.json`).
+  Documentation links/boundaries, undefined-name checks and Git whitespace are
+  checked separately. No shared installation or running service is replaced.
+
+`repair.xml` retains two initial relay-fixture failures: sending only message_start
+left its trailing bytes inside the existing credential lookbehind. The corrected
+fixture sends the following content block, just as a generating stream does;
+it preserves redaction and the original assertions. `relay-fixed.xml` and the
+final focused suite pass. This is bounded observation repair, not full G1–G5
+promotion or a scientific-quality/throughput qualification. Existing research
+bundles remain unchanged; an observer opened from updated code loads the repair.
+
 ## GPU release replay and Host responsiveness (2026-10-10)
 
 The [bounded repair](design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10)

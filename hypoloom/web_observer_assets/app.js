@@ -1637,7 +1637,7 @@
     } else {
       if (separatedContext) {
         const currentExchange = context.current_request_exchange ?? "unknown";
-        lines.push(t("Current request: exchange {0} · {1}", currentExchange, known ? t("{0} input tokens · {1}", compactNumber(attempt.context_tokens), attempt.context_source || t("unknown source")) : t("no provider input usage")));
+        lines.push(t("Current request: exchange {0} · {1}", currentExchange, known ? t("{0} input tokens · {1}", compactNumber(attempt.context_tokens), attempt.context_source || t("unknown source")) : t("provider input usage pending or unavailable")));
         lines.push(priorKnown ? t("Last measured input: {0} tokens · exchange {1}{2}", compactNumber(context.last_observed_input_tokens), context.last_observed_exchange ?? "unknown", context.last_observed_exchange !== context.current_request_exchange ? t(" (earlier request)") : "") : t("Last measured input: unavailable"));
         const estimate = context.current_request_estimated_input_tokens;
         const estimateSources = {provider_count_tokens: t("provider token count"), provider_usage_plus_delta_estimate: t("prior measured usage plus estimated added input"), utf8_bytes_conservative_estimate: t("conservative UTF-8 byte estimate")};

@@ -598,7 +598,7 @@ def test_rejected_context_preserves_prior_usage_without_assigning_it_to_current_
     AttemptsPanel.update_snapshot(SimpleNamespace(update=lines.append),
         SimpleNamespace(attempts=(observed,), observed_at=10))
     assert "last measured input=59326 · exchange=5 (earlier request)" in lines[0]
-    assert "current request exchange=6 · provider input=-" in lines[0]
+    assert "current request exchange=6 · provider input=pending or unavailable" in lines[0]
     assert "current request estimate=211464 · source=provider_usage_plus_delta_estimate" in lines[0]
     assert "999999" not in lines[0]
 

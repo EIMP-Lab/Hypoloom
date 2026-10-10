@@ -1261,7 +1261,7 @@ class AttemptsPanel(CockpitPanel):
                     lines.append(tr(
                         "   current request exchange={0} · provider input={1} · source={2}",
                         _value(context.get('current_request_exchange')),
-                        _value(attempt.context_tokens),
+                        _value(attempt.context_tokens) if attempt.context_tokens is not None else tr("pending or unavailable"),
                         _value(attempt.context_source),
                     ))
                     earlier = context.get("last_observed_exchange") != context.get("current_request_exchange")

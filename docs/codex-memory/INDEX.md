@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Streaming zero input observation](../design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10):
+  shared context projection keeps incomplete zero unknown, with separate prior
+  usage and estimates in Web/TUI. [Validation](../qualification.md#streaming-zero-input-observation-2026-10-10)
+  records 333 passing cases, GLM/MiMo replay and unchanged running services.
+
 - [GPU release replay and Host responsiveness](../design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10):
   existing RELEASED rows skip redundant scheduling; queue progress and ownership
   checks remain. [Validation](../qualification.md#gpu-release-replay-and-host-responsiveness-2026-10-10)

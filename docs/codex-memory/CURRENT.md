@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- October 10 streaming context: incomplete zero input is unknown in the existing
+  ACI-25+ projection; Web/TUI retain separate prior measurements and estimates.
+  Nonzero partial/cache and valid final zero remain measured; billing/capacity
+  rules are unchanged. 333 runtime/browser cases pass. Historical start replay
+  corrects 45 GLM zeros and preserves 142 MiMo readings/all 187 final projections.
+  All 194 wheel files match source. Existing runs/services remain unchanged;
+  reopen an observer from updated code. No full qualification promotion.
+  [Design](../design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10) /
+  [validation](../qualification.md#streaming-zero-input-observation-2026-10-10).
+
 - October 10 GPU release replay: an existing RELEASED pool row returns without
   resampling queued capacity. First release, normal admission polling, ownership
   checks and recovery retain their behavior; no protocol/state/cache additions.
