@@ -63,6 +63,16 @@ reuse does not ask again. Retained runs, other UIDs, unreadable state and unrele
 requests remain protected. **Defer confirmation** retains `none` and blocks launch;
 remove that deferred choice when reconsidering, preserving other init answers.
 
+`pool_configuration_unknown` means the managed service's configuration could
+not be read. Its `detail` identifies the failed stage; it does not establish
+active dependencies or unreadable foreign GPU processes. The research shell
+may deny the service's `/proc/<PID>/cwd`; inspection then checks that unit's
+systemd working directory while retaining live process ownership/argument
+checks. Recheck with `interaction.inspect_argv` to preserve the chosen reserve,
+membership and run identity. Do not reset the pool choice unless revising it.
+The existing question hook removes stray carriage returns from menu text;
+already displayed menus refresh only when a new question is issued.
+
 `prepare --summary` and `launch --summary` omit raw candidate files, the complete
 admission payload and repeated command vectors. Full output remains available
 without that flag. Local validation does not establish provider availability.

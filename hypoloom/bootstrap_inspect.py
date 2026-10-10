@@ -229,7 +229,8 @@ def inspect(args, repository: Path) -> dict:
                     pool = review.get("gpu", {}).get("pool", {})
                     _pool_choices(args, result, review)
                     if pool and not pool.get("prepare_available", pool.get("start_ready")):
-                        blockers.append({"code": pool.get("reason") or pool.get("code") or "pool_unavailable"})
+                        blockers.append({"code": pool.get("reason") or pool.get("code") or "pool_unavailable",
+                            **({"detail": pool["detail"]} if pool.get("detail") else {})})
                     if args.template:
                         result["profile_preparation_required"] = True
                     elif not missing and not blockers:

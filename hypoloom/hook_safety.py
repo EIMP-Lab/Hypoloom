@@ -192,6 +192,28 @@ def research_shell_command(command: str, *, repo_root, base_dir=None) -> str:
     return shlex.join([*argv, "--chdir", str(base), "--", "/bin/bash", "-c", command])
 
 
+def clean_question_text(tool_input: dict) -> dict:
+    """Remove generated CR characters only from native question display fields."""
+    def fields(value, names):
+        return {k: v.replace("\r", "") if k in names and isinstance(v, str) else v
+                for k, v in value.items()}
+
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list):
+        return tool_input
+    cleaned = []
+    for question in questions:
+        if not isinstance(question, dict):
+            cleaned.append(question)
+            continue
+        question = fields(question, {"question", "header"})
+        if isinstance(question.get("options"), list):
+            question["options"] = [fields(o, {"label", "description"}) if isinstance(o, dict) else o
+                                   for o in question["options"]]
+        cleaned.append(question)
+    return {**tool_input, "questions": cleaned}
+
+
 def _shell_statements(command: str):
     # Tokenize before splitting, so quoted pipes and multiline Python/heredoc
     # bodies do not produce spurious unterminated-quote errors.

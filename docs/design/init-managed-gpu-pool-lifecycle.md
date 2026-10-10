@@ -9,6 +9,34 @@
 
 ## 1. 问题与目标
 
+### 2026-10-10：研究 Shell 中的配置读取与菜单乱码
+
+同一 `inspect` 在开发终端成功，在 CC 研究会话内却返回
+`pool_configuration_unknown`。使用既有 `research_shell_command()` 的真实
+bubblewrap 重放后确认：池服务 MainPID 的 UID 和 cmdline 可读，读取
+`/proc/<MainPID>/cwd` 因跨用户命名空间的权限限制报 `PermissionError`。
+这里检查的是池服务自身，不是 NVIDIA 枚举到的其他用户 GPU 进程。
+原先吞掉具体读取失败，使对话把它误说成活动依赖，又反复询问相同池配置。
+
+修复只在 cwd 的 `PermissionError` 下读取同一 user-systemd unit 的
+`WorkingDirectory`；实际进程 UID、cmdline、全池成员、reserve、池路径和 socket
+仍走原验证器。可读但不匹配的 cwd、不可读/不匹配的 UID、不可读/不匹配的启动
+参数和不可读/不匹配的 systemd 目录继续阻止维护。不会用 unit 的 ExecStart
+或本次建议配置替代活进程 argv。源码只读隔离、socket 对端 UID、目录锁、依赖
+检查和执行前复核均保留。诊断只传播固定阶段/异常类，不暴露环境、原始参数或
+异常正文；重新检查沿用现有 `interaction.inspect_argv`。
+
+另从 CC 的原始 AskUserQuestion 参数确认，中文菜单被模型插入了 34 个 U+000D
+回车字符，并非 UTF-8 文本损坏。现有 PreToolUse 入口仅清除 question/header/
+option label/description 中的 `\r`，保留其他 Unicode、换行、选项及元数据；
+不添加自动批准，不改变答案或替用户选择。固定程序问答继续原样传递。
+已显示的菜单不会追溯刷新；下一次调用已有 hook 时应用修正。
+
+两处修复复用 systemd、proc 和现有 hook，不增加登记、持久状态或新的放行机制。
+真实生产只读回放已从配置读取失败进入 16 个历史 owner 的退役确认；这只是下一项
+需由用户确认的事实，不代表已获授权重配置。池与研究状态均未修改。
+验证范围见[资格记录](../qualification.md#pool-inspection-in-the-research-shell-2026-10-10)。
+
 ### 2026-10-10：配置差异与已退役运行的历史登记
 
 实测兼容池下限为 4096 MiB，而新运行 Profile 下限为 512 MiB；普通 init

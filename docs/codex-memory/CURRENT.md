@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 10 pool init follow-up: real research-shell isolation denies the pool
+  MainPID cwd symlink, while UID/argv remain readable. Only this permission error
+  uses user-systemd WorkingDirectory; mismatches and maintenance controls remain.
+  Safe read-stage diagnostics preserve selected reconfiguration arguments. The
+  existing question hook removes generated CR characters without auto-approval.
+  Production read-only replay now reaches retirement review; no service/run change.
+  161 distinct checks pass, including real mount enforcement and a native closure
+  with 11 Agents/one CPU Process, passing Oracles and no residue. All 195 wheel
+  files match. No full G1 rerun, live replacement or physical GPU qualification.
+  [Design](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码)
+  / [validation](../qualification.md#pool-inspection-in-the-research-shell-2026-10-10).
+
 - October 10 managed-pool init: reserve differences produce fixed keep/reconfigure
   questions after device selection; reconfiguration preserves full pool membership.
   Missing owners expose exact identities/resources. Scoped operator retirement

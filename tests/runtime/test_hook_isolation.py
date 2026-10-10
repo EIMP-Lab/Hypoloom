@@ -13,6 +13,32 @@ import pytest
 REPO_ROOT = Path(__file__).parents[2]
 HOOKS = REPO_ROOT / ".claude" / "hooks"
 
+
+def test_question_carriage_returns_are_cleaned_without_changing_choices(tmp_path):
+    tool_input = {"questions": [{"question": "重配置被\r process\r_identity\r:PermissionError\r 阻止？",
+        "header": "池\r决策", "multiSelect": False, "options": [
+            {"label": "保留当前池\r（推荐\r）", "description": "复用\r 4096\r MiB\r。"},
+            {"label": "取消\r，稍后重试", "description": "第一行\r\n第二行\n[链接](path)"}]}],
+        "metadata": {"literal": "keep\rthis"}}
+    original = json.dumps(tool_input, ensure_ascii=False)
+    result = _run_hook(tmp_path, "guard_paths.py", payload={"tool_name": "AskUserQuestion",
+        "tool_input": tool_input})
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout.splitlines()[0])["hookSpecificOutput"]
+    assert set(output) == {"hookEventName", "updatedInput"}  # No auto-approval.
+    cleaned = output["updatedInput"]
+    question = cleaned["questions"][0]
+    assert question["question"] == "重配置被 process_identity:PermissionError 阻止？"
+    assert question["header"] == "池决策" and question["multiSelect"] is False
+    assert question["options"] == [
+        {"label": "保留当前池（推荐）", "description": "复用 4096 MiB。"},
+        {"label": "取消，稍后重试", "description": "第一行\n第二行\n[链接](path)"}]
+    assert cleaned["metadata"] == tool_input["metadata"]
+    assert json.dumps(tool_input, ensure_ascii=False) == original
+    second = _run_hook(tmp_path, "guard_paths.py", payload={"tool_name": "AskUserQuestion", "tool_input": cleaned})
+    assert second.returncode == 0 and second.stdout == "HOOK_LEGACY_IMPORTS=[]\n"
+
+
 _HOOK_RUNNER = r"""
 import importlib.abc
 import io

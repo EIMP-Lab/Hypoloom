@@ -2,6 +2,27 @@
 
 [English](qualification.md) · 简体中文
 
+## 研究 Shell 内池检查与菜单乱码（2026-10-10）
+
+真实 bubblewrap 回放确认：池服务 UID 和 cmdline 可读，`/proc/<MainPID>/cwd`
+在研究会话中因用户命名空间权限被拒绝，开发终端则可读。修复仅在该权限错误下
+读取同一 user-systemd unit 的工作目录，保留实际进程身份/参数、socket 认证和
+维护依赖检查。修复后同一 init 参数进入 16 个历史运行的退役确认，保持 512 MiB
+建议及四卡成员；没有替用户确认退役、操作生产池或创建运行。
+
+原始 AskUserQuestion 参数含 34 个回车控制字符。已有 hook 清理显示字段中的
+回车，保留文字和选项，不自动批准工具。验证覆盖原始参数回放，未声称已完成新
+供应商生成或物理终端渲染验证；已显示菜单需下一次提问才刷新。
+
+证据位于 `.local/qualification/pool-sandbox-20261010/`。**161 项不同检查通过**，
+无未解决失败或跳过；初次跳过的真实隔离测试已单独启用通过。原生闭环包含
+11 个已关闭 Agent、1 个成功 CPU Process、1 个发布结果，两个既有 Oracle 通过，
+无开放 Attempt 或存活进程组。闭环中的 supervisor/GPU 采样使用替代实现，真实
+systemd 只做只读检查。wheel 的 195 个包文件与源码一致。
+
+此次未重跑完整 G1，既有 Host LOC 超额仍未解决；不声称完成完整晋级、物理 CUDA、
+付费模型或生产池重配置资格。[详细记录](qualification.md#pool-inspection-in-the-research-shell-2026-10-10)。
+
 ## 胶囊最近实测上下文（2026-10-10）
 
 Web 胶囊统一显示最近实测：优先当前实测，否则使用上次完整实测。数字和填充

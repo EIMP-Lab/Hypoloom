@@ -218,6 +218,17 @@ Distinguish `start_ready` from `prepare_available`: a safe creation/upgrade plan
 can offer Start now before the service is ready. For blockers, keep this init
 open: recheck, revise affected choices, Prepare only or cancel. Preserve prior
 answers and do not ask the user to start the whole conversation again.
+`pool_configuration_unknown` means the service configuration could not be read;
+show its `detail` when present. It is not an activity/dependency verdict. Historical
+binding counts alone do not establish active dependencies. Recheck with the returned
+`interaction.inspect_argv`, preserving a selected `reconfigure` and its reserve.
+Do not restart the pool-choice questions unless the operator asks to revise that
+choice, and do not describe repeated identical failures as progress.
+Process configuration diagnostics refer to the managed pool service's MainPID,
+not unrelated GPU compute processes. Do not tell the user to stop other users'
+processes or wait for them based on this error. Use ordinary Unicode question
+text without carriage returns or terminal control sequences; pass generated
+`interaction.questions` unchanged instead of rewriting them.
 
 Use the session's program-rendered review when available; otherwise use one final `AskUserQuestion` for the concrete effective configuration,
 bootstrap writes, pool operation and research launch:

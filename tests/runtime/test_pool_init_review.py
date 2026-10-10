@@ -217,7 +217,7 @@ def test_retirement_answers_preserve_exact_keys_and_defer_does_not_loop(tmp_path
         assert not result["missing"]
 
 
-@pytest.mark.parametrize("choice", ["keep", "confirm", "defer"])
+@pytest.mark.parametrize("choice", ["keep", "confirm", "defer", "unreadable"])
 def test_inspect_answers_and_launch_preview_form_one_effect_free_flow(checkout, capsys, monkeypatch, tmp_path, choice):
     from hypoloom.compute_resources import LocalComputeResources, ComputeCapabilities, GpuCapability
     repo, overrides = checkout
@@ -242,6 +242,9 @@ def test_inspect_answers_and_launch_preview_form_one_effect_free_flow(checkout, 
         result = {"status": "ok", "action": "reconfigure" if reconfigure else "reuse",
             "members": {str(os.geteuid()): [GPU, GPU2]}, "reserve_mib": args.reserve_mib if reconfigure else 4096,
             "prepare_available": not reconfigure or acknowledged, "start_ready": not reconfigure}
+        if reconfigure and choice == "unreadable":
+            return {**result, "status": "blocked", "action": None, "prepare_available": False,
+                "reason": "pool_configuration_unknown", "detail": "unit_working_directory_query_failed"}
         if reconfigure:
             result.update(previous_configuration={"reserve_mib": 4096, "members": {str(os.geteuid()): [GPU, GPU2]}},
                 reason=None if acknowledged else "dependencies_active_or_unknown",
@@ -263,6 +266,16 @@ def test_inspect_answers_and_launch_preview_form_one_effect_free_flow(checkout, 
         assert bootstrap.main([*result["interaction"]["answer_argv"][4:-1], str(source)]) == 0
         return json.loads(capsys.readouterr().out)
     result = answer(first, 0 if choice == "keep" else 1)
+    if choice == "unreadable":
+        assert result["status"] == "blocked" and not result["missing"]
+        assert result["blockers"] == [{"code": "pool_configuration_unknown", "detail": "unit_working_directory_query_failed"}]
+        assert not result["interaction"]["questions"] and "launch_argv" not in result
+        parsed = bootstrap.build_parser().parse_args(result["interaction"]["inspect_argv"][4:])
+        assert parsed.pool_action == "reconfigure" and parsed.pool_reserve_mib == 512
+        assert parsed.gpu_device_uuid == [GPU] and parsed.pool_device_uuid == [GPU, GPU2]
+        assert result["identity"] == first["identity"]
+        assert not (repo / "state").exists() and not (repo / ".local/gpu-pools").exists()
+        return
     if choice != "keep":
         assert result["missing"] == ["pool_retired_owner"]
         assert "launch_argv" not in result and "init_session_argv" not in result

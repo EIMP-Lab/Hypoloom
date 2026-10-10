@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Pool inspection in the research shell](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码):
+  reproduced cwd permission failure, narrow systemd fallback with live UID/argv
+  checks, precise diagnostics and existing-hook question text cleanup.
+  [Validation](../qualification.md#pool-inspection-in-the-research-shell-2026-10-10)
+  separates read-only production replay, native CPU closure and remaining limits.
+
 - [Managed-pool init review](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10配置差异与已退役运行的历史登记):
   explicit reserve differences, full-pool versus run subset, missing-owner detail,
   per-maintenance retirement assertions and preserved dependency checks/history.

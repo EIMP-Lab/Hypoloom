@@ -2,6 +2,52 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Pool inspection in the research shell (2026-10-10)
+
+The [follow-up repair](design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码)
+uses the existing user-systemd working directory only when the pool MainPID's
+cwd symlink is permission-denied. Live UID/argv validation and all maintenance
+coordination remain in place. The existing question hook removes carriage
+returns from display fields without approving tools or changing selections.
+
+Evidence: `.local/qualification/pool-sandbox-20261010/`.
+
+- `live-process-probe.json` reproduces the real user-namespace difference:
+  UID and cmdline are readable inside and outside the research shell; the
+  same service's cwd is denied only inside. It retains the original MainPID
+  and September 30 start timestamp. This failure does not involve foreign
+  GPU process inspection.
+- `original-inspect.json` and `fixed-inspect.json` replay the user's exact
+  selected arguments through the real research wrapper. The former blocks
+  at configuration reading; the latter reaches 16 missing-owner retirement
+  questions, preserving the 512 MiB proposal, four pool members and run identity.
+  No retirement is asserted, no production service is changed, and the proposed
+  run state root does not exist.
+- `question-replay.json` captures the original malformed tool input and hook
+  output: all 34 carriage returns are removed. Unicode, normal line breaks,
+  choice order and non-display fields are preserved; no permission decision is
+  emitted. This replays the hook and does not claim a new provider generation
+  or physical terminal rendering test. Existing menus require a new question.
+- **161 distinct focused/native checks pass**, with no unresolved failures or
+  skips (`test-summary.json`). `focused.xml` initially skips the opt-in mount
+  test; `boundary.xml` runs it successfully along with additional fallback
+  refusals, exact blocked-choice preservation and documentation checks.
+  Owner/directory/argv mismatches, unreadable arguments and unavailable unit
+  directories remain blocked. The real shell still refuses source writes.
+- `native.xml` repeats real CC/Host/broker/bwrap CPU publication after isolated
+  fixture pool maintenance. SQL/process census finds **11 closed Agents, one
+  successful CPU Process, one outcome, zero open Attempts and no live groups**;
+  both existing Oracles pass (`native-census.json`). The supervisor/device sample
+  in this closure is substituted; the production systemd exercise above is
+  read-only, not a live replacement qualification.
+- Undefined-name and whitespace checks pass. The wheel builds and all **195
+  package files** match source (`wheel-check.json`). No private configuration
+  or retained research run is changed.
+
+Full G1 is not rerun for this focused follow-up; its previously recorded Host
+LOC allocation failure remains unresolved. No full promotion, physical CUDA,
+paid-provider or production pool reconfiguration is claimed.
+
 ## Managed-pool init review (2026-10-10)
 
 The existing init flow now reviews reserve differences after selecting devices;

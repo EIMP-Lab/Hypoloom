@@ -80,7 +80,17 @@ def check(raw: str) -> int:
             "updatedInput": {**tool_input, "command": wrapped}}}, ensure_ascii=False))
         return 0
 
-    # Read-only tools and Agent/AskUserQuestion have no direct generic file
+    if tool == "AskUserQuestion":
+        # Native menu text must not contain carriage returns from generated
+        # tool arguments. Preserve wording, Unicode and normal line breaks;
+        # this formatting correction grants no permission and changes no choice.
+        cleaned = hook_safety.clean_question_text(tool_input)
+        if cleaned != tool_input:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                "updatedInput": cleaned}}, ensure_ascii=False))
+        return 0
+
+    # Read-only tools and Agent have no direct generic file
     # effect here. Workflow admission and authority belong to the resident Host.
     return 0
 

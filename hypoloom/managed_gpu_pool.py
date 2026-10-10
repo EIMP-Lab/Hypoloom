@@ -68,9 +68,10 @@ _LOCALE_VARIABLES = (
 class ManagedPoolError(RuntimeError):
     """A fixed, non-sensitive helper failure."""
 
-    def __init__(self, status: str) -> None:
+    def __init__(self, status: str, *, detail: str | None = None) -> None:
         super().__init__(status)
         self.status = status
+        self.detail = detail
         self.context: PoolPlan | None = None
         self.effects: dict = {}
 
@@ -597,31 +598,62 @@ def _wait_until_ready(
         time.sleep(min(_POLL_SECONDS, remaining))
 
 
-def _configuration(plan: PoolPlan, tools: Tools, environment: Mapping[str, str]) -> PoolPlan | None:
+def _configuration(plan: PoolPlan, tools: Tools, environment: Mapping[str, str],
+                   diagnostics: list[str] | None = None) -> PoolPlan | None:
     """Read only the unit's executable configuration; never return its environment.
 
-    Live units use /proc argv (unambiguous even with spaces). For a stopped unit,
-    accept only systemd's simple, round-trippable argv representation.
+    Live units use /proc ownership and argv (unambiguous even with spaces).
+    Research shell isolation can deny the cwd symlink: only that permission
+    failure uses the owning user manager's WorkingDirectory. For a stopped
+    unit, accept only systemd's simple, round-trippable argv representation.
     """
+    def unknown(reason):
+        if diagnostics is not None:
+            diagnostics.append(reason)
+        return None
+
+    stage = "main_pid"
     pid_result = _quiet_run((tools.systemctl, "--user", "show", plan.unit,
                             "--property=MainPID", "--value"), environment=environment)
     try:
-        pid = int(pid_result.stdout.strip()) if pid_result.returncode == 0 else 0
+        if pid_result.returncode:
+            return unknown("main_pid_query_failed")
+        pid = int(pid_result.stdout.strip())
         if pid > 1:
+            stage = "process_owner"
             process = Path("/proc") / str(pid)
-            if process.stat().st_uid != os.geteuid() or (process / "cwd").resolve() != plan.repository:
-                return None
+            if process.stat().st_uid != os.geteuid():
+                return unknown("process_owner_mismatch")
+            stage = "process_working_directory"
+            try:
+                directory = (process / "cwd").resolve(strict=True)
+            except PermissionError:
+                stage = "unit_working_directory"
+                result = _quiet_run((tools.systemctl, "--user", "show", plan.unit,
+                    "--property=WorkingDirectory", "--value"), environment=environment)
+                if result.returncode:
+                    return unknown("unit_working_directory_query_failed")
+                directory = Path(result.stdout.removesuffix("\n"))
+                if not directory.is_absolute():
+                    return unknown("unit_working_directory_unreadable")
+                directory = directory.resolve(strict=True)
+            if directory != plan.repository:
+                return unknown(stage + "_mismatch")
+            stage = "process_arguments"
             argv = (process / "cmdline").read_bytes().decode().rstrip("\0").split("\0")
         else:
+            stage = "exec_start"
             result = _quiet_run((tools.systemctl, "--user", "show", plan.unit,
                                 "--property=ExecStart", "--value"), environment=environment)
             match = re.fullmatch(r"\{ path=[^;]+ ; argv\[\]=(.*?) ; ignore_errors=.*\}\s*", result.stdout)
             if result.returncode or match is None or "\\" in match[1] or '"' in match[1] or "'" in match[1]:
-                return None
+                return unknown("exec_start_unreadable")
             argv = match[1].split()
+        stage = "command_identity"
         module = argv.index("-m")
         if argv[module:module + 3] != ["-m", "hypoloom.cli", "gpu-pool-serve"]:
-            return None
+            return unknown("unexpected_service_command")
+        stage = "configuration_arguments"
         parser = JsonArgumentParser(add_help=False)
         parser.add_argument("--pool-root", required=True)
         parser.add_argument("--socket-path", required=True)
@@ -630,10 +662,12 @@ def _configuration(plan: PoolPlan, tools: Tools, environment: Mapping[str, str])
         values = parser.parse_args(argv[module + 3:])
         original = _pool_plan(plan.repository, values.pool_root, values.socket_path, values.member, values.reserve_mib)
         if original.pool_root != plan.pool_root or original.socket_path != plan.socket_path:
-            return None
+            return unknown("pool_endpoint_mismatch")
         return replace(original, unit=plan.unit)
-    except (OSError, UnicodeError, ValueError, ManagedPoolError):
-        return None
+    except (OSError, UnicodeError, ValueError, ManagedPoolError) as exc:
+        # A stage and exception class identify the failure without exposing argv,
+        # supervisor output, credentials or arbitrary exception messages.
+        return unknown(stage + ":" + (exc.status if isinstance(exc, ManagedPoolError) else type(exc).__name__))
 
 
 def _no_conflicts(plan: PoolPlan) -> None:
@@ -684,14 +718,15 @@ def _observe(plan: PoolPlan, tools: Tools, environment: Mapping[str, str], *,
     if plan.pool_root != _pools_directory(plan.repository) / _DEFAULT_POOL_NAME:
         raise ManagedPoolError("managed_pool_requires_shared_root")
     durable = (plan.pool_root / "pool.sqlite3").exists()
-    previous = _configuration(plan, tools, environment) if properties["LoadState"] == "loaded" else None
+    configuration_diagnostics = []
+    previous = _configuration(plan, tools, environment, configuration_diagnostics) if properties["LoadState"] == "loaded" else None
     if compatible and previous is not None and previous.members == plan.members and previous.reserve_mib == plan.reserve_mib:
         return {**previous.result("ok"), "action": "reuse", "start_ready": True,
                 "prepare_available": True, "devices": list(served), "configuration_action": "unchanged"}, previous
     target = plan
     if active:
         if previous is None:
-            raise ManagedPoolError("pool_configuration_unknown")
+            raise ManagedPoolError("pool_configuration_unknown", detail=next(iter(configuration_diagnostics), None))
         if not reconfigure and set(intended).issubset(device for _, devices in previous.members for device in devices):
             action, target = "upgrade", previous
         else:
@@ -740,7 +775,8 @@ def review(args: argparse.Namespace) -> dict:
         return result
     except (ManagedPoolError, PoolError) as exc:
         return {**(plan.result("blocked") if plan else {"status": "blocked"}), "action": None, "start_ready": False,
-                "prepare_available": False, "reason": exc.status if isinstance(exc, ManagedPoolError) else exc.code}
+                "prepare_available": False, "reason": exc.status if isinstance(exc, ManagedPoolError) else exc.code,
+                **({"detail": exc.detail} if isinstance(exc, ManagedPoolError) and exc.detail else {})}
     finally:
         _DEADLINE.reset(token)
 
@@ -919,6 +955,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if exc.effects:
             payload["effects"] = exc.effects
+        if exc.detail:
+            payload["detail"] = exc.detail
         print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
         return 2
     except (Exception, KeyboardInterrupt):
