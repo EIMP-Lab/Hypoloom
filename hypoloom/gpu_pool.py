@@ -274,6 +274,11 @@ class GpuPool:
             elif operation == "bind_process":
                 self._bind(db, row, arguments["process_group_id"])
             elif operation == "release":
+                # Host reconciliation replays closed history every tick. The
+                # durable terminal state needs no capacity sampling; queued
+                # owners still drive admission through reserve/status polling.
+                if row["state"] == "RELEASED":
+                    return self._response(row)
                 self._release(db, row)
                 self._schedule(db)
             return self._response(self._find(db, key))

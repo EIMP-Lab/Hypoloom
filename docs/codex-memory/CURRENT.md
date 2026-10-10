@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 10 GPU release replay: an existing RELEASED pool row returns without
+  resampling queued capacity. First release, normal admission polling, ownership
+  checks and recovery retain their behavior; no protocol/state/cache additions.
+  236 focused runtime cases pass, including real pool/CPU process boundaries.
+  A real Host/socket reproduction drops from 23 samples and STATUS timeout to
+  one sample and about 0.42–0.46 s with 11 retired GPU experiments. Both observer
+  cases close their waiting work and pass existing Oracles. All 194 wheel files
+  match source. Active runs, shared pool and installs are unchanged; deployment
+  requires existing idle maintenance conditions. No full qualification promotion.
+  [Design](../design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10) /
+  [validation](../qualification.md#gpu-release-replay-and-host-responsiveness-2026-10-10).
+
 - October 10 DeepSeek/GLM coverage: adapter 79 selects their official Anthropic
   endpoints, distinguishes balance/rate/overload/context errors, and keeps expired
   subscriptions/access restrictions waiting for the operator. Explicitly zoned

@@ -2,6 +2,55 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## GPU release replay and Host responsiveness (2026-10-10)
+
+The [bounded repair](design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10)
+returns the existing response when an authenticated release finds its exact pool
+request already RELEASED. It skips scheduling and GPU sampling for that replay.
+First releases and unresolved ownership retain their existing checks; queued
+reserve/status polling still samples fresh capacity and advances admission.
+The existing request row and transaction remain authoritative. There is no new
+protocol, persisted state, Host cache, timeout change or weakened GPU protection.
+
+Evidence is under `.local/qualification/gpu-release-replay-20261010/`:
+
+- `original.xml` reproduces five failures for repeated releases with queued work,
+  including 1/11/50 retired requests and both normal admission polling paths.
+  The first-release wakeup control passes on both versions. Replaying the
+  unchanged new socket test against the Git baseline pool implementation yields
+  `observer-original.xml`: 11 completed GPU experiments cause 23 samples in a
+  Host tick and the observer's three-second STATUS request times out.
+- **236 focused runtime cases pass without skips** in `focused.xml`. These cover
+  durable release replay, external-capacity recovery, first-release wakeup,
+  same-run FIFO and inter-run fairness, ownership/authentication, launch gaps,
+  live/unknown process protection, cancellation and recovery. Existing real
+  pool/Runner/bubblewrap CPU and Host-process crash cases also pass; inventory
+  is synthetic and none of these cases execute CUDA or call paid providers.
+- The real Host serve loop and pool socket regression uses the normal Host
+  lifecycle to complete 0 or 11 prior experiments, then waits for capacity with
+  a synthetic 0.4-second GPU sampler. STATUS returns in approximately **0.42–0.46
+  seconds**, with **one sample** for actual queued admission in either case.
+  Restoring capacity completes the waiting experiment. The two cases separately
+  close 2/24 Process Attempts (validation plus experiment), accept 1/12 canonical
+  outcomes and leave every Attempt closed and pool request RELEASED; existing
+  Oracles verify closure. These workloads are deterministic test jobs, not real
+  GPU training. Timings describe this bounded reproduction, not production p95.
+- The wheel builds and all **194 package files** match source (`wheel-check.json`).
+  No shared installation or live service is replaced. Ruff undefined-name and
+  Git whitespace checks pass. Documentation links and boundaries are checked
+  separately in `docs.xml`.
+
+`observer-fixed.xml` retains the initial test census error: it counted validation
+and experiment Process Attempts as one. The corrected test independently checks
+both counts, pool rows and outcomes; response/ownership assertions are unchanged.
+`observer-fixed-final.xml` and `focused.xml` pass the corrected cases.
+
+The minimal pool change meets the reproduced latency requirement, so Host-wide
+reconciliation changes are deferred pending new evidence. The active research
+and shared GPU service are unchanged; a pool upgrade requires the existing idle
+maintenance conditions. Frozen research bundles are not migrated. This is a
+focused repair, not full G1–G5 promotion or a live-training speedup claim.
+
 ## DeepSeek and GLM error recovery (2026-10-10)
 
 Adapter 79 extends the [existing classifier](design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖)

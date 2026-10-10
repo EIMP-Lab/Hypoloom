@@ -1,5 +1,11 @@
 # Development memory index
 
+- [GPU release replay and Host responsiveness](../design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10):
+  existing RELEASED rows skip redundant scheduling; queue progress and ownership
+  checks remain. [Validation](../qualification.md#gpu-release-replay-and-host-responsiveness-2026-10-10)
+  records the original timeout, bounded Host/socket latency, 236 focused checks
+  and unchanged live runs/shared pool; deployment uses existing maintenance rules.
+
 - [DeepSeek and GLM error recovery](../design/context-management-and-recovery.md#2026-10-10deepseek-与-glm-错误覆盖):
   official endpoint/business-code selection, operator-only account restrictions,
   zoned reset times and existing journal/traffic recovery; no extra init questions.

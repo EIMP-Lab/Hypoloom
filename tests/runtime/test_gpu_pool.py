@@ -114,6 +114,61 @@ def test_release_is_durable_tombstone_and_replay_never_readmits(tmp_path):
     assert len(rows(tmp_path)) == 1
 
 
+@pytest.mark.parametrize("retired_count", [1, 11, 50])
+def test_released_history_does_not_resample_or_rewrite_a_waiting_queue(tmp_path, retired_count):
+    world = World()
+    pool = world.pool(tmp_path)
+    released = {}
+    for index in range(retired_count):
+        attempt = f"retired-{index}"
+        assert reserve(pool, attempt=attempt)["state"] == "RESERVED"
+        released[attempt] = action(pool, "release", attempt=attempt)
+    world.sample = CapacitySample((device(A, 1000), device(B)))
+    assert reserve(pool, run="waiting")["state"] == "QUEUED"
+    before_rows, before_calls = rows(tmp_path), world.calls
+    # Reopen the service object: the persisted request state is sufficient.
+    restarted = world.pool(tmp_path)
+    for _ in range(2):
+        for attempt, response in released.items():
+            assert action(restarted, "release", attempt=attempt) == response
+    assert world.calls == before_calls
+    assert rows(tmp_path) == before_rows
+    assert action(restarted, "status", run="waiting")["state"] == "QUEUED"
+    assert world.calls == before_calls + 1
+
+
+@pytest.mark.parametrize("poll_operation", ["reserve", "status"])
+def test_waiting_request_observes_external_capacity_after_release_replay(tmp_path, poll_operation):
+    world = World()
+    pool = world.pool(tmp_path)
+    reserve(pool)
+    released = action(pool, "release")
+    world.sample = CapacitySample((device(A, 1000), device(B)))
+    assert reserve(pool, run="waiting")["state"] == "QUEUED"
+    world.sample = CapacitySample((device(A, 12000), device(B)))
+    before_calls = world.calls
+    assert action(pool, "release") == released
+    assert world.calls == before_calls
+    waiting = (reserve(pool, run="waiting") if poll_operation == "reserve"
+               else action(pool, "status", run="waiting"))
+    assert waiting["state"] == "RESERVED"
+    assert waiting["gpu_uuids"] == [A]
+    assert world.calls == before_calls + 1
+
+
+def test_first_release_still_admits_a_waiting_request(tmp_path):
+    world = World()
+    pool = world.pool(tmp_path)
+    assert reserve(pool, budget=8000)["state"] == "RESERVED"
+    assert reserve(pool, run="waiting", budget=8000)["state"] == "QUEUED"
+    before_calls = world.calls
+    assert action(pool, "release")["state"] == "RELEASED"
+    assert world.calls == before_calls + 1
+    # Read SQLite directly so a status poll cannot accidentally advance the queue.
+    assert [(r["run_id"], r["state"]) for r in rows(tmp_path)] == [
+        ("run-a", "RELEASED"), ("waiting", "RESERVED")]
+
+
 def test_atomic_multi_gpu_selection_uses_live_capacity_and_uuid_tie_break(tmp_path):
     world = World()
     world.sample = CapacitySample((device(A, 9000), device(B, 3000)))
