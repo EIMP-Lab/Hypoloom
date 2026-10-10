@@ -2,6 +2,38 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Context capsule text visibility (2026-10-10)
+
+Follow-up to the streaming-zero repair: the correct `last 81.13K` / `上次 81.13K`
+text wrapped inside a fixed-width capsule, leaving the number outside its clipped
+height. The original tests checked DOM text, so they missed invisible digits.
+The existing capsule now sizes its middle column to its content, retains the
+original minimum width/font/height and keeps the value on one line. Measurement
+semantics, occupancy fill, provider data and Agent execution are unchanged.
+
+Evidence: `.local/qualification/capsule-context-20261010/`.
+
+- `original.xml` reproduces both English and Chinese failures using actual text
+  rectangles. `fixed.xml` passes all 18 streaming-context cases, including glyph
+  containment at 1440, 768, 390 and 320 px, and transition to final measured usage.
+- `browser-regressions.xml` adds seven passing browser cases for expert capsules,
+  context rejection, responsive headers, Grounding/RPM scope, concurrency,
+  stale observations and pulse continuity. **25 runtime/browser cases and four
+  documentation checks pass**, with no skips. This is the affected selection;
+  the prior 333-case context qualification is recorded separately below.
+- `preview/layout.json` and its before/after screenshots confirm the Chinese
+  expert capsule changes from two lines with hidden digits to one fully visible
+  line. The bar grows from about 59.4 to 71.9 px; its height stays about 17.1 px.
+  These are synthetic browser fixtures, not screenshots of private research.
+- All 194 wheel package files match source (`wheel-check.json`). Read-only HTTP
+  inspection confirms the current-source observer serves the repaired CSS with
+  `Cache-Control: no-store`; a normal page refresh loads it. The simultaneously
+  running Host-owned dashboard still serves its original frozen bundle, so its
+  URL must not be confused with the updated observer's entry.
+
+The existing research Host and run remain unchanged. This is a focused visual
+repair, not a full qualification promotion or a reason to restart research.
+
 ## Streaming zero input observation (2026-10-10)
 
 The [repair](design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10)

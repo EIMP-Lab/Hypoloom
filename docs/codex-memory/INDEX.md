@@ -4,6 +4,8 @@
   shared context projection keeps incomplete zero unknown, with separate prior
   usage and estimates in Web/TUI. [Validation](../qualification.md#streaming-zero-input-observation-2026-10-10)
   records 333 passing cases, GLM/MiMo replay and unchanged running services.
+  [Capsule follow-up](../qualification.md#context-capsule-text-visibility-2026-10-10)
+  fixes wrapped/clipped numbers and verifies actual glyph visibility.
 
 - [GPU release replay and Host responsiveness](../design/gpu-capacity-and-resource-replanning.md#9-重复释放与-host-响应延迟2026-10-10):
   existing RELEASED rows skip redundant scheduling; queue progress and ownership

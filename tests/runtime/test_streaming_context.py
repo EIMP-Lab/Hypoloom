@@ -176,6 +176,20 @@ def test_browser_delayed_usage_shows_history_without_filling_current_bar(browser
     title = page.evaluate(f"document.querySelector('{tile}').title")
     assert translate("provider input usage pending or unavailable", language=language) in title
     assert "74.81K" in title
+    # DOM text alone missed a real regression: the prefix occupied line one,
+    # while the numeric value wrapped below the capsule's clipped height.
+    for width in (1440, 768, 390, 320):
+        page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": 1000,
+            "deviceScaleFactor": 1, "mobile": False})
+        page.evaluate(f"document.querySelector('{tile}').scrollIntoView({{block:'center'}})")
+        assert page.evaluate(f"""(() => {{
+            const value=document.querySelector('{tile} .agent-tile-value');
+            const bar=value.parentElement.getBoundingClientRect();
+            const range=document.createRange(); range.selectNodeContents(value);
+            const rects=Array.from(range.getClientRects());
+            return rects.length===1 && rects.every(r=>r.left>=bar.left && r.right<=bar.right
+                && r.top>=bar.top && r.bottom<=bar.bottom);
+        }})()"""), f"{language} context digits clipped at {width}px"
     context = latest_context([_measured(), _pending(message_complete=True, response_body_complete=True,
         usage={"input_tokens": 10442, "cache_read_input_tokens": 58944, "output_tokens": 201})])
     value.update(context=context, context_tokens=context["input_tokens"], context_source=context["source"])

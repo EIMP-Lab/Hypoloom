@@ -113,6 +113,8 @@ or unavailable, with the last complete measurement and current estimate kept
 separate. It does not mean the Agent has no context. Nonzero partial input and
 valid final usage retain their measured values; this display rule does not
 change accounting or capacity limits.
+The capsule's `last` label identifies a previous measurement; the current
+occupancy bar stays unfilled until a current input measurement is available.
 
 A complete zero-usage terminal stream without a model or content is not a
 measured zero-token request. It leaves the preceding valid capacity observation

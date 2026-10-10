@@ -7,6 +7,10 @@
   corrects 45 GLM zeros and preserves 142 MiMo readings/all 187 final projections.
   All 194 wheel files match source. Existing runs/services remain unchanged;
   reopen an observer from updated code. No full qualification promotion.
+  Same-day capsule follow-up fixes clipped prior-value digits with content-sized,
+  single-line layout; browser checks measure visible glyph bounds in both languages
+  at desktop/mobile widths. Updated observer assets load on page refresh; a frozen
+  Host dashboard keeps its bundled code. [Follow-up evidence](../qualification.md#context-capsule-text-visibility-2026-10-10).
   [Design](../design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10) /
   [validation](../qualification.md#streaming-zero-input-observation-2026-10-10).
 
