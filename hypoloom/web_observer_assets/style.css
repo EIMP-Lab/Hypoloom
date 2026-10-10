@@ -522,8 +522,9 @@ noscript { display: block; padding: 1rem; color: var(--red); background: #2a1015
 .agent-tile:hover { border-color: var(--line-bright); color: var(--text); }
 .agent-tile[data-attempt] { display: inline-grid; grid-template-columns: .45rem max-content .85rem; }
 .agent-tile-light { width: 0.45rem; height: 0.45rem; border-radius: 2px; background: var(--expert-accent); flex: none; }
-.agent-tile-bar { position: relative; min-width: 3.3rem; height: 0.95rem; overflow: hidden; border: 1px solid var(--line-bright); border-radius: 999px; background: var(--bg); }
+.agent-tile-bar { position: relative; display: grid; grid-template-columns: .75rem minmax(0, 1fr); width: 4rem; height: 0.95rem; overflow: hidden; border: 1px solid var(--line-bright); border-radius: 999px; background: var(--bg); }
 .agent-tile-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--expert-accent) 32%, transparent); transition: width 0.3s ease; }
+.agent-tile-status { position: relative; font-size: .65rem; line-height: .95rem; text-align: center; }
 .agent-tile-value { position: relative; display: block; padding-right: 0.28rem; color: var(--text); font-family: "IBM Plex Mono", monospace; font-size: 0.58rem; line-height: 0.95rem; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .agent-tile.overdue .agent-tile-bar { border-color: var(--amber); }
 .agent-tile.host-unconfirmed .agent-tile-light { background: var(--amber); animation: none; }

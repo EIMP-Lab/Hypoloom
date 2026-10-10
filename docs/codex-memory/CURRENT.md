@@ -1,5 +1,14 @@
 # Current Hypoloom development state
 
+- October 10 capsule semantics: Web now shows latest measured context in both
+  number and fill, without `last`; current usage/estimates stay separate in the
+  tooltip and backend. A fixed compaction slot keeps the reading in place.
+  The denominator remains the effective ceiling before reserves, explicitly
+  labeled. Current read-only sample has a 262144 working ceiling, 205568 input
+  allowance and no confirmed provider/runtime window. No capacity-policy or
+  retained-run change. 26 runtime/browser and four documentation checks pass;
+  all 194 wheel files match source. [Evidence](../qualification.md#latest-measured-context-capsules-2026-10-10).
+
 - October 10 streaming context: incomplete zero input is unknown in the existing
   ACI-25+ projection; Web/TUI retain separate prior measurements and estimates.
   Nonzero partial/cache and valid final zero remain measured; billing/capacity

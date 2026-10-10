@@ -1587,9 +1587,11 @@
     if (entry) return entry;
     const light = element("span", "agent-tile-light");
     const fill = element("span", "agent-tile-fill");
+    const indicator = element("span", "agent-tile-status");
+    indicator.setAttribute("aria-hidden", "true");
     const value = element("span", "agent-tile-value");
     const bar = element("span", "agent-tile-bar");
-    bar.append(fill, value);
+    bar.append(fill, indicator, value);
     const tile = element("button", "agent-tile");
     tile.type = "button";
     tile.dataset.attempt = attempt.attempt_id;
@@ -1606,13 +1608,13 @@
     });
     tile.classList.add("tile-enter");
     window.setTimeout(() => tile.classList.remove("tile-enter"), 320);
-    entry = {tile, fill, value, role, leaving: false};
+    entry = {tile, fill, indicator, value, role, leaving: false};
     state.workingTiles.set(attempt.attempt_id, entry);
     return entry;
   }
 
   function updateWorkingTile(entry, attempt, label, hostResponded, observedAt) {
-    const {tile, fill, value} = entry;
+    const {tile, fill, indicator, value} = entry;
     tile.classList.toggle("host-unconfirmed", !hostResponded);
     tile.querySelector('.agent-tile-light').classList.toggle('host-confirmed', hostResponded);
     const elapsed = Math.max(0, observedAt - (Number(attempt.started_at) || observedAt));
@@ -1627,14 +1629,22 @@
     const known = !isProcess && Number.isInteger(attempt.context_tokens) && attempt.context_tokens >= 0;
     const priorKnown = separatedContext && Number.isInteger(context.last_observed_input_tokens) && context.last_observed_input_tokens >= 0;
     const limit = Number.isInteger(attempt.context_window_tokens) && attempt.context_window_tokens > 0 ? attempt.context_window_tokens : null;
-    const valueText = isProcess ? compactDuration(elapsed) : known ? compactNumber(attempt.context_tokens)
-      : priorKnown ? t("last {0}", compactNumber(context.last_observed_input_tokens)) : "—";
-    value.textContent = attempt.operational_status === "compacting" ? `↻ ${valueText}` : valueText;
-    fill.style.width = known && limit ? `${Math.min(100, Math.round((attempt.context_tokens / limit) * 1000) / 10)}%` : "0%";
+    // The capsule retains the latest measurement while a new request's usage
+    // is pending. Current usage and estimates remain distinct in the details.
+    const measuredTokens = known ? attempt.context_tokens : !isProcess && priorKnown ? context.last_observed_input_tokens : null;
+    const valueText = isProcess ? compactDuration(elapsed) : measuredTokens !== null ? compactNumber(measuredTokens) : "—";
+    const measuredLabel = measuredTokens !== null ? t("Latest measured context: {0} tokens", measuredTokens) : t("Latest measured context: unavailable");
+    const compacting = !isProcess && attempt.operational_status === "compacting";
+    value.textContent = valueText;
+    indicator.textContent = compacting ? "↻" : "";
+    fill.style.width = measuredTokens !== null && limit ? `${Math.min(100, Math.round((measuredTokens / limit) * 1000) / 10)}%` : "0%";
     const lines = [t("{0} · attempt {1}", label, attempt.attempt_id)];
     if (isProcess) {
       lines.push(t("elapsed {0} · OPEN is durable state, not process liveness", compactDuration(elapsed)));
     } else {
+      lines.push(measuredLabel);
+      lines.push(limit ? t("Effective context limit: {0} tokens · bar denominator before reserves", limit)
+        : t("Effective context limit: unavailable"));
       if (separatedContext) {
         const currentExchange = context.current_request_exchange ?? "unknown";
         lines.push(t("Current request: exchange {0} · {1}", currentExchange, known ? t("{0} input tokens · {1}", compactNumber(attempt.context_tokens), attempt.context_source || t("unknown source")) : t("provider input usage pending or unavailable")));
@@ -1653,6 +1663,7 @@
       if (Number.isInteger(attempt.cumulative_tokens)) lines.push(t("Cumulative invocation usage: {0} tokens", compactNumber(attempt.cumulative_tokens)));
       if (Number.isInteger(context.available_input_tokens)) lines.push(t("Admission input allowance: {0} · output reserve {1} · tools {2} · margin {3}", compactNumber(context.available_input_tokens), context.output_reserve_tokens ?? "?", context.tool_reserve_tokens ?? "?", context.estimate_margin_tokens ?? "?"));
       if (Number.isInteger(context.declared_context_tokens)) lines.push(t("Configured provider window: {0} tokens", compactNumber(context.declared_context_tokens)));
+      if (Number.isInteger(context.runtime_context_tokens)) lines.push(t("Configured runtime ceiling: {0} tokens", compactNumber(context.runtime_context_tokens)));
       if (Number.isInteger(context.cache_read_input_tokens)) lines.push(t("Cache read: {0} input tokens", compactNumber(context.cache_read_input_tokens)));
       if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(t("Cache creation: {0} input tokens", compactNumber(context.cache_creation_input_tokens)));
       if (attempt.session_scope) lines.push(t("Session scope: {0}", attempt.session_scope));
@@ -1666,7 +1677,7 @@
     }
     tile.title = lines.join("\n");
     tile.dataset.workTitle = tile.title;
-    tile.dataset.workLabel = `${label}: ${valueText}`;
+    tile.dataset.workLabel = `${label}: ${isProcess ? valueText : measuredLabel}${compacting ? ` · ${t("Native CLI last reported: compacting")}` : ""}`;
     tile.setAttribute("aria-label", tile.dataset.workLabel);
     if (isProcess) tile.querySelector('.agent-tile-metric').title = lines[1];
   }

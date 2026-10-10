@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hypoloom.context_management import latest_context
+from hypoloom.context_management import latest_context, request_capacity
 from hypoloom.monitor import AttemptView, _with_live_attempt_context
 from hypoloom.provider_observation import ProviderObservation, read_exchanges
 from hypoloom.runtime_diagnostics import RuntimeDiagnostics
@@ -157,7 +157,7 @@ def test_real_streaming_relay_projects_pending_then_final_usage_to_tui(tmp_path,
 
 
 @pytest.mark.parametrize("language", ["en", "zh-CN"])
-def test_browser_delayed_usage_shows_history_without_filling_current_bar(browser, language):
+def test_browser_delayed_usage_keeps_latest_measurement_and_compaction_slot(browser, language, tmp_path):
     page = browser
     attempt, _ = _attempt()
     context = latest_context([_measured(), _pending()])
@@ -171,11 +171,12 @@ def test_browser_delayed_usage_shows_history_without_filling_current_bar(browser
     page.evaluate("fixture.snapshot.overview.grounding={state:'active',attempt_ids:['delayed-usage'],accounting:{}}")
     tile = '#grounding-agent-card .agent-tile[data-attempt="delayed-usage"]'
     page.wait(f"document.querySelector('{tile}') !== null")
-    assert "69.39K" in page.text(f"{tile} .agent-tile-value")
-    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "0%"
+    assert page.text(f"{tile} .agent-tile-value") == "69.39K"
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "26.5%"
     title = page.evaluate(f"document.querySelector('{tile}').title")
     assert translate("provider input usage pending or unavailable", language=language) in title
     assert "74.81K" in title
+    assert translate("Latest measured context: {0} tokens", "69386", language=language) in title
     # DOM text alone missed a real regression: the prefix occupied line one,
     # while the numeric value wrapped below the capsule's clipped height.
     for width in (1440, 768, 390, 320):
@@ -190,11 +191,104 @@ def test_browser_delayed_usage_shows_history_without_filling_current_bar(browser
             return rects.length===1 && rects.every(r=>r.left>=bar.left && r.right<=bar.right
                 && r.top>=bar.top && r.bottom<=bar.bottom);
         }})()"""), f"{language} context digits clipped at {width}px"
+    # Compaction is independent of the reading. A reserved slot must remain
+    # present and leave both the capsule and the numeric text in place.
+    bounds = f"""(() => {{
+        const tile=document.querySelector('{tile}');
+        return [tile, tile.querySelector('.agent-tile-status'), tile.querySelector('.agent-tile-value')]
+            .map(e=>{{const r=e.getBoundingClientRect(); return [r.x,r.width];}});
+    }})()"""
+    before = page.evaluate(bounds)
+    assert before[1][1] > 0
+    for status in ("compacting", None):
+        page.evaluate("fixture.snapshot.attempts.find(a=>a.attempt_id==='delayed-usage').operational_status="
+            + json.dumps(status))
+        expected = "↻" if status else ""
+        page.wait(f"document.querySelector('{tile} .agent-tile-status').textContent === {json.dumps(expected)}")
+        assert page.evaluate(bounds) == before
+        assert page.text(f"{tile} .agent-tile-value") == "69.39K"
+        assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "26.5%"
+        if status:
+            assert translate("Native CLI last reported: compacting", language=language) in page.evaluate(
+                f"document.querySelector('{tile}').getAttribute('aria-label')")
+            page.screenshot(tmp_path / f"capsule-compacting-{language}.png")
     context = latest_context([_measured(), _pending(message_complete=True, response_body_complete=True,
         usage={"input_tokens": 10442, "cache_read_input_tokens": 58944, "output_tokens": 201})])
     value.update(context=context, context_tokens=context["input_tokens"], context_source=context["source"])
     page.evaluate(f"Object.assign(fixture.snapshot.attempts.find(a=>a.attempt_id==='delayed-usage'), {json.dumps(value)})")
-    page.wait(f"document.querySelector('{tile} .agent-tile-fill').style.width !== '0%'")
+    page.wait(f"!document.querySelector('{tile}').title.includes({json.dumps(translate('provider input usage pending or unavailable', language=language))})")
     assert page.text(f"{tile} .agent-tile-value") == "69.39K"
     assert translate("provider input usage pending or unavailable", language=language) not in page.evaluate(
         f"document.querySelector('{tile}').title")
+    assert page.evaluate(bounds) == before
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "26.5%"
+
+
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_browser_context_fill_uses_effective_window_and_keeps_input_allowance_separate(browser, language):
+    page = browser
+    # Each ceiling can be the effective one. The provider's advertised window,
+    # cumulative invocation budget and request-specific reserves are distinct.
+    cases = [({}, 262144, 205568, 65536, "25%"),
+        ({"context_window_tokens": 128000}, 128000, 80000, 64000, "50%"),
+        ({"context_window_tokens": 1000000, "runtime_context_tokens": 64000}, 64000, 24000, 32000, "50%"),
+        ({"context_window_tokens": 1000000, "working_context_tokens": 80000}, 80000, 38000, 80000, "100%"),
+        ({"working_context_tokens": 2000000}, 2000000, 1834808, 999990, "50%")]
+    attempts = []
+    for i, (memory, effective, allowance, tokens, _) in enumerate(cases):
+        capacity = request_capacity(document("input"), policy25(**memory))
+        assert capacity["effective_context_tokens"] == effective
+        assert capacity["available_input_tokens"] == allowance
+        context = latest_context([{**_measured(), "usage": {"input_tokens": tokens, "output_tokens": 201}},
+            _pending(context_capacity=capacity)], policy25(**memory))
+        attempts.append({"attempt_id": f"limit-{i}", "kind": "AGENT", "state": "OPEN",
+            "role": "expert-a", "task_scope": "expert", "owner_role": "expert-a",
+            "command": "EXPERIMENT_DESIGN_IMPLEMENT", "context_tokens": None,
+            "context_source": "estimate", "context": context, "budget_max_tokens": 9000000,
+            "context_window_tokens": effective, "context_window_source": capacity["window_source"]})
+    if language == "zh-CN":
+        page.click("#language-toggle")
+    page.evaluate(f"fixture.snapshot.attempts.push(...{json.dumps(attempts)})")
+    page.wait("document.querySelector('[data-attempt=limit-4]') !== null")
+    for i, (_, effective, _, tokens, fill) in enumerate(cases):
+        tile = f".agent-tile[data-attempt=limit-{i}]"
+        assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == fill
+        page.wait(f"""(() => {{
+            const tile=document.querySelector('{tile}');
+            return Math.abs(tile.querySelector('.agent-tile-fill').getBoundingClientRect().width
+                / tile.querySelector('.agent-tile-bar').clientWidth - {float(fill[:-1]) / 100}) < .002;
+        }})()""")
+        title = page.evaluate(f"document.querySelector('{tile}').title")
+        assert translate("Effective context limit: {0} tokens · bar denominator before reserves", effective, language=language) in title
+        assert translate("Latest measured context: {0} tokens", tokens, language=language) in title
+        if i in (0, 4):
+            assert translate("Provider window unconfirmed; limit is the framework working estimate.", language=language) in title
+        else:
+            assert "Configured provider window" in title or "已配置提供商窗口" in title
+    # The longest supported compact reading fits with the compaction glyph.
+    page.evaluate("fixture.snapshot.attempts.find(a=>a.attempt_id==='limit-4').operational_status='compacting'")
+    page.wait("document.querySelector('[data-attempt=limit-4] .agent-tile-status').textContent === '↻'")
+    assert page.text("[data-attempt=limit-4] .agent-tile-value") == "999.99K"
+    for width in (1440, 320):
+        page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": 1000,
+            "deviceScaleFactor": 1, "mobile": False})
+        assert page.evaluate("""(() => {
+            const tile=document.querySelector('[data-attempt=limit-4]');
+            const bar=tile.querySelector('.agent-tile-bar').getBoundingClientRect();
+            const rects=['.agent-tile-status','.agent-tile-value'].map(selector=>{
+                const range=document.createRange(); range.selectNodeContents(tile.querySelector(selector));
+                return range.getBoundingClientRect();});
+            return rects[0].right <= rects[1].left && rects.every(r=>r.left>=bar.left && r.right<=bar.right
+                && r.top>=bar.top && r.bottom<=bar.bottom);
+        })()""")
+    # Missing window must not fall back to the invocation budget, and neither
+    # estimates nor a process duration are measurements. A real zero stays zero.
+    page.evaluate("Object.assign(fixture.snapshot.attempts.find(a=>a.attempt_id==='limit-0'), {context_window_tokens:null});"
+        "Object.assign(fixture.snapshot.attempts.find(a=>a.attempt_id==='limit-1'), {context_tokens:0});"
+        "Object.assign(fixture.snapshot.attempts.find(a=>a.attempt_id==='limit-2').context, {last_observed_input_tokens:null});"
+        "Object.assign(fixture.snapshot.attempts.find(a=>a.attempt_id==='limit-3'), {kind:'PROCESS'});")
+    page.wait("document.querySelector('[data-attempt=limit-1] .agent-tile-value').textContent === '0'")
+    assert page.text("[data-attempt=limit-0] .agent-tile-value") == "65.54K"
+    assert page.text("[data-attempt=limit-2] .agent-tile-value") == "—"
+    for i in range(4):
+        assert page.evaluate(f"document.querySelector('[data-attempt=limit-{i}] .agent-tile-fill').style.width") == "0%"

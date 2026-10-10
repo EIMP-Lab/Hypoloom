@@ -1523,9 +1523,11 @@ def test_browser_context_rejection_separates_last_measured_usage_from_current_es
     page.evaluate(f"fixture.snapshot.attempts.push({json.dumps(attempt)})")
     tile = '.agent-tile[data-attempt="context-rejected"]'
     page.wait(f"document.querySelector('{tile}') !== null")
-    assert page.text(f"{tile} .agent-tile-value") == "last 59.33K"
-    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "0%"
+    assert page.text(f"{tile} .agent-tile-value") == "59.33K"
+    assert page.evaluate(f"document.querySelector('{tile} .agent-tile-fill').style.width") == "22.6%"
     title = page.evaluate(f"document.querySelector('{tile}').title")
+    assert "Latest measured context: 59326 tokens" in title
+    assert "Effective context limit: 262144 tokens · bar denominator before reserves" in title
     assert "Current request: exchange 6 · provider input usage pending or unavailable" in title
     assert "Last measured input: 59.33K tokens · exchange 5 (earlier request)" in title
     assert "Current request estimate: 211.46K · prior measured usage plus estimated added input" in title

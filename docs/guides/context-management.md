@@ -102,7 +102,7 @@ Do not silently strip the suffix or replace the frozen model to hide the warning
 
 Web/TUI separate the current request estimate, last successful measured input
 and their exchange numbers, working ceiling and cumulative usage. A refused
-request cannot borrow the preceding request's usage for its occupancy bar.
+request does not acquire a measurement from a preceding request.
 Provider usage can be final or partial; transcript readings are labeled separately.
 A working allowance does not make an unknown provider window known. Cached input
 still occupies context.
@@ -113,8 +113,15 @@ or unavailable, with the last complete measurement and current estimate kept
 separate. It does not mean the Agent has no context. Nonzero partial input and
 valid final usage retain their measured values; this display rule does not
 change accounting or capacity limits.
-The capsule's `last` label identifies a previous measurement; the current
-occupancy bar stays unfilled until a current input measurement is available.
+The Web capsule shows **latest measured context**: current measured input when
+available, otherwise the last complete measurement, or `—` before any measurement.
+The number and fill share that reading; estimates remain in the tooltip/details.
+The fill divides measured input by the effective context ceiling, before output,
+tool-growth and estimation reserves. Its tooltip gives the exact denominator and
+the separate current input allowance; a partially filled bar is not a guarantee
+that another request fits. An unconfirmed provider window remains labeled.
+The `↻` compaction indicator has a reserved position beside the number, so
+entering/leaving compaction does not resize the capsule or move the reading.
 
 A complete zero-usage terminal stream without a model or content is not a
 measured zero-token request. It leaves the preceding valid capacity observation

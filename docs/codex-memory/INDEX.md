@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Latest-measured context capsules](../qualification.md#latest-measured-context-capsules-2026-10-10):
+  number/fill share the latest measurement; fixed compaction slot, explicit
+  effective-ceiling denominator and separate input allowance. This supersedes
+  the historical-value/empty-bar presentation, preserving backend separation.
+
 - [Streaming zero input observation](../design/context-management-and-recovery.md#流式输入用量的临时零值2026-10-10):
   shared context projection keeps incomplete zero unknown, with separate prior
   usage and estimates in Web/TUI. [Validation](../qualification.md#streaming-zero-input-observation-2026-10-10)

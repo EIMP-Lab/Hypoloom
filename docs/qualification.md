@@ -2,6 +2,47 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Latest measured context capsules (2026-10-10)
+
+The Web capsule now represents latest measured context: current measured input
+when available, otherwise the last complete measurement. Both the number and
+fill use that reading; `last` is removed. This supersedes the earlier historical
+number/empty-current-bar presentation below. Current request usage, prior
+exchange and estimates remain distinct in the existing backend and tooltip.
+A fixed-width compaction slot and number box retain position across state changes;
+only explicit CLI `compacting` displays `↻`. The tooltip/accessibility label names
+the metric; the tooltip explains the effective-ceiling denominator before reserves.
+
+Evidence: `.local/qualification/capsule-measurement-20261010/`.
+
+- `original.xml` reproduces four bilingual failures against the old presentation.
+  `fixed.xml` passes all 22 streaming-context and affected expert-capsule cases.
+  Browser checks cover waiting/final usage, fixed glyph positions on compaction
+  start/end, visible numbers at 1440/768/390/320 px, a seven-character reading
+  beside `↻`, effective working/provider/runtime ceilings, actual fill pixel
+  ratios, zero/missing readings and missing limits. Rejection retains its separate
+  estimate and admission result; Process capsules still show elapsed time.
+- `browser-regressions.xml` adds four passing RPM/Grounding/concurrency/staleness/
+  pulse-continuity cases: **26 distinct runtime/browser cases pass, with no skips**.
+  Four documentation checks pass (`docs.xml`); undefined-name and whitespace
+  checks also pass. No full offline/resource/paid qualification is claimed.
+- `live-limits.json` is a sanitized read-only sample of `MERC-causal-202610101107`:
+  durable ACTIVE and a responding Host are separately observed. All six open
+  Agents use the 262144 working ceiling; provider/runtime ceilings are unset.
+  Current output/tool/margin reserves are 32000/8192/16384, leaving 205568 input
+  tokens. A sampled 98176-token measurement fills 37.5% of the effective ceiling,
+  not 47.8% of the input allowance. This verifies the local policy, not the upstream
+  deployment's actual model window. No capacity configuration is modified.
+- Synthetic bilingual screenshots are in `preview/`. `wheel-check.json` verifies
+  all 194 wheel files match source, including the three changed browser assets.
+- `current-observer-assets.json` confirms the current observer on port 36049
+  serves the changed JS/CSS with no-store caching; refreshing its page loads the
+  update. The old 39025 observer is gone, while Host dashboard 45137 retains its
+  frozen assets (`observer-assets.json`). No service or research run is restarted.
+
+Only presentation changes; no new measurement authority, persisted state, paid
+provider request, migration or full qualification promotion.
+
 ## Context capsule text visibility (2026-10-10)
 
 Follow-up to the streaming-zero repair: the correct `last 81.13K` / `上次 81.13K`
