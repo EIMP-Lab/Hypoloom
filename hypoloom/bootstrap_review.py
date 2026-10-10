@@ -39,6 +39,16 @@ def gpu_reserve_summary(gpu, language="en"):
         if any(v > reserve for v in known):
             lines.append("共享池下限高于请求保护线；降低 Profile 不能绕过它。池须空闲后按已有重配置流程调整，当前运行不变。" if zh else
                          "The pool floor exceeds request protection. Lowering the Profile cannot bypass it; use the existing reconfiguration procedure when the pool is idle. Current runs retain their policy.")
+        if pool.get("action"):
+            lines.append((f"池处理：{pool['action']}；全池成员：{pool.get('members', {})}。" if zh else
+                          f"Pool action: {pool['action']}; full pool membership: {pool.get('members', {})}."))
+        if (previous := pool.get("previous_configuration")) is not None:
+            lines.append((f"池下限变更：{previous['reserve_mib']} → {pool.get('reserve_mib')} MiB；保留池数据库及请求历史。" if zh else
+                          f"Pool floor change: {previous['reserve_mib']} → {pool.get('reserve_mib')} MiB; retain the pool database and request history."))
+        if retired := pool.get("dependencies", {}).get("reviewed_retired_owners"):
+            identities = ", ".join(f"{o['uid']}:{o['namespace']}/{o['run_id']}" for o in retired)
+            lines.append((f"本次维护采用用户确认的已退役运行：{identities}。运行未迁移且不会恢复；确认不作为永久豁免，不删除历史。" if zh else
+                          f"Operator-confirmed retirements for this maintenance: {identities}. These runs were not relocated and will not resume; no permanent exemption or history deletion."))
     return lines
 
 

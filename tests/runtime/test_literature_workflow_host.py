@@ -252,6 +252,7 @@ class _QualifiedClaudeStub:
     claude_executable = Path("/bin/true")
     bwrap_path = None
     settings_path = None
+    context_environment = {}
 
     def preflight(self, **_options: object) -> dict[str, object]:
         return {"qualified": True}

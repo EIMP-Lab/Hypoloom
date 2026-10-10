@@ -200,6 +200,20 @@ and reused. Different private pools must not coordinate the same shared device
 set independently. The canonical managed pool requires repository-local state
 roots; external roots use an explicitly configured external pool.
 
+After device selection, inspect asks about a differing pool reserve: keep the
+current pool or review reconfiguration. Preserve the returned full pool membership;
+this run's device subset does not shrink the pool. Follow the generated questions
+and answer argv, rather than inventing a rebuild command. If missing-state owners
+are eligible for retirement review, ask the exact displayed identities. Never
+infer retirement from RELEASED requests or answer on the operator's behalf.
+`--pool-retired-owner namespace/run_id` records the operator's assertion for this
+maintenance only: the run was retired/deleted, not relocated, and will not resume.
+It does not delete history or authorize other owners. `none` defers and stays
+blocked; remove that deferred choice only when the operator elects to reconsider.
+Final Start now covers the displayed action, configuration and retirement scope.
+Inspect/answers/Prepare only never perform maintenance. Do not delete a pool
+database, clear requests or start another pool on the same devices to evade a block.
+
 Distinguish `start_ready` from `prepare_available`: a safe creation/upgrade plan
 can offer Start now before the service is ready. For blockers, keep this init
 open: recheck, revise affected choices, Prepare only or cancel. Preserve prior

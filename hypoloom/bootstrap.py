@@ -215,7 +215,7 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     if getattr(args, "nonpooled", False) and (not args.allow_gpu or args.gpu_pool_socket):
         raise ValueError("--nonpooled requires GPU authorization and cannot include a pool endpoint")
     if not getattr(args, "managed_pool", False) and any(getattr(args, name, None) is not None
-        for name in ("pool_action", "pool_device_uuid", "pool_reserve_mib")):
+        for name in ("pool_action", "pool_device_uuid", "pool_reserve_mib", "pool_retired_owner")):
         raise ValueError("pool maintenance arguments require --managed-pool")
     if args.state_root is None:
         args.state_root = str(repository / "state" / args.run_id)
@@ -370,6 +370,7 @@ def _pool_arguments(args, repository: Path, contract: dict):
         pool_root=str(repository / ".local/gpu-pools/shared"), socket_path=args.gpu_pool_socket,
         member=[f"{os.geteuid()}=" + ",".join(sorted(args.pool_device_uuid or args.gpu_device_uuid or ()))],
         reserve_mib=args.pool_reserve_mib if args.pool_reserve_mib is not None else gpu_memory_reserve_mib(contract["budget"], 0),
+        pool_retired_owner=getattr(args, "pool_retired_owner", None),
         ready_timeout=min(args.ready_timeout, 60), reviewed_action=args.pool_action)
 
 
@@ -455,6 +456,8 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             "--member", pool.member[0], "--reserve-mib", str(pool.reserve_mib), "--ready-timeout", str(pool.ready_timeout)]
         if args.pool_action is not None:
             commands["pool_prepare"] += ["--reviewed-action", args.pool_action]
+        for owner in pool.pool_retired_owner or ():
+            commands["pool_prepare"] += ["--pool-retired-owner", owner]
         commands["pool_action_reviewed"] = args.pool_action is not None
         commands["pool_prepare_available"] = review["gpu"]["pool"]["prepare_available"]
     return commands
@@ -612,6 +615,8 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--pool-action", choices=("create", "reuse", "restore", "upgrade", "reconfigure"))
             command.add_argument("--pool-device-uuid", action="append", help="reviewed full pool membership, independent of this run's subset")
             command.add_argument("--pool-reserve-mib", type=int)
+            command.add_argument("--pool-retired-owner", action="append", metavar="NAMESPACE/RUN_ID",
+                help="review an absent run as retired, not relocated or resumable; none defers this review")
         if action == "inspect":
             command.add_argument("--ui-language", choices=("en", "zh-CN"), default="en")
             command.add_argument("--answers-file", help="unedited answers from the generated AskUserQuestion payload; never starts a run")

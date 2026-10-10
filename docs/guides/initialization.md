@@ -45,6 +45,24 @@ reviewed pool preparation before creating the research run. Prepare only never
 starts, upgrades or stops a pool. New Profiles still use the reviewed
 `bootstrap prepare --write`, followed by inspection of the written Profile.
 
+After selecting devices, a differing shared-pool reserve prompts **Keep current
+pool** or **Review reconfiguration**. Matching configuration adds no question.
+Reconfiguration defaults to the full existing pool membership, independently of
+this run's subset. Final review shows the pool-wide change and before/after floor;
+the database and request history stay intact.
+
+Missing-state owners are listed with UID, namespace, run ID, released/unreleased
+request counts and process status. Only this account's absent runs with nonempty,
+fully released request history and no recorded live processes can be reviewed.
+The operator must also confirm retirement/deletion, no relocation and no future
+resume; zero occupancy does not establish these facts. Exact
+`--pool-retired-owner namespace/run_id` arguments carry that assertion for this
+maintenance, subject to execution-time checks. They create no permanent exemption
+and delete no history. Later maintenance needs its own review; ordinary compatible
+reuse does not ask again. Retained runs, other UIDs, unreadable state and unreleased
+requests remain protected. **Defer confirmation** retains `none` and blocks launch;
+remove that deferred choice when reconsidering, preserving other init answers.
+
 `prepare --summary` and `launch --summary` omit raw candidate files, the complete
 admission payload and repeated command vectors. Full output remains available
 without that flag. Local validation does not establish provider availability.

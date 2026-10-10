@@ -87,7 +87,7 @@ def _launch_argv(args, repository: Path, *, action="launch") -> list[str]:
         "pool_action", "pool_reserve_mib"):
         value = getattr(args, name)
         if value is not None: values += ["--" + name.replace("_", "-"), str(value)]
-    for name in ("gpu_device_uuid", "pool_device_uuid"):
+    for name in ("gpu_device_uuid", "pool_device_uuid", "pool_retired_owner"):
         flag = "--" + name.replace("_", "-")
         for value in getattr(args, name) or (): values += [flag, value]
     if args.managed_pool: values += ["--managed-pool"]
@@ -97,6 +97,37 @@ def _launch_argv(args, repository: Path, *, action="launch") -> list[str]:
     from .institutional_options import launch_arguments as institutional_arguments
     return [*values, *bootstrap._literature_arguments(args),
             *institutional_arguments(args, include_connection=True, include_preparation=True)]
+
+
+def _pool_choices(args, result, review):
+    """Review differences and missing history without authorizing an operation."""
+    if not args.managed_pool:
+        return
+    gpu = review.get("gpu", {})
+    pool = gpu.get("pool", {})
+    current = pool.get("reserve_mib")
+    proposed = args.pool_reserve_mib if args.pool_reserve_mib is not None else gpu["memory_budget"]["reserve_floor_mib"]
+    if (args.pool_action is None and pool.get("action") == "reuse"
+            and type(current) is int and current != proposed):
+        result["missing"].append("pool_configuration")
+        result.setdefault("choices", {})["pool_configuration"] = {
+            "current_reserve_mib": current, "proposed_reserve_mib": proposed,
+            "devices": pool["members"][str(os.geteuid())]}
+        return
+    dependencies = pool.get("dependencies", {})
+    owners = dependencies.get("unresolved_owners", [])
+    if (pool.get("action") in {"restore", "upgrade", "reconfigure"}
+            and owners and all(o["can_review_retirement"] for o in owners)
+            and {b["reason"] for b in dependencies["blockers"]} == {"pool_owner_outside_known_roots"}
+            and args.pool_retired_owner != ["none"]):
+        result["missing"].append("pool_retired_owner")
+        result.setdefault("choices", {})["pool_retired_owner"] = owners[:16]
+    if pool.get("prepare_available") or "pool_retired_owner" in result["missing"]:
+        args.pool_action = pool["action"]
+        if args.pool_action == "reuse":
+            args.pool_retired_owner = None  # No maintenance assertion travels into ordinary reuse.
+        args.pool_device_uuid = pool["members"][str(os.geteuid())]
+        args.pool_reserve_mib = current
 
 
 def inspect(args, repository: Path) -> dict:
@@ -196,15 +227,12 @@ def inspect(args, repository: Path) -> dict:
                     bootstrap.launch_arguments(args, repository, report, review=review)
                     result.update(bootstrap.compact_result({**raw, "effective_configuration": review}))
                     pool = review.get("gpu", {}).get("pool", {})
-                    if args.managed_pool and pool.get("prepare_available"):
-                        args.pool_action = pool["action"]
-                        args.pool_device_uuid = pool["members"][str(os.geteuid())]
-                        args.pool_reserve_mib = pool["reserve_mib"]
-                    elif pool and not pool.get("start_ready"):
+                    _pool_choices(args, result, review)
+                    if pool and not pool.get("prepare_available", pool.get("start_ready")):
                         blockers.append({"code": pool.get("reason") or pool.get("code") or "pool_unavailable"})
                     if args.template:
                         result["profile_preparation_required"] = True
-                    else:
+                    elif not missing and not blockers:
                         result["launch_argv"] = _launch_argv(args, repository)
                         from .bootstrap_session import supported
                         if supported(args, review):

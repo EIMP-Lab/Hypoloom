@@ -6,6 +6,7 @@ The answer file is the unedited AskUserQuestion response, never a launch permit.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 
@@ -83,6 +84,24 @@ def questions(args, result):
         add("gpu_scheduling_mode", "How should the authorized GPUs be scheduled?", "如何调度已授权的 GPU？", "Scheduling", [
             ("Managed shared pool", "托管共享池", "managed", "Review this project's shared pool", "检查本项目共享池"),
             ("Nonpooled", "不使用共享池", "nonpooled", "Explicit nonpooled allocation", "明确使用非池化分配")])
+    if "pool_configuration" in missing:
+        choice = result["choices"]["pool_configuration"]
+        current, proposed = choice["current_reserve_mib"], choice["proposed_reserve_mib"]
+        devices = ", ".join(choice["devices"])
+        add("pool_configuration",
+            f"The shared pool reserves {current} MiB; this init proposes {proposed} MiB. Keep it or review reconfiguration? Full pool membership remains: {devices}. Run device selection is unchanged.",
+            f"共享池下限为 {current} MiB，本次建议为 {proposed} MiB。保留现状还是审阅重配置？全池成员保持：{devices}。本次运行的选卡不变。", "Pool config", [
+                ("Keep current pool", "保留当前池", "reuse", "Reuse without restarting or changing pool history", "复用，不重启、不更改池历史"),
+                ("Review reconfiguration", "审阅重配置", "reconfigure", "Check dependencies before changing the full pool reserve", "检查依赖后审阅全池下限变更")])
+    if "pool_retired_owner" in missing:
+        owners = result["choices"]["pool_retired_owner"]
+        identities = json.dumps([{k: o[k] for k in ("uid", "namespace", "run_id", "released_requests")}
+                                 for o in owners], ensure_ascii=False, sort_keys=True)
+        add("pool_retired_owner",
+            f"These pool owners have no local run state; all listed requests are released and no recorded process is alive: {identities}. Can you confirm these runs were retired and deleted, were not moved elsewhere and will not resume? Released requests alone do not prove retirement. This assertion applies only to the reviewed maintenance; history is retained. Start now is still required.",
+            f"以下池登记缺少本地运行状态，所列请求均已释放且未发现记录关联的存活进程：{identities}。是否确认这些运行已退役并删除，未迁移到别处且不会恢复？请求释放本身不能证明退役。确认仅用于本次维护，历史保留；仍需最后选择 Start now。", "Retired runs", [
+                ("Defer confirmation", "暂不确认", False, "Keep maintenance blocked; recheck or revise pool choices", "保持维护阻塞，可复查或调整池选择"),
+                ("Confirm listed retirements", "确认所列运行已退役", True, "Confirm exactly the listed identities for this maintenance", "仅确认以上准确身份，用于本次维护")])
     # Missing credentials/executable/default model are configuration problems,
     # not secrets or paths to collect through multiple-choice guesses.
     return rows[:4]
@@ -147,6 +166,15 @@ def apply_answers(args, result, response):
         elif field == "gpu_scheduling_mode":
             if value not in {"managed", "nonpooled"}: raise ValueError("choose a displayed scheduling mode")
             changes.update(managed_pool=value == "managed", nonpooled=value == "nonpooled")
+        elif field == "pool_configuration":
+            if value not in {"reuse", "reconfigure"}: raise ValueError("choose a displayed pool action")
+            choice = result["choices"][field]
+            changes.update(pool_action=value, pool_device_uuid=choice["devices"],
+                pool_reserve_mib=choice["current_reserve_mib" if value == "reuse" else "proposed_reserve_mib"])
+        elif field == "pool_retired_owner":
+            if not isinstance(value, bool): raise ValueError("choose a displayed retirement answer")
+            changes[field] = (list(dict.fromkeys([*(args.pool_retired_owner or []),
+                *(o["namespace"] + "/" + o["run_id"] for o in result["choices"][field])])) if value else ["none"])
     if any(field == "institutional_prepare_provider" for field, _, _ in rows):
         from .institutional_options import preparation_selection
         changes["institutional_prepare_provider"] = preparation_selection(selected, {}) or ["none"]

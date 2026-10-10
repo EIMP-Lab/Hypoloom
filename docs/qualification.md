@@ -2,6 +2,75 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Managed-pool init review (2026-10-10)
+
+The existing init flow now reviews reserve differences after selecting devices;
+keeping the pool and reconfiguring it are distinct choices. The latter retains
+full membership instead of adopting the new run's device subset. Missing-state
+owner details drive exact operator retirement questions, whose ordinary arguments
+apply only to the reviewed maintenance. The existing locks, request database and
+dependency checks remain authoritative; no history or permanent exception is
+written. See the [design](design/init-managed-gpu-pool-lifecycle.md#2026-10-10配置差异与已退役运行的历史登记).
+
+Evidence: `.local/qualification/pool-init-20261010/`.
+
+- Fixed bilingual questions preserve exact device subsets, full membership,
+  reserve values, run identity and retirement keys through answer-file inspection
+  and launch/helper vectors. Missing choices and blocked/deferred maintenance
+  expose no launch/session argv. Inspection and answers have no service effects.
+- Retirement never follows solely from RELEASED rows. It requires an explicit
+  assertion that the exact absent own run was retired/deleted, not relocated and
+  will not resume, plus current resource checks. Foreign owners, retained runs,
+  unreadable state, unresolved owners, live/invalid process records and unreleased
+  requests stay blocked. Checks repeat under maintenance coordination and after
+  service stop; a changed dependency prevents replacement.
+- Native rehearsal uses a real pool socket/SQLite/service lock, then actual CC,
+  broker, bwrap CPU execution and publication. The service floor changes from
+  4096 to 512 MiB without deleting its prior request or fairness row. A fresh
+  CPU-only run immediately blocks further maintenance through its CREATED binding,
+  even without a GPU request. Eleven Agents and one CPU Process close successfully,
+  publish one outcome and pass the existing run and pool Oracles. Host ownership
+  must drain before another maintenance review passes.
+- The first native fixture omitted the controller lock normally owned by serve;
+  maintenance correctly stayed blocked after completion. The fixture now exercises
+  the actual OS lock, asserts refusal while held, and releases it after Host close.
+  An initial init fixture lacked a required GPU driver field; that fixture was
+  corrected without changing the production validator. Earlier red results remain.
+- Read-only production preview finds 16 eligible missing owners. Default review
+  blocks; a hypothetical exact retirement assertion permits the proposed 512 MiB
+  plan. The current pool remains 4096 MiB, and all pool rows are unchanged
+  (`retained-pool-preview.json`). No actual retirement assertion or production
+  reconfiguration is executed by this qualification.
+- **282 distinct focused tests pass**, without unresolved skips or failures
+  (`test-summary.json`): 280 original focused cases, the 169-case final init
+  recheck including one additional convergence regression, and one native closure.
+  The convergence regression detects maintenance already completed by another
+  init and removes irrelevant retirement arguments when projecting ordinary reuse.
+  Its original failure is retained in `reuse-original.xml`.
+- Independent SQL/process census confirms **11 closed Agents, one successful CPU
+  Process, one canonical outcome, zero open Attempts and zero live groups**
+  (`native-census.json`). Actual process/socket/SQLite tests also cover request
+  ownership, cleanup and recovery separately from synthetic device capacity.
+- Compile/undefined-name and whitespace checks pass. The wheel builds, and all
+  **195 package files** match source byte-for-byte (`wheel-check.json`).
+
+Full offline G1 remains **incomplete**, not passing. The initial selection was
+interrupted at 458 passes to fix reuse convergence. The final parallel selection
+recorded **1480 passes, two skips and one failure** before interruption to stop
+already queued work (`g1-final.xml`). The failure is an old literature test
+double missing `context_environment`; it also fails in isolation, and both its
+source and the Host were unchanged from base `074c4a8` at reproduction
+(`literature-original.xml`, `literature-fixture-baseline.json`). The double now
+implements the existing adapter property without relaxing the test's assertion.
+The final invariant/fixture check has **17 passes and the existing Host LOC
+failure, 4666 > 4650** (`final-gate.xml`). The Host remains byte-identical to base
+(`host-allocation-baseline.json`); this change does not raise its allowance.
+No live processes remain from either interrupted test root. These results do
+not claim full G1 promotion.
+
+The supervisor and device telemetry in the native rehearsal are substituted;
+this does not qualify real systemd replacement, physical CUDA or paid science.
+
 ## Authoring recovery and resource review (2026-10-10)
 
 Adapter 81 repairs the independently reproduced authoring, diagnostic and reserve

@@ -16,7 +16,7 @@ import stat
 import time
 from urllib.parse import quote
 
-from .gpu_pool import PoolError
+from .gpu_pool import PoolError, _identifier
 from .runner import process_group_exists
 
 
@@ -96,8 +96,22 @@ def _hold_controller(root: Path, stack: ExitStack):
     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
+def retired_owner_keys(values=()) -> set[tuple[int, str, str]]:
+    """An exact operator assertion for this maintenance, never inferred from rows."""
+    if values is None or values == ["none"]:
+        return set()
+    keys = set()
+    for value in values:
+        namespace, separator, run_id = value.partition("/")
+        if not separator:
+            raise ValueError("pool retired owner must be namespace/run_id, or none alone")
+        keys.add((os.geteuid(), _identifier(namespace, "namespace"), _identifier(run_id, "run_id")))
+    return keys
+
+
 def inspect_dependencies(repository: Path, socket_path: Path, *, locks: ExitStack | None = None,
-                         controllers_held: bool = False, timeout: float = 8.0) -> dict:
+                         controllers_held: bool = False, timeout: float = 8.0,
+                         retired_owners=()) -> dict:
     """Inspect project bindings plus all pool request owners, without settling any.
 
     `locks` retains known controller locks through maintenance. An unreadable
@@ -108,6 +122,10 @@ def inspect_dependencies(repository: Path, socket_path: Path, *, locks: ExitStac
     bound = []
     known = set()
     held_roots = set()
+    local_runs = set()
+    reviewed = retired_owner_keys(retired_owners)
+    accepted_retirements = set()
+    unresolved = []
     temporary = ExitStack()
     stack = temporary if locks is None else locks
     deadline = time.monotonic() + timeout
@@ -136,6 +154,7 @@ def inspect_dependencies(repository: Path, socket_path: Path, *, locks: ExitStac
                         try: _hold_controller(root, stack)
                         except (OSError, ValueError): blockers.append({"state_root": str(root), "reason": "host_present_or_unknown"})
                     for row in rows:
+                        local_runs.add(row["run_id"])
                         binding = json.loads(row["payload_json"]).get("gpu_pool")
                         if not binding or Path(binding["socket_path"]).absolute() != socket_path.absolute():
                             continue
@@ -166,7 +185,35 @@ def inspect_dependencies(repository: Path, socket_path: Path, *, locks: ExitStac
                     db.execute("SELECT request_seq,uid,namespace,run_id,execution_id,attempt_id,state,intent_json,"
                         "grant_json,decision_json,process_group_id,reason FROM requests LIMIT 0")
                     owners = db.execute("SELECT uid,namespace,run_id,last_grant FROM runs").fetchall()
-                    if any((r["uid"], r["namespace"], r["run_id"]) not in known for r in owners):
+                    for owner in owners:
+                        if time.monotonic() >= deadline:
+                            blockers.append({"reason": "dependency_check_timeout"})
+                            break
+                        _identifier(owner["namespace"], "namespace")
+                        _identifier(owner["run_id"], "run_id")
+                        key = (owner["uid"], owner["namespace"], owner["run_id"])
+                        if key in known:
+                            continue
+                        requests = db.execute("SELECT state,process_group_id FROM requests "
+                            "WHERE uid=? AND namespace=? AND run_id=?", key).fetchall()
+                        if any(r["process_group_id"] is not None and
+                               (type(r["process_group_id"]) is not int or r["process_group_id"] < 2) for r in requests):
+                            raise ValueError("invalid recorded process group")
+                        present = any(r["process_group_id"] and process_group_exists(r["process_group_id"])
+                                      for r in requests)
+                        released = sum(r["state"] == "RELEASED" for r in requests)
+                        eligible = (owner["uid"] == os.geteuid() and owner["run_id"] not in local_runs
+                            and not (repository / "state" / owner["run_id"]).exists()
+                            and not (repository / "state" / owner["run_id"]).is_symlink()
+                            and bool(requests) and released == len(requests) and not present)
+                        detail = {"uid": owner["uid"], "namespace": owner["namespace"], "run_id": owner["run_id"],
+                            "released_requests": released, "unreleased_requests": len(requests) - released,
+                            "process_present": bool(present), "can_review_retirement": eligible}
+                        if key in reviewed and eligible:
+                            accepted_retirements.add(key)
+                        else:
+                            unresolved.append(detail)
+                    if unresolved:
                         blockers.append({"reason": "pool_owner_outside_known_roots"})
                     if db.execute("SELECT 1 FROM requests WHERE state!='RELEASED' LIMIT 1").fetchone():
                         blockers.append({"reason": "unreleased_pool_request"})
@@ -175,7 +222,12 @@ def inspect_dependencies(repository: Path, socket_path: Path, *, locks: ExitStac
                             blockers.append({"reason": "pool_process_present"})
             except (OSError, ValueError, TypeError, sqlite3.Error):
                 blockers.append({"reason": "pool_database_unreadable"})
+        if reviewed - accepted_retirements:
+            blockers.append({"reason": "retired_owner_review_changed"})
         return {"scope": "project_state_roots", "bindings": bound, "blockers": blockers,
+                "unresolved_owners": unresolved,
+                "reviewed_retired_owners": [{"uid": uid, "namespace": ns, "run_id": run}
+                    for uid, ns, run in sorted(accepted_retirements)],
                 "quiescent": not blockers}
     except OSError:
         return {"scope": "project_state_roots", "bindings": bound,

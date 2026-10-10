@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 10 managed-pool init: reserve differences produce fixed keep/reconfigure
+  questions after device selection; reconfiguration preserves full pool membership.
+  Missing owners expose exact identities/resources. Scoped operator retirement
+  assertions can cover eligible absent own runs for one maintenance; default
+  unknown, live, unreadable and unreleased dependencies still block. No database
+  deletion, permanent exemption, extra registry or production service change.
+  282 focused checks pass; native closure has 11 Agents/one CPU Process, one
+  published outcome, passing Oracles and no live groups. All 195 wheel files match.
+  Full G1 is incomplete: an old CC test double was repaired; the unchanged Host
+  still exceeds its LOC allocation (4666 > 4650). No real systemd/CUDA qualification.
+  [Design](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10配置差异与已退役运行的历史登记)
+  / [validation](../qualification.md#managed-pool-init-review-2026-10-10).
+
 - October 10 authoring recovery: adapter 81 keeps native parser rejection causes
   through postflight/retry and names invalid value/baseline fields. DESIGN gets
   the existing deadline advisory; methods move costly device smoke to the start

@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Managed-pool init review](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10配置差异与已退役运行的历史登记):
+  explicit reserve differences, full-pool versus run subset, missing-owner detail,
+  per-maintenance retirement assertions and preserved dependency checks/history.
+  [Validation](../qualification.md#managed-pool-init-review-2026-10-10) records fixed
+  questions, real socket/SQLite/native Host/CPU closure and production read-only limits.
+
 - [Authoring recovery and resource review](../design/authoring-failures-and-resource-review.md):
   bounded DESIGN checks/device-smoke handoff, deadline advice, exact parser-field
   feedback, native rejection preservation, separate node-failure UI and readable

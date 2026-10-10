@@ -33,7 +33,7 @@ from .gpu_pool import PoolError
 from .gpu_pool_client import PoolClient, validate_pool_snapshot
 from .compute_resources import validate_gpu_uuid
 from .agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as CURRENT_ACI
-from .gpu_pool_lifecycle import directory_lock, inspect_dependencies
+from .gpu_pool_lifecycle import directory_lock, inspect_dependencies, retired_owner_keys
 
 _SUPERVISOR = "user-systemd"
 _SERVICE_TEMPLATE = "hypoloom-gpu-pool@.service"
@@ -650,7 +650,7 @@ def _no_conflicts(plan: PoolPlan) -> None:
 
 
 def _observe(plan: PoolPlan, tools: Tools, environment: Mapping[str, str], *,
-             reconfigure: bool = False, locks: ExitStack | None = None) -> tuple[dict, PoolPlan]:
+             reconfigure: bool = False, locks: ExitStack | None = None, retired_owners=()) -> tuple[dict, PoolPlan]:
     properties = _unit_properties(plan, tools, environment)
     active = properties["LoadState"] == "loaded" and properties["ActiveState"] in _ACTIVE_STATES
     socket_state = _socket_state(plan.socket_path)
@@ -702,7 +702,8 @@ def _observe(plan: PoolPlan, tools: Tools, environment: Mapping[str, str], *,
     else:
         action = "create"
     _no_conflicts(target)
-    deps = inspect_dependencies(plan.repository, plan.socket_path, locks=locks, timeout=_remaining(8))
+    deps = inspect_dependencies(plan.repository, plan.socket_path, locks=locks, timeout=_remaining(8),
+                                retired_owners=retired_owners)
     return {**target.result("ok"), "action": action, "start_ready": False,
             "prepare_available": deps["quiescent"], "dependencies": deps,
             "previous_configuration": None if previous is None else {
@@ -713,6 +714,14 @@ def _observe(plan: PoolPlan, tools: Tools, environment: Mapping[str, str], *,
 
 def _arguments_plan(args):
     repository = _resolve_repository(args.repository)
+    retired = getattr(args, "pool_retired_owner", None)
+    if retired:
+        if getattr(args, "reviewed_action", None) not in {"restore", "upgrade", "reconfigure"}:
+            raise ManagedPoolError("retirement_requires_maintenance_review")
+        try:
+            retired_owner_keys(retired)
+        except ValueError as exc:
+            raise ManagedPoolError("retired_owner_invalid") from exc
     plan = _pool_plan(repository, args.pool_root, args.socket_path, args.member, args.reserve_mib)
     tools, environment = _find_tools(), _minimal_environment()
     return _derive_unit(plan, tools, environment), tools, environment
@@ -726,7 +735,8 @@ def review(args: argparse.Namespace) -> dict:
         plan, tools, environment = _arguments_plan(args)
         coordination = directory_lock(plan.pool_root, exclusive=False, timeout=_remaining(2)) if plan.pool_root.exists() else nullcontext()
         with coordination:
-            result, _ = _observe(plan, tools, environment, reconfigure=getattr(args, "reviewed_action", None) == "reconfigure")
+            result, _ = _observe(plan, tools, environment, reconfigure=getattr(args, "reviewed_action", None) == "reconfigure",
+                                 retired_owners=getattr(args, "pool_retired_owner", ()))
         return result
     except (ManagedPoolError, PoolError) as exc:
         return {**(plan.result("blocked") if plan else {"status": "blocked"}), "action": None, "start_ready": False,
@@ -780,7 +790,8 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
             if (plan.pool_root / "pool.sqlite3").exists():
                 raise ManagedPoolError("pool_recovery_required")
             approved = "create"
-        preview, target = _observe(plan, tools, environment, reconfigure=approved == "reconfigure")
+        retired = getattr(args, "pool_retired_owner", ())
+        preview, target = _observe(plan, tools, environment, reconfigure=approved == "reconfigure", retired_owners=retired)
         if not preview["prepare_available"]:
             raise ManagedPoolError("dependencies_active_or_unknown")
         if preview["action"] != "reuse" and preview["action"] != approved:
@@ -792,7 +803,8 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
             _prepare_pool_root(plan)
             effects["pool_directory_created"] = True
         with directory_lock(plan.pool_root, exclusive=True, timeout=_remaining(2)), ExitStack() as locks:
-            current, target = _observe(plan, tools, environment, reconfigure=approved == "reconfigure", locks=locks)
+            current, target = _observe(plan, tools, environment, reconfigure=approved == "reconfigure", locks=locks,
+                                       retired_owners=retired)
             if current["action"] == "reuse":
                 return plan, "reused", tuple(current["devices"])
             if current["action"] != approved or not current["prepare_available"]:
@@ -810,7 +822,8 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
                     break
                 time.sleep(min(_POLL_SECONDS, _remaining(_POLL_SECONDS)))
             # A final DB check catches old clients' commitments before stop.
-            deps = inspect_dependencies(plan.repository, plan.socket_path, controllers_held=True, timeout=_remaining(8))
+            deps = inspect_dependencies(plan.repository, plan.socket_path, controllers_held=True, timeout=_remaining(8),
+                                        retired_owners=retired)
             if not deps["quiescent"]:
                 raise ManagedPoolError("dependencies_active_or_unknown")
             try:
@@ -859,6 +872,8 @@ def build_parser() -> JsonArgumentParser:
     ensure_parser.add_argument("--reserve-mib", type=int, default=0)
     ensure_parser.add_argument("--ready-timeout", type=float, default=30.0)
     ensure_parser.add_argument("--reviewed-action", choices=("create", "reuse", "restore", "upgrade", "reconfigure"))
+    ensure_parser.add_argument("--pool-retired-owner", action="append", metavar="NAMESPACE/RUN_ID",
+        help="explicitly attest an absent local run is retired, not relocated or resumable; maintenance only")
     return parser
 
 
