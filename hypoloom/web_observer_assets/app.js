@@ -1659,7 +1659,15 @@
           : t("last input {0}{1} · {2}", compactNumber(attempt.context_tokens), limit ? t(" / {0} working context limit", compactNumber(limit)) : t(" · context window unknown"), attempt.context_source || t("unknown source")));
         if (Number.isInteger(context.estimated_input_tokens)) lines.push(t("Estimated input: {0} (conservative UTF-8 byte estimate, separate from provider usage)", compactNumber(context.estimated_input_tokens)));
       }
-      if (attempt.context_window_source === "working_limit_only") lines.push(t("Provider window unconfirmed; limit is the framework working estimate."));
+      if (attempt.context_window_source === "working_limit_only" && !context.cc_window_source) lines.push(t("Provider window unconfirmed; limit is the framework working estimate."));
+      if (context.cc_window_source) {
+        const sources = {cc_config: t("CC explicit configuration"), cc_model_suffix: t("CC model suffix"), cc_builtin: t("CC built-in assumption"), cc_default: t("CC default assumption"), profile_config: t("Profile configuration"), provider_metadata: t("Provider model metadata"), framework_fallback: t("Framework fallback")};
+        lines.push(t("CC window: {0} tokens · {1}", context.cc_context_tokens ?? "?", sources[context.cc_window_source] || context.cc_window_source));
+        lines.push(t("Working context: {0}", context.working_context_mode === "automatic" ? t("automatic") : context.working_context_tokens));
+        lines.push(t("Provider metadata: {0} · total window {1} · input limit {2}", t(context.metadata_status), context.provider_context_tokens ?? "?", context.provider_input_tokens ?? "?"));
+        if (Number.isInteger(context.auto_compact_tokens)) lines.push(t("Configured auto-compact threshold: {0} tokens (separate from window)", context.auto_compact_tokens));
+        if ((context.window_warnings || []).length) lines.push(t("Context configuration notices: {0}", context.window_warnings.map(item => t(item)).join(", ")));
+      }
       if (Number.isInteger(attempt.cumulative_tokens)) lines.push(t("Cumulative invocation usage: {0} tokens", compactNumber(attempt.cumulative_tokens)));
       if (Number.isInteger(context.available_input_tokens)) lines.push(t("Admission input allowance: {0} · output reserve {1} · tools {2} · margin {3}", compactNumber(context.available_input_tokens), context.output_reserve_tokens ?? "?", context.tool_reserve_tokens ?? "?", context.estimate_margin_tokens ?? "?"));
       if (Number.isInteger(context.declared_context_tokens)) lines.push(t("Configured provider window: {0} tokens", compactNumber(context.declared_context_tokens)));
@@ -1668,6 +1676,10 @@
       if (Number.isInteger(context.cache_creation_input_tokens)) lines.push(t("Cache creation: {0} input tokens", compactNumber(context.cache_creation_input_tokens)));
       if (attempt.session_scope) lines.push(t("Session scope: {0}", attempt.session_scope));
       const observation = attempt.context_observation || {};
+      if (Number.isInteger(observation.reported_cc_context_tokens)) {
+        lines.push(t("CC reported window: {0} tokens", observation.reported_cc_context_tokens));
+        if (Number.isInteger(context.cc_context_tokens) && observation.reported_cc_context_tokens !== context.cc_context_tokens) lines.push(t("CC reported window differs from launch configuration."));
+      }
       if (Number.isInteger(observation.native_compaction_count)) lines.push(t("Native compactions completed: {0} · explicit starts {1} · completion unobserved {2} · observed duration {3} ms · unknown durations {4} · transcript coverage {5} · start-event coverage {6}", observation.native_compaction_count, observation.native_compaction_started_count ?? "unknown", observation.native_compaction_completion_unobserved ?? "unknown", observation.native_compaction_duration_ms, observation.native_compaction_duration_unknown, observation.coverage, observation.native_compaction_start_coverage ?? "unavailable"));
       const compact = observation.last_native_compaction;
       if (compact) lines.push(t("Last native compaction: {0} → {1} input tokens · {2} ms", compact.pre_tokens ?? "?", compact.post_tokens ?? "?", compact.duration_ms ?? "?"));

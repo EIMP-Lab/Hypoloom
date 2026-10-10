@@ -343,9 +343,17 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         review["models"] = model_review(contract, args.claude_model)
         review["models"]["selected_auth_source_default"] = auth.get("configured_default")
         from .claude_agent_host import ClaudeAgentHost, AgentHostError
+        from .context_window import context_environment, window_policy
         try:
-            ClaudeAgentHost(claude_executable=args.claude_executable, settings_path=args.claude_settings,
-                            bwrap_path=args.claude_bwrap).preflight(model=args.claude_model)
+            adapter = ClaudeAgentHost(claude_executable=args.claude_executable, settings_path=args.claude_settings,
+                context_environment=context_environment(os.environ) if args.claude_settings is None else {},
+                bwrap_path=args.claude_bwrap)
+            adapter.preflight(model=args.claude_model)
+            memory = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("methodology", {}).get("memory", {})
+            environment = {key: os.environ[key] for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL") if key in os.environ} if args.claude_settings is None else {}
+            models = {args.claude_model, *(row["model"] for row in review["models"]["routes"])}
+            review["context_windows"] = {model: window_policy(memory, adapter.resolve_context_window(model, memory, environment)) for model in sorted(models)}
+            review["provider_metadata_queries"] = 3 - adapter._context_resolver.queries_remaining
         except AgentHostError as exc:
             raise ValueError(str(exc)) from exc
     elif args.claude_model or args.claude_executable or args.claude_settings:
@@ -539,7 +547,7 @@ def compact_result(result: dict) -> dict:
         "models": {"host_default_model": models.get("host_default_model"),
             "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
             "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
-        **{key: review[key] for key in ("gpu", "notifications", "institutional_access",
+        **{key: review[key] for key in ("gpu", "notifications", "context_windows", "provider_metadata_queries", "institutional_access",
                                       "institutional_preparation", "institutional_preparation_argv", "institutional_connection",
                                       "institutional_connection_argv", "institutional_client_entry") if key in review},
     }

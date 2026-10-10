@@ -28,6 +28,8 @@ def render(args, result, summary):
                           "supervisor": result.get("supervisor", {})}),
         value("Execution", effective["execution"]),
         value("Models", effective["models"]),
+        value("Context windows (per model; reserves deducted from input allowance)", effective.get("context_windows")),
+        value("Read-only provider metadata queries (no generation probe)", effective.get("provider_metadata_queries", 0)),
         value("Model authentication", {"transport": args.auth_transport, "settings_path": args.claude_settings}),
         value("Budgets (null means no cap)", effective["budget"]),
         value("GPU/pool (CPU-only if absent)", effective.get("gpu")),

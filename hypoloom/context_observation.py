@@ -270,7 +270,7 @@ def exchange_context_metrics(exchanges):
             "compaction_failure_attribution": "unknown_without_matching_native_events"}
 
 
-def read_native_events(path, metrics=None):
+def read_native_events(path, metrics=None, *, model=None):
     """Read explicit per-invocation CLI stream events, separate from prompt text."""
     result = dict(metrics or {})
     starts = completed = pending = 0
@@ -287,6 +287,12 @@ def read_native_events(path, metrics=None):
         partial = size > limit
         for row in _rows(content):
             if row is None: partial = True; continue
+            if model is not None and row.get("type") == "result" and isinstance(row.get("modelUsage"), dict):
+                from .context_window import wire_model
+                selected = [usage.get("contextWindow") for identity, usage in row["modelUsage"].items()
+                    if wire_model(identity) == wire_model(model) and isinstance(usage, dict)]
+                if len(selected) == 1 and type(selected[0]) is int and selected[0] > 0:
+                    result["reported_cc_context_tokens"] = selected[0]
             if row.get("type") == "system" and row.get("subtype") == "status":
                 current = row.get("status") == "compacting"
                 if current and not compacting: starts += 1; pending += 1

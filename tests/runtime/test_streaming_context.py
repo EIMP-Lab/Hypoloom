@@ -198,6 +198,8 @@ def test_browser_delayed_usage_keeps_latest_measurement_and_compaction_slot(brow
         return [tile, tile.querySelector('.agent-tile-status'), tile.querySelector('.agent-tile-value')]
             .map(e=>{{const r=e.getBoundingClientRect(); return [r.x,r.width];}});
     }})()"""
+    # Measure the settled capsule, after the entrance scale animation.
+    page.wait(f"document.querySelector('{tile}').getAnimations().every(a=>a.playState !== 'running')")
     before = page.evaluate(bounds)
     assert before[1][1] > 0
     for status in ("compacting", None):

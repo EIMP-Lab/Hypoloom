@@ -229,7 +229,9 @@ def _profile_host(host, monkeypatch):
     monkeypatch.setattr(host, "_expert_response_input", lambda task:
         EmbeddedInput.from_bytes(task.command_id + "--response", "application/json", b"{}"))
     monkeypatch.setattr(host, "_expert_dependency_update_inputs", lambda *_args: ())
-    monkeypatch.setattr(host, "_batch_history", lambda *_args: SimpleNamespace(latest=None))
+    from hypoloom.expert_batch import BatchHistory
+    monkeypatch.setattr(host, "_batch_history", lambda run, component, role:
+        BatchHistory(run, component, role, (), {}))
     monkeypatch.setattr(host, "_cycle_reports_enabled", lambda _run: False)
     return contract
 
@@ -262,8 +264,11 @@ def test_manager_receives_actual_stagnation_settings_as_advice_not_a_dispatch_ga
     report = ResearchNodeTask(key=ResearchNodeKey(run_id=RUN, component_id=component,
         expert_slot=ROLE, cycle=1, node_kind=ResearchNodeKind.CYCLE_REPORT))
     task = AuxiliaryTask(kind=AuxiliaryRequestKind.GRAPH_EVOLVE, run_id=RUN, cycle=1, ordinal=7)
-    monkeypatch.setattr(host.store, "inspect", lambda *_args: [{
-        "revision": 7, "payload_json": json.dumps({"task_context": report.to_dict()})}])
+    inspect = host.store.inspect
+    monkeypatch.setattr(host.store, "inspect", lambda query, *args: [{
+        "revision": 7, "payload_json": json.dumps({"task_context": report.to_dict()})}]
+        if query.startswith(("SELECT payload_json FROM workflow_transitions", "SELECT revision FROM workflow_transitions"))
+        else inspect(query, *args))
     monkeypatch.setattr(host, "_plugin_binding", lambda *_args, **_kwargs:
         SimpleNamespace(to_dict=lambda: {"commit": "a" * 40}))
     inputs = host._manager_inputs(RUN, task)

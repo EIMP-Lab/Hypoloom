@@ -21,7 +21,8 @@ def context_policy(request) -> dict[str, Any] | None:
     if request.schema_version < CONTEXT_ACI_VERSION:
         return None
     from .profile_v4 import request_node_runtime
-    memory = request_node_runtime(request.input_artifacts).get("memory", {})
+    node = request_node_runtime(request.input_artifacts)
+    memory = node.get("memory", {})
     working = memory.get("working_context_tokens", DEFAULT_WORKING_TOKENS)
     declared = memory.get("context_window_tokens")
     runtime = memory.get("runtime_context_tokens")
@@ -30,6 +31,13 @@ def context_policy(request) -> dict[str, Any] | None:
         if value is not None and (type(value) is not int or value <= 0):
             raise ValueError("context limits must be positive integers")
     effective = min(value for value in (working, declared, runtime) if value is not None)
+    resolved = node.get("context_window")
+    extra = {}
+    if resolved is not None:
+        from .context_window import validate_window, window_policy
+        resolved = validate_window(resolved, request.required_model_identity)
+        extra = window_policy(memory, resolved)
+        working, effective = extra["working_context_tokens"], extra["effective_context_tokens"]
     policy = {"working_context_tokens": working, "declared_context_tokens": declared,
         "runtime_context_tokens": runtime, "effective_context_tokens": effective,
         "window_source": "configured" if declared is not None else "working_limit_only",
@@ -43,12 +51,15 @@ def context_policy(request) -> dict[str, Any] | None:
     if request.schema_version >= 25:
         policy.update(capacity_measurement_version=28 if request.schema_version >= 28 else 25,
                       max_inline_input_bytes=min(inline, effective // 4))
+    policy.update(extra)
     return policy
 
 
 def available_input(policy: Mapping[str, Any], output_tokens: int = 0) -> int:
-    return max(0, policy["effective_context_tokens"] - output_tokens
-        - policy["tool_reserve_tokens"] - policy["estimate_margin_tokens"])
+    total = policy["effective_context_tokens"] - output_tokens
+    if policy.get("provider_input_tokens") is not None:
+        total = min(total, policy["provider_input_tokens"])
+    return max(0, total - policy["tool_reserve_tokens"] - policy["estimate_margin_tokens"])
 
 
 def counting_material(document: Mapping[str, Any], *, version: int = 25) -> dict[str, Any]:

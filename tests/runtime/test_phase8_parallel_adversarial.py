@@ -58,11 +58,16 @@ class _ControlledAgentHost:
         self.claude_executable = runtime_file
         self.bwrap_path = runtime_file
         self.settings_path: Path | None = runtime_file
+        self.context_environment = {}
         self.model_identity = validate_claude_model_selector(model_identity)
         self.release_alpha_proposal = False
         self.started: list[_AgentHandle] = []
         self.provider_environments: list[dict[str, str]] = []
         self._fake = FakeAgent()
+
+    def resolve_context_window(self, model, memory, provider_environment=None):
+        from hypoloom.context_window import resolve_window
+        return resolve_window(model, {}, {}, memory)
 
     def preflight(
         self,

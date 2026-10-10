@@ -161,6 +161,8 @@ class WorkflowHost:
         self.agent = local_agent or FakeAgent(mode); self.local_agent_model = self.agent.model_identity; self.local_agent_adapter = self.agent.adapter_version; self.local_agent_profile = self.agent.permission_profile
         self.agent_configuration = {"agent_adapter": CLAUDE_AGENT_HOST_VERSION if claude_agent_host else self.local_agent_adapter, "agent_model": self.claude_model or self.local_agent_model, "agent_budget": self.agent_budget.to_dict(), "agent_profile": CLAUDE_AGENT_TOOL_PERMISSION_PROFILE if claude_agent_host else self.local_agent_profile, "agent_structured_output_failed_validation_default": CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP if claude_agent_host else None, "agent_transport_retries": CLAUDE_AGENT_TRANSPORT_RETRIES if claude_agent_host else None, "agent_workspace": EXECUTION_WORKSPACE_VERSION if claude_agent_host else None, "agent_git_profile": CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE if claude_agent_host else None, "agent_git_workspace": GIT_AUTHORING_WORKSPACE_VERSION if claude_agent_host else None, "fake_agent_mode": mode.value if claude_agent_host is None and local_agent is None else None}
         self.agent_runtime_files = (() if claude_agent_host is None else tuple(path for path in (claude_agent_host.claude_executable, claude_agent_host.bwrap_path, claude_agent_host.settings_path) if path is not None))
+        if claude_agent_host is not None and claude_agent_host.context_environment:
+            self.agent_configuration["agent_context_environment"] = dict(claude_agent_host.context_environment)
         self.compute_resources = compute_resources or LocalComputeResources()
         if (gpu_pool_socket is None) != (gpu_pool_namespace is None) or gpu_pool_socket is None and gpu_pool_server_uid is not None:
             raise ValueError("shared GPU pool requires both socket and state-root namespace")
@@ -2122,6 +2124,9 @@ class WorkflowHost:
             inputs = replay_request.input_artifacts; immutable_context_refs = replay_request.immutable_context_refs
         else:
             inputs = self._expert_inputs(run_id, task, component_id, role, method_family_id)
+            if self.claude_agent_host is not None:
+                from .context_window import bind_inputs
+                inputs = bind_inputs(self.claude_agent_host, inputs, self.claude_model, self._provider_environment_for(run_id))
             if isinstance(task, ResearchNodeTask):
                 from .paper_sources import history_input
                 inputs += history_input(self, run_id, role, component_id, task.command_id)

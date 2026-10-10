@@ -192,9 +192,15 @@ class PaperReadingHost:
         value = row["request"]
         parent = AgentRequest.from_dict(json.loads(self.host.store.get_attempt(value["paper_reading"]["parent_attempt_id"])["observation_json"])["request"])
         runtime = request_node_runtime(parent.input_artifacts)
-        # The model/effort/language are inherited; source and question are the
-        # whole reader context. No evaluator, peer memory or target repository.
+        # Carry capacity controls, but never the parent's scientific memory.
+        # Retained requests without imported windows preserve their old policy.
+        memory = {k: v for k, v in runtime.get("memory", {}).items() if k in {
+            "working_context_tokens", "context_window_tokens", "runtime_context_tokens",
+            "max_inline_input_bytes", "input_usage_semantics", "context_metadata"}} if "context_window" in runtime else {}
+        # The source and question are the whole reader context: no evaluator,
+        # peer memory or target repository. The Host resolves the child's window.
         runtime = {k: v for k, v in runtime.items() if k in {"model", "effort", "summary_language", "output_language"}}
+        if memory: runtime["memory"] = memory
         runtime["model"] = parent.required_model_identity
         return (EmbeddedInput.from_bytes(task.command_id + "--expert-config", "application/json", json.dumps({"node_runtime": runtime}).encode()),
             EmbeddedInput.from_bytes(task.command_id + "--paper-question", "application/json", json.dumps(value["paper_reading"]).encode()),

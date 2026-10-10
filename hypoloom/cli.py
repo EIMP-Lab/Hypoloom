@@ -629,9 +629,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
                         provider_environment["ANTHROPIC_BASE_URL"] = base_url
                 from .claude_agent_host import ClaudeAgentHost, validate_claude_model_selector
+                from .context_window import context_environment
                 validate_claude_model_selector(args.claude_model)
                 claude = ClaudeAgentHost(claude_executable=args.claude_executable,
                     settings_path=claude_settings,
+                    context_environment=context_environment(os.environ) if claude_settings is None else {},
                     bwrap_path=args.claude_bwrap or "/usr/bin/bwrap")
                 budget = AgentBudget(
                     max_turns=(DEFAULT_REAL_AGENT_BUDGET.max_turns

@@ -309,8 +309,8 @@ class ProviderRelay:
         # Claude's observed [1m] CLI selector is a context option, not part
         # of its Anthropic JSON model. Keep the configured identity and admit
         # only this exact wire mapping with its explicit context opt-in.
-        self._context_1m = model.endswith("[1m]")
-        self._wire_model = model.removesuffix("[1m]") if self._context_1m else model
+        self._context_1m = model.lower().endswith("[1m]")
+        self._wire_model = model[:-4] if self._context_1m else model
         if not self._wire_model:
             raise ValueError("provider relay requires an exact base model")
         self.max_request_bytes = max_request_bytes
@@ -447,7 +447,7 @@ class ProviderRelay:
                         raise _RelayRejected(400)
                     stage = "request_context"
                     capture.data["requested_model"] = document["model"]
-                    if relay._context_1m and parsed.path == "/v1/messages" and _CONTEXT_1M_BETA not in {
+                    if relay._context_1m and (relay.context_policy or {}).get("cc_1m_requested", True) and parsed.path == "/v1/messages" and _CONTEXT_1M_BETA not in {
                         token.strip()
                         for token in self.headers.get("anthropic-beta", "").split(",")
                     }:

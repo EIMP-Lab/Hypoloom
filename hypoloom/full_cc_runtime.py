@@ -56,13 +56,22 @@ def structured_output_validation_cap(request: AgentRequest) -> int:
 
 def full_cc_environment(*, runtime_prefix: Path | None = None,
                         read_roots: tuple[Path, ...] = (),
-                        structured_output_failed_validation_cap: int = 1) -> dict[str, str]:
-    # Neither settings nor provider credentials enter this environment or mount.
+                        structured_output_failed_validation_cap: int = 1,
+                        request: AgentRequest | None = None) -> dict[str, str]:
+    # Only allowlisted context controls enter; full settings and provider
+    # credentials stay outside this environment and its mounts.
     cap = _validated_output_correction_cap(structured_output_failed_validation_cap)
     path = "/runtime:/usr/bin:/bin"
     if runtime_prefix is not None:
         path = str(runtime_prefix / "bin") + ":" + path
-    return {"HOME": "/home/agent", "CLAUDE_CONFIG_DIR": "/home/agent/.claude",
+    context = {}
+    if request is not None:
+        from .profile_v4 import request_node_runtime
+        from .context_window import validate_window
+        window = request_node_runtime(request.input_artifacts).get("context_window")
+        if window is not None:
+            context = validate_window(window, request.required_model_identity)["cc_environment"]
+    return {**context, "HOME": "/home/agent", "CLAUDE_CONFIG_DIR": "/home/agent/.claude",
         "PATH": path, "SHELL": "/bin/bash", "TMPDIR": "/tmp",
         "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
         "HYPOLOOM_READ_ROOTS": json.dumps([str(root) for root in read_roots], separators=(",", ":")),

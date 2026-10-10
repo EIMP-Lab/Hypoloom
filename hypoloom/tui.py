@@ -1296,6 +1296,18 @@ class AttemptsPanel(CockpitPanel):
                     _value(attempt.cumulative_tokens),
                 ))
                 metrics = attempt.context_observation or {}
+                if context.get("cc_window_source"):
+                    lines.append(tr("   CC window={0} ({1}) · work={2} · metadata={3} · provider total/input={4}/{5} · compact={6}",
+                        _value(context.get("cc_context_tokens")), tr(context.get("cc_window_source")),
+                        tr(context.get("working_context_mode")), tr(context.get("metadata_status")),
+                        _value(context.get("provider_context_tokens")), _value(context.get("provider_input_tokens")),
+                        _value(context.get("auto_compact_tokens"))))
+                    if context.get("window_warnings"):
+                        lines.append(tr("   context configuration notices={0}", ", ".join(tr(item) for item in context["window_warnings"])))
+                    if type(metrics.get("reported_cc_context_tokens")) is int:
+                        lines.append(tr("CC reported window: {0} tokens", metrics["reported_cc_context_tokens"]))
+                        if metrics["reported_cc_context_tokens"] != context.get("cc_context_tokens"):
+                            lines.append(tr("CC reported window differs from launch configuration."))
                 if "native_compaction_count" in metrics:
                     lines.append(tr(
                         "   native compactions={0} · duration={1} ms · unknown durations={2} · coverage={3}",

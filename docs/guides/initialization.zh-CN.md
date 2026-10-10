@@ -179,6 +179,13 @@ Agent 会固定解析出的模型，不自动继承交互式会话的模型或 e
 API 地址、认证格式和 relay 支持的接入模式复用实际传输层的校验器。预览不发起
 付费探测；配置通过不等于模型在线、额度充足或网络可达。
 
+最终 review 同时列出各模型的上下文窗口。adapter-80 的新 Agent 导入所选
+settings 中非敏感的 CC 窗口/压缩参数；Profile 未显式限制工作上下文时自动
+跟随解析窗口。本地信息不足时可进行有界、只读模型元数据查询，review 单列
+查询次数，不发送生成探测。元数据缺失时回退并标注 CC 推定值。
+参数、来源及 `memory.context_metadata: false` 关闭方式见
+[上下文管理](context-management.zh-CN.md)。
+
 GPU 启动要求 Host 运行环境与 Profile 一致；授权 UUID 必须出现在只读设备清单中，
 Profile 的 GPU 选择须位于该集合内。`safety.gpus: []` 与 GPU 启动冲突时直接报错。
 共享池预算复用 Host 的既有检查。预览不分配 GPU，也不把空闲显存视为授权。

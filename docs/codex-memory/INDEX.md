@@ -1,5 +1,12 @@
 # Development memory index
 
+- [CC context-window acquisition](../design/context-management-and-recovery.md#cc-窗口获取与隔离运行传递2026-10-10):
+  selected settings/environment, automatic working ceilings, bounded model
+  metadata, isolated CC propagation and shared UI/relay limits; preserves explicit
+  caps, reserves, reader inheritance and retained requests. [Validation](../qualification.md#cc-context-window-acquisition-2026-10-10)
+  covers actual CC rules and suffix normalization, Host/reader/CPU closure,
+  recovery, bilingual UI, metadata failures and package parity.
+
 - [Latest-measured context capsules](../qualification.md#latest-measured-context-capsules-2026-10-10):
   number/fill share the latest measurement; fixed compaction slot, explicit
   effective-ceiling denominator and separate input allowance. This supersedes

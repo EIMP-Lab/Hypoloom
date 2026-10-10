@@ -51,8 +51,34 @@ requests, including tool schemas, results and thinking, without rewriting signed
 blocks or tool pairs. Effective capacity is the minimum of known deployment,
 runtime and working ceilings, less output, tool-growth and estimation reserves.
 
-The fallback working ceiling remains **262,144 tokens**, with **49,152 inline
-input bytes**. This is an application allowance, not a detected provider window.
+New adapter-80 requests import the selected CC settings' allowlisted context
+controls into their existing node runtime input. With no explicit
+`working_context_tokens`, the working ceiling automatically follows the resolved
+CC/deployment window. Explicit working, deployment and runtime limits still take
+the minimum. CC parameters also reach the isolated research CC; credentials and
+the complete personal settings file remain Host-only. CC-switch works through
+its exported settings file, without a database integration.
+
+CC explicit numeric overrides, case-insensitive `[1m]` suffixes and disable flags
+follow the supported CLI rules. Built-in/default CC windows are labeled
+assumptions, not provider confirmations; an unrecognized ID normally assumes
+200,000 unless configured. Current native regressions use CC 2.1.296. Completed
+CLI results expose the reported window separately and the observers flag any
+disagreement with the resolved launch window. They do not silently rewrite it.
+
+When local configuration is insufficient, the Host may read the selected
+endpoint's `/v1/models` metadata: at most three queries per Host/preview, two
+seconds each and five seconds total, including DNS and response reads. Responses
+are bounded to 1 MiB; redirects are not followed. Exact model IDs and positive
+integer `context_length` (total) / `max_input_tokens` (input only) are accepted;
+`max_tokens` is never interpreted as a context window. Failure or missing fields
+falls back to local information. Set `memory.context_metadata: false` to disable
+these reads. They never send model-generation or extra token-count requests.
+
+The fallback with no usable window remains **262,144 tokens**, with **49,152 inline
+input bytes**. Retained requests without imported controls keep their original
+262,144 default and semantics. This fallback is an application allowance, not a
+detected provider window.
 ACI-25 keeps inline allowance stable across retries. Capacity measurement uses:
 
 1. An already observed successful provider count for the exact current input,
@@ -83,16 +109,25 @@ Optional `methodology.yaml` → `memory` controls for new runs:
 
 | Field | Meaning |
 |---|---|
-| `working_context_tokens` | Framework ceiling; default 262144. |
+| `working_context_tokens` | Optional explicit framework ceiling; omission follows the resolved window in new adapter-80 requests. |
 | `context_window_tokens` | Confirmed deployment window; omit when unknown. |
 | `runtime_context_tokens` | Confirmed runtime ceiling; omit when unknown. |
+| `context_metadata` | Allow bounded read-only provider model metadata when needed; default true. |
 | `max_inline_input_bytes` | Total rendered inline allowance; default 49152. |
 | `input_usage_semantics` | `separate_cache` for Anthropic-style separate counts; `includes_cache` when input already includes cache; `unknown` to withhold an unsupported input total. |
 
 Limits are positive integers. Configure smaller confirmed ceilings explicitly.
-A `[1m]` model suffix and invocation token budget do not establish capacity.
+A `[1m]` model suffix declares a CC window, not confirmed provider capacity;
+the invocation token budget does not establish either window.
 A missing count endpoint does not disable local checks. Configuration is frozen
-for the run; switching API connections does not change it.
+for the run; switching API connections does not change the Profile or an already
+submitted request. New tasks resolve against their selected connection; metadata
+is not shared between credentials/endpoints. Infrastructure retries retain their
+original request and window, even after settings change. Auto-compaction settings
+are imported separately and never become the bar denominator. Local capacity
+refusals still use the existing bounded reconstruction/retry path.
+Paper-reading children inherit explicit capacity limits and the metadata switch,
+without inheriting their parent's scientific memory.
 
 Custom compatible-provider selectors such as `mimo-v2.6-pro[1m]` may produce
 `[claude-code:unrecognized_model]` on stderr. Hypoloom passes the pinned selector

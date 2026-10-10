@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/79"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/80"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -329,6 +329,7 @@ class ClaudeAgentHost:
         *,
         claude_executable: str | os.PathLike[str],
         settings_path: str | os.PathLike[str] | None = None,
+        context_environment: Mapping[str, str] | None = None,
         bwrap_path: str | os.PathLike[str] = "/usr/bin/bwrap",
         allowed_environment_names: Sequence[str] = _DEFAULT_ENVIRONMENT_NAMES,
         extra_runtime_paths: Sequence[str | os.PathLike[str]] = (),
@@ -340,6 +341,9 @@ class ClaudeAgentHost:
     ) -> None:
         self.claude_executable = Path(claude_executable)
         self.settings_path = None if settings_path is None else Path(settings_path)
+        from .context_window import WindowResolver, context_environment as checked_context_environment
+        self.context_environment = checked_context_environment(context_environment or {})
+        self._context_resolver = WindowResolver()
         self.bwrap_path = Path(bwrap_path)
         self.allowed_environment_names = frozenset(allowed_environment_names)
         validated_extra_runtime_paths = tuple(
@@ -393,6 +397,12 @@ class ClaudeAgentHost:
             {} if provider_environment is None else provider_environment
         )
         self._check_sandbox()
+
+    def resolve_context_window(self, model, memory, provider_environment=None):
+        from .host_settings import _settings_bytes
+        settings = {} if self.settings_path is None else json.loads(_settings_bytes(self.settings_path))
+        return self._context_resolver.resolve(model, settings,
+            {**self.context_environment, **(provider_environment or {})}, memory)
 
     def start(
         self,
@@ -530,7 +540,7 @@ class ClaudeAgentHost:
         if not full_cc and (runtime_prefix is not None or read_roots):
             raise AgentHostError("Profile Agent mounts require the full CC runtime")
         environment = (full_cc_environment(runtime_prefix=runtime_prefix, read_roots=read_roots,
-            structured_output_failed_validation_cap=structured_output_validation_cap(request))
+            structured_output_failed_validation_cap=structured_output_validation_cap(request), request=request)
             if full_cc else self._environment(provider_environment))
         prompt_manifest: dict[str, object] = {}
         prompt = _prompt(
@@ -1136,7 +1146,7 @@ class ClaudeAgentHost:
                     for model in exchange.get("served_models", []) if isinstance(model, str)})
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
                 from .context_observation import exchange_context_metrics, read_native_events
-                diagnostics["context_observation"] = {**read_native_events(recorder.root / "stdout.log", diagnostics.get("context_observation")), **exchange_context_metrics(exchanges)}
+                diagnostics["context_observation"] = {**read_native_events(recorder.root / "stdout.log", diagnostics.get("context_observation"), model=handle.request.required_model_identity), **exchange_context_metrics(exchanges)}
                 from .context_management import context_policy, latest_context
                 diagnostics["context"] = latest_context(exchanges, context_policy(handle.request))
                 fresh_session = (isinstance(handle.tool_workspace, PreparedSessionWorkspace)
@@ -1607,7 +1617,7 @@ def _provider_response(
             observed_wire_exchanges=observed_wire_exchanges,
         )
         cost = _cost(outer.get("total_cost_usd"))
-        model_identity = _model_identity(outer.get("modelUsage"), model)
+        _model_identity(outer.get("modelUsage"), model)
         diagnostics["uncached_input_tokens"] = uncached_input_tokens
         diagnostics["cache_creation_input_tokens"] = cache_creation_input_tokens
         diagnostics["cache_read_input_tokens"] = cache_read_input_tokens
@@ -1623,7 +1633,7 @@ def _provider_response(
                 proposed_workspace_artifacts=artifacts,
                 declared_effects=effects,
                 diagnostics=diagnostics,
-                model_identity=model_identity,
+                model_identity=model,
                 adapter_version=CLAUDE_AGENT_HOST_VERSION,
                 token_usage={
                     "input_tokens": input_tokens,
@@ -3998,7 +4008,10 @@ def _model_identity(value: object, fallback: str) -> str:
         raise AgentACIError(
             "invalid_model_identity", "provider model usage identity is invalid"
         ) from exc
-    if model_identity != fallback:
+    # CC canonicalizes only the [1M] option to [1m] in its usage ledger.
+    # Keep the base ID exact and require the suffix on both identities.
+    canonical = lambda name: name[:-4] + "[1m]" if name.lower().endswith("[1m]") else name
+    if canonical(model_identity) != canonical(fallback):
         raise AgentACIError(
             "model_identity_mismatch",
             "provider model usage identity does not match the exact requested model",
@@ -4040,10 +4053,8 @@ def validate_claude_model_selector(selector: object) -> str:
         lowered == f"{alias}[1m]" for alias in _CLAUDE_CODE_MODEL_ALIASES
     ):
         raise ValueError("model selector must not be an unresolved alias")
-    if lowered.endswith("[1m]") and not value.endswith("[1m]"):
-        raise ValueError("model selector has an invalid extended-context suffix")
-    if value.endswith("[1m]") and (
-        len(value) == 4 or value[:-4].casefold().endswith("[1m]")
+    if lowered.endswith("[1m]") and (
+        len(value) == 4 or lowered[:-4].endswith("[1m]")
     ):
         raise ValueError("model selector has an invalid extended-context suffix")
     return value

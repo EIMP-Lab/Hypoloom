@@ -17,6 +17,14 @@ from hypoloom.profile_admission import admit_profile
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def local_metadata_only(monkeypatch):
+    # These argument/admission tests use synthetic credentials. Actual bounded
+    # model-list transport is exercised against loopback in test_context_window.
+    monkeypatch.setattr("hypoloom.context_window.WindowResolver.metadata",
+        lambda *args, **kwargs: {"metadata_status": "unavailable"})
+
+
 def git(root, *args):
     subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
 
@@ -693,6 +701,7 @@ def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(check
     credentials.write_text("OPENALEX_API_KEY=synthetic-openalex\nUNPAYWALL_EMAIL=test@example.invalid\n")
     credentials.chmod(0o600)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic-model-secret")
+    monkeypatch.setenv("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "1000000")
     # Test native boundary separately in its existing suite; this case checks
     # the real argument projection, including the actual auth resolver process.
     monkeypatch.setattr("hypoloom.claude_agent_host.ClaudeAgentHost.preflight", lambda *a, **kw: None)
@@ -705,6 +714,7 @@ def test_real_launch_preserves_profile_budgets_and_all_literature_bindings(check
     assert bootstrap.main(argv) == 0
     output = capsys.readouterr().out
     result = json.loads(output)
+    assert result["effective_configuration"]["context_windows"]["exact-fixture-model"]["effective_context_tokens"] == 1000000
     commands = result["commands"]
     parser = cli_parser()
     serve = parser.parse_args(commands["host_start"][commands["host_start"].index("--") + 4:])

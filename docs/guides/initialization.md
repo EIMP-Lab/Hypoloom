@@ -232,6 +232,14 @@ The preview checks the API URL, authentication shape and supported relay mode
 with the relay's own local validator. No paid probe is performed; a passing
 configuration does not prove model availability, remaining quota or connectivity.
 
+The final review also lists resolved context windows per model. New adapter-80
+Agents import the selected settings' non-secret CC window/compaction controls;
+an omitted Profile working limit follows the resolved window. If local window
+information is insufficient, bounded read-only model metadata queries may run;
+the review reports their count separately from generation probes. Missing
+metadata falls back to labeled CC assumptions. See [context management](context-management.md)
+for limits, sources and the `memory.context_metadata: false` opt-out.
+
 GPU launch requires the Host runtime to match the admitted Profile runtime.
 The selected UUIDs must exist in the read-only inventory; Profile GPU selectors
 must resolve inside that authorized set. A GPU launch with `safety.gpus: []` is

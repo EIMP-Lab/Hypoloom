@@ -744,7 +744,8 @@ def _with_live_attempt_context(
             metrics = read_transcript_metrics(transcript, attempt.session_id, attempt.started_at,
                 [item["ref"] for item in observation.get("request", {}).get("input_artifacts", [])],
                 limit=_TRANSCRIPT_TAIL_BYTES) if transcript is not None else {"coverage": "unavailable"}
-            metrics = read_native_events(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log", metrics)
+            metrics = read_native_events(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log", metrics,
+                model=observation.get("request", {}).get("required_model_identity"))
             native = read_native_status(root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "stdout.log")
             attempt = replace(attempt, context_observation=metrics,
                 operational_status=native or attempt.operational_status)

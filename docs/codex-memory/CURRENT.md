@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 10 context windows: adapter 80 imports selected CC/CC-switch window
+  controls into isolated CC and the existing request input. Missing working caps
+  follow the resolved window; explicit ceilings/reserves remain. Provider model
+  metadata uses bounded read-only GETs; no generation probe or capacity registry.
+  Web/TUI/init share source-labelled limits and distinguish CC final reports.
+  Reader children inherit capacity controls; `[1M]` accepts CC's observed `[1m]`
+  normalization while preserving the exact base model and frozen request identity.
+  811 distinct focused cases pass; four native flows have 51 closed Agents/five
+  CPU Processes, passing Oracles and no live groups. All 195 wheel files match.
+  Existing requests/runs keep their policy; no migration or shared install change.
+  [Design](../design/context-management-and-recovery.md#cc-窗口获取与隔离运行传递2026-10-10) /
+  [evidence](../qualification.md#cc-context-window-acquisition-2026-10-10).
+
 - October 10 capsule semantics: Web now shows latest measured context in both
   number and fill, without `last`; current usage/estimates stay separate in the
   tooltip and backend. A fixed compaction slot keeps the reading in place.

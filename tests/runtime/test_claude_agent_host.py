@@ -607,7 +607,7 @@ def _draft_workspace(tmp_path: Path, attempt_id: str):
 
 @pytest.mark.parametrize(
     "selector",
-    ("stub-model", "mimo-v2.5-pro[1m]"),
+    ("stub-model", "mimo-v2.5-pro[1m]", "stub-model[1M]"),
 )
 def test_validate_claude_model_selector_returns_the_exact_selector(
     selector: str,
@@ -633,7 +633,8 @@ def test_validate_claude_model_selector_returns_the_exact_selector(
         "fable",
         "opusplan",
         "OPUS[1M]",
-        "stub-model[1M]",
+        "[1M]",
+        "stub-model[1M][1m]",
         "REPLACE_WITH_PINNED_MODEL",
         "replace_with_pinned_model[1m]",
         "REPLACE_WITH_PINNED_GROUNDING_MODEL",
@@ -775,7 +776,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/79"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/80"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -3159,18 +3160,18 @@ def test_launch_is_bounded_structured_toolless_and_has_no_secret_argv(
     assert host.wait(handle).terminal_reason is AgentHostTerminalReason.SUCCEEDED
 
 
+@pytest.mark.parametrize("selector", ["stub-model[1m]", "stub-model[1M]"])
 def test_extended_context_selector_is_the_exact_observed_identity(
-    tmp_path: Path,
+    tmp_path: Path, selector: str,
 ) -> None:
     host = _host(tmp_path)
-    selector = "stub-model[1m]"
     request = _claude_request().__class__.from_dict(
         {
             **_claude_request().to_dict(),
             "required_model_identity": selector,
         }
     )
-    output = _provider_output(modelUsage={selector: {}})
+    output = _provider_output(modelUsage={"stub-model[1m]": {}})
 
     handle = _start(
         host,

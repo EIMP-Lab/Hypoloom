@@ -2,6 +2,74 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## CC context-window acquisition (2026-10-10)
+
+Adapter 80 imports non-secret CC capacity controls from selected settings or the
+explicit environment-auth path. Fresh requests own the result in existing node
+runtime inputs; prompt construction, relay admission and observers share it.
+Omitted working ceilings follow the effective window, with output/tool/estimate
+reserves retained. Explicit Profile limits and provider input limits still bind.
+Readers inherit capacity controls without parent scientific memory. Infrastructure
+retries and retained requests preserve their original policy.
+
+Evidence: `.local/qualification/context-window-20261010/`.
+
+- `original-policy.json` replays the original 262144 implicit working limit
+  against selected 1000000 CC settings. The repaired request resolves 1000000
+  and passes the allowlisted control into isolated CC. Full personal settings
+  and provider secrets remain outside the Agent.
+- Actual installed CC **2.1.296** is exercised against loopback responses for
+  GLM, MiMo, DeepSeek, Kimi and Claude selectors. Thirteen combinations cover
+  numeric overrides, both suffix cases, disabled 1M and compaction, native and
+  unknown IDs. Two initial predictions disagreed with CC: DISABLE_COMPACT lets
+  a numeric override win for tagged custom models, and an unknown
+  `claude-private@YYYYMMDD` still reports 200K. The implementation now follows
+  these observed rules. The result is a CC window, not verified vendor capacity.
+- Loopback metadata tests cover exact IDs, total versus input limits, invalid
+  units/duplicate IDs, authentication, cache isolation, redirects, HTTP failures,
+  slow reads, DNS/child failure and the three-query/two-second/five-second budget.
+  No generation or extra token-counting probe is used to discover capacity.
+- Native Host tests exercise actual isolated CC, relay, tool submission and CPU
+  publication with imported 1M settings. Capacity rejection after committed
+  submission preserves and completes the experiment; oversized initial input
+  stops without spending nine identical retries. A three-reader closure checks
+  inherited explicit limits and CC's actual reported window.
+- That reader test reproduced CC normalizing `[1M]` to `[1m]` in its usage
+  ledger, causing the old exact-string check to reject successful responses.
+  Only this suffix equivalence is admitted; missing suffixes, different base IDs
+  and multiple usage identities retain rejection. The response still binds the
+  original request identity and uses the exact observed ledger for accounting.
+- Real bilingual browser/TUI checks cover 200K/1M fill, source labels and CC
+  report disagreement, retaining the fixed compaction slot and measured readings.
+  A pre-existing browser check sampled the entrance scale animation; it now waits
+  for that animation before retaining its exact position and glyph assertions.
+- Earlier red evidence remains. One native attempt caught source edits during
+  execution through the existing version guard. Follow-up fixture failures
+  include an excessively long test-root Unix socket path, outdated adapter
+  assertions, and controlled Host/Profile doubles missing current interfaces.
+  Rechecks use a short temporary root; Profile tests now use an actual empty
+  BatchHistory, without changing the production reducer or weakening assertions.
+- Reconciliation against the current collected identities in 24 selected files
+  gives **811 distinct passing tests, no unresolved failures or skips**
+  (`test-summary.json`). The initial 415-case selection had four failures; the
+  489-case follow-up had twelve. Corrections and final focused rechecks close
+  these cases; this does not imply either earlier execution was all green.
+- Independent SQL/process/Oracle census of four native flows records **51 closed
+  Agents, five closed CPU Processes and five canonical outcomes**. Two CPU
+  failures are deliberate repair inputs; all three completion flows finish, and
+  the initial-refusal flow fails as expected. All Oracles pass with no open
+  Attempts, pending effects, live owned process groups or paper staging residue
+  (`native-census.json`). This is scripted-provider execution evidence.
+- The final wheel includes the new resolver; all **195 package files** match
+  source byte-for-byte (`wheel-check.json`). Documentation, public Profile,
+  focused undefined-name and whitespace checks pass. No shared installation is
+  replaced as part of this source change.
+
+Existing research runs, CC-switch private configuration and shared installations
+are unchanged. New launches use the updated adapter; frozen runs are not migrated.
+This focused qualification does not claim full G1, paid-provider scientific
+quality, live provider metadata compatibility, physical GPU or soak coverage.
+
 ## Latest measured context capsules (2026-10-10)
 
 The Web capsule now represents latest measured context: current measured input

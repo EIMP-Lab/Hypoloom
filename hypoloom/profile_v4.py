@@ -90,7 +90,7 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
         "graph_evolution": {"enabled", "stagnation_rounds"},
         "memory": {"max_transcript_bytes", "max_plugin_bytes", "max_memory_bytes", "retention",
             "working_context_tokens", "context_window_tokens", "runtime_context_tokens",
-            "max_inline_input_bytes", "input_usage_semantics"},
+            "max_inline_input_bytes", "input_usage_semantics", "context_metadata"},
         "output_correction": {"max_failed_validations"},
     }
     for section, fields in definitions.items():
@@ -98,7 +98,7 @@ def _methodology(v: _Validator, value: Mapping[str, Any]) -> None:
         selected = v.object(value[section], fields, "methodology.yaml." + section)
         for key, item in selected.items():
             location = f"methodology.yaml.{section}.{key}"
-            if key == "enabled": v.boolean(item, location)
+            if key in {"enabled", "context_metadata"}: v.boolean(item, location)
             elif key in {"proxy_domains", "direct_domains"}:
                 from .literature_proxy import LiteratureProxyRouter
                 domains = v.strings(item, location)
