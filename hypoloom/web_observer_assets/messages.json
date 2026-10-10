@@ -1437,5 +1437,7 @@
   "budget_exhausted": "查询预算已用尽，采用回退值",
   "cc_context_override_ignored": "CC 规则未采用数值窗口覆盖参数",
   "cc_proactive_compaction_disabled": "已配置关闭主动压缩",
-  "provider_cc_window_difference": "Provider 容量与 CC 窗口不同，采用较小限制"
+  "provider_cc_window_difference": "Provider 容量与 CC 窗口不同，采用较小限制",
+  "Recorded final node failures: {0}": "已记录的节点最终失败：{0}",
+  "Recorded node failures have exhausted automatic recovery. They do not mean the whole run has stopped.": "这些节点已耗尽自动恢复机会；这不代表整项运行已停止。"
 }

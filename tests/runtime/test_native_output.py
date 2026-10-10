@@ -194,6 +194,29 @@ def test_context_advisory_cannot_cross_attempt_session_boundary(tmp_path):
         server.close()
 
 
+@pytest.mark.parametrize("measurement", [False, True], ids=["goal-only", "local-parser"])
+def test_design_deadline_notice_preserves_stop_and_device_ownership(tmp_path, measurement):
+    server = _server(tmp_path, deadline=time.monotonic() + 1000, design_implementation=True,
+        measurement_smoke=measurement, parser_source_root=tmp_path if measurement else None)
+    try:
+        def notice():
+            return native_output.call_context_notice(str(server.socket_path), session_id="session-owned",
+                max_request_bytes=4096, timeout_seconds=2)
+        assert notice() == {}
+        server.deadline_at = time.monotonic() + 100
+        text = notice()["hookSpecificOutput"]["additionalContext"]
+        assert "DESIGN" in text and "/workspace" in text and "no GPU grant" in text
+        assert "polling slow training" in text and "Stop corrections" in text
+        assert len(text.encode()) <= 1536
+        assert server.snapshot()["call_count"] == 0 and not server.snapshot()["accepted"]
+        assert _call(server, INVALID)["decision"] == "block"
+        server.deadline_at = time.monotonic() - 1
+        with pytest.raises(ValueError, match="deadline"):
+            notice()
+    finally:
+        server.close()
+
+
 def test_advisory_cli_unavailable_is_optional_but_stop_remains_fail_closed(tmp_path):
     base = [sys.executable, str(Path(native_output.__file__).resolve()), "--socket", str(tmp_path / "missing.sock"),
         "--max-bytes", "4096", "--timeout-seconds", "1"]

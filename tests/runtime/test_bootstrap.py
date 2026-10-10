@@ -827,6 +827,8 @@ def test_gpu_pool_choices_are_preserved_in_host_only_vectors(checkout, capsys, m
     memory = result["effective_configuration"]["gpu"]["memory_budget"]
     assert memory["reserve_percent"] == 5 and memory["initial_reserve_mib"] == 512
     assert memory["initial_request_required_free_mib"] == 1536
+    explanation = "\n".join(result["effective_configuration"]["gpu"]["reserve_explanation"])
+    assert "4096 MiB" in explanation and "5120 MiB" in explanation
     assert all(device["pool_reserve_memory_mib"] == 4096
                for device in result["effective_configuration"]["gpu"]["pool"]["device_reserves"])
     serve = cli_parser().parse_args(commands["host_start"][commands["host_start"].index("--") + 4:])

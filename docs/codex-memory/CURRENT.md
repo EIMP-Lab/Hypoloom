@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 10 authoring recovery: adapter 81 keeps native parser rejection causes
+  through postflight/retry and names invalid value/baseline fields. DESIGN gets
+  the existing deadline advisory; methods move costly device smoke to the start
+  of Host-submitted Processes, preserving CPU checks and frozen science. Init
+  explains fixed/proportional request reserve and higher/unknown pool floors.
+  Web/TUI separate recorded node failures from live state. 566 focused checks
+  pass; two native closures have 24 closed Agents/two CPU Processes and passing
+  Oracles with no live groups. All 195 wheel files match. Private MERC Profile
+  now uses 512 MiB + 5% for future requests; retained run/pool remain 4096 MiB.
+  Full G1 remains incomplete; the existing Host LOC check still fails on the
+  unchanged baseline (4666 > 4650). No GPU speedup, paid qualification or
+  retained-run change is claimed.
+  [Design](../design/authoring-failures-and-resource-review.md) /
+  [evidence](../qualification.md#authoring-recovery-and-resource-review-2026-10-10).
+
 - October 10 context windows: adapter 80 imports selected CC/CC-switch window
   controls into isolated CC and the existing request input. Missing working caps
   follow the resolved window; explicit ceilings/reserves remain. Provider model

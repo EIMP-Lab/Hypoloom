@@ -2,6 +2,82 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Authoring recovery and resource review (2026-10-10)
+
+Adapter 81 repairs the independently reproduced authoring, diagnostic and reserve
+presentation problems in the [design](design/authoring-failures-and-resource-review.md).
+Evidence: `.local/qualification/authoring-recovery-20261010/`.
+
+- `parser-replay.json` preserves the original generic numeric error for a scalar
+  value plus object baseline, the repaired `result.baseline` error, and unchanged
+  accepted VALUE after omitting optional baseline. The measurement validator is
+  still strict; per-dataset detail remains raw evidence.
+- Native Stop rejection now survives final delivery and becomes the existing
+  corrective retry input. Failed delivery extracts provider accounting without
+  parsing a rejected candidate against absent workspace artifacts. Cancellation,
+  timeout, source checks and configured correction/retry limits remain binding.
+- Final review reproduced an overbroad error replacement: rejected Stop feedback
+  masked a malformed provider envelope. Only missing native acceptance now changes
+  to `invalid_candidate`; transport, provider, turn-budget, timeout and cancellation
+  reasons retain priority while parser feedback stays available. The original
+  reproduction is in `diagnostic-precedence-original.json`; `host-final.xml`
+  rechecks the Host cases and both native closures after this correction.
+- `native-final.xml` covers two actual CLI/Host/broker/CPU closures: correction
+  within one Stop session, and correction after the Stop cap ends an Attempt.
+  Independent `native-census-final.json` reconfirms **24 closed Agents, two successful CPU
+  Processes, two canonical outcomes, zero open Attempts and zero live groups**.
+  Both existing Oracles pass with zero pending effects. Responses are scripted;
+  this does not establish model obedience, physical GPU timing or science quality.
+- The cross-Attempt fixture also encounters the actual CLI test model's 200K
+  context limit on resume. It explicitly counts that additional infrastructure
+  failure and verifies one reconstruction preserves the original parser feedback.
+  Initial tests incorrectly expected only two design Attempts. An attempted
+  numeric override did not supersede this CC model rule; the final fixture keeps
+  normal settings and checks all three Attempts, their causes and terminal effects.
+  This is not an allowance for arbitrary extra retries.
+- DESIGN's existing PreToolUse advisory now covers local-parser and GOAL-only
+  implementation nodes, without accepting output or consuming correction rounds.
+  Runtime instructions/methods distinguish bounded CPU authoring checks from
+  device smoke in the actual Host-submitted Process before costly work. These are
+  methods plus an advisory, not automatic verification that an Agent performed
+  a GPU smoke or a promise of shorter training.
+- Bilingual init checks cover fixed/proportional reserve, a dominating absolute
+  floor, higher/different/unknown pool floors and unchanged configuration. The
+  private future Profile passes ordinary admission with 512 MiB + 5%; read-only
+  inspection confirms the retained run and all four pool floors remain 4096 MiB
+  (`private-profile-review.json`). Initial admission is a minimum because other
+  requests may require larger protection. Read-only pool maintenance review refuses
+  reconfiguration with `dependencies_active_or_unknown`
+  (`pool-maintenance-review.json`). No pool reconfiguration or run mutation occurs.
+- Browser checks separate ACTIVE/Host absence/dispatch error from recorded final
+  node failures, retain terminal-run history, open exact Attempt detail and
+  safely render identifiers in both languages. The initial browser test tried
+  clicking the language button behind an open detail drawer; it now closes the
+  drawer through the normal UI first. An opt-in real shell isolation case passes
+  separately instead of treating its default skip as evidence.
+- **566 distinct focused tests pass**, reconciled in `focused-summary.json`,
+  including the final Host/native, reserve and browser rechecks. Earlier failed
+  runs remain in the evidence.
+  Undefined-name and whitespace checks pass. A wheel builds and all **195 package
+  files** match source byte-for-byte (`wheel-check.json`).
+
+Full offline G1 is **incomplete**, not passing. The first selection stopped at
+849 passes for the reserve wording correction (`g1.xml`). The parallel selection
+stopped at 828 passes, two skips and one old browser assertion requiring budget
+failure in the durable-state label (`g1-final.xml`); `ui-last.xml` passes all 16
+affected browser/TUI cases with the budget label retained in separate details.
+The next selection stopped at 375 passes for the diagnostic-priority correction
+(`g1-gate.xml`). No live processes remain from these interrupted test roots.
+The final focused G1 invariant check has two passes and the existing Host LOC
+failure, **4666 > 4650** (`final-gate.xml`). That file is byte-identical to base
+`a3d16c28aa9f242e7232f028f4082146456de200` (`host-allocation-baseline.json`);
+this change does not raise its allocation or claim full promotion.
+
+No physical GPU/paid-provider qualification or retained-run upgrade follows from
+these focused results. Existing observers can refresh
+static Web assets; new Python/TUI code needs a newly opened observer. Existing
+research Hosts continue with their frozen bundles.
+
 ## CC context-window acquisition (2026-10-10)
 
 Adapter 80 imports non-secret CC capacity controls from selected settings or the

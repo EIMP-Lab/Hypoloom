@@ -305,6 +305,9 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
                     "start_available": proposal["prepare_available"]}
             else:
                 _external_pool_review(args, selected, review)
+        from .bootstrap_review import gpu_reserve_summary
+        review["gpu"]["reserve_explanation"] = gpu_reserve_summary(
+            review["gpu"], getattr(args, "ui_language", "en"))
     elif args.gpu_device_uuid or args.gpu_runtime_prefix or args.gpu_pool_socket:
         raise ValueError("CPU-only launch cannot contain GPU or pool options")
     if args.web_search_fallback is not None and args.literature_adapter != "openalex":

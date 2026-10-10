@@ -85,7 +85,10 @@ def test_final_agent_failure_projects_a_safe_code_and_remains_visible_after_comp
             await pilot.pause()
             text = _static_text(panel.query_one(Static))
             assert expected in text and "SECRET" not in text
-            assert ("BUDGET LIMIT" if expected == "error_max_budget_usd" else "AGENT FINAL FAILURE") in text
+            assert "Recorded final node failures: 1" in text
+            if expected == "error_max_budget_usd":
+                assert "BUDGET LIMIT" in text
+            assert "calls terminated" not in text
     asyncio.run(exercise())
 
 

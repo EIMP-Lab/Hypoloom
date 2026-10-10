@@ -130,8 +130,13 @@ def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping
         if (not isinstance(raw, Mapping) or not {"metric", "value"} <= set(raw)
                 or set(raw) - {"metric", "value", "baseline"} or raw["metric"] != declaration.metric.name):
             raise ValueError("parsed result must identify the frozen metric and only value/optional baseline")
-        value = normalize_metric_value(raw["value"])
-        baseline = None if raw.get("baseline") is None else normalize_metric_value(raw["baseline"])
+        def numeric_field(name: str) -> str:
+            try:
+                return normalize_metric_value(raw[name])
+            except (ValueError, TypeError, DecimalException) as exc:
+                raise ValueError(f"parsed result.{name}: {exc}; expected a finite scalar number, not an object or array") from exc
+        value = numeric_field("value")
+        baseline = None if raw.get("baseline") is None else numeric_field("baseline")
         with localcontext() as context:
             context.prec = 50
             measured = Decimal(value)

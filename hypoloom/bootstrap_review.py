@@ -3,6 +3,45 @@ import json
 from pathlib import Path
 
 
+def gpu_reserve_summary(gpu, language="en"):
+    """Explain the existing launch preview; never change a Profile or pool."""
+    if not gpu or not (memory := gpu.get("memory_budget")):
+        return []
+    zh = language == "zh-CN"
+    workload = memory["initial_workload_mib"]
+    reserve = memory["initial_reserve_mib"]
+    percent = memory["reserve_percent"]
+    floor = memory["reserve_floor_mib"]
+    lines = [
+        (f"显存请求保护线：{reserve} MiB；初始单卡工作负载：{workload} MiB。" if zh else
+         f"GPU request protection: {reserve} MiB; initial per-device workload: {workload} MiB."),
+        ((f"按已核定工作负载的 {percent}% 计算，绝对下限 {floor} MiB，向上对齐 64 MiB；不是整卡容量的百分比。" if zh else
+          f"Reserve is {percent}% of admitted workload, with a {floor} MiB floor, rounded up to 64 MiB; not a percentage of device capacity.")
+         if percent else
+         ("当前采用固定保留量，未启用百分比；沿用已有 Profile 不会自动采用新模板的 5%。" if zh else
+          "Fixed reserve selected; percentage mode is disabled. Adopting an existing Profile does not apply the new template's 5%.")),
+    ]
+    if percent and floor * 100 >= workload * percent:
+        lines.append("当前绝对下限主导请求保护线；仅修改百分比不会降低该下限。" if zh else
+                     "The absolute floor currently dominates request protection; changing only the percentage cannot lower it.")
+    pool = gpu.get("pool")
+    if pool is not None:
+        floors = ([d.get("pool_reserve_memory_mib") for d in pool["device_reserves"]]
+                  if "device_reserves" in pool else [pool.get("reserve_mib")])
+        known = sorted({v for v in floors if type(v) is int and v >= 0})
+        if not floors or len([v for v in floors if type(v) is int and v >= 0]) != len(floors):
+            lines.append("共享池下限尚未完整确认；不能据请求保护线推断实际准入保留量。" if zh else
+                         "Pool floors are not fully known; the request reserve alone does not establish the admission reserve.")
+        for value in known:
+            effective = max(reserve, value)
+            lines.append((f"共享池下限 {value} MiB → 初始准入保留量至少 {effective} MiB，工作负载加保留量至少 {workload + effective} MiB；在途请求可能要求更高保留量，其他占用另计。" if zh else
+                          f"Pool floor {value} MiB → initial admission reserve at least {effective} MiB; workload plus reserve at least {workload + effective} MiB. Active requests may require a larger reserve; other occupancy is additional."))
+        if any(v > reserve for v in known):
+            lines.append("共享池下限高于请求保护线；降低 Profile 不能绕过它。池须空闲后按已有重配置流程调整，当前运行不变。" if zh else
+                         "The pool floor exceeds request protection. Lowering the Profile cannot bypass it; use the existing reconfiguration procedure when the pool is idle. Current runs retain their policy.")
+    return lines
+
+
 def render(args, result, summary):
     from .bootstrap import compact_result, _literature_arguments
     from .profile_v3 import PROFILE_V3_FILES
@@ -33,6 +72,7 @@ def render(args, result, summary):
         value("Model authentication", {"transport": args.auth_transport, "settings_path": args.claude_settings}),
         value("Budgets (null means no cap)", effective["budget"]),
         value("GPU/pool (CPU-only if absent)", effective.get("gpu")),
+        *gpu_reserve_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
         value("Notifications", notifications),
         *notification_route,
         "Notification checks are local configuration checks only; delivery is unverified. No test message is sent.",

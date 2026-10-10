@@ -84,3 +84,15 @@ def test_comparison_is_explicit_and_never_inferred_from_name(comparison, expecte
     spec = replace(declaration(), comparison=comparison)
     result = evaluate_parsed_measurement(spec, {"metric": spec.metric.name, "value": "8.5", "baseline": "10"})
     assert result.metric_value == expected
+
+
+@pytest.mark.parametrize("field", ["value", "baseline"])
+@pytest.mark.parametrize("bad", [{"dataset": {"f1": 0.7}}, [0.7], True, "NaN"])
+def test_parser_error_names_invalid_scalar_field(field, bad):
+    spec = replace(declaration(), comparison=MeasurementComparison.VALUE)
+    raw = {"metric": spec.metric.name, "value": 0.0021956315567903673, "baseline": 0.7}
+    with pytest.raises(MeasurementContractError, match=rf"result\.{field}:"):
+        evaluate_parsed_measurement(spec, {**raw, field: bad})
+    # Optional per-dataset detail belongs in raw evidence; VALUE needs no baseline.
+    repaired = evaluate_parsed_measurement(spec, {"metric": spec.metric.name, "value": raw["value"]})
+    assert repaired.baseline is None and repaired.metric_value == str(raw["value"])

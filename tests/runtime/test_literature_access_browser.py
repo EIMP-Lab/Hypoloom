@@ -115,10 +115,12 @@ def test_network_reason_check_time_and_budget_failure_are_visible(browser, tmp_p
     page.evaluate("fixture.snapshot.status.literature_access.groups[0].papers[0].reason_code = 'pdf_response_not_pdf'")
     page.wait("document.querySelector('#workbench-list').textContent.includes('PDF endpoint returned non-PDF content')")
     assert 'Last checked: —' not in page.text('#workbench-list')
-    page.wait("document.querySelector('#run-state').textContent.includes('BUDGET LIMIT')")
-    assert 'error_max_budget_usd' in page.text('#run-state')
-    assert page.evaluate("document.querySelector('#run-state').classList.contains('blocked')")
-    assert page.evaluate("(() => { const el = document.querySelector('#run-state'); return el.scrollWidth <= el.clientWidth; })()"), 'failure code must not be clipped by the HUD'
+    page.wait("document.querySelector('#node-failure-list').textContent.includes('BUDGET LIMIT')")
+    page.click('#node-failure-summary')
+    assert 'error_max_budget_usd' in page.text('#node-failure-list')
+    assert 'COMPLETED' in page.text('#run-state') and 'BUDGET LIMIT' not in page.text('#run-state')
+    assert not page.evaluate("document.querySelector('#run-state').classList.contains('blocked')")
+    assert page.evaluate("(() => { const el = document.querySelector('#node-failure-list'); return el.scrollWidth <= el.clientWidth; })()"), 'failure details must remain readable'
     page.screenshot(tmp_path / 'literature-diagnostics.png')
 
 

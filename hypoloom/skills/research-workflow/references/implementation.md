@@ -36,6 +36,24 @@ focused on task semantics and actual changes. A GOAL-only measurement=null does
 not need a new local parser. Record unresolved problems honestly in the existing
 output/notes instead of adding alternate validators or lowering the criterion.
 
+Split authoring checks from device execution. In DESIGN, use short, explicitly
+bounded CPU checks for parser semantics, paths, configuration and changed code.
+Do not treat CPU training as cheap merely because the input has few examples:
+long sequences, model setup and audits may dominate. Inspect the remaining Agent
+deadline before a check, leave time for final JSON and Stop corrections, and stop
+an overlong local check instead of repeatedly sleeping/polling. Retain drafts and
+tests under /workspace so a failed invocation can reuse them.
+
+For a GPU workload, implement its bounded device smoke at the beginning of the
+actual experiment entrypoint. EXECUTION submits that entrypoint through Host; its
+Process owns the GPU grant, timeout, logs and cleanup. Exercise the changed arm
+first, using a tiny forward/backward/save/reload/evaluate path on the granted
+device, and fail before expensive expansion when it fails. CPU-only checks do
+not establish CUDA compatibility. Record this planned but unrun device check in
+the DESIGN handoff; do not wait for it inside DESIGN or claim it already passed.
+Preserve accepted full trial counts and metrics after smoke, separate temporary
+smoke outputs, and do not turn smoke data into scientific outcomes.
+
 Before an expensive experiment, exercise a small meaningful instance through the
 actual changed implementation, selected environment and evaluator: the applicable
 update/solve path, saved artifact, reload, evaluation and metric parser. For a

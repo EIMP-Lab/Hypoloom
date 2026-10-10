@@ -158,6 +158,7 @@ class NativeOutputValidator:
                  session_id: str, max_failed_validations: int, max_request_bytes: int,
                  deadline_at: float, diagnostics: RuntimeDiagnostics | None = None,
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
+                 design_implementation: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
@@ -187,7 +188,8 @@ class NativeOutputValidator:
         self.max_request_bytes = max_request_bytes
         self.deadline_at = deadline_at
         self._deadline_notice_window = (min(300.0, max(0.0, deadline_at - time.monotonic()) * 0.2)
-            if acceptance_smoke else 0.0)
+            if acceptance_smoke or design_implementation else 0.0)
+        self.design_implementation = design_implementation
         self.diagnostics = diagnostics
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
@@ -270,11 +272,17 @@ class NativeOutputValidator:
             notices = []
             remaining = self.deadline_at - time.monotonic()
             if 0 < remaining <= self._deadline_notice_window:
-                notices.append(
+                notices.append((
+                    f"DESIGN has about {math.ceil(remaining)} seconds left before its existing deadline. "
+                    "Finish bounded CPU checks; do not start or keep polling slow training. Preserve draft JSON, "
+                    "reusable tests and remaining GPU checks in the retained /workspace. Put device checks at "
+                    "the start of the Host-submitted experiment for EXECUTION; DESIGN has no GPU grant. "
+                    "Submit complete output with time for native Stop corrections, without claiming unrun checks."
+                ) if self.design_implementation else (
                     f"Grounding has about {math.ceil(remaining)} seconds left before its existing deadline. "
                     "Preserve reusable tests and the draft final JSON under /acceptance, update work notes, "
                     "and submit the complete final JSON as soon as scientific checks and smoke inputs are ready. "
-                    "Leave time for native Stop corrections; do not weaken criteria or treat drafts as accepted.")
+                    "Leave time for native Stop corrections; do not weaken criteria or treat drafts as accepted."))
             if isinstance(notice, str) and notice:
                 notices.append(notice)
             if not notices:

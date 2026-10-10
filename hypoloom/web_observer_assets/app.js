@@ -699,10 +699,21 @@
     const hostAbsent = active && hostObservation.availability === "absent";
     const literaturePending = object(status.literature_access).pending;
     const failures = list(snapshot.attempts).filter(item => item.operational_status === "recovery_exhausted");
-    const codes = [...new Set(failures.map(item => item.operational_reason || "agent_final_failure"))];
-    const warning = failures.length ? ` · ⚠ ${codes.includes("error_max_budget_usd") ? t("BUDGET LIMIT") : t("AGENT FINAL FAILURE")} (${failures.length}): ${codes.slice(-3).join(", ")}` : "";
-    setText("run-state", `${status.run_state}${hostAbsent ? t(" · HOST ABSENT (orphaned)") : ""}${active && status.dispatch_error ? t(" · DISPATCH PAUSED (Host error)") : ""}${warning}${literaturePending ? t(" · Institutional full text: {0} pending", literaturePending) : ""}`);
-    byId("run-state").classList.toggle("blocked", failures.length > 0 || Boolean(active && status.dispatch_error));
+    setText("run-state", `${status.run_state}${hostAbsent ? t(" · HOST ABSENT (orphaned)") : ""}${active && status.dispatch_error ? t(" · DISPATCH PAUSED (Host error)") : ""}${literaturePending ? t(" · Institutional full text: {0} pending", literaturePending) : ""}`);
+    byId("run-state").classList.toggle("blocked", hostAbsent || Boolean(active && status.dispatch_error));
+    byId("node-failures").hidden = failures.length === 0;
+    setText("node-failure-summary", t("Recorded final node failures: {0}", failures.length));
+    const failureList = byId("node-failure-list");
+    failureList.replaceChildren();
+    failures.forEach(attempt => {
+      const row = element("div", "activity-record");
+      const reason = attempt.operational_reason || "agent_final_failure";
+      const label = reason === "error_max_budget_usd" ? `${t("BUDGET LIMIT")} · ${reason}` : reason;
+      row.append(element("strong", "", `${taskScopeLabel(attempt)} · ${attempt.phase || attempt.command || "—"}`));
+      row.append(element("span", "", `${attempt.chain || "—"} · ${formatTimestamp(attempt.ended_at)} · ${label}`));
+      row.append(actionButton(attempt.attempt_id, () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id}), "detail-link"));
+      failureList.append(row);
+    });
     setText("goal-verdict", status.goal_verdict || "PENDING");
     setText(
       "required-assessed",

@@ -67,6 +67,12 @@ workload reserves 1,024 MiB. GPU use also requires a positive
 that floor is the workload budget. An omitted or zero percentage preserves the
 old fixed reserve exactly. Adopting an existing Profile does not rewrite it.
 
+Init explains request protection, the percentage basis, a dominating absolute
+floor and the pool's initial admission reserve separately. Unknown pool floors
+remain unconfirmed. Changing the percentage alone cannot remove an explicit
+absolute floor; review both Profile fields and the pool configuration. Existing
+runs keep their frozen budgets.
+
 The reserve does not replace workload estimation headroom. The Host uses the
 resolved reserve for preview, admission and sustained-pressure protection;
 accepted requests keep their values. On pooled runs, after an actual OOM, the next comparable

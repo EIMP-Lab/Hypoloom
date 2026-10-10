@@ -28,6 +28,18 @@ update its observer.
 
 ## Completion and final-report evidence
 
+Web shows recorded final node failures separately from durable run state. Expand
+the list for owner, stage, chain, time, reason and Attempt details. These nodes
+have exhausted automatic recovery; unrelated work may continue. Check Host
+liveness, dispatch errors and Process observations to assess the whole run.
+Failures remain visible after completion, and TUI uses the same node count.
+
+Local parser `value` and optional `baseline` must be finite scalar numbers;
+per-dataset detail belongs in raw artifacts. Invalid fields are named as
+`result.value` or `result.baseline`. Native Stop rejections survive into retry
+inputs without a secondary missing-source error replacing the cause. VALUE
+comparison may omit baseline; other declared comparisons still require it.
+
 Implementation completion checks the actual sources and cumulative Git patch
 before the native Agent exits. Oversized output is returned to that same call
 for correction within the configured Stop limit. The invocation's output-byte

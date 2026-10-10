@@ -88,6 +88,11 @@
 
   <main id="main-content">
     <aside id="run-concurrency" class="concurrency-summary" aria-label="Concurrency occupancy"></aside>
+    <details id="node-failures" class="panel" hidden>
+      <summary id="node-failure-summary"></summary>
+      <p data-i18n>Recorded node failures have exhausted automatic recovery. They do not mean the whole run has stopped.</p>
+      <div id="node-failure-list"></div>
+    </details>
     <section id="provider-panel" class="panel" aria-label="API availability">
       <strong id="provider-title" data-i18n>API status unknown</strong>
       <p id="provider-description" aria-live="polite" data-i18n>Waiting for a live Host observation.</p>

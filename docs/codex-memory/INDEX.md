@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Authoring recovery and resource review](../design/authoring-failures-and-resource-review.md):
+  bounded DESIGN checks/device-smoke handoff, deadline advice, exact parser-field
+  feedback, native rejection preservation, separate node-failure UI and readable
+  GPU reserve/pool precedence. [Validation](../qualification.md#authoring-recovery-and-resource-review-2026-10-10)
+  records native recovery/CPU closure, browser checks and retained-run boundaries.
+
 - [CC context-window acquisition](../design/context-management-and-recovery.md#cc-窗口获取与隔离运行传递2026-10-10):
   selected settings/environment, automatic working ceilings, bounded model
   metadata, isolated CC propagation and shared UI/relay limits; preserves explicit

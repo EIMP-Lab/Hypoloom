@@ -102,6 +102,15 @@ their frozen runtime and admitted Profile.
 
 ## Before costly experiments
 
+DESIGN uses bounded CPU checks for parsing, configuration, paths and small code
+cases. It has no GPU grant. For a GPU model, author a small device smoke phase at
+the beginning of the actual experiment entrypoint, then let EXECUTION submit it
+through Host. Test the changed arm on the granted device before expensive work;
+fail normally when the smoke fails. Preserve full trial/metric obligations and
+keep smoke outputs separate from scientific measurements. Do not spend DESIGN's
+deadline on CPU training or repeated polling. Its existing tool hook now reminds
+it near the deadline to retain drafts/tests and leave time for final correction.
+
 Use a small meaningful case through the actual implementation and evaluator,
 including saved artifacts and reload where applicable. Training tasks can use a
 tiny train/save/load/evaluate cycle; solvers and pipelines choose their equivalent.

@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/80"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/81"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -645,6 +645,7 @@ class ClaudeAgentHost:
                 context_notice=relay.context_notice if request.schema_version >= 25 else None,
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
+                design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
                 candidate_check=_native_candidate_check(request, tool_workspace),
                 final_report_check=tool_workspace.capture_workspace if request.command.value == "FINAL_REPORT" else None,
@@ -978,6 +979,7 @@ class ClaudeAgentHost:
                     observed_wire_input_floor=wire_input_floor,
                     observed_wire_exchanges=exchanges,
                     session_usage_baseline=handle._session_usage_baseline,
+                    validate_candidate=False,
                 )
                 diagnostics.update(parsed_diagnostics)
             reason = AgentHostTerminalReason.FAILED
@@ -1002,6 +1004,7 @@ class ClaudeAgentHost:
                         observed_wire_input_floor=wire_input_floor,
                         observed_wire_exchanges=exchanges,
                         session_usage_baseline=handle._session_usage_baseline,
+                        validate_candidate=False,
                     )
                     diagnostics.update(parsed_diagnostics)
                     reason = AgentHostTerminalReason.INVALID_OUTPUT
@@ -1104,11 +1107,15 @@ class ClaudeAgentHost:
                     response = None
                     failure_code = "invalid_provider_envelope"
                     diagnostics["provider_diagnostic"] = "native output validation was unavailable or prevented completion"
-                    if handle.request.schema_version >= 24 and not snapshot.get("error"):
-                        rejected = [row.get("validation_error") for row in snapshot.get("rounds", ())
-                            if row.get("status") == "rejected"]
-                        if rejected and (message := bounded_diagnostic_text(rejected[-1])):
-                            diagnostics["validation_error"] = {"code": "invalid_candidate", "message": message}
+            if reason is not AgentHostTerminalReason.SUCCEEDED and snapshot.get("accepted") is not True:
+                rejected = [row.get("validation_error") for row in snapshot.get("rounds", ())
+                    if row.get("status") == "rejected"]
+                if handle.request.schema_version >= 24 and rejected and (message := bounded_diagnostic_text(rejected[-1])):
+                    diagnostics["validation_error"] = {"code": "invalid_candidate", "message": message}
+                    if (reason is AgentHostTerminalReason.INVALID_OUTPUT
+                            and failure_code == "invalid_provider_envelope" and not snapshot.get("error")):
+                        failure_code = "invalid_candidate"
+                        diagnostics["provider_diagnostic"] = message
         if reason in {
             AgentHostTerminalReason.TIMED_OUT,
             AgentHostTerminalReason.CANCELLED,
@@ -1475,6 +1482,7 @@ def _provider_response(
     observed_wire_input_floor: object = None,
     observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
     session_usage_baseline: Mapping[str, object] | None = None,
+    validate_candidate: bool = True,
 ) -> tuple[AgentResponse | None, str | None, Mapping[str, object]]:
     outer, stream_failure, stream_diagnostics = _unpack_provider_stream(raw)
     if stream_failure is not None:
@@ -1525,6 +1533,10 @@ def _provider_response(
         return None, "turn_budget_exceeded", diagnostics
     if outer.get("is_error") is not False:
         return None, "provider_error", diagnostics
+    if not validate_candidate:
+        # Failed native Stop has no accepted workspace package. Retain provider
+        # accounting without inventing a secondary missing-source rejection.
+        return None, None, diagnostics
     if final_text_output:
         try:
             if validated_text is not None and outer.get("result") != validated_text:

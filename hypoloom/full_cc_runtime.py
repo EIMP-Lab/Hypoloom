@@ -491,6 +491,15 @@ def full_cc_instruction(request: AgentRequest) -> str:
             )
     if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT":
         common += (
+            f"This DESIGN invocation has at most {request.budget.wall_seconds} seconds and ends at {request.deadline}. "
+            "Reserve time for completion and native Stop corrections. Limit authoring CPU checks to small, "
+            "bounded parsing/configuration/path and implementation checks; do not run full epochs or "
+            "repeated sleep/poll loops while waiting for training. If a representative model check is slow "
+            "on CPU or needs CUDA, implement a bounded forward/backward/save/reload check at the start of "
+            "the actual experiment entrypoint, for EXECUTION to submit through the Host on its granted device. "
+            "DESIGN has no GPU grant. Stop a failed smoke before costly expansion, preserve frozen trial "
+            "coverage, and keep smoke outputs separate from scientific measurements. Record unrun device "
+            "checks and preserve draft JSON/tests in the retained /workspace for handoff or recovery. "
             "Keep the candidate, encoded sources and cumulative patch within "
             f"the {request.budget.max_output_bytes}-byte response limit, leaving room for final metadata. "
             "Untracked files count; source may appear separately and in the patch. "
@@ -516,7 +525,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "only the declared parser files on these samples, CPU-only, for at most 15 seconds, within this node's "
             "output byte budget. It applies the existing local C5 validator before accepting DESIGN. Repair actual "
             "parser source or fixture errors in this session; a valid metric/value/optional baseline below target is "
-            "allowed. A GOAL-only measurement=null needs no local parser or local fixture. "
+            "allowed. value and optional baseline must be finite scalar numbers; place per-dataset detail "
+            "in raw artifacts, not baseline. For comparison VALUE, baseline may be omitted. "
+            "A GOAL-only measurement=null needs no local parser or local fixture. "
         )
     if shared:
         common += (

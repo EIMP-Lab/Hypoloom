@@ -21,7 +21,13 @@ and parsers, preserving all accepted measurement and shared-goal obligations.
 
 Use a current-design pilot for the initial full-experiment timeout when needed.
 Only EXECUTION can submit resource work through Host; DESIGN may describe a probe
-and use authorized CPU checks, but cannot launch GPU work directly. Reuse a still
+and use bounded CPU checks, but cannot launch GPU work directly. For GPU model
+checks, place a bounded smoke phase at the start of the actual Host-submitted
+Process on its granted device; do not emulate an expensive GPU workload on CPU
+inside DESIGN. A few examples need not be fast. Stop overlong authoring checks,
+retain the draft and pending checks, and leave time for Stop correction before
+the invocation deadline. Do not increase frozen budgets or reduce trial coverage.
+Reuse a still
 applicable completed pilot rather than repeat it. Estimate the sum of remaining
 phase work, include evaluation/I/O and explained uncertainty, and keep the total
 run budget binding. Cross-run runtime averages are not a required input.

@@ -717,6 +717,37 @@ def test_browser_host_absence_dispatch_pause_and_terminal_labels(browser):
     page.wait("document.querySelector('#run-state').textContent === 'CANCELLED'")
 
 
+def test_browser_final_node_failure_is_separate_from_live_state(browser):
+    page = browser
+    page.evaluate("""fixture.snapshot.status.run_state='ACTIVE';
+      fixture.snapshot.overview.host_observation={availability:'responded'};
+      Object.assign(fixture.snapshot.attempts[0], {operational_status:'recovery_exhausted',
+        operational_reason:'timed_out', phase:'EXPERIMENT_DESIGN_IMPLEMENT',
+        chain:'<script>window.injected=true</script>', ended_at:1791612501});""")
+    page.wait("!document.querySelector('#node-failures').hidden")
+    assert page.text('#run-state') == 'ACTIVE'
+    assert not page.evaluate("document.querySelector('#run-state').classList.contains('blocked')")
+    assert page.text('#node-failure-summary') == 'Recorded final node failures: 1'
+    page.click('#node-failure-summary')
+    assert 'expert-a' in page.text('#node-failure-list')
+    assert 'EXPERIMENT_DESIGN_IMPLEMENT' in page.text('#node-failure-list')
+    assert 'timed_out' in page.text('#node-failure-list')
+    assert not page.evaluate('Boolean(window.injected)')
+    page.click('#node-failure-list button')
+    page.wait("fixtureRequests.some(r=>r[1].includes('kind=attempt') && r[1].includes('attempt_id=attempt-a'))")
+    page.click('#close-drawer')
+    page.click('#language-toggle')
+    page.wait("document.querySelector('#node-failure-summary').textContent==='已记录的节点最终失败：1'")
+    assert '不代表整项运行已停止' in page.text('#node-failures')
+    page.evaluate("fixture.snapshot.status.dispatch_error={exception_type:'ValueError'}")
+    page.wait("document.querySelector('#run-state').classList.contains('blocked')")
+    page.evaluate("fixture.snapshot.status.run_state='COMPLETED'")
+    page.wait("document.querySelector('#run-state').textContent==='COMPLETED'")
+    assert not page.evaluate("document.querySelector('#node-failures').hidden")
+    page.evaluate("fixture.snapshot.attempts=[]")
+    page.wait("document.querySelector('#node-failures').hidden")
+
+
 def test_browser_run_hud_uses_observed_totals_without_reserves_or_filtering(browser, tmp_path):
     page = browser
     assert page.text('#run-tokens') == '—'

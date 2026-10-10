@@ -776,7 +776,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/80"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/81"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -4007,6 +4007,41 @@ def test_malformed_and_nonzero_are_typed_observations(
     assert observation.failure_code == code
     assert observation.returncode == returncode
     assert observation.response is None
+
+
+@pytest.mark.parametrize("mode,updates,forced,expected", [
+    ("valid", {}, None, "invalid_candidate"),
+    ("malformed", {}, None, "malformed_json"),
+    ("nonzero", {}, None, "nonzero_exit"),
+    ("valid", {"num_turns": 100000}, None, "turn_budget_exceeded"),
+    ("valid", {"subtype": "error_max_budget_usd", "is_error": True}, None, "provider_not_success"),
+    ("valid", {}, AgentHostTerminalReason.TIMED_OUT, "timed_out"),
+    ("valid", {}, AgentHostTerminalReason.CANCELLED, "cancelled"),
+])
+def test_rejected_stop_feedback_preserves_primary_failure(tmp_path, mode, updates, forced, expected):
+    class RejectedStop:
+        def close(self):
+            pass
+
+        def accepted_text(self):
+            raise ValueError("native output was not accepted")
+
+        def snapshot(self):
+            return {"accepted": False, "rounds": [{"status": "rejected",
+                "validation_error": "parsed result.baseline: metric value must be numeric"}]}
+
+    host = _host(tmp_path)
+    handle = _start(host, mode=mode, extra_environment={"STUB_VALID_OUTPUT": _provider_output(**updates)})
+    # Exercise final collection with a rejected current native Stop; full native
+    # correction/retry ownership is covered by test_authoring_failure_recovery.
+    handle.request = replace(handle.request, schema_version=24)
+    handle._output_validator = RejectedStop()
+    handle._process.wait(timeout=5)
+    observation = host._observe(handle, forced) if forced else host.wait(handle)
+    assert observation.failure_code == expected
+    assert observation.response is None
+    assert "result.baseline" in observation.diagnostics["validation_error"]["message"]
+    assert not process_group_exists(handle.process_group_id)
 
 
 def test_failed_provider_keeps_bounded_stderr_without_stdout_transcript(

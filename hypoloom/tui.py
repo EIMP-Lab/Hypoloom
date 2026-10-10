@@ -706,9 +706,10 @@ class SummaryPanel(CockpitPanel):
         failures = [item for item in snapshot.attempts if item.operational_status == "recovery_exhausted"]
         if failures:
             codes = list(dict.fromkeys(item.operational_reason or "agent_final_failure" for item in failures))
-            label = tr("BUDGET LIMIT") if "error_max_budget_usd" in codes else tr("AGENT FINAL FAILURE")
-            lines.insert(2, tr("[b #ff6b7a]⚠ {0} · {1} calls terminated · ", label, len(failures))
-                + escape(", ".join(codes[-3:])) + tr(" · d inspect calls[/]"))
+            if "error_max_budget_usd" in codes:
+                codes[codes.index("error_max_budget_usd")] = tr("BUDGET LIMIT") + " · error_max_budget_usd"
+            lines.insert(2, "[yellow]" + tr("Recorded final node failures: {0}", len(failures))
+                + " · " + escape(", ".join(codes[-3:])) + tr(" · d inspect calls[/]"))
         activity, budget_lines, reliability = [], [], []
         if overview:
             totals = overview.get("totals", {})
