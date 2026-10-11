@@ -416,7 +416,7 @@ def test_relay_streams_before_upstream_completes_and_blocks_split_credentials(
     "limits,status,upstream_count",
     [
         ({"max_request_bytes": len(_BODY) - 1}, 413, 0),
-        ({"max_response_bytes": len(_RESPONSE) - 1}, 502, 1),
+        ({"max_response_bytes": len(_RESPONSE) - 1}, 400, 1),
         ({"deadline_at": 0.0}, 504, 0),
     ],
 )
@@ -448,7 +448,53 @@ def test_relay_caps_calls_and_aggregate_response_bytes(
     relay = _relay(tmp_path, upstream, max_response_bytes=2 * len(_RESPONSE) - 1)
     try:
         assert _request(relay)[0] == 200
-        assert _request(relay)[0] == 502
+        status, body = _request(relay)
+        assert status == 400
+        assert b"local API response transport limit exceeded" in body
+        before = len(upstream.calls)
+        assert _request(relay)[0] == 400
+        assert len(upstream.calls) == before  # Exhaustion never contacts upstream again.
+        assert relay.response_transport() == {"scope": "api_response_cumulative",
+            "received_bytes": 2 * len(_RESPONSE), "limit_bytes": 2 * len(_RESPONSE) - 1,
+            "limit_reached": True}
+    finally:
+        relay.close()
+
+
+@pytest.mark.parametrize("limit", [4 * 1024 * 1024, 64 * 1024 * 1024])
+def test_complete_fragmented_sse_across_requests(tmp_path: Path, upstream: _Upstream, limit: int) -> None:
+    frame = (b'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,'
+        b'"delta":{"type":"thinking_delta","thinking":"x "}}\n\n')
+    body = (b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg-1",'
+        b'"usage":{"input_tokens":1,"output_tokens":0}}}\n\n' + frame * 17000
+        + b'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
+        b'"usage":{"output_tokens":8500}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n')
+    assert len(body) < 4 * 1024 * 1024 < 2 * len(body)
+
+    def stream(handler):
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.end_headers()
+        for offset in range(0, len(body), 65521):
+            handler.wfile.write(body[offset:offset + 65521])
+            handler.wfile.flush()
+
+    upstream.script = stream
+    relay = _relay(tmp_path, upstream, max_response_bytes=limit)
+    try:
+        assert _request(relay) == (200, body)
+        status, second = _request(relay)
+        assert status == 200  # An already-started SSE response cannot change status.
+        if limit == 64 * 1024 * 1024:
+            assert second == body  # Every frame and final usage survive unchanged.
+            assert not relay.response_transport()["limit_reached"]
+            assert relay.response_transport()["received_bytes"] == 2 * len(body)
+        else:
+            assert second != body and body.startswith(second)
+            assert relay.response_transport()["limit_reached"]
+            assert relay.response_transport()["received_bytes"] > limit
+            assert _request(relay)[0] == 400
+            assert len(upstream.calls) == 2
     finally:
         relay.close()
 

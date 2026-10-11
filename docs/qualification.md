@@ -2,6 +2,49 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Streaming transport limits (2026-10-11)
+
+Adapter 82 repairs the [independent stdout/API transport bounds](design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11).
+Evidence: `.local/qualification/streaming-transport-20261011/`.
+
+- `original-replay.json` reproduces three retained GLM proposals rejected before
+  parsing despite complete successful CLI results and accepted native Stop.
+  `repaired-replay.json` preserves the exact parsed result, schema validity and
+  accounting while reducing parser input to **277,110 / 338,006 / 351,845 bytes**.
+  Original logs and frozen requests are unchanged. This is transport/schema/usage
+  replay, not cross-version acceptance or migration of the adapter-72 run.
+- **523 distinct focused/native checks pass**, with no unresolved failures or
+  skips (`test-summary.json`), including documentation and frozen-bundle tests.
+  Regressions cover raw/content bounds, unknown and content-bearing
+  progress records, malformed tails, conflicting completions, preserved usage,
+  credential boundaries, terminal operational classification and existing token,
+  native-output and provider-traffic controls. Complete fragmented SSE responses
+  cross the old aggregate 4 MiB limit byte-for-byte under the new allowance;
+  a cap during an already-started stream truncates it without a fabricated
+  completion and rejects later requests locally, with no further upstream call.
+- `native.xml` uses the installed CC, real Host/broker/bwrap, local scripted
+  provider and actual CPU execution. Successful DESIGN receives **4,258,508
+  API bytes** and writes **6,726,111 stdout bytes**, including 34,000 count-only
+  progress events; **84,323 content bytes** retain validation and accounting.
+  Eleven Agents and one CPU Process close successfully and publish one outcome.
+- The negative native case injects the former 4 MiB allowance through the same
+  production relay boundary. DESIGN ends once with `provider_transport_limit`,
+  no ordinary retry and no API-outage classification. Fourteen Agents close;
+  no Process or scientific outcome is fabricated. The run finishes its ordinary
+  reporting path. Both native cases pass the existing Oracle, with zero open
+  Attempts, pending effects and duplicate effects. `independent-census.json`
+  separately counts SQL ownership and checks every recorded process group;
+  none remains live. See `native-complete.json` and `native-local-cap.json`.
+- Initial focused failures were an adapter-version literal and a pre-existing
+  test's fixed 0.5-second wait for a delayed child. The latter reproduced across
+  both observer variants; bounded child waiting now preserves the required
+  late-completion timeout assertion. Earlier red XML evidence is retained.
+
+This is focused repair qualification, not full G1/G4/G5 promotion. No live GLM
+generation, physical GPU test, DNS repair or retained research-run mutation was
+performed. A formerly truncated provider stream cannot establish what it would
+have generated later. Updated code applies to newly frozen runs.
+
 ## Pool inspection in the research shell (2026-10-10)
 
 The [follow-up repair](design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码)

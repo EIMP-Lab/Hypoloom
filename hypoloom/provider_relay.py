@@ -350,6 +350,8 @@ class ProviderRelay:
         self._lookbehind = max(map(len, self._secrets)) - 1
         self._request_count = 0
         self._response_bytes = 0
+        self._response_bytes_received = 0
+        self._response_limit_reached = False
         self.diagnostics = diagnostics
         self._exchange_count = 0
         self._lock = threading.Lock()
@@ -383,6 +385,12 @@ class ProviderRelay:
                         _TOKEN_ERROR_BODY if message == "token_budget_exceeded" else _ERROR_BODY)
                 if message == "context_capacity" and getattr(self, "context_estimate_source", None) == "utf8_bytes_conservative_estimate":
                     body = b'{"type":"error","error":{"type":"invalid_request_error","message":"Hypoloom cannot confirm that this request fits the configured working context limit using the available byte estimate; end this invocation for Host input review or reconstruction."}}'
+                if message == "response_byte_limit":
+                    transport = relay.response_transport()
+                    body = json.dumps({"type": "error", "error": {"type": "invalid_request_error",
+                        "message": (f"Hypoloom local API response transport limit exceeded: "
+                            f"{transport['received_bytes']} bytes received across this invocation; "
+                            f"limit {transport['limit_bytes']} bytes. No further upstream requests admitted.")}}).encode()
                 try:
                     self.send_response(code)
                     self.send_header("Content-Type", "application/json")
@@ -614,6 +622,8 @@ class ProviderRelay:
                     reason = ("relay_closed" if relay._closed.is_set() else "deadline") if exc.status == 504 else exc.code or stage
                     capture.data.update(failure_stage=stage, failure_reason=reason,
                                         response_partial_reason=reason)
+                    if reason == "response_byte_limit":
+                        capture.data["response_transport"] = relay.response_transport()
                     if not started:
                         self.send_error(exc.status, exc.code)
                         capture.data["relay_status"] = exc.status
@@ -717,6 +727,8 @@ class ProviderRelay:
     def _reserve_request(self, *, generation: bool = True) -> None:
         self._remaining()
         with self._lock:
+            if self._response_limit_reached:
+                raise _RelayRejected(400, "response_byte_limit")
             if generation and self.token_budget is not None and self._observed_tokens >= self.token_budget:
                 self.token_limit_reached = True
                 raise _RelayRejected(400, "token_budget_exceeded")
@@ -727,9 +739,16 @@ class ProviderRelay:
     def _reserve_response(self, count: int) -> None:
         self._remaining()
         with self._lock:
-            if self._response_bytes + count > self.max_response_bytes:
-                raise _RelayRejected(502)
+            self._response_bytes_received += count
+            if self._response_limit_reached or self._response_bytes + count > self.max_response_bytes:
+                self._response_limit_reached = True
+                raise _RelayRejected(400, "response_byte_limit")
             self._response_bytes += count
+
+    def response_transport(self) -> dict[str, object]:
+        with self._lock:
+            return {"scope": "api_response_cumulative", "received_bytes": self._response_bytes_received,
+                "limit_bytes": self.max_response_bytes, "limit_reached": self._response_limit_reached}
 
     def close(self) -> None:
         if self._closed.is_set():
