@@ -52,6 +52,12 @@ API 不可用的调用正常关闭并记账，但不会逐个耗尽科研节点�
 
 ## 本地流式传输上限
 
+这些限制适用于各供应商共用的 Claude Code／Anthropic 兼容接口调用路径。
+GLM 暴露了本次修复的问题，无需配置 GLM 专用选项。旧 API 响应额度为
+`max(4 MiB, max_tokens × 32)`：4 MiB 是最低值；每次 Agent 调用配置
+1,000,000 token 时，额度实际为 32,000,000 字节（约 30.52 MiB），
+即使 token 策略为 `observe` 也一样。
+
 Adapter 82 把 API 响应累计传输量独立限制为**每次 Agent 调用 64 MiB**。
 一次调用内的多轮请求及 SSE 事件封装都会计入；这不是模型的输出 token 上限。
 耗尽时返回 `provider_transport_limit`，在 `provider_response_transport` 中记录

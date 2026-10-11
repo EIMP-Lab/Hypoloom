@@ -45,6 +45,50 @@ generation, physical GPU test, DNS repair or retained research-run mutation was
 performed. A formerly truncated provider stream cannot establish what it would
 have generated later. Updated code applies to newly frozen runs.
 
+### PR 7 merge review (2026-10-11)
+
+The merge review preserves PR #7's production implementation at `dfe08c9`.
+It updates the existing oversized-response regression to require local HTTP 400,
+the explicit transport error and exact byte/scope diagnostics, while preserving
+partial-body assertions. Two stale CLI version literals now require adapter 82
+(three cases). Bilingual guides clarify that the shared transport applies across
+providers and that the old 4 MiB allowance was a minimum: 1,000,000 configured
+tokens already allowed 32,000,000 API response bytes, including in `observe` mode.
+
+Evidence: `.local/qualification/pr7-merge-20261011/`.
+
+- Final affected relay, streaming, CLI identity and documentation checks:
+  **38 passed**, no failures or skips (`final-focused.xml`). These supersede
+  the overlapping 35-case and three-case preliminary selections.
+- Full offline G1 completed with **8,152 passed, 31 failed and 159 skipped**
+  in 1,724.17 seconds (`g1.xml`, `g1.log`). Compile, undefined-name and whitespace
+  checks passed. Repeating exactly those 31 failed cases on unmodified base
+  `cf1b8f0` reproduced **all 31 failures** (`baseline-failures.xml`). Apart from
+  the three corrected CLI assertions, **28 baseline failures remain**: output
+  observation test doubles, diagnostic/native recovery expectations, model
+  preflight, the existing Host LOC allocation and operator Skill length.
+  This comparison establishes that the failures predate this PR; it does not
+  resolve them or turn G1 green. The full suite was not repeated after the
+  test/documentation-only follow-up.
+- Both streaming native scenarios passed within that G1 invocation: **25 Agents
+  and one CPU Process** close, one canonical outcome is published, and both
+  existing Oracles pass with no open Attempts, pending or duplicate effects.
+  These are actual CC/Host/broker/bwrap/CPU paths with a local scripted provider.
+- Independent G1 census reads **13,697 Attempt rows** across 1,299 databases
+  containing the Attempt table and checks **2,631 recorded process groups**;
+  none is live (`g1-census.json`). The 124 open fixture rows are distinct from
+  process liveness. Simplified/invalid fixture databases excluded from successful
+  reads are listed separately. The baseline rerun also leaves none of its 197
+  recorded groups live (`baseline-liveness.json`).
+- Source distribution and wheel build successfully. All **195 package files**
+  match source, wheel, disposable installation and a freshly frozen bundle;
+  installed CLI help and MCP initialization/tool listing pass outside the
+  checkout (`package-check.json`). The shared installation is unchanged.
+
+This is a development-branch integration with recorded pre-existing failures,
+**not G1 promotion or a release qualification**. Paid-provider and physical GPU
+lanes remain unqualified. Existing research runs and private Profiles are unchanged.
+
 ## Pool inspection in the research shell (2026-10-10)
 
 The [follow-up repair](design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码)

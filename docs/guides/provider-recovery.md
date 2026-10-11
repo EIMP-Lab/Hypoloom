@@ -65,6 +65,12 @@ response confirms availability independently of scientific output validation.
 
 ## Local streaming transport limits
 
+These limits apply to the shared Claude Code/Anthropic-compatible transport
+across providers. GLM exposed the repaired failure; no GLM-specific setting is
+required. Previously, the API response allowance was `max(4 MiB, max_tokens * 32)`:
+4 MiB was a minimum, while 1,000,000 configured invocation tokens allowed
+32,000,000 bytes (about 30.52 MiB), including under token `observe` policy.
+
 Adapter 82 bounds cumulative API response bytes at **64 MiB per Agent invocation**,
 independently of token budgets. SSE framing and all calls within that invocation
 count toward this limit; it is not the model's output-token limit. Exhaustion

@@ -43,6 +43,15 @@ One relay sample contains 28,395 thinking deltas with only 120,695 content bytes
 SSE framing and other responses exhaust 4 MiB during the 28th request. These are
 transport-volume failures, not evidence of a model token/window overflow.
 
+The 4 MiB allowance belongs to that reproduction. Previously, full-CC API
+responses used `max(4 MiB, max_tokens * 32)`; stdout parsing also considered
+the encoded final-output allowance. A 1,000,000-token invocation therefore
+already allowed 32,000,000 bytes (about 30.52 MiB), even in `observe` mode.
+Progress inflation can exist without reaching that larger limit. The repair
+applies to the shared Claude Code/Anthropic-compatible transport, with no GLM
+model-name or endpoint branch; its narrow progress exemption recognizes the
+CLI event shape. It does not establish a failure rate for other providers.
+
 Keep the original raw stdout under the existing full-CC 64 MiB file allowance.
 Read it incrementally, omitting only the known complete thinking-count record
 shape from the parser's byte allowance. Count omitted records/bytes in ordinary

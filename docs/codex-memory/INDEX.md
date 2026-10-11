@@ -5,6 +5,8 @@
   filtering, independent bounded wire capacity and local terminal diagnostics.
   [Validation](../qualification.md#streaming-transport-limits-2026-10-11) separates
   read-only replay, complete native CPU publication and capped failure closure.
+  [PR #7 merge review](../qualification.md#pr-7-merge-review-2026-10-11) records
+  shared-provider scope, full-suite baseline failures and final package checks.
 
 - [Pool inspection in the research shell](../design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码):
   reproduced cwd permission failure, narrow systemd fallback with live UID/argv

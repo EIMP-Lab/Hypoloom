@@ -149,13 +149,19 @@ def test_oversized_response_is_explicitly_partial(tmp_path: Path, upstream: _Ups
     maximum = len(_RESPONSE) - 1
     relay = _relay(tmp_path, upstream, max_response_bytes=maximum, diagnostics=_recorder(root))
     try:
-        assert _request(relay)[0] == 502
+        status, body = _request(relay)
+        assert status == 400
+        assert b"local API response transport limit exceeded" in body
         directory, metadata = _exchange(root)
         assert (directory / "response.body").read_bytes() == _RESPONSE[:maximum]
         assert metadata["response_bytes_received"] == len(_RESPONSE)
         assert metadata["response_body_complete"] is False
         assert metadata["response_partial_reason"] == "response_byte_limit"
         assert metadata["failure_stage"] == "response_byte_limit"
+        assert metadata["response_transport"] == {
+            "scope": "api_response_cumulative", "received_bytes": len(_RESPONSE),
+            "limit_bytes": maximum, "limit_reached": True,
+        }
     finally:
         relay.close()
 

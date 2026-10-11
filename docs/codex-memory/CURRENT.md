@@ -12,6 +12,11 @@
   are unchanged; no paid GLM or full G1 promotion is claimed.
   [Design](../design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11)
   / [validation](../qualification.md#streaming-transport-limits-2026-10-11).
+  Merge review: 38 final focused checks pass; full G1 records 8,152 passes,
+  31 failures and 159 skips. All failures reproduce on base `cf1b8f0`; three
+  stale adapter assertions are corrected, leaving 28 baseline failures and no
+  G1 promotion. Both streaming native cases pass again; 195 package files match
+  source/install/fresh bundle. [Review evidence](../qualification.md#pr-7-merge-review-2026-10-11).
 
 - October 10 pool init follow-up: real research-shell isolation denies the pool
   MainPID cwd symlink, while UID/argv remain readable. Only this permission error
