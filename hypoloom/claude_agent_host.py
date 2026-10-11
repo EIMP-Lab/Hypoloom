@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/81"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/82"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -86,6 +86,7 @@ _CLAUDE_CODE_MODEL_ALIASES = frozenset(
 )
 _MAX_DIAGNOSTIC_BYTES = 64 * 1024
 _TRANSPORT_OVERHEAD_BYTES = 1024 * 1024
+_FULL_CC_TRANSPORT_BYTES = 64 * 1024 * 1024
 _EXTRA_RUNTIME_DESTINATION_ROOTS = (
     Path("/bin"),
     Path("/usr/bin"),
@@ -603,7 +604,7 @@ class ClaudeAgentHost:
                 provider_environment=relay_environment, model=model,
                 expected_effort=request_node_runtime(request.input_artifacts).get("effort"),
                 max_request_bytes=max(4 * 1024 * 1024, request.budget.max_tokens * 16),
-                max_response_bytes=max(4 * 1024 * 1024, request.budget.max_tokens * 32),
+                max_response_bytes=_FULL_CC_TRANSPORT_BYTES,
                 max_requests=request.budget.max_turns * 4 + 4,
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 token_budget=request.budget.max_tokens if request.budget.token_enforcement_mode == "enforce" else None,
@@ -686,7 +687,7 @@ class ClaudeAgentHost:
         guardian: subprocess.Popen[bytes] | None = None
         # CC's persistent transcript includes tool records, not just the bounded
         # final ACI response. Keep the output parser limit distinct from FSIZE.
-        transport_file_limit = (max(_transport_output_limit(request), 64 * 1024 * 1024)
+        transport_file_limit = (_FULL_CC_TRANSPORT_BYTES
             if full_cc else _transport_output_limit(request)) + 1
         launcher_argv = (
             sys.executable,
@@ -961,18 +962,26 @@ class ClaudeAgentHost:
         stderr_size = _stream_size(handle._stderr_file)
         diagnostics["stdout_bytes"] = stdout_size
         diagnostics["stderr_bytes"] = min(stderr_size, _MAX_DIAGNOSTIC_BYTES)
+        output, stdout_transport = _read_agent_stdout(handle._stdout_file, output_limit,
+            raw_limit=_FULL_CC_TRANSPORT_BYTES if handle.request.schema_version >= 11 else output_limit,
+            filter_progress=handle.request.schema_version >= 11)
+        diagnostics["stdout_transport"] = stdout_transport
         workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None
         final_text_output = handle._output_validator is not None
         final_candidate = None
         validated_text = None
-        if reason is None and stdout_size > output_limit:
+        if reason is None and output is None:
             reason = AgentHostTerminalReason.INVALID_OUTPUT
             failure_code = "transport_output_too_large"
+            scope = stdout_transport["limit_scope"]
+            kind = "raw" if scope == "stdout_raw" else "content"
+            diagnostics["provider_diagnostic"] = (
+                f"Local {scope} limit exceeded: observed {stdout_transport[kind + '_bytes']} bytes; "
+                f"limit {stdout_transport[kind + '_limit_bytes']} bytes")
         elif reason is None and stderr_size > output_limit:
             reason = AgentHostTerminalReason.INVALID_OUTPUT
             failure_code = "transport_stderr_too_large"
         elif reason is None and returncode != 0:
-            output = _read_bounded(handle._stdout_file, output_limit)
             if output is not None:
                 _, _, parsed_diagnostics = _provider_response(
                     handle.request, handle.model, output, final_text_output=final_text_output,
@@ -985,7 +994,6 @@ class ClaudeAgentHost:
             reason = AgentHostTerminalReason.FAILED
             failure_code = "nonzero_exit"
         if reason is None and final_text_output:
-            output = _read_bounded(handle._stdout_file, output_limit)
             outer, stream_failure, _ = _unpack_provider_stream(output or b"")
             if stream_failure is not None:
                 reason = AgentHostTerminalReason.INVALID_OUTPUT
@@ -1018,7 +1026,6 @@ class ClaudeAgentHost:
                 try:
                     candidate = None
                     if isinstance(handle.tool_workspace, PreparedSessionWorkspace) and handle.request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "GROUNDING"}:
-                        output = _read_bounded(handle._stdout_file, output_limit)
                         outer, _, _ = _unpack_provider_stream(output or b"")
                         structured = (final_candidate if final_text_output else
                             outer.get("structured_output") if isinstance(outer, Mapping) else None)
@@ -1051,7 +1058,6 @@ class ClaudeAgentHost:
                     )
                     # Capture rejection does not undo a completed provider call.
                     # Keep its reported usage without accepting the candidate.
-                    output = _read_bounded(handle._stdout_file, output_limit)
                     if output is not None:
                         outer, stream_failure, stream_diagnostics = _unpack_provider_stream(output)
                         if stream_failure is None and outer is not None and outer.get("type") == "result":
@@ -1072,7 +1078,6 @@ class ClaudeAgentHost:
                                 observed_wire_exchanges=exchanges,
                             ))
         if reason is None:
-            output = _read_bounded(handle._stdout_file, output_limit)
             if output is None:
                 reason = AgentHostTerminalReason.INVALID_OUTPUT
                 failure_code = "transport_output_too_large"
@@ -1098,7 +1103,6 @@ class ClaudeAgentHost:
             snapshot = handle._output_validator.snapshot()
             diagnostics["structured_output_correction"] = snapshot
             if reason is AgentHostTerminalReason.SUCCEEDED:
-                output = _read_bounded(handle._stdout_file, output_limit)
                 outer, _, _ = _unpack_provider_stream(output or b"")
                 prevented = isinstance(outer, Mapping) and any(
                     outer.get(key) == "stop_hook_prevented" for key in ("stop_reason", "terminal_reason"))
@@ -1116,6 +1120,16 @@ class ClaudeAgentHost:
                             and failure_code == "invalid_provider_envelope" and not snapshot.get("error")):
                         failure_code = "invalid_candidate"
                         diagnostics["provider_diagnostic"] = message
+        if handle._provider_relay is not None:
+            transport = handle._provider_relay.response_transport()
+            diagnostics["provider_response_transport"] = transport
+            if transport["limit_reached"] and forced_reason is None:
+                reason = AgentHostTerminalReason.INVALID_OUTPUT
+                response = None
+                failure_code = "provider_transport_limit"
+                diagnostics["provider_diagnostic"] = (
+                    f"Local API response transport limit exceeded: {transport['received_bytes']} bytes "
+                    f"received across this invocation; limit {transport['limit_bytes']} bytes")
         if reason in {
             AgentHostTerminalReason.TIMED_OUT,
             AgentHostTerminalReason.CANCELLED,
@@ -3943,12 +3957,43 @@ def _transport_output_limit(request: AgentRequest) -> int:
     return (request.budget.max_output_bytes * 4 + 2) // 3 + _TRANSPORT_OVERHEAD_BYTES
 
 
-def _read_bounded(stream: BinaryIO, limit: int) -> bytes | None:
-    stream.flush()
-    if _stream_size(stream) > limit:
-        return None
+def _read_agent_stdout(stream: BinaryIO, content_limit: int, *, raw_limit: int,
+                       filter_progress: bool) -> tuple[bytes | None, dict[str, object]]:
+    """Bound raw logs and parser input separately; retain all meaningful records."""
+    raw_size = _stream_size(stream)
+    diagnostics: dict[str, object] = {"raw_bytes": raw_size, "raw_limit_bytes": raw_limit,
+        "content_bytes": 0, "content_limit_bytes": content_limit,
+        "progress_events": 0, "progress_bytes": 0}
+    if raw_size > raw_limit:
+        diagnostics["limit_scope"] = "stdout_raw"
+        return None, diagnostics
     stream.seek(0)
-    return stream.read(limit + 1)
+    content = bytearray()
+    while line := stream.readline(max(1025, content_limit - len(content) + 1)):
+        # Only complete, small, count-only records get an exemption. Unknown
+        # variants and actual thinking text still consume the content allowance.
+        progress = None
+        if filter_progress and len(line) <= 1024 and line.endswith(b"\n"):
+            try:
+                progress = json.loads(line.decode("utf-8"))
+            except (ValueError, UnicodeError):
+                pass
+        if (isinstance(progress, dict) and set(progress) == {
+                "type", "subtype", "estimated_tokens", "estimated_tokens_delta", "session_id", "uuid"}
+                and progress["type"] == "system" and progress["subtype"] == "thinking_tokens"
+                and all(type(progress[key]) is int and progress[key] >= 0
+                        for key in ("estimated_tokens", "estimated_tokens_delta"))
+                and all(isinstance(progress[key], str) and 0 < len(progress[key]) <= 128
+                        for key in ("session_id", "uuid"))):
+            diagnostics["progress_events"] += 1
+            diagnostics["progress_bytes"] += len(line)
+            continue
+        content.extend(line)
+        diagnostics["content_bytes"] = len(content)
+        if len(content) > content_limit:
+            diagnostics["limit_scope"] = "stdout_content"
+            return None, diagnostics
+    return bytes(content), diagnostics
 
 
 def _diagnostic_excerpt(stream: BinaryIO, limit: int) -> str:

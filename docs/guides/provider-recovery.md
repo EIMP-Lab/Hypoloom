@@ -63,6 +63,34 @@ collection. Final-report attempts during stopping retain their bounded failure
 path. Recovery first admits one ordinary pending invocation; an observed model
 response confirms availability independently of scientific output validation.
 
+## Local streaming transport limits
+
+These limits apply to the shared Claude Code/Anthropic-compatible transport
+across providers. GLM exposed the repaired failure; no GLM-specific setting is
+required. Previously, the API response allowance was `max(4 MiB, max_tokens * 32)`:
+4 MiB was a minimum, while 1,000,000 configured invocation tokens allowed
+32,000,000 bytes (about 30.52 MiB), including under token `observe` policy.
+
+Adapter 82 bounds cumulative API response bytes at **64 MiB per Agent invocation**,
+independently of token budgets. SSE framing and all calls within that invocation
+count toward this limit; it is not the model's output-token limit. Exhaustion
+produces `provider_transport_limit`, records observed bytes and the limit in
+`provider_response_transport`, and blocks further upstream calls from that
+invocation. An already-started stream ends without a fabricated completion;
+later local requests receive an explicit error.
+
+CLI stdout retains a separate 64 MiB raw bound. Only complete, recognized
+`system/thinking_tokens` count records are omitted from its parser allowance;
+actual reasoning, tool records and final results remain bounded and validated.
+`stdout_transport` records raw/content sizes and omitted progress counts. A
+`transport_output_too_large` failure names `stdout_raw` or `stdout_content`.
+
+These are local capacity failures. They do not trigger API-outage cooldown or
+repeat the same task with unchanged capacity. Review the byte diagnostics and
+reduce per-invocation work before a new run. Final artifact limits, configured
+token enforcement, turns and deadlines still apply. Existing runs retain their
+frozen runtime; updating the checkout does not migrate them.
+
 ## Run RPM and request concurrency
 
 New Profile admission supplies these defaults; override them in

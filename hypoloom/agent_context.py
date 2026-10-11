@@ -78,6 +78,7 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
     """Classify one declared retry without creating another authority."""
 
     if not retryable: return None
+    if code in {"provider_transport_limit", "transport_output_too_large"}: return None
     diagnostics = _failure_diagnostics(details)
     subtype = diagnostics.get("provider_subtype")
     if subtype in _TERMINAL_PROVIDER_SUBTYPES: return None
@@ -111,6 +112,7 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
     if code in {"agent_workspace_preparation", "target_binding_missing"}: return "workspace_preparation"
     if code == "invalid_tool_workspace": return "agent_workspace"
     if code == "host_restart": return "host_recovery"
+    if code in {"provider_transport_limit", "transport_output_too_large"}: return "provider_transport"
     failure = _failure_diagnostics(details).get("provider_failure")
     if isinstance(failure, Mapping) and failure.get("code") in {"context_capacity", "compaction_failed"}:
         return "context_reconstruction"
@@ -131,6 +133,8 @@ def operational_agent_failure(observation: Mapping[str, Any]) -> bool:
     """A failed invocation is not itself scientific evidence against a method."""
     # Host archive/stop failures supersede any earlier provider diagnostic.
     # Reuse the existing retry classification boundary rather than relaxing it.
+    if observation.get("failure_code") in {"provider_transport_limit", "transport_output_too_large"}:
+        return True
     if observation.get("failure_code") not in RETRYABLE_AGENT_FAILURES | {"host_restart"}:
         return False
     failure = _failure_diagnostics(observation).get("provider_failure") or {}

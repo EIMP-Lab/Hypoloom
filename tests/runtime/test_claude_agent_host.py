@@ -776,7 +776,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/81"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/82"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -3978,8 +3978,13 @@ def test_success_observed_after_invocation_wallclock_is_timed_out(
         "budget": {**request.budget.to_dict(), "wall_seconds": 0.2},
     })
     handle = _start(host, mode="delayed", request=request)
-    time.sleep(0.5)
-    assert handle.returncode == 0
+    # Wait for the delayed child, not for a scheduler-dependent fixed margin.
+    # Its 0.35 s delay still necessarily exceeds the 0.2 s invocation budget.
+    try:
+        assert handle._process.wait(timeout=5) == 0
+    except BaseException:
+        host.cleanup(handle)
+        raise
     observation = getattr(host, observer)(handle)
     assert observation is not None
     assert observation.terminal_reason is AgentHostTerminalReason.TIMED_OUT

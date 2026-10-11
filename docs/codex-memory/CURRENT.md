@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- October 11 streaming transport: adapter 82 separates CLI count-only thinking
+  progress from bounded content and keeps raw stdout at 64 MiB. API responses
+  get an independent 64 MiB cumulative invocation allowance; exhaustion reports
+  scope/bytes/limit, blocks further upstream calls and ends ordinary same-capacity
+  retries without API cooldown or scientific refutation. Three retained GLM
+  proposal streams replay with unchanged results/accounting. 523 focused/native
+  checks pass, covering fragmented streams above the old cap, actual CC/Host/CPU
+  publication and capped failure closure; 25 Agents/one Process close with
+  passing Oracles and no live groups. DNS, retained runs and shared installs
+  are unchanged; no paid GLM or full G1 promotion is claimed.
+  [Design](../design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11)
+  / [validation](../qualification.md#streaming-transport-limits-2026-10-11).
+  Merge review: 38 final focused checks pass; full G1 records 8,152 passes,
+  31 failures and 159 skips. All failures reproduce on base `cf1b8f0`; three
+  stale adapter assertions are corrected, leaving 28 baseline failures and no
+  G1 promotion. Both streaming native cases pass again; 195 package files match
+  source/install/fresh bundle. [Review evidence](../qualification.md#pr-7-merge-review-2026-10-11).
+
 - October 10 pool init follow-up: real research-shell isolation denies the pool
   MainPID cwd symlink, while UID/argv remain readable. Only this permission error
   uses user-systemd WorkingDirectory; mismatches and maintenance controls remain.

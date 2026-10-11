@@ -31,3 +31,47 @@ correction limits, and a local-provider/real-CLI/CPU workflow where available.
 Existing research runs and submitted support packages remain read-only. Do not
 relax context or financial limits, automatically enlarge output budgets, or
 attribute a separate transport failure to telemetry without its own evidence.
+
+## Streaming transport and progress events (2026-10-11)
+
+The retained GLM run has 30 `transport_output_too_large` Attempts: three proposal
+calls finish with 3,988–6,424-byte answers and accepted native Stop, but their
+4.2–4.5 MB stdout exceeds the 4 MiB transport parser allowance. Twenty-seven
+design calls also hit the separate aggregate relay response limit. Across the
+30 stdout files, 91% of bytes are CLI `system/thinking_tokens` progress records.
+One relay sample contains 28,395 thinking deltas with only 120,695 content bytes;
+SSE framing and other responses exhaust 4 MiB during the 28th request. These are
+transport-volume failures, not evidence of a model token/window overflow.
+
+The 4 MiB allowance belongs to that reproduction. Previously, full-CC API
+responses used `max(4 MiB, max_tokens * 32)`; stdout parsing also considered
+the encoded final-output allowance. A 1,000,000-token invocation therefore
+already allowed 32,000,000 bytes (about 30.52 MiB), even in `observe` mode.
+Progress inflation can exist without reaching that larger limit. The repair
+applies to the shared Claude Code/Anthropic-compatible transport, with no GLM
+model-name or endpoint branch; its narrow progress exemption recognizes the
+CLI event shape. It does not establish a failure rate for other providers.
+
+Keep the original raw stdout under the existing full-CC 64 MiB file allowance.
+Read it incrementally, omitting only the known complete thinking-count record
+shape from the parser's byte allowance. Count omitted records/bytes in ordinary
+diagnostics. Preserve every other record and the existing complete-stream,
+completion, native Stop, candidate and accounting validators. Unknown, malformed,
+content-bearing or oversized progress-shaped records do not gain an exemption.
+The effective-content and raw-file bounds remain independent and enforced.
+
+Give full-CC relay responses a separate 64 MiB cumulative wire allowance,
+independent of an invocation's observe/enforce token policy. Keep upstream bytes
+unchanged, the existing request count/deadline and token policy, and the final
+candidate/artifact limit. Reuse the relay's existing byte counter and rejection
+path: latch actual exhaustion, record its scope/observed bytes/limit, and reject
+subsequent requests locally before upstream connection. Surface the local
+transport failure instead of a generic provider 502. Do not route it through
+provider-outage cooldown or spend more ordinary retries on unchanged capacity.
+
+No new persistent authority, schema, digest or control gate is needed. Existing
+raw diagnostics, ordinary transient parsing/counters, frozen runtime versioning
+and focused/native regressions cover this boundary. DNS recovery and retained
+run mutation are outside this repair. Original truncated streams cannot prove
+what the provider would have generated later; complete local streamed responses
+must verify the new allowance and its upper bound before claiming closure.

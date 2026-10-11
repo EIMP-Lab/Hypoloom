@@ -2,6 +2,93 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Streaming transport limits (2026-10-11)
+
+Adapter 82 repairs the [independent stdout/API transport bounds](design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11).
+Evidence: `.local/qualification/streaming-transport-20261011/`.
+
+- `original-replay.json` reproduces three retained GLM proposals rejected before
+  parsing despite complete successful CLI results and accepted native Stop.
+  `repaired-replay.json` preserves the exact parsed result, schema validity and
+  accounting while reducing parser input to **277,110 / 338,006 / 351,845 bytes**.
+  Original logs and frozen requests are unchanged. This is transport/schema/usage
+  replay, not cross-version acceptance or migration of the adapter-72 run.
+- **523 distinct focused/native checks pass**, with no unresolved failures or
+  skips (`test-summary.json`), including documentation and frozen-bundle tests.
+  Regressions cover raw/content bounds, unknown and content-bearing
+  progress records, malformed tails, conflicting completions, preserved usage,
+  credential boundaries, terminal operational classification and existing token,
+  native-output and provider-traffic controls. Complete fragmented SSE responses
+  cross the old aggregate 4 MiB limit byte-for-byte under the new allowance;
+  a cap during an already-started stream truncates it without a fabricated
+  completion and rejects later requests locally, with no further upstream call.
+- `native.xml` uses the installed CC, real Host/broker/bwrap, local scripted
+  provider and actual CPU execution. Successful DESIGN receives **4,258,508
+  API bytes** and writes **6,726,111 stdout bytes**, including 34,000 count-only
+  progress events; **84,323 content bytes** retain validation and accounting.
+  Eleven Agents and one CPU Process close successfully and publish one outcome.
+- The negative native case injects the former 4 MiB allowance through the same
+  production relay boundary. DESIGN ends once with `provider_transport_limit`,
+  no ordinary retry and no API-outage classification. Fourteen Agents close;
+  no Process or scientific outcome is fabricated. The run finishes its ordinary
+  reporting path. Both native cases pass the existing Oracle, with zero open
+  Attempts, pending effects and duplicate effects. `independent-census.json`
+  separately counts SQL ownership and checks every recorded process group;
+  none remains live. See `native-complete.json` and `native-local-cap.json`.
+- Initial focused failures were an adapter-version literal and a pre-existing
+  test's fixed 0.5-second wait for a delayed child. The latter reproduced across
+  both observer variants; bounded child waiting now preserves the required
+  late-completion timeout assertion. Earlier red XML evidence is retained.
+
+This is focused repair qualification, not full G1/G4/G5 promotion. No live GLM
+generation, physical GPU test, DNS repair or retained research-run mutation was
+performed. A formerly truncated provider stream cannot establish what it would
+have generated later. Updated code applies to newly frozen runs.
+
+### PR 7 merge review (2026-10-11)
+
+The merge review preserves PR #7's production implementation at `dfe08c9`.
+It updates the existing oversized-response regression to require local HTTP 400,
+the explicit transport error and exact byte/scope diagnostics, while preserving
+partial-body assertions. Two stale CLI version literals now require adapter 82
+(three cases). Bilingual guides clarify that the shared transport applies across
+providers and that the old 4 MiB allowance was a minimum: 1,000,000 configured
+tokens already allowed 32,000,000 API response bytes, including in `observe` mode.
+
+Evidence: `.local/qualification/pr7-merge-20261011/`.
+
+- Final affected relay, streaming, CLI identity and documentation checks:
+  **38 passed**, no failures or skips (`final-focused.xml`). These supersede
+  the overlapping 35-case and three-case preliminary selections.
+- Full offline G1 completed with **8,152 passed, 31 failed and 159 skipped**
+  in 1,724.17 seconds (`g1.xml`, `g1.log`). Compile, undefined-name and whitespace
+  checks passed. Repeating exactly those 31 failed cases on unmodified base
+  `cf1b8f0` reproduced **all 31 failures** (`baseline-failures.xml`). Apart from
+  the three corrected CLI assertions, **28 baseline failures remain**: output
+  observation test doubles, diagnostic/native recovery expectations, model
+  preflight, the existing Host LOC allocation and operator Skill length.
+  This comparison establishes that the failures predate this PR; it does not
+  resolve them or turn G1 green. The full suite was not repeated after the
+  test/documentation-only follow-up.
+- Both streaming native scenarios passed within that G1 invocation: **25 Agents
+  and one CPU Process** close, one canonical outcome is published, and both
+  existing Oracles pass with no open Attempts, pending or duplicate effects.
+  These are actual CC/Host/broker/bwrap/CPU paths with a local scripted provider.
+- Independent G1 census reads **13,697 Attempt rows** across 1,299 databases
+  containing the Attempt table and checks **2,631 recorded process groups**;
+  none is live (`g1-census.json`). The 124 open fixture rows are distinct from
+  process liveness. Simplified/invalid fixture databases excluded from successful
+  reads are listed separately. The baseline rerun also leaves none of its 197
+  recorded groups live (`baseline-liveness.json`).
+- Source distribution and wheel build successfully. All **195 package files**
+  match source, wheel, disposable installation and a freshly frozen bundle;
+  installed CLI help and MCP initialization/tool listing pass outside the
+  checkout (`package-check.json`). The shared installation is unchanged.
+
+This is a development-branch integration with recorded pre-existing failures,
+**not G1 promotion or a release qualification**. Paid-provider and physical GPU
+lanes remain unqualified. Existing research runs and private Profiles are unchanged.
+
 ## Pool inspection in the research shell (2026-10-10)
 
 The [follow-up repair](design/init-managed-gpu-pool-lifecycle.md#2026-10-10研究-shell-中的配置读取与菜单乱码)
