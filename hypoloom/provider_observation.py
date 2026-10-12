@@ -331,7 +331,13 @@ def observed_input_floor(exchanges):
 
 
 def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_limit=3):
-    """Reduce durable provider-failure rows to the current dispatch gate.
+    """Reduce durable provider-failure rows to the current dispatch gate."""
+    return observe_provider_retry(provider_retry_history(entries, cooldown_seconds=cooldown_seconds,
+        cleared_at=cleared_at, attempt_limit=attempt_limit), now=now)
+
+
+def provider_retry_history(entries, *, cooldown_seconds, cleared_at, attempt_limit=3):
+    """Prepare committed history without freezing cooldown or recovery time.
 
     A clear admits subsequent invocations; failures of those new invocations
     re-engage the gate. Earlier in-flight work is not a recovery invocation.
@@ -368,7 +374,7 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         gates.append({"class": row.get("code"), "attempt_id": row.get("attempt_id"),
             "http_status": row.get("http_status"), "attempt_ended_at": float(ended_at),
             "started_at": started(row),
-            "until": until, "pending": until is None or until > now})
+            "until": until})
     gates.sort(key=lambda item: (item["attempt_ended_at"], item["attempt_id"]))
     # Concurrent failures belong to one dispatch wave. Only a subsequent
     # invocation spends another automatic recovery opportunity.
@@ -379,21 +385,30 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         last_end = max(last_end, item["attempt_ended_at"])
         if item['class'] in PROVIDER_TRANSIENT:
             item['until'] = max(item['until'], item['attempt_ended_at'] + provider_retry_delay(rounds))
-            item['pending'] = item['until'] > now
     operator = (rounds >= attempt_limit and any(item['class'] not in PROVIDER_TRANSIENT for item in gates)
         or any(item["until"] is None for item in gates))
-    waiting = operator or any(item["pending"] for item in gates)
-    recovering = not waiting and (bool(gates) or cleared_at is not None and recovered_at is None)
     first_failure = min((item["attempt_ended_at"] for item in gates), default=float("-inf"))
     boundary = max(first_failure, cleared_at if cleared_at is not None else float("-inf"))
-    in_flight = recovering and any(row.get("state") == "OPEN" and started(row) >= boundary for row in eligible)
-    state = "waiting_operator" if operator else "cooldown" if waiting else "recovering" if recovering else "ready"
-    return {"pending": waiting or in_flight, "state": state, "requires_operator": operator,
+    return {"open_recovery": any(row.get("state") == "OPEN" and started(row) >= boundary for row in eligible),
+        "requires_operator": operator,
         "reason": gates[-1]["class"] if gates else None,
         "next_retry_at": None if operator else max((g["until"] for g in gates if g["until"] is not None), default=None),
         "recovery_attempts": rounds, "attempt_limit": attempt_limit, "recovered_at": recovered_at,
         "cooldown_seconds": cooldown_seconds, "cleared_at": cleared_at,
-        "gates": gates, "now": now}
+        "gates": gates}
+
+
+def observe_provider_retry(history, *, now):
+    """Evaluate the prepared history at the current request's clock."""
+    status = dict(history)
+    gates = [{**gate, 'pending': gate['until'] is None or gate['until'] > now} for gate in status['gates']]
+    operator = status['requires_operator']
+    waiting = operator or any(gate['pending'] for gate in gates)
+    recovering = not waiting and (bool(gates) or status['cleared_at'] is not None and status['recovered_at'] is None)
+    in_flight = status.pop('open_recovery') and recovering
+    state = "waiting_operator" if operator else "cooldown" if waiting else "recovering" if recovering else "ready"
+    status.update(pending=waiting or in_flight, state=state, gates=gates, now=now)
+    return status
 
 
 def retry_after_seconds(value, *, now):

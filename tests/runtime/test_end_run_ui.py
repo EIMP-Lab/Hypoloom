@@ -57,6 +57,35 @@ def test_late_refresh_during_shutdown_does_not_access_removed_dialog_controls(tm
     assert (after["run_state"], after["run_revision"]) == (snapshot.status["run_state"], snapshot.status["run_revision"])
 
 
+def test_refresh_while_mounted_dialog_controls_are_removed_keeps_cancel_disabled(tmp_path, monkeypatch):
+    from hypoloom.tui import SnapshotRefreshCompleted
+    from hypoloom import end_run_tui
+    root, snapshot = run_snapshot(tmp_path)
+    monkeypatch.setattr(end_run_tui, 'request_over_socket', lambda *a, **k: pytest.fail('unexpected cancellation'))
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press('x')
+            screen = app.screen
+            confirm = screen.query_one('#end-run-confirm', Button)
+            await screen.query_one('#end-run-actions').remove()
+            assert app.is_running and screen.is_mounted
+            stopping = replace(snapshot, status={**snapshot.status, 'run_state': 'STOPPING'})
+            app.on_snapshot_refresh_completed(SnapshotRefreshCompleted(stopping, None))
+            assert not screen.writable and confirm.disabled
+            screen.action_close()
+            await pilot.pause()
+            await pilot.press('x')
+            assert app.screen.query_one('#end-run-confirm', Button).disabled
+            await pilot.click('#end-run-confirm')
+            assert app._end_run_draft.get('pending') is None
+
+    asyncio.run(exercise())
+    assert build_monitor_snapshot(root, 'end-ui').status['run_revision'] == snapshot.status['run_revision']
+
+
 def test_repeated_or_delayed_close_cannot_pop_monitor_or_another_dialog(tmp_path):
     from hypoloom.end_run_tui import EndRunScreen
     root, snapshot = run_snapshot(tmp_path)

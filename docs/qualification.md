@@ -2,6 +2,92 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Host history and runtime verification latency (2026-10-13)
+
+The [Host follow-up](design/run-closure-repairs-2026-10-12.md#host-history-and-runtime-verification-cost-2026-10-13)
+reuses StateStore's committed read cache for durable STATUS summaries and provider
+retry history. Live fields and cooldown time are evaluated on every request.
+An unchanged file inventory reuses the Host's last byte-verified runtime identity;
+private settings validation and uncached standalone verification remain. No new
+persisted cache, protocol, schema or lifecycle authority is added. Evidence is in
+`.local/qualification/host-latency-20261013/`, against base `c00becd`.
+
+- `red.xml` preserves ten initial failures for repeated identity reads and STATUS
+  aggregation. `focused-3.xml` records 258 passes and one timing-dependent restart
+  failure. With `restart-held.xml`, **259 distinct focused checks pass**: clock
+  expiry without writes, real traffic changes, commit/rollback, response mutation,
+  runtime edits/replacement/inventory changes, missing binaries, private-file
+  refusal, drift during hashing, and actual Host socket requests between ticks.
+  Original fixture-authoring errors remain in `focused-initial.xml`/`focused-2.xml`.
+- `restart-repeat.xml` reproduces the restart test missing its short overlap
+  interval: both CPU jobs finish successfully before two OPEN rows are observed.
+  The old-code sample passes (`restart-baseline.xml`). The fixture now holds its
+  two real groups with SIGSTOP, verifies liveness and cleanup, then retains the
+  two LOST/two SUCCEEDED attempts, two outcomes and one adjudication assertions.
+  No production scheduling or recovery rule is changed.
+- `before2-native.json`, `after-native.json` and `native-comparison.json` record
+  the same real Host/installed CC/local-provider CPU topology. **26 runtime checks
+  take 23.474 seconds before and 1.225 after** under profiling; maximum tick falls
+  from **2.946 to 1.355 seconds**. STATUS median falls from 9.44 to 1.67 ms, maximum
+  from 155.54 to 136.28 ms. These shared-machine samples include profiler overhead;
+  direct STATUS timings exclude socket queue waiting and are not a latency bound.
+  Both existing Oracles pass. Independent `before2-census.json`/`after-census.json`
+  each count 12 closed Agents (11 successful, one recovered failure), one successful
+  CPU Process, one canonical outcome, no duplicate ownership and no live groups.
+
+`before4-growth.json`/`after-growth.json` contain synthetic committed history, not
+scientific-quality evidence. Each size has the same number of closed Agents and
+additional hypothesis facts, with one initial query and two unchanged queries:
+
+| Agents and added facts | Initial STATUS before / after (s) | Repeated STATUS before (s) | Repeated STATUS after (s) |
+| --- | --- | --- | --- |
+| 100 each | 0.076 / 0.063 | 0.0222–0.0223 | 0.0012–0.0013 |
+| 1,000 each | 0.348 / 0.480 | 0.184–0.186 | 0.0013–0.0014 |
+| 5,000 each | 1.471 / 2.086 | 0.909–0.928 | 0.0017–0.0019 |
+
+The first aggregation after a write remains proportional to history and is slower
+in the larger after samples. Output size, unrecovered failure history and other
+owner-thread work can still grow; this does not establish constant-time full
+observation or remove every source of Host latency. Earlier instrumentation and
+sizing-fixture failures remain alongside the successful samples.
+
+Full G1 (`g1-final.xml`) completes in 2,511.46 seconds with **8,239 passes, three
+failures and 159 conditional skips**. Two recovery fixtures patched the former
+combined reducer to advance time; they now inject the Host clock, retaining six
+failures, cooldown/reopen checks, real Processes and the Oracle. The third failure
+is an End-run refresh reaching a mounted screen whose action controls are gone.
+`modal-red.xml` reproduces it deterministically. The dialog now retains its actual
+status/confirmation widgets, preserving disabled state and request identity through
+that child lifecycle boundary. No readiness flag or cancellation rule is added.
+`cutover-repeat.xml` preserves the original intermittent case's passing repeat.
+
+`corrections.xml` passes all **51 affected cases**, including all three G1 failures
+and one new regression. Identity-based reconciliation is **8,243 passed / 159
+skipped**, with no unresolved failed case (`g1-reconciliation.json`). This is the
+complete original selection plus the affected correction rerun, not a second
+uninterrupted full-suite pass after the modal edit. Final native closure is also
+repeated (`after-final-native.json`/`after-final-census.json`): the same 12 Agents,
+one CPU Process, one outcome, passing Oracle and zero duplicate/live groups.
+The timing comparison above predates only that modal lifecycle correction.
+
+The independent full-suite census examines 1,226 retained fixture databases:
+12,300 Attempt rows (12,186 CLOSED, 114 OPEN), zero duplicate ownership and no
+live groups among 2,669 recorded identities. OPEN rows are not counted as live
+processes. Seventy-three legacy/invalid fixture databases are separately listed
+as unavailable to the full-schema census; they are not silently counted as empty.
+See `g1-census.json`. These are retained row counts, not an execution count.
+
+Final source, wheel, isolated installation and fresh bundle match all 195 package
+files. The source archive includes all 17 changed files; installed CLI and MCP
+checks pass (`package-final.json`). Documentation, undefined-name and whitespace
+checks also pass. The earlier package candidate is retained separately.
+
+The active research run, frozen Host, shared installation and services are untouched.
+These Host improvements apply to new runs created with the updated runtime;
+reopening a monitor alone does not update an existing Host. No paid-model,
+physical-GPU, retained-run migration or soak qualification is claimed.
+Reopening an updated monitor does load the End-run dialog repair.
+
 ## Historical evidence off the polling path (2026-10-12)
 
 The [history-growth repair](design/run-closure-repairs-2026-10-12.md#history-growth-and-observation-latency)

@@ -12,7 +12,6 @@ import shutil
 import signal
 import socket
 import sqlite3
-import sys
 import time
 import uuid
 from dataclasses import replace
@@ -27,7 +26,7 @@ from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
-from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, validate_private_settings, provider_retry_status, provider_connection
+from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, runtime_environment_id, provider_retry_status, provider_connection
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
@@ -103,25 +102,10 @@ def _trusted_execution_files(plan: Mapping[str, Any]) -> dict[str, bytes]:
     return {str(plan["source_relative_path"]): (package / "trial_driver.py").read_bytes(), ".hypoloom/data_contracts.py": (package / "data_contracts.py").read_bytes()}
 def _component_plan(document: Mapping[str, Any], component_id: str, family: str, patch: bytes | None, gpu: bool) -> dict[str, object]:
     return component_execution_plan(document, component_id, method_family_id=family, implementation_sha256=hashlib.sha256(patch).hexdigest() if patch is not None else "0" * 64, device="cuda" if gpu else "cpu")
-def installed_run_version(configuration: Mapping[str, Any] | None = None, runtime_files: tuple[Path, ...] = (), *, private_settings_path: Path | None = None) -> RunVersion:
-    package = Path(__file__).resolve().parent; digest = hashlib.sha256()
-    if private_settings_path is not None:
-        if private_settings_path not in runtime_files: raise ValueError("private settings must be included in runtime_files")
-        validate_private_settings(private_settings_path)
-    for part in (sys.version, str(Path(sys.executable).resolve()), sqlite3.sqlite_version):
-        raw = part.encode(); digest.update(len(raw).to_bytes(8, "big") + raw)
-    files = sorted(package.glob("*.py")) + sorted((package / "migrations").glob("*.sql"))
-    files += sorted(path for seed in ("expert-seed", "grounding-seed", "research-workflow") for path in (package / "skills" / seed).rglob("*") if path.is_file())
-    environment = package.parent / "environment.yml"; files += [environment] if environment.is_file() else []
-    for path in (*files, *runtime_files):
-        if path == private_settings_path: name = PRIVATE_SETTINGS_NAME.encode()
-        else:
-            try: name = path.relative_to(package.parent).as_posix().encode()
-            except ValueError: name = path.resolve().as_posix().encode()
-        digest.update(len(name).to_bytes(8, "big") + name); digest.update(path.stat().st_size.to_bytes(8, "big"))
-        with path.open("rb") as stream:
-            for content in iter(lambda: stream.read(1024 * 1024), b""): digest.update(content)
-    resolved_configuration = {**_CONFIG, **dict(configuration or {})}; return RunVersion(workflow_definition_version=WORKFLOW_DEFINITION_VERSION, research_contract_version="hypoloom-research-v12" if resolved_configuration.get("gpu_pool") is not None else "hypoloom-research-v10", evaluator_version=OUTCOME_ADAPTER_VERSION, agent_aci_version=str(EXPERT_LOOP_ACI_SCHEMA_VERSION), runner_version=RUNNER_VERSION, artifact_result_schema_version="2", runtime_environment_id=f"sha256:{digest.hexdigest()}",
+def installed_run_version(configuration: Mapping[str, Any] | None = None, runtime_files: tuple[Path, ...] = (), *, private_settings_path: Path | None = None, _identity_cache=None) -> RunVersion:
+    identity = runtime_environment_id(Path(__file__).resolve().parent, runtime_files,
+        private_settings_path=private_settings_path, cache=_identity_cache)
+    resolved_configuration = {**_CONFIG, **dict(configuration or {})}; return RunVersion(workflow_definition_version=WORKFLOW_DEFINITION_VERSION, research_contract_version="hypoloom-research-v12" if resolved_configuration.get("gpu_pool") is not None else "hypoloom-research-v10", evaluator_version=OUTCOME_ADAPTER_VERSION, agent_aci_version=str(EXPERT_LOOP_ACI_SCHEMA_VERSION), runner_version=RUNNER_VERSION, artifact_result_schema_version="2", runtime_environment_id=identity,
         configuration_id=f"sha256:{hashlib.sha256(_canonical(resolved_configuration)).hexdigest()}", sqlite_runtime_version=sqlite3.sqlite_version)
 def _ids(run_id: str, component: int = 1, proposer: int = 1, experiment_ordinal: int = 1) -> dict[str, str]:
     if isinstance(experiment_ordinal, bool) or not isinstance(experiment_ordinal, int) or experiment_ordinal < 1: raise ValueError("experiment_ordinal must be a positive integer")
@@ -188,6 +172,7 @@ class WorkflowHost:
         if grounding_web is not None and hasattr(grounding_web, "configuration"):
             self.configuration["grounding_web"] = grounding_web.configuration
         self.runtime_files = (*self.agent_runtime_files, *self.compute_resources.runtime_files, _RESOURCE_SKILL, _QUERY_SKILL)
+        self._runtime_identity_cache = {}
         self.version = self._runtime_version()
         self.store = StateStore(state_root, HostWriterCapability.issue()); self.kernel = ResearchKernel()
         from .interaction_host import InteractionHost
@@ -262,7 +247,7 @@ class WorkflowHost:
     def _crash(self, point: str) -> None:
         if self.fault_point == point: os._exit(86)
     def _runtime_version(self) -> RunVersion:
-        return installed_run_version(self.configuration, self.runtime_files, private_settings_path=self.private_settings_path)
+        return installed_run_version(self.configuration, self.runtime_files, private_settings_path=self.private_settings_path, _identity_cache=self._runtime_identity_cache)
     def _check_agent_runtime(self) -> None:
         if self.claude_agent_host is not None and self._runtime_version() != self.version:
             raise PinnedRuntimeError("pinned Agent/compute configuration or runtime drifted")
@@ -672,9 +657,7 @@ class WorkflowHost:
         from .institutional_controls import control
         return control(self, request)
 
-    def _status_response(self, request: ControlRequest) -> ControlResponse:
-        if set(request.payload) != {"run_id"}: raise ValueError("STATUS requires only run_id")
-        run_id = str(request.payload["run_id"])
+    def _durable_status(self, run_id):
         attempts = self.store.list_attempts(run_id=run_id, include_observation=False)
         # Only Grounding contributes the declaration displayed by STATUS.
         grounding = {row["attempt_id"]: row for row in self.store.inspect(
@@ -682,9 +665,19 @@ class WorkflowHost:
             "WHERE a.run_id=? AND a.kind='AGENT' AND a.state='CLOSED' AND a.terminal_reason='SUCCEEDED' "
             "AND json_extract(c.request_json,'$.task_context.request_kind')='GROUNDING'", (run_id,))}
         attempts = tuple(grounding.get(row["attempt_id"], row) for row in attempts)
-        result = build_status_projection(self.store, run_id,
-            quiescent_for_backup=self._backup_busy_reason() is None, attempts=attempts)
+        result = build_status_projection(self.store, run_id, quiescent_for_backup=None, attempts=attempts)
+        if result is not None:
+            result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS)
+            result["participant_controls"] = self._participant_controls(run_id).to_dict()
+        return result
+    def _status_response(self, request: ControlRequest) -> ControlResponse:
+        if set(request.payload) != {"run_id"}: raise ValueError("STATUS requires only run_id")
+        run_id = str(request.payload["run_id"])
+        result = self.store.cached_read(("durable-status", run_id), lambda: self._durable_status(run_id))
         if result is None: return ControlResponse.failure(request.request_id, "rejected", "not_found", run_id)
+        database = self.store.database_path; wal = Path(f"{database}-wal")
+        result.update(quiescent_for_backup=self._backup_busy_reason() is None,
+            state_sqlite_bytes=database.stat().st_size, state_sqlite_wal_bytes=wal.stat().st_size if wal.exists() else 0)
         result["dispatch_error"] = self.dispatch_errors.get(run_id)
         scheduling = self._agent_scheduling.get(run_id)
         result["agent_scheduling"] = None if scheduling is None else {
@@ -698,11 +691,9 @@ class WorkflowHost:
             else self.observer_services.notification_status(run_id))
         result["literature_access"] = ({"enabled": False, "pending": 0, "available": 0, "groups": []}
             if self.institutional_access is None else self.institutional_access.status(run_id))
-        result["participant_controls"] = self._participant_controls(run_id).to_dict()
-        result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS)
         from .process_observation import process_activity
-        result["process_activity"] = [process_activity(self, row) for row in attempts
-            if row["kind"] == "PROCESS" and row["state"] == "OPEN"]
+        result["process_activity"] = [process_activity(self, row) for row in
+            self.store.list_attempts(run_id=run_id, kind="PROCESS", state="OPEN", include_observation=False)]
         result["resource_blocked"] = list(self.resource_recovery.blocked(run_id).values())
         result["resource_waits"] = [{"experiment_id": workflow, "reason": reason,
             "message": resource_wait_message(reason),

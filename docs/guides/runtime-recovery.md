@@ -36,6 +36,13 @@ or a missed action. Selecting an Attempt still reads its detail directly.
 This reduces historical log work on the refresh path; full row aggregation and
 Host tick delays can still affect large or busy runs.
 
+New Hosts also reuse unchanged committed STATUS summaries and verified runtime
+file identities. Traffic, cooldown expiry and process activity remain live. The
+first query after a write and changed-file verification still require full work;
+large summaries and other Host operations can still take time. These Host changes
+apply to newly created runs using the updated runtime. Reopening a monitor does
+not replace an existing run's frozen Host, and cross-version migration is unsupported.
+
 Backend observer fixes require reopening the monitor to load the updated Python
 code; reloading the browser only reloads Web assets. Reopen the monitor for the
 same state root and run ID and use its new startup URL. Leaving the monitor with

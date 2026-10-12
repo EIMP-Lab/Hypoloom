@@ -487,11 +487,25 @@ def test_parallel_chain_processes_obey_the_actual_profile_fork_limit(batch_host,
 
 
 @pytest.mark.parametrize("batch_host", ["restart"], indirect=True)
-def test_restart_recovers_two_active_chains_without_duplicate_submit_or_selection(batch_host):
+def test_restart_recovers_two_active_chains_without_duplicate_submit_or_selection(batch_host, monkeypatch):
+    import os
+    import signal
+    from hypoloom.runner import process_group_exists
     host = batch_host
+    start, held = host.runner.start, []
+    def start_held(*args, **kwargs):
+        handle = start(*args, **kwargs)
+        held.append(handle)
+        # Keep both real groups alive until teardown; a 0.6-second task can
+        # otherwise finish before the second chain's preparation completes.
+        os.killpg(handle.process_group_id, signal.SIGSTOP)
+        return handle
+    monkeypatch.setattr(host.runner, 'start', start_held)
     _until(host, lambda: len([row for row in host.store.list_attempts() if row["kind"] == "PROCESS" and row["state"] == "OPEN"]) == 2)
+    assert len(held) == 2 and all(handle.returncode is None and process_group_exists(handle.process_group_id) for handle in held)
     root = host.state_root
     host.close()
+    assert all(not process_group_exists(handle.process_group_id) for handle in held)
     recovered = WorkflowHost(root, local_agent=BatchAgent())
     recovered.initialize()
     try:

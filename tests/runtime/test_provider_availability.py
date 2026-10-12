@@ -186,9 +186,9 @@ def test_host_waits_without_exhausting_node_then_continues_real_processes(batch_
     host = batch_host
     original = host._accept_agent_response
     offset = [0]
-    import hypoloom.provider_observation as observation
-    original_gate = observation.provider_retry_gate
-    monkeypatch.setattr(observation, "provider_retry_gate", lambda rows, **kw: original_gate(rows, **{**kw, "now": kw["now"] + offset[0]}))
+    from types import SimpleNamespace
+    from hypoloom import host_settings
+    monkeypatch.setattr(host_settings, 'time', SimpleNamespace(time=lambda: time.time() + offset[0]))
     rejected = []
     def reject(request, response, **kwargs):
         rejected.append(request)

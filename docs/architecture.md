@@ -173,6 +173,18 @@ before dispatching a prepared private view. Derived views may lag the durable
 revision; control and research admission still read the original records.
 Closed Attempt budget charges are cached in memory through the existing budget
 fold, with OPEN attempts reread and uncommitted closes excluded from the cache.
+Host STATUS reuses the compact committed projection through StateStore's existing
+read cache, invalidated on writes and transaction completion. Live traffic,
+cooldown time, process activity, scheduler waits and backup quiescence are evaluated
+for each request. The provider retry reducer prepares durable history separately
+from its current-clock evaluation; both paths use the same reducer.
+
+Within one Host, unchanged runtime files reuse their last verified runtime identity.
+The complete file inventory and device/inode/size/mode/mtime/ctime must still agree;
+full byte verification checks metadata again before storing its disposable result.
+Private settings validation runs every time, and standalone version/bundle checks
+always read the bytes. Configuration identity is recomputed for every check. The
+frozen RunVersion and original files remain authoritative; no cache is persisted.
 
 ## CPU and GPU resources
 

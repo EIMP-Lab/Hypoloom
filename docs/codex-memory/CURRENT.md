@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- October 13 Host latency: compact committed STATUS and prepared retry history
+  reuse StateStore's existing cache; live traffic, cooldown time, process activity
+  and backup quiescence remain per-request. One disposable runtime-identity cache
+  checks the complete file inventory/metadata; private settings and standalone
+  byte verification remain. In isolated profiling, 26 runtime checks fall from
+  23.474 to 1.225 seconds; 5,000-Agent/fact repeated STATUS falls from 0.909–0.928
+  to 0.0017–0.0019 seconds. First-after-write aggregation still scales and takes
+  2.086 seconds in the larger after sample. 259 distinct focused checks pass after
+  synchronizing a timing-dependent restart fixture. Native closure has 12 closed
+  Agents, one CPU Process/outcome and no live groups. G1 records 8,239 pass/three
+  fail/159 skip; 51 affected corrections pass, including corrected clock injection
+  and a mounted End-run screen losing its child controls. Reusing its widgets
+  preserves confirmation rules. Reconciliation: 8,243 pass/159 skip, not a second
+  full run. Final native closure and all 195 packaged files pass; 2,669 full-suite
+  process groups are absent. Existing Hosts stay frozen; new runs use the Host
+  changes, while reopening a monitor loads the modal fix.
+  [Design](../design/run-closure-repairs-2026-10-12.md#host-history-and-runtime-verification-cost-2026-10-13) /
+  [validation](../qualification.md#host-history-and-runtime-verification-latency-2026-10-13).
+
 - October 12 history-growth follow-up: shared polling consumes only validated
   evidence-cache hits; one background worker warms up to sixteen cold captures
   per pass, ten seconds after completion. Nested read budgets cannot relax/refund

@@ -270,3 +270,87 @@ activity using the existing snapshot matcher and explicit per-view age; do not
 combine stale history with a new timestamp or create a second lifecycle reducer.
 This first implementation does not promise constant-time full summaries or
 bounded Host ticks, and does not restart or migrate the active frozen run.
+
+## Host history and runtime verification cost (2026-10-13)
+
+A fresh native local-provider Host, instrumented only in the qualification
+process, closes its CPU flow while exposing 26 runtime-version reads and a
+2.946-second maximum profiled tick. Runtime-version work accounts for 23.474
+profiled seconds; STATUS itself peaks at 0.156 seconds in that small run. A
+separate disposable sizing fixture grows from 100 to 1,000 to 5,000 closed Agents
+and hypothesis rows. Repeated STATUS calls grow from about 0.022 to 0.185 to
+0.919 seconds; copying complete cached rows dominates the warm query. Neither
+fixture changes or resumes the retained research run.
+
+Reuse StateStore's existing committed-read cache for the compact durable STATUS
+projection, including budget totals and participant controls. Recompute live
+traffic, scheduler waits, process activity, notification/access health, backup
+quiescence and SQLite/WAL sizes on every request. Factor the existing provider
+retry reducer into history preparation and time evaluation, so committed history
+is reusable but cooldown expiry and in-flight recovery remain current. Commit,
+rollback and independent-reader behavior retain the existing invalidator; never
+cache an entire live response or invent a second lifecycle reducer.
+
+The runtime-byte verification optimization needs the following explicit defense:
+
+1. Repeatedly hashing unchanged package files and large native binaries blocks
+   control servicing during real dispatch. The reproduced impact is delayed
+   observation and control, independently of historical display parsing.
+2. The asset is the existing runtime identity, checked at dispatch and immediately
+   before spawn. Cache only its existing digest inside one Host; the filesystem
+   inputs and pinned RunVersion remain the sources, with the same digest bytes.
+3. Git/version pins do not cover mutable external binaries or private settings;
+   SQLite transactions do not freeze those files. Keep byte verification and
+   existing secret-file permission/content checks. Ordinary tests verify cache
+   invalidation but cannot replace runtime checks.
+4. The smallest addition is a disposable last-result cache, validated by the
+   complete ordered file set, resolved digest names, device/inode, size, mode,
+   nanosecond mtime and ctime. Re-read metadata after a full byte check and reject
+   changes during verification. A changed/missing input invalidates reuse; private
+   settings are validated on every call. Direct version/bundle/release checks
+   remain uncached. No new digest, persisted marker or stored contract is added.
+   Maintenance consists of keeping the existing file inventory and cache checks
+   together; remove the optimization if runtime inputs cease to be stable or the
+   supported filesystem cannot supply change metadata. This addresses ordinary
+   file replacement/editing on the existing local filesystem, not a hostile host.
+
+Regressions must cover same-size edits with restored mtime, inode replacement,
+package inventory changes, private-setting refusal, mutation during hashing,
+current traffic/clock/queue changes without commits, subsequent commits and
+rollbacks, and query result mutation. Compare the existing cached and uncached
+validator rather than maintaining a second expected-digest implementation.
+Exercise real socket control and repeat native CPU closure; preserve the original
+timing samples. Cold validation and the first aggregation after a write still do
+real work, so this is not a hard latency guarantee for every Host operation.
+
+Implementation reuses StateStore's committed cache and the existing retry reducer;
+it adds no thread, durable state or second lifecycle calculation. Private-setting
+validation and uncached standalone identity checks remain. The native comparison
+reduces 26 in-tick runtime checks from 23.474 to 1.225 profiled seconds, with the
+maximum observed tick falling from 2.946 to 1.355 seconds. Both runs close the same
+12 Agents and one CPU Process, publish one outcome and leave no owned group alive.
+At 5,000 Agents plus 5,000 facts, unchanged repeated STATUS calls fall from
+0.909–0.928 to 0.0017–0.0019 seconds. The first query after insertion remains a full
+aggregation (1.471 before, 2.086 after in these shared-machine samples); this work
+does not claim an improvement to every cold query or remove historical scaling.
+
+The changed dispatch timing exposes a test that assumes two 0.6-second Processes
+will overlap. Its new-code repeat misses that interval while the old-code sample
+passes. Hold the two real fixture process groups with SIGSTOP, independently
+verify their liveness and cleanup, then retain every existing recovery/deduplication
+assertion. This is fixture synchronization only; production scheduling and recovery
+are unchanged. Original red samples remain with the qualification evidence.
+
+Full G1 exposes two tests that advance time by replacing the old combined retry
+wrapper. Inject the clock at the Host's time source instead; keep the six rejected
+invocations, unchanged cooldown/attempt assertions, real CPU closure and Oracle.
+
+It also reproduces an End-run failure while the application and screen are still
+mounted but child controls are unavailable. The application shutdown guard cannot
+cover that child lifecycle boundary. Keep references to the existing status and
+confirmation widgets and update those same objects during status/reply handling;
+do not add a readiness flag, change cancellation authority or suppress arbitrary
+exceptions. A deterministic regression removes the action controls while the app
+is running, delivers STOPPING, and verifies the same confirmation becomes disabled,
+reopening stays disabled and no cancellation request is sent. The original G1
+failure and a passing independent repeat are both preserved.

@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Host history and runtime verification cost](../design/run-closure-repairs-2026-10-12.md#host-history-and-runtime-verification-cost-2026-10-13):
+  committed STATUS/retry reuse, current-clock/live overlays and disposable verified
+  runtime identity, with explicit invalidation and private-setting boundaries.
+  [Validation](../qualification.md#host-history-and-runtime-verification-latency-2026-10-13)
+  retains cold/warm growth samples, native closure, the synchronized restart
+  fixture, full G1/correction reconciliation, modal child-lifecycle repair and
+  remaining first-after-write cost. Existing Hosts are not upgraded.
+
 - [History growth and observation latency](../design/run-closure-repairs-2026-10-12.md#history-growth-and-observation-latency):
   cache-only polling, bounded background evidence reads, nested-budget accounting
   and one-pass trace decoding; keeps unknown coverage and freshness truthful.

@@ -36,6 +36,12 @@ class EndRunScreen(ModalScreen):
         self.busy = False
         self.writable = True
         self.draft.pop("rejection", None)
+        # The screen may still be mounted while its child DOM is unavailable.
+        # Keep the actual widgets so status/reply updates preserve button state.
+        self._status_message = Static(tr("Confirm only if you want to end this run."),
+            markup=False, id="end-run-status")
+        self._confirm_button = Button(tr("Retry same request") if self.draft.get("pending") else tr("End this run"),
+            id="end-run-confirm", variant="error")
 
     def compose(self) -> ComposeResult:
         with Vertical(id="end-run-form"):
@@ -54,11 +60,10 @@ class EndRunScreen(ModalScreen):
                     "To leave only the monitor, close this form and press q. The Host and its tasks will "
                     "continue."
                 ), markup=False)
-                yield Static(tr("Confirm only if you want to end this run."), markup=False, id="end-run-status")
+                yield self._status_message
             with Horizontal(id="end-run-actions"):
                 yield Button(tr("Keep monitoring"), id="end-run-close")
-                yield Button(tr("Retry same request") if self.draft.get("pending") else tr("End this run"),
-                    id="end-run-confirm", variant="error")
+                yield self._confirm_button
 
     def on_mount(self) -> None:
         self.update_status(self.status)
@@ -67,10 +72,10 @@ class EndRunScreen(ModalScreen):
         self.query_one("#end-run-close", Button).focus()
 
     def _message(self, text: str) -> None:
-        self.query_one("#end-run-status", Static).update(text)
+        self._status_message.update(text)
 
     def _buttons(self) -> None:
-        self.query_one("#end-run-confirm", Button).disabled = self.busy or not self.writable
+        self._confirm_button.disabled = self.busy or not self.writable
 
     def _durable_acceptance(self, request: ControlRequest) -> int | None:
         """Return the accepted revision when the Host persisted this exact request.
@@ -159,7 +164,7 @@ class EndRunScreen(ModalScreen):
                     "Host reply not confirmed. The run may still be active or already stopping. Retry sends "
                     "the same request; refresh to inspect progress."
                 ))
-                self.query_one("#end-run-confirm", Button).label = tr("Retry same request")
+                self._confirm_button.label = tr("Retry same request")
             else:
                 self.draft.pop("pending", None)
                 self.draft["accepted_revision"] = accepted_revision
@@ -186,7 +191,7 @@ class EndRunScreen(ModalScreen):
                     "Host reply did not confirm acceptance. Retry the same request or refresh to inspect "
                     "progress."
                 ))
-                self.query_one("#end-run-confirm", Button).label = tr("Retry same request")
+                self._confirm_button.label = tr("Retry same request")
         finally:
             self.busy = False
             self._buttons()

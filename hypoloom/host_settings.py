@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import time
 import os
 import sqlite3
 import stat
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,53 @@ def _settings_bytes(path: Path) -> bytes:
 
 def validate_private_settings(path: Path) -> None:
     _settings_bytes(path)
+
+
+def runtime_environment_id(package, runtime_files, *, private_settings_path=None, cache=None):
+    """Reuse a Host's last byte verification while all local file inputs agree.
+
+    Direct callers omit the disposable cache and always verify complete bytes.
+    Private settings validation is never cached, including its permission check.
+    """
+    if private_settings_path is not None:
+        if private_settings_path not in runtime_files:
+            raise ValueError("private settings must be included in runtime_files")
+        validate_private_settings(private_settings_path)
+    platform = (sys.version, str(Path(sys.executable).resolve()), sqlite3.sqlite_version)
+    def inventory():
+        files = sorted(package.glob("*.py")) + sorted((package / "migrations").glob("*.sql"))
+        files += sorted(path for seed in ("expert-seed", "grounding-seed", "research-workflow")
+            for path in (package / "skills" / seed).rglob("*") if path.is_file())
+        environment = package.parent / "environment.yml"
+        if environment.is_file(): files.append(environment)
+        result = []
+        for path in (*files, *runtime_files):
+            if path == private_settings_path: name = PRIVATE_SETTINGS_NAME.encode()
+            else:
+                try: name = path.relative_to(package.parent).as_posix().encode()
+                except ValueError: name = path.resolve().as_posix().encode()
+            metadata = path.stat()
+            result.append((path, name, metadata.st_dev, metadata.st_ino, metadata.st_size,
+                metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_mode))
+        return tuple(result)
+    files = inventory()
+    key = (platform, files)
+    if cache is not None and cache.get('key') == key:
+        return cache['identity']
+    digest = hashlib.sha256()
+    for part in platform:
+        raw = part.encode(); digest.update(len(raw).to_bytes(8, 'big') + raw)
+    for path, name, _, _, size, *_ in files:
+        digest.update(len(name).to_bytes(8, 'big') + name)
+        digest.update(size.to_bytes(8, 'big'))
+        with path.open('rb') as stream:
+            for content in iter(lambda: stream.read(1024 * 1024), b''): digest.update(content)
+    if files != inventory():
+        raise HostConfigurationError('runtime files changed during verification')
+    identity = 'sha256:' + digest.hexdigest()
+    if cache is not None:
+        cache.clear(); cache.update(key=key, identity=identity)
+    return identity
 
 
 def read_provider_connection(path: Path) -> dict[str, str]:
@@ -170,23 +219,25 @@ def provider_retry_status(host, run_id: str) -> dict[str, Any]:
     # Durable gate view: closed Attempts carry the failure, an operator
     # clear transition ends it early. No in-memory authority, so a
     # reopened Host computes the identical gate.
-    from .provider_observation import PROVIDER_TRANSIENT, provider_retry_gate
+    from .provider_observation import PROVIDER_TRANSIENT, provider_retry_history, observe_provider_retry
     cleared = host.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
         "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (run_id,))[0]["v"]
-    rows = host.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
-        "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
-        "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
-        "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status, "
-        "(terminal_reason='SUCCEEDED' OR (json_extract(observation_json,'$.diagnostics.provider_observed_usage.completed_requests')>0 "
-        "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IS NULL)) AS provider_success "
-        "FROM execution_attempts WHERE run_id=? AND kind='AGENT'", (run_id,))
     try: cooldown = host._research_contract(run_id).document.get("budget", {}).get("provider_auth_cooldown_seconds")
     except (AgentACIError, KeyError, TypeError, ValueError): cooldown = None
     if type(cooldown) not in (int, float) or not math.isfinite(float(cooldown)) or float(cooldown) < 0:
         cooldown = DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS
-    status = provider_retry_gate(rows, cooldown_seconds=float(cooldown), now=time.time(),
-        attempt_limit=host._agent_attempt_limits(host._research_contract(run_id))[1],
-        cleared_at=float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None)
+    limit = host._agent_attempt_limits(host._research_contract(run_id))[1]
+    cleared_at = float(cleared) if type(cleared) in (int, float) and math.isfinite(cleared) else None
+    def history():
+        rows = host.store.inspect("SELECT attempt_id, started_at, ended_at, state, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.code') AS code, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.retry_at') AS retry_at, "
+            "json_extract(observation_json,'$.diagnostics.provider_failure.http_status') AS http_status, "
+            "(terminal_reason='SUCCEEDED' OR (json_extract(observation_json,'$.diagnostics.provider_observed_usage.completed_requests')>0 "
+            "AND json_extract(observation_json,'$.diagnostics.provider_failure.code') IS NULL)) AS provider_success "
+            "FROM execution_attempts WHERE run_id=? AND kind='AGENT'", (run_id,))
+        return provider_retry_history(rows, cooldown_seconds=float(cooldown), cleared_at=cleared_at, attempt_limit=limit)
+    status = observe_provider_retry(host.store.cached_read(("provider-retry-history", run_id, cooldown, cleared_at, limit), history), now=time.time())
     from .provider_traffic import for_run
     traffic = for_run(host, run_id)
     traffic.select(cleared)
