@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 12 history-growth follow-up: shared polling consumes only validated
+  evidence-cache hits; one background worker warms up to sixteen cold captures
+  per pass, ten seconds after completion. Nested read budgets cannot relax/refund
+  the outer allowance, and invocation validation shares decoded records with the
+  existing privacy-filtered trace reader. No persisted cache or runtime authority
+  is added. The same 91-Agent/16-Process SQLite view takes 1.515–1.594 profiled
+  seconds without cold evidence I/O versus 4.578–4.624 with it; this excludes
+  STATUS and does not bound Host ticks. 248 focused/12 browser checks and one
+  native flow pass: 11 Agents/one CPU Process close with one outcome and no live
+  groups. Two live samples return 6 RPM. No full G1 or paid/GPU claim. Active runs
+  remain untouched; observers must reopen.
+  [Design](../design/run-closure-repairs-2026-10-12.md#history-growth-and-observation-latency) /
+  [validation](../qualification.md#historical-evidence-off-the-polling-path-2026-10-12).
+
 - October 12 Web activity: the shared background reader allows ten seconds for
   STATUS while HTTP stays nonblocking. Actual busy replies exceeded the former
   three-second synchronous limit, losing activity/RPM enrichment. Matching,

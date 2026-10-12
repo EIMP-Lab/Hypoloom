@@ -2,6 +2,55 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Historical evidence off the polling path (2026-10-12)
+
+The [history-growth repair](design/run-closure-repairs-2026-10-12.md#history-growth-and-observation-latency)
+reuses the existing evidence summary cache without cold invocation reads during
+shared polling. A separate bounded reader warms that cache, and the existing
+validator and trace view share one JSON decode per native record. Evidence stays
+unknown while deferred or invalidated. Raw evidence remains available in detail.
+Records are under `.local/qualification/observer-history-20261012/`.
+
+- `red.xml`: all three initial regressions fail on the previous code, reproducing
+  duplicate record decoding, a nested allowance overriding cache-only reads,
+  and a blocked historical capture preventing matching live traffic from reaching
+  the first HTTP observation.
+- `focused-final.xml` and `worker-retry.xml`: **248 distinct checks pass**. They
+  cover a real STATUS socket and HTTP while file I/O is blocked, shared worker
+  ownership, source invalidation, failure cooldown, nonblocking teardown, and
+  150 captures exceeding the existing cache capacity. Each background pass reads
+  at most sixteen cold captures; cache-only passes read none. Existing provenance,
+  privacy, partial-coverage, snapshot-matching and notification tests pass.
+- `browser.xml`: **12 passed, 28 deselected**, including real browser RPM,
+  freshness, cold/failed refresh, cumulative expert metrics and sequential polling.
+- `native.xml`: **one native CC/Host/MCP/CPU flow passes**, retaining same-Attempt
+  corrections, initial deferred coverage, eventual complete evidence, exact detail
+  agreement and authenticated read-only HTTP. The initial run's old synchronous
+  expectation fails in `native-initial.xml`; it is replaced by assertions for
+  both asynchronous phases, without dropping complete-evidence or immutability
+  checks. `native-census.json` independently counts 11 closed Agents, one closed
+  CPU Process, one canonical outcome, zero duplicate ownership and no live groups.
+- `offline-comparison.json`: one SQLite read transaction contains 91 Agents and
+  16 Processes at revision 89. With the single-pass decoder in both cases,
+  ordinary cold evidence reads take **4.578 / 4.624 profiled seconds** and sixteen
+  stdout reads, versus **1.515 / 1.594 seconds** and zero such reads in cache-only
+  mode. This measures display processing with profiler overhead, excludes STATUS,
+  and does not establish constant-time aggregation. Per-sample profiles are kept.
+- `live.json`: two read-only samples of the active frozen Host return matching
+  live observations at **6 RPM** in **4.254 / 4.127 seconds**, with no timeouts.
+  A redundant full audit is excluded from these samples; the disposable evidence
+  worker is closed afterward. Earlier ten-second Host timeouts remain valid
+  evidence and are not superseded by these two successes.
+- Four documentation checks, undefined-name and whitespace checks pass. All
+  195 package files match source, wheel, disposable installation and a fresh
+  bundle; the source distribution includes all 13 changed files. Installed CLI
+  help and MCP initialization/tool listing pass (`package-final.json`).
+
+This is focused observer qualification, not a new full G1 or paid/GPU promotion.
+The active Host, frozen bundle, shared installation and durable research state
+are unchanged. Reopen an observer to load its updated reader. Host queue/tick
+profiling and further historical aggregation work remain a separate design stage.
+
 ## Busy Host activity observations (2026-10-12)
 
 The [bounded observer repair](design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work)

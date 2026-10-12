@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .monitor import HostStatusBackoff, MonitorError, build_observer_snapshot
 from .observation_api import build_product_observation
+from .observer_evidence import evidence_read_budget, read_attempt_evidence
 from .oracle import Oracle
 from .state_store import StateStore
 
@@ -19,7 +20,7 @@ class ObserverRefresh:
     to a single server process, has no persistent cache, and never discovers runs.
     """
 
-    def __init__(self, state_root, run_id, *, refresh_seconds=2.0, audit_seconds=30.0):
+    def __init__(self, state_root, run_id, *, refresh_seconds=2.0, audit_seconds=30.0, evidence_seconds=10.0):
         self.root, self.run_id = Path(state_root).resolve(), run_id
         self.refresh_seconds, self.audit_seconds = refresh_seconds, audit_seconds
         self._lock, self._audit_lock = threading.Lock(), threading.Lock()
@@ -34,6 +35,8 @@ class ObserverRefresh:
         self._refresh_lock = threading.Lock()
         self._refresh_thread = None
         self._refresh_error, self._retry_at = False, 0.0
+        self.evidence_seconds = evidence_seconds
+        self._evidence_thread, self._evidence_done = None, None
 
     def _data_version(self):
         # SQLite's connection-local change indication invalidates only this
@@ -79,12 +82,34 @@ class ObserverRefresh:
             }
             return result
 
+    def _warm_evidence(self):
+        # Release the database read before any slow file I/O. Only the existing
+        # bounded, metadata-validated summary cache receives these observations.
+        with StateStore(self.root).readonly_connection() as db:
+            rows = [dict(row) for row in db.execute(
+                "SELECT * FROM execution_attempts WHERE run_id=? AND kind='AGENT' "
+                "ORDER BY started_at DESC,attempt_id", (self.run_id,))]
+        with evidence_read_budget(16):
+            for row in rows:
+                if self._closed: return
+                read_attempt_evidence(self.root, self.run_id, row)
+
+    def _run_evidence(self):
+        try:
+            if not self._closed: self._warm_evidence()
+        except Exception:
+            # A cache miss remains deferred/unknown; no failure text or false
+            # clean verdict is published by this best-effort display worker.
+            pass
+        finally:
+            self._evidence_done = time.monotonic()
+
     def get(self, *, force=False):
         with self._lock:
             if self._closed: raise MonitorError('observer reader is closed')
             version = self._data_version()
             if force or self._cached is None or version != self._cached_version or time.monotonic() - self._cached_at >= self.refresh_seconds:
-                with StateStore(self.root).readonly_connection() as db:
+                with StateStore(self.root).readonly_connection() as db, evidence_read_budget(0):
                     db.execute('BEGIN')
                     # Busy resident ticks can exceed the short synchronous probe.
                     # This shared worker may wait; HTTP poll() stays nonblocking
@@ -99,6 +124,12 @@ class ObserverRefresh:
                     self._cached_at = time.monotonic()
                     self._cached_version = version
                     self._refresh_error = False
+            evidence_running = self._evidence_thread is not None and self._evidence_thread.is_alive()
+            if not self._closed and not evidence_running and (self._evidence_done is None or
+                    time.monotonic() - self._evidence_done >= self.evidence_seconds):
+                self._evidence_thread = threading.Thread(target=self._run_evidence,
+                    name='hypoloom-observer-evidence', daemon=True)
+                self._evidence_thread.start()
             if not self._closed and not self.audit_running and (self._audit_done is None or time.monotonic() - self._audit_done >= self.audit_seconds):
                 self._thread = threading.Thread(target=self._run_audit,
                     name='hypoloom-observer-audit', daemon=True)
@@ -150,6 +181,10 @@ class ObserverRefresh:
         thread = self._thread
         if thread is not None and thread is not threading.current_thread(): thread.join(timeout=timeout)
 
+    def wait_for_evidence(self, timeout=None):
+        thread = self._evidence_thread
+        if thread is not None and thread is not threading.current_thread(): thread.join(timeout=timeout)
+
     def close(self):
         # Like the existing TUI snapshot reader, an already-running daemon read
         # may finish after the UI closes. It cannot write or schedule more work.
@@ -161,3 +196,4 @@ class ObserverRefresh:
                 self._version_connection = self._version_context = None
         self.wait_for_audit(timeout=0.05)
         self.wait_for_refresh(timeout=0.05)
+        self.wait_for_evidence(timeout=0.05)

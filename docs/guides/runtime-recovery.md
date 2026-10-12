@@ -28,6 +28,14 @@ The background allowance does not make an old or incompatible reply live: the
 existing snapshot matching, data-age checks and timeout backoff still apply.
 Longer Host stalls can therefore still show unconfirmed activity.
 
+Ordinary refreshes reuse validated invocation-evidence summaries while a separate
+background reader loads missing history. Tool counts and required-action coverage
+may initially be unknown, then fill in on later refreshes. Changed captures
+invalidate their old summaries; unknown evidence is never treated as zero tools
+or a missed action. Selecting an Attempt still reads its detail directly.
+This reduces historical log work on the refresh path; full row aggregation and
+Host tick delays can still affect large or busy runs.
+
 Backend observer fixes require reopening the monitor to load the updated Python
 code; reloading the browser only reloads Web assets. Reopen the monitor for the
 same state root and run ID and use its new startup URL. Leaving the monitor with

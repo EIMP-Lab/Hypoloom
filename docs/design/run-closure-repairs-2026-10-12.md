@@ -223,3 +223,50 @@ not a claim that every Host operation now completes within ten seconds or that
 unconfirmed activity should always be hidden. Longer Host work remains a separate
 performance question. Reopen the observer to activate this fix; do not restart or
 migrate the research Host or alter its frozen bundle.
+
+## History growth and observation latency
+
+The preceding profile identifies a reproducible display bottleneck: an ordinary
+refresh cold-reads up to sixteen invocation logs, then decodes their JSON twice.
+The 65-Agent sample spends 5.105 of 7.128 profiled seconds in reliability evidence.
+This delays the subsequent STATUS probe. Host STATUS separately traverses
+historical rows and shares its owner thread with tick work; a socket timeout
+alone does not identify which Host operation blocked. Increasing the deadline
+cannot establish a bound on either path.
+
+The first implementation removes invocation-log reads from the shared polling
+worker. Reuse the existing metadata-validated, 128-entry evidence summary cache:
+polling may consume hits, while misses retain the existing deferred/unknown
+coverage. One disposable background worker per observer warms at most sixteen
+cold captures per pass, prioritizing recent Attempts, with a ten-second pause
+after completion. It releases its SQLite read before reading files. It never
+writes research state or publishes a separate observation. Changed files or
+Attempt state still invalidate a cached summary, and direct detail/export reads
+retain their ordinary synchronous behavior. Closing an observer prevents further
+work and does not wait indefinitely for an already-running file read.
+
+The native trace decoder will consume already-decoded events from the existing
+invocation validator. Keep session/replay filtering, result and pair checks,
+configuration-read suppression, file limits and partial-coverage semantics.
+Nested evidence budgets must only reduce an outer allowance and charge reads
+back to it. These changes reuse existing sources, metadata checks and validators;
+they add no persisted cache, schema, health marker or acceptance authority.
+
+Validation must block a real historical file read while proving that fresh
+matching STATUS traffic still reaches HTTP, clients share one evidence worker,
+and cached evidence becomes unknown after its source changes. Exercise history
+beyond the existing cache capacity and count cold reads independently of timing.
+Compare before/after display work against the same retained rows read-only;
+separate profiler overhead, cold/warm evidence and socket waiting. Preserve both
+successful and timed-out live samples.
+
+Further Host work is a separate measured stage of this plan: instrument an
+isolated real Host to distinguish queue/tick delay from STATUS calculation,
+exercise increasing committed Attempt/fact counts, and identify the specific
+long owner-thread operation before moving its preparation off-thread. Reuse the
+existing committed charge/read caches and keep durable publication on the owner.
+If row aggregation remains material, split historical view cadence from live
+activity using the existing snapshot matcher and explicit per-view age; do not
+combine stale history with a new timestamp or create a second lifecycle reducer.
+This first implementation does not promise constant-time full summaries or
+bounded Host ticks, and does not restart or migrate the active frozen run.

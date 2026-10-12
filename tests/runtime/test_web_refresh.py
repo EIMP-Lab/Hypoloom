@@ -127,6 +127,90 @@ def test_historical_audit_failure_is_not_clean(tmp_path, monkeypatch):
         reader.close()
 
 
+def test_slow_history_evidence_does_not_delay_live_status_and_invalidates_on_change(monkeypatch):
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from hypoloom import observer_details
+    from hypoloom.monitor import build_monitor_snapshot
+    from hypoloom.workflow_host import WorkflowHost
+    from test_monitor_live_status import _one_status_response
+
+    with TemporaryDirectory(prefix='hyp-history-') as directory:
+        root = Path(directory)
+        _create_fresh_run(root, 'run')
+        host = WorkflowHost(root)
+        try:
+            host.initialize()
+            for _ in range(3): host.tick()
+            row = next(row for row in host.store.list_attempts(run_id='run')
+                if row['kind'] == 'AGENT' and row['state'] == 'CLOSED')
+        finally:
+            host.close()
+        live = dict(build_monitor_snapshot(root, 'run', _oracle={'ok': None}).status)
+        live.update(quiescent_for_backup=False, agent_usage={}, resource_waits=[],
+            provider_traffic={'scope': 'run', 'observed_at': time.time(), 'warming_up': False,
+                'rpm': 7, 'in_flight': 1, 'queued': 0,
+                'by_expert': {'scientist': {'rpm': 7, 'in_flight': 1, 'queued': 0}}})
+        capture = root / 'diagnostics' / 'agents' / 'run' / row['attempt_id']
+        capture.mkdir(parents=True, exist_ok=True)
+        (capture / 'stdout.log').write_text('\n'.join(json.dumps(event) for event in [
+            {'type': 'system', 'subtype': 'init', 'session_id': 'history'},
+            {'type': 'assistant', 'session_id': 'history', 'message': {'content': [
+                {'type': 'tool_use', 'id': 'tool', 'name': 'Bash', 'input': {'command': 'true'}}]}},
+            {'type': 'user', 'session_id': 'history', 'message': {'content': [
+                {'type': 'tool_result', 'tool_use_id': 'tool', 'is_error': False, 'content': 'ok'}]}},
+            {'type': 'result', 'session_id': 'history', 'is_error': False}]) + '\n')
+        before = _row_census(root / 'state.sqlite')
+        original = observer_details._read
+        entered, release = threading.Event(), threading.Event()
+        reads = []
+        def slow_read(state_root, parts, limit):
+            if tuple(parts) == ('diagnostics', 'agents', 'run', row['attempt_id'], 'stdout.log'):
+                reads.append(threading.current_thread().name)
+                entered.set()
+                assert release.wait(10)
+            return original(state_root, parts, limit)
+        monkeypatch.setattr(observer_details, '_read', slow_read)
+        responder, requests, errors = _one_status_response(root / 'control.sock', live)
+        server = create_server(root, 'run', port=0)
+        thread = _start(server)
+        reader = server.refresh_reader
+        def trace(snapshot):
+            return next(attempt['trace'] for node in snapshot.overview['reliability']['nodes']
+                for attempt in node['attempts'] if attempt['attempt_id'] == row['attempt_id'])
+        try:
+            _request(server, 'GET', '/api/refresh', token=server.access_token)
+            assert entered.wait(3)
+            reader.wait_for_refresh(timeout=2)
+            for _ in range(3):
+                code, _, body = _request(server, 'GET', '/api/refresh', token=server.access_token)
+                data = json.loads(body)
+                assert code == 200
+                assert data['snapshot']['status']['provider_traffic'] == live['provider_traffic']
+            assert len(reads) == 1 and len(requests) == 1 and not errors
+            assert trace(reader.poll()['snapshot'])['coverage'] == 'unavailable'
+            release.set()
+            reader.wait_for_evidence(timeout=5)
+            responder.join(timeout=5)
+            (root / 'control.sock').unlink()
+            updated = trace(reader.get(force=True)['snapshot'])
+            assert updated['coverage'] == 'complete' and updated['tool_calls'] == 1
+            assert len(reads) == 1
+            with (capture / 'stdout.log').open('a') as output:
+                output.write('partial record\n')
+            changed = trace(reader.get(force=True)['snapshot'])
+            assert changed['coverage'] == 'unavailable'
+            assert changed['required_action']['reason'] == 'evidence_read_deferred'
+            assert len(reads) == 1
+        finally:
+            release.set()
+            _stop(server, thread)
+            reader.wait_for_refresh(timeout=5)
+            if hasattr(reader, 'wait_for_evidence'): reader.wait_for_evidence(timeout=5)
+            responder.join(timeout=5)
+        assert not responder.is_alive() and _row_census(root / 'state.sqlite') == before
+
+
 def test_history_pagination_preserves_total_and_is_bounded():
     from hypoloom.web_observer import WebObserverRequestHandler
     rows = list(range(250))
@@ -149,6 +233,8 @@ def test_close_does_not_wait_for_busy_projection_lock_or_audit(tmp_path, monkeyp
     release = threading.Event()
     reader._thread = threading.Thread(target=lambda: release.wait(5), daemon=True)
     reader._thread.start()
+    reader._evidence_thread = threading.Thread(target=lambda: release.wait(5), daemon=True)
+    reader._evidence_thread.start()
     reader._lock.acquire()
     try:
         start = time.monotonic()
@@ -156,6 +242,7 @@ def test_close_does_not_wait_for_busy_projection_lock_or_audit(tmp_path, monkeyp
         assert time.monotonic() - start < 0.5
     finally:
         reader._lock.release(); release.set(); reader.wait_for_audit(timeout=5)
+        reader.wait_for_evidence(timeout=5)
     import pytest
     from hypoloom.monitor import MonitorError
     with pytest.raises(MonitorError, match='closed'): reader.get()
@@ -179,6 +266,71 @@ def test_refresh_shares_one_host_status_backoff_with_the_snapshot_builder(tmp_pa
     finally:
         reader.wait_for_audit(timeout=5)
         reader.close()
+
+
+def test_background_evidence_bounds_reads_beyond_cache_capacity(tmp_path, monkeypatch):
+    from hypoloom import observer_details
+    from hypoloom.observer_evidence import evidence_read_budget, read_attempt_evidence
+    from test_observer_details import _attempt, _database
+    rows = [_attempt(f'a-{i:03}', command='RESULT_ANALYSIS', started_at=i) for i in range(150)]
+    _database(tmp_path, rows)
+    for row in rows:
+        capture = tmp_path / 'diagnostics' / 'agents' / 'run' / row['attempt_id']
+        capture.mkdir(parents=True)
+        (capture / 'stdout.log').write_text(
+            '{"type":"system","subtype":"init","session_id":"s"}\n'
+            '{"type":"result","session_id":"s","is_error":false}\n')
+    before = (tmp_path / 'state.sqlite').read_bytes()
+    original, reads = observer_details._read, []
+    def counted(root, parts, limit):
+        if parts[-1] == 'stdout.log': reads.append(parts[-2])
+        return original(root, parts, limit)
+    monkeypatch.setattr(observer_details, '_read', counted)
+    reader = ObserverRefresh(tmp_path, 'run')
+    try:
+        for turn in range(10):
+            start = len(reads)
+            reader._warm_evidence()
+            assert len(reads) - start <= 16
+            if turn == 0: assert reads == [f'a-{i:03}' for i in range(149, 133, -1)]
+            before_poll = len(reads)
+            with evidence_read_budget(0):
+                values = [read_attempt_evidence(tmp_path, 'run', row) for row in rows]
+            assert len(reads) == before_poll
+            assert any(value['coverage'] == 'complete' for value in values)
+            assert any(value['required_action']['reason'] == 'evidence_read_deferred' for value in values)
+        reader.close()
+        reader._run_evidence()
+        assert len(reads) == before_poll
+    finally:
+        reader.close()
+    assert (tmp_path / 'state.sqlite').read_bytes() == before
+
+
+def test_failed_evidence_worker_waits_between_passes_without_failing_refresh(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from hypoloom import observer_refresh
+    _create_fresh_run(tmp_path, 'run')
+    now, calls = [100.0], []
+    monkeypatch.setattr(observer_refresh, 'time', SimpleNamespace(
+        monotonic=lambda: now[0], time=time.time))
+    def fail(self):
+        calls.append(now[0])
+        raise OSError('PRIVATE_EVIDENCE_FAILURE')
+    monkeypatch.setattr(ObserverRefresh, '_warm_evidence', fail)
+    reader = ObserverRefresh(tmp_path, 'run')
+    try:
+        reader.get(); reader.wait_for_evidence(timeout=5)
+        now[0] = 109
+        snapshot = reader.get(force=True)['snapshot']
+        assert calls == [100.0]
+        assert 'PRIVATE_EVIDENCE_FAILURE' not in json.dumps(snapshot.to_dict())
+        assert reader.poll()['observation']['state'] == 'ready'
+        now[0] = 110
+        reader.get(force=True); reader.wait_for_evidence(timeout=5)
+        assert calls == [100.0, 110]
+    finally:
+        reader.close(); reader.wait_for_audit(timeout=5)
 
 
 def test_refresh_preserves_injected_snapshot_source_without_inventing_activity(tmp_path):
@@ -339,6 +491,7 @@ def test_close_during_cold_refresh_cannot_publish_or_schedule_audit(tmp_path, mo
         assert time.monotonic() - started < 0.5
         release.set(); reader.wait_for_refresh(timeout=5)
         assert reader._cached is None and not reader.audit_running
+        assert reader._evidence_thread is None
         with pytest.raises(MonitorError, match='closed'): reader.poll()
     finally:
         release.set(); reader.close(); reader.wait_for_refresh(timeout=5)

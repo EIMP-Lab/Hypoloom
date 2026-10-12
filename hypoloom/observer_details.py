@@ -405,12 +405,19 @@ def _sessions(attempts, selectors):
 
 
 def _trace_events(raw, *, deduplicate=True):
+    def records():
+        for line in raw.splitlines():
+            try:
+                yield json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+    return _trace_records(records(), deduplicate=deduplicate)
+
+
+def _trace_records(records, *, deduplicate=True):
+    """Share native block selection and privacy filtering with validated reads."""
     events, seen = [], set()
-    for line in raw.splitlines():
-        try:
-            event = json.loads(line)
-        except (ValueError, RecursionError):
-            continue
+    for event in records:
         if not isinstance(event, dict):
             continue
         message = _object(event.get("message"))

@@ -108,6 +108,19 @@ def test_native_same_attempt_corrections_survive_authenticated_read_only_web(tmp
         status, _, body = _request(server, "GET", "/api/snapshot", token=server.access_token)
         assert status == 200, body
         snapshot = json.loads(body)
+        initial = next(attempt for node in snapshot['overview']['reliability']['nodes']
+            for attempt in node['attempts'] if attempt['attempt_id'] == identity)
+        assert initial['trace']['coverage'] == 'unavailable'
+        assert initial['trace']['required_action']['reason'] == 'evidence_read_deferred'
+        # The first view is useful before cold history has loaded. Verify the
+        # same native evidence becomes complete after the shared worker finishes;
+        # direct detail must still agree with that eventual summary below.
+        server.refresh_reader.wait_for_evidence(timeout=10)
+        assert not server.refresh_reader._evidence_thread.is_alive()
+        server.refresh_reader.get(force=True)
+        status, _, body = _request(server, "GET", "/api/snapshot", token=server.access_token)
+        assert status == 200, body
+        snapshot = json.loads(body)
         (tmp_path / "web-snapshot.json").write_bytes(body)
         status, _, refresh_body = _request(server, "GET", "/api/refresh", token=server.access_token)
         assert status == 200
@@ -167,9 +180,11 @@ def test_native_same_attempt_corrections_survive_authenticated_read_only_web(tmp
     finally:
         _stop(server, thread)
         server.refresh_reader.wait_for_audit(timeout=5)
+        server.refresh_reader.wait_for_evidence(timeout=5)
 
     assert not thread.is_alive() and server.fileno() == -1
     assert not server.refresh_reader.audit_running
+    assert not server.refresh_reader._evidence_thread.is_alive()
     assert all(not process_group_exists(row["process_group_id"])
                for row in rows if row["process_group_id"] is not None)
     audit = Oracle(root / "state.sqlite", root / "artifacts").audit(run_id)

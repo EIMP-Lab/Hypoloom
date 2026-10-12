@@ -1,5 +1,11 @@
 # Development memory index
 
+- [History growth and observation latency](../design/run-closure-repairs-2026-10-12.md#history-growth-and-observation-latency):
+  cache-only polling, bounded background evidence reads, nested-budget accounting
+  and one-pass trace decoding; keeps unknown coverage and freshness truthful.
+  [Validation](../qualification.md#historical-evidence-off-the-polling-path-2026-10-12)
+  separates the measured display improvement from still-unbounded Host tick work.
+
 - [Busy Host activity observations](../design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work):
   bounded background STATUS allowance, nonblocking HTTP and truthful RPM/activity;
   [validation](../qualification.md#busy-host-activity-observations-2026-10-12)

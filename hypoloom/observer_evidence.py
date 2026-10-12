@@ -35,11 +35,16 @@ def evidence_read_budget(max_reads=16):
     """
     if type(max_reads) is not int or max_reads < 0:
         raise ValueError("evidence read budget must be a nonnegative integer")
-    token = _READ_BUDGET.set(max_reads)
+    outer = _READ_BUDGET.get()
+    allowance = max_reads if outer is None else min(outer, max_reads)
+    token = _READ_BUDGET.set(allowance)
     try:
         yield
     finally:
+        spent = allowance - _READ_BUDGET.get()
         _READ_BUDGET.reset(token)
+        if outer is not None:
+            _READ_BUDGET.set(outer - spent)
 
 
 def _summary(coverage="unavailable", source=None, *, status="unknown", reason="current_stdout_unavailable", name=None):
@@ -98,45 +103,47 @@ def _metadata(root, parts, details):
 
 
 def _invocation(raw, session_id, details):
-    selected, init, terminals = [], None, 0
+    init, terminals = None, 0
     malformed, after_terminal = False, False
-    for line in raw.splitlines():
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except (ValueError, RecursionError):
-            malformed = True
-            continue
-        if not isinstance(event, dict):
-            malformed = True
-            continue
-        if event.get("isReplay") or event.get("is_replay") or event.get("parent_tool_use_id"):
-            continue
-        if event.get("type") == "system" and event.get("subtype") == "init":
-            if init is not None:
+    def records():
+        nonlocal init, terminals, malformed, after_terminal
+        for line in raw.splitlines():
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except (ValueError, RecursionError):
                 malformed = True
                 continue
-            init = event
-            if not isinstance(event.get("session_id"), str) or (
-                    session_id is not None and event["session_id"] != session_id):
+            if not isinstance(event, dict):
                 malformed = True
-        if init is None:
-            # Resumed history preceding current init has no current authority.
-            continue
-        if event.get("session_id") not in {None, init.get("session_id")}:
-            malformed = True
-            continue
-        if event.get("type") == "result":
-            terminals += 1
-            if type(event.get("is_error")) is not bool:
+                continue
+            if event.get("isReplay") or event.get("is_replay") or event.get("parent_tool_use_id"):
+                continue
+            if event.get("type") == "system" and event.get("subtype") == "init":
+                if init is not None:
+                    malformed = True
+                    continue
+                init = event
+                if not isinstance(event.get("session_id"), str) or (
+                        session_id is not None and event["session_id"] != session_id):
+                    malformed = True
+            if init is None:
+                # Resumed history preceding current init has no current authority.
+                continue
+            if event.get("session_id") not in {None, init.get("session_id")}:
                 malformed = True
-        elif terminals and event.get("type") in {"assistant", "user"}:
-            after_terminal = True
-        selected.append(line)
+                continue
+            if event.get("type") == "result":
+                terminals += 1
+                if type(event.get("is_error")) is not bool:
+                    malformed = True
+            elif terminals and event.get("type") in {"assistant", "user"}:
+                after_terminal = True
+            yield event
     # The view's deduplicator would hide a changed result under the same ID.
     # Preserve observations here, then count IDs once and mark conflicts partial.
-    trace = details._trace_events(b"\n".join(selected), deduplicate=False)
+    trace = details._trace_records(records(), deduplicate=False)
     uses, results = {}, {}
     bodies = []
     for position, event in enumerate(trace):

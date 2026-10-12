@@ -91,6 +91,45 @@ def test_complete_current_success_deduplicates_tools_and_omits_private_bodies(tm
     assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
 
 
+def test_progress_heavy_invocation_decodes_each_record_once(tmp_path, monkeypatch):
+    from hypoloom import observer_evidence
+    row = _row()
+    progress = {"type": "stream_event", "session_id": "chain", "event": {
+        "type": "content_block_delta", "delta": {"type": "thinking_delta", "characters": 1}}}
+    events = [_init(), *[progress for _ in range(2000)], *_success()[1:]]
+    _write(tmp_path, row, events)
+    decode = json.loads
+    calls = []
+    def counted(raw, *args, **kwargs):
+        if isinstance(raw, bytes) and b'"session_id": "chain"' in raw:
+            calls.append(1)
+        return decode(raw, *args, **kwargs)
+    monkeypatch.setattr(observer_evidence.json, "loads", counted)
+    result = read_attempt_evidence(tmp_path, "run", row)
+    assert result["coverage"] == "complete" and result["tool_calls"] == 2
+    assert result["required_action"]["status"] == "met"
+    assert len(calls) == len(events)
+
+
+def test_nested_evidence_budgets_cannot_relax_or_refund_outer_limit(tmp_path):
+    from hypoloom.observer_evidence import evidence_read_budget
+    from hypoloom.observer_reliability import build_reliability
+    row = _row()
+    roots = [tmp_path / str(i) for i in range(3)]
+    for root in roots:
+        _write(root, row, _success())
+    with evidence_read_budget(0):
+        trace = build_reliability(roots[0], "run", [row])["nodes"][0]["attempts"][0]["trace"]
+    assert trace["coverage"] == "unavailable"
+    assert trace["required_action"]["reason"] == "evidence_read_deferred"
+    with evidence_read_budget(1):
+        with evidence_read_budget(16):
+            assert read_attempt_evidence(roots[1], "run", row)["coverage"] == "complete"
+        assert read_attempt_evidence(roots[2], "run", row)["coverage"] == "unavailable"
+        # Cache hits remain free even after the allowance has been spent.
+        assert read_attempt_evidence(roots[1], "run", row)["coverage"] == "complete"
+
+
 @pytest.mark.parametrize("events", [
     [_init(), _call("query", QUERY), _result("query"), _terminal()],
     [_init(), _call("skill", "Skill", {"skill": "resource-planning"}), _result("skill"),
