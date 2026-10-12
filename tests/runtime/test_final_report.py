@@ -158,6 +158,8 @@ def test_declared_raw_report_inputs_preserve_scope_and_omissions(tmp_path):
     inputs, index = declared_measurement_inputs(facts, resolve, max_bytes=40)
     assert len(inputs) == 1 and inputs[0].content_bytes() == raw.read_bytes()
     assert index["included"][0]["canonical_outcome"] == "EXECUTION_FAILURE"
+    assert index["included_by_outcome"] == {"EXECUTION_FAILURE": 1}
+    assert index["omitted_by_outcome"] == {"EXECUTION_FAILURE": 3}
     assert {item["reason"] for item in index["omitted"]} == {
         "raw_byte_budget_exceeded", "non_text_artifact", "source_unavailable_or_not_utf8"}
 
@@ -254,15 +256,40 @@ def test_report_context_distinguishes_rejected_gpu_execution_from_accepted_scien
         "terminal_reason": "SUCCEEDED",
         "returncode": 0,
         "completed_process": True,
+        "synthetic_before_spawn": False,
         "gpu_device_monitored": True,
         "evidence_scope": "raw_diagnostic_only",
         "resource_usage": {"gpu_uuid": usage["gpu_uuid"], "sample_count": 1,
+            "gpu_initial_free_memory_mib": 50_901, "gpu_latest_free_memory_mib": 50_901,
             "gpu_minimum_free_memory_mib": 50_901, "pressure_exceeded": False,
+            "pressure_attribution": None,
             "owned_memory": usage["owned_memory"]},
         "canonical_outcome": {"outcome_id": "outcome-one",
             "outcome": "INTEGRITY_REJECTED", "validation_code": "artifact_inventory_mismatch",
             "metric_value": None},
     }]
+
+
+def test_report_counts_cancelled_unlaunched_work_separately_from_failures():
+    from hypoloom.final_report import run_outcome_context
+    attempts = [{"attempt_id": name, "kind": "PROCESS", "state": "CLOSED",
+        "terminal_reason": terminal, "observation_json": json.dumps({
+            "returncode": code, "synthetic_before_spawn": synthetic})}
+        for name, terminal, code, synthetic in (
+            ("measured", "SUCCEEDED", 0, False), ("error", "FAILED", 70, False),
+            ("pressure", "FAILED", -15, False), ("stopped", "CANCELLED", -15, False),
+            ("queued", "CANCELLED", None, True))]
+    attempts.append({"attempt_id": "api", "command_id": "design", "kind": "AGENT",
+        "state": "CLOSED", "terminal_reason": "FAILED", "observation_json": json.dumps({
+            "request": {"command": "EXPERIMENT_DESIGN_IMPLEMENT"},
+            "diagnostics": {"provider_subtype": "error", "provider_diagnostic": "response disconnected"}})})
+    result = run_outcome_context([], attempts, [])
+    assert result['process_attempts_by_status'] == {'SUCCEEDED': 1, 'FAILED': 2, 'CANCELLED': 2}
+    assert result['process_attempts_by_returncode'] == {'0': 1, '70': 1, '-15': 2, 'None': 1}
+    assert result['process_attempts_by_evidence_scope'] == {'raw_diagnostic_only': 1, 'no_completed_process': 4}
+    assert result['processes_completed'] == result['processes_cancelled_before_spawn'] == 1
+    assert result['unsuccessful_agent_attempts'][0]['provider_subtype'] == 'error'
+    assert result['unsuccessful_agent_attempts'][0]['provider_diagnostic'] == 'response disconnected'
 
 
 def test_report_context_recognizes_multi_gpu_process_telemetry():

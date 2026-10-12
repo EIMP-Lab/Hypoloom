@@ -89,12 +89,27 @@ def test_measurements_keep_only_bounded_owned_evidence_and_do_not_mutate_sources
         "admitted_workload_memory_mib": 8000, "oom": False,
         "terminal_status": "SUCCEEDED", "ended_at": 1.0,
         "sample_peak_bytes": 9000 * MIB, "observed_peak_lower_bound_bytes": 9000 * MIB,
+        "observed_over_budget": True, "pressure_exceeded": False,
         "measurement_status": "complete"}]
     encoded = json.dumps(projected)
     for forbidden in ("private", "SECRET", "processes", "ancestry", "gpu_uuid", '"pid"'):
         assert forbidden not in encoded
     projected[0]["workload"]["model"] = "changed"
     assert raw == original
+
+
+def test_partial_pressure_history_identifies_underestimation_without_calibrating():
+    raw = attempt(terminal_status="FAILED")
+    raw['resource_usage'][0]['owned_memory']['unknown_sample_count'] = 1
+    raw['resource_usage'][0]['pressure_exceeded'] = True
+    history = summarize_resource_measurements([raw])
+    assert history[0]['sample_peak_bytes'] is None
+    assert history[0]['observed_over_budget'] is True
+    assert history[0]['pressure_exceeded'] is True
+    assert resolve_workload_memory_mib(8000, estimate(measurement_attempt_ids=['process-1']), history,
+        initial_memory_mib=16000, adaptive=True) == 16000
+    raw['resource_usage'][0]['owned_memory']['peak']['complete'] = False
+    assert summarize_resource_measurements([raw])[0]['observed_over_budget'] is None
 
 
 def test_peak_is_maximum_per_device_not_sum_or_latest_or_device_pressure():

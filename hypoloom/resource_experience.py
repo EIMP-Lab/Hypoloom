@@ -344,12 +344,19 @@ def summarize_resource_measurements(
         except ValueError:
             continue
         peak = _owned_peak_bytes(raw)
+        lower_bound = _owned_peak_bytes(raw, complete_coverage=False)
         admitted = raw.get("admitted_workload_memory_mib")
+        usage = raw.get("resource_usage")
+        devices = [usage] if isinstance(usage, Mapping) else usage if isinstance(usage, list) else []
         accepted.append({"attempt_id": attempt_id, "workload": workload,
             "admitted_workload_memory_mib": admitted if _valid_memory_mib(admitted) and admitted > 0 else None,
             "oom": raw.get("oom") is True, "terminal_status": raw["terminal_status"],
             "ended_at": _finite_number(raw.get("ended_at")), "sample_peak_bytes": peak,
-            "observed_peak_lower_bound_bytes": _owned_peak_bytes(raw, complete_coverage=False),
+            "observed_peak_lower_bound_bytes": lower_bound,
+            "observed_over_budget": (lower_bound > admitted * 1024**2
+                if lower_bound is not None and _valid_memory_mib(admitted) and admitted > 0 else None),
+            "pressure_exceeded": any(isinstance(device, Mapping) and device.get("pressure_exceeded") is True
+                for device in devices),
             "measurement_status": "complete" if peak is not None else "unknown"})
     if accepted and all(item["ended_at"] is not None for item in accepted):
         accepted.sort(key=lambda item: (-item["ended_at"], item["attempt_id"]))

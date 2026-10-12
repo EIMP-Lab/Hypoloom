@@ -39,6 +39,22 @@ class ParserExecutionResult:
     error: str | None = None
 
 
+def _parser_input_argument(argument: str, files: Mapping[str, bytes], raw_artifacts: tuple[str, ...]) -> str:
+    """Resolve declared input argv paths without changing the writable cwd.
+
+    Directory arguments cover only parents of declared raw files; mounting and
+    validation still expose exactly the declared files, never the whole tree.
+    Absolute paths and other arguments retain their explicit meaning.
+    """
+    option, separator, value = argument.partition("=") if argument.startswith("--") else ("", "", argument)
+    if value in files:
+        value = "/input/" + value
+    elif value and not value.startswith(("/", "-")) and value not in {".", ".."}:
+        if value in raw_artifacts or any(path.startswith(value.rstrip("/") + "/") for path in raw_artifacts):
+            value = "/raw/" + value
+    return option + separator + value
+
+
 def plan_parser(declaration: ParserDeclaration, workspace_files: Mapping[str, bytes], *,
                    raw_dir: str | Path, work_dir: str | Path, attempt_id: str, execution_id: str,
                    timeout_seconds: float = 30, max_output_bytes: int = 1024 * 1024,
@@ -90,7 +106,7 @@ def plan_parser(declaration: ParserDeclaration, workspace_files: Mapping[str, by
     command = list(declaration.parser_argv)
     if command[0] == "python":
         command[0] = interpreter
-    command = ["/input/" + item if item in files else item for item in command]
+    command = [_parser_input_argument(item, files, declaration.raw_artifacts) for item in command]
     limits = {"argv": command, "timeout_seconds": timeout_seconds, "max_output_bytes": max_output_bytes,
               "max_memory_bytes": max_memory_bytes}
     argv.extend(("--chdir", "/parsed", "--", interpreter, "/measurement-driver.py", "--parser-limits",

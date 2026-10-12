@@ -467,6 +467,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "Do not derive target imports from the standalone script's __file__: its formal parent is /input, not the target. "
             "Inspect the project's actual packaging: for a src-layout project resolve its src directory under "
             "HYPOLOOM_TARGET_ROOT, and propagate that import path to child processes. Other projects may differ. "
+            "HYPOLOOM_TARGET_ROOT already names the submitted patched code: never pass it through "
+            "HYPOLOOM_READ_ROOT_MAP, which maps reference data only. In the entrypoint smoke, check the "
+            "changed module's __file__ is under that target (including child imports); the original read-only "
+            "checkout may lack newly added modules even when the patch is correct. "
             "A PYTHONPATH override that bypasses the wrapper does not test that wrapper. Exercise imports, "
             "model registration, a tiny optimizer step, checkpoint save/reload and the real evaluator/parser with "
             "bounded fixture data before claiming readiness. If unavailable, report the exact untested boundary. "
@@ -516,6 +520,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "and does not inherit HYPOLOOM_READ_ROOTS, PYTHONPATH or the Agent's Python environment. Use python "
             "in parser_argv for the Host parser runtime. Include fixed reference data in declared parser_files "
             "and require experiment evidence in declared raw_artifacts; do not discover inputs via Agent paths. "
+            "Relative parser_argv inputs naming declared raw files or their parent directories resolve under "
+            "/raw; declared parser files resolve under /input. Explicit absolute paths retain their meaning. "
+            "Inside parser code resolve evidence from HYPOLOOM_MEASUREMENT_RAW_ROOT, not the /parsed cwd. "
             "Direct Bash tests in the Agent have broader access; only the Host preflight tests parser isolation. "
         )
     if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and declared_measurement_request(request):
@@ -527,6 +534,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "parser source or fixture errors in this session; a valid metric/value/optional baseline below target is "
             "allowed. value and optional baseline must be finite scalar numbers; place per-dataset detail "
             "in raw artifacts, not baseline. For comparison VALUE, baseline may be omitted. "
+            "Use ordinary assertions to compare known fixture measurements with their expected values, "
+            "including a genuine negative value and missing/invalid inputs. An unreadable input must raise "
+            "an explicit error, not return a numeric sentinel that Host could accept as scientific refutation. "
+            "Passing the structural smoke alone does not establish these semantic assertions. "
             "A GOAL-only measurement=null needs no local parser or local fixture. "
         )
     if shared:

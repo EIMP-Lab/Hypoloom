@@ -41,6 +41,13 @@ History includes observed_peak_lower_bound_bytes when an attributed sample
 exists, even if another sample/device was unknown. This is a diagnostic lower
 bound, not a complete maximum or proof of workload comparability.
 Unknown coverage keeps sample_peak_bytes=null even when a lower bound is known.
+History also reports observed_over_budget (null when unmeasured) and
+pressure_exceeded. If observed_over_budget is true, explain why the next workload
+fits its new estimate before submitting; a previously admitted low estimate is
+not evidence of fit. pressure_exceeded without over-budget use can reflect
+external occupancy. Pressure attribution `self` means releasing this workload
+can restore reserve, not that it caused all occupancy. Preserve the reserve;
+reduce actual demand or wait for capacity instead of lowering declared needs.
 Use these observations to investigate an undersized estimate and explain your
 next workload estimate in basis. A successful admission is not a measurement:
 do not reuse its budget as evidence that actual demand fits it. Review lower

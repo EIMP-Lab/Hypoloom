@@ -93,6 +93,13 @@ prove that the workload fit its requested budget. Exact measurement_attempt_ids
 still require matching workload labels; nearby workloads inform explained
 scaling only, not automatic comparability.
 
+The same history reports observed_over_budget and pressure_exceeded. An unknown
+owned sample keeps observed_over_budget null; do not interpret it as fitting.
+Address a measured underestimate before repeating the workload. Pressure
+attribution `self` means release can restore reserve, not sole causation;
+external occupancy may also contribute. Keep existing reserve and ownership
+protections when revising the estimate or reducing actual workload demand.
+
 Never choose, name, rank, or request a UUID, device
 index, device node, runtime prefix, mount, or environment variable; those
 remain Host decisions.

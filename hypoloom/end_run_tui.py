@@ -125,6 +125,12 @@ class EndRunScreen(ModalScreen):
                 "STOPPING: waiting for task cleanup and the final report. Host has not been confirmed "
                 "stopped."
             ))
+            snapshot = getattr(self.app, "_last_snapshot", None)
+            if snapshot is not None and snapshot.status.get("run_revision") == status.get("run_revision"):
+                pending = [row for row in snapshot.attempts if row.state == "OPEN"]
+                if (pending and len(pending) == status.get("open_attempts")
+                        and all(row.kind == "AGENT" and row.command == "FINAL_REPORT" for row in pending)):
+                    self._message(tr("STOPPING: final report in progress. Host has not been confirmed stopped."))
         elif status["run_revision"] != self.revision and not self.draft.get("pending") and not self.draft.get("rejection"):
             self.writable = False
             self._message(tr("The run changed. Close and reopen this form to review its current state."))
@@ -187,6 +193,8 @@ class EndRunScreen(ModalScreen):
             self.app.action_refresh()
 
     def action_close(self) -> None:
+        if not self.is_mounted or self.app.screen is not self:
+            return
         if self.busy:
             self._message(tr("Waiting for the Host reply…"))
         else:

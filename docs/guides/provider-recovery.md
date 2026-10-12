@@ -385,3 +385,13 @@ Requesting retry is not recovery; a successfully retrieved literature packet
 establishes recovery even if the subsequent model task fails. Telegram can report
 waiting, operator retry and recovery using the same product-event projection.
 Existing frozen runs are not migrated or reopened by deploying these changes.
+
+## Short shared cooldowns (2026-10-12)
+
+Adapter 83 keeps an already-running invocation's request queued for a short
+transient provider cooldown when it fits both the request deadline and the
+existing 300-second queue limit. Cancellation and operator appointments remain
+responsive. Waiting spends no upstream request/RPM credit; FIFO and in-flight
+limits still apply. Authentication, operator-required errors and longer waits
+return to the existing Host recovery path. A local queue rejection is distinct
+from an upstream 429 and does not prove the configured RPM limit is too low.

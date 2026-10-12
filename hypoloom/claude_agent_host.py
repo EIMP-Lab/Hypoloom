@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/82"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/83"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -3190,6 +3190,14 @@ def _instruction(
             "Invoke Skill hypoloom-grounding:final-report, then write the final research report from "
             "the supplied --final-report-context accepted facts, actual background and expert records. "
             "Read run_outcome for actual fact counts, started expert nodes and terminal failures. "
+            "Generate statistical tables programmatically from process_attempts_by_status, "
+            "process_attempts_by_returncode, process_attempts_by_evidence_scope, processes_completed and "
+            "processes_cancelled_before_spawn; do not recount or retype totals in narrative prose. "
+            "Use declared_raw_measurements.included_by_outcome and omitted_by_outcome to attribute source gaps. "
+            "Missing report inputs do not establish absent experimental data; a numeric sentinel alone "
+            "does not establish missing data or a measured scientific refutation. Preserve the recorded "
+            "outcome and explicitly qualify unverified parser-error interpretations. "
+            "A null or omitted diagnostic means unavailable in these inputs, not absent from the full run. "
             "Read process_attempt_details and distinguish raw Process execution from accepted canonical "
             "scientific evidence. Report a completed Process labelled raw_diagnostic_only as an unaccepted "
             "raw execution; integrity rejection does not erase that execution. gpu_device_monitored means "

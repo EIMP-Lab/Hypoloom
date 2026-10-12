@@ -253,6 +253,7 @@
   "Previous Host reply was not confirmed. Retry sends the same request.": "上次 Host 响应未确认。重试将发送同一请求。",
   "Run is {0}. No further cancellation is needed. Host has not been confirmed stopped by this monitor.": "运行状态为 {0}。无需再次取消。监视器尚未确认 Host 已停止。",
   "STOPPING: waiting for task cleanup and the final report. Host has not been confirmed stopped.": "STOPPING：等待任务清理与最终报告。Host 尚未确认停止。",
+  "STOPPING: final report in progress. Host has not been confirmed stopped.": "STOPPING：正在生成最终报告。Host 尚未确认停止。",
   "The run changed. Close and reopen this form to review its current state.": "运行已变化。关闭并重新打开此窗口，以核对当前状态。",
   "Requesting cancellation from Host…": "正在向 Host 请求取消…",
   "Host reply not confirmed. The run may still be active or already stopping. Retry sends the same request; refresh to inspect progress.": "Host 响应未确认。运行可能仍在活动或已开始停止。重试发送同一请求；请刷新查看进度。",

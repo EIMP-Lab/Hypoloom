@@ -5,7 +5,7 @@ from collections import deque
 import threading
 import time
 
-from .provider_observation import PROVIDER_OPERATOR_REQUIRED, PROVIDER_UNAVAILABLE, empty_generation_response, provider_failure, provider_retry_delay
+from .provider_observation import PROVIDER_OPERATOR_REQUIRED, PROVIDER_TRANSIENT, PROVIDER_UNAVAILABLE, empty_generation_response, provider_failure, provider_retry_delay
 
 
 class ProviderDeferred(Exception):
@@ -76,8 +76,11 @@ class ProviderTraffic:
                         # Only the Host consumes the durable appointment. An
                         # old invocation must not race the one recovery task.
                         raise ProviderDeferred('local_request_queue', max(0, self.scheduled_until - self.wall_clock()))
-                    if bucket['halted'] or bucket['until'] > now:
-                        raise ProviderDeferred(bucket['reason'], None if bucket['halted'] else bucket['until'] - now)
+                    if bucket['halted']:
+                        raise ProviderDeferred(bucket['reason'])
+                    if bucket['until'] > now and (bucket['reason'] not in PROVIDER_TRANSIENT
+                            or bucket['until'] >= min(deadline, queued_at + 300)):
+                        raise ProviderDeferred(bucket['reason'], bucket['until'] - now)
                     self._prune(bucket, now)
                     history = bucket['history']
                     due = max(self.warm_until, bucket['until'])

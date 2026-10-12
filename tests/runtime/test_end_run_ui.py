@@ -25,6 +25,59 @@ def app_for(root, snapshot):
         interval=3600, web_enabled=False)
 
 
+def test_repeated_or_delayed_close_cannot_pop_monitor_or_another_dialog(tmp_path):
+    from hypoloom.end_run_tui import EndRunScreen
+    root, snapshot = run_snapshot(tmp_path)
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press('x')
+            screen = app.screen
+            assert isinstance(screen, EndRunScreen)
+            screen.action_close()
+            screen.action_close()  # The old screen can still receive a queued event.
+            await pilot.pause()
+            assert len(app.screen_stack) == 1
+            await pilot.press('x')
+            current = app.screen
+            screen.action_close()
+            assert app.screen is current
+            current.busy = True
+            current.action_close()
+            assert app.screen is current
+            current.busy = False
+            current.action_close()
+            await pilot.pause()
+            assert len(app.screen_stack) == 1
+
+    asyncio.run(exercise())
+    assert build_monitor_snapshot(root, 'end-ui').status['run_state'] == snapshot.status['run_state']
+
+
+def test_stopping_dialog_distinguishes_final_report_from_other_open_work(tmp_path):
+    from types import SimpleNamespace
+    root, snapshot = run_snapshot(tmp_path)
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press('x')
+            status = {**snapshot.status, 'run_state': 'STOPPING', 'open_attempts': 1}
+            report = SimpleNamespace(state='OPEN', kind='AGENT', command='FINAL_REPORT')
+            app._last_snapshot = replace(snapshot, status=status, attempts=(report,))
+            app.screen.update_status(status)
+            assert 'final report in progress' in str(app.screen.query_one('#end-run-status', Static).render())
+            # A stale/partial attempt view must not claim report-only work.
+            app.screen.update_status({**status, 'open_attempts': 2})
+            assert 'waiting for task cleanup' in str(app.screen.query_one('#end-run-status', Static).render())
+            app._last_snapshot = snapshot
+
+    asyncio.run(exercise())
+
+
 def test_fatal_monitor_exception_is_recorded_and_nonzero_exit_is_preserved(tmp_path, monkeypatch):
     import json
     from textual.app import App

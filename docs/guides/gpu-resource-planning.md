@@ -133,3 +133,10 @@ This change does not alter existing reserves, enlarge GPU authorization, move li
 processes, automatically change scientific hyperparameters or combine missing
 seed results. See [qualification](../qualification.md) for actual test scope;
 synthetic-device regressions do not establish CUDA OOM rates or model quality.
+
+The bounded measurement history also exposes `observed_over_budget` (unknown
+when there is no usable owned sample) and `pressure_exceeded`. These are derived
+feedback, not new admission rules: unknown coverage still cannot calibrate or
+enable sharing. A pressure attribution of `self` means releasing the workload
+can restore reserve; it does not identify the sole cause of device occupancy.
+Review underestimation and external pressure separately before resubmitting.

@@ -37,6 +37,56 @@ Path(os.environ['HYPOLOOM_MEASUREMENT_RESULT_PATH']).write_text(json.dumps({
     return root, output
 
 
+@pytest.mark.parametrize("argument", ["records/value.json", "records", "records/", "/raw/records/value.json"])
+@pytest.mark.parametrize("joined", [False, True])
+def test_relative_declared_raw_arguments_match_actual_parser_sandbox(tmp_path, argument, joined):
+    from dataclasses import replace
+    from hypoloom.measurement_execution import prepare_parser, run_parser
+    from hypoloom.native_output import parser_smoke
+    from test_measurement_contract import declaration
+
+    root = tmp_path / "authoring"
+    (root / "smoke/records").mkdir(parents=True)
+    (root / "smoke/records/value.json").write_text('{"value":-1.0}')
+    # This unrelated file must remain unavailable even when argv names its parent.
+    (root / "smoke/records/undeclared.json").write_text('{"value":99}')
+    source = b'''import argparse, json, os
+from pathlib import Path
+p = argparse.ArgumentParser()
+p.add_argument('--data')
+path = Path(p.parse_args().data)
+assert Path.cwd() == Path('/parsed')
+assert not Path('/raw/records/undeclared.json').exists()
+if path.is_dir(): path = path / 'value.json'
+assert os.statvfs(path).f_flag & os.ST_RDONLY
+value = json.loads(path.read_text())['value']
+Path(os.environ['HYPOLOOM_MEASUREMENT_RESULT_PATH']).write_text(json.dumps({
+    'metric': 'median_latency_delta', 'value': value, 'baseline': 0}))
+'''
+    (root / "evaluate.py").write_bytes(source)
+    args = ("--data=" + argument,) if joined else ("--data", argument)
+    contract = replace(declaration(), parser_argv=("python", "evaluate.py", *args),
+        parser_files=("evaluate.py",), raw_artifacts=("records/value.json",))
+    prepared = prepare_parser(contract, {"evaluate.py": source}, raw_dir=root / "smoke",
+        work_dir=tmp_path / "production", attempt_id="parser", execution_id="parser", timeout_seconds=5)
+    actual = run_parser(prepared)
+    assert actual.error is None
+    assert actual.raw_result == {"metric": "median_latency_delta", "value": -1, "baseline": 0}
+    smoke = parser_smoke(json.dumps({"typed_candidate": {"measurement": contract.to_dict()}}),
+        source_root=root, test_root=tmp_path / "smoke", declaration_key="measurement",
+        timeout_seconds=5, max_bytes=65536)
+    assert smoke == {"observation": actual.raw_result, "error": None}
+
+
+def test_parser_argument_projection_preserves_outputs_and_source_precedence():
+    from hypoloom.measurement_execution import _parser_input_argument
+    files = {"evaluate.py": b"source", "reference.json": b"reference"}
+    raw = ("records/value.json", "reference.json")
+    assert _parser_input_argument("reference.json", files, raw) == "/input/reference.json"
+    for value in ("result.json", "--output=result.json", ".", "..", "/tmp/value.json", "record", "--flag"):
+        assert _parser_input_argument(value, files, raw) == value
+
+
 def test_native_stop_rejects_actual_parser_output_then_accepts_its_repair(tmp_path):
     from hypoloom.native_output import NativeOutputValidator, call_validator
     from hypoloom.runtime_diagnostics import RuntimeDiagnostics

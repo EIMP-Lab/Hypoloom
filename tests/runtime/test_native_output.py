@@ -217,6 +217,20 @@ def test_design_deadline_notice_preserves_stop_and_device_ownership(tmp_path, me
         server.close()
 
 
+def test_long_design_gets_ten_minutes_to_finish_without_extending_deadline(tmp_path):
+    server = _server(tmp_path, deadline=time.monotonic() + 3000, design_implementation=True)
+    try:
+        server.deadline_at = time.monotonic() + 550
+        deadline = server.deadline_at
+        result = native_output.call_context_notice(str(server.socket_path), session_id="session-owned",
+            max_request_bytes=4096, timeout_seconds=2)
+        assert "smallest runnable change" in result['hookSpecificOutput']['additionalContext']
+        assert server.deadline_at == deadline
+        assert server.snapshot()['call_count'] == 0
+    finally:
+        server.close()
+
+
 def test_advisory_cli_unavailable_is_optional_but_stop_remains_fail_closed(tmp_path):
     base = [sys.executable, str(Path(native_output.__file__).resolve()), "--socket", str(tmp_path / "missing.sock"),
         "--max-bytes", "4096", "--timeout-seconds", "1"]

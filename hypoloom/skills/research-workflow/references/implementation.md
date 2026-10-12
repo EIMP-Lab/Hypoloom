@@ -73,3 +73,22 @@ before committing the remaining full-experiment budget. Record commands, observe
 results and unresolved coverage in existing implementation notes. The task owns
 these checks; do not add a universal framework-specific ML validator or a second
 acceptance gate, and do not call a smoke result scientific superiority.
+
+Keep submitted code and reference data distinct. Use HYPOLOOM_TARGET_ROOT
+directly for target imports; never translate it with HYPOLOOM_READ_ROOT_MAP.
+The latter resolves reference data and can select the unpatched checkout.
+Inspect the changed module's __file__ under the submitted root, and propagate
+the same import path to child processes. Check new modules and registrations,
+not only imports already present in the baseline.
+
+For parser tests, assert hand-computed values for small positive and negative
+fixtures. Missing or malformed evidence must raise a clear error, not return a
+finite sentinel such as -1. A real negative measurement remains valid. Resolve
+raw inputs from HYPOLOOM_MEASUREMENT_RAW_ROOT; parser cwd is /parsed, not /raw.
+If a frozen parser needs correction, propose the existing revised hypothesis
+or new cycle; do not repeatedly rerun training under a known broken parser.
+
+Deliver the smallest runnable change first. Reuse the retained entrypoint and
+tests, then spend remaining time on the changed mechanism. Budget implementation,
+checks and final submission together; a long retry must inspect retained work
+before repeating it. Do not extend the Agent deadline or duplicate slow checks.

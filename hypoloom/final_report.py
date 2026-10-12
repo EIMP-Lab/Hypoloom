@@ -43,6 +43,8 @@ def declared_measurement_inputs(facts, resolve_raw, *, max_bytes):
             remaining -= len(content)
     return tuple(inputs), {"evidence_scope": "declared_raw_observations_not_new_verdicts",
         "byte_limit": max_bytes, "bytes_included": max_bytes - remaining,
+        "included_by_outcome": dict(Counter(item["canonical_outcome"] for item in included)),
+        "omitted_by_outcome": dict(Counter(item["canonical_outcome"] for item in omitted)),
         "included": included, "omitted": omitted}
 
 
@@ -138,9 +140,13 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
         request = observation.get("request", {})
         agent_states[row.get("terminal_reason") or row.get("state") or "UNKNOWN"] += 1
         if row.get("state") == "CLOSED" and row.get("terminal_reason") != "SUCCEEDED":
+            diagnostics = observation.get("diagnostics") or {}
             unsuccessful.append({"attempt_id": row["attempt_id"], "command": request.get("command"),
                 "terminal_reason": row.get("terminal_reason"), "failure_code": observation.get("failure_code"),
                 "failure_stage": observation.get("failure_stage"),
+                "provider_subtype": diagnostics.get("provider_subtype"),
+                "provider_diagnostic": str(diagnostics["provider_diagnostic"])[:1024]
+                    if diagnostics.get("provider_diagnostic") is not None else None,
                 "command_has_successful_attempt": row.get("command_id") in successful_commands})
         context = request.get("task_context")
         if isinstance(context, dict) and "key" in context:
@@ -199,13 +205,15 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
             "terminal_reason": row.get("terminal_reason"),
             "returncode": observation.get("returncode"),
             "completed_process": completed,
+            "synthetic_before_spawn": observation.get("synthetic_before_spawn") is True,
             "gpu_device_monitored": gpu_device_monitored,
             "evidence_scope": ("accepted_scientific_evidence" if scientific
                 else "raw_diagnostic_only" if completed else "no_completed_process"),
         }
         if resources:
             bounded_resources = [{name: item.get(name) for name in (
-                "gpu_uuid", "sample_count", "gpu_minimum_free_memory_mib", "pressure_exceeded", "owned_memory")}
+                "gpu_uuid", "sample_count", "gpu_initial_free_memory_mib", "gpu_latest_free_memory_mib",
+                "gpu_minimum_free_memory_mib", "pressure_exceeded", "pressure_attribution", "owned_memory")}
                 for item in resources]
             detail["resource_usage"] = (bounded_resources[0]
                 if isinstance(raw_resource, dict) else bounded_resources)
@@ -217,6 +225,11 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
         "expert_nodes_started": len(nodes),
         "process_attempts": sum(row["kind"] == "PROCESS" for row in attempts),
         "process_attempt_details": process_details,
+        "process_attempts_by_status": dict(Counter(item["terminal_reason"] or "UNKNOWN" for item in process_details)),
+        "process_attempts_by_returncode": dict(Counter(str(item["returncode"]) for item in process_details)),
+        "process_attempts_by_evidence_scope": dict(Counter(item["evidence_scope"] for item in process_details)),
+        "processes_completed": sum(item["completed_process"] for item in process_details),
+        "processes_cancelled_before_spawn": sum(item["synthetic_before_spawn"] for item in process_details),
         "agent_accounting": agent_accounting,
         "agent_attempts_by_status": dict(agent_states),
         "unsuccessful_agent_attempts": unsuccessful,

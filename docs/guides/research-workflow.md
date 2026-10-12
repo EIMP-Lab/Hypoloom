@@ -227,3 +227,23 @@ Attempt records and Git objects; they do not modify research state or create a
 second durable skills database. Existing research runs are not upgraded in place.
 
 See the [implementation design](../design/experiment-methods-and-skill-observation.md).
+
+## Parser inputs and bounded design (2026-10-12)
+
+Adapter 83 resolves relative `parser_argv` arguments naming declared raw files
+or their parent directories under `/raw`; declared parser files resolve under
+`/input`. Explicit absolute paths are preserved. The parser still starts in
+`/parsed`, writes only its result there, and sees only declared read-only inputs.
+Inside parser code, resolve raw files from `HYPOLOOM_MEASUREMENT_RAW_ROOT`.
+Test known positive/negative values with ordinary assertions. Missing or invalid
+evidence must fail explicitly, not become a numeric sentinel. Structural smoke
+validation alone cannot establish arbitrary scientific correctness.
+
+Import patched experiment code directly from `HYPOLOOM_TARGET_ROOT`, including
+in children. Never translate that code root through the data-only
+`HYPOLOOM_READ_ROOT_MAP`. Inspect the changed module's actual import path.
+DESIGN's existing deadline advisory now covers its last 20%, up to ten minutes;
+Grounding retains five minutes. Deliver a small runnable change, reuse retained
+checks and put device smoke at the beginning of the admitted Process. No deadline
+or GPU permission is enlarged. Frozen parser changes still need a revised
+hypothesis/new cycle; accepted runs retain their original bundle.

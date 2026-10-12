@@ -187,7 +187,8 @@ class NativeOutputValidator:
         self.max_failed_validations = max_failed_validations
         self.max_request_bytes = max_request_bytes
         self.deadline_at = deadline_at
-        self._deadline_notice_window = (min(300.0, max(0.0, deadline_at - time.monotonic()) * 0.2)
+        self._deadline_notice_window = (min(600.0 if design_implementation else 300.0,
+            max(0.0, deadline_at - time.monotonic()) * 0.2)
             if acceptance_smoke or design_implementation else 0.0)
         self.design_implementation = design_implementation
         self.diagnostics = diagnostics
@@ -274,7 +275,7 @@ class NativeOutputValidator:
             if 0 < remaining <= self._deadline_notice_window:
                 notices.append((
                     f"DESIGN has about {math.ceil(remaining)} seconds left before its existing deadline. "
-                    "Finish bounded CPU checks; do not start or keep polling slow training. Preserve draft JSON, "
+                    "Finish the smallest runnable change and bounded CPU checks; do not start or keep polling slow training. Preserve draft JSON, "
                     "reusable tests and remaining GPU checks in the retained /workspace. Put device checks at "
                     "the start of the Host-submitted experiment for EXECUTION; DESIGN has no GPU grant. "
                     "Submit complete output with time for native Stop corrections, without claiming unrun checks."

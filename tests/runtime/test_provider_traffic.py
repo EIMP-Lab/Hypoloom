@@ -155,6 +155,81 @@ def test_retry_after_defers_queued_calls_without_spending_rpm_and_switch_keeps_w
     assert traffic.recovered_after(101)
 
 
+@pytest.mark.parametrize("code", ["rate_limited", "service_unavailable", "usage_window_exhausted"])
+def test_short_cooldown_waits_in_same_call_without_spending_a_request(code):
+    clock = [100.0]
+    traffic = ProviderTraffic(clock=lambda: clock[0], wall_clock=lambda: clock[0], max_in_flight=1)
+    ticket = acquire(traffic)
+    traffic.finish(ticket, {'request_path': '/v1/messages', 'upstream_status': 429,
+        'provider_error_code': code, 'ended_at': 100, 'response_headers': {'retry-after': '30'}})
+    with ThreadPoolExecutor() as pool:
+        pending = pool.submit(acquire, traffic)
+        until(lambda: traffic.snapshot()['queued'] == 1)
+        assert not pending.done()
+        assert traffic.snapshot()['rpm'] == 1
+        with traffic.condition:
+            clock[0] = traffic.buckets['model']['until']
+            traffic.condition.notify_all()
+        resumed = pending.result(timeout=3)
+        traffic.finish(resumed, success())
+    assert traffic.snapshot()['queued'] == traffic.snapshot()['in_flight'] == 0
+    assert traffic.recovered_after(100)
+
+
+def test_second_real_relay_survives_shared_cooldown_without_a_local_429(tmp_path, upstream):
+    offset = [0.0]
+    traffic = ProviderTraffic(clock=lambda: time.monotonic() + offset[0])
+    first = _relay(tmp_path / 'one', upstream, deadline_at=time.monotonic() + 120,
+        traffic_binding=(traffic, ('expert', 'one'), None))
+    second = _relay(tmp_path / 'two', upstream, deadline_at=time.monotonic() + 120,
+        traffic_binding=(traffic, ('expert', 'two'), None))
+    try:
+        upstream.status = 429
+        upstream.body = b'{"error":{"type":"rate_limit_error","message":"temporarily limited"}}'
+        assert _request(first)[0] == 429
+        until(lambda: traffic.snapshot()['in_flight'] == 0)
+        with ThreadPoolExecutor() as pool:
+            pending = pool.submit(_request, second)
+            until(lambda: traffic.snapshot()['queued'] == 1)
+            assert len(upstream.calls) == 1
+            upstream.status = 200
+            upstream.body = json.dumps({'type': 'message', 'stop_reason': 'end_turn',
+                'content': [{'type': 'text', 'text': 'continued'}],
+                'usage': {'input_tokens': 1, 'output_tokens': 1}}).encode()
+            with traffic.condition:
+                offset[0] = max(x['until'] for x in traffic.buckets.values()) - time.monotonic() + .01
+                traffic.condition.notify_all()
+            assert pending.result(timeout=3)[0] == 200
+        assert len(upstream.calls) == 2
+        assert traffic.snapshot()['queued'] == 0
+    finally:
+        first.close()
+        second.close()
+
+
+@pytest.mark.parametrize("interrupt", ["cancel", "appointment", "deadline", "long-wait", "auth"])
+def test_cooldown_retains_cancellation_deadline_and_operator_boundaries(interrupt):
+    clock = [100.0]
+    traffic = ProviderTraffic(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    cancelled = threading.Event()
+    bucket = traffic._bucket('model')
+    bucket.update(until=130, reason='rate_limited')
+    with ThreadPoolExecutor() as pool:
+        pending = pool.submit(traffic.acquire, model='model', owner=('expert', 'a'),
+            connection=None, deadline=200, cancelled=cancelled)
+        until(lambda: traffic.snapshot()['queued'] == 1)
+        with traffic.condition:
+            if interrupt == 'cancel': cancelled.set()
+            elif interrupt == 'appointment': traffic.schedule(150)
+            elif interrupt == 'deadline': clock[0] = 200
+            elif interrupt == 'long-wait': bucket['until'] = 500
+            else: bucket.update(reason='auth_failed')
+            traffic.condition.notify_all()
+        with pytest.raises(TimeoutError if interrupt in {'cancel', 'deadline'} else ProviderDeferred):
+            pending.result(timeout=3)
+    assert traffic.snapshot()['rpm'] == traffic.snapshot()['queued'] == traffic.snapshot()['in_flight'] == 0
+
+
 @pytest.mark.parametrize("code", ["quota_exhausted", "subscription_expired", "access_denied"])
 def test_explicit_quota_keeps_operator_control_and_old_connection_cannot_reblock(code):
     traffic = ProviderTraffic()

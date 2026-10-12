@@ -39,8 +39,10 @@ class _FinalReportScenario:
             + "\n\n" + "\n".join(outcomes) + "\n\n## Stop reason and limitations\n\n"
             + self.context["stop_reason"] + "\nThis report adds no experiment or scientific verdict. "
             "The compatibility provider was scripted; no paid model or GPU was used.\n")
+        # Send literal Unicode through native Write and the Bash byte check;
+        # tool argument decoding can otherwise interpret JSON's \u escapes.
         self.report += "\n## Agent attempt history\n\n" + json.dumps(
-            self.context.get("run_outcome", {}).get("unsuccessful_agent_attempts", []))
+            self.context.get("run_outcome", {}).get("unsuccessful_agent_attempts", []), ensure_ascii=False)
 
     def record(self, document):
         self.requests.append(document)

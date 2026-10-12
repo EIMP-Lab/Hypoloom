@@ -125,7 +125,7 @@ class DataReadAgent(SharedAcceptanceAgent):
             else DeclaredMeasurementAgent.invoke(self, request))
         if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
             return response
-        source = b'''import errno, json, os, runpy
+        source = b'''import errno, json, os, runpy, subprocess, sys
 from pathlib import Path
 target = os.environ['HYPOLOOM_TARGET_ROOT']
 mapping = json.loads(os.environ.get('HYPOLOOM_READ_ROOT_MAP', '{}'))
@@ -142,6 +142,14 @@ for path in (data / 'cache/sample.json', data / 'splits/sample.json'):
         raise AssertionError('data mount was writable')
 assert runpy.run_path(target + '/score.py')['score']() == 4
 assert runpy.run_path(str(data / 'score.py'))['score']() == 3
+sys.path.insert(0, target)
+import patched_only
+assert Path(patched_only.__file__).is_relative_to(Path(target))
+assert not (data / 'patched_only.py').exists()
+subprocess.run([sys.executable, '-c',
+    "import patched_only, os; from pathlib import Path; "
+    "assert Path(patched_only.__file__).is_relative_to(Path(os.environ['HYPOLOOM_TARGET_ROOT'])); "
+    "assert patched_only.VALUE == 4"], env=dict(os.environ, PYTHONPATH=target), check=True)
 assert cache == {'baseline': 10, 'values': [8, 9, 100]}
 assert split == {'indices': [0, 1, 2]}
 Path('timings.csv').write_text(''.join(f"{cache['baseline']},{cache['values'][i]}\\n" for i in split['indices']))
@@ -156,6 +164,7 @@ print(json.dumps({'read_root_map': mapping, 'patched_score': 4, 'readonly': True
         files["experiment.py"] = source
         files["implementation.patch"] = _new_file_patch("experiment.py", source) + (
             b"--- a/score.py\n+++ b/score.py\n@@ -1,2 +1,2 @@\n def score():\n-    return 3\n+    return 4\n")
+        files["implementation.patch"] += _new_file_patch("patched_only.py", b"VALUE = 4\n")
         return with_output_digest(replace(response, typed_candidate=candidate,
             proposed_workspace_artifacts=tuple(WorkspaceArtifact.from_bytes(path, value)
                 for path, value in sorted(files.items()))))

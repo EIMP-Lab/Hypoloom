@@ -41,6 +41,17 @@ failures. `final_failures` lists only exhausted/nonretryable nodes; an empty lis
 does not establish failure-free execution. Separate operator cancellation,
 technical failure, recovered calls and scientific refutation.
 
+Generate statistics tables with ordinary JSON/Python code from the supplied
+process_attempts_by_status, process_attempts_by_returncode,
+process_attempts_by_evidence_scope, processes_completed and
+processes_cancelled_before_spawn. Avoid duplicating totals in prose. Use
+included_by_outcome and omitted_by_outcome to locate raw-input gaps; omissions
+belonging to failed/cancelled work are not evidence that completed trials lost
+data. A field absent/null in this request is unavailable here, not proven absent
+from the full diagnostics. Do not infer missing input from a sentinel value.
+Retain the accepted outcome, distinguish its numeric observation from parser
+error interpretations, and state which explanation was actually verified.
+
 Extract the complete citation list from --final-report-context with a JSON
 parser. Include every canonical outcome_id (including failures), the accepted
 verdict fact_id and verdict text, or NO_ACCEPTED_VERDICT when absent, plus each

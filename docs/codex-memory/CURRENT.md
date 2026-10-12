@@ -1,5 +1,25 @@
 # Current Hypoloom development state
 
+- October 12 run closure: adapter 83 projects declared relative raw parser inputs
+  into `/raw`, waits through short transient API cooldowns in the existing queue,
+  prevents duplicate End-run dismissal and shows report-only STOPPING work.
+  Existing report context supplies exact Process/cancellation counts and bounded
+  recovered provider diagnostics; resource history identifies observed budget
+  overruns and pressure without changing admission or calibration. DESIGN gets
+  an earlier bounded reminder and explicit patched-code/data-root guidance.
+  Retained MERC parsers replay against copied inputs with real values instead of
+  sentinels; report projection confirms 15 successful, 16 failed and six cancelled
+  Processes, including four cancelled before launch. Historical acceptance,
+  private Profiles, shared installs and services are unchanged. 633 distinct
+  focused/native checks pass; all 195 packaged files match the fresh bundle.
+  Full G1: 8,169 pass/37 fail/159 skip; final failed-case rerun: eight pass/29
+  fail, all remaining failures reproduced on baseline a04ab98. This includes
+  a timing-sensitive resource-cancel partial-session capacity failure; keep it
+  as a separate recovery follow-up. No G1 promotion. New runs only;
+  no cross-version migration or physical-GPU/paid-model qualification.
+  [Design](../design/run-closure-repairs-2026-10-12.md) /
+  [validation](../qualification.md#research-execution-and-closure-repairs-2026-10-12).
+
 - October 11 streaming transport: adapter 82 separates CLI count-only thinking
   progress from bounded content and keeps raw stdout at 64 MiB. API responses
   get an independent 64 MiB cumulative invocation allowance; exhaustion reports

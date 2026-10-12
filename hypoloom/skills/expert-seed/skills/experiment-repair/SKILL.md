@@ -76,3 +76,11 @@ placement; device-specific probes must use authorized Host-owned Processes.
 Use validation data for development, preserving the confirmed test protocol.
 Do not install into shared runtimes, edit read-only data,
 write scientific state directly or bypass resource authorization.
+
+For missing newly added modules, verify imports resolve under the supplied
+HYPOLOOM_TARGET_ROOT in both entrypoint and child processes. Never remap that
+code root through the data-only HYPOLOOM_READ_ROOT_MAP. For parser failures,
+inspect declared raw paths and test known fixture values before retraining;
+missing input must fail explicitly instead of becoming a numeric refutation.
+A frozen parser correction requires the existing revised-hypothesis/new-cycle
+route, not restoring a known broken parser merely to resubmit the same chain.

@@ -2,6 +2,103 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Research execution and closure repairs (2026-10-12)
+
+Adapter 83 implements the [bounded repair design](design/run-closure-repairs-2026-10-12.md):
+declared raw argv projection, in-place short API cooldown waits, active-dialog
+dismissal, exact derived report counts, existing resource-history feedback and
+clearer bounded DESIGN/import/parser methods. Evidence is retained under
+`.local/qualification/run-closure-20261012/`.
+
+- `parser-replay.json` reruns the three historical parsers in disposable CPU
+  sandboxes with copies of only their declared inputs. All three previously
+  accepted `-1` results become real negative observations:
+  **-0.0198121048602111**, **-0.004226645912406772** and
+  **-0.0025344263617077165**. The retained parsers, frozen requests and accepted
+  outcomes are unchanged. This establishes the argv-path defect; it does not
+  replace historical science or establish a universal numeric-sentinel rule.
+- `report-replay.json` reads the retained database without opening a writer:
+  **37 Processes = 15 successful + 16 failed + six cancelled**; four cancelled
+  before launch, nine returned 70. Canonical outcomes remain five SUCCESS,
+  ten CLEAN_REFUTATION and 22 EXECUTION_FAILURE. The projection exposes existing
+  provider diagnostic text for 62 unsuccessful Agent attempts, including retries
+  recovered later; it does not reinterpret those outcomes.
+- **633 distinct focused/native checks pass**, with no unresolved failures or
+  skips in those selections (`test-summary.json`). Focused checks exercise actual
+  bwrap parser mounts, option/positional/directory
+  arguments, valid negative values, source precedence, undeclared input isolation,
+  two real relays across a shared 429, cancellation/appointment/deadline limits,
+  resource-history uncertainty, report projections and repeated/late TUI close.
+  Real Host/CPU entrypoint tests import a newly patched module in both parent and
+  child while retaining the original checkout as read-only data.
+- `native-recovery.xml` and the final-report case in `native.xml` use installed
+  CC, real Host/broker/bwrap and CPU Processes with local scripted providers.
+  **38 Agents and three Processes** close and publish three outcomes; the
+  parser-recovery case revises a hypothesis and executes its next cycle while
+  retaining the frozen measurement boundary. Both existing Oracles pass with
+  no open Attempts, pending or duplicate effects. Stop/report tests also retain
+  report failure handling, restart recovery and managed-Host exit after actual
+  CPU cancellation. `independent-census.json` separately counts these fixtures
+  and checks every recorded process group; none remains live.
+- `provider-native-repeat.xml` passes all **11** native checks. Nine actual
+  Host/CPU closures cover quota/subscription connection switching, remote 429,
+  local queue deferral, 503, hourly-window 403, scheduled recovery and GLM reset;
+  two further cases exercise the report Skill/file boundary directly. The nine
+  runs close **135 Agents and nine Processes**, publish nine outcomes and pass
+  their existing Oracles. `provider-census.json` independently checks all 144
+  recorded groups with no live residue or open Attempts.
+- Preserve preliminary red evidence: eleven initial focused failures used an
+  overly long AF_UNIX test-root path; the shorter-root affected selections pass.
+  One native run correctly halted when runtime guidance changed during execution;
+  the frozen candidate passes its rerun. Expanded provider diagnostics exposed a
+  scripted-report Unicode escaping issue: the fixture now sends literal Unicode
+  while retaining exact file-content and read-only-boundary checks.
+  A GLM relay test also raced worker cooldown accounting after the client read
+  completed; it now waits for that existing completion before testing the next
+  admission, preserving the single-upstream-call assertion.
+- Source distribution and wheel build successfully. All **195 package files**
+  match source, wheel, disposable installation and a newly frozen bundle;
+  installed CLI help and MCP initialization/tool listing pass outside the
+  checkout (`package-check.json`). No shared installation is changed.
+
+- Full offline G1 finishes with **8,169 passed, 37 failed and 159 skipped** in
+  **1,711.72 seconds** (`g1.xml`, `g1.log`), after compile, undefined-name and
+  whitespace checks pass. All **28 previously known failures** reproduce on an
+  unmodified `a04ab98` worktree (`baseline-known.xml`). G1 workers had already
+  imported the older test helpers; seven additional native report failures and
+  one relay accounting race use the test corrections described above. The
+  remaining resource-recovery failure rejects a 204,750-byte resumed request
+  without a usage anchor under the existing 147,308-token input allowance. The
+  unmodified baseline passes that scenario separately (`resource-baseline.xml`);
+  preserve the original capacity rejection rather than changing the guard.
+- Repeating all 37 failed cases with the final test helpers yields **eight
+  passes and 29 failures** (`g1-failure-rerun.xml`). The remaining extra failure
+  also reproduces on unmodified `a04ab98` using the eight-worker launcher
+  (`resource-baseline-parallel.xml`, one collected case): the partial-session
+  retry estimates 203,120 input tokens against the same 147,308 allowance and
+  closes without a CPU Process. Serial baseline and delayed-reply control runs
+  pass; the candidate serial run fails too. `resource-control-comparison.json`
+  preserves these different observed paths. This is a pre-existing,
+  timing-sensitive recovery boundary, not a solved issue or a reason to relax
+  capacity protection. The **29 unresolved failures have baseline evidence**;
+  the full suite is not green and was not repeated after test-only corrections.
+- Independent full-suite census reads **13,669 Attempts** in **1,262 databases**
+  containing the Attempt table and checks **2,635 recorded process groups**;
+  none remains live (`g1-census.json`). The 131 OPEN fixture rows are distinct
+  from actual process liveness. Eighty-five invalid/simplified databases excluded
+  from these reads are listed separately. Baseline failure replay similarly
+  leaves none of its 197 recorded groups live (`baseline-census.json`).
+  Failed-case reruns check another 325 groups with no live residue; resource
+  controls also close their groups (`rerun-census.json`,
+  `resource-control-comparison.json`).
+
+These are development repairs, **not G1 promotion**, a release or G4/G5
+promotion. No
+physical GPU, live paid provider, long soak, private Profile change, shared-pool
+reconfiguration or retained-run migration is included. Import/device/semantic
+authoring guidance and exact input statistics improve available evidence; they
+do not prove arbitrary generated ML code or free-form scientific prose correct.
+
 ## Streaming transport limits (2026-10-11)
 
 Adapter 82 repairs the [independent stdout/API transport bounds](design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11).

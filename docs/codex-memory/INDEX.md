@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Research execution and closure repairs](../design/run-closure-repairs-2026-10-12.md):
+  retained MERC parser sentinels, shared API cooldown churn, patched imports,
+  DESIGN deadlines, resource feedback, report counts and End-run dismissal.
+  [Validation](../qualification.md#research-execution-and-closure-repairs-2026-10-12)
+  separates historical read-only replay, actual CPU/native closure, package
+  checks, full-suite failures and the limits of authoring guidance.
+
 - [Streaming transport limits](../design/agent-output-preflight.md#streaming-transport-and-progress-events-2026-10-11):
   retained GLM progress inflation and cumulative SSE limit, exact count-only
   filtering, independent bounded wire capacity and local terminal diagnostics.

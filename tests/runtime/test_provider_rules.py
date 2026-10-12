@@ -162,15 +162,19 @@ def test_glm_reset_survives_real_relay_and_defers_another_request(tmp_path, upst
     from datetime import datetime, timezone
     import time
     from hypoloom.provider_traffic import ProviderTraffic
+    from test_provider_traffic import until
     monkeypatch.setattr("hypoloom.provider_observation.provider_service", lambda _: "glm_cn")
     reset = time.time() + 600
     at = datetime.fromtimestamp(reset, timezone.utc).isoformat()
     upstream.status, upstream.body = 429, json.dumps({"type": "error", "error": {
         "code": code, "message": f"您的限额将在 {at} 重置。"}}).encode()
+    traffic = ProviderTraffic()
     relay = _relay(tmp_path, upstream, diagnostics=RuntimeDiagnostics(tmp_path / "diagnostics"),
-        traffic_binding=(ProviderTraffic(), ("run", "grounding"), None))
+        traffic_binding=(traffic, ("run", "grounding"), None))
     try:
         assert _request(relay)[0] == 429
+        # The client can finish reading before the worker records its cooldown.
+        until(lambda: traffic.snapshot()['in_flight'] == 0)
         assert _request(relay)[0] == 429
     finally: relay.close()
     exchanges = read_exchanges(tmp_path / "diagnostics" / "provider")
