@@ -32,6 +32,23 @@ class ResearchProjectionError(RuntimeError):
     """An observation could not be safely rendered, scoped or published."""
 
 
+def finish_host_projections(host) -> None:
+    """Drain pending views and replace stale terminal work before pool shutdown."""
+    from concurrent.futures import wait
+    from .lifecycle import Machine, is_terminal
+
+    for run_id, (future, _, _) in tuple(host._projection_jobs.items()):
+        if is_terminal(Machine.RUN_WORKFLOW, host.store.latest_transition(run_id)["state"]):
+            # Collection rejects an ACTIVE snapshot after terminal closure.
+            # Schedule its current replacement while the executor is still open.
+            wait((future,))
+            host._refresh_research_projection(run_id)
+    host._projection_executor.shutdown(wait=True)
+    host._collect_role_views()
+    for run_id in tuple(host._projection_jobs):
+        host._collect_research_projection(run_id)
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchProjection:
     """In-memory files, not a persisted protocol or recovery checkpoint."""

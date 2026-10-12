@@ -16,7 +16,7 @@ from test_claude_agent_host import _provider_ndjson
 from test_context_capacity_projection import append, document, policy25, response
 from test_partial_cli_accounting import _assistant, _charge, _request as agent_request, _result
 from test_provider_relay import _relay, _request, upstream
-from test_provider_traffic import ProviderTraffic, acquire, success
+from test_provider_traffic import ProviderTraffic, acquire, success, until
 
 
 EMPTY_STREAM = (b'event: message_delta\ndata: {"type":"message_delta",'
@@ -219,6 +219,9 @@ def test_server_failure_defers_next_real_relay_request_without_forwarding(tmp_pa
         upstream.body = json.dumps(WINDOW_ERROR).encode() if window else b'{"error":{"type":"ServiceUnavailableError"}}'
         upstream.extra_headers = {"Retry-After": "120"}
         assert _request(relay)[0] == upstream.status
+        # Error delivery precedes the bounded response capture and shared
+        # cooldown accounting; test the next admission after that settlement.
+        until(lambda: traffic.snapshot()["in_flight"] == 0)
         assert _request(relay)[0] == (429 if window else 503)
     finally:
         relay.close()

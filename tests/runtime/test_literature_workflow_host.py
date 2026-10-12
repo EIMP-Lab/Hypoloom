@@ -114,8 +114,11 @@ def test_slow_literature_keeps_host_tools_and_cancel_responsive(tmp_path, mount_
         assert entered.is_set() and read_threads[0] != owner
         assert not release.is_set(), "Host tick waited for literature I/O"
         with ThreadPoolExecutor(max_workers=1) as client:
+            # Bound this phase independently of setup and machine scheduling.
+            # The unreleased I/O gate proves responsiveness, not a 300 ms race.
+            deadline = time.monotonic() + 5
             future = client.submit(_call_host, str(endpoint.socket_path), "web_fetch",
-                {"url": "https://example.org/source"}, deadline_at=time.monotonic() + 0.3)
+                {"url": "https://example.org/source"}, deadline_at=deadline)
             while not future.done() and time.monotonic() < deadline:
                 host.tick()
                 time.sleep(0.002)

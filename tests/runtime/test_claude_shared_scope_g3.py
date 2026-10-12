@@ -152,14 +152,14 @@ def test_native_shared_scope_preserves_the_accepted_measurement_choice(tmp_path:
             assert len({row["command_id"] for row, _ in design}) == 1
             inner = [observed for _, observed in agents if observed["request"]["command"] in {
                 "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
-            # Design correction resumes only its frozen task. Execution and
-            # analysis each start a new conversation over the same Git branch.
-            assert len({observed["session"]["session_id"] for observed in inner}) == len({observed["request"]["command_id"] for observed in inner})
+            # This large design retry reconstructs; execution and analysis also
+            # start new conversations over the same retained Git branch.
+            assert len({observed["session"]["session_id"] for observed in inner}) == len(inner)
             assert len({observed["session"]["branch"] for observed in inner}) == 1
             if not goal_only:
                 rejected, retry = design
                 assert rejected[0]["terminal_reason"] == "FAILED" and retry[0]["terminal_reason"] == "SUCCEEDED"
-                assert rejected[1]["failure_code"] == "invalid_structured_output" and rejected[1]["retry_class"] == "MODEL"
+                assert rejected[1]["failure_code"] == "invalid_candidate" and rejected[1]["retry_class"] == "MODEL"
                 assert rejected[1].get("response") is None and rejected[1]["returncode"] == 0
                 diagnostic = rejected[1]["diagnostics"]["provider_diagnostic"]
                 assert diagnostic == "/typed_candidate: additionalProperties constraint failed"
@@ -187,9 +187,9 @@ def test_native_shared_scope_preserves_the_accepted_measurement_choice(tmp_path:
                 assert any(block.get("type") == "text" and block.get("text") == outer["result"]
                            for record in records if record.get("type") == "assistant"
                            for block in record["message"]["content"])
-                assert retry[1]["session"]["session_id"] == rejected[1]["session"]["session_id"]
-                assert retry[1]["session"]["launch_arguments"] == ["--resume", retry[1]["session"]["session_id"]]
-                assert any(item["ref"] == rejected[0]["attempt_id"] + "--agent-retry-diagnostic"
+                assert retry[1]["session"]["session_id"] != rejected[1]["session"]["session_id"]
+                assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+                assert any(item["ref"] == rejected[0]["attempt_id"] + "--candidate-validation-error"
                            for item in retry[1]["request"]["input_artifacts"])
             accepted = design[-1][1]["response"]["typed_candidate"]
             assert accepted["measurement"] == selected and accepted["evaluation_scope"] == "GOAL"

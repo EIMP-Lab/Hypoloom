@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/83"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/84"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -1120,6 +1120,20 @@ class ClaudeAgentHost:
                             and failure_code == "invalid_provider_envelope" and not snapshot.get("error")):
                         failure_code = "invalid_candidate"
                         diagnostics["provider_diagnostic"] = message
+            if (failure_code == "invalid_candidate" and final_text_output
+                    and isinstance(handle.tool_workspace, PreparedSessionWorkspace)
+                    and handle.request.command.value == "GROUNDING"):
+                # A rejected final message is never an accepted response, but
+                # its safely declared parser bytes remain forensic evidence.
+                # Preserve the existing archive capture lost when delivery
+                # began requiring the accepted invocation file.
+                try:
+                    outer, _, _ = _unpack_provider_stream(output or b"")
+                    rejected = decode_output(outer["result"], _output_schema(handle.request, tool_workspace=True))
+                    _capture_tool_workspace(handle.tool_workspace,
+                        max_bytes=handle.request.budget.max_output_bytes, candidate=rejected["typed_candidate"])
+                except (OSError, ValueError, KeyError, TypeError, WorkspaceIntegrityError, GitAuthoringIntegrityError) as exc:
+                    diagnostics["workspace_error"] = _bounded_text(str(exc), limit=1024)
         if handle._provider_relay is not None:
             transport = handle._provider_relay.response_transport()
             diagnostics["provider_response_transport"] = transport

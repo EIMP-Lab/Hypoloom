@@ -192,7 +192,7 @@ def test_local_native_grounding_corrects_twice_in_one_attempt_and_archives_all_u
         thread.join(timeout=5)
     assert not scenario.errors and len(scenario.requests) == 5 and len(scenario.feedback) == 2
     assert result["observation"]["terminal_reason"] == ("SUCCEEDED" if corrected else "INVALID_OUTPUT")
-    assert result["observation"]["failure_code"] == (None if corrected else "invalid_structured_output")
+    assert result["observation"]["failure_code"] == (None if corrected else "invalid_candidate")
     if corrected:
         assert result["observation"]["response"]["typed_candidate"]["acceptance"] is None
         assert result["observation"]["response"]["typed_candidate"] == scenario.outputs[-1]["typed_candidate"]

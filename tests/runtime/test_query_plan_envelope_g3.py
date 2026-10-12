@@ -102,7 +102,7 @@ def test_native_query_plan_root_field_rejects_then_same_session_retry_closes_cpu
     assert [row["terminal_reason"] for row, _ in queries] == ["FAILED", "SUCCEEDED"]
     assert [row["attempt_ordinal"] for row, _ in queries] == [1, 2]
     assert failed[0]["command_id"] == retry[0]["command_id"]
-    assert failed[1]["failure_code"] == "invalid_structured_output" and failed[1]["retry_class"] == "MODEL"
+    assert failed[1]["failure_code"] == "invalid_candidate" and failed[1]["retry_class"] == "MODEL"
     assert failed[1].get("response") is None
     diagnostic = failed[1]["diagnostics"]["provider_diagnostic"]
     assert diagnostic == "/: additionalProperties constraint failed"
@@ -114,7 +114,7 @@ def test_native_query_plan_root_field_rejects_then_same_session_retry_closes_cpu
     assert retry[1]["session"]["session_id"] == session
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
     assert retry[1]["session"]["launch_arguments"] == ["--resume", session]
-    assert any(item["ref"] == failed[0]["attempt_id"] + "--agent-retry-diagnostic"
+    assert any(item["ref"] == failed[0]["attempt_id"] + "--candidate-validation-error"
                for item in retry[1]["request"]["input_artifacts"])
     assert scenario.query_schemas[failed[0]["attempt_id"]] == scenario.query_schemas[retry[0]["attempt_id"]]
     assert len(scenario.query_calls) == 3

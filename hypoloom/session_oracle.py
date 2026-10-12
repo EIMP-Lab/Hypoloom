@@ -310,14 +310,24 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
                     "rejected_response", observation.get("response", {}))
                 candidate = response.get("typed_candidate") or {}
                 acceptance = candidate.get("acceptance")
+                diagnostic = observation.get("diagnostics")
+                diagnostic = diagnostic if isinstance(diagnostic, Mapping) else {}
+                validation = diagnostic.get("validation_error")
+                correction = diagnostic.get("structured_output_correction")
                 if acceptance is not None:
                     assert candidate.get("clarification") is None
                     expected_paths |= {"evaluator/" + path for path in acceptance["parser_files"]}
-                elif (not success and observation.get("failure_code") == "invalid_provider_envelope"
+                elif (not success and (
+                      observation.get("failure_code") == "invalid_provider_envelope"
                       and observation.get("failure_stage") == "provider_process"
+                      or observation.get("failure_code") == "invalid_candidate"
+                      and observation.get("failure_stage") == "provider_output"
+                      and isinstance(validation, Mapping) and validation.get("code") == "invalid_candidate"
+                      and isinstance(correction, Mapping) and correction.get("accepted") is False
+                      and type(correction.get("rejected_count")) is int and correction["rejected_count"] > 0)
                       and "response" not in observation and "rejected_response" not in observation):
                     # Native validation can capture evaluator bytes before the
-                    # provider envelope fails. The existing publication proves
+                    # provider envelope or native candidate fails. The existing publication proves
                     # their identity, not an accepted evaluator declaration.
                     unaccepted_capture = True
                     for name in listed:

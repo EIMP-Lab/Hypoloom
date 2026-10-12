@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Retry reconstruction and shutdown repairs](../design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up):
+  full-prompt resume headroom, rejected Grounding archives, traceback tails,
+  late TUI refresh and terminal projection drain; reuses existing validators.
+  [Validation](../qualification.md#retry-reconstruction-and-shutdown-repairs-2026-10-12)
+  closes the earlier 29-failure backlog with focused native CPU recovery,
+  a green full G1, independent residue counts and package parity, preserving
+  preceding red results and explicit paid/GPU limits.
+
 - [Research execution and closure repairs](../design/run-closure-repairs-2026-10-12.md):
   retained MERC parser sentinels, shared API cooldown churn, patched imports,
   DESIGN deadlines, resource feedback, report counts and End-run dismissal.

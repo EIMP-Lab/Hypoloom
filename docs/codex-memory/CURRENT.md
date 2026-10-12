@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 12 recovery follow-up: adapter 84 uses existing byte diagnostics to
+  choose fresh reconstruction before a resumed full prompt exceeds admission.
+  Rejected Grounding parser sources and failed-tool traceback tails survive
+  through bounded existing archives, with full-text credential checks and strict
+  Oracle diagnostic types. Late TUI refreshes stop at teardown; Host shutdown
+  publishes the terminal projection before closing its executor. Existing limits,
+  ownership and acceptance checks remain; no new durable authority is added.
+  1,084 distinct focused checks pass. Twenty native flows close 249 Agents and
+  20 CPU Processes, publish 20 outcomes and leave no live groups. Final full G1:
+  **8,223 pass, zero fail, 159 optional skips**; source/install/bundle match all
+  195 package files. This supersedes the 29 unresolved failures in the historical
+  entry below; all intervening red evidence is preserved. No retained-run,
+  shared-install or service change, paid-model or physical-GPU qualification.
+  [Design](../design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up) /
+  [validation](../qualification.md#retry-reconstruction-and-shutdown-repairs-2026-10-12).
+
 - October 12 run closure: adapter 83 projects declared relative raw parser inputs
   into `/raw`, waits through short transient API cooldowns in the existing queue,
   prevents duplicate End-run dismissal and shows report-only STOPPING work.

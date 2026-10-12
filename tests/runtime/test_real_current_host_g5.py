@@ -929,7 +929,7 @@ def test_current_g5_preflight_rejects_before_provider_or_run(
     monkeypatch.setenv("HYPOLOOM_CLAUDE_SETTINGS", str(settings))
     monkeypatch.setenv(
         "HYPOLOOM_CLAUDE_MODEL",
-        "claude-fable-5-1[1M]"
+        "claude-fable-5-1[1M][1m]"
         if failure == "model-selector"
         else "claude-fable-5-1[1m]",
     )

@@ -96,12 +96,14 @@ equivalent single text block/string representation and movement of known
 `ephemeral` cache annotations on text/tool-result blocks. It preserves content,
 order, tool identities and signed thinking; provider requests are not rewritten. Anchors are disposable per-invocation observations;
 a resumed invocation may still need fresh reconstruction if its first request
-cannot be reliably measured. If the preceding request already exceeded the fresh
-relay byte allowance, retry directly reconstructs instead of restoring that
-conversation. Code, published archives and bounded recovery notes are retained.
+cannot be reliably measured. Retry selection accounts for the preceding request,
+the full prompt appended on resume and the existing estimate margin. If these
+do not fit the fresh relay byte allowance, or their sizes are unknown, retry
+directly reconstructs. Code, published archives and bounded recovery notes are retained.
 A large newly generated thinking block still receives a conservative byte estimate;
-this can refuse a request before a provider reports overflow. Reconstruction uses
-the existing infrastructure
+this can refuse a request before a provider reports overflow. Choosing a fresh
+session for an already scheduled retry adds no extra infrastructure attempt.
+Retrying an actual relay capacity refusal uses the existing infrastructure
 retry allowance; with zero retries it stops and reports the reason. Byte, request,
 time, total-token and cost limits remain independent. Do not omit constraints to make an input fit.
 

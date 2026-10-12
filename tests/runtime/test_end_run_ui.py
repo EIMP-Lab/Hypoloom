@@ -25,6 +25,38 @@ def app_for(root, snapshot):
         interval=3600, web_enabled=False)
 
 
+def test_late_refresh_during_shutdown_does_not_access_removed_dialog_controls(tmp_path, monkeypatch):
+    from hypoloom.tui import SnapshotRefreshCompleted
+    root, snapshot = run_snapshot(tmp_path)
+    seen = []
+
+    async def exercise():
+        app = app_for(root, snapshot)
+        close_all = app._close_all
+
+        async def close_with_late_refresh():
+            assert not app.is_running
+            dialog = app.screen
+            await dialog.query_one("#end-run-form").remove()
+            # Textual retains is_mounted while tearing down the screen stack.
+            assert dialog.is_mounted and app._accept_refreshes
+            try:
+                app.on_snapshot_refresh_completed(SnapshotRefreshCompleted(snapshot, None))
+                seen.append("late refresh handled")
+            finally:
+                await close_all()
+
+        async with app.run_test(size=(90, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("x")
+            monkeypatch.setattr(app, "_close_all", close_with_late_refresh)
+
+    asyncio.run(exercise())
+    assert seen == ["late refresh handled"]
+    after = build_monitor_snapshot(root, "end-ui").status
+    assert (after["run_state"], after["run_revision"]) == (snapshot.status["run_state"], snapshot.status["run_revision"])
+
+
 def test_repeated_or_delayed_close_cannot_pop_monitor_or_another_dialog(tmp_path):
     from hypoloom.end_run_tui import EndRunScreen
     root, snapshot = run_snapshot(tmp_path)

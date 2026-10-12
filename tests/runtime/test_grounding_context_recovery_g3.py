@@ -67,7 +67,8 @@ class _DiscoveryScenario(_AcceptanceScenario):
             if "repair_check" in results:
                 assert _REPAIRED in _result_text(results["repair_check"])
             if "inspect_schema" in results:
-                assert json.loads(_result_text(results["inspect_schema"])) == _output_schema(request, tool_workspace=True)
+                assert not results["inspect_schema"].get("is_error"), results["inspect_schema"]
+                assert "SCHEMA_MATCHES_FROZEN_REQUEST" in _result_text(results["inspect_schema"])
         except AssertionError as exc:
             self.errors.append(str(exc))
         return len(self.requests)
@@ -102,7 +103,11 @@ class _DiscoveryScenario(_AcceptanceScenario):
                 "cat /acceptance/WORK_NOTES.md && test -f /acceptance/smoke/predictions.json && test -f /acceptance/work/scientific-draft.json && grep 'denominator =' /acceptance/evaluate.py && echo DRAFT_RETAINED",
                 "timeout": 10000}),
                 ("read_retained", "Read", {"file_path": "/acceptance/evaluate.py"}),
-                ("inspect_schema", "Bash", {"command": "cat /runtime/output-schema.json", "timeout": 10000}))
+                ("inspect_schema", "Bash", {"command": "python3 - <<'PY'\nimport json\n"
+                    "from pathlib import Path\n"
+                    f"expected = json.loads({json.dumps(_output_schema(request, tool_workspace=True))!r})\n"
+                    "assert json.loads(Path('/runtime/output-schema.json').read_text()) == expected\n"
+                    "print('SCHEMA_MATCHES_FROZEN_REQUEST')\nPY", "timeout": 10000}))
         if step == 2:
             return (("repair_retained", "Edit", {"file_path": "/acceptance/evaluate.py",
                 "old_string": "denominator = len(rows['labels']) + 1", "new_string": "denominator = len(rows['labels'])"}),)

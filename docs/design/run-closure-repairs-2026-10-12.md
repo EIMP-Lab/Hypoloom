@@ -102,4 +102,92 @@ this failure. Keep it separate from this repair: reproduce both archive shapes,
 then reuse the existing context reconstruction/session policy to avoid repeating
 large immutable inputs while preserving source access, billing and ownership.
 Do not increase the input allowance or add a new recovery authority to make the
-test pass. The current candidate retains this limitation and has no G1 promotion.
+test pass. Commit `8e8caad` retained this limitation and had no G1 promotion;
+the follow-up below repairs that boundary.
+
+## Recovery and qualification follow-up
+
+This repair addresses the remaining G1 failures on top of `8e8caad`.
+The resource-cancel case admits 126,419 bytes on the first exchange, but resumes
+that history with another full prompt (the preceding prompt alone was 70,434
+bytes). The new relay has no prior usage anchor; its conservative 147,308-token
+allowance correctly rejects the combined request. The failed boundary is retry
+session selection, not provider capacity enforcement.
+
+Adapter 84 reuses the existing context diagnostics and retry selection. A resume
+must leave byte headroom for the preceding full prompt and the existing estimate
+margin for unmeasured reply/continuation text, alongside the existing token/output
+check. Missing sizes or insufficient headroom select the existing
+fresh reconstruction, retaining Git work, archives and continuation observations.
+No new schema, checkpoint, hash, state registry or authority is needed: existing
+Attempt records, immutable archives, transactions and ordinary regression tests
+already carry the required evidence. The relay remains the final request check.
+
+Two further reproduced failures affect existing recovery evidence. Requiring the
+accepted invocation file caused rejected Grounding parser sources to bypass
+their existing forensic capture. Decode only a schema-valid rejected final
+candidate for the bounded source capture; keep its failed outcome and never
+create an accepted response. The existing archive Oracle recognizes the native
+`invalid_candidate`/`provider_output` rejection with its validation trace, while
+retaining path, ownership, digest and byte-budget checks. Missing rejection proof
+and an exceeded source budget remain failures. Ordinary mapping/integer checks
+make incomplete diagnostic fields a reported archive failure instead of an audit
+exception; boolean counts cannot stand in for a positive rejection count.
+This restores the original source
+archive assertion rather than replacing it with transcript-only evidence.
+
+Long traceback recovery notes lost the final exception under a 512-byte prefix.
+Keep both ends within that same allowance for failed tools. Scan the full original
+text for credentials before choosing excerpts, including the omitted middle.
+Successful tool excerpts and the existing twelve-note selection remain unchanged.
+Both repairs reuse the published archive and existing bounded projections; no
+new evidence store, schema or acceptance authority is introduced.
+
+Triage each remaining failure against the current validator before changing a
+test. Preserve rejected-output accounting, exact scientific effects and native
+Host/CPU closure. Update stale fixture interfaces and model-suffix expectations;
+move detailed operator instructions into the existing reference and reduce Host
+duplication within the current code allocation. Do not loosen input capacity,
+acceptance, preflight, code-size or lifecycle assertions to obtain a green suite.
+Run focused tests first, then freeze the candidate and repeat full offline G1 and
+package parity. Retained research runs and shared installations remain unchanged.
+
+The first full follow-up run also identifies two native checks that expected an
+avoidable intermediate capacity rejection. Require direct reconstruction, the
+same correction/source evidence and exactly one CPU outcome; the analysis case
+disables infrastructure retries entirely. Three asynchronous test boundaries use
+the existing completion signals: persist request-start metadata while the reply
+is blocked, finish rejected-response capture/cooldown accounting before checking
+the next admission, and render the scrolled TUI controls before actual clicks.
+These retain strict request counts, pre-response visibility and lost-reply
+replay/cancellation assertions without changing production timing or controls.
+
+The next full run exposes two further shutdown races. Textual keeps a screen's
+`is_mounted` flag after child teardown begins, so a late snapshot can query an
+already removed End-run button and crash. Ignore completed refresh messages once
+the application's existing `is_running` state is false; retain normal refresh,
+explicit cancellation and reply handling. The regression delivers a real refresh
+during teardown, after removing the dialog controls, without a new lifecycle flag.
+
+A resident Host can commit COMPLETED and exit while its pending projection was
+prepared during ACTIVE. Shutdown previously waited for that worker and correctly
+discarded its stale output, but never prepared the final view. Drain terminal jobs
+through the existing refresh/collection path before shutting down the executor,
+then publish their replacements through the same owner-thread validator and atomic
+directory exchange. SQLite and accepted artifacts remain authoritative; no new
+revision stamp, receipt or state source is needed. A held ACTIVE preparation across
+cancellation reproduces the missing final projection even with no subsequent tick.
+
+The literature responsiveness fixture separately used a 0.3-second client deadline
+under whole-suite concurrency. Give its tool phase its own bounded deadline while
+retaining the unreleased network-I/O gate, thread-ownership, cancellation, closure
+and Oracle assertions. A synchronous I/O regression still fails before that gate
+is released. The separate resident Host test retains its two-second maximum STATUS
+latency assertion and actual CPU cycles.
+
+One provider-rule fixture closed its relay as soon as the redacted HTTP error
+arrived, cancelling asynchronous body capture before checking body-specific quota
+codes. The retained failures contain zero received bytes and `relay_closed`.
+Reuse the existing completed-exchange waiter before closing, and require a complete
+body with the exact received byte count. Provider reduction and cancellation
+semantics are unchanged; the test now establishes the evidence its assertion needs.

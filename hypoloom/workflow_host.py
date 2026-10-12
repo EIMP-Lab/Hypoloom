@@ -246,10 +246,8 @@ class WorkflowHost:
     def _close(self) -> None:
         if self.institutional_access is not None:
             self.institutional_access.close()
-        self._projection_executor.shutdown(wait=True)
-        self._collect_role_views()
-        for run_id in tuple(self._projection_jobs):
-            self._collect_research_projection(run_id)
+        from .research_projection import finish_host_projections
+        finish_host_projections(self)
         if self.publisher is not None: self.paper_reading.close()
         for job in self._literature_jobs.values(): job.cancelled.set(); job.future.cancel()
         if self.claude_agent_host is not None:
@@ -3792,8 +3790,7 @@ class WorkflowHost:
     def _start_process(self, run_id: str, experiment_id: str, *, retry: bool) -> None:
         pending = self._tool_command(f"{experiment_id}--resource-revision")
         if pending is not None:
-            self._finish_resource_revision(run_id, experiment_id, json.loads(pending["request_json"]))
-            return
+            return self.shared_gpu.finish_resource_revision(run_id, experiment_id, json.loads(pending["request_json"]))
         creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (experiment_id,))
         if not creation: raise OperationalHalt(f"experiment {experiment_id!r} lacks creation payload")
         identity = json.loads(creation[0]["payload_json"]); role = str(identity["role"])
@@ -3828,7 +3825,7 @@ class WorkflowHost:
                         "request": diagnostic, "status": "accepted", "result": {"repair_required": True},
                         "revision": tx.latest_transition(experiment_id)["revision"]})
                 self._crash("after_resource_revision_intent")
-                self._finish_resource_revision(run_id, experiment_id, diagnostic)
+                self.shared_gpu.finish_resource_revision(run_id, experiment_id, diagnostic)
                 return
             if selected is None: return
         spec, contract, agent_request, agent_response, source_path, result_path, workspace, capabilities, grant = self._execution_inputs(run_id, experiment_id, actual_grant=selected)
@@ -4389,21 +4386,6 @@ class WorkflowHost:
             "digest_algorithm": publication.digest_algorithm,
             "digest": publication.digest,
             "path": "/".join(publication.key.as_tuple())}
-    def _finish_resource_revision(self, run_id: str, experiment_id: str, diagnostic: Mapping[str, Any]) -> None:
-        head = self.store.latest_transition(experiment_id)
-        if head["state"] not in {"READY", "PREREGISTERED", "EXECUTING"}: return
-        spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
-        attempts = self.store.list_attempts(execution_id=spec["execution_id"])
-        if any(a["state"] == "OPEN" for a in attempts): return
-        key = self.shared_gpu.key(run_id, spec["execution_id"], f"{experiment_id}--process-{len(attempts) + 1}")
-        try:
-            if not self.shared_gpu.release(key): return
-        except PoolError as exc:
-            if exc.code == "unavailable": return
-            raise
-        self._crash("after_resource_revision_release")
-        self._synthetic_terminal(run_id, experiment_id, AttemptTerminalReason.FAILED, diagnostic=diagnostic)
-
     def _synthetic_terminal(self, run_id: str, experiment_id: str, reason: AttemptTerminalReason,
                             *, diagnostic: Mapping[str, Any] | None = None) -> None:
         spec, contract, agent_request, agent_response, source_path, result_path, workspace, _, grant = self._execution_inputs(run_id, experiment_id, synthetic=True)

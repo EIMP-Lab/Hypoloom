@@ -92,14 +92,14 @@ def test_native_exhausted_grounding_restarts_and_reports_inconclusive(tmp_path: 
             assert len({observation["session"]["session_id"] for _, observation in grounding}) == 1
             assert grounding[1][1]["session"]["launch_arguments"] == ["--resume", grounding[0][1]["session"]["session_id"]]
             assert len({observation["session"]["branch"] for _, observation in grounding}) == 1
-            assert any(item["ref"] == grounding[0][0]["attempt_id"] + "--agent-retry-diagnostic"
+            assert any(item["ref"] == grounding[0][0]["attempt_id"] + "--candidate-validation-error"
                        for item in grounding[1][1]["request"]["input_artifacts"])
             assert all(row["state"] == "CLOSED" and row["terminal_reason"] == "FAILED"
                        for row, _ in grounding)
-            assert all(observation["failure_code"] == "invalid_tool_workspace"
+            assert all(observation["failure_code"] == "invalid_candidate"
                        and observation["retry_class"] == "MODEL"
-                       and "evaluate.py" in observation["diagnostics"]["workspace_error"]
-                       and "No such file" in observation["diagnostics"]["workspace_error"]
+                       and "missing regular smoke input: parser_files/evaluate.py"
+                           in observation["diagnostics"]["validation_error"]["message"]
                        for _, observation in grounding)
             for _, observation in grounding:
                 correction = observation["diagnostics"]["structured_output_correction"]

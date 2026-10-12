@@ -15,8 +15,8 @@ from test_partial_cli_accounting import _charge
 
 
 @pytest.mark.parametrize("invalid,snapshot,prevented_field,failure,retry,bill", [
-    (True, {"accepted": False, "status": "unresolved"}, None, "invalid_structured_output", "MODEL", "provider"),
-    (True, {"accepted": True, "status": "first_pass"}, None, "invalid_structured_output", "MODEL", "provider"),
+    (True, {"accepted": False, "status": "unresolved"}, None, "invalid_provider_envelope", "INFRASTRUCTURE", "provider"),
+    (True, {"accepted": True, "status": "first_pass"}, None, "invalid_provider_envelope", "INFRASTRUCTURE", "provider"),
     (False, {"accepted": False, "status": "not_observed"}, None, "invalid_provider_envelope", "INFRASTRUCTURE", "provider"),
     (False, {"accepted": False, "status": "validation_failed", "error": "endpoint unavailable"},
         None, "invalid_provider_envelope", "INFRASTRUCTURE", "provider"),
@@ -34,10 +34,18 @@ def test_normal_observation_keeps_validation_and_reported_billing_separate(
     if prevented_field:
         outer[prevented_field] = "stop_hook_prevented"
     before = copy.deepcopy(outer)
+    def accepted_text():
+        # Mirror the validator's invocation-file interface. Unaccepted output
+        # and an accepted file that fails decoding are delivery failures here;
+        # native rejected-candidate traces are covered by the Host G3 cases.
+        if snapshot.get("accepted") is not True or snapshot.get("error"):
+            raise ValueError("native output was not accepted")
+        return outer["result"]
     handle = SimpleNamespace(
         _observation=None, _process=SimpleNamespace(poll=lambda: 0), request=request,
         model="stub-model", _stdout_file=io.BytesIO(_provider_ndjson(outer)), _stderr_file=io.BytesIO(),
-        _output_validator=SimpleNamespace(snapshot=lambda: snapshot, close=lambda: None), tool_workspace=None,
+        _output_validator=SimpleNamespace(snapshot=lambda: snapshot, close=lambda: None,
+            accepted_text=accepted_text), tool_workspace=None,
         _runtime_diagnostics=None, _provider_relay=None, pid=123, process_group_id=123, started_at=0,
         _prompt_manifest=None, _session_usage_baseline=None,
     )

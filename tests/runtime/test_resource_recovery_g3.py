@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import yaml
+import pytest
 
 from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, GpuRuntimeObservation, LocalComputeResources
 from hypoloom.control_protocol import ControlRequest
@@ -22,7 +23,8 @@ from test_claude_shared_acceptance_g3 import _AcceptanceScenario, _GOAL, _RUN, _
 import test_full_cc_host_g3 as native
 
 
-def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatch):
+@pytest.mark.parametrize("completed_reply_restart", [False, True], ids=["cancel-in-flight", "completed-reply-restart"])
+def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatch, completed_reply_restart):
     uuid = "GPU-00000000-0000-0000-0000-000000000001"
     capability = GpuCapability(index=0, uuid=uuid, name="synthetic", total_memory_mib=16000,
         free_memory_mib=16000, driver_version="fixture")
@@ -32,7 +34,7 @@ def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatc
         free_memory_mib=16000, used_memory_mib=0, utilization_percent=0),))
     scenario = _AcceptanceScenario(tmp_path, "native-resource-recovery")
     original_tools, original_record = scenario.tool_calls, scenario.record
-    fault = {"attempt": None, "active": False, "rechecked": False}
+    fault = {"attempt": None, "active": False, "rechecked": False, "reply_window": completed_reply_restart}
     def record(document):
         request = native._request_from_provider(document)
         if request.attempt_id == fault["attempt"]:
@@ -73,6 +75,15 @@ def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatc
         with PoolServer(pool, mount / "pool.sock"):
             host = native._new_host(tmp_path, _installed_claude(), f"http://127.0.0.1:{provider.server_port}", "local-resource-test")
             host.grounding_web = _NoPublicWeb()
+            original_cancel = host.claude_agent_host.cancel
+            def cancel(handle):
+                # Also exercise the late-poll boundary: let the blocked node's
+                # terminal tool reply reach CC before Host observes closure.
+                # The actual resource block still prevents every submission.
+                if fault["reply_window"] and handle.request.attempt_id == fault["attempt"]:
+                    return
+                return original_cancel(handle)
+            monkeypatch.setattr(host.claude_agent_host, "cancel", cancel)
             try:
                 _payload(tmp_path, mount, roles=(_GOAL,))
                 safety = tmp_path / "profile/safety.yaml"
@@ -100,6 +111,13 @@ def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatc
                             assert observed["failure_code"] == "resource_infrastructure_blocked", observed
                             assert observed["session"]["transcript"]
                             assert not host.store.list_workflow_heads(_RUN, "EXPERIMENT")
+                            fault["reply_window"] = False
+                            if completed_reply_restart:
+                                assert scenario.steps[fault["attempt"]] >= 2
+                                host.close()
+                                host = native._new_host(tmp_path, _installed_claude(), f"http://127.0.0.1:{provider.server_port}", "local-resource-test")
+                                host.grounding_web = _NoPublicWeb()
+                                host.initialize()
                             fault["active"] = False
                             response = host.handle(ControlRequest(1, "resource-recheck", None, "RESOURCE_RECHECK", {"run_id": _RUN, "reason": "operator"}))
                             assert response.status == "accepted", response
@@ -111,6 +129,14 @@ def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatc
                 processes = [row for row in attempts if row["kind"] == "PROCESS"]
                 assert len(processes) == 1 and processes[0]["terminal_reason"] == "SUCCEEDED"
                 assert not json.loads(processes[0]["observation_json"]).get("synthetic_before_spawn")
+                executions = [json.loads(row["observation_json"]) for row in attempts
+                    if row["kind"] == "AGENT" and json.loads(row["observation_json"])["request"]["command"] == "EXPERIMENT_EXECUTION"]
+                executions.sort(key=lambda item: item["request"]["attempt_ordinal"])
+                assert len(executions) == 2
+                blocked, recovered = executions
+                assert blocked["request"]["command_id"] == recovered["request"]["command_id"]
+                assert recovered["session"]["session_id"] != blocked["session"]["session_id"]
+                assert recovered["session"]["launch_arguments"] == ["--session-id", recovered["session"]["session_id"]]
                 specs = host.store.list_facts(_RUN, "ExperimentPreregistered")
                 assert len(specs) == 1 and specs[0]["payload"]["execution_contract"]["resource_grant"]["kind"] == "CPU"
                 assert host.store.list_facts(_RUN, "CanonicalOutcomeAccepted") and host.store.list_facts(_RUN, "HypothesisAssessed")
@@ -121,5 +147,6 @@ def test_native_pool_fault_closes_rechecks_and_collects_cpu(tmp_path, monkeypatc
                 pool_report = audit_gpu_pool(pool.root); assert pool_report["ok"], pool_report
                 (tmp_path / "resource-recovery-evidence.json").write_text(json.dumps({"attempts": len(attempts), "processes": len(processes), "blocked_attempt": fault["attempt"], "oracle": report.to_dict(), "pool": pool_report}, indent=2))
             finally:
+                fault["reply_window"] = False
                 host.close()
                 provider.shutdown(); provider.server_close(); thread.join(timeout=5)

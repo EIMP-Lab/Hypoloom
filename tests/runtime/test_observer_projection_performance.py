@@ -114,7 +114,8 @@ def test_host_research_files_do_not_replay_audit_or_historical_call_diagnostics(
     assert snapshot["fact_counts"]["GoalDefined"] == 1
 
 
-def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(tmp_path, monkeypatch):
+@pytest.mark.parametrize("shutdown", [False, True], ids=["tick", "shutdown"])
+def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(tmp_path, monkeypatch, shutdown):
     import threading
     import time
     from concurrent.futures import wait
@@ -145,6 +146,7 @@ def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(t
     monkeypatch.setattr(research_projection, "publish_research_projection", publish)
     monkeypatch.setattr(workflow_host.WorkflowHost, "_drive_active", lambda *_: None)
     host = workflow_host.WorkflowHost(root)
+    closed = False
     try:
         host.initialize()
         payload = _v4_payload(run_id)
@@ -162,18 +164,24 @@ def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(t
         assert host.store.latest_transition(run_id)["state"] == "CANCELLED"
         assert not host.terminal_exit_ready
         release.set()
-        wait([job[0] for job in host._projection_jobs.values()])
-        host.tick()  # Discards the prepared ACTIVE view and requests the terminal view.
-        wait([job[0] for job in host._projection_jobs.values()])
-        host.tick()
+        if shutdown:
+            host.close()  # No further tick is available after a resident Host exits.
+            closed = True
+        else:
+            wait([job[0] for job in host._projection_jobs.values()])
+            host.tick()  # Discards the prepared ACTIVE view and requests the terminal view.
+            wait([job[0] for job in host._projection_jobs.values()])
+            host.tick()
         assert prepared_states == ["ACTIVE", "CANCELLED"]
         assert published_states == ["CANCELLED"]
         assert all(identity != threading.get_ident() for identity in threads)
-        assert host.terminal_exit_ready and not host.projection_errors
+        assert shutdown or host.terminal_exit_ready
+        assert not host.projection_errors
+        assert json.loads((root / run_id / "projection/run.json").read_text())["status"]["run_state"] == "CANCELLED"
         assert not list((root / run_id).glob(".projection-*"))
     finally:
         release.set()
-        host.close()
+        if not closed: host.close()
 
 
 def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tmp_path, monkeypatch):

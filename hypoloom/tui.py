@@ -1881,7 +1881,7 @@ class HypoloomVNextMonitor(App):
     def on_snapshot_refresh_completed(
         self, message: SnapshotRefreshCompleted,
     ) -> None:
-        if not self._accept_refreshes:
+        if not self._accept_refreshes or not self.is_running:
             return
         self._refresh_thread = None
         self._last_refresh_error = message.error

@@ -43,7 +43,7 @@ def test_native_support_copy_explains_tool_repair_and_schema_rejection(tmp_path:
     assert json.loads(envelope["result"])["typed_candidate"]["supporting_refs"] == [_INVALID_REF]
     assert _INVALID_REF in (failed / "stdout.log").read_text()
     assert [event["kind"] for event in _json_lines(failed / "events.jsonl")] == ["prepared", "started", "ended"]
-    assert json.loads((failed / "result.json").read_text())["failure_code"] == "invalid_structured_output"
+    assert json.loads((failed / "result.json").read_text())["failure_code"] == "invalid_candidate"
     validation = json.loads((failed / "native-output/000001.json").read_text())
     assert validation["last_assistant_message"] == envelope["result"]
     assert "/typed_candidate/supporting_refs/0" in validation["error"]

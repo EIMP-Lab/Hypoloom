@@ -204,8 +204,8 @@ def test_tui_schedule_lost_reply_replay_and_cancel(tmp_path, monkeypatch, langua
             await pilot.pause(); await pilot.press("p")
             app.screen.query_one("#provider-retry-time", Input).value = "30 分钟后"
             await pilot.pause()  # The preview changes the small dialog's layout.
-            app.screen.query_one("#provider-schedule-confirm").scroll_visible()
-            await pilot.wait_for_scheduled_animations()
+            app.screen.query_one("#provider-schedule-confirm").scroll_visible(animate=False)
+            await pilot.pause()
             assert await pilot.click("#provider-schedule-confirm")
             await pilot.pause()
             assert len(calls) == 1 and "retry_at" in calls[0].payload
@@ -218,8 +218,8 @@ def test_tui_schedule_lost_reply_replay_and_cancel(tmp_path, monkeypatch, langua
             assert ("已预约" if language == "zh-CN" else "scheduled") in rendered
             message = app.screen.query_one("#provider-resume-status", Static)
             assert message.region.bottom <= app.screen.query_one("#provider-resume-actions").region.y
-            app.screen.query_one("#provider-schedule-cancel").scroll_visible()
-            await pilot.wait_for_scheduled_animations()
+            app.screen.query_one("#provider-schedule-cancel").scroll_visible(animate=False)
+            await pilot.pause()
             assert await pilot.click("#provider-schedule-cancel")
             await pilot.pause()
             assert calls[-1].payload["retry_at"] is None

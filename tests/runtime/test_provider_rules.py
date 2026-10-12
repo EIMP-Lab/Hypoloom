@@ -81,9 +81,16 @@ def test_real_relay_retains_service_for_failure_reduction(tmp_path, upstream, mo
     monkeypatch.setattr("hypoloom.provider_observation.provider_service", lambda _: service)
     upstream.status, upstream.body = status, json.dumps({"error": error}).encode()
     relay = _relay(tmp_path, upstream, diagnostics=RuntimeDiagnostics(tmp_path / "diagnostics"))
-    try: assert _request(relay)[0] == status
+    from test_provider_relay_diagnostics import _exchange
+    try:
+        assert _request(relay)[0] == status
+        # The redacted client error precedes bounded provider-body capture.
+        # Closing now would test cancellation, not complete error reduction.
+        _exchange(tmp_path / "diagnostics")
     finally: relay.close()
     exchanges = read_exchanges(tmp_path / "diagnostics" / "provider")
+    assert len(exchanges) == 1 and exchanges[0]["response_body_complete"] is True
+    assert exchanges[0]["response_bytes_received"] == len(upstream.body)
     assert exchanges[-1]["provider_service"] == service
     assert provider_failure(exchanges)["code"] == expected
 

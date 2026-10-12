@@ -2,6 +2,76 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Retry reconstruction and shutdown repairs (2026-10-12)
+
+Adapter 84 completes the [recovery follow-up](design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up)
+on `8e8caad`, including the 29 unresolved failures recorded below. Retry selection
+now accounts for the full resumed prompt before choosing the existing fresh
+reconstruction. Rejected Grounding sources and the final exception in long tool
+tracebacks remain available through existing bounded archives. Late TUI refreshes
+stop at application teardown; Host shutdown replaces stale ACTIVE projections
+with the durable terminal view before closing its executor. Capacity, acceptance,
+ownership and code-size checks retain their existing limits.
+
+Evidence is retained under `.local/qualification/recovery-followup-20261012/`.
+The code/test candidate was frozen during each full run. Environment: repository
+Conda Python **3.12.14**, pytest **9.1.1**, xdist **3.8.0**, Textual **8.2.8** and
+installed Claude Code **2.1.296**. The final full command was:
+
+```bash
+.conda/envs/hypoloom/bin/python -B scripts/qualify.py g1 \
+  --junitxml=.local/qualification/recovery-followup-20261012/g1-verified.xml \
+  -- -n 8 --dist=worksteal -vv --basetemp=/tmp/hyprf-g1v
+```
+
+**Final offline G1 passes: 8,223 passed, zero failed, 159 skipped**, in
+**1,835.84 seconds**. Compile, undefined-name and whitespace checks also pass.
+The 159 skips explicitly cover unavailable Windows/PowerShell facilities and
+opt-in browser, SSH, mount, notification, paid-model and physical-GPU lanes;
+they are not evidence of those capabilities passing. Thirty Python 3.12
+multi-threaded `fork()` deprecation warnings remain in process/backup tests.
+
+Preserve the complete progression, including failures discovered after the
+original focused repairs:
+
+| Full run evidence | Passed | Failed | Skipped | Finding and repair |
+|---|---:|---:|---:|---|
+| `g1.xml` | 8,212 | 5 | 159 | Two native assertions expected an extra capacity-failure attempt; three fixtures raced metadata, cooldown completion or TUI scrolling. |
+| `g1-final.xml` | 8,218 | 3 | 159 | Real late-refresh teardown crash and missing final Host projection; literature fixture used a 0.3-second deadline under concurrent load. |
+| `g1-closure.xml` | 8,221 | 2 | 159 | Provider-rule fixtures closed the relay before error-body capture completed. |
+| `g1-verified.xml` | 8,223 | 0 | 159 | All collected offline cases finish; expected optional skips remain explicit. |
+
+- **1,084 distinct focused cases pass**, with no skips in those selections
+  (`test-summary-final.json`). Red shutdown regressions (`close-red.xml`) prove
+  both lifecycle failures on the preceding code. Four malformed diagnostic
+  regressions (`archive-types-red.xml`) precede the archive Oracle type repair.
+  The analysis correction works with infrastructure retries disabled and retains
+  its original operational failure. Test synchronization waits for existing
+  completion signals; exact upstream counts, body bytes, scientific outcomes,
+  source provenance, cancellation and native closure assertions remain.
+- Twenty focused native flows use the real CC/Host/broker/bwrap path and local
+  scripted providers: **249 Agents and 20 CPU Processes close**, publishing
+  **20 outcomes** with the existing Oracles passing. Independent read-only counts
+  in `native-census.json` and `final-native-census.json` find no duplicate Attempt
+  ownership or open Attempts; none of **272 recorded process groups** is live.
+  Resource recovery covers both in-flight cancellation and a completed reply
+  followed by Host restart. Each publishes exactly one successful CPU result.
+- Final full-suite census reads **12,343 Attempts** in **1,222 databases**:
+  12,230 CLOSED and 113 OPEN fixture rows. The fixture rows are not evidence of
+  running processes. All **2,671 recorded process groups** are absent, with no
+  duplicate Attempt ownership (`g1-verified-census.json`). Seventy-two invalid
+  or simplified databases are explicitly excluded and listed in that evidence.
+- Source distribution and wheel checks compare all **195 package files** across
+  source, wheel, disposable installation and a fresh runtime bundle. Installed
+  CLI help and actual MCP initialization/tool listing pass outside the checkout
+  (`package-final.json`). Final result prose is added after G1 and checked with
+  the documentation tests and rebuilt source distribution.
+
+This closes the prior G1 failure backlog for this development candidate. It does
+not establish G2 retained-cohort, G4 physical-GPU or G5 paid-model
+qualification, a formal release, or arbitrary scientific correctness. Existing
+research runs, private Profiles, shared installations and services are unchanged.
+
 ## Research execution and closure repairs (2026-10-12)
 
 Adapter 83 implements the [bounded repair design](design/run-closure-repairs-2026-10-12.md):

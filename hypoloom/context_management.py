@@ -282,9 +282,17 @@ def recovery_tool_notes(content: bytes, session_id: str, *, rich: bool = False) 
     """Keep observable source locations, checks and errors without inventing a summary."""
     if not rich:
         return _legacy_recovery_tool_notes(content, session_id)
-    from .diagnostics import bounded_diagnostic_text
+    from .diagnostics import bounded_diagnostic_text, credential_shaped_text
     calls, results = {}, []
-    def excerpt(value, limit):
+    def excerpt(value, limit, *, keep_tail=False):
+        if keep_tail and not credential_shaped_text(value):
+            raw = value.encode()
+            if len(raw) > limit:
+                # Tracebacks put the actionable exception at the end. Retain
+                # both ends within the same byte budget, after checking the
+                # entire original text for credentials (including its middle).
+                half = limit // 2
+                value = raw[:half - 5].decode(errors="ignore") + "\n…\n" + raw[-half:].decode(errors="ignore")
         return (bounded_diagnostic_text(value) or "").encode()[:limit].decode(errors="ignore")
     for line in content.splitlines():
         try:
@@ -312,7 +320,7 @@ def recovery_tool_notes(content: bytes, session_id: str, *, rich: bool = False) 
                     body = "\n".join(item["text"] for item in body if isinstance(item, dict) and isinstance(item.get("text"), str))
                 if not isinstance(body, str): continue
                 name, arguments = calls.get(block.get("tool_use_id"), ("unknown", "{}"))
-                text = excerpt(body, 512)
+                text = excerpt(body, 512, keep_tail=block.get("is_error") is True)
                 results.append({"tool_use_id": str(block.get("tool_use_id", ""))[:128], "tool": name,
                     "input_excerpt": arguments, "is_error": block.get("is_error") is True,
                     "excerpt": text, "truncated": text != body})

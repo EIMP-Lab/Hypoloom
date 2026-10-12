@@ -41,7 +41,7 @@ def test_native_partial_cli_accounting_retains_reservation_then_retry_closes_cpu
     assert len(finals) == 2
     failed, retry = finals
     assert [row["terminal_reason"] for row, _ in finals] == ["FAILED", "SUCCEEDED"]
-    assert failed[1]["failure_code"] == "invalid_structured_output" and failed[1]["retry_class"] == "MODEL"
+    assert failed[1]["failure_code"] == "invalid_candidate" and failed[1]["retry_class"] == "MODEL"
     assert failed[1].get("response") is None
 
     source = tmp_path / "state/diagnostics/agents" / _RUN / failed[0]["attempt_id"] / "stdout.log"

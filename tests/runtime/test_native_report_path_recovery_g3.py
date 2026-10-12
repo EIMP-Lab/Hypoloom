@@ -83,7 +83,7 @@ class _WrongReportPathScenario(_FinalReportMemoryScenario):
         return calls
 
 
-def test_native_report_wrong_path_retries_same_session_and_publishes_canonical_memory(tmp_path):
+def test_native_report_wrong_path_reconstructs_and_publishes_canonical_memory(tmp_path):
     executable = plugin_fixture._installed_claude()
     scenario = _WrongReportPathScenario(tmp_path, "report-path-lesson-" + secrets.token_hex(8))
     key = "local-only-report-repair-" + secrets.token_hex(12)
@@ -122,9 +122,9 @@ def test_native_report_wrong_path_retries_same_session_and_publishes_canonical_m
             assert {k: v for k, v in rejected["session_binding"].items() if k != "session_id"} == {
                 k: v for k, v in accepted["session_binding"].items() if k != "session_id"}
             assert all(item["session_binding"]["session_id"] == item["session"]["session_id"] for item in reports)
-            assert accepted["session"]["session_id"] == rejected["session"]["session_id"]
+            assert accepted["session"]["session_id"] != rejected["session"]["session_id"]
             assert accepted["session"]["branch"] == rejected["session"]["branch"]
-            assert accepted["session"]["launch_arguments"] == ["--resume", accepted["session"]["session_id"]]
+            assert accepted["session"]["launch_arguments"] == ["--session-id", accepted["session"]["session_id"]]
             assert rejected["session"]["launch_arguments"] == ["--session-id", rejected["session"]["session_id"]]
             assert scenario.retry_diagnostic["source_attempt_id"] == rejected["request"]["attempt_id"]
             role = accepted["request"]["role"]

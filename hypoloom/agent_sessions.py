@@ -581,10 +581,15 @@ def resumable_task_session(request: AgentRequest, prior: Mapping[str, Any] | Non
     if type(output) is not int or output < 0 or tokens + policy["max_inline_input_bytes"] + output > limit: return None
     # Complete usage anchors belong to one relay invocation. A new relay
     # cannot reuse the old token measurement to admit its restored transcript.
-    # Reconstruct directly when that history already exceeds byte admission;
-    # the existing workspace/archive path retains code and recovery notes.
+    # Resume appends a full prompt, not just newly inlined artifacts. Include
+    # its observed size and the existing estimate margin for unmeasured reply
+    # and continuation text. This is eligibility headroom, not a token count;
+    # the relay still checks the actual request. Unknown sizes reconstruct.
     input_bytes = context.get("request_input_bytes")
-    if type(input_bytes) is int and input_bytes > limit: return None
+    prompt_bytes = diagnostic.get("prompt_bytes")
+    if (type(input_bytes) is not int or input_bytes < 0
+            or type(prompt_bytes) is not int or prompt_bytes < 0
+            or input_bytes + prompt_bytes + policy["estimate_margin_tokens"] > limit): return None
     return session
 
 

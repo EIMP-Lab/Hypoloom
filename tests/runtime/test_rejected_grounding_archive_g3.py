@@ -71,7 +71,7 @@ class _RejectedGroundingScenario(shared_retry._FinalRetryScenario):
         return calls
 
 
-def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(tmp_path: Path, monkeypatch):
+def test_native_rejected_grounding_archive_survives_reconstruction_and_cpu(tmp_path: Path, monkeypatch):
     scenarios = []
 
     def scenario_factory(root, nonce):
@@ -102,7 +102,7 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
     assert [row["attempt_ordinal"] for row, _ in groundings] == [1, 2]
     assert failed[0]["command_id"] == retry[0]["command_id"]
     assert failed[0]["ended_at"] <= retry[0]["started_at"]
-    assert failed[1]["failure_code"] == "invalid_provider_envelope"
+    assert failed[1]["failure_code"] == "invalid_candidate"
     assert failed[1]["retry_class"] == "MODEL" and failed[1].get("response") is None
     trace = failed[1]["diagnostics"]["structured_output_correction"]
     assert trace["status"] == "unresolved" and trace["rejected_count"] > 0
@@ -117,10 +117,10 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
     assert accepted["typed_candidate"]["web_sources"] == []
     assert rejected["typed_candidate"]["acceptance"] == accepted["typed_candidate"]["acceptance"] == _DECLARATION
     session_id = failed[1]["session"]["session_id"]
-    assert retry[1]["session"]["session_id"] == session_id
+    assert retry[1]["session"]["session_id"] != session_id
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
-    assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
-    correction_ref = failed[0]["attempt_id"] + "--agent-retry-diagnostic"
+    assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+    correction_ref = failed[0]["attempt_id"] + "--candidate-validation-error"
     corrections = [item for item in retry[1]["request"]["input_artifacts"] if item["ref"] == correction_ref]
     assert len(corrections) == 1
     assert correction_ref not in retry[1]["request"]["immutable_context_refs"]
@@ -154,7 +154,10 @@ def test_native_rejected_grounding_archive_survives_same_session_retry_and_cpu(t
         result = next(item for item in reversed([json.loads(line) for line in stdout.read_text().splitlines()])
                       if item.get("type") == "result")
         assert result["subtype"] == "success"  # A CLI success label alone cannot bypass native semantic rejection.
-    assert transcripts[1].startswith(transcripts[0])
+    assert not transcripts[1].startswith(transcripts[0])
+    assert any(block.get("name") == "Read" and block.get("input", {}).get("file_path") == "/acceptance/evaluate.py"
+        for line in transcripts[1].splitlines()
+        for block in json.loads(line).get("message", {}).get("content", []) if isinstance(block, dict))
     assert len(agents) == 13 and len(attempts) == 14
     assert sum(row["kind"] == "PROCESS" for row in attempts) == 1
     assert all(row["state"] == "CLOSED" for row in attempts)

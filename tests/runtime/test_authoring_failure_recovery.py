@@ -74,10 +74,9 @@ def test_native_parser_failure(tmp_path, cap):
             assert host.store.latest_transition(run)["state"] == "COMPLETED"
             agents = [json.loads(a["observation_json"]) for a in attempts if a["kind"] == "AGENT"]
             designs = [a for a in agents if a["request"]["command"] == "EXPERIMENT_DESIGN_IMPLEMENT"]
-            # The real CLI's 200K test-model window also rejects the first
-            # resumed transcript. Count that independently; it must reconstruct
-            # once and preserve the original parser correction input.
-            assert len(designs) == (3 if cap == 1 else 1)
+            # Large retries reconstruct directly and preserve the original
+            # parser correction without an extra capacity rejection.
+            assert len(designs) == (2 if cap == 1 else 1)
             first = designs[0]
             trace = first["diagnostics"]["structured_output_correction"]
             assert trace["rejected_count"] == 1
@@ -86,12 +85,13 @@ def test_native_parser_failure(tmp_path, cap):
                 assert "result.baseline" in first["diagnostics"]["validation_error"]["message"]
                 assert "implementation.patch" not in first["diagnostics"]["provider_diagnostic"]
                 assert "provider_accounting" in first["diagnostics"]
-                assert designs[1]["failure_code"] == "nonzero_exit"
-                assert designs[1]["diagnostics"]["provider_failure"]["code"] == "context_capacity"
+                assert designs[1]["session"]["session_id"] != first["session"]["session_id"]
+                assert designs[1]["session"]["branch"] == first["session"]["branch"]
+                assert designs[1]["session"]["launch_arguments"][0] == "--session-id"
                 for retry_observation in designs[1:]:
                     retry = AgentRequest.from_dict(retry_observation["request"])
                     assert any(b"result.baseline" in a.content_bytes() for a in retry.input_artifacts)
-                assert designs[2]["response"]["status"] == "SUCCEEDED"
+                assert designs[1]["response"]["status"] == "SUCCEEDED"
             else:
                 assert trace["accepted"] and trace["status"] == "recovered"
                 assert len(scenario.feedback) == 1

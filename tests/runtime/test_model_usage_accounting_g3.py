@@ -183,7 +183,7 @@ def _assert_closed_billing(tmp_path: Path, *, fallback_kind="partial"):
                 "total_cost_usd": outer["total_cost_usd"]},
             "observed_input_by_message_id": observed, "cli_reported_accounting": accounting,
             "charge_source": charge.source, "charge_cost": str(charge.cost)})
-    assert failed[1].get("response") is None and failed[1]["failure_code"] == "invalid_structured_output"
+    assert failed[1].get("response") is None and failed[1]["failure_code"] == "invalid_candidate"
     assert accepted[1]["response"]["token_usage"] == accepted[1]["diagnostics"]["provider_accounting"]["token_usage"]
     outer = records[accepted[0]["attempt_id"]][-1]
     model = _session_usage_view(outer, baselines[accepted[0]["attempt_id"]])[

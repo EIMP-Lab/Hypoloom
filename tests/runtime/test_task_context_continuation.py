@@ -29,8 +29,8 @@ def _closed(workspace, *, failure=None, retry_class="MODEL"):
     observed = {"request": request.to_dict(), "session_binding": workspace.binding,
         "session": workspace.finish_node(), "retry_class": retry_class,
         "failure_code": "invalid_candidate" if retry_class == "MODEL" else "provider_error",
-        "diagnostics": {"context": {"current_request_fits": True, "last_observed_exchange": 7,
-            "current_request_exchange": 7, "last_observed_input_tokens": 60000, "request_input_bytes": 180000,
+        "diagnostics": {"prompt_bytes": 20000, "context": {"current_request_fits": True, "last_observed_exchange": 7,
+            "current_request_exchange": 7, "last_observed_input_tokens": 60000, "request_input_bytes": 80000,
             "available_input_tokens": 205568, "output_reserve_tokens": 32768}}}
     if failure is not None:
         observed["diagnostics"]["provider_failure"] = {"code": failure}
@@ -72,6 +72,7 @@ def test_same_task_correction_resumes_published_transcript_and_retains_code(tmp_
 
 
 @pytest.mark.parametrize("change", ["capacity", "compaction", "unknown_usage", "last_failed_exchange", "near_limit", "oversized_relay_input",
+    "retry_prompt_overflow", "unknown_prompt_size", "unknown_input_size",
     "incomplete_archive", "source", "model", "permission", "adapter", "archive_failure", "aci24"])
 def test_unsafe_or_changed_retry_reconstructs_without_erasing_draft(tmp_path, change):
     _, target = make_target(tmp_path)
@@ -90,6 +91,12 @@ def test_unsafe_or_changed_retry_reconstructs_without_erasing_draft(tmp_path, ch
     elif change == "last_failed_exchange": observed["diagnostics"]["context"]["current_request_exchange"] = 8
     elif change == "near_limit": observed["diagnostics"]["context"]["last_observed_input_tokens"] = 200000
     elif change == "oversized_relay_input": observed["diagnostics"]["context"]["request_input_bytes"] = 300000
+    elif change == "retry_prompt_overflow":
+        observed["diagnostics"].update(prompt_bytes=70434)
+        observed["diagnostics"]["context"].update(request_input_bytes=126419,
+            last_observed_input_tokens=1, available_input_tokens=147308, output_reserve_tokens=32000)
+    elif change == "unknown_prompt_size": observed["diagnostics"].pop("prompt_bytes")
+    elif change == "unknown_input_size": observed["diagnostics"]["context"].pop("request_input_bytes")
     elif change == "incomplete_archive": observed["session"]["transcript_complete"] = False
     elif change == "source": retry = replace(retry, input_artifacts=(EmbeddedInput.from_bytes("changed-source", "text/plain", b"new facts"),))
     elif change == "model": retry = replace(retry, required_model_identity="new-model")
@@ -301,6 +308,54 @@ def test_rich_recovery_retains_recent_success_instead_of_early_discovery():
     assert any("/acceptance/recent-0" in item["input_excerpt"] for item in notes)
     assert sum(item["excerpt"] == "old exploration" for item in notes) == 1
     assert [int(item["tool_use_id"]) for item in notes] == sorted(int(item["tool_use_id"]) for item in notes)
+
+
+@pytest.mark.parametrize("secret", [False, True])
+def test_recovery_keeps_traceback_cause_within_budget_and_redacts_full_original(secret):
+    output = "Traceback (most recent call last):\n" + "  File /workspace/deep_frame.py\n" * 80
+    if secret:
+        output += "API_KEY=do-not-expose\n"
+    output += "  nested frame\n" * 80 + "AssertionError: SHARED_EVALUATOR_DENOMINATOR_FAILURE\n"
+    record = {"sessionId": "own", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "check", "content": output, "is_error": True}]}}
+    note, = recovery_tool_notes(json.dumps(record).encode(), "own", rich=True)
+    assert note["is_error"] and note["truncated"] and len(note["excerpt"].encode()) <= 512
+    if secret:
+        assert note["excerpt"] == "[credential-shaped diagnostic redacted]"
+    else:
+        assert note["excerpt"].startswith("Traceback")
+        assert note["excerpt"].endswith("AssertionError: SHARED_EVALUATOR_DENOMINATOR_FAILURE\n")
+
+
+@pytest.mark.parametrize("damage", [None, "accepted", "no_rejection", "wrong_stage", "byte_budget",
+    "null_diagnostics", "null_validation", "null_correction", "boolean_count"])
+def test_failed_grounding_archive_preserves_unaccepted_files_without_blessing_them(tmp_path, damage):
+    manager = _manager(tmp_path)
+    request, response = acceptance_exchange()
+    request = replace(request, schema_version=25, required_adapter_version="claude-code-bwrap/84")
+    workspace = manager.prepare(request, None)
+    (workspace.acceptance_root / "evaluate.py").write_text("print('unaccepted evaluator')\n")
+    workspace.capture_workspace(candidate=response.typed_candidate)
+    _transcript(workspace, "rejected native candidate")
+    prior = _closed(workspace)
+    observation = json.loads(prior["observation_json"])
+    observation["failure_stage"] = "provider_output"
+    observation["diagnostics"].update(validation_error={"code": "invalid_candidate", "message": "unretrieved URL"},
+        structured_output_correction={"accepted": False, "rejected_count": 2})
+    if damage == "accepted": observation["diagnostics"]["structured_output_correction"]["accepted"] = True
+    elif damage == "no_rejection": observation["diagnostics"]["structured_output_correction"]["rejected_count"] = 0
+    elif damage == "wrong_stage": observation["failure_stage"] = "provider_process"
+    elif damage == "byte_budget": observation["request"]["budget"]["max_output_bytes"] = 1
+    elif damage == "null_diagnostics": observation["diagnostics"] = None
+    elif damage == "null_validation": observation["diagnostics"]["validation_error"] = None
+    elif damage == "null_correction": observation["diagnostics"]["structured_output_correction"] = None
+    elif damage == "boolean_count": observation["diagnostics"]["structured_output_correction"]["rejected_count"] = True
+    issues, count = audit_sessions(manager.publisher.root, [prior], {request.attempt_id: observation}, _raw_artifact_digest)
+    if damage is None:
+        assert not issues and count == 1
+        assert "response" not in observation and "rejected_response" not in observation
+    else:
+        assert "session_archive_invalid" in {item[0] for item in issues}
 
 
 def test_grounding_retry_keeps_acceptance_drafts_and_remounts_published_papers(tmp_path):

@@ -242,6 +242,6 @@ def test_native_profile_correction_in_one_design_invocation(tmp_path: Path, corr
         assert observation.response.token_usage["input_tokens"] == observation.response.token_usage["output_tokens"] == cap + 1
         assert charge.source == "response"
     else:
-        assert observation.response is None and observation.failure_code == "invalid_structured_output"
+        assert observation.response is None and observation.failure_code == "invalid_provider_envelope"
         assert observation.diagnostics["provider_observed_input_tokens_lower_bound"] == cap + 1
         assert charge.source == "provider" and charge.cost < Decimal(request.budget.max_cost)

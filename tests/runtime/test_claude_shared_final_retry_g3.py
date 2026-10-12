@@ -83,7 +83,7 @@ def test_native_shared_final_report_retries_with_one_common_input_and_same_sessi
             assert [row["terminal_reason"] for row, _ in finals] == ["FAILED", "SUCCEEDED"]
             assert [row["attempt_ordinal"] for row, _ in finals] == [1, 2]
             assert failed[0]["command_id"] == retry[0]["command_id"]
-            assert failed[1]["failure_code"] == "invalid_structured_output" and failed[1]["retry_class"] == "MODEL"
+            assert failed[1]["failure_code"] == "invalid_candidate" and failed[1]["retry_class"] == "MODEL"
             assert "/typed_candidate/supporting_refs/0" in failed[1]["diagnostics"]["provider_diagnostic"]
             assert failed[1].get("response") is None
             correction = failed[1]["diagnostics"]["structured_output_correction"]
@@ -117,7 +117,7 @@ def test_native_shared_final_report_retries_with_one_common_input_and_same_sessi
                 common.append(shared[0])
             assert common[0] == common[1]
             assert failed[1]["request"]["immutable_context_refs"] == retry[1]["request"]["immutable_context_refs"]
-            diagnostic_ref = failed[0]["attempt_id"] + "--agent-retry-diagnostic"
+            diagnostic_ref = failed[0]["attempt_id"] + "--candidate-validation-error"
             corrections = [item for item in retry[1]["request"]["input_artifacts"] if item["ref"] == diagnostic_ref]
             assert len(corrections) == 1 and diagnostic_ref not in retry[1]["request"]["immutable_context_refs"]
             assert retry[1]["response"]["typed_candidate"]["supporting_refs"]

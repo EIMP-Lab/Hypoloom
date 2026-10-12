@@ -4,6 +4,13 @@ Consult this reference for new Profile authoring, compatibility or a specific
 blocker. The main SKILL uses aggregate inspection; do not execute every example
 or repeat checks already reported by bootstrap. Code validators own admission.
 
+## Interaction budget
+
+For normal existing Profiles, aim for one aggregate inspection, at most one
+combined missing-choice question, one final review and one launch call. The
+performance target is at most six non-question tool calls/eight model responses,
+not permission to omit checks or necessary user decisions.
+
 ## Detailed configuration boundaries
 
 `/autoresearch init` has no corresponding `hypoloom.cli init`
@@ -1252,3 +1259,42 @@ fully resolved and shell-quoted Claude relaunch command containing
 purpose is to reload the newly copied project settings and resume
 `/autoresearch init` later; it is not required by `Start now` and it must not
 include a Host or run command.
+
+## Connection lifecycle
+
+Enabled `--institutional-browser-mode client|local|existing|server` selects run-owned connections.
+For Windows client mode, show the exact program-generated Setup/Connect entry for this init.
+Transfer the original script through SFTP/SCP; never reproduce its body. Preserve `-StateRoot`,
+`-RunId`, `-RequestId` and supplied `-PreparationRoot`. The user executes it once on the chosen PC,
+then returns here. No logon trigger, task restart or future-run discovery; no terminal must stay open
+except foreground Run diagnostics. Never substitute Init inside an existing init. Local execution
+and SSH authentication remain prerequisites; waiting_for_client does not prove an absent helper.
+The helper follows only this preparation/run, closes its own SSH/browser at STOPPING/termination,
+and preserves login data. Continuous lost contact for 300 seconds ends it locally; wake checks expiry
+before reconnecting. A new init needs new authorization; old tasks/browsers cannot adopt another run.
+`local` uses the Linux user's visible browser over a pipe; check X11/Wayland. `existing` wraps
+an explicit external endpoint; `server` uses the installed image with private per-run relays.
+Preview exposes policy, read-only `institutional_connection_argv` and a separate preparation command;
+it starts no resources. Host allocates ports after creation and releases owned connections on exit.
+Closing CC/interactive SSH or monitors does not stop managed research; missing client access uses
+bounded acquisition/OA fallback. Same-version recovery preserves frozen configuration; no run migration.
+Do not share active local/server profiles, install dependencies, pull images or replace external browsers silently.
+Connectivity proves neither visible GUI nor subscription. Legacy endpoint/manual commands remain
+operator-owned; do not use detached manual startup for a new managed run. See details and the institutional guide.
+
+
+## Grounding and shared acceptance
+
+ACI16 Grounding can persist a question in WAITING_HUMAN without an open model
+invocation. The existing status/monitor JSON exposes `grounding_dialogue` with
+exact decision ID, question and answer history. Obtain a real user answer; never
+infer it from an expert note or silently accept an offered option. The new
+`hypoloom.cli answer` command requires the selected state root, run ID,
+decision ID, expected run revision and the exact free-text answer (see USAGE).
+It uses the existing Host socket, never direct SQLite writes. A slash-command
+alias is not provided by this notice. With v4 `goal.evaluation: grounding`,
+Grounding writes/tests common acceptance in private `/acceptance`; expert nodes
+read the same accepted source without write permission. LOCAL support never
+completes this goal. One GOAL candidate must pass the common checks, independently
+replayed by Oracle, without combining experts' partial scores. Admission or a
+completed dialogue is not scientific success or permission to spend; see STATUS.

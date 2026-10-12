@@ -30,7 +30,7 @@ def test_native_structured_failure_accounts_final_exchange_before_same_session_r
               and json.loads(row["observation_json"])["request"]["command"] == "FINAL_REPORT"]
     failed, retry = finals
     assert failed[0]["terminal_reason"] == "FAILED" and retry[0]["terminal_reason"] == "SUCCEEDED"
-    assert failed[1]["failure_code"] == "invalid_structured_output" and failed[1]["retry_class"] == "MODEL"
+    assert failed[1]["failure_code"] == "invalid_candidate" and failed[1]["retry_class"] == "MODEL"
     assert failed[1].get("response") is None
     assert failed[0]["command_id"] == retry[0]["command_id"]
     assert retry[1]["session"]["session_id"] == failed[1]["session"]["session_id"]
@@ -42,7 +42,7 @@ def test_native_structured_failure_accounts_final_exchange_before_same_session_r
     records = [json.loads(line) for line in source.read_text().splitlines()]
     captured = json.loads((diagnostic_root / "result.json").read_text())
     assert captured["returncode"] == 0 and captured["terminal_reason"] == "INVALID_OUTPUT"
-    assert captured["failure_code"] == "invalid_structured_output"
+    assert captured["failure_code"] == "invalid_candidate"
     outer = records[-1]
     assert outer["type"] == "result" and outer["subtype"] == "success" and outer["is_error"] is False
     assert outer.get("structured_output") is None

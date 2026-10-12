@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .compute_resources import gpu_memory_reserve_mib, validate_gpu_uuid
-from .domain import ResourceEstimate, ResourceGrant, ResourceIntent, ResourceKind
+from .domain import AttemptTerminalReason, ResourceEstimate, ResourceGrant, ResourceIntent, ResourceKind
 from .gpu_pool import PoolError, RequestKey, assess_capacity
 from .gpu_pool_client import PoolClient, validate_pool_snapshot
 from .resource_experience import explain_workload_memory, resolve_workload_memory_mib, summarize_resource_measurements
@@ -318,6 +318,22 @@ class SharedGpuHost:
             return False
         self.host.resource_waits.pop(self._experiment(key), None)
         return True
+
+    def finish_resource_revision(self, run_id: str, experiment_id: str, diagnostic: Mapping[str, Any]) -> None:
+        host = self.host
+        head = host.store.latest_transition(experiment_id)
+        if head["state"] not in {"READY", "PREREGISTERED", "EXECUTING"}: return
+        spec = host.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
+        attempts = host.store.list_attempts(execution_id=spec["execution_id"])
+        if any(a["state"] == "OPEN" for a in attempts): return
+        key = self.key(run_id, spec["execution_id"], f"{experiment_id}--process-{len(attempts) + 1}")
+        try:
+            if not self.release(key): return
+        except PoolError as exc:
+            if exc.code == "unavailable": return
+            raise
+        host._crash("after_resource_revision_release")
+        host._synthetic_terminal(run_id, experiment_id, AttemptTerminalReason.FAILED, diagnostic=diagnostic)
 
     def reconcile(self) -> bool:
         """Retire closed effects; preserve nonterminal requests not yet opened.
