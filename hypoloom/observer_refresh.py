@@ -86,7 +86,10 @@ class ObserverRefresh:
             if force or self._cached is None or version != self._cached_version or time.monotonic() - self._cached_at >= self.refresh_seconds:
                 with StateStore(self.root).readonly_connection() as db:
                     db.execute('BEGIN')
-                    snapshot = build_observer_snapshot(self.root, self.run_id, _connection=db,
+                    # Busy resident ticks can exceed the short synchronous probe.
+                    # This shared worker may wait; HTTP poll() stays nonblocking
+                    # and retains the old observation's age until it completes.
+                    snapshot = build_observer_snapshot(self.root, self.run_id, host_timeout=10.0, _connection=db,
                         _oracle={'ok': None, 'issues': []}, _host_backoff=self._host_backoff)
                     activity = build_product_observation(self.root, self.run_id, _connection=db,
                         _snapshot=snapshot.to_dict())

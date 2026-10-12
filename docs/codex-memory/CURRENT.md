@@ -1,5 +1,15 @@
 # Current Hypoloom development state
 
+- October 12 Web activity: the shared background reader allows ten seconds for
+  STATUS while HTTP stays nonblocking. Actual busy replies exceeded the former
+  three-second synchronous limit, losing activity/RPM enrichment. Matching,
+  backoff, stale age and the synchronous default remain. 59 focused and 11 browser
+  checks pass; three live repeats report 10 RPM. Preserve the separate interval
+  with ten-second timeouts: this does not fix all Host latency. Existing monitors
+  must reopen; no active Host/bundle/state or shared-install changes and no new
+  full G1 claim. [Design](../design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work) /
+  [evidence](../qualification.md#busy-host-activity-observations-2026-10-12).
+
 - October 12 recovery follow-up: adapter 84 uses existing byte diagnostics to
   choose fresh reconstruction before a resumed full prompt exceeds admission.
   Rejected Grounding parser sources and failed-tool traceback tails survive

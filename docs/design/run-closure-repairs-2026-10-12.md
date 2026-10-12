@@ -191,3 +191,35 @@ codes. The retained failures contain zero received bytes and `relay_closed`.
 Reuse the existing completed-exchange waiter before closing, and require a complete
 body with the exact received byte count. Provider reduction and cancellation
 semantics are unchanged; the test now establishes the evidence its assertion needs.
+
+## Web activity observation during busy Host work
+
+Read-only inspection of `MERC-causal-202610121755` finds real run traffic at
+14 RPM while the managed Web view has no traffic and marks activity unconfirmed.
+The user's port 46329 belongs to a separate TUI observer, using the same reader.
+A direct STATUS call takes 4.145 seconds. Of six subsequent ordinary observer
+reads, two time out at the existing three-second deadline and another is deferred
+by its backoff; all three lose the live activity/RPM enrichment. The other three
+respond and pass the existing snapshot matcher. No coherence mismatch appears
+in this sample. Cold offline summary profiling also spends 7.128 seconds reading
+history, including 5.105 seconds in reliability evidence; this is display work,
+not a new run-state authority.
+
+Give only the shared background reader a ten-second STATUS allowance through the
+existing `host_timeout` parameter. Keep the synchronous default, bounded backoff,
+strict snapshot matching and browser freshness limits unchanged. Its existing
+single refresh worker coalesces clients; HTTP polls continue to return the last
+observation with its original age. This changes no schema, persistent state,
+validator or research operation, and needs no extra cache or health marker.
+
+A real socket regression delays STATUS by four seconds: the old reader reports
+unconfirmed activity, while the repaired reader preserves exact run/expert
+traffic. Repeated HTTP requests remain nonblocking and share one STATUS call;
+the fixture database is unchanged. Preserve a failed live validation sample too:
+three STATUS calls exceeded even ten seconds, and two reads were deferred. A
+later repeat returns three matching live observations at 10 RPM in 4.232–5.990
+seconds. The change repairs premature rejection of ordinary busy replies; it is
+not a claim that every Host operation now completes within ten seconds or that
+unconfirmed activity should always be hidden. Longer Host work remains a separate
+performance question. Reopen the observer to activate this fix; do not restart or
+migrate the research Host or alter its frozen bundle.

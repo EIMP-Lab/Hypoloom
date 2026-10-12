@@ -2,6 +2,28 @@
 
 [English](qualification.md) · 简体中文
 
+## Host 忙碌时的活动观测（2026-10-12）
+
+按[修复说明](design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work)，
+共享后台读取器通过既有参数等待 STATUS 最多 10 秒，保留同步探测期限、严格快照
+匹配、数据年龄及超时退避。真实 socket 延迟 4 秒的用例在旧代码中复现“活动未确认”，
+修复后保留准确的运行／专家 RPM；HTTP 不阻塞，同一刷新只发一次 STATUS，数据库
+无写入。**59 项定向检查和 11 项真实浏览器检查通过**，另有 29 项浏览器用例未选。
+
+当前运行修复前的六次只读样本有三次实时数据、两次超时和一次退避，无快照不匹配。
+延长等待后也观察到更长的 Host 忙碌区间：三次超过 10 秒、两次退避，原样保留。
+随后连续三次成功取得 **10 RPM**，总耗时为 **5.990／5.666／4.232 秒**。此修复
+解决过短期限造成的实时数据丢失，不承诺所有 Host 工作都在 10 秒内结束；更长时间
+无回复时仍如实显示“未确认”。历史显示计算的性能采样也不等于 Host 阻塞堆栈证据。
+
+另有 4 项文档检查及未定义名称、空白检查通过。195 个包文件在源码、wheel、独立
+安装及新 bundle 中一致，源码包包含全部 9 个变更文件，安装后 CLI／MCP 检查通过。
+
+原始记录在 `.local/qualification/web-activity-20261012/`，见[英文详细记录](qualification.md#busy-host-activity-observations-2026-10-12)。
+这是定向观察器修复，没有重跑完整 G1 或付费／GPU 验证；未改变研究 Host、冻结
+bundle、持久状态和共享安装。已有监视器需重新打开以加载后端代码，仅刷新网页
+不会生效。
+
 ## 重试重建与退出流程修复（2026-10-12）
 
 Adapter 84 完成 `8e8caad` 之后的[恢复修复](design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up)，

@@ -71,6 +71,45 @@ def test_refresh_coalesces_readers_and_slow_audit_never_blocks_status(tmp_path, 
         release.set(); reader.close()
 
 
+def test_refresh_retains_live_traffic_after_busy_host_without_blocking_http():
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from hypoloom.monitor import build_monitor_snapshot
+    from test_monitor_live_status import _one_status_response
+
+    with TemporaryDirectory(prefix='hypweb-') as directory:
+        root = Path(directory)
+        _create_fresh_run(root, 'refresh-run')
+        before = _row_census(root / 'state.sqlite')
+        live = dict(build_monitor_snapshot(root, 'refresh-run').status)
+        live.update(quiescent_for_backup=False, agent_usage={}, resource_waits=[],
+            provider_traffic={'scope': 'run', 'observed_at': time.time(), 'warming_up': False,
+                'rpm': 7, 'in_flight': 1, 'queued': 0,
+                'by_expert': {'scientist': {'rpm': 7, 'in_flight': 1, 'queued': 0}}})
+        # Retained-run STATUS took 4.1 seconds during normal model activity.
+        host, requests, errors = _one_status_response(root / 'control.sock', live,
+            response_delay_seconds=4)
+        server = create_server(root, 'refresh-run', port=0)
+        thread = _start(server)
+        try:
+            for _ in range(3):
+                started = time.monotonic()
+                code, _, body = _request(server, 'GET', '/api/refresh', token=server.access_token)
+                assert time.monotonic() - started < 2
+                assert code == 202 and json.loads(body)['observation']['state'] == 'pending'
+            server.refresh_reader.wait_for_refresh(timeout=7)
+            code, _, body = _request(server, 'GET', '/api/refresh', token=server.access_token)
+            snapshot = json.loads(body)['snapshot']
+            assert code == 200 and len(requests) == 1 and not errors
+            assert snapshot['overview']['host_observation']['availability'] == 'responded'
+            assert snapshot['status']['provider_traffic'] == live['provider_traffic']
+            assert server.refresh_reader._host_backoff.consecutive_failures == 0
+        finally:
+            _stop(server, thread)
+            host.join(timeout=5)
+        assert not host.is_alive() and _row_census(root / 'state.sqlite') == before
+
+
 def test_historical_audit_failure_is_not_clean(tmp_path, monkeypatch):
     root = tmp_path / 'state'
     _create_fresh_run(root, 'refresh-run')

@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Busy Host activity observations](../design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work):
+  bounded background STATUS allowance, nonblocking HTTP and truthful RPM/activity;
+  [validation](../qualification.md#busy-host-activity-observations-2026-10-12)
+  retains both recovered live samples and longer Host timeouts. Reopen observers,
+  preserving the active research Host and frozen run.
+
 - [Retry reconstruction and shutdown repairs](../design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up):
   full-prompt resume headroom, rejected Grounding archives, traceback tails,
   late TUI refresh and terminal projection drain; reuses existing validators.

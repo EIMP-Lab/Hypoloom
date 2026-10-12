@@ -2,6 +2,41 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Busy Host activity observations (2026-10-12)
+
+The [bounded observer repair](design/run-closure-repairs-2026-10-12.md#web-activity-observation-during-busy-host-work)
+gives the existing shared background reader ten seconds for STATUS; synchronous
+probes, matching, stale-data handling and backoff remain unchanged. Evidence is
+under `.local/qualification/web-activity-20261012/`.
+
+- `busy-red.xml` reproduces unconfirmed activity after a four-second real socket
+  reply. The same case passes after repair, retaining exact run/expert RPM,
+  one shared STATUS request, nonblocking HTTP and unchanged fixture rows.
+- `focused.xml`: **59 passed**, covering refresh coalescing, actual resident Host
+  status, silence, mismatched replies, historical audit isolation, teardown,
+  notification proxy and read-only boundaries.
+- `browser.xml`: **11 passed, 29 deselected**, exercising real Chromium rendering
+  of RPM ownership, expert concurrency, breathing indicators, stale/unknown/zero
+  values, sequential refresh, cached age and browser timeout behavior.
+- `live-matching-before.json`: six read-only samples of the active run yield
+  three live observations, two timeouts and one deferred retry, with no snapshot
+  mismatch. `live-after.json` deliberately preserves a later busy interval in
+  which all five samples are unconfirmed: three ten-second timeouts and two
+  backoff deferrals. `live-after-repeat.json` subsequently records three matching
+  live snapshots at **10 RPM**, taking **5.990 / 5.666 / 4.232 seconds** in total.
+  The repair does not promise bounded Host tick latency or invent live metrics
+  during longer work. `offline-profile.txt` separately records historical display
+  processing cost; it does not identify a specific blocking Host stack.
+- Four documentation checks, undefined-name and whitespace checks pass. All
+  **195 package files** match source, wheel, disposable installation and a fresh
+  bundle; the source distribution contains all nine changed files. Installed CLI
+  help and MCP initialization/tool listing pass (`package-final.json`).
+
+These are focused observer checks, not a new full G1 or paid/GPU qualification.
+The active research Host, frozen bundle, durable state and shared installation
+are unchanged. An existing monitor must be reopened to load the Python change;
+a browser reload alone does not replace its backend.
+
 ## Retry reconstruction and shutdown repairs (2026-10-12)
 
 Adapter 84 completes the [recovery follow-up](design/run-closure-repairs-2026-10-12.md#recovery-and-qualification-follow-up)

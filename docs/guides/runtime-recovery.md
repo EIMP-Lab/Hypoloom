@@ -20,6 +20,14 @@ per request, and marks data older than 15 seconds as stale. Hidden tabs pause
 polling. Returning to the tab requests an update. History and selected details
 load independently, so a slow detail does not stop status polling.
 
+The shared background reader allows up to ten seconds for the resident Host's
+STATUS reply. HTTP polling remains nonblocking while it waits. The shorter
+three-second synchronous probe can expire during a busy Host tick, leaving
+expert activity unconfirmed and RPM unavailable even though model calls continue.
+The background allowance does not make an old or incompatible reply live: the
+existing snapshot matching, data-age checks and timeout backoff still apply.
+Longer Host stalls can therefore still show unconfirmed activity.
+
 Backend observer fixes require reopening the monitor to load the updated Python
 code; reloading the browser only reloads Web assets. Reopen the monitor for the
 same state root and run ID and use its new startup URL. Leaving the monitor with
