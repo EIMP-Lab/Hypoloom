@@ -2,6 +2,32 @@
 
 [English](qualification.md) · 简体中文
 
+## 计算效率技能指导（2026-10-13）
+
+按[设计](design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13)，
+在已有 research-workflow 参考文档中补充实测计算瓶颈、局部优化及实现等价性验证。
+未修改 Host、调度、验证器、schema 或研究代码。证据在
+`.local/qualification/performance-skill-20261013/`，基线为 `79b13b9`。
+
+专项检查 **50 项通过**，覆盖专家与 Grounding 共用种子、阶段路由、插件参考文档
+演化、旧视图与保留插件隔离、资源方法边界及文档结构；现有技能格式验证器通过。
+没有新增只核对文案的测试。
+
+已安装 Claude Code 配合本地脚本供应商的 **2 项原生检查通过**，覆盖演化技能的
+实际加载，以及真实 Host 双链、两次科学迭代、裁决、发布和插件演化。Oracle
+通过；独立计数确认 **24 项 Agent、4 项 CPU Process 全部关闭，4 个规范结果**，
+无重复 Attempt 归属，28 个已记录进程组均无存活成员。这不是付费模型优化决策
+或实际训练提速的证明。
+
+源码、wheel、隔离安装及新建 bundle 的 **196 个包文件一致**，源码发行包包含
+全部 10 个改动文件；安装后 CLI/MCP、最终文档和空白检查通过。此次为技能与文档
+的针对性验证，未重跑完整 G1，不宣称物理 GPU 资格或正式晋级。
+
+此前只读诊断保留于 `.local/analysis/gpu-utilization-20261013-212232/`，源码热点
+仍为候选，尚未用 profiler 归因。现有运行、冻结包、保留插件、已绑定请求和服务
+保持原样；新插件使用新版种子，专家自行演化继续沿用现有 Git 版本选择规则。
+详细记录见[英文资格记录](qualification.md#computation-efficiency-skill-guidance-2026-10-13)。
+
 ## 执行修复观察（2026-10-13）
 
 按[设计](design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations)，

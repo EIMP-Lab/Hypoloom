@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 13 computation efficiency: the existing research-workflow performance
+  branch now covers bounded profiling, independent-loop/pairwise rewrites,
+  synchronization and compilation tradeoffs. Preserve outputs/gradients and the
+  accepted protocol; compare normal end-to-end time and memory, with no-change
+  valid. 50 focused and two native checks pass; the Host flow closes 24 Agents
+  and four CPU Processes with four outcomes, no duplicate ownership or live
+  groups. All 196 packaged files match. This qualifies guidance delivery and
+  version isolation, not training speedup or paid/GPU behavior. New plugins use
+  the seed; retained plugins, bound requests and live experiments are untouched.
+  [Design](../design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13) /
+  [validation](../qualification.md#computation-efficiency-skill-guidance-2026-10-13).
+
 - October 13 repair observations: Web/TUI separate initial experiments, scientific
   iterations and execution repairs using accepted creation/outcome rows and the
   existing admitted node budget. Parallel science no longer raises repair alarms;

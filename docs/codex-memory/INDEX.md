@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Computation efficiency guidance](../design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13):
+  conditional profiling and compute optimization within research-workflow,
+  task-specific equivalence and bounded time/memory comparisons; no new skill,
+  resource policy or mandatory optimization phase. [Validation](../qualification.md#computation-efficiency-skill-guidance-2026-10-13)
+  covers shared seed delivery, retained-version isolation, native CPU closure
+  and package parity, without claiming measured training gains.
+
 - [Version-aware execution repair observations](../design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations):
   separate initial experiments, scientific iterations and execution repairs using
   accepted node identities and admitted budgets. Web/TUI retain recovered and

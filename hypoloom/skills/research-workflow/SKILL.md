@@ -29,7 +29,8 @@ Read only the applicable reference; do not execute all stages as a checklist:
 
 For costly computation, uncertain completion time or an observed throughput
 problem, also read [Progress and performance](references/performance.md). Apply
-only the relevant workload guidance; ordinary reading/reporting needs no probe.
+its measurement, implementation-equivalence and bounded comparison guidance;
+ordinary reading/reporting needs no probe. PyTorch-specific methods are conditional.
 
 Continue using the bound specialist skills for literature, resources, repairs,
 reports and interactions. Do not duplicate their procedures here. Host validators

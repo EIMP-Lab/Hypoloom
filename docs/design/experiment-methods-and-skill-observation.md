@@ -110,3 +110,27 @@ filtering, drill-down and safe rendering. Exercise the real Host/native CPU path
 skill evolution and later binding, including independent terminal/ownership/residue
 counts. Check packaging of the new reference and source/bundle parity at freeze.
 Record environmental qualification failures rather than weakening assertions.
+
+## Computation efficiency guidance (2026-10-13)
+
+Read-only GPU observations and training-source inspection are retained at
+`.local/analysis/gpu-utilization-20261013-212232/`. They distinguish low device
+activity with live work from memory-constrained queueing. The inspected loops
+and transfers are candidate hotspots; no profile attributes their cost and no
+speedup has been measured. The existing shared skill covers timing and data
+loading but lacks concrete guidance for compute rewrites and their equivalence.
+
+Extend its existing performance and PyTorch references, retaining one conditional
+entrypoint. Cover bounded phase profiling, independent-loop/pairwise computation,
+unnecessary synchronization, compilation tradeoffs, task-specific output/gradient
+checks, and normal-run time/memory comparisons. Preserve dependencies, the actual
+objective and scientific settings. No-change is valid; no universal utilization
+target, worker count, model-specific patch or mandatory optimization phase is added.
+
+Use existing tests, logs, reports, Host-owned resource work and owner-local plugin
+Git evolution. No new executable helper, schema, validator, telemetry service or
+acceptance authority is needed. Scheduling, resource grants and current Processes
+are unchanged. Existing package identity covers these resources; new plugins get
+the seed, while retained plugins and already-bound requests keep their versions.
+Verification checks seed delivery, version isolation, native Skill loading and
+packaging; it does not establish future model behavior or actual training speedup.

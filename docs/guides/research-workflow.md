@@ -196,6 +196,17 @@ or efficiency. Compare phase throughput/data wait before a bounded tuning probe;
 PyTorch-specific advice is loaded only when applicable. Resource authorization,
 scientific settings and the submit/handoff workflow remain unchanged.
 
+The performance branch also covers computation: distinguish suspected hotspots
+from measured costs, then compare one bounded implementation change. PyTorch
+guidance includes independent-loop batching, pairwise-loss reductions, avoidable
+synchronization and conditional compilation, alongside data loading. Check the
+original and changed outputs, relevant gradients/updates and numerical boundaries
+with task-specific tests. Compare normal end-to-end time and peak memory as well
+as steady throughput; include startup costs and keep no-change when benefit is
+unproven. Higher GPU utilization alone is not an improvement. Queueing and grants
+stay Host-owned, and an already-running experiment is not rewritten or profiled
+by an expert. New seed guidance does not replace a retained plugin or binding.
+
 Reports retain workload conditions, original evidence and estimated/actual timing.
 SELF_EVOLVE/GRAPH_EVOLVE can change these methods and references within the owner's
 plugin. Accepted versions become selectable for later requests; existing bindings

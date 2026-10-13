@@ -2,6 +2,40 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Computation efficiency skill guidance (2026-10-13)
+
+The [skill extension](design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13)
+adds measured computation optimization and implementation-equivalence guidance
+to the existing research-workflow references. It changes no Host, scheduler,
+validator, schema or research code. Evidence is in
+`.local/qualification/performance-skill-20261013/`, against base `79b13b9`.
+
+`focused.xml` records **50 passes** covering shared expert/Grounding seed delivery,
+stage routing, owner-local reference evolution, unchanged held views and retained
+plugins, resource-method boundaries and documentation structure. The existing
+skill-creator validator also passes; no prose-mirroring test is added.
+
+`native.xml` records **two passes** using installed Claude Code with a local
+scripted provider: native loading of an evolved Skill/stage reference, and the
+real Host's two-chain, two-iteration CPU workflow through adjudication, publication
+and plugin evolution. Existing Oracle checks pass. Independent `native-census.json`
+counts **24 closed Agents, four closed CPU Processes and four canonical outcomes**,
+zero duplicate Attempt ownership, and no live members of the 28 recorded process
+groups. This does not test a paid model's optimization decisions.
+
+Final source, wheel, isolated installation and fresh bundle match all **196 package
+files**; the source distribution includes all ten changed files. Installed CLI
+help and MCP initialization/tool listing pass (`package-final.json`). Final
+documentation and whitespace checks pass. This is focused validation of a skill
+and documentation change; no full G1 rerun, physical-GPU qualification, measured
+training speedup or formal promotion is claimed.
+
+The read-only diagnosis in `.local/analysis/gpu-utilization-20261013-212232/`
+identified candidate hotspots without attributing their cost through profiling.
+Existing research runs, frozen bundles, retained plugins, bound requests and
+services remain untouched. New plugins use the updated seed; ordinary owner-local
+evolution retains its existing Git/version-selection rules.
+
 ## Execution repair observations (2026-10-13)
 
 The [observer correction](design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations)
