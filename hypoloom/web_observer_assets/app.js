@@ -1400,7 +1400,43 @@
     parent.append(element("p", "panel-copy", t("Failed and recovery calls are subsets of reported usage and may overlap. Open observations and reserves are separate; reserves are not consumption. Missing usage is unknown.")));
   }
 
+  function appendRevisionActivity(parent, component, details = false) {
+    const activity = component.revision_activity;
+    if (!activity) {
+      if (component.revision_warning) parent.append(element("p", "detail-note", t("Execution repair scope unavailable")));
+      return;
+    }
+    const summary = !activity.complete ? t("Execution repair scope unavailable")
+      : activity.mode === "legacy" ? t("Cycle {0} · recorded execution repairs {1}", activity.cycle, activity.operational_repairs)
+        : t("Cycle {0} · initial experiments {1} · scientific iterations {2} · execution repairs {3}",
+          activity.cycle, activity.initial_experiments, activity.scientific_iterations, activity.operational_repairs);
+    parent.append(element("p", "revision-activity", summary));
+    list(activity.scopes).forEach((scope) => {
+      if (!scope.warning && (!details || !scope.repairs)) return;
+      const row = element("div", "repair-scope");
+      const scopeText = activity.mode === "legacy"
+        ? t("Cycle {0} · recorded execution repairs {1}", activity.cycle, scope.repairs)
+        : t("Chain {0} · iteration {1} · execution repairs {2}/{3}", scope.chain, scope.iteration, scope.repairs, scope.repair_limit ?? "—");
+      row.append(element("p", scope.warning && !scope.historical ? "blocked" : "detail-note", scopeText));
+      if (scope.warning) {
+        const label = scope.warning === "allowance_used" ? t("Execution repair allowance used")
+          : scope.warning === "tripped" ? t("Execution repair circuit-breaker threshold exceeded")
+            : t("Repeated execution repairs");
+        row.append(element("p", "detail-note", scope.historical ? t("Historical observation · {0}", label) : label));
+      }
+      if (details) {
+        if (scope.recovered) row.append(element("p", "detail-note", t("Execution recovered; repair history retained")));
+        if (scope.latest_outcome) row.append(element("p", "detail-note", t("Recorded outcome: {0}", scope.latest_outcome)));
+        if (scope.validation_code) row.append(element("p", "detail-note", t("Recorded validation code: {0}", scope.validation_code)));
+        list(scope.experiment_ids).forEach((id) => row.append(element("p", "detail-note repair-experiment", id)));
+      }
+      parent.append(row);
+    });
+  }
+
   function renderExpertDetails(parent, role) {
+    list(state.snapshot?.components).filter((component) => component.owner_role === role)
+      .forEach((component) => appendRevisionActivity(parent, component, true));
     const snapshot = state.snapshot || {};
     const summary = object(list(object(snapshot.overview || state.product?.summary).experts)
       .find((item) => item.role === role));
@@ -1801,12 +1837,13 @@
         list(snapshot.components).filter((component) => component.owner_role === expert.role).forEach((component) => {
           identity.append(element("p", "expert-progress", t("Progress: {0} · {1}", component.phase || t("not started"), component.state || "unavailable")));
           if (component.blocked) identity.append(element("p", "blocked", t("Blocked: {0}", list(component.blocked_reasons).join("; ") || "unspecified")));
-          if (component.revision_warning) identity.append(element("p", "blocked", t("Repeated revisions without convergence; cause unverified · {0} revisions in cycle {1}", component.cycle_revisions ?? 0, component.current_cycle || "—")));
         });
       } else {
         identity.append(element("p", "", t("owns: {0}", list(expert.owned_component_ids).join(", ") || "—")));
         identity.append(element("p", "", t("proposes: {0}", list(expert.proposing_component_ids).join(", ") || "—")));
       }
+      list(snapshot.components).filter((component) => component.owner_role === expert.role)
+        .forEach((component) => appendRevisionActivity(identity, component));
       list(expert.pause_requested).forEach((pause) => {
         identity.append(pauseNotice(pause, working.some((attempt) => attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE")));
       });
@@ -1898,9 +1935,7 @@
       } else {
         card.append(element("p", "", t("{0} durably open attempts", list(component.open_attempt_ids).length)));
       }
-      if (component.revision_warning) {
-        card.append(element("p", "blocked", t("repeated revisions without convergence; cause unverified · circuit breaker {0}: {1} revisions in cycle {2}", component.revision_warning, component.cycle_revisions ?? 0, component.current_cycle || "—")));
-      }
+      appendRevisionActivity(card, component, true);
       card.addEventListener("click", () => selectByComponent(component.component_id));
       container.append(card);
     });
@@ -2684,7 +2719,8 @@
       const role = state.detail.data.role;
       const summary = list(object(snapshot.overview || product.summary).experts).find((item) => item.role === role);
       renderChanged("expert-detail", [role, summary, snapshot.overview?.host_observation?.availability,
-        snapshot.status_source, snapshot.status?.dispatch_error], () => renderResearchDetail());
+        snapshot.status_source, snapshot.status?.dispatch_error,
+        list(snapshot.components).filter((component) => component.owner_role === role).map((component) => component.revision_activity)], () => renderResearchDetail());
     }
     if (!drawer.hidden && state.detail?.kind === "stage_accounting") {
       renderChanged("stage-tokens", snapshot.overview?.stage_accounting, renderResearchDetail);

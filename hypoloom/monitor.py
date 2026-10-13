@@ -44,11 +44,7 @@ from .expert_loop import (
     ResearchNodeTask,
 )
 from .oracle import Oracle
-from .policy import (
-    _REVISION_BREAKER_MAX,
-    _REVISION_BREAKER_SEVERE,
-    _REVISION_BREAKER_WARN,
-)
+from .observer_revisions import activity_warning, revision_activities
 from .state_store import StateStore, StateStoreError, StateTransaction
 
 
@@ -137,9 +133,10 @@ class ComponentView:
     blocked: bool
     blocked_reasons: tuple[str, ...]
     open_attempt_ids: tuple[str, ...]
-    cycle_revisions: int = 0
+    cycle_revisions: int | None = 0
     current_cycle: int = 0
     revision_warning: str | None = None
+    revision_activity: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1072,44 +1069,6 @@ def _component_dependency_evidence(
     return supported_components, comparable_components, family_by_component
 
 
-def _cycle_revision_counts(
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, tuple[int, int]]:
-    """Map each component to (latest expert cycle, revisions inside that cycle).
-
-    Revisions are the experiment creations of the latest cycle minus one;
-    legacy creation payloads without ``expert_cycle`` count as one cycle.
-    """
-
-    cycles_by_component: dict[str, list[int]] = {}
-    for row in rows:
-        if row["workflow_kind"] != "EXPERIMENT" or int(row["revision"]) != 1:
-            continue
-        payload = _json_object(row.get("payload", row["payload_json"]))
-        component_id = payload.get("component_id")
-        if not isinstance(component_id, str) or not component_id:
-            continue
-        cycle = payload.get("expert_cycle", 1)
-        if isinstance(cycle, bool) or not isinstance(cycle, int) or cycle < 1:
-            raise MonitorError("experiment creation has an invalid expert_cycle")
-        cycles_by_component.setdefault(component_id, []).append(cycle)
-    counts: dict[str, tuple[int, int]] = {}
-    for component_id, cycles in cycles_by_component.items():
-        latest = max(cycles)
-        counts[component_id] = (latest, cycles.count(latest) - 1)
-    return counts
-
-
-def _revision_warning_level(cycle_revisions: int) -> str | None:
-    if cycle_revisions > _REVISION_BREAKER_MAX:
-        return "tripped"
-    if cycle_revisions > _REVISION_BREAKER_SEVERE:
-        return "severe"
-    if cycle_revisions > _REVISION_BREAKER_WARN:
-        return "general"
-    return None
-
-
 def _component_views(
     contract: ResearchContract,
     heads: Sequence[Mapping[str, Any]],
@@ -1120,10 +1079,10 @@ def _component_views(
     outcomes: Sequence[Mapping[str, Any]],
     expert_lineage_terminated: frozenset[str] | None = None,
     experiment_ordinals: Mapping[str, int] | None = None,
-    cycle_revision_counts: Mapping[str, tuple[int, int]] | None = None,
+    revision_activity: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[ComponentView, ...]:
     ordinal_by_workflow = experiment_ordinals or {}
-    revision_counts = cycle_revision_counts or {}
+    activities = revision_activity or {}
     ranked_heads: dict[str, tuple[int, str, Mapping[str, Any]]] = {}
     for row in heads:
         workflow_id = str(row["workflow_id"])
@@ -1206,7 +1165,7 @@ def _component_views(
                 phase = "+".join(dict.fromkeys(item.phase for item in latest.values()))
                 reasons += tuple(f"automatic recovery ended: {role} · {item.failure_code or item.phase}"
                                  for role, item in latest.items())
-        current_cycle, cycle_revisions = revision_counts.get(component_id, (0, 0))
+        activity = activities.get(component_id, {})
         result.append(ComponentView(
             component_id=component_id,
             tier=component.tier.value,
@@ -1219,9 +1178,10 @@ def _component_views(
             blocked=bool(reasons),
             blocked_reasons=reasons,
             open_attempt_ids=tuple(item.attempt_id for item in open_attempts),
-            cycle_revisions=cycle_revisions,
-            current_cycle=current_cycle,
-            revision_warning=_revision_warning_level(cycle_revisions),
+            cycle_revisions=activity.get("operational_repairs", 0),
+            current_cycle=activity.get("cycle") or 0,
+            revision_warning=activity_warning(activity),
+            revision_activity=activity or None,
         ))
     return tuple(result)
 
@@ -1518,7 +1478,9 @@ def build_monitor_snapshot(
                     ),
                 ),
                 experiment_ordinals=experiment_ordinals,
-                cycle_revision_counts=_cycle_revision_counts(transition_rows),
+                revision_activity=revision_activities(transition_rows,
+                    facts_by_type.get("CanonicalOutcomeAccepted", ()), contract.document,
+                    agent_aci_version=int(run["agent_aci_version"]), run_state=status["run_state"]),
             )
             hypotheses = _hypothesis_views(
                 facts_by_type.get("HypothesisProposed", ()),

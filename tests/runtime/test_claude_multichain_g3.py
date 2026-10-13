@@ -319,6 +319,12 @@ def test_real_cli_two_chains_scientific_iteration_adjudication_and_plugin_commit
         assert scenario.evolve_nonce not in (old.root / "skills/self-evolve/SKILL.md").read_text()
         assert scenario.evolve_nonce in (new.root / "skills/self-evolve/SKILL.md").read_text()
         product = build_product_observation(host.state_root, run_id)
+        from hypoloom.monitor import build_monitor_snapshot
+        observed = build_monitor_snapshot(host.state_root, run_id)
+        activity = observed.components[0].revision_activity
+        assert (activity["initial_experiments"], activity["scientific_iterations"], activity["operational_repairs"]) == (2, 2, 0)
+        assert len(activity["scopes"]) == 4
+        assert observed.components[0].revision_warning is None
         (tmp_path / "product-observation.json").write_text(json.dumps(product, indent=2))
         nodes = {item["chain"]: item for item in product["graph"]["nodes"]}
         assert nodes["chain-a"]["selected_tip"] is True

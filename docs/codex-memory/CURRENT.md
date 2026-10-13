@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- October 13 repair observations: Web/TUI separate initial experiments, scientific
+  iterations and execution repairs using accepted creation/outcome rows and the
+  existing admitted node budget. Parallel science no longer raises repair alarms;
+  pending, recovered, historical and unknown records remain distinct. Legacy
+  thresholds and Host safeguards are unchanged; no durable counter or migration
+  is added. Retained MERC bundle files match `0ed0bc6`, against development base
+  `f1b43c9`; read-only replay replaces old 14/10/11 counts with 3/1/6 repairs,
+  at most 2/1/2 on one node against allowances of nine. Native multichain/repair
+  flows close 39 Agents and six CPU Processes with six outcomes, no duplicate
+  ownership and no live groups. Full G1 records 8,265 pass/three path-overflow
+  failures/159 skips; all three pass with a short test directory. Missing modern
+  cycle identity is corrected to unknown; 102 affected checks pass. Reconciled
+  selection: 8,269 pass/159 skip, not a second full run. All 196 packaged files
+  match, and 2,641 full-suite process groups are absent. Existing run, bundle,
+  Profile and services remain untouched; reopening an independent observer loads
+  the correction.
+  [Design](../design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations) /
+  [validation](../qualification.md#execution-repair-observations-2026-10-13).
+
 - October 13 Host latency: compact committed STATUS and prepared retry history
   reuse StateStore's existing cache; live traffic, cooldown time, process activity
   and backup quiescence remain per-request. One disposable runtime-identity cache

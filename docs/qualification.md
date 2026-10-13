@@ -2,6 +2,87 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Execution repair observations (2026-10-13)
+
+The [observer correction](design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations)
+uses accepted experiment identities/outcomes and existing admitted repair budgets.
+Scientific iterations and parallel initial experiments no longer inflate execution
+repair warnings. Existing Host policy, Oracle validation, admission and budgets
+remain unchanged; there is no new durable counter or migration protocol.
+
+Evidence is retained in `.local/qualification/revision-observation-20261013/`,
+against development base `f1b43c9`. All 195 package files plus `environment.yml`
+in retained run `MERC-causal-202610121755` match Git `0ed0bc6`. The relevant counting,
+rendering and repair-policy sources match the development baseline despite the
+different full versions. `red.txt` reproduces its old counts of 14/10/11.
+`retained-replay.json` reads the retained records through the current observer:
+
+| Expert | Initial experiments | Scientific iterations | Execution repairs | Maximum repairs on one node | Node repair allowance |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ml-expert | 4 | 8 | 3 | 2 | 9 |
+| experiment-engineering-expert | 4 | 6 | 1 | 1 | 9 |
+| affective-computing-expert | 4 | 2 | 6 | 2 | 9 |
+
+No scoped repair warning is warranted by these counts. The replay observed durable
+STOPPING at 05:15:55 UTC; this is not a claim that the Host or its final-report
+process had exited. No retained database, runtime bundle, Profile or service was
+modified, and no run was started, resumed, migrated or settled.
+
+Focused selections reconcile to **214 distinct passing cases** across
+`focused-first.xml`, `focused-final.xml`, `projection-final.xml`, `native.xml`,
+`quarantine-check.xml`, `repair-check.xml`, `browser.xml` and `corrections.xml`. They cover four
+parallel chains and scientific iterations, inherited scientific predecessors on
+repairs, per-node budgets, pending/failed/recovered outcomes, historical notices,
+unknown identity/budget, a new accepted cycle before its first experiment, legacy
+10/20/30 boundaries, read-only observation and bilingual card/detail refresh.
+`browser-first.xml` preserves a test-authoring selector error, corrected to use
+the existing expert preview and language toggle.
+
+`native.xml` initially reports **88 passes and one failure**: the unchanged
+quarantine test times out waiting for a short Process to remain running. That
+case passes unchanged on the candidate (`quarantine-check.xml`) and on the exact
+baseline (`quarantine-baseline.xml`). The failure was not reproduced on baseline;
+do not claim otherwise or discard the original result. No product scheduling or
+test assertion was weakened for this observation.
+
+The actual native-CLI/local-provider multichain flow closes 24 Agents and four CPU
+Processes with four outcomes. The failed-execution/repair flow closes 15 Agents
+and two CPU Processes (one failure, one success), publishing two outcomes. Both
+retain their existing Oracle checks. Independent `native-census.json` counts
+**39 closed Agents, six closed Processes, six outcomes**, no duplicate Attempt
+ownership and no live members of the 30 recorded process groups.
+
+Full G1 (`g1.xml`) completes in 1,254.42 seconds with **8,265 passes, three
+failures and 159 conditional skips**. All three failures are Unix socket path
+overflows caused by this invocation's long `--basetemp` directory. The unchanged
+pool-init, Bash-policy and Grounding-plugin cases all pass using a short directory
+(`short-path.xml`: three passes). No socket implementation or test assertion is
+changed to compensate for the qualification invocation error.
+
+Final review reproduces one additional display boundary (`missing-cycle-red.txt`):
+a modern creation missing its cycle was incorrectly assigned legacy cycle one.
+It now yields unknown, with one added regression. `corrections.xml` passes all
+**102 affected observer checks** after that correction. Identity-based reconciliation
+is **8,269 passed / 159 skipped**, with no unresolved failure
+(`g1-reconciliation.json`). This records the complete original selection plus
+affected reruns, not a second uninterrupted full run after the final correction.
+
+The independent full-suite census reads 1,226 retained fixture databases with
+12,341 Attempt rows (12,227 CLOSED, 114 OPEN), zero duplicate ownership and no live
+members of 2,641 recorded process groups. Another 73 legacy/invalid fixture
+databases are explicitly excluded rather than counted as empty. These are retained
+row counts, not execution totals, and OPEN does not establish process liveness
+(`g1-census.json`).
+
+Final source, wheel, isolated installation and fresh bundle match all **196 package
+files**. The source distribution includes all 17 changed/new files; installed CLI
+help and MCP initialization/tool listing pass (`package-final.json`). Documentation,
+undefined-name and whitespace checks pass as well.
+
+Existing runs retain their frozen Host; reopening an independent observer loads
+this display correction. No paid-model, physical-GPU or long-soak qualification
+is claimed.
+
 ## Host history and runtime verification latency (2026-10-13)
 
 The [Host follow-up](design/run-closure-repairs-2026-10-12.md#host-history-and-runtime-verification-cost-2026-10-13)

@@ -71,3 +71,42 @@ and higher-pool reserve reviews, and bilingual browser state/failure separation.
 Exercise a real Host/native-CLI/CPU closure and independently check Attempt terminal
 effects, outcomes, ownership and residue. Physical GPU timing is separate evidence;
 do not claim it from scripted responses or device grants.
+
+## 2026-10-13: Version-aware execution repair observations
+
+Retained run `MERC-causal-202610121755` has 15/11/12 experiment creations across
+four initial chains per expert. The old component-wide count subtracts one and
+reports 14/10/11 revisions, warning on two experts without distinguishing science
+from repairs. Accepted creation identities instead show 8/6/2 scientific iterations
+and 3/1/6 operational repairs; no execution node has more than 2/1/2 repairs, against
+each role's admitted allowance of nine. Repairs can inherit a scientific predecessor,
+so testing only `iteration_of_experiment_id` double-counts them.
+
+All 195 package files and `environment.yml` in this retained bundle match Git
+`0ed0bc6`; current development baseline is `f1b43c9`. Their monitor, Policy, batch,
+TUI and Web counting/rendering sources are identical. Matching adapter `/84` alone
+would not establish package equality. The correction belongs in current source;
+the original runtime, database, Profile and final-report lifecycle remain untouched.
+
+Replace the existing monitor counter with a disposable projection over the same
+accepted transitions/outcomes and `batch_limits`. Group modern repairs by component,
+role, cycle, chain, scientific iteration and execution-node command. Count accepted
+repair predecessors before scientific-iteration predecessors. The latest accepted
+batch resets current-cycle statistics even before it creates an experiment. Legacy
+single-chain runs preserve their original thresholds, including >30 rather than >=30.
+Incomplete modern identities yield unknown counts. Existing Oracle validation
+continues to own causal integrity; this display does not introduce another validator,
+persisted counter, schema, gate or run-version migration.
+
+The existing `cycle_revisions` observation now means operational repairs, with
+nullable unknown and an additive `revision_activity` detail. Web and TUI consume
+that same projection. Budget observations require a scoped repairable failure;
+pending work is not failure, recovered work retains history, and older iterations
+or stopped runs show historical notices. Remove claims about scientific convergence
+and unverified causes. Existing Host safeguards and budgets remain unchanged.
+
+Validation combines retained read-only replay, parallel/iterated/budget-boundary
+fixtures, legacy thresholds, incomplete identities, bilingual browser interactions,
+and actual Host/native-CLI/CPU publication and repair closure. Full candidate and
+package validation are recorded in the qualification ledger, with process ownership
+and remaining evidence limits independently counted.

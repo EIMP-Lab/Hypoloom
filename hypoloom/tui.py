@@ -341,27 +341,31 @@ def _rendezvous_badge(status: str) -> str:
 
 
 def _revision_warning_badge(component: ComponentView) -> str | None:
-    if component.revision_warning is None:
-        return None
-    color = _REVISION_WARNING_COLORS.get(component.revision_warning, "#c8d7e3")
-    revisions = (
-        tr("{0} revisions in cycle {1}", component.cycle_revisions, component.current_cycle)
-    )
-    if component.revision_warning == "general":
-        text = tr("⚠️ repeated revisions without convergence: {0}; cause unverified", revisions)
-    elif component.revision_warning == "severe":
-        text = (
-            tr(
-                "🛑 repeated revisions without convergence: {0}; cause unverified; this lineage "
-                "self-terminates after 30 single-point failures",
-                revisions,
-            )
-        )
+    activity = component.revision_activity
+    if not activity:
+        return tr("Execution repair scope unavailable") if component.revision_warning else None
+    if not activity["complete"]:
+        summary = tr("Execution repair scope unavailable")
+    elif activity["mode"] == "legacy":
+        summary = tr("Cycle {0} · recorded execution repairs {1}", activity["cycle"], activity["operational_repairs"])
     else:
-        text = (
-            tr("⛔ revision circuit breaker tripped: {0}; further revisions and cycles are suppressed", revisions)
-        )
-    return f"[b {color}]{escape(text)}[/]"
+        summary = tr("Cycle {0} · initial experiments {1} · scientific iterations {2} · execution repairs {3}",
+            activity["cycle"], activity["initial_experiments"], activity["scientific_iterations"], activity["operational_repairs"])
+    lines = [escape(summary)]
+    for scope in activity["scopes"]:
+        if not scope["warning"]:
+            continue
+        text = (tr("Cycle {0} · recorded execution repairs {1}", activity["cycle"], scope["repairs"])
+            if activity["mode"] == "legacy" else tr("Chain {0} · iteration {1} · execution repairs {2}/{3}",
+                scope["chain"], scope["iteration"], scope["repairs"], scope["repair_limit"] if scope["repair_limit"] is not None else "—"))
+        label = (tr("Execution repair allowance used") if scope["warning"] == "allowance_used"
+            else tr("Execution repair circuit-breaker threshold exceeded") if scope["warning"] == "tripped"
+            else tr("Repeated execution repairs"))
+        if scope["historical"]:
+            label = tr("Historical observation · {0}", label)
+        color = "#8fa9bf" if scope["historical"] else _REVISION_WARNING_COLORS.get(scope["warning"], "#ffd166")
+        lines.append(f"[{color}]{escape(text + ' · ' + label)}[/]")
+    return "\n   ".join(lines)
 
 
 def _due_label(due_at: float | None, observed_at: float) -> str:

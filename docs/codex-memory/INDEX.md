@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Version-aware execution repair observations](../design/authoring-failures-and-resource-review.md#2026-10-13-version-aware-execution-repair-observations):
+  separate initial experiments, scientific iterations and execution repairs using
+  accepted node identities and admitted budgets. Web/TUI retain recovered and
+  historical evidence without inferring convergence. Legacy thresholds and Host
+  controls remain. [Validation](../qualification.md#execution-repair-observations-2026-10-13)
+  includes retained-bundle version comparison, read-only replay, browser checks,
+  native multichain/repair closure and candidate qualification.
+
 - [Host history and runtime verification cost](../design/run-closure-repairs-2026-10-12.md#host-history-and-runtime-verification-cost-2026-10-13):
   committed STATUS/retry reuse, current-clock/live overlays and disposable verified
   runtime identity, with explicit invalidation and private-setting boundaries.

@@ -49,6 +49,27 @@ same state root and run ID and use its new startup URL. Leaving the monitor with
 `q` does not stop the Host or its experiments. Do not resume or migrate a run to
 update its observer.
 
+## Scientific iterations and execution repairs
+
+Expert cards separate initial experiments, scientific iterations and execution
+repairs in the latest accepted cycle. Parallel hypotheses and successful scientific
+iterations do not increase another execution node's repair count. Expert details
+show each chain/iteration's recorded repairs, its admitted repair allowance,
+experiment identities and recorded outcome or validation code.
+
+An allowance-used observation requires both the scoped count and a recorded
+repairable failure. Reaching the count while an experiment is pending is not a
+failure; successful or cleanly refuted execution clears the repair warning while
+retaining its history. Older iterations and stopped runs label warnings historical.
+Counts do not establish scientific convergence or identify a model-related cause.
+
+Batch runs use their recorded version, execution-node identities and frozen Profile
+budget. Legacy single-chain runs retain their original cycle thresholds; missing
+batch identity is unknown, not a zero count or a guessed legacy chain. These are
+observer corrections: Host admission, repair limits and scientific acceptance do
+not change. A newer independent observer can read supported retained records;
+reopen it to load the correction. The frozen run bundle is not replaced.
+
 ## Completion and final-report evidence
 
 Web shows recorded final node failures separately from durable run state. Expand

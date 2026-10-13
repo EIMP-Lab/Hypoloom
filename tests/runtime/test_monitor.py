@@ -210,6 +210,8 @@ def _dependency_component_views(
 def _revision_warning_component_view(
     cycle_revisions: int, *, cycle: int = 1,
 ) -> ComponentView:
+    from hypoloom.observer_revisions import warning_level
+
     contract = SimpleNamespace(components=(SimpleNamespace(
         component_id="primary.probe",
         dependencies=(),
@@ -226,7 +228,12 @@ def _revision_warning_component_view(
         (),
         (),
         (),
-        cycle_revision_counts={"primary.probe": (cycle, cycle_revisions)},
+        revision_activity={"primary.probe": {
+            "mode": "legacy", "complete": True, "cycle": cycle,
+            "operational_repairs": cycle_revisions,
+            "scopes": [{"repairs": cycle_revisions, "historical": False,
+                "warning": warning_level(cycle_revisions)}],
+        }},
     )
     return views[0]
 
@@ -1843,14 +1850,10 @@ def test_textual_tui_component_panel_shows_revision_breaker_warnings(
     run_id = "textual-breaker"
     _create_fresh_run(state_root, run_id)
     snapshot = build_monitor_snapshot(state_root, run_id)
-    base = snapshot.components[0]
     warned = (
-        replace(base, component_id="primary.general", cycle_revisions=11,
-                current_cycle=1, revision_warning="general"),
-        replace(base, component_id="primary.severe", cycle_revisions=21,
-                current_cycle=2, revision_warning="severe"),
-        replace(base, component_id="primary.tripped", cycle_revisions=31,
-                current_cycle=1, revision_warning="tripped"),
+        replace(_revision_warning_component_view(11), component_id="primary.general"),
+        replace(_revision_warning_component_view(21, cycle=2), component_id="primary.severe"),
+        replace(_revision_warning_component_view(31), component_id="primary.tripped"),
     )
     enriched = replace(snapshot, components=warned)
 
@@ -1869,19 +1872,13 @@ def test_textual_tui_component_panel_shows_revision_breaker_warnings(
                 .query_one(Static)
                 .render()
             )
-            assert (
-                "repeated revisions without convergence: 11 revisions in cycle 1; "
-                "cause unverified"
-            ) in components
-            assert (
-                "repeated revisions without convergence: 21 revisions in cycle 2; cause unverified; "
-                "this lineage self-terminates after 30 single-point failures"
-            ) in components
+            assert "Cycle 1 · recorded execution repairs 11" in components
+            assert "Cycle 2 · recorded execution repairs 21" in components
+            assert "Repeated execution repairs" in components
+            assert "convergence" not in components and "cause unverified" not in components
             assert "base-model capability" not in components
-            assert (
-                "revision circuit breaker tripped: 31 revisions in cycle 1; "
-                "further revisions and cycles are suppressed"
-            ) in components
+            assert "Cycle 1 · recorded execution repairs 31" in components
+            assert "Execution repair circuit-breaker threshold exceeded" in components
 
     asyncio.run(exercise())
 

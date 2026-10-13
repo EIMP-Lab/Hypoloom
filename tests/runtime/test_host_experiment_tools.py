@@ -294,6 +294,11 @@ def test_failed_experiment_repairs_inside_the_same_execution_attempt(execution) 
     _until(host, lambda: bool(host.store.list_facts(request.run_id, "HypothesisAssessed")))
     assert host.store.list_facts(request.run_id, "HypothesisAssessed")[-1]["payload"]["assessment"] == "SUPPORTED"
     _until(host, lambda: host.store.latest_transition(request.run_id)["state"] == "COMPLETED")
+    from hypoloom.monitor import build_monitor_snapshot
+    observed = build_monitor_snapshot(host.state_root, request.run_id)
+    assert observed.components[0].cycle_revisions == 1
+    assert observed.components[0].revision_activity["scopes"][0]["recovered"]
+    assert observed.components[0].revision_warning is None
     report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
     assert report.ok, report.to_dict()
 

@@ -889,6 +889,36 @@ def test_browser_expert_skill_library_filters_trend_and_evolution(browser, tmp_p
     assert page.evaluate("window.injected === undefined")
 
 
+def test_browser_execution_repairs_separate_science_budget_history_and_unknown(browser):
+    from tests.runtime.test_observer_revisions import creation, project, outcome
+
+    page = browser
+    rows = [creation(f"{chain}-{iteration}", n * 6 + iteration, chain=chain, iteration=iteration)
+        for n, chain in enumerate("abcd") for iteration in range(1, 7)]
+    rows.append(creation("a-fix", 25, iteration=6, repair="a-out"))
+    activity = project(rows, limit=1)
+    page.evaluate("fixture.snapshot.components[0].revision_activity=" + json.dumps(activity))
+    page.wait("document.querySelector('.expert-preview .revision-activity')?.textContent.includes('scientific iterations 20')")
+    text = page.text(".expert-preview")
+    assert "initial experiments 4" in text and "execution repairs 1" in text
+    assert "convergence" not in text and "allowance used" not in text
+    page.click('[data-expert-details="expert-a"]')
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('execution repairs 1/1')")
+    assert "a-fix" in page.text("#research-detail-content")
+    activity = project(rows, limit=1, state="CANCELLED", outcomes=[outcome("a-fix", "EXECUTION_FAILURE")])
+    page.evaluate("fixture.snapshot.components[0].revision_activity=" + json.dumps(activity))
+    page.wait("document.querySelector('#research-detail-content').textContent.includes('Historical observation')")
+    assert "Execution repair allowance used" in page.text("#research-detail-content")
+    assert not page.evaluate("document.querySelector('#research-detail-content .repair-scope .blocked') !== null")
+    page.click("#close-drawer")
+    page.click("#language-toggle")
+    page.wait("document.querySelector('.expert-preview .revision-activity')?.textContent.includes('科学迭代 20 次')")
+    assert "未收敛" not in page.text(".expert-preview")
+    page.evaluate("delete fixture.snapshot.components[0].revision_activity; fixture.snapshot.components[0].revision_warning='general'")
+    page.wait("document.querySelector('.expert-preview').textContent.includes('执行修复范围无法确定')")
+    assert "执行修复 0" not in page.text(".expert-preview")
+
+
 def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
     browser, tmp_path: Path
 ) -> None:
