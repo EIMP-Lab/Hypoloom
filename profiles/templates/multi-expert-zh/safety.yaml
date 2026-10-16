@@ -1,0 +1,12 @@
+allow_read_paths: [/REPLACE_ME/research-data]
+sandbox_os: linux_bwrap
+# [] 表示仅使用 CPU；启用 GPU 还需要 Host 对精确 UUID 的授权。
+gpus: []
+max_gpus_per_experiment: 1
+bash:
+  network_allowed: false
+  deny_patterns: ["rm -rf /", "git push", "sudo", "pip uninstall"]
+filesystem:
+  write_only_within_worktree: true
+  # 按需添加已经存在的项目相对保护路径，例如 data/。
+  protected_paths: [.git/]

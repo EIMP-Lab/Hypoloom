@@ -1,0 +1,4 @@
+# Linux/WSL EOL policy. Shell scripts must stay LF: a CRLF shebang is not
+# executable. Keep repository text normalized as LF.
+* text=auto
+*.sh text eol=lf

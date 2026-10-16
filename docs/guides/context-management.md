@@ -1,0 +1,248 @@
+# Context, memory and recovery
+
+English · [简体中文](context-management.zh-CN.md)
+
+See [runtime recovery](runtime-recovery.md) for GPU pool readiness, node-scoped GPU recovery and context/progress observations.
+
+New runs preserve research identity, Git worktrees, accepted results and
+memory across bounded model sessions. New tasks and capacity reconstruction use
+fresh sessions. An eligible correction or transport retry of the same frozen
+task can resume its complete archived session when observed capacity leaves
+room for the retry. Missing evidence uses a fresh session. Existing runs retain
+the behavior of their original runtime.
+Native compaction is optional; no extra paid summarizer is required.
+Debate rounds use fresh sessions with the original expert's accepted source,
+relevant facts and both preceding accepted statements. Each retry also gets a
+fresh session under existing attempt/budget limits. Judges read all six outputs;
+winner continuation binds the actual final round and original source.
+A fresh request that still exceeds minimum local admission ends with an explicit
+input-reconfiguration diagnostic; increasing attempts alone cannot repair it.
+
+## Inputs and memory
+
+The current request supplies exact task identities, constraints and source
+references. A total inline budget selects small current inputs; complete frozen
+sources remain at the advertised `/inputs` paths. Models must read all applicable
+goal constraints and specifications before acting, including offloaded sources.
+`R1` aliases and numbered paths belong only to the current request; reread the
+mapping after a session change or native compaction.
+
+Existing summaries, cycle reports, expert memory, research views and paper
+sources support retrieval by ID, path and keyword. Summaries retain decisions,
+qualified negative results, unresolved errors and next steps. They cannot change
+facts or grant permission. Only CYCLE_REPORT writes MEMORY.md. There is no vector
+database or second fact authority.
+
+Infrastructure retries retain identical frozen inputs. Bounded operational
+observations identify the previous Attempt and owned submitted experiments;
+these are not scientific citations. Inspect and test retained unaccepted code.
+Continuation observations include bounded tool arguments, paths/ranges, checks
+and errors. Grounding sees retained `/acceptance` drafts and
+the same task's previously authorized paper sources. Optional
+`/acceptance/WORK_NOTES.md` can record checked interfaces and unfinished work;
+it is working material, not accepted parser source. Unwritten reasoning cannot
+be recovered. Ordinary nodes still cannot write expert MEMORY.md.
+
+## Working limits
+
+The renderer and existing relay share one policy. The relay checks complete
+requests, including tool schemas, results and thinking, without rewriting signed
+blocks or tool pairs. Effective capacity is the minimum of known deployment,
+runtime and working ceilings, less output, tool-growth and estimation reserves.
+
+New requests import the selected CC settings' allowlisted context
+controls into their existing node runtime input. With no explicit
+`working_context_tokens`, the working ceiling automatically follows the resolved
+CC/deployment window. Explicit working, deployment and runtime limits still take
+the minimum. CC parameters also reach the isolated research CC; credentials and
+the complete personal settings file remain Host-only. CC-switch works through
+its exported settings file, without a database integration.
+
+CC explicit numeric overrides, case-insensitive `[1m]` suffixes and disable flags
+follow the supported CLI rules. Built-in/default CC windows are labeled
+assumptions, not provider confirmations; an unrecognized ID normally assumes
+200,000 unless configured. Completed
+CLI results expose the reported window separately and the observers flag any
+disagreement with the resolved launch window. They do not silently rewrite it.
+
+When local configuration is insufficient, the Host may read the selected
+endpoint's `/v1/models` metadata: at most three queries per Host/preview, two
+seconds each and five seconds total, including DNS and response reads. Responses
+are bounded to 1 MiB; redirects are not followed. Exact model IDs and positive
+integer `context_length` (total) / `max_input_tokens` (input only) are accepted;
+`max_tokens` is never interpreted as a context window. Failure or missing fields
+falls back to local information. Set `memory.context_metadata: false` to disable
+these reads. They never send model-generation or extra token-count requests.
+
+The fallback with no usable window remains **262,144 tokens**, with **49,152 inline
+input bytes**. Retained requests without imported controls keep their original
+262,144 default and semantics. This fallback is an application allowance, not a
+detected provider window.
+Inline allowance stays stable across retries. Capacity measurement uses:
+
+1. An already observed successful provider count for the exact current input,
+   when available. The framework does not add count API requests.
+2. Complete same-relay provider usage for a verified unchanged prefix, plus a
+   conservative byte estimate of appended text and retained reserves.
+3. An explicitly labeled UTF-8 byte estimate when neither is usable. A refusal
+   on this fallback means capacity could not be confirmed, not that the provider
+   reported an overflow.
+
+These are not universal tokenizer guarantees. Changed history, model/protocol
+or tool definitions invalidate an anchor; new multimodal input and unknown
+cache semantics cannot silently inherit one. Counting recognizes the CLI's
+equivalent single text block/string representation and movement of known
+`ephemeral` cache annotations on text/tool-result blocks. It preserves content,
+order, tool identities and signed thinking; provider requests are not rewritten. Anchors are disposable per-invocation observations;
+a resumed invocation may still need fresh reconstruction if its first request
+cannot be reliably measured. Retry selection accounts for the preceding request,
+the full prompt appended on resume and the existing estimate margin. If these
+do not fit the fresh relay byte allowance, or their sizes are unknown, retry
+directly reconstructs. Code, published archives and bounded recovery notes are retained.
+A large newly generated thinking block still receives a conservative byte estimate;
+this can refuse a request before a provider reports overflow. Choosing a fresh
+session for an already scheduled retry adds no extra infrastructure attempt.
+Retrying an actual relay capacity refusal uses the existing infrastructure
+retry allowance; with zero retries it stops and reports the reason. Byte, request,
+time, total-token and cost limits remain independent. Do not omit constraints to make an input fit.
+
+Optional `methodology.yaml` → `memory` controls for new runs:
+
+| Field | Meaning |
+|---|---|
+| `working_context_tokens` | Optional explicit framework ceiling; omission follows the resolved window in new requests. |
+| `context_window_tokens` | Confirmed deployment window; omit when unknown. |
+| `runtime_context_tokens` | Confirmed runtime ceiling; omit when unknown. |
+| `context_metadata` | Allow bounded read-only provider model metadata when needed; default true. |
+| `max_inline_input_bytes` | Total rendered inline allowance; default 49152. |
+| `input_usage_semantics` | `separate_cache` for Anthropic-style separate counts; `includes_cache` when input already includes cache; `unknown` to withhold an unsupported input total. |
+
+Limits are positive integers. Configure smaller confirmed ceilings explicitly.
+A `[1m]` model suffix declares a CC window, not confirmed provider capacity;
+the invocation token budget does not establish either window.
+A missing count endpoint does not disable local checks. Configuration is frozen
+for the run; switching API connections does not change the Profile or an already
+submitted request. New tasks resolve against their selected connection; metadata
+is not shared between credentials/endpoints. Infrastructure retries retain their
+original request and window, even after settings change. Auto-compaction settings
+are imported separately and never become the bar denominator. Local capacity
+refusals still use the existing bounded reconstruction/retry path.
+Paper-reading children inherit explicit capacity limits and the metadata switch,
+without inheriting their parent's scientific memory.
+
+Custom compatible-provider selectors such as `mimo-v2.6-pro[1m]` may produce
+`[claude-code:unrecognized_model]` on stderr. Hypoloom passes the pinned selector
+unchanged, preserving `[1m]`. This warning alone establishes neither request
+failure nor a 1M window; inspect provider results, usage and failure codes.
+Do not silently strip the suffix or replace the frozen model to hide the warning.
+
+Web/TUI separate the current request estimate, last successful measured input
+and their exchange numbers, working ceiling and cumulative usage. A refused
+request does not acquire a measurement from a preceding request.
+Provider usage can be final or partial; transcript readings are labeled separately.
+A working allowance does not make an unknown provider window known. Cached input
+still occupies context.
+
+Some providers begin a streamed response with zero input usage and report the
+real input/cache totals only at the end. An incomplete zero is shown as pending
+or unavailable, with the last complete measurement and current estimate kept
+separate. It does not mean the Agent has no context. Nonzero partial input and
+valid final usage retain their measured values; this display rule does not
+change accounting or capacity limits.
+The Web capsule shows **latest measured context**: current measured input when
+available, otherwise the last complete measurement, or `—` before any measurement.
+The number and fill share that reading; estimates remain in the tooltip/details.
+The fill divides measured input by the effective context ceiling, before output,
+tool-growth and estimation reserves. Its tooltip gives the exact denominator and
+the separate current input allowance; a partially filled bar is not a guarantee
+that another request fits. An unconfirmed provider window remains labeled.
+The `↻` compaction indicator has a reserved position beside the number, so
+entering/leaving compaction does not resize the capsule or move the reading.
+
+A complete zero-usage terminal stream without a model or content is not a
+measured zero-token request. It leaves the preceding valid capacity observation
+in place and cannot confirm API recovery. For invocation accounting, the CLI's
+complete model ledger may correct mixed input/cache changes and omitted
+compaction output only when the recorded request usage and reported cost agree
+exactly. Unknown or inconsistent accounting remains rejected; budget limits still
+use the validated total.
+
+## Recovery
+
+Capacity reconstruction spends `budget.max_infrastructure_retries` in
+`methodology.yaml`. **Zero disables automatic reconstruction.** `max_retries`
+is the separate model-output correction allowance; increasing it does not enable
+infrastructure recovery. Invocation/run budgets and stop conditions still apply.
+
+Web identifies provider count, measured-prefix estimate or byte fallback, with
+output/tool/margin reservations. Near 80% of the available input allowance,
+The runtime gives a bounded advisory through existing native tool hooks to finish
+work and preserve progress. It does not grant tool permission, accept output,
+force a summary API call or guarantee that the model follows the advice.
+Only an explicit CLI `compacting` status means
+compaction is ongoing. Native `compact_boundary` events supply completed counts,
+before/after input and duration; absent fields stay unknown.
+
+`context_observation` counts successful native Read calls and repeated exact
+ranges of the same frozen input. Different ranges, mutable code and shell reads
+are excluded. Live bounded tails report `partial`; missing evidence reports
+`unavailable`, not zero. `input_material` reports source/unique/duplicate bytes and
+offloaded source counts; these are not billed token counts.
+Logical-node material totals sum per-prompt observations; “unique” does not mean
+global deduplication across invocations.
+
+`context_recovery` uses existing charges to separate the initial context failure
+from subsequent recovery Attempts, including successful ones. Web/TUI compare
+**tokens**: reported usage, reservations, unsettled observations and unavailable
+usage remain distinct. Expert cards and retry details show recovery token totals
+and unknown usage counts across all cycles; unknown does not mean zero. Dollar
+estimates and unknown-pricing messages are no longer usage indicators in Web/TUI.
+Historical accounting and explicitly configured financial budget controls remain
+intact. These observations alone do not establish savings or scientific quality.
+Command detail retains cache/material observations. Cross-Attempt rereads compare
+exact frozen refs within one logical node.
+
+When a **fresh session's** complete initial request is locally refused and
+no generation request was forwarded, unchanged recovery ends early. New-run
+input/runtime configuration is needed. A resumed session, missing capture or
+a capacity failure after model/tool progress retains bounded reconstruction.
+An operator API connection reload
+or switch makes subsequent ordinary retries use fresh sessions; it does not
+reinterpret already OPEN session bindings.
+
+| Observation | Behavior |
+|---|---|
+| Local capacity, explicit oversized input or failed native summary | Close/charge/archive the invocation, capture code, then reconstruct within existing infrastructure retry and total budgets. |
+| HTTP 200, zero output, `max_tokens` | Record an anomaly; infer capacity only with a configured window and near-window usage. Normal nonzero output truncation is separate. |
+| Authentication, rate, quota or temporary upstream service failure | Existing shared [API recovery](provider-recovery.md); submitted experiments continue. |
+| Recovery exhausted | Show node and reason. API retry cannot reopen a finalized node or bypass required scientific acceptance. |
+
+The next invocation queries owned experiments before submission. Replaying a
+committed submit retains its original identity, without duplicate experiments
+or reset costs. Archive failures retain existing fail-closed handling.
+A technical analysis failure alone no longer cancels a legal next-cycle revision;
+accepted adjudication, update, report, budget and termination controls still apply.
+API errors are not scientific refutations. If an exhausted execution controller
+owned experiments that have closed with valid results, accepted analysis may
+still request the next experiment within budget. Archive failure or unfinished
+experiments do not qualify. Promoted source code continues into new research
+chains independently of model-session inheritance. Old runs retain their original
+bundles; cross-version migration is unsupported.
+
+
+## Measurement and citations
+
+For `DELTA_FROM_BASELINE`, parser `value=0.72`, `baseline=0.68` produce `0.04`.
+A parser already returning the intended difference must use `VALUE`. Relative
+delta also divides by the absolute baseline. Native local parser diagnostics
+show these intermediate values; test a nonzero baseline. The framework does not
+guess scientific intent from signs or names.
+
+Native Stop checks web_sources against delivered retrievals and prior same-node
+retrieval evidence using the final Host validator. A URL in a paper packet or
+historical prose does not establish a web retrieval. Errors are returned within
+the invocation's existing correction/time budget; final Host acceptance remains.
+
+Research methods across Grounding and later stages are described in the
+[workflow guide](research-workflow.md); skill evolution reuses the existing Git
+plugins and does not add another memory store.

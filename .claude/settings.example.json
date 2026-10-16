@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Hypoloom research-session settings. Copy deliberately to .claude/settings.json; restart Claude Code after changing hook registration. PreToolUse limits Write/Edit/NotebookEdit to .local, profiles/local and Claude memory; workflow state remains Host-owned. Bash/Monitor run through the existing Linux bubblewrap with the entire repository read-only except .local, profiles/local and state. Source, Git metadata, dependencies and checked-in .claude/skills or .claude/hooks remain read-only. No unsandboxed fallback or automatic permission approval. This is a framework-source write boundary, not isolation from arbitrary same-user services. Research experts retain their Host sandbox. Use a separate authorized development session for source changes; existing runs retain their runtime bundle.",
+  "permissions": {
+    "additionalDirectories": [],
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "WebSearch",
+      "WebFetch",
+      "Bash(*)",
+      "Monitor"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git branch -D:*)",
+      "Bash(dd:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(wget * | bash)",
+      "Write(//*/.ssh/**)",
+      "Edit(//*/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Glob|Grep|Write|Edit|NotebookEdit|Bash|Monitor|Agent|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$CLAUDE_PROJECT_DIR\" ] && cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; if [ -n \"$HYPOLOOM_HOOK_PYTHON\" ] && [ -x \"$HYPOLOOM_HOOK_PYTHON\" ]; then exec \"$HYPOLOOM_HOOK_PYTHON\" .claude/hooks/dispatch.py pre; elif [ -x .conda/envs/hypoloom/bin/python ]; then exec .conda/envs/hypoloom/bin/python .claude/hooks/dispatch.py pre; elif command -v python3 >/dev/null 2>&1; then exec python3 .claude/hooks/dispatch.py pre; else echo 'dispatch(guard) DENY: no Python interpreter for hooks' >&2; exit 2; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "hypoloom": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "if [ -n \"$HYPOLOOM_PYTHON\" ] && [ -x \"$HYPOLOOM_PYTHON\" ]; then exec \"$HYPOLOOM_PYTHON\" -m hypoloom.mcp_server; elif [ -x .conda/envs/hypoloom/bin/python ]; then exec .conda/envs/hypoloom/bin/python -m hypoloom.mcp_server; else echo 'hypoloom MCP: no qualified Python interpreter' >&2; exit 127; fi"
+      ],
+      "cwd": ".",
+      "env": {
+        "HYPOLOOM_RUNTIME_FAMILY": "hypoloom"
+      }
+    }
+  }
+}
