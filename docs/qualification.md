@@ -2,7 +2,73 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Completed bounded qualification (2026-10-16)
+
+**G0–G5 qualification is complete within the approved scope.** The one authorized
+common-only retry passes the entire existing qualifier in **923.89 seconds**
+(924.28 seconds including the parent runner), under its approved **1,200-second /
+8 USD** limits. No further paid sample is launched. Runtime remains byte-identical
+to `3725a3d`, adapter 85; this live sample used frozen `da322f0`. Final test repair
+`5b96ea1` only forwards the already reviewed allocation into the existing Profile
+builder. [Design](design/qualification-repairs-2026-10-16.md).
+Evidence: `.local/qualification/repairs-20261016/g5-common-retry/`.
+
+The common run is **COMPLETED**, with **11 Agents and one real CPU Process all
+CLOSED/SUCCEEDED**, one accepted outcome, GOAL_MET and a completed final report.
+The Grounding-authored evaluator recomputes accuracy **0.875** and both
+`complete_pairs` / `computed_accuracy_matches` checks pass. Its eight authored
+tests pass on their first invocation; Grounding takes 166.61 seconds, compared
+with 289.78 in the preceding failed sample. FINAL_REPORT takes 215.56 seconds and
+finishes within its unchanged 300-second node limit. This single observation
+does not establish a general speedup or completion under the old 900-second cap.
+
+Independent census and the existing Oracle confirm zero open Attempts/decisions,
+pending effects, duplicate ownership/effects, nonterminal experiments or audit
+issues. All 12 recorded process groups are absent; the Host lock and control
+socket are missing. The completed local/GPU samples and this common retry provide
+**33 successful Agents, three successful real Processes and three outcomes**,
+with clean run/pool audits and terminal resource cleanup. The earlier failed
+common sample remains separate: all four samples in this cohort have 48 CLOSED
+Attempts, 47 successful and one timed out, and four accepted outcomes.
+
+| Stage | Final evidence and qualification limits |
+| --- | --- |
+| G0 | Reproduced Oracle, parser and model-input failures are repaired with focused positive/negative regressions and real Host/CPU closure, as recorded below. |
+| G1 | Complete selection plus affected-file refresh covers **8,404 passed / 159 explicit skips**, exactly **8,563 identities**, with none missing or extra. The final G5 refresh passes 319 offline cases / three paid skips. Original full-run failures remain; this is not an uninterrupted green full-suite invocation. |
+| G2 | Ten retained roots remain unchanged. Nine current-reader audits are clean; one retains exactly 11 explained historical parser findings. No new unexplained findings. |
+| G3 | Seven production scenarios pass: 169 Agents / 16 Processes CLOSED, 15 outcomes, clean Oracles and no owned residue. |
+| G4 | All 18 distinct shared checks and both supplemental native CUDA cases pass after fixture repairs; actual calibrated sharing, hypothesis evolution, released pool requests and independent cleanup are verified. |
+| G5 | Local passes the entire existing closure validator on unchanged-data replay after its session-fixture repair. GPU passes corrected durable validation and independent liveness/publication checks; historical in-memory maps are not fabricated. The common retry passes its whole live invocation. The original failed tests remain in the preceding report. |
+
+Preflight also found a qualification-harness budget forwarding defect: the default
+local/common entry calculated the reviewed remainder but passed `None` to the
+Profile builder. The preceding Profiles therefore admitted 20 / 17.9355848 USD
+instead of 6 / 8 USD, although their actual accounted costs stayed below the
+approved amounts. Four offline boundary cases fail before repair and pass after
+forwarding the existing reviewed value. This retry's explicit entry was already
+correct: its admitted total/per-expert budgets are both 8 USD, with no GPU grant,
+1,200-second run and 300-second nodes. Prior Profiles and charges are unchanged;
+production budget policy and scientific checks are unchanged.
+
+This retry reports/accounts **2.5323368 USD**, with no unknown usage. The current
+20 USD cohort now accounts **11.4783592 USD**: **9.4783592 reported + 2 unknown**
+from the failed common report, leaving **8.5216408 USD** conservatively available.
+The older cohort's 10.6981888 USD stays separate; combined accounted usage is
+22.176548 USD. These are existing dispatch/accounting values, not upstream
+invoices; unknown reservations are not refunded or reset.
+
+Final documentation, whitespace, compile, Ruff and dependency checks pass.
+Source/wheel/isolated installation/fresh bundle match all 196 runtime files;
+source-archive and installed CLI/MCP checks pass. No shared installation changes.
+This supports bounded new-run engineering readiness for the qualified environment,
+not arbitrary scientific success or a formal release. The 11 historical parser
+findings are preserved as invalid historical evidence, not approved measurements.
+Network-outage/reboot campaigns remain excluded, and optional long soaks are not
+claimed. No retained run is resumed, migrated, settled or rewritten.
+
 ## Paid recheck and remaining report deadline (2026-10-16)
+
+This is the historical checkpoint before the authorized successful retry above.
 
 **Full qualification remains NO-GO: common G5 still lacks a completed final
 report.** Local CPU closure and GPU resource closure are verified after repairing

@@ -6,11 +6,14 @@
   [recheck evidence](../qualification.md#qualification-repairs-and-recheck-2026-10-16)
   preserves two full offline failures and affected-case repairs, clean current G2
   findings except 11 known historical parser differences, completed shared/native
-  G4. [Paid recheck](../qualification.md#paid-recheck-and-remaining-report-deadline-2026-10-16)
-  verifies local/GPU closure after fixture repairs; common reaches GOAL_MET but
-  times out in FINAL_REPORT. All 36 Attempts close; new 8.9460224 USD includes
-  2 USD unknown. Common fixture repair is ready; another bounded sample is not
-  authorized. Old costs and run data remain unchanged.
+  G4. [Completed bounded qualification](../qualification.md#completed-bounded-qualification-2026-10-16)
+  retains local/GPU closure replays and the failed common report; the one approved
+  8 USD / 1,200-second common retry passes the whole qualifier in 923.89 seconds,
+  with all 12 Attempts successful, clean Oracle and no residue. Existing reviewed
+  allocation now reaches the Profile in both fixture entry paths. Complete offline
+  coverage plus refresh: 8,404 pass / 159 skips. Current cohort accounts
+  11.4783592 USD including the original 2 USD unknown; no further paid retry.
+  Old costs, historical findings and run data remain unchanged.
 
 - [Full dev qualification, October 16](../qualification.md#full-dev-qualification-2026-10-16):
   frozen `8579de8`, complete offline selection, ten retained read-only comparisons,

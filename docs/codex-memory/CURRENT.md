@@ -1,27 +1,27 @@
 # Current Hypoloom development state
 
-- October 16 paid recheck, final test candidate `6bff56a`: full qualification still
-  NO-GO for common FINAL_REPORT timeout. Runtime stays at `3725a3d` / adapter 85;
-  prior G0–G4 evidence applies. User approved the fresh 20 USD cohort (6/8/6 USD,
-  900/900/1,200 seconds). Three samples close 33 Agents/three real Processes,
-  three outcomes, all 36 Attempts closed; all run/pool Oracles clean, no live
-  groups/sockets. Local finishes all work; its obsolete resume assertion is fixed
-  and the entire qualifier passes unchanged-data replay. GPU finishes all work;
-  exclusive-intent/current-query fixture fixes pass durable replay, independent
-  liveness and 30-file terminal projection checks. Original paid failures remain;
-  historical in-memory maps are not invented or claimed replayed. Common reaches
-  GOAL_MET but its report has only 15.90 seconds before the run deadline. Its
-  authored test overwrote its smoke input; copied replay reproduces and fixes it.
-  Common fixture wording now clarifies isolated inputs and compact prose, but
-  model timing improvement is unproven. 315 affected offline cases pass/three paid
-  skips; complete selection plus refresh covers 8,400 pass/159 skips, 8,559 exact
-  identities, not an uninterrupted green full run. New cohort: 8.9460224 USD
-  accounted (2 USD unknown), 11.0539776 remaining. Old 10.6981888 stays separate.
-  Proposed common-only retry: 8 USD from remaining allowance, 1,200-second run,
-  300-second nodes; NOT authorized or launched. No automatic paid retries.
-  G2's 11 known historical parser findings and all retained roots stay unchanged.
+- October 16 bounded G0–G5 qualification is complete. Runtime stays at `3725a3d` /
+  adapter 85; final test repair is `5b96ea1`. User authorized one common-only
+  retry from the fresh 20 USD cohort: 8 USD, 1,200-second run, 300-second nodes.
+  Frozen `da322f0` passes the whole qualifier in 923.89 seconds: 11 Agents/one
+  CPU Process all succeed, common accuracy 0.875 with both checks, GOAL_MET and
+  final report complete. Independent Oracle/ownership/cleanup checks are clean.
+  Local's full unchanged-data closure replay and GPU's durable replay plus actual
+  liveness/publication checks remain valid; no historical memory maps are invented.
+  Qualified samples total 33 successful Agents/three Processes/three outcomes.
+  The failed common sample and all original failures remain separate evidence.
+  A default fixture path discarded the reviewed budget; forwarding its existing
+  resolved value fixes four reproduced boundary cases. This retry's explicit
+  admitted 8 USD was already correct. 319 affected offline cases pass/three paid
+  skips; complete selection plus refresh covers 8,404 pass/159 skips, 8,563 exact
+  identities, not an uninterrupted green full run. This retry costs 2.5323368 USD;
+  current cohort accounts 11.4783592 (including the old 2 USD unknown), leaving
+  8.5216408. Older cohort's 10.6981888 stays separate. No further paid retry.
+  All 196 runtime package files match. G2's 11 known historical parser findings
+  and ten retained roots stay unchanged; no scientific endorsement, formal release,
+  shared-install change, network/reboot campaign or long-soak claim.
   [Plan](../design/qualification-repairs-2026-10-16.md) /
-  [evidence and limits](../qualification.md#paid-recheck-and-remaining-report-deadline-2026-10-16).
+  [evidence and limits](../qualification.md#completed-bounded-qualification-2026-10-16).
 
 - October 16 full qualification of `8579de8` is complete: NO-GO.
   G1 passes 8,319 / 159 opt-in skips, including 191 G2 fixtures and seven G3 flows.

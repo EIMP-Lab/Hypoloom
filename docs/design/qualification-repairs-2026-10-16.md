@@ -155,6 +155,33 @@ selection coverage plus this targeted refresh from an uninterrupted green run.
 
 ## Verification order
 
+### Final authorized common result
+
+The one authorized common-only sample on frozen `da322f0` passes the entire
+existing qualifier in 923.89 seconds (924.28 including its parent runner), under
+the inspected 8 USD / 1,200-second allocation. Eleven Agents and one CPU Process
+all succeed; shared accuracy is 0.875 with both validity checks, GOAL_MET and a
+completed final report. Grounding takes 166.61 seconds and its eight authored
+tests pass on their first invocation. FINAL_REPORT takes 215.56 seconds, within
+the unchanged 300-second node bound. A single sample does not prove a general
+speedup or completion within the former 900-second total bound.
+
+Independent census finds one outcome, no duplicate ownership, no open Attempts,
+decisions or effects, a clean Oracle and no live members of 12 recorded groups;
+Host lock and socket are absent. The retry accounts 2.5323368 USD with no unknown
+usage. The current 20 USD cohort now accounts 11.4783592 USD including the old
+2 USD unknown reservation, leaving 8.5216408. All original failures and older
+cohort charges remain; no additional paid sample is launched.
+
+The isolated budget-forwarding repair below is integrated only after this live
+sample completes. Four counterexamples fail before repair; the final affected
+selection passes 319 offline cases with three paid skips. Full selection plus
+affected-file refresh reconciles 8,404 passes / 159 skips across all 8,563 current
+identities, preserving original full-run failures. Runtime bytes remain identical
+to `3725a3d`, so the completed G0–G4 evidence and corrected local/GPU evidence
+continue to apply. Final package and scope details are in the
+[completed qualification report](../qualification.md#completed-bounded-qualification-2026-10-16).
+
 ### Authorized common retry and qualification budget forwarding
 
 The user explicitly approves one common-only retry, at most 8 USD from the
