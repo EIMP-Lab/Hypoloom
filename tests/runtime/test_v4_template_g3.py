@@ -20,6 +20,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
+import pytest
 
 from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, with_output_digest
 from hypoloom.control_protocol import ControlRequest
@@ -123,6 +124,27 @@ def _template_profile(tmp_path: Path, mount: Path):
     return profile, materialized, payload
 
 
+def _assert_dispatched_designs(batches, transitions, designs, preregistrations):
+    admitted = {(batch["role"], chain): hypothesis
+                for batch in batches for chain, hypothesis in batch["hypothesis_batch"]["chains"].items()}
+    requested = {row["command_id"]: payload for row in transitions
+                 if row["command_type"] == "REQUEST_RESEARCH_NODE"
+                 and (payload := json.loads(row["payload_json"]))["task_context"]["key"]["node_kind"]
+                 == AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT.value}
+    # REQUEST_RESEARCH_NODE atomically opens its Agent Attempt. Shared-goal
+    # success may stop before another admitted hypothesis is ever requested.
+    assert len(designs) == len(requested) == len({item["command_id"] for item in designs})
+    assert {item["command_id"] for item in designs} == set(requested)
+    designed_hypotheses = set()
+    for item in designs:
+        dispatched = requested[item["command_id"]]
+        assert (item["role"], item["task_context"]) == (dispatched["role"], dispatched["task_context"])
+        pair = item["role"], item["task_context"]["key"]["chain"]
+        assert pair in admitted
+        designed_hypotheses.add(admitted[pair])
+    assert {row["hypothesis_id"] for row in preregistrations} <= designed_hypotheses
+
+
 def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp_path):
     with tempfile.TemporaryDirectory(prefix="hypoloom-v4-template-target-", dir="/var/tmp") as mount:
         profile, profile_bytes, payload = _template_profile(tmp_path, Path(mount))
@@ -189,14 +211,21 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
                 assert set(batch["hypothesis_batch"]["chains"]) == _CHAINS
             designs = [item["request"] for item in observations
                 if item["request"]["command"] == AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT.value]
-            assert {(item["role"], item["task_context"]["key"]["chain"]) for item in designs} == {
-                (role, chain) for role in _ROLES for chain in _CHAINS}
             hypotheses = [row for row in facts if row["fact_type"] == "HypothesisProposed"]
             outcomes = [row for row in facts if row["fact_type"] == "CanonicalOutcomeAccepted"]
             assert len(hypotheses) == 6
             assert len(outcomes) == len(processes)
             preregistrations = [row for row in facts if row["fact_type"] == "ExperimentPreregistered"]
             assert len(preregistrations) == len(processes)
+            _assert_dispatched_designs(batches, transitions, designs, preregistrations)
+            # Count against the committed dispatches, so missing/duplicated
+            # Attempts and cross-chain ownership still fail this qualifier.
+            assert designs
+            foreign = copy.deepcopy(designs)
+            foreign[0]["task_context"]["key"]["chain"] = "unadmitted-chain"
+            for damaged in (designs[:-1], [*designs, designs[0]], foreign):
+                with pytest.raises(AssertionError):
+                    _assert_dispatched_designs(batches, transitions, damaged, preregistrations)
             proposed_ids = {row["hypothesis_id"] for row in hypotheses}
             executed_ids = {row["hypothesis_id"] for row in preregistrations}
             assert len(executed_ids) == len(processes)
@@ -275,6 +304,7 @@ def test_tracked_v4_template_three_experts_two_chains_reach_cpu_final_oracle(tmp
                 "physical_gpu": False, "automatic_services_tested": False,
                 "run_id": _RUN, "state": "COMPLETED", "roles": sorted(_ROLES),
                 "chains_per_role": 2, "process_attempts": len(processes), "commands": dict(commands),
+                "dispatched_designs": len(designs),
                 "spawned_processes": len(spawned_processes),
                 "cancelled_before_spawn": len(processes) - len(spawned_processes),
                 "attempt_terminal_counts": dict(Counter(row["kind"] + ":" + row["terminal_reason"] for row in attempts)),

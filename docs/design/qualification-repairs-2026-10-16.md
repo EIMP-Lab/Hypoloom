@@ -112,6 +112,28 @@ Attempts, and additionally require a live capacity sample below the initial
 budget. The queue requirement is retained and its actual memory condition is
 now explicit. Preserve the failure and refresh the affected initial-memory case.
 
+### Full-offline template fixture
+
+The complete `3725a3d` G1 selection records 8,368 passes, 159 explicit skips and
+one failure in 1,245.47 seconds. The tracked template reaches GOAL_MET with six
+admitted hypotheses, five requested designs, five matching design Attempts and
+four closed CPU Processes/outcomes; independent Oracle passes. Its assertion that
+all six designs must start contradicts the template's existing immediate
+shared-goal stop policy and its own timing-independent Process assertions.
+
+Keep the six-hypothesis assertion and all post-goal admission prohibitions.
+Replace the speculative scheduling count with an exact reconciliation of committed
+REQUEST_RESEARCH_NODE identities against design Attempts, admitted batch ownership
+and preregistered hypothesis identities. Missing, duplicate and cross-chain design
+records must fail counterexamples. This changes only the fixture; goal termination,
+dispatcher, collection and scientific acceptance remain unchanged.
+
+The exact original five-design evidence passes this reconciliation; deleting a
+design Attempt, duplicating one or changing its chain fails. The complete template
+scenario then passes in 13.60 seconds, including its unchanged scientific outcome,
+stop-order, collection and Oracle checks. Freeze this final test candidate before
+the final complete offline selection; do not erase the first G1 failure.
+
 ## Verification order
 
 Reproduce each defect with focused counterexamples, repair it, then run focused
