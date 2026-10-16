@@ -102,6 +102,16 @@ No resource policy, grant, memory limit or scientific acceptance rule changes.
 This test-only follow-up is prepared in an isolated checkout while the original
 frozen full offline selection finishes; refresh every changed-file check.
 
+The first corrected physical cohort records 17 passes/one failure: ordinary
+calibrated sharing passes with 23.53 seconds of measured overlap, while the initial
+memory case ignores the pool's higher-priority `exclusive_wait` reason. Saved
+pool requests and capacity samples show 16,384 MiB initial exclusive budgets,
+insufficient remaining allocatable memory, then 896 MiB shared budgets. Observe
+either existing capacity or exclusivity wait, still require zero pre-dispatch
+Attempts, and additionally require a live capacity sample below the initial
+budget. The queue requirement is retained and its actual memory condition is
+now explicit. Preserve the failure and refresh the affected initial-memory case.
+
 ## Verification order
 
 Reproduce each defect with focused counterexamples, repair it, then run focused

@@ -557,7 +557,7 @@ def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
                 if initial_memory_mib is not None:
                     host = entry["host"]
                     for experiment_id, (_, reason) in host.resource_waits.items():
-                        if reason == "capacity_unavailable":
+                        if reason in {"capacity_unavailable", "exclusive_wait"}:
                             assert not host.store.list_attempts(workflow_id=experiment_id)
                             observation = {"namespace": entry["root"].name,
                                 "experiment_id": experiment_id, "reason": reason}
@@ -591,6 +591,10 @@ def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
             first_plural["ended_at"], first_single["ended_at"]), "uncalibrated exclusive runs overlapped"
         if initial_memory_mib is not None:
             assert capacity_waits, "initial memory must cause a real pre-Process queue"
+            assert any(item["gpu_uuid"] == first and item["active_commitments"] == 1
+                       and item["allocatable_memory_mib"] < initial_memory_mib
+                       for sample in snapshots for item in sample["devices"]), (
+                "queued initial workload never exceeded live allocatable memory")
         plural, single = (item[0][1] for item in closed)
         assert max(plural["started_at"], single["started_at"]) < min(
             plural["ended_at"], single["ended_at"]), "calibrated work never shared a GPU"
