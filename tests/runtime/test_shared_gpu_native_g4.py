@@ -128,14 +128,16 @@ class _SharedGpuAgent(_GpuBatchAgent):
         response = super().invoke(request)
         if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
             return response
-        first = request.task_context.key.experiment_ordinal == 1
         artifacts = tuple(
             WorkspaceArtifact.from_bytes(
                 item.path,
                 _shared_cuda_source(
                     item.content_bytes(),
                     uuids=self.uuids,
-                    hold_seconds=30 if first else 3,
+                    # Current policy calibrates an exclusive first run before
+                    # sharing. Hold both cycles long enough to sample that
+                    # second-cycle overlap after the peer's first run closes.
+                    hold_seconds=30,
                 ),
             )
             if item.path == "experiment.py"
@@ -357,9 +359,11 @@ def _assert_host_closure(host, scenario, uuids, root, key, initial_memory_mib=No
             == expected_ids
         )
         expected_budget = (
-            max(128, initial_memory_mib or 0) if ordinal == 0 else max(128, math.ceil(peak_mib * 1.25 / 64) * 64)
+            max(128, initial_memory_mib or 0) if ordinal == 0 else
+            max(128, math.ceil((peak_mib + max(math.ceil(peak_mib * 0.15), 512)) / 64) * 64)
         )
         assert budget == expected_budget
+        assert contract["resource_intent"]["sharing"] == ("exclusive" if ordinal == 0 else "shared")
         dispatch = next(
             item for item in dispatches if item["attempt_id"] == process["attempt_id"]
         )
@@ -582,20 +586,21 @@ def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
             )
             for entry in entries
         ]
-        if initial_memory_mib is None:
-            plural, single = (item[0][0] for item in closed)
-            assert max(plural["started_at"], single["started_at"]) < min(
-                plural["ended_at"], single["ended_at"])
-        else:
+        first_plural, first_single = (item[0][0] for item in closed)
+        assert max(first_plural["started_at"], first_single["started_at"]) >= min(
+            first_plural["ended_at"], first_single["ended_at"]), "uncalibrated exclusive runs overlapped"
+        if initial_memory_mib is not None:
             assert capacity_waits, "initial memory must cause a real pre-Process queue"
-            assert any(max(plural["started_at"], single["started_at"]) < min(
-                plural["ended_at"], single["ended_at"])
-                for plural in closed[0][0] for single in closed[1][0]), "calibrated work never shared a GPU"
+        plural, single = (item[0][1] for item in closed)
+        assert max(plural["started_at"], single["started_at"]) < min(
+            plural["ended_at"], single["ended_at"]), "calibrated work never shared a GPU"
+        calibrated_commitments = sum(item[1][1] for item in closed)
         assert any(
             item["gpu_uuid"] == first
             and item["active_commitments"] == 2
+            and item["exclusive_commitments"] == 0
             and item["unknown_attribution_commitments"] == 0
-            and item["outstanding_memory_mib"] < (initial_memory_mib or 256)
+            and item["outstanding_memory_mib"] < calibrated_commitments
             for sample in snapshots
             for item in sample["devices"]
         ), "No actual shared resident credit was observed"

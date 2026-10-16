@@ -82,6 +82,26 @@ re-audit clears all nine current-reader findings in `MERC-causal-202610121755`;
 `MERC-causal-202610120121` retains exactly its 11 documented historical parser
 findings. Both retained roots are unchanged. Full candidate checks remain pending.
 
+### Follow-up from physical G4
+
+Candidate `3725a3d` completes all eight CUDA Processes and 72 Agents, all closed,
+with eight outcomes, clean independent run/pool audits and no live process groups.
+Both live tests nevertheless fail the same obsolete budget assertion: the current
+one-success adaptive policy resolves a measured 330 MiB peak to 896 MiB (15 percent
+with a 512 MiB minimum margin, rounded to 64 MiB); the fixture expects the former
+25-percent-only 448 MiB. Preserve this 16-pass/two-failure assessment.
+
+The saved intervals also demonstrate the current initial-exclusive policy: first
+trials serialize, and the old three-second follow-up closes before the peer's
+calibrated trial starts. Align the fixture with the already-tested resource policy:
+assert exclusive initial trials, exact adaptive budgets and shared second trials;
+hold both bounded CUDA cycles for 30 seconds so measured second trials can overlap.
+Require actual overlap and resident credit against the exact sum of admitted
+calibrated budgets, preserving zero unknown attribution and terminal audits.
+No resource policy, grant, memory limit or scientific acceptance rule changes.
+This test-only follow-up is prepared in an isolated checkout while the original
+frozen full offline selection finishes; refresh every changed-file check.
+
 ## Verification order
 
 Reproduce each defect with focused counterexamples, repair it, then run focused
