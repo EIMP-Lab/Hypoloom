@@ -2,7 +2,76 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Paid recheck and remaining report deadline (2026-10-16)
+
+**Full qualification remains NO-GO: common G5 still lacks a completed final
+report.** Local CPU closure and GPU resource closure are verified after repairing
+obsolete fixture assertions. The original failed invocations remain failed;
+neither sample was paid for again. Runtime stays at `3725a3d`, adapter 85.
+Final test candidate: `6bff56a`. [Repair design](design/qualification-repairs-2026-10-16.md).
+Evidence: `.local/qualification/repairs-20261016/g5-paid/`.
+
+The user authorized a separate fresh 20 USD cohort, `glm-5.3-flash`, existing
+authentication, local/common/GPU allocations 6/8/6 USD and 900/900/1,200 seconds.
+GPU uses only the previously authorized GPU 1 and CUDA environment. Local ran
+on `7ec6f04`; common/resource ran on `2be3f56`. No paid sample was retried.
+
+| Sample | Observed result | Accounted USD |
+| --- | --- | --- |
+| Local CPU | 901.03 seconds including setup/teardown. All 11 Agents and one CPU Process succeed, accuracy 0.875, GOAL_MET and final report complete. Original test fails an obsolete cross-node resume assertion. The entire existing qualifier passes read-only replay after version-aware session repair; original data is unchanged. | 2.0644152 reported; no unknown usage |
+| Common CPU | 902.36 seconds. Grounding, target repair, real CPU execution, shared accuracy 0.875 with both validity checks, and analysis succeed. FINAL_REPORT gets only 15.90 seconds before the 900-second run deadline and times out; run FAILED despite GOAL_MET. Eleven Agents and one Process close, with one timeout. | 2.6025296 reported + 2 unknown reservation = 4.6025296 |
+| Resource GPU | 869.20 seconds. All 11 Agents and one CUDA Process succeed; checksum 6, final report complete, 14 attributable samples, zero unknown samples, 362 MiB peak against 2,048 MiB admitted memory. Original test omits the exclusive-intent field; replay also exposes its obsolete empty-query assertion. All durable checks pass after fixture corrections, with independent terminal verification below. | 2.2790776 reported; no unknown usage |
+
+Independent census finds **33 Agents, three real Processes and three outcomes**;
+all **36 Attempts are CLOSED**, with no duplicate ownership or live members of
+36 recorded groups. All three run Oracles and the GPU pool Oracle pass. Hosts
+and sockets are absent; the one GPU pool request is RELEASED. This does not turn
+the common report timeout into success.
+
+The session fixture now requires fresh, parentless node sessions under ACI 24+
+and preserves older resume behavior. Resource checks require exact first-trial
+exclusive sharing and reuse the existing MCP input schema for ACI 27+ queries;
+invalid/foreign selectors, estimates, counts and earlier-version inputs remain
+rejected. The live wrapper retains its running-process and projection-error
+assertions. Replay does not invent historical in-memory maps: current process,
+socket and pool observations are checked independently, and all 30 published
+projection files match the existing renderer after accounting only for observation
+time and database/WAL sizes changed by Host-close checkpointing. All scientific
+content and terminal revision match. Original failures and read-only replay
+results are separate evidence, not an uninterrupted green paid invocation.
+
+Common Grounding spends 289.78 seconds, including repairing a test that overwrites
+its own smoke fixture and removes `computed_accuracy`. The model's attribution
+to Host normalization is disproved by replaying its original helper on a temporary
+copy. Isolating the test input fixes that failure and leaves the smoke unchanged.
+The common commission now clarifies complete raw fixtures, independent test
+directories, separate validity mutations and compact node/report prose. All
+required nodes, tools, tests, scientific thresholds and existing time/cost bounds
+remain. The final eight model-authored tests and existing common scientific
+validator pass offline; improved model timing remains unproven.
+
+All three affected G5 files pass **315 offline tests / three explicit paid skips**.
+Current complete-selection coverage is **8,400 passed / 159 skips**, all
+**8,559 identities**, using the prior full selection plus affected-file refreshes;
+the earlier full-run failures remain. G0–G4 runtime evidence below still applies.
+All 196 runtime files remain identical to the qualified package/bundle. Final
+distribution, documentation and whitespace checks accompany this report.
+
+This cohort accounts **8.9460224 USD**: 6.9460224 reported plus 2 unknown, leaving
+**11.0539776 USD** conservatively available. The earlier 10.6981888 USD stays
+separate; combined accounted usage is 19.6442112 USD. These are dispatch/accounting
+thresholds, not upstream invoices. Unknown usage is not refunded or reset.
+
+The remaining proposed action is one common-only sample, at most 8 USD from this
+cohort's remaining allowance, with an explicitly approved 1,200-second run bound
+and unchanged 300-second node bound. This would exercise the concrete fixture
+repair while allowing room for the report; it is **not yet authorized or run**.
+The original 900-second failure remains. No network/reboot campaign, historical
+run mutation, service replacement or release is included.
+
 ## Qualification repairs and recheck (2026-10-16)
+
+This records the earlier checkpoint before the paid recheck above.
 
 Final code/test candidate: `efe488b`. Production runtime remains byte-identical
 to `3725a3d` (adapter `claude-code-bwrap/85`); subsequent commits repair qualification
