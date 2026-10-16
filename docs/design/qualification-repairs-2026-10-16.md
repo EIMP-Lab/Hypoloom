@@ -214,6 +214,37 @@ affected test files pass 226 offline cases with two explicit paid skips; four
 current-version cases previously reproduced the obsolete-session failure. No
 additional local model call or charge is incurred.
 
+### Resource G5: current query and first-trial policy
+
+The resource sample completes all 11 Agents, one real CUDA Process, checksum 6
+and FINAL_REPORT, with clean run/pool audits and no owned residue. The qualifier
+first fails because its expected resource intent omits the current first-trial
+`sharing: exclusive`. Retained replay then exposes another obsolete assertion:
+resource queries must be empty, although ACI 27+ explicitly admits `gpus` and
+`resource_estimate`. Both original failures remain in the evidence.
+
+Require the exact exclusive intent and validate current query arguments with the
+existing advertised MCP schema; preserve the one-authorized-GPU restriction and
+older versions' empty-input behavior. Counterexamples reject missing/shared
+intent, invalid estimates/counts and unauthorized selectors/runtime/reserve
+fields. Extract the existing durable assertions for read-only reuse; the live
+wrapper keeps its original running-Agent/Process and projection-error checks.
+Do not invent historical in-memory maps for replay. Independently verify actual
+Host/pool sockets, process groups, released pool rows and all 30 published
+projection files against the existing renderer. Only observation time and
+database/WAL byte counts differ after normal Host-close checkpointing; all
+research content and terminal revision match. The retained database, artifacts
+and pool bytes remain unchanged. This is repaired evidence plus independent
+closure verification, not a second paid sample or an uninterrupted green test.
+
+The three affected G5 files pass 315 offline cases with three explicit paid
+skips. Current runtime bytes and resource policy are unchanged. Original local,
+common and GPU samples account 8.9460224 USD in this newly authorized cohort,
+including the common report's 2 USD unknown reservation. Only the common sample
+still lacks its final report; its focused fixture repair is ready, but timing
+improvement and full qualification remain unproven without another bounded
+authorization.
+
 Reproduce each defect with focused counterexamples, repair it, then run focused
 Oracle, native-tool, schema and real Host/CPU closure checks. Replay the original
 paid requests and failures offline. Freeze one candidate only after these pass.

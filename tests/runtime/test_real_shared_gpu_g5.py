@@ -32,6 +32,7 @@ from decimal import Decimal
 
 import pytest
 import yaml
+from jsonschema import Draft202012Validator
 
 from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, AgentBudget, EmbeddedInput, WorkspaceArtifact
 from hypoloom.agent_budget import (
@@ -58,6 +59,7 @@ from hypoloom.gpu_attribution import GpuAttributionSampler
 from hypoloom.gpu_pool import CapacitySample, GpuPool
 from hypoloom.gpu_pool_client import PoolClient
 from hypoloom.gpu_pool_server import PoolServer
+from hypoloom.host_tools_server import _RESOURCE_TOOLS
 from hypoloom.literature import FixedLiteratureIO
 from hypoloom.oracle import Oracle, audit_gpu_pool
 from hypoloom.profile_admission import admit_profile
@@ -314,7 +316,7 @@ if __name__ == "__main__":
 '''
 
 
-def _resource_trace(content, uuid, plugin):
+def _resource_trace(content, uuid, plugin, *, schema_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION):
     uses, results = _native_tools(content)
     successful = {row["tool_use_id"]: row for row in results if not row.get("is_error")}
     assert any(
@@ -341,7 +343,11 @@ def _resource_trace(content, uuid, plugin):
             or use["id"] not in successful
         ):
             continue
-        assert use["input"] == {}
+        if schema_version < 27:
+            assert use["input"] == {}
+        else:
+            assert not list(Draft202012Validator(_RESOURCE_TOOLS[0]["inputSchema"]).iter_errors(use["input"]))
+            assert use["input"].get("gpus", 1) == 1
         content = successful[use["id"]]["content"]
         if isinstance(content, list):
             content = "\n".join(
@@ -498,6 +504,12 @@ def _close_live_effects(host, server):
 
 
 def _assert_resource_closure(host, pool, uuid, model, allocation, *, node_budget=_NODE):
+    closure = _assert_resource_evidence(host, pool, uuid, model, allocation, node_budget=node_budget)
+    assert not host.running and not host.running_agents and not host.projection_errors
+    return closure
+
+
+def _assert_resource_evidence(host, pool, uuid, model, allocation, *, node_budget=_NODE):
     """Read the actual Host source, native tools, Attempt binding and Oracle."""
     assert host.store.latest_transition(_RUN_ID)["state"] == "COMPLETED"
     rows = host.store.list_attempts()
@@ -536,6 +548,7 @@ def _assert_resource_closure(host, pool, uuid, model, allocation, *, node_budget
         "gpu_count": 1,
         "workload_memory_mib": admitted,
         "reserve_memory_mib": _RESERVE_MIB,
+        "sharing": "exclusive",
     }
     dispatches = [
         json.loads(row["payload_json"])
@@ -621,7 +634,8 @@ def _assert_resource_closure(host, pool, uuid, model, allocation, *, node_budget
         if command in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}:
             assert item["request"]["role"] == "researcher"
             traces[command] = _resource_trace(
-                content, uuid, _plugin_name(item["request"])
+                content, uuid, _plugin_name(item["request"]),
+                schema_version=item["request"]["schema_version"],
             )
         if command == "EXPERIMENT_DESIGN_IMPLEMENT":
             assert _has_wrapper_local_check(uses, results), (
@@ -673,7 +687,6 @@ def _assert_resource_closure(host, pool, uuid, model, allocation, *, node_budget
     ] == len(agent_rows)
     assert audit.open_attempt_count == audit.pending_effect_count == 0
     assert not audit.owned_process_residue
-    assert not host.running and not host.running_agents and not host.projection_errors
     assert all(
         not process_group_exists(row["process_group_id"])
         for row in rows
@@ -1052,6 +1065,33 @@ def _trace_bytes(events):
 def test_resource_g5_reads_successful_native_skill_and_actual_mcp_result():
     traces = _resource_trace(_trace_bytes(_trace_fixture()), _FIXTURE_UUID, "expert")
     assert traces[0]["measurements"] == []
+
+
+@pytest.mark.parametrize("schema_version", [26, 27, CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION])
+@pytest.mark.parametrize("arguments", [{}, {"gpus": 1}, {"estimate": True}, {"gpus": 1, "estimate": True}])
+def test_resource_g5_query_arguments_follow_advertised_version(schema_version, arguments):
+    arguments = dict(arguments)
+    if arguments.pop("estimate", False):
+        arguments["resource_estimate"] = _estimate_arguments()["resource_estimate"]
+    events = _trace_fixture()
+    events[-2]["message"]["content"][0]["input"] = arguments
+    if schema_version < 27 and arguments:
+        with pytest.raises(AssertionError):
+            _resource_trace(_trace_bytes(events), _FIXTURE_UUID, "expert", schema_version=schema_version)
+    else:
+        assert _resource_trace(_trace_bytes(events), _FIXTURE_UUID, "expert", schema_version=schema_version)
+
+
+@pytest.mark.parametrize("arguments", [
+    {"gpus": 0}, {"gpus": True}, {"gpus": 2}, {"gpu_uuid": "GPU-foreign"},
+    {"runtime": "/foreign"}, {"reserve_memory_mib": 0},
+    {"resource_estimate": {}}, {"resource_estimate": None}, [],
+])
+def test_resource_g5_rejects_invalid_or_unauthorized_query_arguments(arguments):
+    events = _trace_fixture()
+    events[-2]["message"]["content"][0]["input"] = arguments
+    with pytest.raises(AssertionError):
+        _resource_trace(_trace_bytes(events), _FIXTURE_UUID, "expert")
 
 
 @pytest.mark.parametrize(
