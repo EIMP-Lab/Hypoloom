@@ -34,6 +34,14 @@
 - `methodology.runtime.conda_env`：完整的实验环境。
 - `safety.allow_read_paths`：所需数据及其他获准只读输入。
 
+若已有适合课题的基准评测（benchmark）项目，建议通过
+`methodology.runtime.target_repo` 将其作为实验工作区的代码基础。
+优先选择包含数据加载、基线实现、实验入口、评测脚本和依赖说明的仓库，
+确认基线可在 `methodology.runtime.conda_env` 指定的环境中运行，并在 `goal.yaml`
+中说明基线、数据集、评估指标和预期改进。复用这些代码可减少准备工作；
+比较基线与改进方案时，应保持评测协议一致。初始化前，提交需要使用的源码修改，
+确保 Git 工作区没有未提交的改动。
+
 然后在 `/autoresearch init` 中选择准备好的 Profile。init 也支持引导创建新的本地配置，
 不会覆盖已有文件。实验使用私有工作树，原始仓库和获准数据保持只读。
 两份模板均继承初始化选择的 Host 模型；需要覆盖时才设置 `experts.defaults.model`

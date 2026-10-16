@@ -104,6 +104,13 @@ Replace the goal and `/REPLACE_ME/` paths, fill the required literature credenti
 and review budgets. Keep the directory mode 0700 and YAML files mode 0600, as
 created above. The template starts with CPU execution and Telegram disabled.
 
+**Recommended:** use an existing, runnable benchmark project as the codebase
+for your experiment workspace. In `methodology.yaml`, set `runtime.target_repo`
+to its local Git repository's absolute path. Reusing data loaders, baseline
+implementations and evaluation scripts reduces setup work and helps focus later
+experiments on testing hypotheses. Hypoloom creates private experiment worktrees
+from this repository; the original code remains read-only.
+
 ### 4. Initialize, review and start
 
 Start Claude Code in the repository:

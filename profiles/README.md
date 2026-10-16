@@ -36,6 +36,16 @@ English template. Replace these placeholders with real absolute paths:
 - `methodology.runtime.conda_env`: a complete experiment environment.
 - `safety.allow_read_paths`: the required data and other read-only inputs.
 
+When a suitable benchmark project already exists, use it as the codebase for
+the experiment workspace through `methodology.runtime.target_repo`. Prefer a
+repository with data loaders, baseline implementations, experiment entry points,
+evaluation scripts and dependency instructions. Confirm the baseline runs in the
+environment selected by `methodology.runtime.conda_env`, and describe the baseline,
+dataset, metrics and intended improvements in `goal.yaml`. Reusing this setup
+reduces preparation work; keep the evaluation protocol consistent when comparing
+baseline and revised results. Commit the intended source changes and leave the
+Git working tree clean before initialization.
+
 Then select the prepared Profile in `/autoresearch init`. Init can also guide
 creation of a new local Profile; it does not overwrite an existing one.
 Experiments use private worktrees; the original repository and approved data remain

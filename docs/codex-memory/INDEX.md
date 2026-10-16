@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Benchmark workspace guidance, October 16](../../profiles/README.md#create-a-local-topic):
+  reuse a suitable existing benchmark via runtime.target_repo, with runnable
+  baselines and consistent evaluation; paired guidance in README and configuration
+  fields. Local checks: `.local/analysis/benchmark-workspace-docs-20261016/`.
+
 - [README terminology and readability, October 16](../../README.md):
   paired English/Chinese explanations and simpler monitoring descriptions; main
   retains one `v0.0.1` root commit, and dev keeps its development history.

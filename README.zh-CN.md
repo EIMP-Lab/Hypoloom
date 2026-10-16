@@ -92,6 +92,11 @@ mkdir -p profiles/local
 修改研究目标与 `/REPLACE_ME/` 占位路径，填写必要的文献凭据，并核对预算。
 保持上述命令创建的目录权限 0700、YAML 文件权限 0600。模板默认使用 CPU，关闭 Telegram。
 
+**建议**使用已有、可运行的基准评测（benchmark）项目作为实验工作区（workspace）的
+代码基础，在 `methodology.yaml` 的 `runtime.target_repo` 中填写其本地 Git 仓库绝对路径。
+复用数据加载、基线实现和评测脚本，可减少重复搭建工作，让后续实验更集中于假设验证。
+Hypoloom 会从该仓库创建私有实验工作树，原始代码保持只读。
+
 ### 4. 初始化、确认并启动
 
 在仓库目录启动 Claude Code：

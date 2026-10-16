@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- October 16 benchmark workspace guidance: both branches' English/Chinese README,
+  Profile and field guides recommend a suitable runnable benchmark repository as
+  the codebase selected by `methodology.yaml.runtime.target_repo`. Reuse loaders,
+  baselines and evaluation scripts; document the comparison in goal.yaml and keep
+  the evaluation protocol consistent. Host still creates private worktrees from
+  the read-only original. Main `a265516` retains its single `v0.0.1` root; dev keeps
+  development history. Six main/seven dev documentation/Profile checks pass.
+  Examples, templates, images and runtime are unchanged; no new qualification.
+  [Profile guide](../../profiles/README.md#create-a-local-topic).
+  Local checks: `.local/analysis/benchmark-workspace-docs-20261016/`.
+
 - October 16 README readability: both languages explain Host, Oracle, Profile,
   Grounding, Leader, Debate, Agent and Attempt at first use. Shorter monitoring
   descriptions distinguish execution checks from scientific assessment and explain

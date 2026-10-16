@@ -227,7 +227,7 @@ budget:
 | 字段 | 含义与取值 |
 | --- | --- |
 | `schema_version` | 保留 `4`，对应当前六文件 Profile 格式。 |
-| `runtime.target_repo` | 存放研究代码的干净 Git 仓库绝对路径。实验使用私有工作树，原始仓库保持只读。 |
+| `runtime.target_repo` | 存放研究代码的干净 Git 仓库绝对路径。建议使用已有、可运行的 benchmark 项目，复用其基线实现与评测脚本。实验使用私有工作树，原始仓库保持只读。 |
 | `runtime.conda_env` | 完整实验环境的绝对前缀路径，包含 Python 解释器与所需依赖；GPU 实验须选择兼容的 CUDA 环境。 |
 | `literature.enabled` | 是否启用已配置的文献工具。 |
 | `literature.tools` | 可用值为 `web_search`、`web_fetch` 和可选的 `read_papers`。模板只启用检索与获取；阅读助手共享 Agent 名额和预算。 |

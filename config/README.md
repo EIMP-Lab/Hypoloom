@@ -235,7 +235,7 @@ budget:
 | Field | Meaning and accepted values |
 | --- | --- |
 | `schema_version` | Keep `4`, the format used by these six-file Profiles. |
-| `runtime.target_repo` | Absolute path to a clean Git repository containing the research code. Experiments use private worktrees; the original repository remains read-only. |
+| `runtime.target_repo` | Absolute path to a clean Git repository containing the research code. Prefer an existing, runnable benchmark project so experiments can reuse its baseline and evaluation scripts. Experiments use private worktrees; the original repository remains read-only. |
 | `runtime.conda_env` | Absolute prefix of the complete experiment environment, including its Python interpreter and dependencies. For GPU experiments, select a compatible CUDA environment. |
 | `literature.enabled` | Enable the configured literature tools. |
 | `literature.tools` | Allowed tools: `web_search`, `web_fetch` and optionally `read_papers`. The template enables search/fetch only. Readers share Agent slots and budgets. |
