@@ -60,6 +60,38 @@ def test_native_adjudication_schema_has_exact_verdict_and_selection_shape():
     assert schema["properties"]["prune"]["uniqueItems"] is True
 
 
+@pytest.mark.parametrize("mutation", (None, "fact-id", "input-ref", "swapped-node", "foreign-chain", "best-without-tip"))
+def test_adjudication_projects_batch_pairs_and_absent_terminal_tips(mutation):
+    from hypoloom.native_output import decode_output
+    request = _request(AgentCommand.ADJUDICATE)
+    context = EmbeddedInput.from_bytes(request.command_id + "--batch-context", "application/json",
+        json.dumps({"chains": {"chain-a": "hyp-a", "chain-b": "hyp-b"},
+                    "terminal_tips": {"chain-a": None, "chain-b": None}}).encode())
+    request = replace(request, input_artifacts=(*request.input_artifacts, context),
+        immutable_context_refs=(*request.immutable_context_refs, context.ref))
+    schema = _output_schema(request)["properties"]["typed_candidate"]
+    candidate = {"schema_version": 1,
+        "verdicts": [{"chain_id": chain, "node_id": node, "status": "inconclusive", "evidence": [context.ref]}
+                     for chain, node in (("chain-a", "hyp-a"), ("chain-b", "hyp-b"))],
+        "keep": ["chain-a", "chain-b"], "prune": [], "best_chain": None,
+        "summary": "No accepted comparable terminal tip."}
+    if mutation == "fact-id":
+        candidate["verdicts"][0]["node_id"] = "fact-123"
+    elif mutation == "input-ref":
+        candidate["verdicts"][0]["node_id"] = context.ref
+    elif mutation == "swapped-node":
+        candidate["verdicts"][0]["node_id"] = "hyp-b"
+    elif mutation == "foreign-chain":
+        candidate["verdicts"][0]["chain_id"] = "hyp-a"
+    elif mutation == "best-without-tip":
+        candidate["best_chain"] = "chain-a"
+    if mutation is None:
+        assert decode_output(json.dumps(candidate), schema) == candidate
+    else:
+        with pytest.raises(ValueError):
+            decode_output(json.dumps(candidate), schema)
+
+
 @pytest.mark.parametrize("version", (13, 14))
 def test_native_result_analysis_iteration_is_required_only_on_successor(version):
     request = replace(default_request(AgentCommand.RESULT_ANALYSIS), schema_version=version)

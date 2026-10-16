@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/84"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/85"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2354,6 +2354,71 @@ def _observer_output_check(request: AgentRequest) -> Callable[[Mapping[str, Any]
     return check
 
 
+def _experiment_candidate_schema(request: AgentRequest) -> Mapping[str, object]:
+    """One existing candidate projection for both design output and MCP submit."""
+    frozen_experiment = (
+        _expert_experiment_contract(request)
+        if request.command.value != "DRAFT_EXPERIMENT_SPEC"
+        else None
+    )
+    candidate = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "component_id": {"const": request.component_id},
+            "owner_role": {"const": request.role},
+            "method_family_id": {"const": request.method_family_id},
+            "method": {"type": "string"},
+            "metrics": ({"const": frozen_experiment["metrics"]}
+                if frozen_experiment is not None else {"type": "array", "items": {
+                    "type": "object", "additionalProperties": False,
+                    "properties": {"name": {"type": "string"},
+                        "direction": {"enum": ["MAXIMIZE", "MINIMIZE"]},
+                        "target": {"type": "string"}},
+                    "required": ["name", "direction", "target"]}}),
+            "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+            "evaluator_version": ({"const": frozen_experiment["evaluator_version"]}
+                if frozen_experiment is not None else {"type": "string"}),
+            "artifact_requirements": ({"const": frozen_experiment["artifact_requirements"]}
+                if frozen_experiment is not None else {
+                    "type": "array", "items": {"const": "result.json"}}),
+            "resource_preference": {"enum": ["CPU", "AUTO", "GPU_REQUIRED"]},
+        },
+        "required": [
+            "component_id",
+            "owner_role",
+            "method_family_id",
+            "method",
+            "metrics",
+            "acceptance_criteria",
+            "evaluator_version",
+            "artifact_requirements",
+            "resource_preference",
+        ],
+    }
+    if request.command.value != "DRAFT_EXPERIMENT_SPEC" and _declared_measurement_request(request):
+        shared = grounding_acceptance_request(request)
+        declared = _measurement_schema()
+        additions = {
+            "measurement": {"anyOf": [declared, {"type": "null"}]} if shared else declared,
+            "execution_argv": {"type": "array", "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+                "description": "Explicit experiment argv; reference standalone captured programs as /input/<relative-path>."},
+            "metrics": {"type": "array", "items": declared["properties"]["metric"],
+                "minItems": 0 if shared else 1, "maxItems": 1,
+                "description": "Exactly the declared measurement.metric."},
+        }
+        if frozen_experiment is not None and frozen_experiment.get("measurement") is not None:
+            additions["measurement"] = {"const": frozen_experiment["measurement"]}
+            additions["metrics"] = {"const": frozen_experiment["metrics"]}
+        if shared:
+            additions["evaluation_scope"] = {"enum": ["LOCAL", "GOAL"]}
+        candidate = {**candidate, "properties": {**candidate["properties"], **additions},
+            "required": [*candidate["required"], "measurement", "execution_argv",
+                         *(["evaluation_scope"] if shared else [])]}
+    return candidate
+
+
 def _output_schema(
     request: AgentRequest, *, tool_workspace: bool = False, reference_aliases: bool = True
 ) -> Mapping[str, object]:
@@ -2479,65 +2544,47 @@ def _output_schema(
         "DRAFT_EXPERIMENT_SPEC",
         "EXPERIMENT_DESIGN_IMPLEMENT",
     }:
-        frozen_experiment = (
-            _expert_experiment_contract(request)
-            if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT"
-            else None
-        )
-        candidate = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "component_id": {"const": request.component_id},
-                "owner_role": {"const": request.role},
-                "method_family_id": {"const": request.method_family_id},
-                "method": {"type": "string"},
-                "metrics": ({"const": frozen_experiment["metrics"]}
-                    if frozen_experiment is not None else {"type": "array", "items": {
-                        "type": "object", "additionalProperties": False,
-                        "properties": {"name": {"type": "string"},
-                            "direction": {"enum": ["MAXIMIZE", "MINIMIZE"]},
-                            "target": {"type": "string"}},
-                        "required": ["name", "direction", "target"]}}),
-                "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
-                "evaluator_version": ({"const": frozen_experiment["evaluator_version"]}
-                    if frozen_experiment is not None else {"type": "string"}),
-                "artifact_requirements": ({"const": frozen_experiment["artifact_requirements"]}
-                    if frozen_experiment is not None else {
-                        "type": "array", "items": {"const": "result.json"}}),
-                "resource_preference": {"enum": ["CPU", "AUTO", "GPU_REQUIRED"]},
-            },
-            "required": [
-                "component_id",
-                "owner_role",
-                "method_family_id",
-                "method",
-                "metrics",
-                "acceptance_criteria",
-                "evaluator_version",
-                "artifact_requirements",
-                "resource_preference",
-            ],
-        }
+        candidate = _experiment_candidate_schema(request)
     elif request.command.value == "ADJUDICATE":
         from .agent_aci import adjudication_reference_ids
         evidence_refs = sorted(adjudication_reference_ids(request))
         reference_schema = {"enum": evidence_refs} if evidence_refs else {"type": "string", "minLength": 1}
+        contexts = [item for item in request.input_artifacts if item.ref.endswith("--batch-context")]
+        chains = {}
+        no_terminal_tip = False
+        if contexts:
+            if (len(contexts) != 1 or contexts[0].ref != request.command_id + "--batch-context"
+                    or contexts[0].ref not in request.immutable_context_refs):
+                raise AgentHostError("adjudication requires its exact supplied batch context")
+            context = json.loads(contexts[0].content_bytes())
+            chains = context["chains"]
+            if (not isinstance(chains, dict) or not chains
+                    or any(not isinstance(key, str) or not key or not isinstance(value, str) or not value
+                           for key, value in chains.items())):
+                raise AgentHostError("adjudication batch identities are invalid")
+            no_terminal_tip = (set(context.get("terminal_tips", {})) == set(chains)
+                               and all(value is None for value in context["terminal_tips"].values()))
+        verdict_chain = {**chain_id, "enum": sorted(chains)} if chains else chain_id
         candidate = {
             "type": "object", "additionalProperties": False,
             "properties": {
                 "schema_version": {"const": 1},
                 "verdicts": {"type": "array", "description": "Cover every chain in the nonempty accepted batch exactly once.", "items": {
                     "type": "object", "additionalProperties": False,
-                    "properties": {"chain_id": chain_id, "node_id": reference_schema,
+                    "properties": {"chain_id": verdict_chain,
+                        "node_id": {"enum": sorted(chains.values())} if chains else reference_schema,
                         "status": {"enum": ["verified", "refuted", "inconclusive"]},
                         "evidence": ({"type": "array", "uniqueItems": True,
                             "description": "Exact admitted reference IDs, not explanatory prose; put explanations in summary.",
                             "items": reference_schema} if evidence_refs else {"const": []})},
-                    "required": ["chain_id", "node_id", "status", "evidence"]}},
-                "keep": {"type": "array", "uniqueItems": True, "items": chain_id},
-                "prune": {"type": "array", "uniqueItems": True, "items": chain_id},
-                "best_chain": {**chain_id, "type": ["string", "null"]},
+                    "required": ["chain_id", "node_id", "status", "evidence"],
+                    **({"oneOf": [{"properties": {"chain_id": {"const": chain}, "node_id": {"const": node}}}
+                                  for chain, node in sorted(chains.items())]} if chains else {})}},
+                "keep": {"type": "array", "uniqueItems": True, "items": verdict_chain},
+                "prune": {"type": "array", "uniqueItems": True, "items": verdict_chain},
+                "best_chain": {**chain_id, "type": ["string", "null"],
+                               **({"const": None} if no_terminal_tip else
+                                  {"enum": [None, *sorted(chains)]} if chains else {})},
                 "summary": {"type": "string", "minLength": 1}},
             "required": ["schema_version", "verdicts", "keep", "prune", "best_chain", "summary"],
         }
@@ -2729,23 +2776,12 @@ def _output_schema(
             "properties": candidate_properties,
             "required": candidate_required,
         }
-    if _declared_measurement_request(request) and (synthesis or request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT"):
-        shared = grounding_acceptance_request(request)
+    if _declared_measurement_request(request) and synthesis:
         declared = _measurement_schema()
-        additions = {"measurement": {"anyOf": [declared, {"type": "null"}]} if shared else declared}
-        if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT":
-            additions.update(execution_argv={"type": "array", "minItems": 1,
-                "items": {"type": "string", "minLength": 1},
-                "description": "Explicit experiment argv; reference standalone captured programs as /input/<relative-path>."},
-                metrics={"type": "array", "items": declared["properties"]["metric"], "minItems": 0 if shared else 1, "maxItems": 1,
-                    "description": "Exactly the declared measurement.metric."})
-            if frozen_experiment is not None and frozen_experiment.get("measurement") is not None:
-                additions["measurement"] = {"const": frozen_experiment["measurement"]}
-                additions["metrics"] = {"const": frozen_experiment["metrics"]}
-            if shared: additions["evaluation_scope"] = {"enum": ["LOCAL", "GOAL"]}
-        candidate = {**candidate, "properties": {**candidate["properties"], **additions},
-            "required": [*candidate["required"], "measurement",
-                         *(["execution_argv", *(["evaluation_scope"] if shared else [])] if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" else [])]}
+        measurement = ({"anyOf": [declared, {"type": "null"}]}
+                       if grounding_acceptance_request(request) else declared)
+        candidate = {**candidate, "properties": {**candidate["properties"], "measurement": measurement},
+                     "required": [*candidate["required"], "measurement"]}
     if synthesis and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION:
         candidate = {"type": "object", "additionalProperties": False,
             "properties": {"schema_version": {"const": 1},
@@ -2796,6 +2832,9 @@ def _output_schema(
         "properties": properties,
         "required": required,
     }
+    if request.command.value == "EXPERIMENT_EXECUTION" and any(
+            item.ref.endswith("--expert-config") for item in request.input_artifacts):
+        schema["$defs"] = {"ExperimentSpecCandidate": _experiment_candidate_schema(request)}
     if reference_aliases and request.schema_version >= 19:
         from .reference_aliases import aliased_schema, reference_aliases as build_aliases
         return aliased_schema(schema, build_aliases(request, schema))

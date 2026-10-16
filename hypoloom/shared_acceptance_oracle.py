@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path, PurePosixPath
+import re
 import tempfile
 from typing import Any, Mapping
 
@@ -500,7 +501,22 @@ def audit_shared_result(
     return interpret_shared_acceptance(declaration, recorded)
 
 
-def audit_parser_process_requests(request, payload):
+def _parser_command(declaration, interpreter, adapter_version=None):
+    """Project argv with the recorded producer's existing version semantics."""
+    from .measurement_execution import _parser_input_argument
+
+    command = list(declaration["parser_argv"])
+    if command[0] == "python":
+        command[0] = interpreter
+    version = re.fullmatch(r"claude-code-bwrap/([1-9][0-9]*)", adapter_version or "")
+    if version is not None and int(version[1]) < 83:
+        return ["/input/" + value if value in declaration["parser_files"] else value
+                for value in command]
+    return [_parser_input_argument(value, dict.fromkeys(declaration["parser_files"], b""),
+                                   tuple(declaration["raw_artifacts"])) for value in command]
+
+
+def audit_parser_process_requests(request, payload, *, adapter_version=None):
     """Independently reconstruct the existing raw/local/common driver ABI."""
     outer = request["argv"]
     _need(
@@ -666,13 +682,7 @@ def audit_parser_process_requests(request, payload):
             expected.extend(
                 ("--setenv", name, value) if value else ("--unsetenv", name)
             )
-        command = list(declaration["parser_argv"])
-        if command[0] == "python":
-            command[0] = interpreter
-        command = [
-            "/input/" + value if value in declaration["parser_files"] else value
-            for value in command
-        ]
+        command = _parser_command(declaration, interpreter, adapter_version)
         limits = {
             "argv": command,
             "timeout_seconds": timeout,

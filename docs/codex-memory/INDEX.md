@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Qualification repairs, October 16](../design/qualification-repairs-2026-10-16.md):
+  bounded Oracle producer/reader fixes, exact current G4 history/session checks,
+  reused execution candidate projection and batch-bound adjudication inputs;
+  focused regressions and original paid-output replay precede full qualification.
+
 - [Full dev qualification, October 16](../qualification.md#full-dev-qualification-2026-10-16):
   frozen `8579de8`, complete offline selection, ten retained read-only comparisons,
   independent closure counts, reproduced OOM/parser audit disagreements and GPU

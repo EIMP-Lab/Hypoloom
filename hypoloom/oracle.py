@@ -3011,12 +3011,14 @@ def _measurement_process_requests(request: Any, context: Mapping[str, Any], atte
     """Audit the one-attempt two-phase ABI independently of its driver producer."""
     raw = None
     try:
+        from .shared_acceptance_oracle import _parser_command
+        adapter_version = context.get("request", {}).get("required_adapter_version")
         if context["payload"].get("goal_evaluation") is not None:
             from .shared_acceptance_oracle import audit_parser_process_requests
             plan = json.loads(request["argv"][3])
             if not all(_valid_process_request(value) for value in plan.values() if value is not None):
                 raise ValueError("shared driver contains a malformed internal ProcessRequest")
-            return audit_parser_process_requests(request, context["payload"])
+            return audit_parser_process_requests(request, context["payload"], adapter_version=adapter_version)
         outer = request["argv"]
         if len(outer) != 4 or outer[1:3] != ["-m", "hypoloom.measurement_driver"]:
             raise ValueError("measurement Process lacks the two-phase driver")
@@ -3066,9 +3068,7 @@ def _measurement_process_requests(request: Any, context: Mapping[str, Any], atte
         expected.extend(("--ro-bind", str(package / "measurement_driver.py"), "/measurement-driver.py"))
         environment = {"HOME": "/nonexistent", "PATH": "/runtime/bin:/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1", "TMPDIR": "/tmp", "CUDA_VISIBLE_DEVICES": "", "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "HYPOLOOM_MEASUREMENT_RAW_ROOT": "/raw", "HYPOLOOM_MEASUREMENT_RESULT_PATH": "/parsed/result.json"}
         for name, value in sorted(environment.items()): expected.extend(("--setenv", name, value) if value else ("--unsetenv", name))
-        command = list(declaration.parser_argv)
-        if command[0] == "python": command[0] = interpreter
-        command = ["/input/" + word if word in declaration.parser_files else word for word in command]
+        command = _parser_command(declaration.to_dict(), interpreter, adapter_version)
         limits = {"argv": command, "timeout_seconds": timeout, "max_output_bytes": 1024 * 1024, "max_memory_bytes": 2 * 1024**3}
         expected.extend(("--chdir", "/parsed", "--", interpreter, "/measurement-driver.py", "--parser-limits", json.dumps(limits, sort_keys=True, separators=(",", ":"))))
         if not valid or argv != expected: raise ValueError("two-phase identity, mounts, CPU limits, or argv differ from the preregistration")
@@ -5064,7 +5064,8 @@ def _raw_reported_gpu_oom(observation: Mapping[str, Any], attempt: Mapping[str, 
     if (observation.get("resource_failure") != "gpu_out_of_memory" or attempt["terminal_reason"] != "FAILED"
             or observation.get("terminal_reason") != "FAILED" or type(observation.get("returncode")) is not int
             or observation["returncode"] == 0 or observation.get("synthetic_before_spawn") is True
-            or observation.get("resource_pressure") is not None or not _bounded_trimmed_text(excerpt, 1024)
+            or observation.get("resource_pressure") is not None
+            or not isinstance(excerpt, str) or not 0 < len(excerpt) <= 1024
             or any(ord(c) < 32 or ord(c) == 127 for c in excerpt)
             or re.match(r"(?:torch(?:\.cuda)?\.OutOfMemoryError: CUDA out of memory|cupy\.cuda\.memory\.OutOfMemoryError: Out of memory)", excerpt) is None):
         raise ValueError("reported GPU OOM lacks its failed-workload exception excerpt")

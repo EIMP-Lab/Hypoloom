@@ -88,6 +88,46 @@ def _terminal(host: WorkflowHost, experiment_id: str) -> bool:
     return head is not None and head["state"] == "TERMINAL"
 
 
+def test_execution_mcp_advertises_accepted_candidate_and_runs_it(execution, tmp_path):
+    from hypoloom import host_tools_server
+    from hypoloom.claude_agent_host import _output_schema
+    from hypoloom.native_output import decode_output
+
+    host, request, arguments = execution
+    schema_path = tmp_path / "output-schema.json"
+    schema_path.write_text(json.dumps(_output_schema(request, tool_workspace=True)))
+    completed = subprocess.run(
+        [sys.executable, host_tools_server.__file__, "--socket", str(tmp_path / "unused.sock"),
+         "--scope", "execution", "--output-schema", str(schema_path)],
+        input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n",
+        text=True, capture_output=True, timeout=5, check=True)
+    tools = json.loads(completed.stdout)["result"]["tools"]
+    submit = next(tool for tool in tools if tool["name"] == "submit_experiment")
+    schema = submit["inputSchema"]["properties"]["candidate"]
+    design = next(AgentRequest.from_dict(observation["request"])
+        for attempt in host.store.list_attempts() if attempt["kind"] == "AGENT"
+        for observation in [json.loads(attempt["observation_json"])]
+        if observation["request"]["command"] == "EXPERIMENT_DESIGN_IMPLEMENT")
+    assert schema == _output_schema(design)["properties"]["typed_candidate"]
+    assert decode_output(json.dumps(arguments["candidate"]), schema) == arguments["candidate"]
+    for candidate in (
+        {key: value for key, value in arguments["candidate"].items() if key != "owner_role"},
+        {**arguments["candidate"], "owner_role": "foreign-role"},
+        {**arguments["candidate"], "execution_argv": ["python", "/input/experiment.py"]},
+        {"summary": "execution finished", "supporting_refs": []},
+    ):
+        with pytest.raises(ValueError):
+            decode_output(json.dumps(candidate), schema)
+    accepted = host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)
+    _until(host, lambda: _terminal(host, accepted["exp_id"]))
+    result = host.handle_agent_tool(request.attempt_id, "wait_experiment", {"exp_id": accepted["exp_id"]})
+    assert result["outcome"]["outcome"] == "SUCCESS"
+    processes = [row for row in host.store.list_attempts() if row["kind"] == "PROCESS"]
+    assert processes and all(row["state"] == "CLOSED" for row in processes)
+    report = Oracle(host.store.database_path, host.publisher.root).audit(request.run_id)
+    assert report.ok, report.to_dict()
+
+
 def test_submit_is_creation_and_replay_is_exactly_once(execution) -> None:
     host, request, arguments = execution
     first = host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)

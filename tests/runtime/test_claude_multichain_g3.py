@@ -74,6 +74,15 @@ class _BatchScenario(_MemoryScenario):
     def _expected_outcome(self, request):
         return "SUCCESS"
 
+    def _initial_tool_use_ids(self, request):
+        return ()
+
+    def _assert_initial_tool_history(self, document, request):
+        ids = [block.get("id") for message in document["messages"]
+               for block in message.get("content", ())
+               if isinstance(block, dict) and block.get("type") == "tool_use"]
+        assert ids == list(self._initial_tool_use_ids(request)), "unexpected prior tool history"
+
     def record(self, document):
         actual_document = document
         # Every real provider tool-use ID is unique across the resumed native
@@ -108,8 +117,7 @@ class _BatchScenario(_MemoryScenario):
                     if peer != chain:
                         assert nonce not in text, "another chain's actual tool context leaked"
                 if request.schema_version >= 24 and step == 1:
-                    assert not any(block.get("type") == "tool_use"
-                        for message in document["messages"] for block in message.get("content", ()) if isinstance(block, dict))
+                    self._assert_initial_tool_history(document, request)
                 elif request.schema_version < 24 and (request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT or step > 1 or iteration > 1):
                     assert self.chain_nonces[chain] in text, "own previous native tool context was lost"
                 if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:

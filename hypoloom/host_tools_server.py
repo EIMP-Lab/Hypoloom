@@ -143,11 +143,16 @@ _READING_TOOLS = ({"name": "read_papers", "description": "Submit independent que
 _TOOL_SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in (*_TOOLS, *_RESOURCE_TOOLS, *_WEB_TOOLS, *_READING_TOOLS)}
 
 
-def scoped_tools(scope: str, tools: tuple[str, ...] | None = None) -> tuple[dict[str, Any], ...]:
+def scoped_tools(scope: str, tools: tuple[str, ...] | None = None, *,
+                 candidate_schema: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], ...]:
     if scope == "execution": selected = (*_TOOLS, *_RESOURCE_TOOLS)
     elif scope == "resources": selected = _RESOURCE_TOOLS
     elif scope in {"grounding", "literature"}: selected = (*_WEB_TOOLS, *(_READING_TOOLS if scope == "literature" and tools is not None else ()))
     else: raise ValueError("unknown Host tool scope")
+    if scope == "execution" and candidate_schema is not None:
+        selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": {
+            **item["inputSchema"]["properties"], "candidate": candidate_schema}}}
+            if item["name"] == "submit_experiment" else item for item in selected)
     if tools is None: return selected
     if not isinstance(tools, tuple) or any(not isinstance(name, str) for name in tools):
         raise ValueError("Host tool scope subset must be a tuple of names")
@@ -520,9 +525,12 @@ def call_tool(socket_path: str, tool: str, arguments: Any) -> dict[str, Any]:
 def serve_stdio(
     socket_path: str, *, max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
     scope: str = "execution", tools: tuple[str, ...] | None = None,
+    output_schema_path: str | None = None,
 ) -> int:
     """MCP newline JSON transport; stdout contains only protocol responses."""
-    selected_tools = scoped_tools(scope, tools)
+    schema = {} if output_schema_path is None else _decode(Path(output_schema_path).read_bytes())
+    selected_tools = scoped_tools(scope, tools,
+        candidate_schema=schema.get("$defs", {}).get("ExperimentSpecCandidate"))
     allowed_tools = {tool["name"] for tool in selected_tools}
     while raw := sys.stdin.buffer.readline(max_request_bytes + 1):
         request_id = None
@@ -588,9 +596,11 @@ def main() -> int:
     parser.add_argument("--socket", required=True)
     parser.add_argument("--scope", choices=("execution", "resources", "grounding", "literature"), default="execution")
     parser.add_argument("--tool", action="append")
+    parser.add_argument("--output-schema")
     arguments = parser.parse_args()
     return serve_stdio(arguments.socket, scope=arguments.scope,
-        tools=None if arguments.tool is None else tuple(arguments.tool))
+        tools=None if arguments.tool is None else tuple(arguments.tool),
+        output_schema_path=arguments.output_schema)
 
 
 if __name__ == "__main__":

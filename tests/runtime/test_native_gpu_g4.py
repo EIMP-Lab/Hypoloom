@@ -223,14 +223,23 @@ def _assert_closure(host, run_id, scenario, uuids, chains, queue, root, host_key
     assert {row["session"]["expert_resources"]["plugin"]["commit"] for row in observations
             if "expert_resources" in row["session"]} == {evolved["plugin_update"]["base_commit"]}
     sessions = {}
+    fresh_sessions = set()
     for chain in chains:
         nodes = [row for row in observations if row["request"]["command"] in {item.value for item in _INNER}
                  and row["request"]["task_context"]["key"]["chain"] == chain]
         assert len(nodes) == (6 if chain == chains[0] else 3)
         sessions[chain] = nodes[0]["session"]["session_id"]
-        assert {row["session"]["session_id"] for row in nodes} == {sessions[chain]}
-        assert "--fork-session" in nodes[0]["session"]["launch_arguments"]
-        assert all(row["session"]["launch_arguments"] == ["--resume", sessions[chain]] for row in nodes[1:])
+        if nodes[0]["request"]["schema_version"] >= 24:
+            ids = {row["session"]["session_id"] for row in nodes}
+            assert len(ids) == len(nodes) and not ids & fresh_sessions
+            fresh_sessions.update(ids)
+            assert all(row["session"]["parent_session_id"] is None and
+                       row["session"]["launch_arguments"] == ["--session-id", row["session"]["session_id"]]
+                       for row in nodes)
+        else:
+            assert {row["session"]["session_id"] for row in nodes} == {sessions[chain]}
+            assert "--fork-session" in nodes[0]["session"]["launch_arguments"]
+            assert all(row["session"]["launch_arguments"] == ["--resume", sessions[chain]] for row in nodes[1:])
     assert len(set(sessions.values())) == len(chains)
     assert len(host.store.list_facts(run_id, "HypothesisProposed")) == len(chains)
     outcomes = host.store.list_facts(run_id, "CanonicalOutcomeAccepted")

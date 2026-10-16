@@ -156,6 +156,11 @@ class _SharedGpuScenario(_GpuScenario):
         self.skill_results = {}
         self.history = {}
 
+    def _initial_tool_use_ids(self, request):
+        if request.command in _RESOURCE_COMMANDS and self.resource_steps[request.attempt_id] == 3:
+            return ("resource_skill_" + request.attempt_id, "resource_query_" + request.attempt_id)
+        return ()
+
     def record(self, document):
         request = _request_from_provider(document)
         identity = request.attempt_id
@@ -172,6 +177,8 @@ class _SharedGpuScenario(_GpuScenario):
                 assert self.history.setdefault(identity, history) == history
             if request.command in _RESOURCE_COMMANDS:
                 phase = self.resource_steps[identity]
+                if phase == 0 and request.schema_version >= 24:
+                    self._assert_initial_tool_history(document, request)
                 if phase < 3:
                     phase += 1
                     self.resource_steps[identity] = phase
@@ -722,6 +729,28 @@ def test_shared_native_submit_keeps_explicit_count_and_unresolved_estimate(
     assert calls[0][2]["gpus"] == count
     assert calls[0][2]["resource_estimate"] == _ESTIMATE
     assert calls[0][2]["resource_estimate"]["measurement_attempt_ids"] == []
+
+
+@pytest.mark.parametrize("phase,history,valid", (
+    (0, (), True), (0, ("resource_skill_current",), False),
+    (3, ("resource_skill_current", "resource_query_current"), True),
+    (3, (), False), (3, ("resource_skill_current",), False),
+    (3, ("resource_skill_foreign", "resource_query_foreign"), False),
+    (3, ("resource_query_current", "resource_skill_current"), False),
+    (3, ("resource_skill_current", "resource_query_current", "resource_query_current"), False),
+))
+def test_resource_prelude_keeps_exact_current_attempt_history(tmp_path, phase, history, valid):
+    from types import SimpleNamespace
+    scenario = _SharedGpuScenario(tmp_path, ("GPU-test",))
+    request = SimpleNamespace(command=AgentCommand.EXPERIMENT_EXECUTION, attempt_id="current")
+    scenario.resource_steps[request.attempt_id] = phase
+    document = {"messages": [{"role": "assistant", "content": [
+        {"type": "tool_use", "id": identity} for identity in history]}]}
+    if valid:
+        scenario._assert_initial_tool_history(document, request)
+    else:
+        with pytest.raises(AssertionError, match="unexpected prior tool history"):
+            scenario._assert_initial_tool_history(document, request)
 
 
 @pytest.mark.parametrize("body_present", [True, False])

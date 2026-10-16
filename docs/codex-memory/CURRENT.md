@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 16 qualification repairs are in progress on `ed74d1e`:
+  [bounded plan](../design/qualification-repairs-2026-10-16.md). Existing OOM
+  producer excerpts and versioned parser argv now agree with the independent
+  reader. Execution MCP reuses the design-candidate projection; adjudication
+  projects exact accepted batch pairs, with adapter 85. Shared/native GPU fixture
+  assertions enforce current prelude/session semantics. Focused audit checks pass
+  188; interface checks pass 459 with four GPU skips. Offline replay rejects the
+  nine original bad submits/four bad adjudications while admitting both accepted
+  designs. Two native CPU flows close 51 Agents/six Processes with six outcomes
+  and no residue. Read-only audit clears the nine current-reader findings in
+  121755; 120121 retains exactly 11 known historical findings; both roots unchanged.
+  Full repaired-candidate promotion is pending. Old runs and failures
+  remain unchanged; original paid cohort still accounts 10.6981888 USD.
+
 - October 16 full qualification of `8579de8` is complete: NO-GO.
   G1 passes 8,319 / 159 opt-in skips, including 191 G2 fixtures and seven G3 flows.
   Ten retained roots are unchanged; eight audits pass, one keeps 11 known parser

@@ -281,6 +281,7 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
             "/runtime/host_tools_server.py", "--ro-bind", str(host_socket), "/host-tools.sock"))
         config = {"mcpServers": {"host-tools": {"command": "/usr/bin/python3",
             "args": ["/runtime/host_tools_server.py", "--socket", "/host-tools.sock", "--scope", scope,
+                *(("--output-schema", "/runtime/output-schema.json") if scope == "execution" and output_schema_path is not None else ()),
                 *(arg for name in tools for arg in ("--tool", name))]}}}
         allowed.extend("mcp__host-tools__" + tool["name"] for tool in host_tools_server.scoped_tools(scope, tools))
     for source, destination in (*runtime_mounts(extra_paths), *profile_mounts):
@@ -726,6 +727,13 @@ def full_cc_instruction(request: AgentRequest) -> str:
         )
     if request.command.value == "EXPERIMENT_EXECUTION" and request.schema_version >= 22:
         return common + (
+            "The submit_experiment candidate uses the same ExperimentSpecCandidate shape as DESIGN, "
+            "also exposed in its MCP input schema and /runtime/output-schema.json $defs. "
+            "Read the accepted EXPERIMENT_DESIGN_IMPLEMENT response's typed_candidate from its supplied input "
+            "as the starting candidate; do not copy required_experiment_spec, a result contract or a final execution summary. "
+            "For an ordinary fixed-metric component, pass the program argv in the tool's command field and omit "
+            "candidate.execution_argv, measurement and evaluation_scope. Only an admitted declared-measurement "
+            "component uses those candidate fields; preserve its accepted declaration and explicit argv. "
             "First list_my_experiments. If none exist, submit the accepted candidate through "
             "submit_experiment; Host captures actual workspace bytes and owns execution. "
             "After a new submission, normally return the typed summary with waiting_for_experiment_id "
@@ -776,8 +784,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
     if request.command.value == "ADJUDICATE":
         return common + (
             "Return the supplied AdjudicationCandidate, not a generic typed task response. "
-            "Cover every accepted chain exactly once. Each node_id and every entry in verdicts[].evidence "
-            "must be an exact admitted reference ID from the rendered schema; never put prose in evidence. "
+            "Cover every accepted chain exactly once. Read --batch-context.chains: chain_id is an exact key, "
+            "and node_id is exactly its mapped hypothesis ID, never an input ref, fact_id or outcome_id. "
+            "Each entry in verdicts[].evidence must instead be an exact admitted evidence reference ID "
+            "from the rendered schema; never put prose in evidence. "
             "Put explanations in summary; do not add task_kind or supporting_refs fields. "
             "Preserve the supplied chain identities and report only evidence-backed verdicts. "
             "For each comparable terminal tip, evidence must include its outcome_id exactly; its outcome_fact_id "
