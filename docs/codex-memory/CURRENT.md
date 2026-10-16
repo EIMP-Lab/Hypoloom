@@ -1,18 +1,20 @@
 # Current Hypoloom development state
 
-- October 16 qualification repairs are in progress on `ed74d1e`:
-  [bounded plan](../design/qualification-repairs-2026-10-16.md). Existing OOM
-  producer excerpts and versioned parser argv now agree with the independent
-  reader. Execution MCP reuses the design-candidate projection; adjudication
-  projects exact accepted batch pairs, with adapter 85. Shared/native GPU fixture
-  assertions enforce current prelude/session semantics. Focused audit checks pass
-  188; interface checks pass 459 with four GPU skips. Offline replay rejects the
-  nine original bad submits/four bad adjudications while admitting both accepted
-  designs. Two native CPU flows close 51 Agents/six Processes with six outcomes
-  and no residue. Read-only audit clears the nine current-reader findings in
-  121755; 120121 retains exactly 11 known historical findings; both roots unchanged.
-  Full repaired-candidate promotion is pending. Old runs and failures
-  remain unchanged; original paid cohort still accounts 10.6981888 USD.
+- October 16 repaired candidate `efe488b`: G0–G4 evidence complete; G5 pending.
+  Runtime stays at `3725a3d` / adapter 85: OOM/parser audit repair, reused execution
+  candidate projection and exact adjudication batch pairs. Two full offline runs
+  each preserve one fixture failure; both causes are repaired. Final identity-based
+  coverage is 8,369 passed / 159 skips, including a 35-case procfs-fixture refresh;
+  do not claim an uninterrupted green full invocation. G2: all ten roots unchanged,
+  nine audits clean, 120121 retains 11 known parser findings, nine findings in
+  121755 resolved; all Hosts/1,219 groups absent. Seven G3 flows close 185 Attempts.
+  Shared G4's 18 distinct checks pass after fixture-policy/wait repairs: 72 Agents,
+  eight CUDA Processes/outcomes, all closed. Supplemental native G4 closes another
+  42 Agents/six CUDA Processes with six outcomes. All Oracles/cleanup pass.
+  No new paid call: additional 20 USD (6/8/6) awaits the user's answer; previous
+  10.6981888 USD includes 6 USD unknown reservations and stays charged. No automatic
+  paid retry or historical mutation. [Plan](../design/qualification-repairs-2026-10-16.md)
+  / [evidence and limits](../qualification.md#qualification-repairs-and-recheck-2026-10-16).
 
 - October 16 full qualification of `8579de8` is complete: NO-GO.
   G1 passes 8,319 / 159 opt-in skips, including 191 G2 fixtures and seven G3 flows.

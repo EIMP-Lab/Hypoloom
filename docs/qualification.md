@@ -2,6 +2,78 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Qualification repairs and recheck (2026-10-16)
+
+Final code/test candidate: `efe488b`. Production runtime remains byte-identical
+to `3725a3d` (adapter `claude-code-bwrap/85`); subsequent commits repair qualification
+fixtures. [Design and bounded failures](design/qualification-repairs-2026-10-16.md).
+Evidence is retained in `.local/qualification/repairs-20261016/`, including every
+original failure. Disposable roots use `/tmp/hr16*` and `/tmp/hf16*`.
+
+**G0–G4 evidence is complete after affected-case repairs. Full G0–G5 promotion
+remains pending: no new paid G5 sample has been launched.** The additional
+20 USD proposal (local/common/resource 6/8/6 USD) awaits the user's answer.
+The previous cohort still accounts 10.6981888 USD, including 6 USD unknown usage;
+no failure, reservation or charge is erased by choosing a new directory.
+
+| Stage | Final evidence |
+| --- | --- |
+| G0 | 188 audit regressions pass; 459 interface/Host-tool checks pass with four explicit GPU skips. Two native CPU flows pass: 51 Agents, six Processes and six outcomes, all Attempts CLOSED/SUCCEEDED, no duplicate ownership or live groups. Original paid-output replay admits both accepted designs and rejects nine malformed submits and four malformed adjudications. |
+| G1 | Complete selection coverage reconciles **8,369 passed / 159 explicit skips**, all **8,528 identities**, with no missing or extra case. This includes the final affected-file refresh described below; it is **not an uninterrupted green full-suite invocation**. Compile, Ruff, dependency and whitespace checks pass. |
+| G2 fixtures | All **191 selected cases pass within the complete G1 selection**. |
+| G2 retained | All **ten roots unchanged**; nine current-reader audits pass, and one retains exactly 11 expected historical parser findings. The nine current-reader findings in `MERC-causal-202610121755` are resolved; there are no new unexplained findings. All 1,219 recorded groups are absent. Separate Host observation finds all ten controller locks unheld and control sockets missing. Retained pool audit passes with 445 RELEASED requests. |
+| G3 | All **seven selected production scenarios pass within G1**. Independent census: 169 Agents / 16 Processes, all 185 CLOSED, 15 outcomes, seven clean Oracles and no live members of 154 recorded process groups. |
+| G4 shared | **18 distinct cases pass** after the affected initial-memory refresh: 16 helpers plus both real CUDA scenarios. Four qualifying Hosts close 72 Agents and eight CUDA Processes, publish eight outcomes, and release all eight pool requests. Independent run/pool audits pass; no live members of 80 recorded groups. Initial trials are exclusive; calibrated trials actually overlap on the same GPU, including 23.53 seconds in the ordinary case. |
+| G4 supplemental | Both native cases pass in 230.84 seconds: three chains queue on one GPU and iterate, then the exact two-GPU case iterates. 42 Agents / six CUDA Processes, all 48 CLOSED, six outcomes, clean Oracles and no live groups. Final GPU compute-process inventory is empty. |
+| G5 | **Pending authorization and execution.** Local/common/resource samples retain their previous failures until new bounded real-model evidence is obtained. Offline schema replay does not replace this stage. |
+
+The first complete `3725a3d` offline invocation records 8,368 passes, 159 skips and
+one failure in 1,245.47 seconds. Shared-goal success correctly stops the tracked
+template before its sixth design is dispatched. Its fixture now reconciles exact
+committed dispatches, Agent Attempts, accepted batches and preregistered hypotheses,
+while retaining all six admitted hypotheses and every post-goal admission ban.
+Missing, duplicate and foreign design records fail counterexamples. The repaired
+template passes its standalone run and the second complete selection.
+
+The complete `8f68e67` selection records 8,368 passes, 159 skips and one different
+failure in 1,258.42 seconds: procfs returns ESRCH while a killed Git helper
+disappears during reading. Only the fixture's disappearance handler changes.
+All 35 affected-file cases pass; an injected read-after-exit ESRCH changes from
+FAIL to PASS, while an injected permission error remains rejected. All ten helper
+PIDs from the original failure and probes are independently absent. Identity-based
+reconciliation retains the original failure and refreshes those 35 cases; it does
+not claim a third clean complete invocation. Runtime bytes never change during
+these fixture corrections.
+
+The complete second-run census reads 1,229 fixture databases and 12,367 Attempt
+rows, with no duplicate owners and 2,655 absent recorded groups. Its 114 OPEN rows
+belong to intentionally unfinished fixtures, not terminal Host-closure claims;
+73 legacy/invalid test databases are explicitly excluded. G3 closure is counted
+separately above.
+
+Shared physical G4 first records 16 passes/two failures at the obsolete 25-percent
+memory-margin assertion, despite eight successful CUDA Processes and clean audits.
+The current policy uses a 15-percent margin with a 512 MiB minimum after one
+successful measurement, and exclusive first trials. Its corrected cohort records
+17 passes/one failure: the initial-memory fixture overlooks the higher-priority
+`exclusive_wait` reason. The final affected selection passes 17 cases with the
+already-passed ordinary case deselected. It still requires a real pre-Process wait,
+independently insufficient live allocatable memory, exact calibrated budgets,
+actual shared overlap, complete attribution and terminal cleanup. Original
+failures remain in `g4.xml` and `g4-recheck.xml`; `g4-results.json` reconciles the
+18 distinct current cases.
+
+All 196 runtime files match source, wheel, isolated installation and a fresh
+bundle. Installed CLI/MCP and a real installed Host CPU smoke pass outside the
+checkout: four closed Attempts, two CPU Processes, clean Oracle, Host exit zero,
+no control socket or process residue. Source-archive and final report checks are
+recorded alongside the package evidence. No shared installation is replaced.
+
+`MERC-causal-202610120121` still has its 11 known parser-sentinel findings. G2
+preserves these expected findings; it does not bless the historical scientific
+values or rewrite them. All historical run/bundle data remains unchanged.
+Network-outage and machine-reboot campaigns remain outside the requested scope.
+
 ## Full dev qualification (2026-10-16)
 
 Candidate: `8579de82c117049af6193213ba8f977b0729258e`. Runtime and test source

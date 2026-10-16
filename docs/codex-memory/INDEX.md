@@ -3,7 +3,10 @@
 - [Qualification repairs, October 16](../design/qualification-repairs-2026-10-16.md):
   bounded Oracle producer/reader fixes, exact current G4 history/session checks,
   reused execution candidate projection and batch-bound adjudication inputs;
-  focused regressions and original paid-output replay precede full qualification.
+  [recheck evidence](../qualification.md#qualification-repairs-and-recheck-2026-10-16)
+  preserves two full offline failures and affected-case repairs, clean current G2
+  findings except 11 known historical parser differences, completed shared/native
+  G4 and pending G5 authorization. Old costs and run data remain unchanged.
 
 - [Full dev qualification, October 16](../qualification.md#full-dev-qualification-2026-10-16):
   frozen `8579de8`, complete offline selection, ten retained read-only comparisons,
