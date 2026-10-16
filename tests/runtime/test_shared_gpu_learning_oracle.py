@@ -240,13 +240,24 @@ def test_omitted_estimate_retains_floor_and_v11_does_not_acquire_learning_semant
 
 
 @pytest.mark.parametrize("change", [None, "sum", "missing_owned", "empty_count", "unknown_numeric"])
-def test_terminal_observation_uses_the_same_independent_ownership_check(change):
+@pytest.mark.parametrize("performance", [False, True])
+def test_terminal_observation_uses_the_same_independent_ownership_check(change, performance):
     case, context = learning_case()
     resource, issues = audit(case, context)
     process = context["attempts"][-1]
     dispatch = json.loads(context["transitions"][0]["payload_json"])
     dispatch["gpu_uuid"] = GPU_A
     observation = context["observations"]["prior-process"]
+    if performance:
+        # This fixture defaults to the retained, unprefixed memory shape. Device
+        # performance samples are emitted with the current prefixed shape.
+        usage = observation["resource_usage"]
+        for name in ("total_memory_mib", "initial_free_memory_mib", "minimum_free_memory_mib",
+                     "latest_free_memory_mib", "latest_used_memory_mib", "latest_utilization_percent"):
+            usage[f"gpu_{name}"] = usage.pop(name)
+        usage.update(gpu_latest_power_draw_mw=210000,
+            gpu_latest_power_limit_mw=350000, gpu_latest_temperature_c=65,
+            gpu_latest_sm_clock_mhz=1695)
     bound = oracle._audit_shared_process_resource(resource, dispatch, process, observation, issues)
     assert issues == []
     owned = observation["resource_usage"]["owned_memory"]

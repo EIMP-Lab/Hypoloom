@@ -134,3 +134,29 @@ are unchanged. Existing package identity covers these resources; new plugins get
 the seed, while retained plugins and already-bound requests keep their versions.
 Verification checks seed delivery, version isolation, native Skill loading and
 packaging; it does not establish future model behavior or actual training speedup.
+
+## Optional GPU telemetry audit repair (2026-10-16)
+
+Read-only audit of `MERC-causal-202610131405` reproduces 44
+`process_resource_observation_mismatch` findings. The tracker already records
+optional power draw/limit, temperature and SM clock, but the Oracle still requires
+the older exact field set. All 44 result artifacts validate; the mismatch is at
+the device-observation reader boundary, not evidence of changed experiment results.
+
+Extend the existing Oracle's current prefixed observation shape with exactly these
+four optional fields. A present value must be a nonnegative integer, excluding
+booleans; unavailable values remain absent, as emitted by the tracker. Unknown
+fields, required memory fields, GPU grant identity, pressure causes and attributable
+ownership remain independently checked. Multiple devices use the same per-device
+check. Historical unprefixed observations retain their existing interpretation.
+
+No new schema, version marker, digest or validator is needed: the existing stored
+observations, producer types and focused regressions identify the mismatch. Tests
+must include actual tracker output, malformed observations, owned-memory evidence
+and Host collection/publication, rather than dropping telemetry to make audit pass.
+The corrected independent reader may inspect the retained run; its frozen bundle,
+database, artifacts, scientific verdict and lifecycle state stay unchanged.
+Network failure handling and restart recovery are outside this user-selected repair.
+
+See [qualification](../qualification.md#optional-gpu-telemetry-audit-2026-10-16)
+for before/after audit and validation scope.

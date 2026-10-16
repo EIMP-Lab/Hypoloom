@@ -6,6 +6,7 @@ jobs deliberately stay open until the test completes their synthetic result.
 
 import json
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
@@ -55,15 +56,31 @@ def _clean(host):
     return report
 
 
+@pytest.mark.parametrize("performance", [False, True])
 def test_shared_gpu_run_closes_collection_publication_and_independent_oracles(
-    environment,
+    environment, monkeypatch, performance,
 ):
     make, free, pool, runtime = environment
     host = make("alpha")
+    if performance:
+        observe = host.compute_resources.observe_runtime
+        monkeypatch.setattr(host.compute_resources, "observe_runtime", lambda uuid:
+            replace(observe(uuid), power_draw_mw=210000, power_limit_mw=350000,
+                    temperature_c=65, sm_clock_mhz=1695))
     host.runner.complete = True
     create(host, runtime)
     _finish(host)
 
+    executions = {fact["execution_id"] for fact in specs(host)}
+    processes = [row for row in host.store.list_attempts()
+                 if row["kind"] == "PROCESS" and row["execution_id"] in executions]
+    assert processes
+    for row in processes:
+        usage = json.loads(row["observation_json"])["resource_usage"]
+        assert ("gpu_latest_power_draw_mw" in usage) is performance
+        if performance:
+            assert usage["gpu_latest_power_draw_mw"] == 210000
+            assert usage["gpu_latest_temperature_c"] == 65
     _clean(host)
     assert specs(host)
     assert all(

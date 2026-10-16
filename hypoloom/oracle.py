@@ -5653,7 +5653,18 @@ def _audit_process_resource_observation(
     }
     if resource.get("attributable") is True: expected_keys.add("owned_memory")
     if renamed and usage.get("pressure_exceeded") is True: expected_keys.add("pressure_attribution")
-    valid = isinstance(usage, Mapping) and set(usage) == expected_keys
+    # The tracker omits unsupported device samples. Present samples retain their
+    # units and strict integer types; they do not replace memory/ownership checks.
+    optional_keys = {
+        "gpu_latest_power_draw_mw", "gpu_latest_power_limit_mw",
+        "gpu_latest_temperature_c", "gpu_latest_sm_clock_mhz",
+    } if renamed else set()
+    valid = (
+        isinstance(usage, Mapping)
+        and set(usage) - optional_keys == expected_keys
+        and all(type(usage[key]) is int and usage[key] >= 0
+                for key in optional_keys & set(usage))
+    )
     if valid and resource.get("attributable") is True:
         try:
             _raw_owned_peak(observation, resource["attribution_attempt"], (resource.get("gpu_uuid"),), required=True)

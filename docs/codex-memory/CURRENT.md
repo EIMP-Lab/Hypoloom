@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 16 GPU telemetry audit: the existing Oracle accepts exactly the four
+  optional device performance fields with nonnegative integer validation. Required
+  memory, GPU identity, pressure, ownership and unknown-field checks remain strict.
+  Latest MERC read-only audit changes from 44 telemetry findings to zero issues;
+  44 valid artifacts/204 transcripts, FAILED r192 and original bundle stay intact.
+  388 focused cases pass after fixture corrections; native two-cycle CPU closure
+  has 27 closed Agents/two Processes/two outcomes and no live groups. All 196 package
+  files match source/install/fresh bundle. No new schema,
+  authority, full G1, physical-GPU/paid qualification or shared-install change.
+  Network/restart recovery is excluded by user direction.
+  [Design](../design/experiment-methods-and-skill-observation.md#optional-gpu-telemetry-audit-repair-2026-10-16) /
+  [validation](../qualification.md#optional-gpu-telemetry-audit-2026-10-16).
+
 - October 13 computation efficiency: the existing research-workflow performance
   branch now covers bounded profiling, independent-loop/pairwise rewrites,
   synchronization and compilation tradeoffs. Preserve outputs/gradients and the

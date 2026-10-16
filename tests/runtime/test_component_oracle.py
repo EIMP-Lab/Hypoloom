@@ -4222,7 +4222,8 @@ def renamed_pressure_usage(gpu_uuid: str, attribution: str | None) -> dict[str, 
 
 
 @pytest.mark.parametrize("attribution,owned", [("self", 552), ("unknown", None)])
-def test_oracle_accepts_renamed_attributed_pressure_cancel(attribution, owned) -> None:
+@pytest.mark.parametrize("performance", [False, True])
+def test_oracle_accepts_renamed_attributed_pressure_cancel(attribution, owned, performance) -> None:
     gpu_uuid = "GPU-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     resource = {
         "expected_kind": "GPU",
@@ -4241,6 +4242,10 @@ def test_oracle_accepts_renamed_attributed_pressure_cancel(attribution, owned) -
             "terminate_grace_seconds": 30.0,
         },
     }
+    if performance:
+        observation["resource_usage"].update(gpu_latest_power_draw_mw=210000,
+            gpu_latest_power_limit_mw=350000, gpu_latest_temperature_c=65,
+            gpu_latest_sm_clock_mhz=1695)
     issues: list[OracleIssue] = []
     _audit_process_resource_observation(observation, resource, "attempt", issues)
     assert issues == []

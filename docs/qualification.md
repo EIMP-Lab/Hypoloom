@@ -2,6 +2,57 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Optional GPU telemetry audit (2026-10-16)
+
+The [reader repair](design/experiment-methods-and-skill-observation.md#optional-gpu-telemetry-audit-repair-2026-10-16)
+addresses a reproduced producer/Oracle disagreement on base `b4445ad`.
+The existing tracker emits four optional nonnegative integer fields for device
+power draw/limit, temperature and SM clock. The Oracle now validates these fields
+in the current prefixed shape, retaining required fields, unknown-field rejection,
+exact GPU identity, memory arithmetic, pressure decisions and ownership validation.
+No record format, writer, lifecycle policy or scientific acceptance rule changes.
+Evidence is in `.local/qualification/oracle-telemetry-20261016/`.
+
+- `retained-before.json`: the original bundle reports exactly **44 resource
+  observation mismatches** in `MERC-causal-202610131405`, with 44 valid result
+  artifacts and 204 transcripts. `retained-after.json`: the corrected independent
+  reader completes the full audit with **no issues**, preserving these counts.
+- `retained-census.json` independently counts **204 closed Agents, 44 closed
+  Processes, 44 published outcomes and 44 released pool requests**, with no duplicate
+  artifact owner. Audit reports no pending effects or owned process residue.
+  Database/WAL size and modification time are unchanged across the read-only audit.
+  The run remains **FAILED r192** with its recorded INCONCLUSIVE scientific verdict;
+  an audit pass establishes record consistency, not research success or recovery.
+- `red-corrected-fixture.xml`: **12 failures / 46 passes** before the reader change,
+  including actual tracker output, multi-device samples, attributable ownership,
+  pressure closure and Host publication. Earlier `red.xml` also retains two new
+  test-fixture mistakes: candidate-validation CPU Processes have no GPU usage.
+  The corrected assertion selects the preregistered experiment executions.
+- `focused.xml` records **387 passes / one failure**: the newly parameterized
+  ownership fixture combined historical memory names with current telemetry.
+  Correcting that fixture to the producer's prefixed memory shape leaves the
+  historical branch intact; `ownership.xml` passes all **53 affected checks**.
+  Identity-based reconciliation is **388 distinct passing focused cases**, not a
+  second full-suite run. Invalid optional values, unknown fields, absent required
+  memory, wrong grants, malformed owned-memory proofs and inconsistent pressure
+  remain rejected. Synthetic GPU Host/socket/pool closure passes both with and
+  without optional telemetry; it does not execute CUDA.
+- `native.xml`: **one installed native-CLI/local-provider two-cycle CPU flow
+  passes**, including collection, publication and later actions. Independent
+  `native-census.json` counts **27 closed Agents, two closed CPU Processes and two
+  outcomes**, no duplicate artifact owner and no live members of 29 recorded
+  process groups. Existing run and pool Oracles pass.
+
+The wheel, isolated installation and fresh runtime bundle match all **196 package
+files** byte for byte against source (`package.json`); installed CLI help works
+outside the checkout. The shared installation and retained bundle are untouched.
+
+This is focused audit repair, not full G1 or a formal release qualification.
+No physical GPU workload, paid-model call, retained-run mutation, shared-install
+replacement or service change is performed. The original bundle and original red
+findings are preserved; an updated independent observer/reader uses the correction.
+Network failure handling and restart recovery are explicitly outside this repair.
+
 ## Computation efficiency skill guidance (2026-10-13)
 
 The [skill extension](design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13)

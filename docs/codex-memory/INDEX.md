@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Optional GPU telemetry audit](../design/experiment-methods-and-skill-observation.md#optional-gpu-telemetry-audit-repair-2026-10-16):
+  strict optional device fields in the existing Oracle, preserved resource/ownership
+  checks and unchanged retained runs. [Validation](../qualification.md#optional-gpu-telemetry-audit-2026-10-16)
+  records 44 retained findings resolved by read-only audit, focused counterexamples,
+  native CPU closure and the explicit network/restart scope exclusion.
+
 - [Computation efficiency guidance](../design/experiment-methods-and-skill-observation.md#computation-efficiency-guidance-2026-10-13):
   conditional profiling and compute optimization within research-workflow,
   task-specific equivalence and bounded time/memory comparisons; no new skill,
