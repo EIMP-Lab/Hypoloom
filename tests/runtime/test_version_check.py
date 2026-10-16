@@ -282,7 +282,7 @@ def test_git_timeout_terminates_owned_helper_and_suppresses_prompts(tmp_path, mo
         while True:
             try:
                 state = path.read_text().split(")", 1)[1].split()[0]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 break
             if state == "Z":
                 break

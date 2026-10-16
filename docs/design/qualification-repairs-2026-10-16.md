@@ -134,6 +134,25 @@ scenario then passes in 13.60 seconds, including its unchanged scientific outcom
 stop-order, collection and Oracle checks. Freeze this final test candidate before
 the final complete offline selection; do not erase the first G1 failure.
 
+### Procfs observation race in the second complete selection
+
+The complete `8f68e67` selection records 8,368 passes, 159 skips and one failure in
+1,258.42 seconds; the repaired template passes. The Git-timeout cleanup fixture
+raises ESRCH while reading a terminated helper's `/proc/<pid>/stat`. Its cleanup
+predicate already accepts ENOENT and zombie state, but misses this read-after-exit
+variant. Add only `ProcessLookupError` to that fixture's disappearance handling;
+permission errors and live helpers still fail, with the existing bounds unchanged.
+Production Git termination and prompt suppression code stays unchanged. A bounded
+probe converts a real absent helper's ENOENT into ESRCH to reproduce the failure
+deterministically; a separate permission-error probe must remain rejected.
+
+The ESRCH probe fails before this one-line fixture correction and passes after
+it; the permission-error probe still fails as required. All 35 version-check
+cases pass. Refresh this affected file against the complete second selection by
+test identity, preserving both original full-run failures. No production bytes
+change after `3725a3d`, and the final qualification report distinguishes complete
+selection coverage plus this targeted refresh from an uninterrupted green run.
+
 ## Verification order
 
 Reproduce each defect with focused counterexamples, repair it, then run focused
