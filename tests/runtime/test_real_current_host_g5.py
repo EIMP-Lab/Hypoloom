@@ -663,6 +663,7 @@ def _assert_canary_research_cycles(accepted, batches, *, max_rounds_per_expert=1
     research = [item for item in accepted if item["request"]["command"] in cycle_commands
         and item["request"]["task_context"]["kind"] == "RESEARCH_NODE"]
     assert {item["request"]["task_context"]["key"]["cycle"] for item in research} == {batch["cycle"] for batch in batches}
+    fresh_sessions = set()
     for batch in batches:
         cycle, chains = batch["cycle"], batch["chains"]
         assert len(chains) == 1, "the canary profile admits one chain per cycle"
@@ -679,8 +680,19 @@ def _assert_canary_research_cycles(accepted, batches, *, max_rounds_per_expert=1
             nodes = [item for item in inner if item["request"]["task_context"]["key"].get("chain") == chain]
             assert [item["request"]["command"] for item in nodes] == list(inner_commands)
             session_id = nodes[0]["session"]["session_id"]
-            assert session_id and all(item["session"]["session_id"] == session_id for item in nodes)
-            assert all(item["session"]["launch_arguments"] == ["--resume", session_id] for item in nodes[1:])
+            version = nodes[0]["request"]["schema_version"]
+            assert all(item["request"]["schema_version"] == version for item in nodes)
+            if version >= 24:
+                ids = {item["session"]["session_id"] for item in nodes}
+                assert all(isinstance(value, str) and value for value in ids)
+                assert len(ids) == len(nodes) and not ids & fresh_sessions
+                fresh_sessions.update(ids)
+                assert all(item["session"]["parent_session_id"] is None and
+                    item["session"]["launch_arguments"] == ["--session-id", item["session"]["session_id"]]
+                    for item in nodes)
+            else:
+                assert session_id and all(item["session"]["session_id"] == session_id for item in nodes)
+                assert all(item["session"]["launch_arguments"] == ["--resume", session_id] for item in nodes[1:])
         closed = [item for item in current if item["request"]["command"] in controls]
         if cycle < len(batches):
             assert Counter(item["request"]["command"] for item in closed) == Counter(controls)

@@ -530,7 +530,7 @@ def test_common_g5_source_evidence_checks_do_not_accept_missing_boundaries(tmp_p
             canary._assert_common_canary_evidence(host, "run", [ground, *designs], outcomes)
 
 
-def _cycle_observations(cycle, *, close=False):
+def _cycle_observations(cycle, *, close=False, schema_version=23):
     observed = []
     for command, subkinds in (("LITERATURE_REVIEW", ("QUERY_PLAN", "MAIN")),
         ("HYPOTHESIS_PROPOSAL", ("FORWARD", "BACKWARD", "SYNTHESIS")),
@@ -539,9 +539,11 @@ def _cycle_observations(cycle, *, close=False):
         for subkind in subkinds:
             inner = command in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}
             key = {"cycle": cycle, "chain": "1" if inner else None, "subkind": subkind}
-            observed.append({"request": {"command": command, "task_context": {"kind": "RESEARCH_NODE", "key": key}},
-                "session": {"session_id": f"session-{cycle}",
-                    "launch_arguments": ["--resume", f"session-{cycle}"]}})
+            session_id = f"session-{cycle}-{command}-{subkind}" if schema_version >= 24 else f"session-{cycle}"
+            observed.append({"request": {"command": command, "schema_version": schema_version,
+                "task_context": {"kind": "RESEARCH_NODE", "key": key}},
+                "session": {"session_id": session_id, "parent_session_id": None,
+                    "launch_arguments": ["--session-id" if schema_version >= 24 else "--resume", session_id]}})
     if close:
         for command in ("ADJUDICATE", "HYPOTHESIS_UPDATE", "CYCLE_REPORT", "SELF_EVOLVE"):
             observed.append({"request": {"command": command, "task_context": {"kind": "RESEARCH_NODE", "key": {"cycle": cycle}}},
@@ -550,12 +552,33 @@ def _cycle_observations(cycle, *, close=False):
 
 
 @pytest.mark.parametrize("cycles", [1, 2])
-def test_common_g5_checks_each_actual_cycle_and_chain_session(cycles):
+@pytest.mark.parametrize("schema_version", [23, 24, canary.CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION])
+def test_common_g5_checks_each_actual_cycle_and_chain_session(cycles, schema_version):
     query_plan = {"request": {"command": "LITERATURE_REVIEW", "task_context": {
         "kind": "AUXILIARY", "request_kind": "GROUNDING_QUERY_PLAN"}}}
-    accepted = [query_plan, *[item for cycle in range(1, cycles + 1) for item in _cycle_observations(cycle, close=cycle < cycles)]]
+    accepted = [query_plan, *[item for cycle in range(1, cycles + 1)
+        for item in _cycle_observations(cycle, close=cycle < cycles, schema_version=schema_version)]]
     batches = [{"cycle": cycle, "chains": {"1": f"hypothesis-{cycle}"}} for cycle in range(1, cycles + 1)]
     canary._assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=cycles)
+
+
+@pytest.mark.parametrize("mutation", ["same_node_session", "prior_cycle_session", "parent", "resume", "empty", "mixed_version"])
+def test_common_g5_current_sessions_reject_reuse_or_continuation(mutation):
+    accepted = (_cycle_observations(1, close=True, schema_version=24)
+        + _cycle_observations(2, schema_version=24))
+    nodes = [item for item in accepted if item["request"]["command"] in
+        {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}]
+    target = nodes[-1]
+    if mutation in {"same_node_session", "prior_cycle_session", "empty"}:
+        session_id = {"same_node_session": nodes[-2]["session"]["session_id"],
+            "prior_cycle_session": nodes[0]["session"]["session_id"], "empty": ""}[mutation]
+        target["session"].update(session_id=session_id, launch_arguments=["--session-id", session_id])
+    elif mutation == "parent": target["session"]["parent_session_id"] = "foreign"
+    elif mutation == "resume": target["session"]["launch_arguments"][0] = "--resume"
+    else: target["request"]["schema_version"] = 23
+    batches = [{"cycle": cycle, "chains": {"1": f"hypothesis-{cycle}"}} for cycle in (1, 2)]
+    with pytest.raises(AssertionError):
+        canary._assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=2)
 
 
 @pytest.mark.parametrize("mutation", ["wrong_session", "wrong_resume", "foreign_chain", "missing_analysis", "missing_proposal", "missing_close", "terminate", "extra_cycle", "unaccepted_cycle", "final_controls", "wrong_order", "duplicate_proposal"])

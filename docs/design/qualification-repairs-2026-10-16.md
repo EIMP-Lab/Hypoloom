@@ -155,6 +155,32 @@ selection coverage plus this targeted refresh from an uninterrupted green run.
 
 ## Verification order
 
+### Paid recheck: session fixture compatibility
+
+The user authorizes the fresh 20 USD local/common/resource cohort. Its local
+sample on `7ec6f04` completes 11 Agents and one CPU Process, publishes one outcome
+and finishes its final report. Every Attempt succeeds, the independent Oracle
+passes and all 12 groups are absent. The qualifier nevertheless fails because
+it still requires one resumed session across design/execution/analysis. Current
+ACI 24+ uses fresh sessions for each node, already asserted by native G4.
+
+Reproduce this exact failure from the retained sample with read-only StateStore
+and the entire existing closure validator. Align only the fixture with the
+existing version boundary: distinct nonempty sessions across nodes/cycles, no
+parent, exact `--session-id`; retain old versions' resume checks. Reject session
+reuse, foreign parents, resume arguments, empty IDs and mixed versions. All other
+scientific, tool, cost, publication and Oracle checks remain unchanged. Replay
+the same complete validator without launching a Host or model; preserve the
+original paid failure and cost. No new evidence authority or runtime change is
+needed, and a second paid local sample is not authorized or required for this
+read-only fixture correction.
+
+The original sample fails this read-only replay before correction and passes the
+entire qualifier afterward, with unchanged database/artifact evidence. Both
+affected test files pass 226 offline cases with two explicit paid skips; four
+current-version cases previously reproduced the obsolete-session failure. No
+additional local model call or charge is incurred.
+
 Reproduce each defect with focused counterexamples, repair it, then run focused
 Oracle, native-tool, schema and real Host/CPU closure checks. Replay the original
 paid requests and failures offline. Freeze one candidate only after these pass.
