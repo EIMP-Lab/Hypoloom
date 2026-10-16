@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 16 README readability: both languages explain Host, Oracle, Profile,
+  Grounding, Leader, Debate, Agent and Attempt at first use. Shorter monitoring
+  descriptions distinguish execution checks from scientific assessment and explain
+  token-link access. Main `b2bee68` remains one root commit named `v0.0.1`, as
+  requested; only its two READMEs changed. Dev receives the same prose while keeping
+  its development sections and history. Command examples and screenshots are
+  unchanged. Main's six and dev's seven documentation/Profile checks pass, with
+  final documentation refresh and CommonMark rendering checks. No runtime change
+  or new qualification. [README](../../README.md) /
+  [Chinese README](../../README.zh-CN.md).
+  Local checks: `.local/analysis/readme-polish-20261016/`.
+
 - October 16 dev documentation aligns with public main `eab440a` (`v0.0.1`)
   through selected content updates, without merging branch histories. Quick start
   prepares the private Profile before init; configuration, Profile and notification

@@ -13,33 +13,42 @@
   English · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Hypoloom is an open-source framework for autonomous research, from hypothesis
-generation and experiment execution to evidence-driven iteration. Persistent
-research experts work through a resident Workflow Host; the Host owns
-execution, resource allocation and durable state, and an independent Oracle
-checks recorded outcomes and lifecycle consistency.
+Hypoloom is an open-source framework for autonomous research, from literature
+review and hypothesis generation to experiments and analysis. AI research experts
+work together on a research goal.
 
-- **Analyze.** Experts retrieve and read literature through OpenAlex and PDF
-  extraction, then clarify the research goal and evaluation criteria with you.
-- **Hypothesize.** Parallel expert chains propose hypotheses, preregister
-  experiment designs, and plan their resources.
-- **Experiment.** Real CPU/GPU execution: private Git worktrees, a selected
-  runtime, explicit GPU authorization, and an optional shared GPU pool that
-  packs several experiments onto one card when capacity permits.
-- **Evolve.** Experts interpret measurements, debate and adjudicate outcomes,
-  revise the line of inquiry, and evolve reusable research skills.
+A background workflow service (**Workflow Host**, or **Host**) schedules tasks,
+allocates resources and records progress. An independent validator (**Oracle**)
+checks execution records and experiment artifacts for consistency. Scientific
+conclusions still require review of the experiment design and results.
+
+- **Analyze.** Experts search OpenAlex and read available PDFs, using your
+  feedback to clarify the research goal and evaluation criteria.
+- **Hypothesize.** Experts explore hypotheses in parallel, record experiment
+  designs before execution, and plan the resources each experiment needs.
+- **Experiment.** Experiments run in isolated Git worktrees using your selected
+  CPU/GPU environment. GPUs require explicit authorization; an optional shared
+  pool lets experiments share a device when capacity permits.
+- **Evolve.** Experts analyze measurements, debate competing interpretations,
+  refine hypotheses and improve reusable research skills.
 
 ## 🧩 What it provides
 
-One resident Host coordinates the whole loop; operators keep explicit
-authority, and an independent Oracle checks the record.
+The workflow below connects expert collaboration, experiment execution and
+independent checks. You set the research goal, budgets and resource permissions.
 
 <p align="center">
-  <img src="docs/assets/hypoloom_overview.svg" alt="Hypoloom overview: parallel domain experts each run a six-node research cycle (literature, hypotheses with forked chains, design, execute, analyze, update), fed by run-scoped Grounding, coordinated through judged debates and an Observer-selected leader, with self-evolving per-role skill plugins, all executed by a resident Workflow Host on agents, processes, and a shared GPU pool, under operator authorization and independent Oracle checks">
+  <img src="docs/assets/hypoloom_overview.svg" alt="Research workflow: goal clarification feeds parallel expert cycles of literature, hypotheses, design, execution, analysis and update, scheduled by the Host with independent Oracle checks">
 </p>
 
-[Profile templates](profiles/README.md) provide English and Chinese starting
-points for your own research goal, code, data and budgets.
+Goal clarification (**Grounding**) helps define the research requirements.
+A coordinating expert (**Leader**) shares advice, while structured debates
+(**Debate**) examine competing interpretations. See the
+[research workflow](docs/guides/research-workflow.md) for details.
+
+A **Profile** is a set of six YAML files describing your topic: its goal, experts,
+runtime, budgets and permissions. Start with an English or Chinese
+[Profile template](profiles/README.md) and configure it for your code and data.
 
 This is the **dev** branch. It includes the development guides, qualification
 records and maintainer context. For the public version, see
@@ -62,13 +71,13 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[dev,monito
 This installs the control environment, terminal monitor, notification charts
 and development tools. GPU experiments use a separately selected CUDA environment.
 
-### 2. Configure access
+### 2. Configure project and model access
 
 Follow [Setup](SETUP.md) to enable the project settings and configure model API
 authentication. You will add literature and notification credentials to your
 local Profile in the next step.
 
-### 3. Prepare your Profile
+### 3. Prepare a research Profile
 
 Copy the English template into a new, Git-ignored directory:
 
@@ -110,9 +119,9 @@ Then enter the skill command:
 ```
 
 Select the existing `my-topic` Profile. Confirm the model, credentials, time and
-cost limits, CPU/GPU allocation and any
-notification recipients. Choose **Prepare only** to save the configuration, or
-**Start now** to begin research. The setup checks do not make a paid model call.
+cost limits, CPU/GPU allocation and notification recipients. Choose **Prepare only**
+to save the configuration, or **Start now** to begin research. The setup checks
+do not make a paid model call.
 
 ### 5. Monitor progress
 
@@ -128,71 +137,72 @@ and waits for cleanup. See [Usage](USAGE.md) for human answers and recovery.
 
 ## 🔍 Inside a run
 
-Monitor research in the browser with `hypoloom web` or in the terminal with
-`hypoloom monitor`. Both display the Host's recorded state. Human answers, API
-recovery and End run are explicit operator actions. The Web observer listens
-on loopback and uses a bearer link for access.
+Use `hypoloom web` to follow research in a browser, or `hypoloom monitor` for
+the terminal interface. Both display records maintained by the Host. Answering
+questions, changing API connections and ending a run require explicit action.
+By default, the Web interface accepts connections only from the same machine.
+Access uses a link containing a token; keep that link private.
 
 ### 📊 Run overview
 
-The Operations view tracks the whole run: durable state, revision and the
-last Oracle verdict; counts of experiments, hypotheses, literature evidence,
-evolved skills and Leader/Debate activity; cumulative execution reliability
-(first output pass, correction recovery, nodes needing retry, final delivery,
-required actions); and filters over every recorded attempt.
+The **Operations** view shows run status, the latest Oracle check, and progress
+across hypotheses, experiments, literature and skills. Reliability summaries
+track output validation, retries, recovery and completed work.
+
+Filter execution attempts (**Attempts**) to inspect a failure or retry. Each
+attempt records one task execution, such as a model invocation or an experiment.
 
 <p align="center">
-  <img src="docs/assets/web-overview.png" alt="Web Research Observer operations overview of an ACTIVE run: header with run ID, durable state, pending scientific verdict, revision, observed time and last-clean Oracle status; counter tiles for experiments, hypotheses, literature, skills, effective evolutions, leader and debate; cumulative execution reliability tiles; observation filters and the shared research goal">
+  <img src="docs/assets/web-overview.png" alt="Web run overview showing status, the latest Oracle check, research activity, execution reliability and the shared research goal">
 </p>
 
 ### 🧑‍🔬 Expert cards
 
-Each expert runs its own six-node research cycle and gets a live card: its
-current stage, the agents working for it with context used against budget,
-observed tokens and per-expert reliability, and coordination states — a
-proposed debate pauses dispatch for that expert, and a crown marks the
-Observer-selected leader.
+Each expert follows six research stages: literature, hypotheses, design,
+execution, analysis and update. Its card shows the current stage and active
+research agents (**Agents**): workers that use models and tools to complete
+specific tasks. Context and token usage help you track each agent's workload.
+
+Coordination indicators show debate-related scheduling pauses. A crown marks
+the selected Leader.
 
 <p align="center">
-  <img src="docs/assets/web-expert.png" alt="Expert cards in the Web observer: the ml-expert is in cycle 3 running two experiment processes with breathing-light agent tiles and per-expert reliability tiles, while the experiment-engineering expert shows an amber debate-proposed dispatch pause over its completed result analyses, with stage pipeline, token accounting and browse-history entry per card">
+  <img src="docs/assets/web-expert.png" alt="Expert cards showing research stages, active agents and experiments, context usage, execution reliability and a debate-related scheduling pause">
 </p>
 
 ### 🧬 Hypothesis lineage
 
-The lineage graph shows how the inquiry itself evolves. Every durable
-hypothesis appears once, colored by its expert; edge styles distinguish
-execution repair, experiment revision and scientific revision, and pruned
-branches record control decisions — pruning is not a scientific verdict.
+Follow how hypotheses branch and change over time. Colors identify the expert
+responsible for each hypothesis; connections distinguish execution repairs,
+experiment revisions and changes to the scientific hypothesis. Stopping a branch
+is a workflow decision; scientific assessments are recorded separately.
 
 <p align="center">
-  <img src="docs/assets/Hypo.png" alt="Hypothesis lineage topology of a run: twelve durable hypothesis nodes colored by owning expert and marked refuted, initial or pending, connected by edges distinguishing execution repair, experiment revision, scientific revision and unclear revision, with a legend noting that pruned-by edges are control decisions, not refutations">
+  <img src="docs/assets/Hypo.png" alt="Hypothesis lineage grouped by expert, with assessment states and connections showing repairs, revisions and branches no longer being pursued">
 </p>
 
 ### 📈 Metric trends
 
-Metric trends connect each published measurement to its initial-hypothesis
-chain in experiment order, against the target lines preregistered in the
-research contract — progress toward the acceptance criteria is visible at a
-glance.
+Track experiment measurements against targets defined before execution. Charts
+group results by the initial hypothesis so you can follow how each line of
+research progresses.
 
 <p align="center">
-  <img src="docs/assets/web-metrics.png" alt="Metric trends in the Web observer: one chart per preregistered metric, plotting published observations per initial-hypothesis chain in experiment order against dashed target lines, with clickable legend entries to show or hide each chain">
+  <img src="docs/assets/web-metrics.png" alt="Metric charts showing recorded measurements for each initial hypothesis chain, target lines and a clickable legend">
 </p>
 
 ### 💻 Terminal UI
 
-The terminal UI presents the same durable snapshot in the shell: the run at a
-glance (goal, verdict, budget and tokens, execution reliability), per-expert
-lanes with their current work, the hypothesis chains, the next durable
-commands, and the operator actions — refresh, Web/local access, human
-decision, provider resume, diagnostics and End run.
+The terminal user interface (**TUI**) shows the same research records in your
+shell: goals, results, budgets, expert activity and hypothesis history. Use it
+to answer questions, manage API recovery, inspect diagnostics and end a run.
 
 <p align="center">
-  <img src="docs/assets/TUI.png" alt="Terminal Research Operations UI of an ACTIVE read-only run: run-at-a-glance panel with goal, pending verdict, research activity counters, budget and token usage, execution reliability and run health; expert lanes with stage progress and open attempts; next durable commands; hypothesis chains tree; operator key hints including human decision, provider resume, diagnostics and end run">
+  <img src="docs/assets/TUI.png" alt="Terminal interface showing run status, budgets, expert activity, hypothesis history and controls for human answers, diagnostics and ending the run">
 </p>
 
-[USAGE](USAGE.md) covers launching the Web observer and the TUI, sharing
-read-only links, and the operator actions.
+See [Usage](USAGE.md) for Web and terminal commands, read-only access sharing
+and operator controls.
 
 ## 📚 Documentation
 
@@ -201,7 +211,7 @@ read-only links, and the operator actions.
 | [Setup](SETUP.md) | Dependencies, model access and your first launch |
 | [Usage](USAGE.md) | Monitoring, human answers, stopping and recovery |
 | [Operator guide](docs/operator-guide.md) | Launch review, budgets, resources and result interpretation |
-| [Personal configuration](config/README.md) | All six Profile files, field descriptions and English examples |
+| [Profile configuration](config/README.md) | All six Profile files, field descriptions and English examples |
 | [Profile templates](profiles/README.md) | Starting templates, configuration workflow and operating limits |
 | [Architecture](docs/architecture.md) | Components, execution boundaries and evidence |
 | [Documentation index](docs/README.md) | Detailed guides for GPUs, literature, notifications and more |
@@ -232,14 +242,11 @@ Read [Contributing](CONTRIBUTING.md) before changing code or running qualificati
 Current directions, in no fixed order — plans, not commitments; sequencing
 depends on implementation and qualification results.
 
-- **More agent runtimes.** The framework currently drives research experts
-  through Claude Code. We plan to extend the same Host-owned research loop to
-  other coding-agent runtimes — Codex, Kimi Code, OpenCode and similar —
-  with compatibility checked for each supported runtime.
-- **AutoResearch benchmarks.** We are considering academic follow-up around
-  the emerging AutoResearch benchmark line: adapting the Hypoloom workflow to
-  those tasks, then designing and running comparative evaluations of academic
-  quality against them.
+- **More agent runtimes.** Extend the current Claude Code integration to
+  runtimes such as Codex, Kimi Code and OpenCode, keeping the Host responsible
+  for research scheduling and checking compatibility with each runtime.
+- **Research benchmarks.** Explore adapting Hypoloom to AutoResearch benchmark
+  tasks and designing comparative studies of research processes and outcomes.
 
 ## 🚧 Development status
 
@@ -251,7 +258,7 @@ for completed checks, failures and limitations.
 
 Begin with a small topic and explicit time and cost limits. Public templates are
 configuration examples, not scientific benchmarks. Successful execution or
-qualification does not prove a scientific claim; inspect the accepted evidence,
+qualification does not prove a scientific claim; inspect the experiment records,
 measurements and final report.
 
 Preserved runs use their own runtime bundle and configuration. Updating this

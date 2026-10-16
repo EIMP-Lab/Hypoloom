@@ -1,5 +1,10 @@
 # Development memory index
 
+- [README terminology and readability, October 16](../../README.md):
+  paired English/Chinese explanations and simpler monitoring descriptions; main
+  retains one `v0.0.1` root commit, and dev keeps its development history.
+  Local checks: `.local/analysis/readme-polish-20261016/`.
+
 - [Dev documentation alignment, October 16](../../CONTRIBUTING.md#documentation-maintenance):
   selectively reuse main's user-facing improvements while preserving development
   history, qualification and runtime boundaries. [Bilingual index](../README.md),
