@@ -155,6 +155,39 @@ selection coverage plus this targeted refresh from an uninterrupted green run.
 
 ## Verification order
 
+### Common G5: report deadline and authored test inputs
+
+The repaired common sample completes Grounding, the seeded target repair, a real
+CPU Process, independently parsed GOAL accuracy 0.875 with both validity checks
+true, and RESULT_ANALYSIS. FINAL_REPORT has only 15.90 seconds before the original
+900-second run deadline and times out. This is a real qualification failure;
+clean Oracle and GOAL_MET do not replace the missing report. Preserve its
+2.6025296 USD reported cost and 2 USD unknown reservation; do not rerun it without
+bounded authorization.
+
+Grounding takes 289.78 seconds. Its authored test helper writes the reference-only
+`ORIGINAL` object into the smoke directory, removing `computed_accuracy` from its
+own previously complete fixture. The resulting test failure incorrectly gets
+described by the model as Host normalization. Replaying the exact original
+helper on a temporary copy reproduces the field removal without a Host/model.
+Other initial failures confuse pair completeness with aggregate validity and
+guess the wrong score after dropping the only mismatched pair. All eight final
+authored tests and the existing common scientific-evidence validator pass on
+copies/read-only state; they do not make the failed full sample a pass.
+
+Clarify only the common canary commission: reference pairs are not complete raw
+results; construct a complete smoke input with a calculated aggregate, run each
+test in its own temporary raw directory, mutate validity conditions separately
+and calculate expectations from the actual mutated data. Ask for compact factual
+node prose and a short final report; preserve all required nodes, native Skills,
+source reads, tests, actual experiment, exact schemas and scientific thresholds.
+No runtime, validator, budget or deadline changes are included. The existing
+admission/fixture regressions validate this bounded wording change; improved
+model timing requires a newly authorized paid common sample and is not claimed
+from offline checks. A larger wall allowance, if later proposed, must be explicit
+and accompanied by this concrete repair rather than silently replacing the
+failed 900-second result.
+
 ### Paid recheck: session fixture compatibility
 
 The user authorizes the fresh 20 USD local/common/resource cohort. Its local
