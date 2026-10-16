@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <title data-i18n>Hypoloom Observer</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content" data-i18n>Skip to run observation</a>
+
+  <header class="topbar">
+    <div class="identity">
+      <svg class="brand-mark" viewBox="260 170 310 360" fill="none" role="img" aria-label="Hypoloom logo">
+        <defs>
+          <linearGradient id="brand-pillar-left" x1="305" y1="186" x2="362" y2="509" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#9AEDF9"/><stop offset=".23" stop-color="#76AEFA"/><stop offset=".48" stop-color="#5D63CE"/><stop offset=".67" stop-color="#7D8CFA"/><stop offset="1" stop-color="#8DDDF9"/>
+          </linearGradient>
+          <linearGradient id="brand-pillar-right" x1="535" y1="193" x2="503" y2="518" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#B2BAD8"/><stop offset=".22" stop-color="#FFE4B5"/><stop offset=".4" stop-color="#F9D39D"/><stop offset=".63" stop-color="#938BBC"/><stop offset=".82" stop-color="#7383ED"/><stop offset="1" stop-color="#8DEDF9"/>
+          </linearGradient>
+          <linearGradient id="brand-ribbon-top" x1="285" y1="393" x2="552" y2="267" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#72BCFF"/><stop offset=".29" stop-color="#97A9F0"/><stop offset=".56" stop-color="#D6C5D2"/><stop offset=".8" stop-color="#FFE0B8"/><stop offset="1" stop-color="#FFF2D7"/>
+          </linearGradient>
+          <linearGradient id="brand-ribbon-middle" x1="282" y1="439" x2="552" y2="282" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8796F4"/><stop offset=".24" stop-color="#78A0FA"/><stop offset=".52" stop-color="#B8AEDA"/><stop offset=".79" stop-color="#E7C3B3"/><stop offset="1" stop-color="#A7B5E4"/>
+          </linearGradient>
+          <linearGradient id="brand-ribbon-bottom" x1="319" y1="457" x2="548" y2="315" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#6FA7ED"/><stop offset=".26" stop-color="#676CCD"/><stop offset=".53" stop-color="#847DCD"/><stop offset=".77" stop-color="#514974"/><stop offset="1" stop-color="#121B35"/>
+          </linearGradient>
+          <linearGradient id="brand-ribbon-dark" x1="303" y1="423" x2="549" y2="304" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#030815"/><stop offset=".44" stop-color="#0B1235"/><stop offset=".68" stop-color="#252849"/><stop offset="1" stop-color="#060D1E"/>
+          </linearGradient>
+          <linearGradient id="brand-ribbon-edge" x1="272" y1="428" x2="557" y2="261" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#BAFFFF"/><stop offset=".32" stop-color="#BFCAFF"/><stop offset=".66" stop-color="#FFF4E8"/><stop offset="1" stop-color="#FFF9E8"/>
+          </linearGradient>
+          <linearGradient id="brand-star-fill" x1="398" y1="250" x2="452" y2="237" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#A1E8FF"/><stop offset=".44" stop-color="#FEFDF9"/><stop offset="1" stop-color="#FFDEB6"/>
+          </linearGradient>
+        </defs>
+        <g>
+          <path d="M303 212 360 181V512L307 483Q300 479 303 463Z" fill="url(#brand-pillar-left)"/>
+          <path d="M304 212 359 182V511" stroke="#C3F6FF" stroke-opacity=".7" stroke-width="1.1"/>
+          <path d="M498 189 554 218V486L498 518Z" fill="url(#brand-pillar-right)"/>
+          <path d="M498.5 190V517L554 486" stroke="#E2F2FB" stroke-opacity=".75" stroke-width="1.2"/>
+          <path d="M303 359C366 322 465 322 527 280L554 256V325C521 376 410 391 360 421V369L303 400Z" fill="#0A1126" opacity=".6"/>
+          <path d="M561 266C567 341 510 367 430 395S317 438 306 468C298 479 300 484 306 486C283 451 330 414 399 387S529 348 551 301C557 290 560 276 561 266Z" fill="url(#brand-ribbon-bottom)"/>
+          <path d="M305 468C317 437 365 420 431 396S548 356 559 302" stroke="#BDB6EF" stroke-opacity=".76" stroke-width="1.2"/>
+          <path d="M561 258C566 315 516 348 440 376S319 418 299 453C288 472 300 479 303 481C265 465 287 427 331 402S459 357 516 324C549 305 559 280 561 258Z" fill="url(#brand-ribbon-dark)"/>
+          <path d="M558 250C575 306 510 327 438 354S303 401 285 442C274 465 284 477 295 482C282 477 275 470 278 453C265 416 310 384 363 362S481 315 522 291C544 277 554 265 558 250Z" fill="url(#brand-ribbon-middle)"/>
+          <path d="M296 482C270 457 297 423 345 398S451 357 496 335 549 300 559 272" stroke="url(#brand-ribbon-edge)" stroke-width="1.2" opacity=".94"/>
+          <path d="M556 236C570 278 526 309 451 332S316 375 286 410C269 430 269 443 274 452C256 419 292 383 337 362S461 324 513 296C550 276 558 251 556 236Z" fill="#030A17"/>
+          <path d="M554 218C568 269 529 289 480 313S361 348 315 372C278 391 265 417 270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218Z" fill="url(#brand-ribbon-top)"/>
+          <path d="M270 443C257 416 278 381 309 359C356 327 434 316 489 291S559 249 554 218" stroke="url(#brand-ribbon-edge)" stroke-width="1.65"/>
+          <path d="M430 216C426 238 425 241 398 246C424 251 426 254 430 276C434 253 437 250 461 246C436 241 434 238 430 216Z" fill="url(#brand-star-fill)"/>
+        </g>
+      </svg>
+      <div>
+        <p class="eyebrow">HYPOLOOM</p>
+        <h1 data-i18n>Research Observer</h1>
+        <p class="boundary" id="observer-boundary"><span aria-hidden="true">◉</span><span data-i18n> READ-ONLY · OFFLINE PROJECTION</span></p>
+      </div>
+    </div>
+    <div class="connection" id="connection" data-state="connecting">
+      <span class="connection-dot" aria-hidden="true"></span>
+      <div>
+        <span class="eyebrow" data-i18n>POLL CHANNEL</span>
+        <strong id="connection-text" aria-live="polite" data-i18n>CONNECTING</strong>
+      </div>
+    </div>
+    <dl class="hud" aria-label="Run status summary">
+      <div><dt data-i18n>RUN</dt><dd id="run-id">—</dd></div>
+      <div><dt data-i18n>DURABLE STATE</dt><dd id="run-state">—</dd></div>
+      <div class="hud-metric"><dt data-i18n>ELAPSED</dt><dd id="run-elapsed">—</dd></div>
+      <div class="hud-metric"><dt data-i18n>TOKENS USED</dt><dd id="run-tokens">—</dd></div>
+      <div class="hud-metric"><dt data-i18n>RUN RPM</dt><dd id="run-rpm" data-rpm-value>—</dd></div>
+      <div><dt data-i18n>SCIENTIFIC VERDICT</dt><dd id="goal-verdict">—</dd></div>
+      <div><dt data-i18n>REQUIRED ASSESSED</dt><dd id="required-assessed">—</dd></div>
+      <div><dt data-i18n>REVISION</dt><dd id="run-revision">—</dd></div>
+      <div><dt data-i18n>OBSERVED</dt><dd id="observed-at">—</dd></div>
+      <div><dt data-i18n>OPEN ATTEMPTS</dt><dd id="open-attempts">—</dd></div>
+      <div><dt>ORACLE</dt><dd id="oracle-state">—</dd></div>
+    </dl>
+  </header>
+
+  <main id="main-content">
+    <aside id="run-concurrency" class="concurrency-summary" aria-label="Concurrency occupancy"></aside>
+    <details id="node-failures" class="panel" hidden>
+      <summary id="node-failure-summary"></summary>
+      <p data-i18n>Recorded node failures have exhausted automatic recovery. They do not mean the whole run has stopped.</p>
+      <div id="node-failure-list"></div>
+    </details>
+    <section id="provider-panel" class="panel" aria-label="API availability">
+      <strong id="provider-title" data-i18n>API status unknown</strong>
+      <p id="provider-description" aria-live="polite" data-i18n>Waiting for a live Host observation.</p>
+      <p id="provider-access" data-i18n>Read-only. Use TUI p for API recovery or an operator API link.</p>
+      <div id="provider-controls" hidden>
+        <label for="provider-settings" data-i18n>Host-side connection file (absolute path; no credentials)</label>
+        <input id="provider-settings" type="text" autocomplete="off" spellcheck="false" placeholder="/absolute/path/connection.json">
+        <button id="provider-retry" type="button" data-i18n>Try current API</button>
+        <button id="provider-switch" type="button" data-i18n>Switch API and try</button>
+      </div>
+      <p id="resource-blocked" aria-live="polite"></p>
+      <button id="resource-recheck" type="button" hidden data-i18n>Recheck GPU resources</button>
+      <p id="resource-operation" role="status"></p>
+      <p id="provider-operation" role="status"></p>
+      <p id="literature-status" aria-live="polite" data-i18n>Literature service status unknown.</p>
+      <button id="literature-retry" type="button" hidden data-i18n>Retry literature service</button>
+      <p id="notification-status" aria-live="polite" data-i18n>Notification delivery status unknown.</p>
+      <button id="notification-retry" type="button" hidden data-i18n>Retry Telegram delivery</button>
+      <p id="dependency-operation" role="status"></p>
+    </section>
+    <nav class="view-tabs" aria-label="Observer views">
+      <div class="view-tab-group" role="tablist">
+        <button id="tab-operations" role="tab" type="button" aria-controls="view-operations" aria-selected="true" data-view="operations" data-i18n>Operations</button>
+        <button id="tab-map" role="tab" type="button" aria-controls="view-map" aria-selected="false" data-view="map" data-i18n>Research Map</button>
+        <button id="tab-evidence" role="tab" type="button" aria-controls="view-evidence" aria-selected="false" data-view="evidence" data-i18n>Evidence</button>
+        <button id="tab-activity" role="tab" type="button" aria-controls="view-activity" aria-selected="false" data-view="activity" data-i18n>Experiments &amp; logs</button>
+        <button id="tab-workbench" role="tab" type="button" aria-controls="view-workbench" aria-selected="false" data-view="workbench" data-i18n>Workbench</button>
+      </div>
+      <div class="help-actions">
+        <button id="open-trends" class="trends-button" type="button" data-i18n>Run trends</button>
+        <button id="language-toggle" class="language-button" type="button" lang="zh-CN" title="Switch to Chinese" disabled>中文</button>
+        <label class="text-size"><span data-i18n>Text size
+          </span><select id="text-size">
+            <option value="87.5" data-i18n>Compact</option>
+            <option value="100" data-i18n>Standard</option>
+            <option value="112.5" selected data-i18n>Comfortable</option>
+            <option value="125" data-i18n>Large</option>
+          </select>
+        </label>
+        <button id="open-support" class="help-button" type="button" data-i18n>Report issue</button>
+        <button id="open-help" class="help-button" type="button" data-i18n>Help / terms</button>
+      </div>
+    </nav>
+
+    <section id="human-pending" class="human-pending" aria-live="polite" hidden>
+      <div><strong id="human-pending-title" data-i18n>Waiting for your decision</strong><p id="human-pending-question"></p></div>
+      <button id="open-human" type="button" data-i18n>Review decision</button>
+    </section>
+
+    <section class="summary-panel" aria-label="All-run research totals">
+      <div id="research-totals" class="research-totals"></div>
+      <p class="eyebrow" data-i18n>CUMULATIVE EXECUTION RELIABILITY · THIS RUN</p>
+      <div id="run-reliability-preview" class="reliability-preview" aria-label="All-run cumulative execution reliability"></div>
+      <details class="reliability-legend"><summary data-i18n>Metric &amp; stage legend</summary>
+        <p data-i18n>🎯 FP first output pass · 🔧 CR correction recovery · 🔁 RT nodes needing retry (lower is better) · 📦 DL node delivery · 🧰 RA required actions.
+          Each preview shows eligible numerator/denominator and percentage; ? = unknown records, − = excluded records, — = no eligible denominator.
+          These are cumulative execution records within this run. They do not measure scientific success.</p>
+        <p data-i18n>LIT literature → HYP hypothesis → DES design → RUN execution → ANA analysis → UPD hypothesis update; REP cycle report / JDG adjudication / EVO self-evolution.
+          Highlighted stages show current recorded work, including parallel branches and experiment processes; they are not goal-completion bars.
+          Cyan OPEN = Host responded to this poll; amber OPEN = Host absent or unconfirmed. Neither is a process heartbeat. Green = succeeded, red = failed/timed out, amber = cancelled/lost.</p>
+        <p data-i18n>🪙 Tokens use K/M/B/T (powers of 1,000), with at most two decimal places. Reported ≥ values are lower bounds; reserves and unknown closed records are not measured consumption.</p>
+      </details>
+      <p id="research-summary-source" class="panel-copy" data-i18n>All-run totals are independent of event pagination and view filters.</p>
+    </section>
+
+    <section class="panel filter-panel" aria-labelledby="filter-heading">
+      <div class="filter-heading">
+        <div>
+          <p class="eyebrow" data-i18n>OBSERVATION FILTERS</p>
+          <h2 id="filter-heading" data-i18n>Narrow the current projection</h2>
+        </div>
+        <button id="clear-filters" type="button" data-i18n>Clear filters</button>
+      </div>
+      <div class="filter-grid">
+        <label><span data-i18n>Search</span><input id="filter-search" type="search" placeholder="ID, role, claim, phase…" autocomplete="off"></label>
+        <label id="filter-component-label"><span data-i18n>Component</span><select id="filter-component"><option value="" data-i18n>All components</option></select></label>
+        <label><span data-i18n>Expert</span><select id="filter-expert"><option value="" data-i18n>All experts</option></select></label>
+        <label><span data-i18n>Attempt kind</span><select id="filter-kind"><option value="" data-i18n>All kinds</option></select></label>
+        <label><span data-i18n>State</span><select id="filter-state"><option value="" data-i18n>All states</option></select></label>
+      </div>
+      <p id="filter-summary" class="filter-summary" aria-live="polite" data-i18n>Filters apply to cards, open activity, map nodes, and drawer Attempts.</p>
+    </section>
+
+    <section id="view-operations" class="view-panel" role="tabpanel" aria-labelledby="tab-operations" data-view-panel="operations">
+      <section class="mission panel" aria-labelledby="mission-title">
+        <div>
+          <p class="eyebrow" data-i18n>RESEARCH CONTRACT</p>
+          <h2 id="mission-title" data-i18n>Waiting for an authorized snapshot</h2>
+          <p id="mission-summary" class="prose"></p>
+          <details id="mission-details"><summary data-i18n>Read the research objective</summary><div id="mission-objective" class="prose"></div></details>
+        </div>
+        <p id="mission-meta" class="mission-meta" data-i18n>The browser observes one explicit state root and run ID.</p>
+      </section>
+
+      <p class="authority-note" id="authority-note">
+        <strong data-i18n>Authority boundary:</strong><span data-i18n> OPEN means durably open in the state store; it does not prove
+        host, worker, or process liveness. Host quiescence, Agent usage, and live resource waits are
+        unknown here. Polls may straddle a commit, and Oracle CLEAN is not a scientific-success verdict.
+      </span></p>
+
+      <section id="grounding-dialogue-panel" class="panel" aria-labelledby="grounding-dialogue-heading" hidden>
+        <h2 id="grounding-dialogue-heading" data-i18n>Grounding clarification</h2>
+        <p data-i18n>Review pending questions and recorded answers. Submitting requires an operator answer link and an explicit reviewed answer.</p>
+        <div id="grounding-dialogue-list" class="card-list"></div>
+      </section>
+
+      <section id="grounding-agent-panel" class="panel" aria-labelledby="grounding-agent-heading">
+        <header class="panel-heading compact"><h2 id="grounding-agent-heading" data-i18n>Grounding Agent</h2></header>
+        <div id="grounding-agent-card" class="card-list"></div>
+      </section>
+
+      <section id="global-tasks-panel" class="panel" aria-labelledby="global-tasks-heading">
+        <header class="panel-heading compact"><h2 id="global-tasks-heading" data-i18n>Global tasks</h2></header>
+        <div id="global-task-list" class="card-list"></div>
+      </section>
+
+      <section class="operations-grid" aria-label="Run participants and open activity">
+        <section id="experts-panel" class="panel" aria-labelledby="experts-heading">
+          <header class="panel-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n>PARTICIPANTS</p>
+              <h2 id="experts-heading" data-i18n>Experts</h2>
+            </div>
+            <span id="expert-count" class="counter">0</span>
+          </header>
+          <div id="expert-list" class="card-list"><p class="empty-copy" data-i18n>No expert projection.</p></div>
+        </section>
+
+        <section id="components-panel" class="panel" aria-labelledby="components-heading">
+          <header class="panel-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n>EXECUTION SURFACE</p>
+              <h2 id="components-heading" data-i18n>Components</h2>
+            </div>
+            <span id="component-count" class="counter">0</span>
+          </header>
+          <div id="component-list" class="card-list"><p class="empty-copy" data-i18n>No component projection.</p></div>
+        </section>
+
+        <section class="panel runtime-panel" aria-labelledby="runtime-heading">
+          <header class="panel-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n>RESIDENT HOST POLL</p>
+              <h2 id="runtime-heading" data-i18n>Usage &amp; resource waits</h2>
+            </div>
+            <span id="runtime-source" class="counter" data-i18n>OFFLINE</span>
+          </header>
+          <p class="panel-copy" data-i18n>A successful STATUS response describes this poll only; it is not continuous Host or process liveness.</p>
+          <dl class="runtime-grid">
+            <div><dt data-i18n>BACKUP QUIESCENCE</dt><dd id="backup-quiescence" data-i18n>Host STATUS unavailable</dd></div>
+            <div><dt data-i18n>AGENT OBSERVED LOWER BOUND</dt><dd id="agent-observed" data-i18n>Host STATUS unavailable</dd></div>
+            <div><dt data-i18n>PROFILE CHARGED / RESERVED</dt><dd id="agent-budget" data-i18n>Host STATUS unavailable</dd></div>
+          </dl>
+          <div id="resource-wait-list" class="resource-wait-list"><p class="empty-copy" data-i18n>Host STATUS unavailable.</p></div>
+        </section>
+
+        <section class="panel activity-panel" aria-labelledby="activity-heading">
+          <header class="panel-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n>DURABLE ACTIVITY</p>
+              <h2 id="activity-heading" data-i18n>Expert OPEN activity</h2>
+            </div>
+            <span id="activity-count" class="counter">0</span>
+          </header>
+          <p class="panel-copy" data-i18n>Current durable OPEN records grouped by task ownership. This is not process-liveness telemetry.</p>
+          <div id="activity-list" class="activity-list"><p class="empty-copy" data-i18n>No matching OPEN activity.</p></div>
+        </section>
+
+        <section class="panel activity-panel" aria-labelledby="collaboration-heading">
+          <header class="panel-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n>COLLABORATION</p>
+              <h2 id="collaboration-heading" data-i18n>Rendezvous</h2>
+            </div>
+            <span id="rendezvous-count" class="counter">0</span>
+          </header>
+          <p class="panel-copy" data-i18n>Durable requester → target/responder coordination. OPEN remains state, not liveness.</p>
+          <div id="rendezvous-list" class="activity-list"><p class="empty-copy" data-i18n>No matching rendezvous records.</p></div>
+        </section>
+      </section>
+    </section>
+
+    <section id="view-map" class="view-panel" role="tabpanel" aria-labelledby="tab-map" data-view-panel="map" hidden>
+      <section class="panel graph-panel" aria-labelledby="graph-heading">
+        <header class="panel-heading">
+          <div>
+            <p class="eyebrow" data-i18n>TOPOLOGY</p>
+            <h2 id="graph-heading" data-i18n>Component dependencies</h2>
+          </div>
+          <div class="toolbar" aria-label="Topology controls">
+            <div class="mode-switch" role="group" aria-label="Topology mode">
+              <button id="show-components" class="active" type="button" aria-pressed="true" data-i18n>Components</button>
+              <button id="show-hypotheses" type="button" aria-pressed="false"><span data-i18n>Hypotheses </span><span id="hypothesis-count">0</span></button>
+            </div>
+            <button id="toggle-pruning" type="button" title="Show or hide pruning links; hypothesis nodes and their statuses remain visible. The number counts links." hidden data-i18n>Hide pruning links (0)</button>
+            <button id="fit-graph" type="button" data-i18n>Fit graph</button>
+            <button id="open-drawer" type="button" data-i18n>Attempts / evidence</button>
+          </div>
+        </header>
+        <p id="graph-summary" class="panel-copy" data-i18n>Awaiting topology data.</p>
+        <div class="graph-shell">
+          <svg id="dependency-graph" role="img" tabindex="0" aria-labelledby="graph-title graph-description">
+            <title id="graph-title" data-i18n>Research topology</title>
+            <desc id="graph-description" data-i18n>Use mouse wheel or keyboard plus and minus to zoom. Drag to pan. Solid arrows connect a parent hypothesis to its derived hypothesis, or a dependency to its dependent component. Dashed arrows connect a winner to a pruned hypothesis without changing ancestry or assessment. Toggle pruning links to show or hide these control relationships. Select a node or edge to compare recorded claims and revision details.</desc>
+            <g id="graph-viewport">
+              <g id="graph-edges"></g>
+              <g id="graph-nodes"></g>
+            </g>
+          </svg>
+          <p id="graph-empty" class="empty-state" data-i18n>No topology available yet.</p>
+          <p id="relation-tooltip" class="relation-tooltip" role="status" hidden></p>
+        </div>
+        <div id="graph-legend" class="graph-legend" aria-label="Topology legend"></div>
+        <details class="accessible-fallback">
+          <summary data-i18n>Accessible topology list</summary>
+          <ul id="topology-list"></ul>
+        </details>
+      </section>
+    </section>
+
+    <section id="view-evidence" class="view-panel" role="tabpanel" aria-labelledby="tab-evidence" data-view-panel="evidence" hidden>
+      <section class="evidence-workspace" aria-label="Durable evidence overview">
+        <section class="panel evidence-overview" aria-labelledby="evidence-overview-heading">
+          <header class="panel-heading">
+            <div><p class="eyebrow" data-i18n>DURABLE FACTS</p><h2 id="evidence-overview-heading" data-i18n>Evidence overview</h2></div>
+            <button id="open-evidence-drawer" type="button" data-i18n>Inspect Attempts / evidence</button>
+          </header>
+          <dl id="evidence-page-fact-counts" class="fact-grid"></dl>
+        </section>
+        <section class="panel evidence-overview" aria-labelledby="oracle-overview-heading">
+          <header class="panel-heading"><div><p class="eyebrow" data-i18n>INDEPENDENT CHECK</p><h2 id="oracle-overview-heading">Oracle</h2></div></header>
+          <div id="evidence-page-oracle" class="oracle-detail"></div>
+        </section>
+      </section>
+    </section>
+    <section id="view-activity" class="view-panel" role="tabpanel" aria-labelledby="tab-activity" data-view-panel="activity" hidden>
+      <p id="product-status" class="panel-copy" role="status" data-i18n>Waiting for experiment and event observation.</p>
+      <div class="operations-grid">
+        <section class="panel" aria-labelledby="experiment-queue-heading">
+          <header class="panel-heading"><h2 id="experiment-queue-heading" data-i18n>Experiment queue &amp; history</h2><span id="experiment-total" class="counter">0</span></header>
+          <div id="experiment-queue" class="card-list"></div>
+          <div class="pagination"><span id="experiments-page" class="panel-copy"></span><button id="experiments-older" type="button" data-i18n>Older experiments</button><button id="experiments-latest" type="button" data-i18n>Latest experiments</button></div>
+        </section>
+        <section class="panel" aria-labelledby="live-log-heading">
+          <header class="panel-heading"><h2 id="live-log-heading" data-i18n>Live log tail</h2><label><span data-i18n>Stream </span><select id="log-stream"><option value="stdout">stdout</option><option value="stderr">stderr</option></select></label></header>
+          <p id="log-connection" class="panel-copy" role="status" data-i18n>Select an experiment. No filesystem paths can be requested.</p>
+          <pre id="live-log-text" class="live-log" tabindex="0" data-i18n>No experiment selected.</pre>
+        </section>
+      </div>
+      <section class="panel" aria-labelledby="final-report-heading">
+        <header class="panel-heading"><h2 id="final-report-heading" data-i18n>Final report</h2></header>
+        <p id="final-report-source" class="panel-copy" data-i18n>No accepted report yet. A report is a narrative, not a new scientific verdict.</p>
+        <details><summary data-i18n>Read FINAL_REPORT.md</summary><pre id="final-report-text" class="live-log" tabindex="0" data-i18n>No accepted report yet.</pre></details>
+      </section>
+      <section class="panel" aria-labelledby="product-events-heading">
+        <header class="panel-heading"><h2 id="product-events-heading" data-i18n>Observed events</h2><span id="product-event-count" class="counter">0</span></header>
+        <p class="panel-copy" data-i18n>Accepted facts and durable Attempt/workflow records, shown in pages of 100.</p>
+        <div id="product-events" class="card-list"></div>
+        <div class="pagination"><span id="events-page" class="panel-copy"></span><button id="events-older" type="button" data-i18n>Older events</button><button id="events-latest" type="button" data-i18n>Latest events</button></div>
+      </section>
+    </section>
+
+    <section id="view-workbench" class="view-panel" role="tabpanel" aria-labelledby="tab-workbench" data-view-panel="workbench" hidden>
+      <section class="panel" aria-labelledby="workbench-title">
+        <header class="panel-heading">
+          <div><p class="eyebrow" data-i18n>RESEARCH DETAIL</p><h2 id="workbench-title" data-i18n>Skills</h2></div>
+          <button id="refresh-workbench" type="button" data-i18n>Refresh details</button>
+        </header>
+        <nav class="workbench-tabs" aria-label="Research detail categories">
+          <button type="button" data-workbench="skills" aria-pressed="true" data-i18n>Skills &amp; evolution</button>
+          <button type="button" data-workbench="literature" aria-pressed="false" data-i18n>Literature</button>
+          <button type="button" data-workbench="sessions" aria-pressed="false" data-i18n>Sessions &amp; tools</button>
+          <button type="button" data-workbench="interactions" aria-pressed="false" data-i18n>Leader &amp; Debate</button>
+          <button type="button" data-workbench="resources" aria-pressed="false" data-i18n>Experiments &amp; resources</button>
+          <button type="button" data-workbench="reliability" aria-pressed="false" data-i18n>Execution reliability</button>
+          <button type="button" data-workbench="institutional" aria-pressed="false" data-i18n>Institutional full text</button>
+        </nav>
+        <p id="workbench-scope" class="panel-copy workbench-copy" data-i18n>All experts. Search narrows this page; totals count the complete run.</p>
+        <p id="workbench-status" class="panel-copy workbench-copy" role="status" data-i18n>Select a category to browse accepted evidence.</p>
+        <div id="skill-library" hidden></div>
+        <div id="workbench-list" class="workbench-list"></div>
+        <div class="pagination">
+          <button id="workbench-previous" type="button" disabled data-i18n>Previous</button>
+          <span id="workbench-page" class="panel-copy" data-i18n>No page loaded</span>
+          <button id="workbench-next" type="button" disabled data-i18n>Next</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="help-heading"><div><p class="eyebrow" data-i18n>OBSERVER GUIDE</p><h2 id="help-title" data-i18n>Terms and authority</h2></div><button id="close-help" type="button" data-i18n>Close</button></div>
+    <dl class="help-grid">
+      <dt data-i18n>Snapshot</dt><dd data-i18n>A polling observation assembled from read-only queries; it is not a transaction-coherent receipt.</dd>
+      <dt data-i18n>Durable OPEN</dt><dd data-i18n>The state store records an unfinished Attempt. It does not prove a process is alive.</dd>
+      <dt data-i18n>Component</dt><dd data-i18n>An independently tracked part of the admitted research contract.</dd>
+      <dt data-i18n>Hypothesis</dt><dd data-i18n>A durable proposal; parent arrows point from the parent to its derived child.</dd>
+      <dt data-i18n>Attempt</dt><dd data-i18n>One durable Agent or Process effect record. Validation is control work, not a scientific Process count.</dd>
+      <dt data-i18n>Blocked</dt><dd data-i18n>Missing accepted dependencies or an unresolved rendezvous. Live GPU waits appear only when the resident Host answers this poll.</dd>
+      <dt data-i18n>Terminal / green</dt><dd data-i18n>A workflow reached a durable terminal state. This color alone does not say whether the scientific result succeeded.</dd>
+      <dt data-i18n>Oracle CLEAN</dt><dd data-i18n>No durable integrity/residue issue was projected. It is not a scientific-success or Host-liveness verdict.</dd>
+      <dt data-i18n>Connected / stale</dt><dd data-i18n>Connected means the last poll succeeded. Stale means the retained view may be old; neither describes run health.</dd>
+      <dt data-i18n>Module debug</dt><dd><span data-i18n>Report issue previews and downloads a diagnostic copy. The CLI </span><code>debug inspect</code><span data-i18n> provides deeper local inspection. Neither changes the research run.</span></dd>
+    </dl>
+  </dialog>
+
+  <dialog id="trends-dialog" aria-labelledby="trends-title">
+    <div class="support-content">
+      <div class="support-heading"><h2 id="trends-title" data-i18n>Run trends</h2><button id="close-trends" type="button" data-i18n>Close</button></div>
+      <p class="panel-copy" data-i18n>Recorded on the server, independent of this browser. Occupancy is recorded Attempt activity, not proof of process liveness. RPM includes retries and is averaged within each time bucket; missing capture is not zero.</p>
+      <div class="trend-controls"><label><span data-i18n>Time range</span> <select id="trends-range"><option value="3600" data-i18n>Last hour</option><option value="21600" data-i18n>Last 6 hours</option><option value="86400" data-i18n>Last 24 hours</option><option value="all" selected data-i18n>Entire run</option></select></label><button id="refresh-trends" type="button" data-i18n>Refresh trends</button></div>
+      <p id="trends-status" role="status" aria-live="polite"></p>
+      <p id="trends-coverage" class="panel-copy"></p>
+      <div id="trends-content" hidden>
+        <section class="trend-card"><h3 data-i18n>Experiment and Agent concurrency</h3><p class="panel-copy" data-i18n>Solid: occupancy at bucket end. Dashed: peak within bucket.</p><div id="trends-concurrency-legend" class="trend-legend"></div><div id="trends-concurrency" class="trend-chart"></div></section>
+        <section class="trend-card"><h3 data-i18n>Requests per minute</h3><div id="trends-rpm-legend" class="trend-legend"></div><div id="trends-rpm" class="trend-chart"></div></section>
+        <label class="trend-scrubber"><span data-i18n>Inspect time bucket</span><input id="trends-cursor" type="range" min="0" max="0" value="0"></label>
+        <div id="trends-inspect" class="trend-inspect" aria-live="polite"></div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="support-dialog" aria-labelledby="support-title">
+    <div class="support-content">
+      <div class="support-heading"><h2 id="support-title" data-i18n>Report an issue</h2><button id="close-support" type="button" data-i18n>Close</button></div>
+      <p data-i18n>Prepare a diagnostic copy for a maintainer. Nothing is uploaded.</p>
+      <p class="panel-copy" data-i18n>Run-wide trend data (JSON and CSV) is included automatically, including when only recent failures are selected. Missing data and package limits are reported.</p>
+      <div class="support-options">
+        <label><span data-i18n>Evidence scope</span><select id="support-scope"><option value="failures" data-i18n>Recent failures and retries</option><option value="run" data-i18n>All recorded attempts</option></select></label>
+        <label><span data-i18n>Package limit</span><select id="support-limit"><option value="5">5 MiB</option><option value="20" selected>20 MiB</option><option value="50">50 MiB</option></select></label>
+      </div>
+      <label class="support-private"><input id="support-private" type="checkbox"><span data-i18n> Include private research attachments</span></label>
+      <p data-i18n>Private content, evidence scope and package size are independent. Recent failures include the first unresolved failure's retries and recorded final-report evidence. Preview shows missing evidence and effective limits.</p>
+      <details><summary data-i18n>Optional issue description (included in this package)</summary>
+        <div class="support-options">
+          <label><span data-i18n>What happened?</span><textarea id="support-actual" maxlength="2000"></textarea></label>
+          <label><span data-i18n>What did you expect?</span><textarea id="support-expected" maxlength="2000"></textarea></label>
+          <label><span data-i18n>Steps to reproduce</span><textarea id="support-steps" maxlength="2000"></textarea></label>
+          <label><span data-i18n>When, including timezone?</span><input id="support-occurred_at" maxlength="2000"></label>
+        </div>
+        <p class="panel-copy" data-i18n>These fields are included even in public copies. Review them for private information.</p>
+      </details>
+      <p id="support-privacy" class="panel-copy" data-i18n>Default: error codes, retry relationships and environment details; local identifiers are replaced, free-text errors and research bodies are omitted.</p>
+      <p class="panel-copy" data-i18n>Private attachments may contain prompts, code, logs and provider responses. Review them locally and share through a private channel.</p>
+      <div class="support-actions"><button id="preview-support" type="button" data-i18n>Preview package</button><button id="download-support" type="button" disabled data-i18n>Download ZIP</button></div>
+      <p id="support-status" role="status" aria-live="polite" data-i18n>Choose a scope, then preview what will be included.</p>
+      <div id="support-preview" hidden>
+        <pre id="support-readme"></pre>
+        <details><summary data-i18n>File inventory and environment</summary><pre id="support-report"></pre></details>
+        <details><summary data-i18n>Diagnostic content</summary><pre id="support-diagnostics"></pre></details>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="human-dialog" aria-labelledby="human-title">
+    <div class="support-content">
+      <div class="support-heading"><h2 id="human-title" data-i18n>Human decision</h2><button id="close-human" type="button" data-i18n>Close</button></div>
+      <p id="human-run" class="panel-copy"></p>
+      <label><span data-i18n>Question / history</span><select id="human-select"></select></label>
+      <h3 id="human-question"></h3><p id="human-rationale"></p>
+      <div id="human-options"></div>
+      <p id="human-access" class="panel-copy"></p>
+      <label for="human-answer" data-i18n>Your answer</label>
+      <textarea id="human-answer" rows="7" placeholder="Choose a suggestion above or write your own answer. Nothing is preselected."></textarea>
+      <p id="human-recorded" class="panel-copy" hidden></p>
+      <div class="support-actions"><button id="review-human" type="button" data-i18n>Review answer</button><button id="submit-human" type="button" hidden data-i18n>Submit answer</button><button id="edit-human" type="button" hidden data-i18n>Edit</button></div>
+      <p id="human-status" role="status" aria-live="polite"></p>
+    </div>
+  </dialog>
+
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="evidence-drawer" class="drawer" aria-labelledby="drawer-title" aria-hidden="true" hidden>
+    <header class="drawer-heading">
+      <div>
+        <p class="eyebrow" data-i18n>DURABLE OBSERVATION</p>
+        <h2 id="drawer-title" data-i18n>Attempts &amp; evidence</h2>
+      </div>
+      <button id="close-drawer" type="button" aria-label="Close attempts and evidence drawer" data-i18n>Close</button>
+    </header>
+    <nav class="drawer-tabs" aria-label="Drawer views">
+      <button id="drawer-evidence-tab" type="button" aria-pressed="true" data-i18n>Selection &amp; evidence</button>
+      <button id="drawer-detail-tab" type="button" aria-pressed="false" data-i18n>Research detail</button>
+    </nav>
+    <section id="research-detail" class="drawer-section" hidden aria-labelledby="research-detail-title">
+      <h3 id="research-detail-title" data-i18n>Research detail</h3>
+      <p id="research-detail-status" class="panel-copy" role="status"></p>
+      <div id="research-detail-tabs" class="drawer-tabs" aria-label="Detail content"></div>
+      <div id="research-detail-content"></div>
+    </section>
+    <div id="drawer-evidence-content">
+    <section id="selection-detail" class="drawer-section" aria-labelledby="selection-heading">
+      <h3 id="selection-heading" data-i18n>Selection</h3>
+      <p data-i18n>Select a graph node or component to narrow the durable record.</p>
+    </section>
+    <section class="drawer-section" aria-labelledby="attempts-heading">
+      <div class="section-title"><h3 id="attempts-heading" data-i18n>Attempts</h3><span id="attempt-count" class="counter">0</span></div>
+      <div id="attempt-list" class="attempt-list"></div>
+    </section>
+    <section class="drawer-section" aria-labelledby="evidence-heading">
+      <h3 id="evidence-heading" data-i18n>Evidence summary</h3>
+      <div id="hypothesis-evidence"></div>
+      <dl id="fact-counts" class="fact-grid"></dl>
+      <div id="oracle-detail" class="oracle-detail"></div>
+    </section>
+    </div>
+  </aside>
+
+  <p id="screen-status" class="visually-hidden" role="status" aria-live="polite"></p>
+  <noscript data-i18n>This observer requires JavaScript to poll and render the read-only snapshot endpoint.</noscript>
+</body>
+</html>

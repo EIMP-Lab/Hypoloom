@@ -1,0 +1,17 @@
+include LICENSE README.md README.zh-CN.md SETUP.md SETUP.zh-CN.md USAGE.md USAGE.zh-CN.md CONTRIBUTING.md CONTRIBUTING.zh-CN.md CLAUDE.md
+include docs/assets/hypoloom_vector.svg docs/assets/hypoloom_overview.svg
+include docs/assets/Hypo.png docs/assets/TUI.png docs/assets/web-overview.png docs/assets/web-expert.png docs/assets/web-metrics.png
+include environment.yml .gitignore .gitattributes
+include .github/ISSUE_TEMPLATE/bug_report.yml
+include .claude/settings.example.json
+include .claude/hooks/dispatch.py .claude/hooks/guard_paths.py
+recursive-include .claude/skills/autoresearch *.md *.py
+recursive-include .claude/skills/autoresearch-monitor *.md
+recursive-include docs *.md
+include profiles/README.md profiles/README.zh-CN.md
+include config/hypoloom.env.example
+include config/README.md config/README.zh-CN.md
+include config/institutional-browser.compose.yaml
+recursive-include profiles/templates *.yaml
+include tests/test_documentation_structure.py tests/test_public_profiles.py
+global-exclude __pycache__ *.py[cod]

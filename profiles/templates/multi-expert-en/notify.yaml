@@ -1,0 +1,17 @@
+sinks:
+  log:
+    level: info
+    path: events.jsonl
+  telegram:
+    enabled: false
+    # Fill only in your local Profile, keeping this file mode 0600; no env needed.
+    # Quote both values. Never commit them or paste them into a conversation.
+    bot_token: ""
+    chat_id: ""
+  dashboard:
+    enabled: true
+    host: 127.0.0.1
+    port: 0  # OS-selected free port; use 1–65535 to pin a fixed port.
+events:
+  # new_best_result: first/group-best experiment measurement; goal_verdict_recorded: overall GOAL judgment.
+  telegram: [grounding_question, grounding_answered, new_best_result, goal_verdict_recorded, leader_started, debate_started, expert_round_done, provider_waiting, provider_retry_requested, provider_recovered, literature_waiting, literature_retry_requested, literature_recovered, error, run_finished, run_briefing]

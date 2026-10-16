@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hypoloom"
+version = "0.0.1"
+description = "Autonomous research through hypotheses, experiments, and evidence"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "filelock>=3.0",
+    "wsproto>=1.2,<2",
+    "jsonschema>=4.26,<5",
+]
+
+[project.scripts]
+hypoloom = "hypoloom.cli:main"
+hypoloom-mcp = "hypoloom.mcp_server:main"
+
+[project.optional-dependencies]
+institutional = [
+    "playwright>=1.51,<2",
+]
+notify = [
+    # Transports use the standard library; only briefing charts need matplotlib.
+    "matplotlib>=3.9,<4",
+]
+monitor = [
+    "textual>=0.50",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.12",
+    "build>=1.2",
+]
+
+[project.urls]
+Repository = "https://github.com/EIMP-Lab/Hypoloom"
+Issues = "https://github.com/EIMP-Lab/Hypoloom/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/test_documentation_structure.py", "tests/test_public_profiles.py"]
+# Public checks use the source checkout without requiring an editable install.
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hypoloom*"]
+exclude = ["tests*", "profiles*", "scripts*"]
+
+[tool.setuptools.package-data]
+"hypoloom" = [
+    "migrations/*.sql",
+    "skills/*/SKILL.md",
+    "skills/research-workflow/references/*.md",
+    "skills/expert-seed/.claude-plugin/plugin.json",
+    "skills/expert-seed/skills/*/SKILL.md",
+    "skills/grounding-seed/.claude-plugin/plugin.json",
+    "skills/grounding-seed/skills/*/SKILL.md",
+    "web_observer_assets/*",
+    "connection_assets/*.ps1",
+]
