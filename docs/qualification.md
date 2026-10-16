@@ -2,6 +2,116 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Full dev qualification (2026-10-16)
+
+Candidate: `8579de82c117049af6193213ba8f977b0729258e`. Runtime and test source
+remain unchanged throughout this assessment. Evidence and exact invocations are
+in `.local/qualification/full-20261016/`; short disposable roots are under
+`/tmp/hq16*`. Network-outage and machine-reboot campaigns are outside the requested
+scope; the ordinary offline recovery fixtures remain in the complete selection.
+
+**Final decision: NO-GO for full qualification.** The complete assessment has
+finished. The offline selection passes, but retained-run audit findings and live
+GPU test failures remain open, and all three paid compatibility samples fail.
+
+| Stage | Observed result |
+| --- | --- |
+| G0 | The telemetry repair's focused evidence is retained in the following section; the committed candidate and package bytes are fixed. Python 3.12.14, Claude Code 2.1.299, bubblewrap and dependency checks are available. |
+| G1 | **8,319 passed / 159 opt-in skips / zero failures**, 1,233.78 seconds; all **8,478 collected identities** reconcile with JUnit. Compilation, Ruff and whitespace checks pass. |
+| G2 fixtures | All **191 selected checks pass within G1**; no duplicate fixture run is counted. |
+| G2 retained | All **10 roots remain unchanged**. Eight current-reader audits pass; two retain **20 findings** described below. All **1,219 recorded process groups are absent**, with no duplicate Attempt ownership; retained pool Oracle passes. |
+| G3 | All **seven selected production-process scenarios pass within G1**. Independent census finds **169 Agents / 16 Processes, all 185 CLOSED**, 15 outcomes and seven passing Oracles; recorded groups are absent. |
+| G4 shared | **Eight helper checks pass / two live scenarios fail**, 35.98 seconds. The scripted resource prelude trips an inherited fresh-session assertion before CUDA publication. Four roots retain 28 CLOSED and four OPEN Agent rows; all 32 groups are absent and no Process was launched. |
+| G4 diagnostic | A separate existing native two-GPU scenario fails its obsolete same-session assertion after completing **18 Agents / two CUDA Processes**, all CLOSED/SUCCEEDED. Independent Oracle passes with two outcomes and no live groups; the actual logs identify both authorized GPUs. The failed test is not relabelled as a pass. |
+| G5 | **All three samples fail**: local CPU 902.18 seconds, common CPU 465.62 seconds, resource GPU 1,072.91 seconds. Authorized `glm-5.3-flash` allocations **6 / 8 / 6 USD**, **900 / 900 / 1,200 seconds**, **240 / 240 / 384 turns**. Total cohort threshold **20 USD**; no paid sample is rerun. All 27 Agents close, with zero Processes or experiment outcomes. |
+
+Wheel, isolated installation and fresh bundle match all **196 package files**.
+The source archive contains all ten files changed by the candidate and excludes
+private state/settings paths. Installed CLI/MCP and a separate actual Host CPU
+smoke pass outside the checkout: four closed Attempts, two CPU Processes, clean
+Oracle, Host exit zero, no socket or process residue.
+
+The full offline census independently reads **1,228 fixture databases** and
+12,356 Attempt rows, with no duplicate owners and **2,652 absent recorded process
+groups**. Its 113 OPEN rows include deliberately unfinished unit-test fixtures;
+they are not a claim of terminal Host closure. Seventy-three legacy/invalid test
+databases are explicitly excluded from that census. G3 is counted separately.
+
+### Retained audit findings
+
+- `MERC-causal-202610120121`: **11 findings** come from the three previously
+  documented `-1` parser sentinels and their dependent assessments. Original
+  bundled path semantics reproduce the saved values; corrected parser transport
+  computes the already documented different measurements. Baseline `b4445ad`
+  reports the same 11 findings plus 33 telemetry findings; all other report fields
+  match the candidate. These are historical parser differences, not a new
+  telemetry-repair regression. Original values and the failed replay remain.
+- `MERC-causal-202610121755`: **nine findings** remain. Current
+  `SharedGpuHost.observe_oom` can cut a valid exception at exactly 512 characters
+  ending in a space; `_raw_reported_gpu_oom` rejects the resulting non-trimmed
+  excerpt, with dependent resource-learning/grant findings. Separately, current
+  parser transport maps a declared relative raw argument to `/raw/...`, while
+  `audit_parser_process_requests` still reconstructs the old relative argument.
+  Both disagreements reproduce without changing any retained file.
+
+`independent-findings.json` records the bounded reproductions and G4 request
+sequence. The shared fixture receives its current Attempt's Skill and resource
+query before delegating to the batch helper, whose logical step one incorrectly
+requires no prior tool-use blocks. The diagnostic GPU test instead requires one
+session ID across nodes despite current per-node session isolation. Preserve
+these failures and repair the corresponding checks before claiming G4 promotion.
+
+### Paid compatibility samples
+
+The local CPU sample fails in **902.18 seconds**, ending FAILED with 12 CLOSED
+Agents (eight SUCCEEDED, three FAILED, one TIMED_OUT), no Process and no accepted
+experiment outcome. Five invalid submit calls exhaust the execution node's
+24-turn allowance; two adjudication candidates are rejected, and FINAL_REPORT
+reaches the profile wall limit. Oracle passes and all 12 groups are absent.
+Reported cost is **2.26783519999999981 USD**; the final-report Attempt has unknown
+usage and retains **2 USD**, giving **4.26783519999999981 USD accounted**.
+The common CPU sample fails in **465.62 seconds**. Grounding times out at its
+300-second node bound after nine completed requests; the final report succeeds.
+The run is COMPLETED with an INCONCLUSIVE verdict, but its required successful
+Grounding/hypothesis/experiment phases are absent, so the qualifier correctly
+fails. Three Agents are CLOSED, no Process/outcome exists, Oracle passes and all
+three groups are absent. Reported **0.28385039999999996 USD** plus **2 USD** of
+unknown Grounding usage gives **2.28385039999999996 USD accounted**.
+
+The resource GPU sample fails in **1,072.91 seconds**, ending
+COMPLETED/INCONCLUSIVE. Design succeeds, but four experiment submissions fail:
+one omits required candidate fields and three specify `execution_argv` without
+a scientific measurement declaration. Execution reaches its 300-second node
+limit after 27 completed requests. Two adjudication candidates fail to cite each
+exact batch hypothesis; the final report succeeds. All **12 Agents are CLOSED**
+(nine SUCCEEDED, two FAILED, one TIMED_OUT), with **no Process, pool request or
+experiment outcome**. Thus this sample provides no actual CUDA execution evidence.
+Independent post-cleanup run/pool Oracles pass; the pool socket is absent, all
+12 recorded groups are absent, and no cleanup errors or GPU compute processes
+remain. Reported **2.14650320000000008 USD** plus **2 USD** of unknown execution
+usage gives **4.14650320000000008 USD accounted**.
+
+No failed sample is rerun; the Host's existing within-sample retry policy remains.
+The three-sample aggregate is **4.6981888 USD reported / 6 USD unknown reservations /
+10.6981888 USD accounted**, within the approved 20 USD cohort threshold. Exact
+decimal inputs remain in `g5-total-accounting.json`. These are reported/declared
+dispatch amounts, not upstream invoices or guaranteed billing caps. All three
+run Oracles pass and all 27 Agent groups are absent; clean closure does not supply
+the missing experimental results.
+
+No research run is resumed, migrated, settled or rewritten. No shared install or
+research service is replaced, and no production-code repair is included in this
+qualification assessment.
+
+The next candidate needs focused repairs for the reproduced OOM-excerpt and
+parser-argument verifier disagreements, using the existing producers and validators.
+The two G4 fixtures need assertions that distinguish the current Attempt's resource
+prelude from cross-Attempt history and enforce current per-node session isolation.
+Real-model submission validity and phase completion need separate investigation;
+these bounded failures do not establish that increasing budgets would resolve them.
+The historical parser sentinels remain historical evidence. None of these open
+items is waived by the passing offline suite or by clean process cleanup.
+
 ## Optional GPU telemetry audit (2026-10-16)
 
 The [reader repair](design/experiment-methods-and-skill-observation.md#optional-gpu-telemetry-audit-repair-2026-10-16)

@@ -1,5 +1,28 @@
 # Current Hypoloom development state
 
+- October 16 full qualification of `8579de8` is complete: NO-GO.
+  G1 passes 8,319 / 159 opt-in skips, including 191 G2 fixtures and seven G3 flows.
+  Ten retained roots are unchanged; eight audits pass, one keeps 11 known parser
+  sentinel findings and one has nine OOM-excerpt/parser-argv findings. Current
+  producer/reader disagreements reproduce. Shared G4 fails its resource-prelude
+  session assertion; a diagnostic native flow completes two CUDA cycles but fails
+  an obsolete cross-node session-ID assertion. No production/test source repair.
+  User authorizes GPU 0/1 and three fresh glm-5.3-flash G5 samples at 6/8/6 USD,
+  900/900/1,200 seconds; no paid retries. Local CPU fails at 902.18 seconds with
+  invalid submissions/turn exhaustion, two rejected adjudications and final-report
+  wall exhaustion; 12 Agents close, no Process/outcome, clean Oracle/no groups.
+  Local reported 2.2678352 USD plus 2 USD unknown reservation. Common CPU fails
+  qualification at 465.62 seconds: Grounding times out, report finishes, terminal
+  COMPLETED/INCONCLUSIVE has three closed Agents and no experiments. Another
+  0.2838504 USD reported plus 2 USD unknown. Resource GPU fails at 1,072.91 seconds:
+  four invalid submissions, execution timeout and two invalid adjudications; final
+  report succeeds, COMPLETED/INCONCLUSIVE. Twelve Agents close, no Process or pool
+  request, clean run/pool Oracles, no socket/groups. Resource reported 2.1465032 USD
+  plus 2 USD unknown. All three samples fail with 27 closed Agents/no experiments;
+  totals: 4.6981888 USD reported + 6 USD unknown = 10.6981888 USD accounted.
+  No sample reruns or boundary increases; historical run state stays untouched.
+  [Evidence and limits](../qualification.md#full-dev-qualification-2026-10-16).
+
 - October 16 GPU telemetry audit: the existing Oracle accepts exactly the four
   optional device performance fields with nonnegative integer validation. Required
   memory, GPU identity, pressure, ownership and unknown-field checks remain strict.

@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Full dev qualification, October 16](../qualification.md#full-dev-qualification-2026-10-16):
+  frozen `8579de8`, complete offline selection, ten retained read-only comparisons,
+  independent closure counts, reproduced OOM/parser audit disagreements and GPU
+  fixture failures. All three bounded paid samples fail; 27 Agents close without
+  experiments, accounting is 4.6981888 USD reported + 6 USD unknown reservations.
+  Final NO-GO; no full promotion or production repair is claimed.
+
 - [Optional GPU telemetry audit](../design/experiment-methods-and-skill-observation.md#optional-gpu-telemetry-audit-repair-2026-10-16):
   strict optional device fields in the existing Oracle, preserved resource/ownership
   checks and unchanged retained runs. [Validation](../qualification.md#optional-gpu-telemetry-audit-2026-10-16)
