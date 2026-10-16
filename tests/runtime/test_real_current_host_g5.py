@@ -1189,7 +1189,7 @@ def _run_current_host_canary(
     adapter, model, prior, remaining = _canary_launch(adapter, model, fresh_allocation_usd)
     # Retain fresh /var/tmp sources/data and their exact paths beside the run.
     profile, payload = _profile(tmp_path / "qualification", model, prior, common_acceptance=common_acceptance,
-        fresh_allocation_usd=fresh_allocation_usd, node_budget=node_budget,
+        fresh_allocation_usd=remaining, node_budget=node_budget,
         run_wall_seconds=run_wall_seconds, run_turns=run_turns,
         max_rounds_per_expert=max_rounds_per_expert, max_experiments=max_experiments,
         reading_compatibility=reading_compatibility)

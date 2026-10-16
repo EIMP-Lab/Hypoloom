@@ -155,6 +155,33 @@ selection coverage plus this targeted refresh from an uninterrupted green run.
 
 ## Verification order
 
+### Authorized common retry and qualification budget forwarding
+
+The user explicitly approves one common-only retry, at most 8 USD from the
+remaining cohort allowance, with a 1,200-second run and unchanged 300-second
+nodes. Use the existing explicit-allocation runner; inspect the admitted Profile
+before model work proceeds. The actual sample has 8 USD total/per-expert caps,
+no GPU grant and the authorized time limits. Keep all prior charges, including
+the 2 USD unknown report reservation.
+
+Preflight inspection also reproduces a qualification-helper budget defect in the
+default cumulative entry: `_canary_launch` resolves the reviewed allocation, but
+the caller passes `None` to `_profile`, which recomputes `20 - prior` instead.
+The preceding local/common Profiles therefore admitted 20/17.9355848 USD rather
+than their reviewed 6/8 USD. Their actual accounted charges remained below the
+reviewed allocations; retain both facts and do not rewrite those Profiles. The
+current explicit 8 USD entry is unaffected.
+
+Pass the already resolved `remaining` allocation into the existing Profile
+builder for both entry paths. Four offline boundary cases reproduce the excess
+before repair and inspect both admitted budget values and source safety YAML
+afterward, stopping before any Host/model launch. This changes only the paid
+qualification harness, not production budgeting, accounting, default ceilings,
+unknown reservations or scientific validation. It reuses the preflight decision
+as the sole budget source; no new schema, gate or accounting authority is added.
+Prepare this isolated fixture repair while the authorized candidate remains
+unchanged, then refresh the affected files before integrating it.
+
 ### Common G5: report deadline and authored test inputs
 
 The repaired common sample completes Grounding, the seeded target repair, a real

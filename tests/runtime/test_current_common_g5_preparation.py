@@ -129,6 +129,34 @@ def test_common_g5_default_launch_still_requires_the_original_prior_preflight(mo
         "budget_scope": "cohort_cumulative", "prior_charged_usd": "4.25", "cohort_charged_lower_bound_usd": "5.50"}
 
 
+@pytest.mark.parametrize("common", [False, True])
+@pytest.mark.parametrize("prior,limit", [("0", "6"), ("8.9460224", "16.9460224")])
+def test_current_g5_admitted_profile_uses_reviewed_sample_allocation(monkeypatch, tmp_path, common, prior, limit):
+    prior, limit = Decimal(prior), Decimal(limit)
+    monkeypatch.setenv("HYPOLOOM_G5_CUMULATIVE_LIMIT_USD", str(limit))
+    monkeypatch.setattr(canary, "_preflight", lambda: (object(), "approved-model", prior))
+    original = canary._profile
+
+    class ProfileVerified(Exception):
+        pass
+
+    def inspect_profile(*args, **kwargs):
+        profile, payload = original(*args, **kwargs)
+        safety = yaml.safe_load((profile / "safety.yaml").read_text())
+        budget = payload["research_contract"]["budget"]
+        assert Decimal(str(safety["total_budget_usd"])) == limit - prior
+        assert Decimal(str(safety["per_expert_budget_usd"])) == limit - prior
+        assert Decimal(budget["total_budget_usd"]) == limit - prior
+        assert Decimal(budget["per_expert_budget_usd"]) == limit - prior
+        raise ProfileVerified
+
+    monkeypatch.setattr(canary, "_profile", inspect_profile)
+    monkeypatch.setattr(canary, "WorkflowHost", lambda *_a, **_k: pytest.fail("offline boundary check must not launch a Host"))
+    with pytest.raises(ProfileVerified):
+        canary._run_current_host_canary(tmp_path, common_acceptance=common)
+    assert not list(tmp_path.rglob("state.sqlite"))
+
+
 @pytest.mark.parametrize("adapter,model,allocation", [
     (None, "approved-model", "1000"), (object(), None, "1000"),
     (object(), "approved-model", None),
