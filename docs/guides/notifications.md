@@ -1,4 +1,8 @@
-# Notifications / 通知
+# Notifications
+
+English · [简体中文](notifications.zh-CN.md)
+
+## Configure delivery
 
 Public Profiles disable Telegram. Notifications send information outside the
 machine and require explicit approval of the transport, recipient and content.
@@ -22,8 +26,7 @@ rate-limit or quota waits, `provider_retry_requested` for an operator request,
 and `provider_recovered` for an observed successful API response. Legacy
 `provider_auth_cooldown` / `provider_auth_resumed` selections map to these events.
 See [API recovery](provider-recovery.md) for TUI/Web/CLI controls. Other
-supported template events include
-new results, interaction starts, round completion, errors and run completion.
+supported template events include new results, interaction starts, round completion, errors and run completion.
 
 Telegram event templates follow the admitted Profile's `language.yaml.report_language`:
 `zh` / `zh-*` use Chinese, other languages use English. The legacy fallback is
@@ -43,23 +46,6 @@ is needed; legacy `--proxy-env` remains an alternative and cannot override that
 Profile value. Do not infer another service's proxy configuration. A loopback
 test proves local request behavior, not actual delivery to a public recipient.
 
-中文：在私有 `notify.yaml` 中填写 `sinks.telegram.bot_token` 和 `chat_id`，
-两个值均加引号、文件保持 0600，确认接收对象后开启通知，无需单独 env。
-准入剥离明文，Host 从原 Profile 读取；旧文件/环境方式仍兼容，但同一服务不能混用。
-秘密不能写进公开模板、`--set`、对话或 Issue。提醒只是返回 TUI/Web
-操作的入口，不会自动接受建议或恢复调度。
-
-`events.telegram` 中的 `provider_waiting`、`provider_retry_requested`、
-`provider_recovered` 分别表示 API 等待、操作者请求重试、已观察到实际恢复。
-旧 `provider_auth_cooldown` / `provider_auth_resumed` 订阅仍映射到新事件，
-但请求重试不会被当作已经恢复。通知按状态或原因变化发送，不逐次失败刷屏；
-切换步骤见[API 状态与恢复](provider-recovery.zh-CN.md)。公开模板仍默认关闭 Telegram。
-
-Telegram 模板沿用准入 Profile 的 `language.yaml.report_language`：`zh` / `zh-*`
-使用中文，其余使用英文；旧合同回退到 `goal.language`。条目之间空一行，少量 emoji
-标识事件。末尾改为从运行创建起的累计时长（包括等待／离线时间；终态后冻结），数据
-不可用时标为未知，不再显示 Dashboard 地址。Web 认证地址请在本地查看。
-
 For managed `/autoresearch init`, the caller's notification environment is not
 inherited. Inline Profile fields work without an additional credential option.
 Webhooks use `sinks.webhook.url` and optional `token`; the URL still requires
@@ -67,15 +53,12 @@ HTTPS except for a local loopback receiver. `--notification-output-root` selects
 a separate absolute delivery directory. Preflight validates enabled sinks without
 sending or opening a dashboard. Missing input blocks launch. Optional old
 `--notification-credentials-file` and environment inputs remain compatibility
-paths only; model authentication remains separate.
+paths only; model authentication remains separate. Preserve credential files
+still referenced by existing runs. See [initialization](initialization.md).
 
-中文：托管 init 不继承交互式通知环境；内联 Profile 无需额外凭据参数。
-webhook 使用 `sinks.webhook.url`／`token`，代理使用 `proxy_url`，输出目录可由
-`--notification-output-root` 指定。预览不会发送通知；凭据缺失会在启动前报错。
-旧 `--notification-credentials-file` 和环境方式仅作兼容。已有运行仍引用原凭据
-源，不自动迁移；不要删除其依赖文件。详情见[初始化指南](initialization.zh-CN.md)。
+<a id="experiment-metrics-and-goal-verdicts--实验指标与-goal-判定"></a>
 
-## Experiment metrics and GOAL verdicts / 实验指标与 GOAL 判定
+## Experiment metrics and GOAL verdicts
 
 `new_best_result` remains the subscription name, with two distinct titles:
 **First valid measurement** when a comparison group has no prior accepted value,
@@ -97,26 +80,11 @@ GOAL not met**, or **Overall GOAL inconclusive**, taken only from the recorded G
 verdict. Both public templates include this event with Telegram still disabled.
 For future runs, include both events in your private Profile before init. Existing
 admitted subscriptions and retained runtime bundles do not change automatically.
-The metric event type, IDs and revisions are unchanged, preserving delivery cursors.
 Metric labels and values are included; research bodies and parser code are omitted.
 
-中文：原 `new_best_result` 订阅继续有效，但标题区分为 **首次有效测量** 和
-**同组指标刷新**。每个可比组的首条有效结果会通知；之后只有严格改善才通知，持平
-或变差不触发。`SUCCESS` 和 `CLEAN_REFUTATION` 的有效指标均可参与，因此首次测量
-或同组刷新仍可能未达到实验阈值。可比组由组件、指标及阈值、测量声明、冻结解析器
-内容、试验计划、上游结果和评估器版本共同决定；条件变化后重新建立本组起点。
+<a id="twelve-hour-run-briefings--每-12-小时运行简报"></a>
 
-通知展示组件、实验范围（`LOCAL`／`GOAL`／旧记录未知）、指标及比较方式、优化方向、
-前次最佳、本次数值和实验阈值是否达到。这里的达标仅指实验指标；即使范围为 `GOAL`，
-也不表示整体目标已达成。整体结果由独立的 `goal_verdict_recorded` 通知表达：
-**整体 GOAL 已达成／未达成／尚不能确定**，严格采用已记录的 GOAL 判定。
-
-两份公开模板已加入 GOAL 判定订阅，Telegram 仍默认关闭。新运行请在 init 前把两个
-事件都加入私有 Profile；现有运行的冻结订阅和运行时不会自动升级。沿用原事件 ID、
-版本和通知游标，不因文案升级重发已确认事件。通知包括指标名称和数值，不发送
-研究正文或解析器代码。
-
-## Twelve-hour run briefings / 每 12 小时运行简报
+## Twelve-hour run briefings
 
 Add `run_briefing` to `events.telegram` in the private Profile **before init**;
 both public templates include it, while Telegram remains disabled by default.
@@ -128,8 +96,8 @@ terminal runs stop briefings. `run_finished` remains the completion notification
 Retry/backoff and the existing per-sink cursor apply: acknowledgment advances the
 window, so ordinary restart does not repeat it. Delivery remains at-least-once;
 a crash after remote success but before saving the cursor can duplicate a message.
-No scheduler table, research fact, periodic LLM request or additional agent slot
-is introduced. Log/webhook subscriptions can select the same summary event.
+Briefings make no periodic model requests and use no additional Agent slots.
+Log/webhook subscriptions can select the same summary event.
 
 The summary shows **cumulative** GOAL verdict and assessed/required components,
 hypothesis graph node/relation/state counts, experiment states, and tokens.
@@ -147,8 +115,13 @@ liveness check. UTC timestamps and bucket width are printed on the chart. Summar
 and trend reads use the same cutoff time but separate read-only transactions;
 ongoing activity can settle between those reads.
 
-Install `pip install -e '.[monitor,notify,dev]'` for charts; transports themselves
-use the standard library. For Chinese images, install a system CJK font such as
+Install chart dependencies in the control environment:
+
+```bash
+python -m pip install -e '.[monitor,notify]'
+```
+
+Transports themselves use the standard library. For Chinese images, install a system CJK font such as
 Noto Sans CJK (`fonts-noto-cjk` on Debian/Ubuntu). Plotting runs in a disposable
 subprocess with a 15-second timeout, following bounded diagnostic inspection.
 Missing dependency/font, timeout or drawing failure falls back to one text
@@ -156,35 +129,13 @@ briefing. A PNG and caption use one acknowledged
 [Telegram sendPhoto](https://core.telegram.org/bots/api#sendphoto) request; if the
 caption exceeds its 1,024-character limit, send the full text summary instead.
 A remote photo-delivery failure follows normal retries, without sending another
-text message that could duplicate an ambiguously acknowledged photo.
+text message that could duplicate an ambiguously acknowledged photo. These
+settings apply to new runs; updating the checkout does not change the subscriptions
+or runtime of an existing run. Cross-version run migration is unsupported.
 
-中文：在**新 init 前**把 `run_briefing` 加入私有 Profile 的 `events.telegram` 列表。
-两份公开模板已包含，但 Telegram 仍默认关闭。从运行创建时间起，每满 12 小时发送
-一份简报，第一次不会立即发；由现有观察服务触发，与浏览器是否打开无关，Host 观察
-服务或独立通知进程需要保持运行。离线恢复只补最新一份；终态停止简报，结束通知
-仍为 `run_finished`。复用原通知游标、重试和退避；发送成功后才推进游标。普通重启
-不重复，远端成功与本地保存之间崩溃仍可能重复。没有新调度表、研究事实或 LLM 调用，
-不占 Agent 并发额度。
+<a id="server-side-clash-proxy--服务器-clash-代理"></a>
 
-文字为**累计状态**：GOAL 判定／必要组件已评估数、假设图节点／关系／状态、实验
-状态、token 用量。已评估不等于目标达成；已记录、未结算观测、预算预留分别展示，
-预留不是消耗，失败尝试的已知消耗已计入已记录总量，用量未知计数可能重叠。
-不发送研究正文、人工问答正文或操作备注。
-
-附图为**最近 12 小时**的总量／逐专家 RPM（最多展示请求最多的 8 位专家，总量包含
-全部专家）、Grounding／其他任务、Agent／实验并发记录及桶内峰值。RPM 含重试，
-显示桶宽和 UTC 时间；采集缺失留空并保留下界，不补零。并发是已绑定 Attempt 记录，
-不表示进程当前存活。文字与曲线使用同一观测截止时间、不同只读事务，期间任务可能结算。
-
-图像需要 `notify` 可选依赖（matplotlib）；中文还需系统 CJK 字体，如 Noto Sans CJK。
-推荐安装命令已包含该依赖。绘图在临时子进程中执行，最长 15 秒；诊断扫描也有界。
-缺少依赖／字体、超时、绘图失败或图片说明超长时，退回一条文字简报。远端图片发送
-失败仍按原机制重试，避免不确定的发送结果引发额外文字重复通知。
-
-这些变更适用于新运行及其通知服务。已有运行保留原准入订阅和绑定的运行代码，
-更新工作区不会修改它们，也不支持通过迁移旧运行来启用新功能。
-
-## Server-side Clash proxy / 服务器 Clash 代理
+## Server-side Clash proxy
 
 When the Linux server cannot connect directly to Telegram, configure an explicit
 notification proxy **before a new init**. Clash/Mihomo must run on the server
@@ -199,24 +150,10 @@ the notification service has not selected it. Add `proxy_url` to the private
 Profile before init; installing Clash or updating this tutorial does not edit
 that Profile. A configured proxy still needs a connectivity check.
 
-中文：服务器无法直连 Telegram 时，在**新 init 前**配置专用通知代理。
-Clash/Mihomo 应运行在 Linux 服务器上，并保持后台可用；这里的 `127.0.0.1`
-指 Hypoloom 所在服务器，不是 Windows 客户端。通知不会自动采用模型、浏览器
-的代理，也不会自动读取 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`。
-
-程序生成的 init 审核会明确显示 **Telegram route: direct**（直连）或
-**explicit HTTP proxy**（显式 HTTP 代理）。Clash 已运行但审核仍显示 direct，
-说明通知服务尚未采用它；应在 init 前填写私有 Profile 的 `proxy_url`。
-安装 Clash 或更新教程不会修改该 Profile；显示已配置也不代表网络已验证。
-
 Check Clash's `port` (HTTP) or `mixed-port` (HTTP supported), then confirm the
 listener. A `socks-port` alone is not supported by this notification transport.
 The example below uses HTTP port **7891**; replace it with your actual port.
 The proxy URL must be an HTTP origin without credentials, path or query.
-
-中文：先确认 Clash 的 `port`（HTTP）或支持 HTTP 的 `mixed-port`，再检查监听。
-通知传输不支持仅提供 SOCKS 的 `socks-port`。以下以 **7891** 为例，必须替换为
-自己的实际 HTTP 端口；这不是项目固定端口。代理 URL 不携带账号、密码、路径或查询参数。
 
 ```bash
 ss -ltnp 'sport = :7891'
@@ -226,9 +163,6 @@ Run this optional connection check on the server in the configured Python
 environment. It opens an HTTP CONNECT tunnel and verifies Telegram's TLS
 certificate; it uses no Bot credentials and sends no Telegram message.
 A listening local port alone does not establish that Telegram is reachable.
-
-中文：可在服务器的项目 Python 环境执行以下连接检查。它验证代理到 Telegram
-的隧道和 TLS 证书，不使用 Bot 凭据、不发送消息；仅看到本地端口监听不足以证明连通。
 
 ```bash
 python - <<'PY'
@@ -247,9 +181,6 @@ PY
 Add this **top-level** field to the existing private `notify.yaml`, alongside
 `sinks` and `events`; preserve those sections and keep file permissions at 0600:
 
-中文：在现有私有 `notify.yaml` 的**顶层**添加，与 `sinks`、`events` 同级；
-保留原有通知配置和 0600 权限：
-
 ```yaml
 proxy_url: "http://127.0.0.1:7891"
 ```
@@ -258,10 +189,6 @@ Start a new init after saving. Preflight validates this configuration without
 connecting; it still reports delivery as unverified. The connection check above
 proves network access only. `--test` below separately checks Bot authentication
 and recipient access; `--send-test` additionally sends a message.
-
-中文：保存后再开始新 init。预检只验证配置，不实际连接，因此仍显示投递未验证。
-上面的检查只证明网络可达；下节的 `--test` 另行验证 Bot 认证与接收对象，
-`--send-test` 才会额外发送测试消息。
 
 **Existing runs:** the notification service caches its proxy when it starts.
 TUI **n**, Web **Retry Telegram delivery** and `--retry` clear delivery backoff;
@@ -272,19 +199,11 @@ same-version Host recovery with the required proxy startup option and the same
 notification output directory. Do not create a second sender to work around this:
 concurrent senders can duplicate messages. Preserve the existing delivery cursors.
 
-中文：**已有运行**的通知服务在启动时缓存代理。TUI **n**、Web 的重试按钮及
-`--retry` 只解除投递退避，不重载或切换代理。若创建运行时未配置代理，事后新增
-`proxy_url` 也不会改变已准入的配置绑定。恢复原网络路径后可自动重试；需要更换
-代理时，应单独安排使用原运行版本、指定代理启动参数并保留通知输出目录的 Host
-恢复操作。不要另开第二个发送进程来绕过这一限制，以免重复消息；保留原投递游标。
-
 For an existing run **without a Profile proxy binding**, an explicitly requested
 access check can use a one-command environment variable. This tests the selected
-proxy without sending a message or installing it in the running Host:
-
-中文：对于**尚未绑定 Profile 代理**的已有运行，可主动执行以下独立认证检查。
-变量只用于这一次命令；不会发送消息，也不会给正在运行的 Host 安装代理。
-已绑定 Profile 代理时，使用下节不带 `--proxy-env` 的检查，不能混用两种来源。
+proxy without sending a message or installing it in the running Host. For a run
+with a Profile proxy binding, use the check below without `--proxy-env`; do not
+combine the two sources:
 
 ```bash
 HYPOLOOM_NOTIFY_PROXY=http://127.0.0.1:7891 hypoloom notify \
@@ -293,11 +212,14 @@ HYPOLOOM_NOTIFY_PROXY=http://127.0.0.1:7891 hypoloom notify \
 ```
 
 
-## Delivery health and recovery / 投递状态与恢复
+<a id="delivery-health-and-recovery--投递状态与恢复"></a>
+
+## Delivery health and recovery
 
 An enabled sink is configured, not verified. Init preflight reports
 `delivery_status: unverified`; it reads credentials but sends no message. After
-explicit notification authorization, verify access or send one labelled test:
+explicit notification authorization, choose the required check, test or retry;
+these commands are alternatives, not a sequence to run in full:
 
 ```bash
 hypoloom notify --state-root /absolute/state/run --run-id RUN_ID --test
@@ -342,9 +264,9 @@ human questions, failures and service-state changes retain separate messages.
 Each poll sends at most five remote messages. Existing per-source delivery
 cursors advance only after API acknowledgment and durable cursor replacement,
 including every source covered by a summary. A crash between acknowledgment and
-cursor replacement can still duplicate delivery. There is no second queue or
-persistent health store: restart reconstructs pending events from existing facts
-and cursors, and starts current-lifetime delivery health as unverified.
+cursor replacement can still duplicate delivery. Restart reconstructs pending
+events from recorded research events and delivery cursors, and starts
+current-lifetime delivery health as unverified.
 
 Literature service events are `literature_waiting`, `literature_retry_requested`
 and `literature_recovered`. Existing `error` subscriptions also select these
@@ -352,31 +274,13 @@ operational notices. Repeated failures in one wait state do not each send a new
 notice; changing cause, requiring operator intervention, requesting retry and
 observing actual retrieval success do. See [API recovery](provider-recovery.md).
 
-中文：**开启通知不代表已验证投递成功**。init 只检查配置，明确显示未验证；
-`--test` 检查 Bot 认证和接收对象，`--send-test` 另发一条标注测试用途的消息。
-这两项不补发历史通知、不改投递游标；接口接受消息也不代表用户已经阅读。
-修复已绑定的凭据来源或网络路径后，可执行 `--retry`，或使用 TUI **n** 和 Web 的
-**Retry Telegram delivery**；这些操作不重载代理配置，见上节。以上模式无需输出目录；
-普通独立投递仍要求指定目录。
+## Developer notes
 
-若失败阶段为 `connect`，错误为 `timeout` 或 `network_unreachable` 且没有 HTTP
-状态码，先排查服务器网络路径和选定代理。这时尚未收到 Telegram API 响应，不能
-据此判断 Bot token 或接收对象无效；TLS 检查通过后，仍需单独验证认证和接收权限。
+Metric event types, source IDs and revisions remain stable across wording changes,
+so existing delivery cursors are preserved. Pending delivery is reconstructed from
+recorded events and those cursors; there is no separate persistent queue or health
+store. Health describes the current Host lifetime and starts unverified after restart.
 
-Web/TUI 显示待投递数量、本次 Host 生命周期内最近成功时间、失败类别/阶段和
-下次重试时间。Host 不可达时状态为未知。暂时性错误按 30/60/120/240/300 秒退避，
-遵循更长的服务端 Retry-After；认证、接收对象、权限及证书错误等待人工处理。
-代理仍显式写入 Profile，保持 TLS、重定向和私密凭据边界。通知故障不暂停研究。
-
-Telegram 状态同时显示已绑定的“直连／HTTP 代理”，不显示端点或凭据。
-“连接方式未知”表示 Host 未提供该信息（包括旧版本），不能从事后编辑的 Profile
-推断当前发送线路；点击重试保留原有线路和投递游标。
-
-至少五条连续积压的普通 Telegram 事件会汇总；人工问题、错误和服务状态变化单独发送，
-每轮最多五条远程消息。成功确认并写入既有游标后，才记录摘要覆盖事件的进度。
-崩溃仍可能导致重复投递，不承诺恰好一次；不新增持久队列或健康状态文件，重启后
-由事实和游标重建待投递项，当前投递状态重新从未验证开始。
-
-文献通知包含等待、操作者请求重试、实际恢复三个事件，旧 `error` 订阅同样覆盖。
-同一等待状态不会逐次失败刷屏；原因变化、转入人工处理以及实际恢复会产生提醒。
-详情见 [API 状态与恢复](provider-recovery.zh-CN.md)。
+Keep notification checks separate from scientific acceptance and provider recovery.
+See [qualification](../qualification.md) for retained results and limits, and
+[Contributing](../../CONTRIBUTING.md) before running checks that contact a real service.

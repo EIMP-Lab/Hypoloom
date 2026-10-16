@@ -103,7 +103,7 @@ Agent。证据关联完成后，Agent 可在原有预算内通过 `replaces_expe
 独占仅约束池内承诺，其他外部 GPU 用户仍由原有实时容量及压力保护处理。
 
 本功能不改变既有 reserve、不扩大设备授权、不迁移在途进程、不自动修改科研
-超参数，也不拼接缺失 seed 的结果。实际验证范围见[验证记录](../qualification.md)；
+超参数，也不拼接缺失 seed 的结果。实际验证范围见[验证记录](../qualification.zh-CN.md)；
 模拟设备回归不证明真实 CUDA 的 OOM 率或模型修订质量。
 
 有界测量历史还提供 `observed_over_budget`（没有可用自有显存样本时为未知）及

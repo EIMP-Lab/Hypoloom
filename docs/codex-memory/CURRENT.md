@@ -1,5 +1,20 @@
 # Current Hypoloom development state
 
+- October 16 dev documentation aligns with public main `eab440a` (`v0.0.1`)
+  through selected content updates, without merging branch histories. Quick start
+  prepares the private Profile before init; configuration, Profile and notification
+  guides have independent English/Chinese versions. Each configuration guide covers
+  all 79 template fields and six matching examples. User/developer navigation is
+  separated; dev retains qualification, fixtures, detailed architecture, design
+  records and maintenance context. Three stale historical section links are repaired
+  without rewriting their evidence. Seven focused documentation/Profile tests pass;
+  copy examples preserve private permissions and refuse overwrites. All 196 runtime
+  files remain unchanged. This is documentation validation, not a new G0–G5 result;
+  retained runs, services, paid budgets and main are untouched.
+  [Maintenance](../../CONTRIBUTING.md#documentation-maintenance) /
+  [guides](../README.md) / [Profile developer notes](../../profiles/README.md#developer-notes).
+  Local checks: `.local/analysis/dev-docs-alignment-20261016/`.
+
 - October 16 bounded G0–G5 qualification is complete. Runtime stays at `3725a3d` /
   adapter 85; final test repair is `5b96ea1`. User authorized one common-only
   retry from the fresh 20 USD cohort: 8 USD, 1,200-second run, 300-second nodes.
@@ -1013,7 +1028,7 @@
   or preparation answer changed. Related 136 pass / no skips, docs/Profile 7 pass,
   installed CLI/MCP/fresh bundle 175-file checks pass. Operator subsequently confirms
   Windows publisher-page progression; full-text results remain separate (above).
-  [Design](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04).
+  [Design](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04历史设计).
   Evidence: `.local/qualification/institutional-discovery-recovery-20261004/`.
 
 - October 4 sample-stage disconnect: fresh MERC init opened IEEE, then all four

@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Dev documentation alignment, October 16](../../CONTRIBUTING.md#documentation-maintenance):
+  selectively reuse main's user-facing improvements while preserving development
+  history, qualification and runtime boundaries. [Bilingual index](../README.md),
+  [configuration fields](../../config/README.md) and
+  [Profile development notes](../../profiles/README.md#developer-notes) cover the
+  preparation-first flow and compatibility. Evidence is local at
+  `.local/analysis/dev-docs-alignment-20261016/`; no new candidate qualification.
+
 - [Qualification repairs, October 16](../design/qualification-repairs-2026-10-16.md):
   bounded Oracle producer/reader fixes, exact current G4 history/session checks,
   reused execution candidate projection and batch-bound adjudication inputs;
@@ -432,9 +440,9 @@
   and ScienceDirect verification_required. Springer now opens its official
   institution finder through the shared entry resolver, without admitting auth
   pages as literature or replacing library overrides/user tabs.
-  [Guide](../guides/institutional-access.zh-CN.md#springer-机构入口与-pdf-人机验证).
+  [Guide](../guides/institutional-access.zh-CN.md#springer-nature-机构入口与-pdf-人机验证).
 
-- [Windows discovery recovery](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04):
+- [Windows discovery recovery](../design/institutional-access-preparation.md#windows-发现失败与转发生命周期解耦2026-10-04历史设计):
   reported run_discovery_unavailable reproduces the three-query-failure exit and
   teardown of healthy forwards. Long-lived discovery now backs off, preserves
   independent remote watches, rejects stale creation and reports safe query causes.

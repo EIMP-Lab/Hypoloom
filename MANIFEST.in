@@ -8,9 +8,9 @@ include .claude/hooks/dispatch.py .claude/hooks/guard_paths.py
 recursive-include .claude/skills/autoresearch *.md *.py
 recursive-include .claude/skills/autoresearch-monitor *.md
 recursive-include docs *.md
-include profiles/README.md
+include profiles/README.md profiles/README.zh-CN.md
 include config/hypoloom.env.example
-include config/README.md
+include config/README.md config/README.zh-CN.md config/institutional-browser.compose.yaml
 recursive-include profiles/templates *.yaml
 recursive-include tests *.py *.yaml *.md *.txt
 include scripts/qualify.py

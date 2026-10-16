@@ -2,13 +2,13 @@
 
 [English](SETUP.md) · 简体中文
 
-推荐入口是 Claude Code 中的 `/autoresearch init`。它先做只读检查，展示完整启动方案，
+准备好本地 Profile 后，在 Claude Code 中执行 `/autoresearch init`。它先做只读检查，展示完整启动方案，
 最后由用户选择 `Start now` 或 `Prepare only`。项目交互配置以
 [settings.example.json](.claude/settings.example.json) 为来源；已有配置需要人工合并，
 不能覆盖。正常 `Start now` 不需要先 export 四组变量、退出 Claude Code 或重开会话，
 也不要求用户另开 Host/monitor 终端。
 
-个人配置入口见 [config/README.md](config/README.md)。文献密钥、Telegram token
+个人配置入口见 [config/README.zh-CN.md](config/README.zh-CN.md)。文献密钥、Telegram token
 直接填写在被 Git 忽略的本地 Profile 的 `methodology.yaml`／`notify.yaml`，
 文件权限为 0600；公开 Profile 模板只提供空白字段，无需单独维护 env。使用控制 Python 执行
 `python -B -m hypoloom.bootstrap paths --profile <name>`，可查看默认路径和
@@ -18,14 +18,14 @@ init 通过 `hypoloom.bootstrap prepare` 在内存中填写、验证模板，默
 明确添加 `--write` 才创建新六文件 Profile。`bootstrap launch` 默认只预览启动
 参数，授权后添加 `--start` 才执行既有托管流程，在 Host 就绪前后重读并核对 Profile。
 准备期间配置变化会中止启动。配置检查不调用模型服务，不等于模型实际可用或科学
-质量已验证。辅助命令用法见 [Profile 指南](profiles/README.md#deterministic-preparation--确定性准备)。
+质量已验证。辅助命令用法见 [Profile 指南](profiles/README.zh-CN.md#命令行准备)。
 
 实际模型优先级、Profile 集中预算和托管通知凭据见[初始化指南](docs/guides/initialization.zh-CN.md)。
 
 服务器需要通过 Clash/Mihomo 访问 Telegram 时，在新 init 前填写私有
 `notify.yaml` 顶层的 `proxy_url`，使用服务器实际的 HTTP CONNECT 端口。
 通知不会自动继承其他代理；操作与已有运行的生效限制见
-[服务器代理配置](docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理)。
+[服务器代理配置](docs/guides/notifications.zh-CN.md#服务器-clash-代理)。
 
 Windows 机构客户端首次接入或换机时，先完成
 [用户级 SSH 密钥与免交互登录配置](docs/guides/institutional-access.zh-CN.md#首次接入或更换-windows-机器账户)，
@@ -51,11 +51,31 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,no
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
-`monitor` 安装 Textual；`dev` 安装测试和打包工具。CPU/GPU 实验可以使用独立的研究
+`monitor` 安装 Textual，`notify` 提供通知图表，`dev` 安装测试和打包工具。
+CPU/GPU 实验可以使用独立的研究
 环境，不能把控制 Python 自动当作项目的 CUDA 环境。公开模板中的运行路径需要替换。
 默认 CPU 沙箱要求解释器位于完整运行环境内部。普通 venv 的 Python 可能是指向环境外的
 符号链接，不能据此替代完整 Conda 环境；本项目的安装与进程闭环验证使用后者。
 Web 浏览器测试还需要本机 Chrome/Chromium，`dev` 已包含其 Python 驱动依赖 `websockets`。
+
+使用不带完整路径的 `hypoloom` 命令前，激活控制环境：
+
+```bash
+conda activate ./.conda/envs/hypoloom
+```
+
+### 项目交互配置
+
+先检查 [.claude/settings.example.json](.claude/settings.example.json)。
+新检出的仓库尚无 `.claude/settings.json` 时，复制一次：
+
+```bash
+(umask 077; set -C; cat .claude/settings.example.json > .claude/settings.json)
+```
+
+该命令拒绝覆盖已有文件。已有配置需手动合并所需的 hooks 和 MCP 配置；
+修改 hook 注册后重启 Claude Code。项目交互配置用于保护框架文件并配置研究工具，
+模型 API 认证按下一节单独设置。
 
 ## 2. 模型与文献认证
 
@@ -84,7 +104,7 @@ init 使用当前选定认证来源解析模型选项，展示模型标识，不
 准入剥离明文，并由原 YAML 路径派生既有 `--credentials-file` 参数传给
 `serve`、`profile-check` 和 `start`，不会生成第二份密钥文件。
 旧 dotenv／单密钥参数仍兼容，但不能覆盖 Profile 中冲突的凭据来源。
-填写步骤见[凭据教程](config/README.md)。PDF 路径需要 Poppler 的 `pdfinfo` 和 `pdftotext`。
+填写步骤见[凭据教程](config/README.zh-CN.md)。PDF 路径需要 Poppler 的 `pdfinfo` 和 `pdftotext`。
 网络超时、响应/PDF 大小和页数上限由 init 一并审阅。检索会保留来源 URI 与提取证据；
 未取得 PDF 或元数据不足不应被描述成已阅读全文。
 
@@ -108,17 +128,26 @@ PDF 默认后备为 Semantic Scholar，也可显式选择 Unpaywall：在同一�
 
 密钥、真实 Profile、本地 `.claude/settings.json`、研究数据和运行记录均不提交到 Git。
 
-## 3. 选择双语 Profile
+## 3. 准备本地 Profile
 
-见 [模板说明](profiles/README.md)。公开模板统一采用多专家设计，提供当前 v4 的
-`multi-expert-en` 和 `multi-expert-zh`。每套包含六个 YAML 文件，放入独立的
-`profiles/local/<profile>` 后填写目标、模型、运行环境和数据路径。init 可完成经确认的
-复制；它只逐个复制六个文件，并拒绝覆盖已有目录。
+先复制并编辑模板，再运行 `/autoresearch init`，选择已准备的 Profile。
+[个人配置指南](config/README.zh-CN.md)逐一说明六个文件及模板字段，
+[模板指南](profiles/README.zh-CN.md)介绍研究控制和开发兼容性。
+`multi-expert-zh` 为中文模板，`multi-expert-en` 为英文模板，均使用 v4。
+
+```bash
+mkdir -p profiles/local
+(umask 077 && mkdir profiles/local/my-topic && \
+  cp profiles/templates/multi-expert-zh/*.yaml profiles/local/my-topic/)
+```
+
+替换课题目标、运行环境和数据路径，填写凭据并审阅预算。该命令拒绝覆盖已有 Profile。
+init 也可引导用户审阅并创建全新 Profile，不覆盖已有目录。
 
 预算来自准入后的 `create_run_payload.research_contract.budget.agent_invocation`，
 包括 `max_turns`、`max_tokens`、`max_output_bytes`、`wall_seconds`、`max_cost` 与
 `token_enforcement_mode`。Host 参数必须匹配这些值。`max_cost` 是传给 CLI 的单次调用
-费用阈值；总额和每专家阈值在 `safety.yaml`。已发出的响应可能在回报费用时超过剩余额度，
+费用阈值；总额和每专家阈值在 `methodology.yaml.budget`。已发出的响应可能在回报费用时超过剩余额度，
 因此这些参数不等于上游账单的硬上限。Host 如实计入超额并阻止后续调用；预算规划需要为
 重试、分析、报告及未知费用留出余量。观察模式只改变 token 阈值，不能解除费用、时间或资源约束。
 

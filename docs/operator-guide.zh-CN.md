@@ -5,7 +5,7 @@
 按照 [SETUP](../SETUP.zh-CN.md) 安装固定的控制环境。正常入口是在仓库根目录的
 Claude Code 中使用 `/autoresearch init`。它会检查依赖、Profile 语义、模型/文献
 认证、资源绑定与 user-systemd 就绪情况,最后由你一次性选择 **Start now** 或
-**Prepare only**。公开[模板](../profiles/README.md)是完整的 v4 中英文成对版本,
+**Prepare only**。公开[模板](../profiles/README.zh-CN.md)是完整的 v4 中英文成对版本,
 目标/数据/运行时路径均为占位符。
 
 使用解释器位于前缀内部的完整运行时前缀,即固定 Conda 环境所提供的形式。Python
@@ -46,7 +46,7 @@ scope 回退无法自动重启失败的 Host。`Linger=no` 限制最后一个登
 
 OpenAlex 需要一个显式选择的已有 mode-0600 密钥文件。HTTP(S) 访问、Poppler 路径
 和响应/PDF 上限一并审阅。通知需要单独显式批准接收方/传输方式,公开模板默认
-关闭。见 [notifications](guides/notifications.md)(英文)。
+关闭。见 [通知指南](guides/notifications.zh-CN.md)。
 
 Web/TUI 显示由既有调用和控制记录推导的 API 状态。有界恢复暂停共用 API
 的 Agent 工作，保留节点和已提交实验。TUI **p** 或 CLI `provider-retry-clear`

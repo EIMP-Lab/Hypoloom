@@ -84,7 +84,7 @@ TUI 将已报告与未结算已观测 token 分开显示，两者相加后可与
 
 - **l / Literature retry**：修复后重试 OpenAlex，与模型 API 恢复分开。
 - **n / Telegram retry**：按当前代理重试托管通知，不重载代理配置；代理设置、认证检查
-  和显式测试消息见[通知指南](docs/guides/notifications.md)。
+  和显式测试消息见[通知指南](docs/guides/notifications.zh-CN.md)。
 
 Web / local access 位于独立的连接信息区域。启动 Web observer：
 
@@ -274,7 +274,7 @@ Git 提交。树外链接等不兼容问题会在研究启动前报出。准入�
 恢复所需的私有模型设置单独提供，不进入备份。不要将恢复解释为当前工作树接管旧运行，
 也不要覆盖已有状态根。具体参数见 `hypoloom backup --help` 和 `hypoloom restore --help`。
 
-通知配置见[通知指南（中英双语）](docs/guides/notifications.md)。新的昂贵课题运行前，核对
+通知配置见[通知指南](docs/guides/notifications.zh-CN.md)。新的昂贵课题运行前，核对
 [资格状态与验收规则](docs/qualification.zh-CN.md)。
 
 ### 阅读科研进展和 token 用量

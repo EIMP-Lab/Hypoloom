@@ -20,8 +20,7 @@ execution, resource allocation and durable state, and an independent Oracle
 checks recorded outcomes and lifecycle consistency.
 
 - **Analyze.** Experts retrieve and read literature through OpenAlex and PDF
-  extraction, then ground the goal through explicit human clarification with
-  common acceptance criteria.
+  extraction, then clarify the research goal and evaluation criteria with you.
 - **Hypothesize.** Parallel expert chains propose hypotheses, preregister
   experiment designs, and plan their resources.
 - **Experiment.** Real CPU/GPU execution: private Git worktrees, a selected
@@ -39,17 +38,100 @@ authority, and an independent Oracle checks the record.
   <img src="docs/assets/hypoloom_overview.svg" alt="Hypoloom overview: parallel domain experts each run a six-node research cycle (literature, hypotheses with forked chains, design, execute, analyze, update), fed by run-scoped Grounding, coordinated through judged debates and an Observer-selected leader, with self-evolving per-role skill plugins, all executed by a resident Workflow Host on agents, processes, and a shared GPU pool, under operator authorization and independent Oracle checks">
 </p>
 
-[Profile templates](profiles/README.md) ship in English and Chinese, and
-maintainers get the [G0–G5 qualification workflow](docs/qualification.md).
+[Profile templates](profiles/README.md) provide English and Chinese starting
+points for your own research goal, code, data and budgets.
+
+This is the **dev** branch. It includes the development guides, qualification
+records and maintainer context. For the public version, see
+[main](https://github.com/EIMP-Lab/Hypoloom/tree/main).
+
+## 🚀 Quick start
+
+You need Linux, Conda, Git, bubblewrap, working user namespaces and Claude Code.
+Background runs require user-systemd. See [Setup](SETUP.md) for prerequisites.
+
+### 1. Install Hypoloom
+
+```bash
+git clone --branch dev https://github.com/EIMP-Lab/Hypoloom.git
+cd Hypoloom
+conda env create --prefix ./.conda/envs/hypoloom --file environment.yml
+conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[dev,monitor,notify]'
+```
+
+This installs the control environment, terminal monitor, notification charts
+and development tools. GPU experiments use a separately selected CUDA environment.
+
+### 2. Configure access
+
+Follow [Setup](SETUP.md) to enable the project settings and configure model API
+authentication. You will add literature and notification credentials to your
+local Profile in the next step.
+
+### 3. Prepare your Profile
+
+Copy the English template into a new, Git-ignored directory:
+
+```bash
+mkdir -p profiles/local
+(umask 077 && mkdir profiles/local/my-topic && \
+  cp profiles/templates/multi-expert-en/*.yaml profiles/local/my-topic/)
+```
+
+If `my-topic` already exists, edit it or choose a new name. The command does not
+overwrite an existing Profile. Edit the local copy using the
+[English configuration guide](config/README.md):
+
+| File | Purpose |
+| --- | --- |
+| `goal.yaml` | Research goal, constraints and completion criteria |
+| `experts.yaml` | Expert roles, model choices and research-chain limits |
+| `methodology.yaml` | Experiment environment, literature access, research controls and budgets |
+| `language.yaml` | Languages for prompts, reports and code comments |
+| `notify.yaml` | Local logs, dashboard and optional external notifications |
+| `safety.yaml` | Readable data paths, GPU selection and sandbox restrictions |
+
+Replace the goal and `/REPLACE_ME/` paths, fill the required literature credentials,
+and review budgets. Keep the directory mode 0700 and YAML files mode 0600, as
+created above. The template starts with CPU execution and Telegram disabled.
+
+### 4. Initialize, review and start
+
+Start Claude Code in the repository:
+
+```bash
+claude
+```
+
+Then enter the skill command:
+
+```text
+/autoresearch init
+```
+
+Select the existing `my-topic` Profile. Confirm the model, credentials, time and
+cost limits, CPU/GPU allocation and any
+notification recipients. Choose **Prepare only** to save the configuration, or
+**Start now** to begin research. The setup checks do not make a paid model call.
+
+### 5. Monitor progress
+
+In Claude Code, enter:
+
+```text
+/autoresearch-monitor
+```
+
+Select your run, or use the terminal/Web commands returned by initialization.
+**q / Leave monitor** keeps research running. **x / End run** requests cancellation
+and waits for cleanup. See [Usage](USAGE.md) for human answers and recovery.
 
 ## 🔍 Inside a run
 
-A running research loop is observable at two surfaces, both read-only
-projections of the Host's durable state: a browser-based Research Observer
-(`hypoloom web`, loopback-only behind a bearer link) and a terminal Research
-Operations UI (`hypoloom monitor`). Neither mutates the run. Operator
-interventions — answering a Grounding question, resuming after a provider
-outage, ending the run — are explicit, recorded commands.
+Monitor research in the browser with `hypoloom web` or in the terminal with
+`hypoloom monitor`. Both display the Host's recorded state. Human answers, API
+recovery and End run are explicit operator actions. The Web observer listens
+on loopback and uses a bearer link for access.
 
 ### 📊 Run overview
 
@@ -112,77 +194,48 @@ decision, provider resume, diagnostics and End run.
 [USAGE](USAGE.md) covers launching the Web observer and the TUI, sharing
 read-only links, and the operator actions.
 
-## 🚀 Start here
-
-Use Linux with bubblewrap, Git and a current Claude Code CLI. The pinned
-[environment.yml](environment.yml) supplies Python 3.12 and a suitable SQLite;
-GPU experiments use a separately selected CUDA environment.
-
-```bash
-conda env create --prefix ./.conda/envs/hypoloom --file environment.yml
-conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,dev]'
-./.conda/envs/hypoloom/bin/hypoloom --help
-```
-
-Open Claude Code in this checkout and use `/autoresearch init`. Select a local
-Profile or a bilingual template, review the target/data paths, exact model,
-credentials, budgets and CPU/GPU allocation, then choose **Prepare only** or
-**Start now**. The latter uses the tracked `manage_host.py` helper and
-user-systemd to start a Host, verify `control.sock`, create the reviewed run and
-return status in the same interaction. No CLI `init` subcommand is required.
-
-| Configuration entry | Location |
-|---|---|
-| Private credential setup | [config/README.md](config/README.md) |
-| Credential fields | Included as empty fields in the six-file Profile templates |
-| Your private keys/tokens | `profiles/local/<name>/methodology.yaml` and `notify.yaml` (0600, Git-ignored) |
-| Topic templates / your Profiles | `profiles/templates/` / `profiles/local/<name>/` |
-
-Init previews filled template values through the existing validator before
-writing. The `hypoloom.bootstrap` helper derives launch arguments and performs
-the managed sequence; model choices do not change the required checks.
-
-A Profile is six YAML files (goal, experts, methodology, language, notify and
-safety); init previews your model selector and target/data/runtime bindings,
-then writes the reviewed files into a new `profiles/local/<name>` without
-overwriting existing Profiles. Fill literature keys and notification tokens
-directly in the private Profile, keeping files mode 0600; no separate env is
-required. Admission strips values before persistence or Agent inputs, and only
-Host consumers read the original YAML. Keep public templates blank and do not
-pass secrets through `--set` or chat. The full construction rules are in
-[profiles/README](profiles/README.md) and [SETUP](SETUP.md).
-
-The default Run ID is `<profile>-<YYYYMMDDHHMM>` and Request ID is that identity
-plus `-create-1`; state roots are unique. Model authentication requires a pinned
-exact selector and either approved environment credentials or an eligible
-existing mode-0600 settings file. Read [SETUP](SETUP.md) before using real
-models or resources.
-
 ## 📚 Documentation
 
-- [Setup and configuration](SETUP.md)
-- [Usage: monitoring, human answers, cancellation and recovery](USAGE.md)
-- [Operator guide](docs/operator-guide.md)
-- [Profile templates](profiles/README.md) (bilingual English/Chinese)
-- [Architecture](docs/architecture.md)
-- [Qualification and current validation status](docs/qualification.md)
-- [Documentation index](docs/README.md)
-- [Contributing](CONTRIBUTING.md), [Codex instructions](AGENTS.md) and
-  [Claude Code runtime instructions](CLAUDE.md) (maintainer/runtime
-  references, English only)
+| Guide | What it covers |
+| --- | --- |
+| [Setup](SETUP.md) | Dependencies, model access and your first launch |
+| [Usage](USAGE.md) | Monitoring, human answers, stopping and recovery |
+| [Operator guide](docs/operator-guide.md) | Launch review, budgets, resources and result interpretation |
+| [Personal configuration](config/README.md) | All six Profile files, field descriptions and English examples |
+| [Profile templates](profiles/README.md) | Starting templates, configuration workflow and operating limits |
+| [Architecture](docs/architecture.md) | Components, execution boundaries and evidence |
+| [Documentation index](docs/README.md) | Detailed guides for GPUs, literature, notifications and more |
+| [Contributing](CONTRIBUTING.md) | Development setup, validation, documentation and issue reporting |
 
-Each guide above links its 简体中文 version at the top; the
-[中文主页](README.zh-CN.md) links the Chinese versions directly.
+Each guide links its Chinese translation at the top. The
+[中文主页](README.zh-CN.md) links directly to Chinese guides.
+
+### Development and validation
+
+| Reference | What it covers |
+| --- | --- |
+| [Qualification](docs/qualification.md) | G0–G5 procedures, tested candidates, results and limits |
+| [Local workspace](docs/guides/local-workspace.md) | Private evidence, current work and original-path preservation |
+| [Design records](docs/design/) | Engineering decisions and repair rationale |
+| [Codex instructions](AGENTS.md) | Repository rules and authorization boundaries |
+| [Current development state](docs/codex-memory/CURRENT.md) | Current decisions and evidence pointers |
+| [Development memory index](docs/codex-memory/INDEX.md) | Earlier decisions and supporting records |
+| [Claude Code instructions](CLAUDE.md) | Research runtime configuration, separate from maintenance context |
+
+Design and maintainer records retain their original language. During development,
+the managed entry remains `manage_host.py` with user-systemd and the run's
+`control.sock`; use [Setup](SETUP.md) and [Usage](USAGE.md) for lifecycle operations.
+Read [Contributing](CONTRIBUTING.md) before changing code or running qualification.
 
 ## 🗺️ Roadmap
 
 Current directions, in no fixed order — plans, not commitments; sequencing
-follows qualification results.
+depends on implementation and qualification results.
 
 - **More agent runtimes.** The framework currently drives research experts
   through Claude Code. We plan to extend the same Host-owned research loop to
   other coding-agent runtimes — Codex, Kimi Code, OpenCode and similar —
-  behind the existing per-binding qualification path.
+  with compatibility checked for each supported runtime.
 - **AutoResearch benchmarks.** We are considering academic follow-up around
   the emerging AutoResearch benchmark line: adapting the Hypoloom workflow to
   those tasks, then designing and running comparative evaluations of academic
@@ -190,15 +243,20 @@ follows qualification results.
 
 ## 🚧 Development status
 
-Hypoloom is a development framework with no frozen release: interfaces,
-Profile schemas and internal contracts can change between candidates.
-Qualification applies to one exact tested candidate and environment; model
-and provider compatibility is established per sampled binding, not in
-general. Public templates demonstrate configuration; they are not scientific
-benchmarks, and no qualification result proves a scientific claim. The
-current validation scope is recorded in [qualification](docs/qualification.md).
-Preserved runs use their own runtime bundle; cross-version run migration is
-not provided.
+The dev branch is under active development: interfaces, Profile schemas and
+internal contracts can change between candidates. Qualification applies only
+to the exact tested candidate and environment; model/provider compatibility is
+established per sampled binding. Read the [qualification record](docs/qualification.md)
+for completed checks, failures and limitations.
+
+Begin with a small topic and explicit time and cost limits. Public templates are
+configuration examples, not scientific benchmarks. Successful execution or
+qualification does not prove a scientific claim; inspect the accepted evidence,
+measurements and final report.
+
+Preserved runs use their own runtime bundle and configuration. Updating this
+checkout does not upgrade them; cross-version run migration is unsupported.
+See [runtime recovery](docs/guides/runtime-recovery.md).
 
 ## ⚖️ License
 

@@ -294,7 +294,7 @@ using the actual HTTP CONNECT port (an HTTP-capable `mixed-port` also works).
 Here loopback means the Linux server, not your Windows PC. This setting is
 independent of model and literature proxies. Existing runs and **Retry Telegram
 delivery** do not hot-load a newly added or changed proxy. See the
-[server-side Clash guide](notifications.md#server-side-clash-proxy--服务器-clash-代理).
+[server-side Clash guide](notifications.md#server-side-clash-proxy).
 
 Keep populated files mode 0600 and outside Agent/experiment mounts. Admission
 strips the values and derives references to the original YAML; the Host reads
@@ -324,7 +324,7 @@ remain the inputs. Existing runtime protections remain in place after preflight.
 
 Notification preflight validates local configuration only. An enabled Telegram sink
 is **delivery unverified** until an actual response is observed. See [notification
-checks and recovery](notifications.md#delivery-health-and-recovery--投递状态与恢复)
+checks and recovery](notifications.md#delivery-health-and-recovery)
 for explicit access/message tests and live Web/TUI status.
 
 Research sessions cannot edit framework source through file tools or ordinary shell

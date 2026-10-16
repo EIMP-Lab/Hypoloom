@@ -2,7 +2,7 @@
 
 English · [简体中文](SETUP.zh-CN.md)
 
-The recommended entry is `/autoresearch init` in Claude Code. It runs
+After preparing a local Profile, use `/autoresearch init` in Claude Code. It runs
 read-only checks first, presents the complete launch plan, and finally lets
 you choose `Start now` or `Prepare only`. Project interaction settings are
 sourced from [settings.example.json](.claude/settings.example.json); existing
@@ -26,14 +26,14 @@ the existing managed lifecycle after authorization, rereading the Profile
 before and after Host readiness. Profile changes during preparation stop the
 launch. A configuration check makes no provider request and does not certify
 model availability or scientific quality. Exact helper usage is in
-[the Profile guide](profiles/README.md#deterministic-preparation--确定性准备).
+[the Profile guide](profiles/README.md#command-line-preparation).
 
 See [Initialization](docs/guides/initialization.md) for effective model precedence, unified Profile budgets and managed notification credentials.
 
 If the server needs Clash/Mihomo to reach Telegram, configure the private
 `notify.yaml` top-level `proxy_url` before a new init. Use the server's actual
 HTTP CONNECT port; notifications do not automatically inherit other proxies.
-See [server-side proxy setup and existing-run limits](docs/guides/notifications.md#server-side-clash-proxy--服务器-clash-代理).
+See [server-side proxy setup and existing-run limits](docs/guides/notifications.md#server-side-clash-proxy).
 
 For a first Windows institutional client or a replacement PC/account, complete
 [user-level SSH key and noninteractive login setup](docs/guides/institutional-access.md#first-setup-or-a-new-windows-pcaccount)
@@ -62,7 +62,8 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,no
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
-`monitor` installs Textual; `dev` installs test and packaging tools. CPU/GPU
+`monitor` installs Textual; `notify` adds notification charts; `dev` installs
+test and packaging tools. CPU/GPU
 experiments may use a separate research environment; do not automatically
 treat the control Python as a project's CUDA environment. Runtime paths in
 the public templates must be replaced. The default CPU sandbox requires the
@@ -72,6 +73,26 @@ substitute for the complete Conda environment; this project's installation
 and process-closure validation uses the latter. Web browser tests also need
 local Chrome/Chromium; `dev` already includes their Python driver dependency
 `websockets`.
+
+Activate the control environment before using the unprefixed `hypoloom` commands:
+
+```bash
+conda activate ./.conda/envs/hypoloom
+```
+
+### Project settings
+
+Review [.claude/settings.example.json](.claude/settings.example.json). In a fresh
+checkout without `.claude/settings.json`, copy it once:
+
+```bash
+(umask 077; set -C; cat .claude/settings.example.json > .claude/settings.json)
+```
+
+This refuses to overwrite an existing file. If settings already exist, merge the
+required hooks and MCP configuration manually. Restart Claude Code after changing
+hook registration. Project interaction settings protect framework files and
+configure research tools; model API authentication is configured separately below.
 
 ## 2. Model and literature authentication
 
@@ -150,21 +171,30 @@ separately.
 Keys, real Profiles, the local `.claude/settings.json`, research data and run
 records are never committed to Git.
 
-## 3. Choose a bilingual Profile
+## 3. Prepare a local Profile
 
-See the [template guide](profiles/README.md). Public templates uniformly use
-the multi-expert design and provide the current v4 `multi-expert-en` and
-`multi-expert-zh`. Each set contains six YAML files; place them in a separate
-`profiles/local/<profile>` and fill in the goal, models, runtime and data
-paths. Init can perform a confirmed copy; it only copies the six files one by
-one and refuses to overwrite an existing directory.
+Copy and edit a template before running `/autoresearch init`, then select that
+existing Profile. The [configuration guide](config/README.md) explains the six
+files and every template field. The [template guide](profiles/README.md) covers
+research controls and development compatibility. Use `multi-expert-en` for English
+or `multi-expert-zh` for Chinese; both use v4.
+
+```bash
+mkdir -p profiles/local
+(umask 077 && mkdir profiles/local/my-topic && \
+  cp profiles/templates/multi-expert-en/*.yaml profiles/local/my-topic/)
+```
+
+Replace the goal and runtime/data paths, configure credentials, and review budgets.
+The command refuses to overwrite an existing Profile. Init can also guide creation
+of a fresh Profile after review; it never overwrites an existing directory.
 
 Budgets come from the admitted
 `create_run_payload.research_contract.budget.agent_invocation`, including
 `max_turns`, `max_tokens`, `max_output_bytes`, `wall_seconds`, `max_cost` and
 `token_enforcement_mode`. Host arguments must match these values. `max_cost`
 is the per-invocation cost threshold passed to the CLI; total and per-expert
-thresholds live in `safety.yaml`. A response already sent may exceed the
+thresholds live in `methodology.yaml.budget`. A response already sent may exceed the
 remaining allowance when its cost is reported, so these parameters are not a
 hard cap on the upstream bill. The Host honestly accounts the excess and
 blocks later calls; budget planning needs headroom for retries, analysis,

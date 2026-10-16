@@ -227,11 +227,11 @@ sinks:
 `proxy_url: "http://127.0.0.1:7891"`，端口替换为实际支持 HTTP CONNECT 的端口
 （支持 HTTP 的 `mixed-port` 也可）。这里的本机是 Linux 服务器，不是 Windows。
 通知代理独立于模型及文献代理；已有运行和 **Retry Telegram delivery** 不会热加载
-新增或修改的代理。详见[服务器 Clash 代理](notifications.md#server-side-clash-proxy--服务器-clash-代理)。
+新增或修改的代理。详见[服务器 Clash 代理](notifications.zh-CN.md#服务器-clash-代理)。
 
 含凭据文件保持 0600，并放在 Agent/实验的数据和运行环境挂载目录之外。准入剥离
 明文，只派生原 YAML 的文件引用；Host 复用既有私有读取器，不生成第二份密钥文件。
-文献密钥填写在 `methodology.yaml`，完整字段及步骤见[个人配置教程](../../config/README.md)。
+文献密钥填写在 `methodology.yaml`，完整字段及步骤见[个人配置教程](../../config/README.zh-CN.md)。
 模型认证仍使用选定的 CC 配置。先准备 Profile，本地编辑后重新执行 init；真实值
 不能放进 `--set`、命令行、对话、公开模板或 Git。
 
@@ -243,7 +243,7 @@ sinks:
 启动前复用实际通知代码检查已启用通道的凭据、目标格式、代理、输出目录隔离、
 日志路径和看板 loopback 地址，不发送消息或绑定监听端口。缺失配置会阻止启动。
 固定端口已被占用仍可能在运行时报告错误；无固定端口要求时使用 `port: 0`。
-详见[通知指南](notifications.md)。
+详见[通知指南](notifications.zh-CN.md)。
 
 生效说明只是从现有输入计算的结果，不保存为额外启动清单。六份 Profile、普通
 Host 参数及既有读取器继续作为配置来源；运行时保护不会因预检而移除。
@@ -251,7 +251,7 @@ Host 参数及既有读取器继续作为配置来源；运行时保护不会因
 
 通知预检只验证本地配置。Telegram 已开启仍应显示为**投递未验证**，实际接口
 成功响应后才确认可用。显式连接/消息测试及 Web/TUI 状态说明见
-[通知指南](notifications.md#delivery-health-and-recovery--投递状态与恢复)。
+[通知指南](notifications.zh-CN.md#投递状态与恢复)。
 
 init 的初始问卷由 inspect 的 `interaction.questions` 固定生成；中文会话传入
 `--ui-language zh-CN`。CC 原样展示，将 AskUserQuestion 返回的原始 `answers`
