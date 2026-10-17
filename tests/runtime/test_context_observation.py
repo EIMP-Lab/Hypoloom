@@ -52,6 +52,30 @@ def test_compacting_requires_an_explicit_unfinished_status_event():
     assert native_status(b'{"type":"assistant","message":{"usage":{"input_tokens":3}}}') is None
 
 
+@pytest.mark.parametrize("timestamp", [None, "2026-01-01T00:00:10Z"])
+def test_api_request_history_blobs_are_not_native_tool_events(timestamp):
+    rows = [{"type": "api-request-blob", "sessionId": "own", "message": {"content": [block]}}
+        for block in (
+            {"type": "tool_use", "id": "cached-read", "name": "Read", "input": {"file_path": "/inputs/0000.txt"}},
+            {"type": "tool_result", "tool_use_id": "cached-read", "content": "cached history"},
+        )]
+    if timestamp:
+        for row in rows:
+            row["timestamp"] = timestamp
+    blob = b"\n".join(json.dumps(row).encode() for row in rows)
+    expected = transcript_metrics(_transcript(), "own", 1767225605, ("stable-frozen-ref",))
+    assert transcript_metrics(_transcript() + b"\n" + blob, "own", 1767225605, ("stable-frozen-ref",)) == expected
+
+
+@pytest.mark.parametrize("kind", ["assistant", "user"])
+def test_actual_tool_events_without_timestamps_still_report_partial_coverage(kind):
+    row = {"type": kind, "sessionId": "own", "message": {"content": [
+        {"type": "tool_use", "id": "missing-time", "name": "Read", "input": {"file_path": "/inputs/0000.txt"}}]}}
+    value = transcript_metrics(_transcript() + b"\n" + json.dumps(row).encode(), "own", 1767225605)
+    assert value["coverage"] == "partial"
+    assert value["read_calls"] == 4
+
+
 def test_context_costs_are_disjoint_and_unknown_billing_is_not_zero_spend(tmp_path):
     rows = [_attempt("first", command_id="node", start=10, end=15, reason="FAILED"),
         _attempt("second", command_id="node", start=20, end=25, reason="FAILED"),

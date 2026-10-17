@@ -612,8 +612,12 @@ def test_public_skill_init_uses_one_server_minute_launch_identity() -> None:
 
 
 def test_init_naming_is_consistent_across_current_operator_docs() -> None:
+    # The quick start links to detailed operation guides instead of duplicating
+    # every naming rule. Keep both navigation and the actual rule consistent.
+    readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
+    assert "/autoresearch init" in readme
+    assert "(SETUP.md)" in readme and "(USAGE.md)" in readme
     documents = (
-        REPOSITORY / "README.md",
         REPOSITORY / "SETUP.md",
         REPOSITORY / "USAGE.md",
         REPOSITORY / "docs" / "operator-guide.md",

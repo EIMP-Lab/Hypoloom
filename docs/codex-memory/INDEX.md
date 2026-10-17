@@ -1,5 +1,16 @@
 # Development memory index
 
+- [Recovered interaction evidence, October 17](../design/interaction-evidence-repair-2026-10-17.md):
+  a failed execution followed by a successful repair is valid cumulative evidence.
+  Production and independent audit readers preserve every binding check and
+  require a comparable cited result, without qualifying failures alone.
+  [Validation](../qualification.md#recovered-evidence-reader-repair-2026-10-17)
+  retains pre-fix failures, real CPU/Observer/publication closure, unchanged
+  historical audits, current-run read-only replay and public-package checks.
+  Full-check follow-up distinguishes cached native API messages from events and
+  aligns README navigation checks with the existing detailed naming guides.
+  Existing frozen runs are not upgraded or resumed.
+
 - [Benchmark workspace guidance, October 16](../../profiles/README.md#create-a-local-topic):
   reuse a suitable existing benchmark via runtime.target_repo, with runnable
   baselines and consistent evaluation; paired guidance in README and configuration

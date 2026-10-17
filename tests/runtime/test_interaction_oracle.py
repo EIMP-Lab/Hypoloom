@@ -9,9 +9,38 @@ import pytest
 
 from hypoloom.agent_aci import EmbeddedInput
 from hypoloom.expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeSubkind
-from hypoloom.interaction_oracle import audit_interactions
+from hypoloom.interaction_oracle import _InteractionAudit, audit_interactions
 from hypoloom.state_store import HostWriterCapability, StateStore
 from test_interaction_host import StoredHost, node, select
+
+
+@pytest.mark.parametrize("version", [14, 21, 28])
+@pytest.mark.parametrize("damage", [None, "failure_only", "missing_link", "foreign_link", "missing_outcome", "wrong_artifact"])
+def test_recovered_support_is_audited_from_raw_evidence(tmp_path, version, damage):
+    from test_expert_interaction import _recovered_facts
+    rows = _recovered_facts()
+    assessment = next(row for row in rows if row.get("assessment_id") == "assessment-2")
+    failure = next(row for row in rows if row.get("evidence_id") == "evidence-2-failed")
+    if damage == "failure_only":
+        assessment["evidence_ids"] = ["evidence-2-failed"]
+    elif damage == "missing_link":
+        assessment["evidence_ids"][0] = "missing"
+    elif damage == "foreign_link":
+        assessment["evidence_ids"][0] = "evidence-1"
+    elif damage == "missing_outcome":
+        failure["outcome_id"] = "missing"
+    elif damage == "wrong_artifact":
+        failure["artifact_id"] = "artifact-1"
+    before = copy.deepcopy(rows)
+    audit = _InteractionAudit(tmp_path, [], {}, rows, {row["fact_id"]: row for row in rows}, [])
+    if damage is None:
+        refs = audit.qualifications(rows, version)[("critic", "must.robustness")]
+        assert {"assessment-2", "out-2"} <= refs
+        assert not {"evidence-2-failed", "out-2-failed"} & refs
+    else:
+        with pytest.raises(ValueError):
+            audit.qualifications(rows, version)
+    assert rows == before
 
 
 @pytest.mark.parametrize("damage", [None, "foreign-parent", "uncited-parent", "premature-cycle"])

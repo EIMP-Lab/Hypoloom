@@ -1,5 +1,32 @@
 # Current Hypoloom development state
 
+- October 17 recovered-evidence repair: cumulative SUPPORTED assessments may keep
+  an exact failed execution alongside a comparable accepted result. Production
+  qualification and the independent raw-row Oracle now require all cited bindings
+  to be valid and at least one cited result to be comparable; failed evidence alone
+  never qualifies. No new schema, authority or quarantine/cleanup exception.
+  The 203 affected checks pass; real CPU repair closes 20 local-adapter Agents and
+  three Processes, with three outcomes, a clean Oracle and no owned residue.
+  Ten retained roots and their Oracle findings are unchanged (nine clean; one with
+  the same 11 historical parser findings). Five old readers and the current run
+  reproduce the conflict; candidate replay succeeds. The current run remains on
+  its frozen bundle, with its two real work residues still reported.
+  The first full offline check has 8,442 passes / 159 skips / two failures: a stale
+  README duplication assertion and native API-request history misread as events.
+  The latter is repaired in the existing context reader, retaining partial
+  coverage for malformed real events; 139 follow-up checks pass. Final fresh G1
+  passes 8,448 / 159 explicit skips in 1,266.64 seconds, zero failures. Seven G3
+  samples close 169 Agents/16 Processes with 15 outcomes, clean Oracles and no
+  live recorded process groups.
+  Final public source/wheel/install/bundle match 196 files and installed CPU smoke
+  passes. Original failures remain separate evidence; retained replay is unchanged.
+  Main receives only the three runtime-reader fixes in its single `v0.0.1` root;
+  dev retains regressions/design and the corrected documentation check.
+  No existing run mutation or new paid/GPU qualification is authorized or performed.
+  [Design](../design/interaction-evidence-repair-2026-10-17.md) /
+  [validation](../qualification.md#recovered-evidence-reader-repair-2026-10-17).
+  Local evidence: `.local/qualification/interaction-evidence-20261017/`.
+
 - October 16 benchmark workspace guidance: both branches' English/Chinese README,
   Profile and field guides recommend a suitable runnable benchmark repository as
   the codebase selected by `methodology.yaml.runtime.target_repo`. Reuse loaders,

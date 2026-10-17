@@ -65,6 +65,8 @@ def transcript_metrics(content, session_id, started_at, input_refs=(), *, partia
             continue
         if row.get("sessionId") != session_id:
             continue
+        if row.get("type") == "api-request-blob":
+            continue  # Cached request messages are history, not native events.
         if row.get("type") == "cost-state" and type(row.get("hasUnknownModelCost")) is bool:
             # This CLI flag describes its own session price catalogue, not
             # settled invocation billing or a verified vendor invoice.

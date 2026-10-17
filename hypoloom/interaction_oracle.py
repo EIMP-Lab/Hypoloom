@@ -108,8 +108,10 @@ class _InteractionAudit:
                     continue
                 links = [evidence.get(identity) for identity in assessment["evidence_ids"]]
                 _need(links and all(link and link["hypothesis_id"] == hyp["hypothesis_id"] and link["outcome_id"] in own
-                    and outcomes[link["outcome_id"]]["outcome"] in {"SUCCESS", "CLEAN_REFUTATION"}
                     and link["artifact_id"] == outcomes[link["outcome_id"]]["artifact_id"] for link in links),
+                    "SUPPORTED Leader qualification lacks its accepted evidence bindings")
+                # Historical failures remain bound evidence, not contributions.
+                _need(any(outcomes[link["outcome_id"]]["outcome"] in {"SUCCESS", "CLEAN_REFUTATION"} for link in links),
                     "SUPPORTED Leader qualification lacks its accepted comparable evidence")
                 refs.add(assessment["assessment_id"])
             if version >= 21:

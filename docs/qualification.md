@@ -2,6 +2,68 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Recovered evidence reader repair (2026-10-17)
+
+The current candidate repairs a reproduced mismatch between cumulative accepted
+assessments and the interaction readers. A failed execution followed by a
+successful repair may support Leader qualification without treating the failed
+result as a contribution. Every cited binding remains validated, and at least one
+cited outcome must be comparable. The independent Oracle checks this from raw
+records; publication, ownership and residue checks remain unchanged.
+[Design](design/interaction-evidence-repair-2026-10-17.md).
+
+The original reader fails six mixed-history cases and the real Host/CPU repair
+flow. After fixing dispatch, the full-flow Oracle exposed its own corresponding
+reader mismatch; three raw-evidence cases reproduce it. Both sets of 15 invalid
+evidence cases remain rejected. Original failures and candidate evidence are
+retained at `.local/qualification/interaction-evidence-20261017/`.
+
+The affected interaction selection passes **203 tests**. The disposable recovery
+flow finishes COMPLETED with **20 local-adapter Agents and three real CPU
+Processes**, all 23 Attempts CLOSED: one deliberate failed Process and 22
+successful Attempts. All three outcomes are published; Observer and final report
+finish. Independent census finds no duplicate ownership, live members of the
+three recorded process groups, work directories or Oracle issues.
+
+Ten retained roots remain unchanged. Nine Oracle reports are clean; the other
+keeps the same 11 historical parser findings. Five older roots reproduce the same
+qualification-reader exception with their bundled readers and parse successfully
+with the candidate. Current-run raw facts also reproduce the old exception and
+parse with the candidate; this is eligibility reading, not a new scientific
+assessment. Its live state remains unchanged and its two owned-work residues
+remain reported. Clearing those requires normal execution/recovery, not an audit
+exception or deletion.
+
+Main's wheel, isolated installation and fresh bundle match all **196 runtime
+files**. Its source archive excludes development evidence. The installed CLI/MCP
+smoke closes four Attempts, including two CPU Processes, with a clean Oracle and
+no live recorded process groups. Six main and seven dev documentation/Profile
+checks pass. The seven existing G3 scenarios also close 169 Agents and 16
+Processes with 15 outcomes, clean Oracles and no live members of 154 recorded
+process groups.
+
+The first full offline invocation records **8,442 passed / 159 skipped / two
+failed** in 1,266.80 seconds. Its context-recovery scenario completes science and
+audit but exposes cached `api-request-blob` messages being read as native events;
+the documentation assertion predates the streamlined README. The existing
+context reader now excludes those history records. Four new counterexamples
+keep partial coverage for actual missing-time events and prevent cached reads
+from being counted.
+The documentation check verifies README navigation and exact naming rules in
+the detailed guides. The two affected areas pass **139 focused tests**, including
+both native context-recovery scenarios. Original failed reports and raw transcripts
+remain unchanged. The final fresh full offline invocation passes **8,448 tests /
+159 explicit opt-in skips**, with zero failures across **8,607 identities**, in
+**1,266.64 seconds**. Compile, Ruff and whitespace checks pass. Final retained
+replay preserves all ten roots and their findings; the seven G3 samples retain
+the same clean closure counts above. The final public package, installation and
+fresh bundle match all 196 files and pass the installed CPU/CLI/MCP smoke. The
+original failed invocation remains separate evidence.
+
+Existing run state and frozen bundles remain read-only; no research Host is
+restarted or upgraded. This repair does not claim new paid/GPU qualification or
+reclassify the historical results below.
+
 ## Completed bounded qualification (2026-10-16)
 
 **G0–G5 qualification is complete within the approved scope.** The one authorized

@@ -130,14 +130,20 @@ class InteractionFacts:
                 links = assessment.get("evidence_ids", ())
                 if not links:
                     raise ValueError("SUPPORTED qualification requires actual accepted evidence")
+                has_comparable = False
                 for row in (assessment, *(evidence.get(identity, {}) for identity in links)):
                     if any(row.get(field) != hypothesis[field] for field in ("hypothesis_id", "component_id", "method_family_id")):
                         raise ValueError("SUPPORTED qualification has missing or foreign evidence")
                     if row is assessment:
                         continue
                     tip = tips.get(row.get("outcome_id"))
-                    if tip is None or not tip.comparable or row.get("artifact_id") != tip.artifact_id:
-                        raise ValueError("SUPPORTED evidence requires its actual comparable accepted outcome")
+                    if tip is None or row.get("artifact_id") != tip.artifact_id:
+                        raise ValueError("SUPPORTED evidence requires its actual accepted outcome and artifact")
+                    # Host assessments retain failed attempts preceding a repair.
+                    # Validate every link, but only comparable results qualify.
+                    has_comparable = has_comparable or tip.comparable
+                if not has_comparable:
+                    raise ValueError("SUPPORTED evidence requires an actual comparable accepted outcome")
                 refs.add(assessment_id)
             if self.agent_aci_version >= 21:
                 for evidence_id, link in evidence.items():

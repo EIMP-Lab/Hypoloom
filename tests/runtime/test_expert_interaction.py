@@ -535,6 +535,63 @@ def test_supported_requires_real_same_hypothesis_evidence_and_comparable_outcome
         InteractionFacts.from_rows("run-1", rows).leader_qualifications()
 
 
+def _recovered_facts():
+    rows = _facts()
+    history = []
+    for kind in ("ExperimentPreregistered", "CanonicalOutcomeAccepted", "EvidenceLinked"):
+        row = copy.deepcopy(next(item for item in rows
+            if item["fact_type"] == kind and item.get("component_id") == "must.robustness"))
+        for field in ("fact_id", "experiment_id", "execution_id", "outcome_id", "artifact_id", "evidence_id"):
+            if field in row:
+                row[field] += "-failed"
+        if kind == "CanonicalOutcomeAccepted":
+            row.update(outcome="EXECUTION_FAILURE", metric_value=None)
+        history.append(row)
+    assessment = next(item for item in rows if item.get("assessment_id") == "assessment-2")
+    assessment["evidence_ids"] = ["evidence-2-failed", "evidence-2"]
+    return [*rows, *history]
+
+
+@pytest.mark.parametrize("version", [14, 21, 28])
+@pytest.mark.parametrize("reverse_links", [False, True])
+def test_supported_recovery_keeps_failed_history_without_qualifying_it(version, reverse_links):
+    rows = _recovered_facts()
+    assessment = next(item for item in rows if item.get("assessment_id") == "assessment-2")
+    if reverse_links:
+        assessment["evidence_ids"].reverse()
+    before = copy.deepcopy(rows)
+    facts = InteractionFacts.from_rows("run-1", rows, agent_aci_version=version)
+    contribution = next(item for item in facts.leader_qualifications() if item.hypothesis_id == "hyp-2")
+    assert {"assessment-2", "out-2"} <= set(contribution.qualification_refs)
+    assert not {"evidence-2-failed", "out-2-failed"} & set(contribution.qualification_refs)
+    proposal = {**_observer(), "supporting_refs": ["hyp-2", "assessment-2"]}
+    assert admit_observer_proposal(proposal, facts=facts).leader.role == "critic"
+    with pytest.raises(ValueError, match="verified contribution"):
+        admit_observer_proposal({**proposal, "supporting_refs": ["hyp-2", "out-2-failed"]}, facts=facts)
+    assert rows == before
+
+
+@pytest.mark.parametrize("version", [14, 21, 28])
+@pytest.mark.parametrize("damage", ["failure_only", "missing_link", "foreign_link", "missing_outcome", "wrong_artifact"])
+def test_supported_recovery_still_requires_valid_links_and_comparable_evidence(version, damage):
+    rows = _recovered_facts()
+    assessment = next(item for item in rows if item.get("assessment_id") == "assessment-2")
+    failure = next(item for item in rows if item.get("evidence_id") == "evidence-2-failed")
+    if damage == "failure_only":
+        # An uncited success elsewhere in the same hypothesis cannot repair this assessment.
+        assessment["evidence_ids"] = ["evidence-2-failed"]
+    elif damage == "missing_link":
+        assessment["evidence_ids"][0] = "missing"
+    elif damage == "foreign_link":
+        assessment["evidence_ids"][0] = "evidence-1"
+    elif damage == "missing_outcome":
+        failure["outcome_id"] = "missing"
+    else:
+        failure["artifact_id"] = "artifact-1"
+    with pytest.raises(ValueError):
+        InteractionFacts.from_rows("run-1", rows, agent_aci_version=version).leader_qualifications()
+
+
 @pytest.mark.parametrize(
     "tamper",
     ["foreign_run", "wrong_goal", "wrong_owner", "fake_evidence", "foreign_evidence"],
