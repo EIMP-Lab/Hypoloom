@@ -13,7 +13,6 @@ import math
 import re
 import socket
 import socketserver
-import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -83,6 +82,7 @@ class _ExchangeCapture:
         self.observation = ProviderObservation(service=relay.provider_service)
         self.relay = relay
         self._counted_tokens = 0
+        self._last_progress = 0.0
         self.request_document = None
         self.request_protocol = None
         self.parent = relay.diagnostics
@@ -102,11 +102,9 @@ class _ExchangeCapture:
             relay._exchange_count += 1
             self.data["exchange"] = relay._exchange_count
         if relay.diagnostics is not None:
-            self.recorder = self.call(
-                "child", relay.diagnostics.child,
-                f"provider/{self.data['exchange']:06d}",
-                secrets=tuple(secret.decode() for secret in relay._secrets),
-            )
+            from .runtime_diagnostics import DeferredProviderCapture
+            self.recorder = DeferredProviderCapture(relay.diagnostic_writer,
+                relay.diagnostics, self.data["exchange"], relay._secrets)
             self.save()
 
     def call(self, operation: str, function: Any, *args: Any, **kwargs: Any) -> Any:
@@ -117,25 +115,20 @@ class _ExchangeCapture:
             error = {"operation": operation, "exception_type": type(exc).__name__}
             if error not in self.errors:
                 self.errors.append(error)
-                try:
-                    if self.parent is not None:
-                        self.parent.event("provider_capture_error", exchange=self.data.get("exchange"), **error)
-                except Exception:
-                    pass
-                try:
-                    print(f"provider diagnostics {operation} failed: {type(exc).__name__}", file=sys.stderr)
-                except (OSError, ValueError):
-                    pass
             return None
 
-    def save(self) -> None:
+    def save(self, *, progress: bool = False) -> None:
+        if progress:
+            now = time.monotonic()
+            if now - self._last_progress < 1.0: return
+            self._last_progress = now
         if self.recorder is not None:
-            self.call("metadata", self.recorder.write_json, "exchange.json", self.data)
+            self.call("metadata", self.recorder.save, self.data)
 
     def request(self, body: bytes, complete: bool) -> None:
         self.data.update(request_bytes_received=len(body), request_body_complete=complete)
         if self.recorder is not None:
-            self.call("request_body", self.recorder.write_bytes, "request.body", body)
+            self.call("request_body", self.recorder.request, body)
         self.save()
 
     def response(self, response: http.client.HTTPResponse) -> None:
@@ -158,7 +151,8 @@ class _ExchangeCapture:
         self.data.update(upstream_status=response.status, response_headers=headers,
                          response_started_at=time.time(), response_partial_reason="interrupted")
         if self.recorder is not None:
-            self.writer = self.call("response_open", self.recorder.stream, "response.body")
+            self.recorder.response()
+            self.writer = self.recorder
         self.save()
 
     def write(self, chunk: bytes) -> None:
@@ -180,14 +174,12 @@ class _ExchangeCapture:
         if observed is not None:
             self.data.update(observed)
         self.relay._observe_context(self)
-        if self.writer is not None:
-            self.call("response_close", self.writer.close)
-            self.data["response_capture"] = self.call("response_summary", self.writer.summary)
         self.data["ended_at"] = time.time()
         self.data["capture_errors"] = self.errors
         if self.recorder is not None:
-            self.data["capture"] = self.call("summary", self.recorder.summary)
-        self.save()
+            self.call("capture_finish", self.recorder.finish, self.data)
+            self.data["capture_errors"] = [*self.errors, *self.recorder.errors]
+        self.relay._record_exchange(self.data)
 
     def _observe_tokens(self) -> None:
         if self.data.get("request_path") != "/v1/messages" or self.data.get("upstream_status") != 200:
@@ -226,7 +218,7 @@ class _ExchangeCapture:
                 self.data["response_bytes_received"] += len(chunk)
                 self.write(chunk)
                 remaining -= len(chunk)
-                self.save()
+                self.save(progress=True)
                 if not chunk:
                     self.eof(response)
                     break
@@ -260,6 +252,26 @@ def _reject_constant(_value: str) -> None:
 class _UnixHTTPServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
 
+    def process_request(self, request, client_address):
+        with self.relay._handlers_done:
+            self.relay._handlers += 1
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._handler_done()
+            raise
+
+    def _handler_done(self):
+        with self.relay._handlers_done:
+            self.relay._handlers -= 1
+            self.relay._handlers_done.notify_all()
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._handler_done()
+
 
 class ProviderRelay:
     """Serve one fixed provider/model with Host-held authentication.
@@ -284,6 +296,7 @@ class ProviderRelay:
         token_budget: int | None = None,
         context_policy: Mapping[str, Any] | None = None,
         traffic_binding=None,
+        diagnostic_writer=None,
     ) -> None:
         endpoint, credentials = validate_provider_connection(base_url, provider_environment)
         from .provider_observation import provider_service
@@ -353,8 +366,16 @@ class ProviderRelay:
         self._response_bytes_received = 0
         self._response_limit_reached = False
         self.diagnostics = diagnostics
+        from .runtime_diagnostics import ProviderDiagnosticWriter
+        self.diagnostic_writer = diagnostic_writer or ProviderDiagnosticWriter()
+        self._owns_diagnostic_writer = diagnostic_writer is None
         self._exchange_count = 0
         self._lock = threading.Lock()
+        self._handlers_done = threading.Condition(self._lock)
+        self._handlers = 0
+        self._exchanges = []
+        self._exchange_bytes = 0
+        self._exchanges_complete = True
         self._closed = threading.Event()
         self._sockets: set[socket.socket] = set()
         relay = self
@@ -609,7 +630,7 @@ class ProviderRelay:
                             self.wfile.flush()
                             capture.data["response_bytes_forwarded"] += safe_length
                             pending = pending[safe_length:]
-                        capture.save()
+                        capture.save(progress=True)
                         if not chunk:
                             if not started:
                                 self.send_response(response.status)
@@ -657,6 +678,7 @@ class ProviderRelay:
                             relay._context_serial.release()
 
         self.server = _UnixHTTPServer(str(self.socket_path), Handler)
+        self.server.relay = self
         self.socket_path.chmod(0o600)
         self.thread = threading.Thread(
             target=lambda: self.server.serve_forever(poll_interval=0.05), daemon=True
@@ -750,9 +772,47 @@ class ProviderRelay:
             return {"scope": "api_response_cumulative", "received_bytes": self._response_bytes_received,
                 "limit_bytes": self.max_response_bytes, "limit_reached": self._response_limit_reached}
 
-    def close(self) -> None:
+    def _record_exchange(self, data):
+        # Compact existing parser fields only; no request/response bodies. Keep
+        # the complete set or report unavailable, never corroborate a prefix.
+        # The previous file-based handoff was already sanitized. Preserve that
+        # boundary when a provider reflects a credential in otherwise valid
+        # metadata such as request IDs or model labels.
+        from .runtime_diagnostics import sanitize_payload
+        secrets = (*getattr(self.diagnostics, "_secrets", ()), *self._secrets)
+        encoded = json.dumps(sanitize_payload(data, secrets)).encode()
+        cost = len(encoded) + 128
+        with self._lock:
+            if not self._exchanges_complete: return
+            if (self._exchange_bytes + cost > 1024 * 1024 or
+                    not self.diagnostic_writer.reserve(cost)):
+                self.diagnostic_writer.release(self._exchange_bytes)
+                self._exchanges.clear()
+                self._exchange_bytes = 0
+                self._exchanges_complete = False
+                return
+            self._exchanges.append(encoded)
+            self._exchange_bytes += cost
+
+    def take_exchanges(self):
+        """Consume after close; late/incomplete handlers cannot certify usage."""
+        with self._lock:
+            complete = self._exchanges_complete and not self._handlers and len(self._exchanges) == self._exchange_count
+            rows = self._exchanges
+            self._exchanges = []
+            self.diagnostic_writer.release(self._exchange_bytes)
+            self._exchange_bytes = 0
+            self._exchanges_complete = False
+        return sorted((json.loads(row) for row in rows), key=lambda row: row["exchange"]) if complete else None
+
+    def close(self, *, drain_diagnostics=True) -> None:
         if self._closed.is_set():
             return
+        # Stop accepting, then allow the last response's EOF/final observation
+        # to catch up with native process exit before aborting residual sockets.
+        self.server.shutdown()
+        with self._handlers_done:
+            self._handlers_done.wait_for(lambda: not self._handlers, timeout=0.25)
         self._closed.set()
         with self._lock:
             active = tuple(self._sockets)
@@ -761,7 +821,10 @@ class ProviderRelay:
                 connection.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-        self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
+        with self._handlers_done:
+            self._handlers_done.wait_for(lambda: not self._handlers, timeout=4.75)
         self.socket_path.unlink(missing_ok=True)
+        if self._owns_diagnostic_writer and drain_diagnostics:
+            self.diagnostic_writer.close()

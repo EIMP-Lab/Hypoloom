@@ -11,6 +11,8 @@ import re
 import sys
 import tempfile
 import threading
+import time
+from collections import deque
 from datetime import datetime, timezone
 import traceback
 from typing import Any, BinaryIO, Iterable, Mapping
@@ -275,6 +277,27 @@ class RuntimeDiagnostics:
                     "redaction_count": self._shared["redaction_count"]}
 
 
+def _redact_stream(pending: bytes, secrets: tuple[bytes, ...], *, final: bool):
+    """One cross-chunk redactor for synchronous files and deferred copies."""
+    keep = 0 if final else max((len(item) - 1 for item in secrets), default=0)
+    output, redactions = bytearray(), 0
+    while pending:
+        safe_end = max(0, len(pending) - keep)
+        matches = [(pending.find(secret), secret) for secret in secrets]
+        matches = [(index, secret) for index, secret in matches if index >= 0]
+        match = min(matches, key=lambda item: (item[0], -len(item[1]))) if matches else None
+        if match is not None and match[0] < safe_end:
+            index, secret = match
+            output.extend(pending[:index] + REDACTED.encode())
+            pending = pending[index + len(secret):]
+            redactions += 1
+        else:
+            output.extend(pending[:safe_end])
+            pending = pending[safe_end:]
+            break
+    return bytes(output), pending, redactions
+
+
 class _DiagnosticStream:
     def __init__(self, recorder: RuntimeDiagnostics, relative: str) -> None:
         self.recorder, self.relative = recorder, relative
@@ -303,24 +326,10 @@ class _DiagnosticStream:
         return len(value)
 
     def _drain(self, *, final: bool) -> None:
-        secrets = self.recorder._secrets
-        keep = 0 if final else max((len(item) - 1 for item in secrets), default=0)
-        output = bytearray()
-        while self._pending:
-            safe_end = max(0, len(self._pending) - keep)
-            matches = [(self._pending.find(secret), secret) for secret in secrets]
-            matches = [(index, secret) for index, secret in matches if index >= 0]
-            match = min(matches, key=lambda item: (item[0], -len(item[1]))) if matches else None
-            if match is not None and match[0] < safe_end:
-                index, secret = match
-                output.extend(self._pending[:index] + REDACTED.encode())
-                self._pending = self._pending[index + len(secret):]
-                self._redactions += 1
-                self.recorder._redaction()
-            else:
-                output.extend(self._pending[:safe_end])
-                self._pending = self._pending[safe_end:]
-                break
+        output, self._pending, count = _redact_stream(self._pending, self.recorder._secrets, final=final)
+        self._redactions += count
+        if count:
+            self.recorder._redaction(count)
         if output and self._output is not None:
             try:
                 remaining = memoryview(output)
@@ -341,9 +350,13 @@ class _DiagnosticStream:
         if self._output is not None:
             try:
                 os.fsync(self._output.fileno())
-                self._output.close()
             except OSError as exc:
                 self._error(exc)
+            finally:
+                try:
+                    self._output.close()
+                except OSError as exc:
+                    self._error(exc)
 
     def summary(self) -> dict[str, Any]:
         return {"bytes_received": self._received, "bytes_written": self._written,
@@ -360,6 +373,272 @@ class _DiagnosticStream:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class ProviderDiagnosticWriter:
+    """Host-owned bounded copy queue. No producer performs file I/O.
+
+    Charges include the item currently in the worker. Control reservations keep
+    body backpressure from preventing stream close/final metadata. Idle workers
+    retire; a stuck worker is never replaced. This is not a durable work queue.
+    """
+    def __init__(self, *, max_bytes=32 * 1024 * 1024, control_bytes=4 * 1024 * 1024,
+                 exchange_bytes=4 * 1024 * 1024, max_items=4096):
+        self.max_bytes, self.control_bytes = max_bytes, control_bytes
+        self.exchange_bytes, self.max_items = exchange_bytes, max_items
+        self._condition = threading.Condition()
+        self._queue = deque()
+        self._bytes = self._body_bytes = 0
+        self._thread = None
+        self._closed = False
+
+    def reserve(self, size, *, body=False):
+        with self._condition:
+            if (self._closed or self._bytes + size > self.max_bytes or
+                    body and self._body_bytes + size > self.max_bytes - self.control_bytes):
+                return False
+            self._bytes += size
+            if body: self._body_bytes += size
+            return True
+
+    def release(self, size, *, body=False):
+        with self._condition:
+            self._bytes -= size
+            if body: self._body_bytes -= size
+
+    def _submit(self, capture, kind, payload, cost=0):
+        body = kind in {"request", "body"}
+        with self._condition:
+            previous = capture._body_job if kind == "body" else None
+            combine = previous is not None and len(previous[2]) + len(payload) <= 256 * 1024
+            # Finalization uses the reservation made when the capture opened.
+            if kind != "final" and (self._closed or not combine and len(self._queue) >= self.max_items):
+                return False
+            if cost and not self.reserve(cost, body=body): return False
+            if combine:
+                item = previous
+                item[2].extend(payload)
+                item[3] += cost
+            else:
+                item = [capture, kind, bytearray(payload) if kind == "body" else payload, cost]
+                self._queue.append(item)
+                capture._body_job = item if kind == "body" else None
+                if kind == "metadata": capture._metadata_job = item
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="hypoloom-provider-diagnostics", daemon=True)
+                self._thread.start()
+            self._condition.notify_all()
+            return True
+
+    def _run(self):
+        while True:
+            with self._condition:
+                if not self._queue:
+                    self._condition.wait_for(lambda: self._queue or self._closed, timeout=0.1)
+                if not self._queue:
+                    self._thread = None
+                    self._condition.notify_all()
+                    return
+                # Keep the latest metadata even when a stream goes quiet. A
+                # delayed metadata write must not hold up other body/final jobs.
+                while self._queue:
+                    now = time.monotonic()
+                    ready = next((item for item in self._queue
+                        if self._closed or item[1] != "metadata"
+                        or now >= item[0]._last_metadata + 1.0), None)
+                    if ready is not None:
+                        self._queue.remove(ready)
+                        self._queue.appendleft(ready)
+                        break
+                    due = min(item[0]._last_metadata + 1.0 for item in self._queue)
+                    self._condition.wait(timeout=max(0, due - now))
+                if not self._queue:
+                    continue
+                deadline = time.monotonic() + 0.1
+                while (len(self._queue) == 1 and self._queue[0][1] == "body"
+                       and len(self._queue[0][2]) < 256 * 1024 and not self._closed):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0: break
+                    self._condition.wait(timeout=remaining)
+                item = self._queue.popleft()
+                if item[0]._body_job is item: item[0]._body_job = None
+                if item[0]._metadata_job is item: item[0]._metadata_job = None
+            capture, kind, payload, cost = item
+            try:
+                capture._write(kind, payload)
+            except Exception as exc:
+                capture._error(kind, type(exc).__name__)
+            finally:
+                with self._condition:
+                    self.release(cost, body=kind in {"request", "body"})
+                    if kind in {"request", "body"}: capture._pending_bytes -= cost
+                    if kind == "metadata": capture._last_metadata = time.monotonic()
+                    if kind == "final": self.release(capture._reservation)
+                    self._condition.notify_all()
+
+    def close(self, timeout=2.0):
+        with self._condition:
+            self._closed = True
+            thread = self._thread
+        if thread is not None: thread.join(timeout=timeout)
+        # A kernel write cannot be cancelled. Report rather than hide residue.
+        with self._condition:
+            return (thread is None or not thread.is_alive()) and self._bytes == 0
+
+
+class DeferredProviderCapture:
+    """Private provider copy; all filesystem operations belong to the writer."""
+    _reservation = 64 * 1024
+
+    def __init__(self, writer, parent, exchange, secrets):
+        self.backend, self.parent, self.exchange = writer, parent, exchange
+        self.secrets = _secret_bytes((*getattr(parent, "_secrets", ()), *secrets))
+        self.errors = []
+        self._pending = b""
+        self._pending_bytes = self._received = self._redactions = 0
+        self._last_metadata = 0.0
+        self._body_job = None
+        self._metadata_job = None
+        self._body_stopped = False
+        self._response = False
+        self._recorder = self._stream = None
+        self._enabled = writer.reserve(self._reservation)
+        if not self._enabled: self._error("capture", "queue_capacity")
+
+    def _error(self, operation, code):
+        item = {"operation": operation, "exception_type": code}
+        if item not in self.errors: self.errors.append(item)
+
+    def _body(self, kind, value):
+        with self.backend._condition:
+            cost = len(value) + 128
+            if (self._pending_bytes + cost > self.backend.exchange_bytes or
+                    not self.backend._submit(self, kind, value, cost)):
+                self._error(kind, "queue_capacity")
+                return False
+            self._pending_bytes += cost
+            return True
+
+    def request(self, value):
+        if not self._enabled: return
+        if len(value) + 128 > self.backend.exchange_bytes:
+            self._error("request", "queue_capacity")
+            return
+        self._copy("request", value, final=True)
+
+    def response(self):
+        self._response = True
+
+    def write(self, value):
+        self._received += len(value)
+        if not self._enabled or self._body_stopped: return
+        if not self._copy("body", value, final=False):
+            self._body_stopped = True
+            self._pending = b""  # Never flush an uncertain secret prefix after overflow.
+
+    def _copy(self, kind, value, *, final):
+        pending = self._pending if kind == "body" else b""
+        shortest = min(map(len, self.secrets), default=len(REDACTED))
+        expansion = max(1, (len(REDACTED) + shortest - 1) // shortest)
+        # Reserve scratch space before redaction, including bytearray -> bytes
+        # and unusually short secrets that expand. The original transport buffer
+        # belongs to the relay; only its extra diagnostic copies are charged here.
+        scratch = 2 * (len(pending) + len(value)) * (1 + expansion) + 128
+        if not self.backend.reserve(scratch, body=True):
+            self._error(kind, "queue_capacity")
+            return False
+        try:
+            safe, tail, count = _redact_stream(pending + value, self.secrets, final=final)
+            self._redactions += count
+            if kind == "body": self._pending = tail
+            return (not safe and kind != "request") or self._body(kind, safe)
+        finally:
+            self.backend.release(scratch, body=True)
+
+    def save(self, value):
+        if not self._enabled: return
+        payload = json.dumps(sanitize_payload(value, self.secrets)).encode()
+        if len(payload) > self._reservation // 4:
+            self._error("metadata", "capture_size")
+            return
+        with self.backend._condition:
+            if self._metadata_job is not None:
+                cost = len(payload) * 4 + 512
+                delta = cost - self._metadata_job[3]
+                if delta > 0 and not self.backend.reserve(delta): return
+                if delta < 0: self.backend.release(-delta)
+                self._metadata_job[2:4] = [payload, cost]
+                return
+            self.backend._submit(self, "metadata", payload, len(payload) * 4 + 512)
+
+    def finish(self, value):
+        if not self._enabled: return
+        if self._pending and not self._body_stopped:
+            if not self._copy("body", b"", final=True):
+                self._pending = b""
+        payload = json.dumps(sanitize_payload(value, self.secrets)).encode()
+        if len(payload) > self._reservation // 4:
+            self._error("metadata", "capture_size")
+            payload = json.dumps({key: value[key] for key in ("exchange", "started_at", "ended_at")}).encode()
+        with self.backend._condition:
+            # Final metadata supersedes the queued intermediate view, and must
+            # follow all accepted body copies without waiting for its cadence.
+            if self._metadata_job is not None:
+                self.backend._queue.remove(self._metadata_job)
+                self.backend.release(self._metadata_job[3])
+                self._metadata_job = None
+            if not self.backend._submit(self, "final", payload):
+                self._error("capture", "writer_closed")
+                self.backend.release(self._reservation)
+
+    def _call(self, operation, function, *args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except Exception as exc:
+            self._error(operation, type(exc).__name__)
+            # Error output also stays off the network path, with no private text.
+            try:
+                self.parent.event("provider_capture_error", exchange=self.exchange,
+                                  operation=operation, exception_type=type(exc).__name__)
+            except Exception:
+                pass
+            try:
+                print(f"provider diagnostics {operation} failed: {type(exc).__name__}", file=sys.stderr)
+            except (OSError, ValueError):
+                pass
+
+    def _write(self, kind, payload):
+        if self._recorder is None:
+            self._recorder = self._call("child", self.parent.child,
+                f"provider/{self.exchange:06d}", secrets=self.secrets)
+        recorder = self._recorder
+        if recorder is None: return
+        if kind == "request":
+            self._call("request_body", recorder.write_bytes, "request.body", payload)
+        elif kind == "body":
+            if self._stream is None:
+                self._stream = self._call("response_open", recorder.stream, "response.body")
+            if self._stream is not None:
+                self._call("response_body", self._stream.write, bytes(payload))
+        else:
+            value = json.loads(payload)
+            if kind == "final":
+                if self._response and self._stream is None:
+                    self._stream = self._call("response_open", recorder.stream, "response.body")
+                if self._stream is not None:
+                    self._call("response_close", self._stream.close)
+                    summary = self._call("response_summary", self._stream.summary) or {"complete": False}
+                    summary.update(bytes_received=self._received, redacted=bool(self._redactions),
+                                   redaction_count=self._redactions)
+                    if self.errors:
+                        summary.update(complete=False, capture_errors=list(self.errors))
+                    value["response_capture"] = summary
+                value["capture_errors"] = [*value.get("capture_errors", []), *self.errors]
+                capture = self._call("summary", recorder.summary) or {}
+                if self._redactions:
+                    capture.update(redacted=True, redaction_count=capture.get("redaction_count", 0) + self._redactions)
+                value["capture"] = capture
+            self._call("metadata", recorder.write_json, "exchange.json", value)
 
 
 def record_host_exception(state_root: Path, exc: BaseException, *,

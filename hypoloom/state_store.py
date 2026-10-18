@@ -164,7 +164,10 @@ class StateTransaction:
         filters = [(name, value) for name, value in (("workflow_id", workflow_id), ("command_id", command_id), ("execution_id", execution_id), ("state", state), ("run_id", run_id), ("kind", kind), ("terminal_reason", terminal_reason)) if value is not None]
         where = " WHERE " + " AND ".join(f"{name}=?" for name, _ in filters) if filters else ""
         columns = "*" if include_observation else "attempt_id,run_id,workflow_id,command_id,kind,experiment_id,execution_id,attempt_ordinal,host_generation,state,started_at,ended_at,terminal_reason,process_group_id"
-        return tuple(dict(row) for row in self.execute("SELECT " + columns + " FROM execution_attempts" + where + " ORDER BY workflow_id,command_id,attempt_ordinal", [value for _, value in filters]).fetchall())
+        # Sort references after reading: SQLite's temporary sorter would copy
+        # every large observation_json merely to order these three small keys.
+        rows = [dict(row) for row in self.execute("SELECT " + columns + " FROM execution_attempts" + where, [value for _, value in filters]).fetchall()]
+        return tuple(sorted(rows, key=lambda row: (row["workflow_id"], row["command_id"], row["attempt_ordinal"])))
     def open_attempt(self, attempt: Mapping[str, Any] | object) -> bool:
         data = _record(attempt); attempt_id = _text(data["attempt_id"], "attempt_id"); kind = _plain(data["kind"])
         intent = data.get("observation", data.get("payload"))

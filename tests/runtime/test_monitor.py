@@ -66,7 +66,7 @@ def test_final_agent_failure_projects_a_safe_code_and_remains_visible_after_comp
         "observation_json": json.dumps({"diagnostics": diagnostics}),
         "attempt_ordinal": 1, "terminal_reason": "FAILED", "process_group_id": None,
         "started_at": 1., "ended_at": 2.}
-    reader = SimpleNamespace(execute=lambda sql, *_: SimpleNamespace(fetchall=lambda:
+    reader = SimpleNamespace(list_attempts=lambda **_: [row], execute=lambda sql, *_: SimpleNamespace(fetchall=lambda:
         [("failed-call", "provider_not_success")] if "agent_final_failure" in sql else [row]))
     attempts, _ = _attempt_views(reader, "run", (), {}, {}, frozenset())
     assert attempts[0].operational_reason == expected

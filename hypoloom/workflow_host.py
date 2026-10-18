@@ -237,6 +237,8 @@ class WorkflowHost:
         for job in self._literature_jobs.values(): job.cancelled.set(); job.future.cancel()
         if self.claude_agent_host is not None:
             for handle in tuple(self.running_agents.values()): self.claude_agent_host.cancel(handle); self.claude_agent_host.cleanup(handle)
+            if hasattr(self.claude_agent_host, "close_diagnostics"):
+                self.claude_agent_host.close_diagnostics()
         self.running_agents.clear(); self.local_execution_agents.clear()
         for handle in tuple(self.running.values()): self.runner.cancel(handle); self.runner.cleanup(handle)
         if self.shared_gpu is not None: self.shared_gpu.reconcile()
@@ -1079,7 +1081,7 @@ class WorkflowHost:
             **({"stop_controls": list(controls)} if stopping else {})}
         from .final_report import accepted_evaluation_summary_inputs, declared_measurement_inputs, run_outcome_context
         context["run_outcome"] = outcome = run_outcome_context(facts,
-            [row for row in self.store.list_attempts() if row["run_id"] == run_id], self._expert_final_failures(run_id),
+            self.store.list_attempts(run_id=run_id), self._expert_final_failures(run_id),
             artifacts=self.store.inspect("SELECT artifact_id,execution_id,attempt_id FROM execution_artifacts WHERE run_id=?", (run_id,)))
         summary_inputs, summary_index = accepted_evaluation_summary_inputs(
             facts,
@@ -1111,11 +1113,10 @@ class WorkflowHost:
             EmbeddedInput.from_bytes(f"{task.command_id}--final-report-context", "application/json", _canonical(context))]
         inputs.extend((*summary_inputs, *raw_inputs))
         inputs.extend(failed_reports)
-        for row in self.store.list_attempts():
-            if row["run_id"] == run_id and row["kind"] == "AGENT" and row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED":
-                observation = json.loads(row["observation_json"])
-                if observation.get("request", {}).get("command") in {"GROUNDING", "CYCLE_REPORT"}:
-                    inputs.append(EmbeddedInput.from_bytes(f"{row['attempt_id']}--response", "application/json", _canonical(observation["response"])))
+        for row in self.store.list_attempts(run_id=run_id, kind="AGENT", state="CLOSED", terminal_reason="SUCCEEDED"):
+            observation = json.loads(row["observation_json"])
+            if observation.get("request", {}).get("command") in {"GROUNDING", "CYCLE_REPORT"}:
+                inputs.append(EmbeddedInput.from_bytes(f"{row['attempt_id']}--response", "application/json", _canonical(observation["response"])))
         return tuple(inputs)
     @staticmethod
     def _is_final_report_request(request: AgentRequest) -> bool:
@@ -1185,7 +1186,7 @@ class WorkflowHost:
         current = self.store.inspect("SELECT * FROM workflow_runs WHERE run_id=?", (run_id,))[0]; current_document = self._research_contract(run_id).document
         compatible_runs = {str(row["run_id"]) for row in self.store.inspect("SELECT * FROM workflow_runs") if all(row[field] == current[field] for field in _VERSION_FIELDS) and self._research_contract(str(row["run_id"])).document == current_document}; records = []
         if self.shared_gpu is not None: compatible_runs = {run_id}
-        for attempt in self.store.list_attempts():
+        for attempt in self.store.list_attempts(kind="PROCESS", state="CLOSED"):
             if attempt["run_id"] not in compatible_runs or attempt["kind"] != "PROCESS" or attempt["state"] != "CLOSED": continue
             spec = self.store.find_fact(attempt["run_id"], "ExperimentPreregistered", attempt["experiment_id"]); creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (attempt["workflow_id"],))
             if spec is None or attempt["execution_id"] != spec["execution_id"] or len(creation) != 1: continue
@@ -4518,7 +4519,7 @@ class WorkflowHost:
             tx.append_transition(transition)
     def _complete(self, run_id: str) -> None:
         self._reconcile_terminal_attempt_residue(run_id); experiments = self.store.list_workflow_heads(run_id, "EXPERIMENT")
-        attempts = [row for row in self.store.list_attempts() if row["run_id"] == run_id]
+        attempts = self.store.list_attempts(run_id=run_id, include_observation=False)
         if any(row["state"] != ExperimentState.TERMINAL.value for row in experiments): raise OperationalHalt("COMPLETING run owns a nonterminal experiment")
         if any(row["state"] == "OPEN" for row in attempts): return
         with self.store.transaction() as tx:

@@ -47,10 +47,20 @@ def test_native_support_copy_explains_tool_repair_and_schema_rejection(tmp_path:
     validation = json.loads((failed / "native-output/000001.json").read_text())
     assert validation["last_assistant_message"] == envelope["result"]
     assert "/typed_candidate/supporting_refs/0" in validation["error"]
-    attempts = [json.loads((path / "request.json").read_text()) for path in diagnostic_root.iterdir()]
+    # A run-wide support copy is deliberately bounded (including inspection
+    # time). Locate the scientific owner from raw durable rows, then exercise
+    # the existing exact selector; never assume every historical directory was
+    # fully exported, extend the production deadline or skip content checks.
+    attempts = [json.loads(row["observation_json"])["request"] for row in
+        _rows(tmp_path / "state/state.sqlite", "SELECT * FROM execution_attempts WHERE kind='AGENT'")]
     grounding = next(row for row in attempts if row["command"] == "GROUNDING")
-    ground = diagnostic_root / grounding["attempt_id"]
-    transcript = output / "files/artifacts" / _RUN / "agent" / grounding["attempt_id"] / "transcript/transcript.jsonl"
+    ground_output = tmp_path.parent / (tmp_path.name + "-grounding-support")
+    ground_report = export_support_bundle(tmp_path / "state", _RUN, ground_output,
+        attempt_id=grounding["attempt_id"], include_private_data=True)
+    assert ground_report["source_read_only"] and ground_report["non_authoritative"]
+    assert not ground_report["limited"], ground_report["limits"]
+    ground = ground_output / "files/diagnostics/agents" / _RUN / grounding["attempt_id"]
+    transcript = ground_output / "files/artifacts" / _RUN / "agent" / grounding["attempt_id"] / "transcript/transcript.jsonl"
     assert _BROKEN in transcript.read_text() and _REPAIRED in transcript.read_text()
     assert any(row.get("type") == "result" for row in _json_lines(ground / "stdout.log"))
     requests = list(ground.glob("provider/*/request.body"))
@@ -59,12 +69,13 @@ def test_native_support_copy_explains_tool_repair_and_schema_rejection(tmp_path:
     from test_claude_file_tool_cli import native_output_schema
     assert native_output_schema(json.loads(requests[0].read_text())) == json.loads((ground / "launch.json").read_text())["output_schema"]
     assert list(ground.glob("provider/*/response.body"))
-    for path in output.rglob("*"):
+    for path in (*output.rglob("*"), *ground_output.rglob("*")):
         assert path.stat().st_mode & 0o777 == (0o700 if path.is_dir() else 0o600)
     (tmp_path / "diagnostic-g3-evidence.json").write_text(json.dumps({
         "support_copy": str(output), "agent_count": evidence["agent_count"],
         "process_count": evidence["process_count"], "oracle": evidence["oracle"],
         "failed_final": str(failed), "grounding_transcript": str(transcript),
+        "run_copy_limited": report["limited"], "grounding_support_copy": str(ground_output),
         "paid_model": False, "gpu": False}, indent=2))
 
 

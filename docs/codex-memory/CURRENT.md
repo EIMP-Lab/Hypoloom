@@ -1,5 +1,35 @@
 # Current Hypoloom development state
 
+- October 18 provider-stream/history performance repair is implemented on dev.
+  Offline/CPU/package validation is complete. One bounded Host writer separates
+  provider copies from network I/O; Agent closure consumes existing live exchanges,
+  preserving conservative unknown accounting. Shared history reads/reference sorts
+  and existing observer invalidation remove repeated wide SQLite temp writes.
+  The initial full G1 has 8,435 passes / 26 failures / 159 skips. Repairs retain
+  silent-stream metadata, align mock readers, make one browser fixture atomic and
+  reuse the terminal-state set for cached FAILED views; 150 focused checks pass.
+  Byte progress is sampled separately from lifecycle updates to limit CPU cost.
+  Synthetic reflected-credential reproduction additionally restores the existing
+  sanitizer at the live handoff; 72 affected checks pass, including three native
+  flows with 35 Agents/three Processes CLOSED, clean Oracles and no owned groups.
+  An interrupted 1,216-pass invocation is not full qualification. All 196 final
+  package files match and installed CPU smoke passes. The 10% capture-overhead
+  target is not met for every load shape; slow-disk blocking is independently fixed.
+  Final full G1: 8,466 pass/two unchanged browser-path failures/159 skips, 1,966.75s.
+  Two fixture fixes retain every assertion; ten follow-up UI/docs/Profile checks
+  pass. Reconciled selection: 8,468 pass/159 skip, 8,627 identities; not one green
+  full invocation. Eleven final G3 cases close 143 Agents/11 Processes with 11
+  outcomes, clean Oracles, no duplicate ownership or live groups. All 2,671
+  recorded full-suite groups are absent. Original failures remain evidence.
+  Credential checks, SQLite FULL, independent Oracle and frozen bundles remain;
+  no new schema, authority or retry layer. Upstream IncompleteRead is unresolved.
+  [Design](../design/provider-stream-io-and-history-performance-2026-10-18.md) /
+  [validation](../qualification.md#provider-stream-io-and-history-performance-2026-10-18).
+  Private evidence: `.local/qualification/provider-stream-20261018/` and
+  `.local/analysis/rpm-root-cause-20261018/`. No retained-run operations, paid
+  requests or shared-install/main changes. October 19 publication is authorized
+  for dev only; runtime and test files are unchanged from the validated candidate.
+
 - October 17 recovered-evidence repair: cumulative SUPPORTED assessments may keep
   an exact failed execution alongside a comparable accepted result. Production
   qualification and the independent raw-row Oracle now require all cited bindings

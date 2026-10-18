@@ -201,8 +201,8 @@ def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=(
         key = task.get("key") or {}
         start = _time(row.get("started_at"))
         finish = observed_at if row.get("state") == "OPEN" else _time(row.get("ended_at"))
-        charges = fold_agent_attempts({**record, "observation_json": record.get("observation_json") or json.dumps(value)}
-            for record, value, _ in records)
+        charges = fold_agent_attempts((record for record, _, _ in records),
+            _observations={record['attempt_id']: value for record, value, _ in records})
         failed = {record["attempt_id"] for record, _, _ in records
             if record.get("state") == "CLOSED" and record.get("terminal_reason") in {"FAILED", "LOST", "TIMED_OUT"}}
         reported = [charge for charge in charges if charge.source != "declared" and charge.cost is not None]
@@ -573,6 +573,37 @@ def _parallel_activity(role, agents, stages, nodes, commands, contract, run_acti
             "states": {status: sum(item["status"] == status for item in readers)
                        for status in ("queued", "running", "completed", "failed", "cancelled", "unknown")},
             "calls": calls}}
+
+
+def refresh_summary_clock(summary, run_state, observed_at):
+    """Advance display durations without claiming historical evidence is fresh."""
+    from copy import deepcopy
+    result = deepcopy(summary)
+    previous = result.get("clock_observed_at", result.get("observed_at"))
+    delta = max(0, observed_at - previous) if type(previous) in (int, float) else 0
+    result["clock_observed_at"] = observed_at
+    if run_state not in _TERMINAL:
+        if result.get("elapsed_seconds") is not None: result["elapsed_seconds"] += delta
+        if result.get("remaining_seconds") is not None: result["remaining_seconds"] = max(0, result["remaining_seconds"] - delta)
+        if run_state == "WAITING_HUMAN": result["waiting_human_seconds"] += delta
+    # Compact views share some stage dictionaries; advance each object once.
+    visited = set()
+    def advance(value):
+        if not isinstance(value, (list, dict)) or id(value) in visited: return
+        visited.add(id(value))
+        if isinstance(value, list):
+            for item in value: advance(item)
+            return
+        if value.get("state") == "OPEN" and type(value.get("started_at")) in (int, float):
+            value["elapsed_seconds"] = max(0, observed_at - value["started_at"])
+        if value.get("open_controllers") and value.get("oldest_controller_seconds") is not None:
+            value["oldest_controller_seconds"] += delta
+        for item in value.values(): advance(item)
+    advance(result)
+    grounding = result.get("grounding", {})
+    if grounding.get("state") == "active" and grounding.get("elapsed_seconds") is not None:
+        grounding["elapsed_seconds"] += delta
+    return result
 
 
 def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions,

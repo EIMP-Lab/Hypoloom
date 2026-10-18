@@ -2,6 +2,102 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Provider stream I/O and history performance (2026-10-18)
+
+The candidate moves provider diagnostic copies to one bounded Host writer and
+hands the existing live exchange observations to Agent finalization before usage
+corroboration. History readers share decoded Attempts and sort references rather
+than large SQLite rows. The observer reuses its existing change indication while
+refreshing live Host/context/clock observations. No schema, Profile field, retry
+layer, accounting reducer or audit authority is added. Credential rejection,
+diagnostic redaction, SQLite durability and independent Oracle checks remain.
+[Design and evidence boundaries](design/provider-stream-io-and-history-performance-2026-10-18.md).
+
+The initial full G1 records **8,435 passed / 26 failed / 159 skipped**, in
+**1,948.15 seconds**. The failures exposed lost intermediate metadata when a
+stream went quiet, two stale test doubles and a partially updated browser
+fixture. Repairs retain pending lifecycle metadata without per-chunk fsync;
+ordinary byte progress is sampled once per second. A separate cached FAILED
+display reproduction reuses the existing terminal-state set. The affected
+projection/transport/UI suite passes **150 tests**. A later request-start test
+was corrected to wait for asynchronous file creation under its original time
+limit; the following selection passes **15 tests**.
+
+Synthetic credential reflection then reproduced a privacy regression in the new
+live handoff. It now uses the same sanitizer and known secrets as the file copy.
+Request-ID and model-label regressions preserve transport rejection and observed
+usage. An intervening full invocation was intentionally stopped after **1,216
+passes**, before applying this repair; none of its 81 recorded process groups
+has a live member. It is not a full pass. The final affected selection passes
+**72 tests**, including three real Host/CLI/CPU flows. Independent raw-row and
+artifact inspection counts **35 Agents and three Processes, all CLOSED**, with
+36 SUCCEEDED / two intentional FAILED attempts, three accepted outcomes, no
+duplicate ownership, clean Oracles and no live members of 38 recorded groups.
+
+The final full G1 records **8,466 passed / two failed / 159 skipped** in
+**1,966.75 seconds**. Both failures are in unchanged browser test paths/assets:
+one expected another skill-list fetch without changing the snapshot inputs;
+the other published a shared-goal fixture in separate updates. Tests now advance
+the fixture revision and publish the related fields atomically. All original
+scroll, filter, tab, content and rendering assertions remain. The following
+**ten UI/documentation/Profile checks pass**. The unchanged runtime's full
+selection plus this targeted follow-up reconciles **8,468 passed / 159 skipped**,
+exactly **8,627 identities**, with no unresolved failure. This is **not one
+uninterrupted all-green invocation**; original reports remain intact.
+
+All **11 directly relevant G3 scenarios** pass in that full selection. Independent
+raw-row/artifact inspection counts **143 Agents and 11 Processes, all CLOSED**:
+146 SUCCEEDED, seven intentional FAILED and one LOST, with **11 outcomes**, no
+duplicate ownership and clean Oracles. All **110 recorded groups** are absent.
+These are separate final-campaign samples, not added to the earlier focused
+counts. A broader liveness scan across **1,253 full-suite databases** finds no
+live members of **2,671 recorded groups**; deliberately malformed test databases
+are not treated as clean scientific histories.
+
+Earlier interrupted/drifted samples and the bounded-support-export failure
+remain separate evidence. That export
+test now selects the relevant Grounding Attempt through the existing selector;
+the production 15-second inspection budget and all content/privacy checks remain.
+
+Performance replay uses fixed local HTTP streams and verifies both wire bytes
+and completed diagnostic copies. On the final runtime, all **116 captures per
+campaign** are complete, with exact response bytes. With 20 ms injected per
+metadata write, an unpaced 128-chunk response falls from **2.870 s / 135 writes**
+to **0.017 s / two writes**; the paced equivalent falls from about **2.88 s** to
+**0.665 s**, near its 0.64-second input schedule. These are local fault-injection
+measurements, not production RPM or vendor speedup claims.
+
+Compared with optional capture disabled, final median overhead under a 5 ms
+per-chunk schedule is **0.6–0.7% at one stream, 1.8–2.4% at six, and 5.2–18.3%
+at twelve**, across 128 B / 4 KiB chunks and three repetitions. Unpaced bursts
+show **45.8–119.5%** overhead, with total async durations of **0.022–0.739 s**.
+The initial 10% target is therefore **not met across all inputs**. These shared
+machine measurements include scheduling noise; they do not justify a throughput
+SLA or reducing privacy checks. Earlier measurements, including a discarded
+private buffering experiment, are preserved and are not substituted for the
+final runtime's results.
+
+A separate 300-Attempt, 122,880,000-byte history replay removes the temporary
+B-tree and its roughly 246 MB of logical writes per query. The first/second
+query falls from **0.653 / 0.524 s** to **0.172 / 0.072 s**, with zero candidate
+temporary writes. The database is in tmpfs with file-backed temporary sorting
+and warm OS pages; this is not a physical cold-cache benchmark. The 100/1,000/
+5,000-row regressions also preserve original ordering and avoid wide SQL sorts.
+
+All **196 runtime package files** match source, wheel, isolated installation and
+the fresh installed bundle. An installed CLI/MCP/CPU smoke exits normally with
+four closed Attempts, including two CPU Processes, a clean Oracle and no live
+recorded process groups. Evidence remains private at
+`.local/qualification/provider-stream-20261018/`; the installed verification
+uses `package-redaction.json` and `installed-redaction-smoke.json`.
+
+Existing research state, frozen bundles, Profiles, main and shared installations
+are unchanged. There are no new paid/GPU samples, retained-run migration or service
+restarts. Implementation and validation did not commit or push; on October 19 the
+user authorized publication to dev only, with runtime and test files unchanged.
+The change applies to new runs using this runtime; upstream IncompleteRead causes
+and production RPM recovery remain unproven.
+
 ## Recovered evidence reader repair (2026-10-17)
 
 The current candidate repairs a reproduced mismatch between cumulative accepted

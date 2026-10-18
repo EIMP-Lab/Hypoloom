@@ -233,7 +233,7 @@ def build_status_projection(
         row for row in selected_heads if row["workflow_kind"] == "EXPERIMENT"
     )
     selected_attempts = tuple(attempts) if attempts is not None else tuple(
-        row for row in store.list_attempts() if row["run_id"] == run_id
+        store.list_attempts(run_id=run_id)
     )
     selected_facts = tuple(facts) if facts is not None else tuple(
         store.list_facts(run_id)
@@ -802,16 +802,20 @@ def _attempt_views(
     scientific_execution_identities: frozenset[tuple[str, str]],
     observations: Mapping[str, Mapping[str, Any]] | None = None,
     scopes: Mapping[str, Mapping[str, Any]] | None = None,
+    raw_attempts: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[tuple[AttemptView, ...], frozenset[str]]:
-    rows = tuple(dict(row) for row in reader.execute(
-        "SELECT a.*,c.command_type,t.payload_json AS transition_payload_json "
+    raw = {row["attempt_id"]: row for row in (
+        reader.list_attempts(run_id=run_id) if raw_attempts is None else raw_attempts)}
+    rows = [{**raw[row["attempt_id"]], **dict(row)} for row in reader.execute(
+        "SELECT a.attempt_id,c.command_type,t.payload_json AS transition_payload_json "
         "FROM execution_attempts a "
         "JOIN workflow_commands c ON c.command_id=a.command_id "
         "LEFT JOIN workflow_transitions t "
         "ON t.workflow_id=a.workflow_id AND t.command_id=a.command_id "
-        "WHERE a.run_id=? ORDER BY a.started_at,a.attempt_id",
+        "WHERE a.run_id=?",
         (run_id,),
-    ).fetchall())
+    ).fetchall()]
+    rows.sort(key=lambda row: (row["started_at"], row["attempt_id"]))
     rendered: list[AttemptView] = []
     scientific_process_attempt_ids: set[str] = set()
     final_failures = {row[0]: row[1] for row in reader.execute(
@@ -1448,6 +1452,7 @@ def build_monitor_snapshot(
                 scientific_execution_identities,
                 attempt_observations,
                 attempt_scopes(raw_attempts, reading_commands),
+                raw_attempts,
             )
             attempts = _with_live_attempt_context(root, run_id, attempts, attempt_observations)
             workflows = tuple(WorkflowView(
@@ -1642,6 +1647,8 @@ def build_observer_snapshot(
     _connection: sqlite3.Connection | None = None,
     _oracle: Mapping[str, Any] | None = None,
     _host_backoff: HostStatusBackoff | None = None,
+    _attempts: Sequence[Mapping[str, Any]] | None = None,
+    _snapshot: MonitorSnapshot | None = None,
 ) -> MonitorSnapshot:
     """Build the canonical offline view and optionally enrich it via STATUS.
 
@@ -1660,7 +1667,11 @@ def build_observer_snapshot(
         options["_connection"] = _connection
     if _oracle is not None:
         options["_oracle"] = _oracle
-    snapshot = build_monitor_snapshot(state_root, run_id, **options)
+    if _attempts is not None:
+        options["_attempts"] = _attempts
+    snapshot = build_monitor_snapshot(state_root, run_id, **options) if _snapshot is None else _snapshot
+    if snapshot.run_id != run_id:
+        raise MonitorError("observation run mismatch")
     socket_path = Path(state_root).expanduser().resolve() / "control.sock"
     if not socket_path.is_socket():
         return snapshot

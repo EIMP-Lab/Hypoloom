@@ -1,5 +1,17 @@
 # Development memory index
 
+- [Provider-stream I/O and history performance, October 18](../design/provider-stream-io-and-history-performance-2026-10-18.md):
+  implemented bounded asynchronous provider copies, live-observation finalization,
+  shared history reads and reference sorting, using existing fields and validators.
+  Records silent-stream metadata and cached terminal-state regressions, initial
+  full-check failures, real Host/CPU closure and synthetic performance limits.
+  [Validation](../qualification.md#provider-stream-io-and-history-performance-2026-10-18)
+  also covers reflected-credential redaction and explicit unmet performance targets.
+  Full G1 plus focused fixture repairs reconciles 8,468 passes/159 skips, with
+  original failures retained; 11 final G3 samples and installed CPU smoke pass.
+  No current-run mutation, new retry,
+  paid/GPU qualification or main changes. October 19 publication scope is dev only.
+
 - [Recovered interaction evidence, October 17](../design/interaction-evidence-repair-2026-10-17.md):
   a failed execution followed by a successful repair is valid cumulative evidence.
   Production and independent audit readers preserve every binding check and

@@ -112,7 +112,7 @@ def _reported(value: object, *, provider: bool = False) -> tuple[int, int, Decim
     return None if tokens is None or turns is None or cost is None else (tokens, turns, cost)
 
 
-def fold_agent_attempts(rows: Iterable[Mapping[str, Any]]) -> tuple[AgentAttemptCharge, ...]:
+def fold_agent_attempts(rows: Iterable[Mapping[str, Any]], *, _observations=None) -> tuple[AgentAttemptCharge, ...]:
     """Return the conservative charge for every durable AGENT attempt."""
 
     charges: list[AgentAttemptCharge] = []
@@ -120,7 +120,9 @@ def fold_agent_attempts(rows: Iterable[Mapping[str, Any]]) -> tuple[AgentAttempt
         if row.get("kind") != "AGENT":
             continue
         try:
-            observation = json.loads(row.get("observation_json"))
+            observation = (_observations[row['attempt_id']]
+                if _observations is not None and row.get('attempt_id') in _observations
+                else json.loads(row.get("observation_json")))
         except (json.JSONDecodeError, TypeError):
             observation = {}
         observation = observation if isinstance(observation, Mapping) else {}

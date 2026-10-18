@@ -147,7 +147,14 @@ def test_real_streaming_relay_projects_pending_then_final_usage_to_tui(tmp_path,
             finally:
                 release.set()
             assert future.result(timeout=3)[0] == 200
-        final, = _with_live_attempt_context(tmp_path, "run", (attempt,), observation)
+        # Transport completion precedes the bounded asynchronous capture. The
+        # independent observer must eventually see its final provider usage.
+        deadline = time.monotonic() + 2
+        while True:
+            final, = _with_live_attempt_context(tmp_path, "run", (attempt,), observation)
+            if final.context_source == "provider_usage_final": break
+            assert time.monotonic() < deadline
+            time.sleep(.01)
         assert final.context_tokens == 69386 and final.context_source == "provider_usage_final"
         assert final.context["last_observed_exchange"] == final.context["current_request_exchange"] == 2
         assert len(upstream.calls) == 2

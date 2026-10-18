@@ -947,6 +947,9 @@ def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
     reads_before = page.evaluate(
         "fixtureRequests.filter(row => row[1].includes('kind=skills')).length"
     )
+    # Unchanged snapshots deliberately avoid fetching the same detail list.
+    # Trigger a real new revision before checking that refresh preserves context.
+    page.evaluate("fixture.snapshot.status.run_revision += 1")
     page.wait(
         "document.querySelector('#observed-at').textContent !== '' && document.querySelector('[data-detail-tab=body]').getAttribute('aria-pressed') === 'true'"
     )
@@ -1378,9 +1381,8 @@ def test_browser_shared_goal_presentation_and_exact_acceptance_observations(brow
         "goal": {"objective": objective},
         "methodology": {"controls": {"product": {"goal": {"completion_mode": "shared_goal"}}}},
         "components": [{"id": "component-a", "owner": "expert-a"}],
-    }))
-    page.evaluate("fixture.snapshot.status.shared_acceptance=" + json.dumps(common))
-    page.evaluate("fixture.snapshot.status.goal_verdict='INCONCLUSIVE'; fixture.snapshot.components[0].phase='DESIGN'")
+    }) + "; fixture.snapshot.status.shared_acceptance=" + json.dumps(common)
+        + "; fixture.snapshot.status.goal_verdict='INCONCLUSIVE'; fixture.snapshot.components[0].phase='DESIGN'")
     page.wait("document.querySelector('#mission-objective') !== null")
     page.wait("document.querySelector('#mission-objective').textContent.includes('Improve emotion')")
     assert len(page.text("#mission-title")) < 100
@@ -2080,8 +2082,10 @@ def test_browser_expert_previews_refresh_current_work_and_cumulative_metrics(bro
             {"node": "EXPERIMENT_DESIGN_IMPLEMENT", "state": "OPEN", "chain": "forward", "elapsed_seconds": 70},
             {"node": "EXPERIMENT_EXECUTION", "kind": "PROCESS", "state": "OPEN", "experiment_id": "job-a", "elapsed_seconds": 120},
             {"node": "EXPERIMENT_DESIGN_IMPLEMENT", "state": "OPEN", "chain": "backward <script>window.injected=true</script>"}]}
-    page.evaluate("fixture.snapshot.overview.experts=" + json.dumps([expert, {"role": "expert-b", "cycle": 0}]))
-    page.evaluate("fixture.snapshot.experts.push({role:'expert-b',slot_ordinal:2}); fixture.snapshot.overview.host_observation={availability:'responded'}; fixture.snapshot.goal.research_contract={methodology:{controls:{product:{goal:{completion_mode:'shared_goal'}}}}}")
+    # Publish the fixture atomically; an intervening poll could render the new
+    # expert activity with the old completion mode and satisfy the wait below.
+    page.evaluate("fixture.snapshot.overview.experts=" + json.dumps([expert, {"role": "expert-b", "cycle": 0}])
+        + "; fixture.snapshot.experts.push({role:'expert-b',slot_ordinal:2}); fixture.snapshot.overview.host_observation={availability:'responded'}; fixture.snapshot.goal.research_contract={methodology:{controls:{product:{goal:{completion_mode:'shared_goal'}}}}}")
     page.wait("document.querySelector('.expert-work-status').textContent.includes('3 OPEN')")
     assert "Design / implementation" in page.text("#expert-list")
     assert "Experiment execution · process · job-a · OPEN" in page.text("#expert-list")

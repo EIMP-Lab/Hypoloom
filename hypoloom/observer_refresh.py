@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import threading
 import time
+import json
 from dataclasses import replace
 from pathlib import Path
 
-from .monitor import HostStatusBackoff, MonitorError, build_observer_snapshot
+from .monitor import (HostStatusBackoff, MonitorError, build_observer_snapshot,
+                      build_monitor_snapshot, _with_live_attempt_context)
 from .observation_api import build_product_observation
 from .observer_evidence import evidence_read_budget, read_attempt_evidence
 from .oracle import Oracle
@@ -37,6 +39,9 @@ class ObserverRefresh:
         self._refresh_error, self._retry_at = False, 0.0
         self.evidence_seconds = evidence_seconds
         self._evidence_thread, self._evidence_done = None, None
+        self._evidence_cursor = 0
+        self._evidence_changed = False
+        self._offline = None
 
     def _data_version(self):
         # SQLite's connection-local change indication invalidates only this
@@ -86,13 +91,29 @@ class ObserverRefresh:
         # Release the database read before any slow file I/O. Only the existing
         # bounded, metadata-validated summary cache receives these observations.
         with StateStore(self.root).readonly_connection() as db:
-            rows = [dict(row) for row in db.execute(
-                "SELECT * FROM execution_attempts WHERE run_id=? AND kind='AGENT' "
+            db.execute('BEGIN')
+            identities = [dict(row) for row in db.execute(
+                "SELECT attempt_id,state FROM execution_attempts WHERE run_id=? AND kind='AGENT' "
                 "ORDER BY started_at DESC,attempt_id", (self.run_id,))]
+            opened = [row for row in identities if row['state'] == 'OPEN']
+            history = [row for row in identities if row['state'] != 'OPEN']
+            if len(opened) >= 16:
+                opened, history = [], identities
+            selected = opened[:16]
+            if history:
+                start = self._evidence_cursor % len(history)
+                count = min(16 - len(selected), len(history))
+                selected += (history[start:] + history[:start])[:count]
+                self._evidence_cursor = (start + count) % len(history)
+            rows = [dict(db.execute('SELECT * FROM execution_attempts WHERE attempt_id=?',
+                                   (row['attempt_id'],)).fetchone()) for row in selected]
         with evidence_read_budget(16):
             for row in rows:
                 if self._closed: return
-                read_attempt_evidence(self.root, self.run_id, row)
+                with evidence_read_budget(0):
+                    before = read_attempt_evidence(self.root, self.run_id, row)
+                if read_attempt_evidence(self.root, self.run_id, row) != before:
+                    self._evidence_changed = True
 
     def _run_evidence(self):
         try:
@@ -109,20 +130,47 @@ class ObserverRefresh:
             if self._closed: raise MonitorError('observer reader is closed')
             version = self._data_version()
             if force or self._cached is None or version != self._cached_version or time.monotonic() - self._cached_at >= self.refresh_seconds:
+                rebuild = force or self._offline is None or version != self._cached_version or self._evidence_changed
+                self._evidence_changed = False
                 with StateStore(self.root).readonly_connection() as db, evidence_read_budget(0):
                     db.execute('BEGIN')
+                    where = '' if rebuild else " AND state='OPEN'"
+                    attempts = [{**row, 'observation': json.loads(row['observation_json'] or '{}')}
+                        for row in db.execute('SELECT * FROM execution_attempts WHERE run_id=?' + where, (self.run_id,))]
+                    if rebuild:
+                        offline = build_monitor_snapshot(self.root, self.run_id, _connection=db,
+                            _oracle={'ok': None, 'issues': []}, _attempts=attempts)
+                    else:
+                        # Retain only compact projections between polls. Mutable
+                        # native files and Host liveness are still observed now;
+                        # historical summary timestamps are not relabelled.
+                        from .observer_summary import _TERMINAL, _host_observation, refresh_summary_clock
+                        live = _with_live_attempt_context(self.root, self.run_id,
+                            tuple(row for row in self._offline.attempts if row.state == 'OPEN'),
+                            {row['attempt_id']: row['observation'] for row in attempts})
+                        by_id = {row.attempt_id: row for row in live}
+                        host = _host_observation(self.root)
+                        host['orphaned'] = self._offline.status['run_state'] not in _TERMINAL and host['availability'] == 'absent'
+                        observed_at = time.time()
+                        overview = refresh_summary_clock(self._offline.overview,
+                            self._offline.status['run_state'], observed_at)
+                        offline = replace(self._offline, observed_at=observed_at,
+                            attempts=tuple(by_id.get(row.attempt_id, row) for row in self._offline.attempts),
+                            overview={**overview, 'host_observation': host})
                     # Busy resident ticks can exceed the short synchronous probe.
                     # This shared worker may wait; HTTP poll() stays nonblocking
                     # and retains the old observation's age until it completes.
                     snapshot = build_observer_snapshot(self.root, self.run_id, host_timeout=10.0, _connection=db,
-                        _oracle={'ok': None, 'issues': []}, _host_backoff=self._host_backoff)
-                    activity = build_product_observation(self.root, self.run_id, _connection=db,
-                        _snapshot=snapshot.to_dict())
+                        _oracle={'ok': None, 'issues': []}, _host_backoff=self._host_backoff, _snapshot=offline)
+                    activity = (build_product_observation(self.root, self.run_id, _connection=db,
+                        _snapshot=snapshot.to_dict(), _attempts=attempts) if rebuild else
+                        {**self._cached['activity'], 'observed_at': snapshot.observed_at, 'summary': snapshot.overview})
                 with self._refresh_lock:
                     if self._closed: raise MonitorError('observer reader is closed')
                     self._cached = {'snapshot': snapshot, 'activity': activity}
                     self._cached_at = time.monotonic()
                     self._cached_version = version
+                    self._offline = offline
                     self._refresh_error = False
             evidence_running = self._evidence_thread is not None and self._evidence_thread.is_alive()
             if not self._closed and not evidence_running and (self._evidence_done is None or

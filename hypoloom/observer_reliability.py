@@ -160,7 +160,8 @@ def _attempt(root, run_id, row, reader):
 
 def _costs(rows, ordinals_known):
     extra = rows[1:] if ordinals_known else []
-    charges = fold_agent_attempts({**row, "observation_json": row.get("observation_json") or json.dumps(row.get("observation", {}))} for row in extra)
+    charges = fold_agent_attempts(extra, _observations={row['attempt_id']:
+        _object(row.get('observation', row.get('observation_json'))) for row in extra})
     durations, missing_duration = [], 0
     for row in extra:
         start, end = _time(row.get("started_at")), _time(row.get("ended_at"))

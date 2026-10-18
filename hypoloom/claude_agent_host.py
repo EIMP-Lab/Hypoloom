@@ -59,7 +59,7 @@ from .agent_sessions import STATELESS_SESSION_COMMANDS, PreparedSessionWorkspace
 from .full_cc_runtime import FULL_CC_PROFILE, full_cc_argv, full_cc_environment, full_cc_instruction, host_tool_configuration, request_network_allowed, structured_output_validation_cap
 from .host_tools_server import AgentToolServer
 from .provider_relay import ProviderRelay
-from .runtime_diagnostics import RuntimeDiagnostics, record_host_exception
+from .runtime_diagnostics import RuntimeDiagnostics, ProviderDiagnosticWriter, record_host_exception
 from .network_proxy import AttemptNetworkProxy
 from .native_output import NativeOutputValidator, decode_output
 from .expert_loop import (
@@ -369,12 +369,17 @@ class ClaudeAgentHost:
         self._reserved_attempts: dict[str, AgentToolWorkspace | None] = {}
         self._handles_lock = threading.RLock()
         self._tool_servers: dict[str, AgentToolServer] = {}
+        self._provider_diagnostics = ProviderDiagnosticWriter()
         for name in self.allowed_environment_names:
             _environment_name(name)
         if self.allowed_environment_names.intersection(_FIXED_ENVIRONMENT):
             raise ValueError(
                 "provider environment allowlist overlaps fixed sandbox variables"
             )
+
+    def close_diagnostics(self) -> bool:
+        """One bounded drain after all Agent transports have been closed."""
+        return self._provider_diagnostics.close(timeout=2.0)
 
     def preflight(
         self,
@@ -608,7 +613,8 @@ class ClaudeAgentHost:
                 max_requests=request.budget.max_turns * 4 + 4,
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 token_budget=request.budget.max_tokens if request.budget.token_enforcement_mode == "enforce" else None,
-                diagnostics=runtime_diagnostics, context_policy=context_policy(request), traffic_binding=traffic_binding)
+                diagnostics=runtime_diagnostics, context_policy=context_policy(request), traffic_binding=traffic_binding,
+                diagnostic_writer=self._provider_diagnostics)
             resources.callback(relay.close)
             network_socket = None
             if request_network_allowed(request):
@@ -950,7 +956,13 @@ class ClaudeAgentHost:
         reason = forced_reason
         exchanges: list[Mapping[str, object]] | None = None
         wire_input_floor: int | None = None
-        if handle._runtime_diagnostics is not None:
+        if handle._provider_relay is not None:
+            from .provider_observation import observed_input_floor
+            handle._provider_relay.close(drain_diagnostics=False)
+            exchanges = handle._provider_relay.take_exchanges()
+            if exchanges is not None:
+                wire_input_floor = observed_input_floor(exchanges)
+        elif handle._runtime_diagnostics is not None:
             from .provider_observation import observed_input_floor, read_exchanges
             try:
                 exchanges = read_exchanges(handle._runtime_diagnostics.root / "provider")
@@ -1175,8 +1187,10 @@ class ClaudeAgentHost:
             recorder = handle._runtime_diagnostics
             from .provider_observation import provider_failure, read_exchanges, summarize_exchanges
             try:
-                if exchanges is None:
+                if exchanges is None and handle._provider_relay is None:
                     exchanges = read_exchanges(recorder.root / "provider")
+                if exchanges is None:
+                    raise ValueError("live provider observation unavailable")
                 diagnostics["served_models"] = sorted({model for exchange in exchanges
                     for model in exchange.get("served_models", []) if isinstance(model, str)})
                 diagnostics["provider_observed_usage"] = summarize_exchanges(exchanges)
@@ -1191,6 +1205,10 @@ class ClaudeAgentHost:
             except (OSError, ValueError, TypeError):
                 diagnostics["served_models"] = []  # Observation cannot block authoritative closure.
             diagnostics["served_model_source"] = "provider_response" if diagnostics["served_models"] else "unknown"
+            capture_summary = recorder.summary()
+            capture_summary["capture_errors"] += [
+                {**error, "exchange": exchange.get("exchange")}
+                for exchange in exchanges or [] for error in exchange.get("capture_errors", [])]
             recorder.event("ended", terminal_reason=(reason or AgentHostTerminalReason.FAILED).value,
                 returncode=returncode, failure_code=failure_code,
                 forced_reason=None if forced_reason is None else forced_reason.value,
@@ -1199,8 +1217,12 @@ class ClaudeAgentHost:
                 "returncode": returncode, "failure_code": failure_code,
                 "forced_reason": None if forced_reason is None else forced_reason.value,
                 "stdout_bytes": stdout_size, "stderr_bytes": stderr_size,
-                "parser_diagnostics": diagnostics, "capture": recorder.summary()})
-            diagnostics["runtime_capture"] = recorder.summary()
+                "parser_diagnostics": diagnostics, "capture": capture_summary})
+            # Include synchronous terminal-copy errors as well as producer-side
+            # queue loss. Worker failures remain in their existing file summaries.
+            capture_summary["capture_errors"] += [error for error in recorder.summary()["capture_errors"]
+                if error not in capture_summary["capture_errors"]]
+            diagnostics["runtime_capture"] = capture_summary
         if handle._provider_relay is not None and handle._provider_relay.token_limit_reached:
             diagnostics["provider_failure"] = {"code": "token_budget_exceeded"}
         observation = ClaudeAgentObservation(

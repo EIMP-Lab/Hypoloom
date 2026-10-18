@@ -172,7 +172,8 @@ def test_relay_records_transport_start_before_response_or_browser(tmp_path, upst
                 exchange = diagnostics.root / "provider/000001/exchange.json"
                 # Socket receipt can precede the relay's atomic metadata write.
                 # Keep the response blocked until its start is observable.
-                until(lambda: json.loads(exchange.read_bytes()).get("upstream_started_at") is not None)
+                until(lambda: exchange.is_file() and
+                    json.loads(exchange.read_bytes()).get("upstream_started_at") is not None)
                 data = json.loads(exchange.read_bytes())
                 assert data["upstream_started_at"] > 0 and data["ended_at"] is None
                 assert not request.done()

@@ -98,6 +98,19 @@ def test_storage_failure_is_visible_without_replacing_the_operation(tmp_path, ca
     assert "diagnostic capture failed" in capsys.readouterr().err
 
 
+def test_failed_stream_fsync_still_closes_descriptor(tmp_path, monkeypatch):
+    import os
+    stream = _recorder(tmp_path).stream('response.body')
+    stream.write(b'partial diagnostic')
+    descriptor = stream._output.fileno()
+    def fail(_fd):
+        raise OSError('synthetic disk full')
+    monkeypatch.setattr(os, 'fsync', fail)
+    stream.close()
+    assert not stream.summary()['complete']
+    with pytest.raises(OSError): os.fstat(descriptor)
+
+
 def test_host_exception_preserves_traceback_and_available_identity(tmp_path):
     from hypoloom.runtime_diagnostics import record_host_exception
     try:

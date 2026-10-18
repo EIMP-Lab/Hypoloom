@@ -299,3 +299,107 @@ def test_reliability_parses_each_attempt_once_and_keeps_expert_groups(tmp_path, 
     assert expert["groups"] == summary["reliability"]["groups"]
     assert expert["metrics"] == summary["reliability"]["metrics"]
     assert summary["reliability"]["nodes"][0]["attempt_ids"] == ["a"]
+
+
+def test_unchanged_refresh_reuses_history_but_observes_host_again(tmp_path, monkeypatch):
+    from hypoloom import observer_refresh
+    from hypoloom.observer_refresh import ObserverRefresh
+    root, run_id = tmp_path / 'state', 'projection-cached'
+    _create_fresh_run(root, run_id)
+    builds, live = [], []
+    original = observer_refresh.build_monitor_snapshot
+    def history(*args, **kwargs):
+        builds.append(1)
+        return original(*args, **kwargs)
+    def status(*args, **kwargs):
+        live.append(1)
+        return kwargs['_snapshot']
+    monkeypatch.setattr(observer_refresh, 'build_monitor_snapshot', history)
+    monkeypatch.setattr(observer_refresh, 'build_observer_snapshot', status)
+    reader = ObserverRefresh(root, run_id, refresh_seconds=0, audit_seconds=3600, evidence_seconds=3600)
+    try:
+        first = reader.get()['snapshot']
+        reader.wait_for_evidence(5)
+        second = reader.get()['snapshot']
+        assert len(builds) == 1 and len(live) == 2
+        assert second.observed_at > first.observed_at
+        assert second.overview['observed_at'] == first.overview['observed_at']
+        assert second.overview['clock_observed_at'] == second.observed_at
+        assert second.overview['elapsed_seconds'] >= first.overview['elapsed_seconds']
+        with StateStore(root).readonly_connection() as connection:
+            assert not connection.in_transaction
+        # Ordinary commits invalidate even when the Run revision is unchanged.
+        import sqlite3
+        with sqlite3.connect(root / 'state.sqlite') as writer:
+            from hypoloom.state_store import StateTransaction
+            writer.row_factory = sqlite3.Row
+            StateTransaction(writer).record_command({'command_id': 'cache-test', 'run_id': run_id,
+                'workflow_id': run_id, 'command_type': 'STATUS', 'request': {}, 'status': 'accepted', 'result': {}})
+        reader.get()
+        assert len(builds) == 2 and len(live) == 3
+    finally:
+        reader.close(); reader.wait_for_audit(5)
+
+
+@pytest.mark.parametrize('state,orphaned', [
+    ('COMPLETED', False), ('FAILED', False), ('CANCELLED', False),
+    ('ACTIVE', True), ('WAITING_HUMAN', True)])
+def test_cached_refresh_preserves_terminal_host_observation(tmp_path, monkeypatch, state, orphaned):
+    from dataclasses import replace
+    from hypoloom import observer_refresh
+    from hypoloom.observer_refresh import ObserverRefresh
+    root, run_id = tmp_path / 'state', 'projection-terminal'
+    _create_fresh_run(root, run_id)
+    original = observer_refresh.build_monitor_snapshot
+    builds = []
+    def history(*args, **kwargs):
+        builds.append(1)
+        snapshot = original(*args, **kwargs)
+        return replace(snapshot, status={**snapshot.status, 'run_state': state})
+    monkeypatch.setattr(observer_refresh, 'build_monitor_snapshot', history)
+    monkeypatch.setattr(observer_refresh, 'build_observer_snapshot', lambda *a, **kw: kw['_snapshot'])
+    monkeypatch.setattr(observer_summary, '_host_observation', lambda *_: {'availability': 'absent'})
+    reader = ObserverRefresh(root, run_id, refresh_seconds=0, audit_seconds=3600, evidence_seconds=3600)
+    try:
+        reader.get()
+        reader.wait_for_evidence(5)
+        cached = reader.get()['snapshot']
+        assert builds == [1]
+        assert cached.overview['host_observation']['orphaned'] is orphaned
+        assert cached.status['run_state'] == state
+    finally:
+        reader.close(); reader.wait_for_audit(5)
+
+
+@pytest.mark.parametrize('count', [100, 1000, 5000])
+def test_attempt_sort_does_not_materialize_wide_json_in_sqlite(tmp_path, count):
+    import sqlite3
+    from hypoloom.state_store import StateTransaction
+    with sqlite3.connect(tmp_path / 'history.sqlite') as db:
+        db.row_factory = sqlite3.Row
+        db.execute('CREATE TABLE execution_attempts (attempt_id TEXT PRIMARY KEY, run_id TEXT, workflow_id TEXT, command_id TEXT, attempt_ordinal INTEGER, observation_json TEXT)')
+        rows = [(str(i), 'r', 'w' + str(i % 11), 'c' + str(i % 17), i, '{"padding":"' + 'x' * 2048 + '"}') for i in range(count)]
+        db.executemany('INSERT INTO execution_attempts VALUES (?,?,?,?,?,?)', reversed(rows))
+        queries = []
+        db.set_trace_callback(queries.append)
+        actual = StateTransaction(db).list_attempts(run_id='r')
+        assert [row['attempt_id'] for row in actual] == [row[0] for row in sorted(rows, key=lambda row: row[2:5])]
+        query = next(sql for sql in queries if sql.startswith('SELECT'))
+        plan = [row[3] for row in db.execute('EXPLAIN QUERY PLAN ' + query)]
+        assert not any('TEMP B-TREE' in item for item in plan)
+
+
+def test_summary_clock_does_not_relabel_accounting_or_double_advance_shared_stage():
+    stage = {'state': 'OPEN', 'started_at': 10, 'elapsed_seconds': 10}
+    summary = {'observed_at': 20, 'elapsed_seconds': 20, 'remaining_seconds': 80,
+        'waiting_human_seconds': 3, 'stages': [stage], 'experts': [{'activity': [stage]}],
+        'accounting': {'unknown_closed_attempts': 1, 'reported_tokens': 7}}
+    result = observer_summary.refresh_summary_clock(summary, 'WAITING_HUMAN', 30)
+    again = observer_summary.refresh_summary_clock(result, 'WAITING_HUMAN', 40)
+    assert summary['stages'][0]['elapsed_seconds'] == 10
+    assert again['stages'][0]['elapsed_seconds'] == 30
+    assert again['experts'][0]['activity'][0]['elapsed_seconds'] == 30
+    assert again['elapsed_seconds'] == 40 and again['remaining_seconds'] == 60
+    assert again['waiting_human_seconds'] == 23
+    assert again['observed_at'] == 20 and again['clock_observed_at'] == 40
+    assert again['accounting'] == summary['accounting']

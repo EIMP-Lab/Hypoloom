@@ -291,20 +291,23 @@ def product_graph(hypotheses, transitions) -> dict[str, Any]:
 
 
 def build_product_observation(state_root: str | Path, run_id: str, *,
-                              _connection=None, _snapshot=None) -> dict[str, Any]:
+                              _connection=None, _snapshot=None, _attempts=None) -> dict[str, Any]:
     root = Path(state_root).resolve()
     with (StateStore(root).readonly_connection() if _connection is None else nullcontext(_connection)) as db:
         if _connection is None: db.execute("BEGIN")
-        snapshot = build_monitor_snapshot(root, run_id, _connection=db).to_dict() if _snapshot is None else _snapshot
+        attempts = list(_attempts) if _attempts is not None else [
+            {**row, "observation": json.loads(row["observation_json"] or "{}")}
+            for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=?", (run_id,))]
+        attempts.sort(key=lambda row: (row["started_at"], row["attempt_id"]))
+        snapshot = build_monitor_snapshot(root, run_id, _connection=db, _attempts=attempts).to_dict() if _snapshot is None else _snapshot
         if snapshot.get("run_id") != run_id: raise ValueError("observation run mismatch")
         facts = [{**row, "payload": json.loads(row["payload_json"])} for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))]
         transitions = [{**row, "payload": json.loads(row["payload_json"])} for row in db.execute(
             "SELECT t.*, c.command_type FROM workflow_transitions t JOIN workflow_commands c USING(command_id) "
             "WHERE t.run_id=? ORDER BY t.rowid", (run_id,))]
-        attempts = [{**row, "observation": json.loads(row["observation_json"] or "{}")} for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
         commands = {row["command_id"]: dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))}
-    charges = fold_agent_attempts(attempts)
     observations = {row["attempt_id"]: (row["observation"] if "observation" in row else json.loads(row["observation_json"] or "{}")) for row in attempts}
+    charges = fold_agent_attempts(attempts, _observations=observations)
     by_role, by_experiment = {}, {}
     from .observer_scope import attempt_scopes
     scopes = attempt_scopes(attempts, commands.values())
