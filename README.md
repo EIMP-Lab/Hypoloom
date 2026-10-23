@@ -245,6 +245,8 @@ configuration examples, not scientific benchmarks.
 An existing run retains its own runtime bundle and configuration. Updating this
 checkout does not upgrade that run; cross-version run migration is not supported.
 See [runtime recovery](docs/guides/runtime-recovery.md) for operating limits.
+## 🤝 Community
+Thanks to the [LINUX DO](https://linux.do/) community for supporting the open-source promotion and discussion of this project.
 
 ## ⚖️ License
 
