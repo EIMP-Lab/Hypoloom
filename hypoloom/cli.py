@@ -282,6 +282,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--gpu-pool-socket", help="connect this Host to an existing shared GPU pool socket")
     serve.add_argument("--gpu-pool-namespace", help="stable operator-assigned pool identity for this state root")
     serve.add_argument("--gpu-pool-server-uid", type=int, help="require the pool socket peer to have this OS UID")
+    serve.add_argument("--cancel-run-id", help="cancel this sole retained run before recovering Attempts or dispatching work")
+    serve.add_argument("--cancel-expected-revision", type=int, help="exact revision reviewed for cancellation recovery")
     serve.add_argument(
         "--exit-when-terminal",
         action="store_true",
@@ -590,6 +592,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(result, sort_keys=True))
             return 0 if result["ok"] else 2
         if args.subcommand == "serve":
+            stop_request = None
+            if (args.cancel_run_id is None) != (args.cancel_expected_revision is None):
+                parser.error("cancellation recovery requires run ID and expected revision")
+            if args.cancel_run_id is not None:
+                if not args.exit_when_terminal or args.cancel_expected_revision < 1:
+                    parser.error("cancellation recovery requires --exit-when-terminal and a positive revision")
+                from .pool_run_recovery import cancel_request
+                stop_request = cancel_request(args.cancel_run_id, args.cancel_expected_revision)
+                if not (_state_root(args.state_root) / "state.sqlite").is_file():
+                    parser.error("cancellation recovery requires an existing run; no new root is prepared")
             if argv is None:
                 from .runtime_bundle import enter_runtime_bundle
                 enter_runtime_bundle(_state_root(args.state_root), sys.argv[1:])
@@ -674,6 +686,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     search_fallback=literature_io.fetcher if args.web_search_fallback is not None else None)
             from .notification_tailer import notification_environment
             notification_env = notification_environment(args.notification_credentials_file)
+            from .pool_run_recovery import launch_binding
             return serve(
                 _state_root(args.state_root),
                 fault_point=args.fault_point,
@@ -683,6 +696,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 gpu_pool_socket=pool_socket, gpu_pool_namespace=args.gpu_pool_namespace,
                 gpu_pool_server_uid=args.gpu_pool_server_uid,
                 exit_when_terminal=args.exit_when_terminal,
+                stop_request=stop_request,
+                host_launch=launch_binding(list(sys.argv[1:] if argv is None else argv)),
                 literature_io=literature_io,
                 **web_options,
                 services_factory=lambda: ObserverServices(_state_root(args.state_root), output_root=args.notification_output_root,

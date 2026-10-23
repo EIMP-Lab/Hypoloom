@@ -87,9 +87,9 @@ def _launch_argv(args, repository: Path, *, action="launch") -> list[str]:
         "pool_action", "pool_reserve_mib"):
         value = getattr(args, name)
         if value is not None: values += ["--" + name.replace("_", "-"), str(value)]
-    for name in ("gpu_device_uuid", "pool_device_uuid", "pool_retired_owner"):
+    for name in ("gpu_device_uuid", "pool_device_uuid", "pool_retired_owner", "pool_cancel_run", "pool_retire_run"):
         flag = "--" + name.replace("_", "-")
-        for value in getattr(args, name) or (): values += [flag, value]
+        for value in getattr(args, name, None) or (): values += [flag, value]
     if args.managed_pool: values += ["--managed-pool"]
     if args.nonpooled: values += ["--nonpooled"]
     for provider in args.institutional_prepare_provider or ():
@@ -118,14 +118,29 @@ def _pool_choices(args, result, review):
     owners = dependencies.get("unresolved_owners", [])
     if (pool.get("action") in {"restore", "upgrade", "reconfigure"}
             and owners and all(o["can_review_retirement"] for o in owners)
-            and {b["reason"] for b in dependencies["blockers"]} == {"pool_owner_outside_known_roots"}
+            and {b["reason"] for b in dependencies["blockers"]} <= {"pool_owner_outside_known_roots", "run_depends_on_pool", "open_attempt"}
             and args.pool_retired_owner != ["none"]):
         result["missing"].append("pool_retired_owner")
         result.setdefault("choices", {})["pool_retired_owner"] = owners[:16]
-    if pool.get("prepare_available") or "pool_retired_owner" in result["missing"]:
-        args.pool_action = pool["action"]
+    recovery = pool.get("cancellation", {})
+    candidates = [p for p in recovery.get("runs", []) if p["available"] and not p["selected"] and p.get("status") == "ready"]
+    eligible = {p["run_id"] for p in recovery.get("runs", []) if p["available"]}
+    if all(b.get("run_id") in eligible and b["reason"] in {"run_depends_on_pool", "open_attempt"}
+            for b in dependencies.get("blockers", [])):
+        for field, offline in (("pool_cancel_run", False), ("pool_retire_run", True)):
+            choices = [p for p in candidates if (p.get("closure") == "offline") == offline]
+            if choices and getattr(args, field, None) != ["none"]:
+                result["missing"].append(field)
+                result.setdefault("choices", {})[field] = choices[:16]
+    if (pool.get("prepare_available") or recovery.get("prepare_after_cleanup")
+            or any(field in result["missing"] for field in ("pool_retired_owner", "pool_cancel_run", "pool_retire_run"))):
+        if pool["action"] != "reuse" or all(getattr(args, field, None) in (None, ["none"])
+                for field in ("pool_cancel_run", "pool_retire_run")):
+            args.pool_action = pool["action"]
         if args.pool_action == "reuse":
             args.pool_retired_owner = None  # No maintenance assertion travels into ordinary reuse.
+            args.pool_cancel_run = None
+            args.pool_retire_run = None
         args.pool_device_uuid = pool["members"][str(os.geteuid())]
         args.pool_reserve_mib = current
 
@@ -228,7 +243,7 @@ def inspect(args, repository: Path) -> dict:
                     result.update(bootstrap.compact_result({**raw, "effective_configuration": review}))
                     pool = review.get("gpu", {}).get("pool", {})
                     _pool_choices(args, result, review)
-                    if pool and not pool.get("prepare_available", pool.get("start_ready")):
+                    if pool and not (pool.get("prepare_available", pool.get("start_ready")) or pool.get("cancellation", {}).get("prepare_after_cleanup")):
                         blockers.append({"code": pool.get("reason") or pool.get("code") or "pool_unavailable",
                             **({"detail": pool["detail"]} if pool.get("detail") else {})})
                     if args.template:

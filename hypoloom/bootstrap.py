@@ -215,7 +215,7 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     if getattr(args, "nonpooled", False) and (not args.allow_gpu or args.gpu_pool_socket):
         raise ValueError("--nonpooled requires GPU authorization and cannot include a pool endpoint")
     if not getattr(args, "managed_pool", False) and any(getattr(args, name, None) is not None
-        for name in ("pool_action", "pool_device_uuid", "pool_reserve_mib", "pool_retired_owner")):
+        for name in ("pool_action", "pool_device_uuid", "pool_reserve_mib", "pool_retired_owner", "pool_cancel_run", "pool_retire_run")):
         raise ValueError("pool maintenance arguments require --managed-pool")
     if args.state_root is None:
         args.state_root = str(repository / "state" / args.run_id)
@@ -286,6 +286,9 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
                          "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
                          "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
         budget = contract["budget"]
+        review["gpu"]["concurrency"] = {"max_active_processes": budget["max_active_processes"],
+            "authorized_device_count": len(selected.gpus), "scope": "whole_run",
+            "below_device_count": budget["max_active_processes"] is not None and budget["max_active_processes"] < len(selected.gpus)}
         workload = max(budget.get("min_vram_per_experiment", 0), budget.get("initial_vram_per_experiment", 0))
         reserve = gpu_memory_reserve_mib(budget, workload)
         review["gpu"]["memory_budget"] = {
@@ -302,7 +305,7 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
                 pool_args = _pool_arguments(args, repository, contract)
                 proposal = managed_gpu_pool.review(pool_args)
                 review["gpu"]["pool"] = {**proposal, "namespace": args.gpu_pool_namespace,
-                    "start_available": proposal["prepare_available"]}
+                    "start_available": proposal["prepare_available"] or proposal.get("cancellation", {}).get("prepare_after_cleanup", False)}
             else:
                 _external_pool_review(args, selected, review)
         from .bootstrap_review import gpu_reserve_summary
@@ -371,6 +374,8 @@ def _pool_arguments(args, repository: Path, contract: dict):
         member=[f"{os.geteuid()}=" + ",".join(sorted(args.pool_device_uuid or args.gpu_device_uuid or ()))],
         reserve_mib=args.pool_reserve_mib if args.pool_reserve_mib is not None else gpu_memory_reserve_mib(contract["budget"], 0),
         pool_retired_owner=getattr(args, "pool_retired_owner", None),
+        pool_cancel_run=getattr(args, "pool_cancel_run", None),
+        pool_retire_run=getattr(args, "pool_retire_run", None),
         ready_timeout=min(args.ready_timeout, 60), reviewed_action=args.pool_action)
 
 
@@ -449,6 +454,7 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             *(["--expected-server-uid", str(args.gpu_pool_server_uid)] if args.gpu_pool_server_uid is not None else [])]
         commands["pool_preflight_available"] = review["gpu"]["pool"].get("prepare_available",
             review["gpu"]["pool"].get("start_ready", False))
+        commands["pool_preflight_available"] |= review["gpu"]["pool"].get("cancellation", {}).get("prepare_after_cleanup", False)
     if getattr(args, "managed_pool", False):
         pool = _pool_arguments(args, repository, contract)
         commands["pool_prepare"] = [str(python), "-B", "-m", "hypoloom.managed_gpu_pool", "ensure",
@@ -458,8 +464,12 @@ def _launch_commands(args, repository, report, review, python, state, request_id
             commands["pool_prepare"] += ["--reviewed-action", args.pool_action]
         for owner in pool.pool_retired_owner or ():
             commands["pool_prepare"] += ["--pool-retired-owner", owner]
+        for run in pool.pool_cancel_run or ():
+            commands["pool_prepare"] += ["--pool-cancel-run", run]
+        for run in pool.pool_retire_run or ():
+            commands["pool_prepare"] += ["--pool-retire-run", run]
         commands["pool_action_reviewed"] = args.pool_action is not None
-        commands["pool_prepare_available"] = review["gpu"]["pool"]["prepare_available"]
+        commands["pool_prepare_available"] = commands["pool_preflight_available"]
     return commands
 
 
@@ -509,9 +519,16 @@ def start_fresh(commands: dict, payload: dict) -> dict:
     if "pool_prepare" in commands:
         if not commands.get("pool_action_reviewed") or not commands.get("pool_prepare_available"):
             return finish("pool_review_required")
-        code, prepared_pool = call("pool_prepare")
+        cleanup_deadline = time.monotonic() + 300
+        while True:
+            code, prepared_pool = call("pool_prepare")
+            if prepared_pool.get("status") != "dependency_cleanup_pending" or time.monotonic() >= cleanup_deadline:
+                break
+            time.sleep(1)
+            if not checked():
+                return finish("profile_changed_before_host", pool=prepared_pool)
         if code or prepared_pool.get("status") not in {"ready", "reused", "restored", "upgraded", "reconfigured"}:
-            return finish("pool_prepare_failed", pool=prepared_pool,
+            return finish("dependency_cleanup_pending" if prepared_pool.get("status") == "dependency_cleanup_pending" else "pool_prepare_failed", pool=prepared_pool,
                 next_actions=["recheck", "revise_selection", "prepare_only", "cancel"])
     if "pool_status" in commands:
         code, pool = call("pool_status")
@@ -617,6 +634,10 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--pool-reserve-mib", type=int)
             command.add_argument("--pool-retired-owner", action="append", metavar="NAMESPACE/RUN_ID",
                 help="review an absent run as retired, not relocated or resumable; none defers this review")
+            command.add_argument("--pool-cancel-run", action="append", metavar="RUN_ID:REVISION",
+                help="review ending exactly this stopped run before pool maintenance; Start now still required")
+            command.add_argument("--pool-retire-run", action="append", metavar="RUN_ID:REVISION",
+                help="review offline closure of this legacy run, without a new model report; Start now still required")
         if action == "inspect":
             command.add_argument("--ui-language", choices=("en", "zh-CN"), default="en")
             command.add_argument("--answers-file", help="unedited answers from the generated AskUserQuestion payload; never starts a run")

@@ -127,8 +127,11 @@ class WorkflowHost:
                  literature_io: FixedLiteratureIO | None = None, local_agent: FakeAgent | None = None,
                  grounding_web: Any = None, institutional_access: Any = None, gpu_pool_socket: Path | None = None,
                  gpu_pool_namespace: str | None = None, gpu_pool_server_uid: int | None = None,
-                 private_settings_path: Path | None = None) -> None:
+                 private_settings_path: Path | None = None, stop_request: ControlRequest | None = None,
+                 host_launch: Mapping[str, Any] | None = None) -> None:
         self.state_root = state_root; self.generation = str(uuid.uuid4())
+        self.stop_request = stop_request
+        self.host_launch = host_launch
         self.private_settings_path = private_settings_path
         if private_settings_path is not None and (private_settings_path != state_root / PRIVATE_SETTINGS_NAME or claude_agent_host is None or claude_agent_host.settings_path != private_settings_path):
             raise ValueError("private settings must bind this Host's private companion")
@@ -219,11 +222,23 @@ class WorkflowHost:
         self.compute_resources.snapshot(); self.store.initialize(); self.publisher = ArtifactPublisher(self.state_root / "artifacts")
         from .institutional_controls import bind
         bind(self)
-        self._verify_versions(); self._recover_abandoned_attempts(); self._reconcile_terminal_attempt_residue()
+        self._verify_versions()
+        if self.stop_request is not None:
+            from .pool_run_recovery import read_target, cancel_request, TERMINAL
+            run_id = str(self.stop_request.payload["run_id"])
+            revision = self.stop_request.expected_revision
+            if revision is None or self.stop_request != cancel_request(run_id, revision):
+                raise HostConfigurationError("invalid cancellation recovery request")
+            target = read_target(self.state_root, run_id, revision)
+            if target["state"] not in TERMINAL and not target["cancel_accepted"]:
+                response = self._cancel_run(self.stop_request)
+                if response.status != "accepted":
+                    raise HostConfigurationError("cancellation recovery request rejected")
+        self._recover_abandoned_attempts(); self._reconcile_terminal_attempt_residue()
         self.paper_reading.tick()
         from .paper_sources import reconcile_sources
         reconcile_sources(self)
-        if self.shared_gpu is not None: self.shared_gpu.reconcile()
+        if self.shared_gpu is not None and self.stop_request is None: self.shared_gpu.reconcile()
     def close(self) -> None:
         try: self._close()
         except Exception as exc:
@@ -241,7 +256,7 @@ class WorkflowHost:
                 self.claude_agent_host.close_diagnostics()
         self.running_agents.clear(); self.local_execution_agents.clear()
         for handle in tuple(self.running.values()): self.runner.cancel(handle); self.runner.cleanup(handle)
-        if self.shared_gpu is not None: self.shared_gpu.reconcile()
+        if self.shared_gpu is not None and self.stop_request is None: self.shared_gpu.reconcile()
         if self._literature_executor is not None:
             self._literature_executor.shutdown(wait=True, cancel_futures=True)
         self._literature_jobs.clear(); self._literature_responses.clear()
@@ -343,6 +358,8 @@ class WorkflowHost:
                 run_id=request.payload.get("run_id"), command=request.command)
         try:
             if request.command == "STATUS": return self._status_response(request)
+            if self.stop_request is not None and request.command not in {"BACKUP", "CANCEL"}:
+                return ControlResponse.failure(request.request_id, "rejected", "cancellation_only", "This Host is only closing its reviewed run")
             if request.command == "INSTITUTIONAL_CONNECTIONS":
                 from .institutional_client import host_connections
                 return ControlResponse.accepted(request.request_id, None, host_connections(self, request.payload))
@@ -448,6 +465,7 @@ class WorkflowHost:
         config = {"execution": {"allow_gpu": allow_gpu, "delay_seconds": delay, "target": target_record,
             "runtime_prefix": runtime_prefix, "read_roots": resolved_roots}}
         if self.shared_gpu is not None: config["gpu_pool"] = self.shared_gpu.configuration
+        if self.host_launch is not None: config["host_launch"] = dict(self.host_launch)
         def operation(tx: StateTransaction) -> Mapping[str, Any]:
             tx.create_run(run_id, self.version); ids = _ids(run_id)
             candidate = GoalDefined(fact_id=_fact_id(run_id, "goal"), run_id=RunId(run_id),
@@ -811,7 +829,9 @@ class WorkflowHost:
         progressed = self._poll_agents()
         self._diagnostic_context = {"phase": "poll_processes"}
         if self._poll_processes(): progressed = True
-        if self.shared_gpu is not None: self.shared_gpu.reconcile()
+        # Stop-only initialization proved all this run's pool requests RELEASED.
+        # Do not require a stopped pool to acknowledge those releases again.
+        if self.shared_gpu is not None and self.stop_request is None: self.shared_gpu.reconcile()
         self._diagnostic_context = {"phase": "poll_local_execution_agents"}
         if self._poll_local_execution_agents(): progressed = True
         self._diagnostic_context = {"phase": "dispatch"}
@@ -821,6 +841,8 @@ class WorkflowHost:
             "WHERE n.workflow_id=t.workflow_id AND n.revision>t.revision) ORDER BY t.run_id")
         for run in rows:
             self._diagnostic_context = {"phase": "dispatch", "run_id": run["run_id"]}
+            if self.stop_request is not None and run["state"] not in _TERMINAL_RUNS | {RunState.STOPPING.value}:
+                raise OperationalHalt("cancellation recovery cannot resume scientific dispatch")
             if run["state"] in _TERMINAL_RUNS or run["state"] == RunState.WAITING_HUMAN.value: continue
             if run["run_id"] in self.dispatch_errors and run["state"] != RunState.STOPPING.value: continue
             try:
@@ -4547,6 +4569,7 @@ def serve(
     services_factory: Callable[[], ContextManager[object]] | None = None,
     gpu_pool_socket: Path | None = None, gpu_pool_namespace: str | None = None,
     gpu_pool_server_uid: int | None = None,
+    stop_request: ControlRequest | None = None, host_launch: Mapping[str, Any] | None = None,
 ) -> int:
     """Run one bounded UDS Host. The CLI must invoke this explicitly."""
     state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -4560,6 +4583,9 @@ def serve(
         lock.close()
         raise HostError(f"another Workflow Host owns {lock_path}")
     try:
+        if stop_request is not None:
+            from .pool_run_recovery import read_target
+            read_target(state_root, str(stop_request.payload["run_id"]), stop_request.expected_revision)
         private_settings_path = None
         if claude_agent_host is not None:
             private_settings_path = prepare_host_settings(state_root, claude_agent_host.settings_path)
@@ -4570,6 +4596,7 @@ def serve(
             compute_resources=compute_resources, provider_environment=provider_environment,
             literature_io=literature_io, grounding_web=grounding_web, institutional_access=institutional_access, private_settings_path=private_settings_path,
             gpu_pool_socket=gpu_pool_socket, gpu_pool_namespace=gpu_pool_namespace, gpu_pool_server_uid=gpu_pool_server_uid,
+            stop_request=stop_request, host_launch=host_launch,
         )
     except BaseException:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN); lock.close(); raise

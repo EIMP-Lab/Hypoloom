@@ -63,6 +63,31 @@ reuse does not ask again. Retained runs, other UIDs, unreadable state and unrele
 requests remain protected. **Defer confirmation** retains `none` and blocks launch;
 remove that deferred choice when reconsidering, preserving other init answers.
 
+For retained unfinished runs whose Hosts and processes have exited, init can
+offer **Review ending listed runs** when the original frozen Host supports
+cancellation recovery and all pool requests are released. The exact
+`--pool-cancel-run RUN_ID:REVISION` choices appear in final review. Only Start now
+executes them: CANCEL is committed before Attempt recovery, followed by normal
+closure and, when required, the final report under the original API budget.
+For supported legacy runs without normal cancellation recovery, init instead
+offers **Review offline closure** (`--pool-retire-run RUN_ID:REVISION`). This uses
+the original frozen lifecycle, preserves history and makes no model or GPU calls.
+An unavailable final report is recorded as a failure; the old run may end FAILED.
+This separate choice and its report limitation appear in the final review.
+
+After Start now, init waits up to five minutes for closure, rechecks ownership,
+prepares the pool and starts the same reviewed new run automatically. A remaining
+`dependency_cleanup_pending` keeps the choices and authorization in this init for
+recheck and continuation; no manual cleanup or new init is required. Unsupported
+bundles, live ownership or changed revisions remain explicit blockers. Existing
+runs are never upgraded or repaired by editing their database.
+
+GPU review also shows the whole-run `max_active_processes` cap and authorized
+device count. CPU experiments count toward this cap. If four GPUs are authorized
+but the cap is one, the pool cannot make experiments concurrent. For independent
+single-GPU experiments, consider reviewing a cap of four; init does not rewrite
+an existing Profile. Actual dispatch still obeys memory and multi-GPU constraints.
+
 `pool_configuration_unknown` means the managed service's configuration could
 not be read. Its `detail` identifies the failed stage; it does not establish
 active dependencies or unreadable foreign GPU processes. The research shell
