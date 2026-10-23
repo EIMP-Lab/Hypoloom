@@ -154,6 +154,14 @@ Bootstrap prepares the pool, verifies the live service, then starts the Host
 and creates the run. Failures preserve the current init choices and offer
 recheck, revised selection, Prepare only or cancellation. There is no silent
 nonpooled/CPU fallback. Prepare only performs no pool or Host lifecycle action.
+
+For an exact reviewed `RUN_ID:REVISION`, init can use the original frozen Host
+to close a retained run whose Host/process ownership is absent and whose pool
+requests are released. Original launch inputs must be available. CANCEL precedes
+Attempt recovery; only closure and the original budgeted final report may run.
+The stopped pool need not acknowledge already released requests again. Existing
+dependency checks still run after closure. Legacy bundles lacking this capability
+remain blocked rather than being migrated; see [Initialization](initialization.md).
 A healthy pool survives a later Host-start failure. Service history is retained;
 there is no automatic database migration or guaranteed binary rollback.
 See [initialization](initialization.md) for the compact entry point and timings.

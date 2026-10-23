@@ -49,6 +49,27 @@ def gpu_reserve_summary(gpu, language="en"):
             identities = ", ".join(f"{o['uid']}:{o['namespace']}/{o['run_id']}" for o in retired)
             lines.append((f"本次维护采用用户确认的已退役运行：{identities}。运行未迁移且不会恢复；确认不作为永久豁免，不删除历史。" if zh else
                           f"Operator-confirmed retirements for this maintenance: {identities}. These runs were not relocated and will not resume; no permanent exemption or history deletion."))
+        for run in pool.get("cancellation", {}).get("runs", []):
+            if run["selected"]:
+                lines.append((f"启动前结束旧运行：{run['run_id']}，审阅版本 {run.get('revision')}；状态 {run.get('status', run.get('reason'))}。使用原冻结 Host，仅执行取消收尾和原预算内最终报告；完成后复查池依赖。" if zh else
+                              f"End old run before startup: {run['run_id']}, reviewed revision {run.get('revision')}; {run.get('status', run.get('reason'))}. Use its original frozen Host for cancellation closure and the original budgeted final report, then recheck pool dependencies."))
+    return lines
+
+
+def gpu_concurrency_summary(gpu, language="en"):
+    if not gpu or not (concurrency := gpu.get("concurrency")):
+        return []
+    zh = language == "zh-CN"
+    count, cap = concurrency["authorized_device_count"], concurrency["max_active_processes"]
+    lines = [(f"实验并发：整个运行最多 {cap if cap is not None else '不限'} 个 Process，共授权 {count} 张 GPU；CPU 实验也计入该上限。" if zh else
+              f"Experiment concurrency: {cap if cap is not None else 'uncapped'} Processes across the whole run, with {count} authorized GPUs; CPU experiments also count.")]
+    if concurrency["below_device_count"]:
+        lines.append((f"并发上限低于 GPU 数量；若实验每次使用单卡，可审阅将 max_active_processes 调至 {count}。Profile 不会自动改写。" if zh else
+                      f"The cap is below the device count. For single-GPU experiments, consider reviewing max_active_processes={count}; the Profile is not changed automatically."))
+    lines.append(("共享池容量不足会排队，但不会提高运行的并发上限；实际启动仍受显存、多卡及共享策略限制。" if zh else
+                  "The shared pool queues capacity waits but does not raise the run's concurrency cap; memory, multi-GPU and sharing constraints still apply.") if gpu.get("pooled") else
+                 ("非池模式不会使用共享池队列；实际启动仍受固定设备和显存约束。" if zh else
+                  "Nonpooled execution has no shared-pool queue; fixed-device and memory constraints still apply."))
     return lines
 
 
@@ -83,6 +104,7 @@ def render(args, result, summary):
         value("Budgets (null means no cap)", effective["budget"]),
         value("GPU/pool (CPU-only if absent)", effective.get("gpu")),
         *gpu_reserve_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
+        *gpu_concurrency_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
         value("Notifications", notifications),
         *notification_route,
         "Notification checks are local configuration checks only; delivery is unverified. No test message is sent.",

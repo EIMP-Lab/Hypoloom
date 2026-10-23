@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Init pool dependency recovery, October 24](../design/init-pool-dependency-recovery.md):
+  exact cancellation review, original frozen Host closure before pool maintenance,
+  non-secret launch inputs in CREATED and global concurrency review. Preserves
+  live ownership, original budgets, immutable versions and explicit legacy blocks.
+  [Validation](../qualification.md#init-pool-dependency-recovery-2026-10-24) records
+  351 focused runtime passes, socket-path failures and passing follow-ups, real
+  CPU/native CC closure, clean Oracles and read-only retained-run limits.
+
 - [Provider-stream I/O and history performance, October 18](../design/provider-stream-io-and-history-performance-2026-10-18.md):
   implemented bounded asynchronous provider copies, live-observation finalization,
   shared history reads and reference sorting, using existing fields and validators.

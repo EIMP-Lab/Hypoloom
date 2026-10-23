@@ -186,6 +186,22 @@ Final Start now covers the displayed action, configuration and retirement scope.
 Inspect/answers/Prepare only never perform maintenance. Do not delete a pool
 database, clear requests or start another pool on the same devices to evade a block.
 
+For retained nonterminal runs, use the generated `pool_cancel_run` question when
+available. `--pool-cancel-run RUN_ID:REVISION` selects exact cancellations for the
+final review; it is not a retirement assertion. Start now uses each run's original
+frozen Host, commits CANCEL before recovery, and permits only closure plus its
+original budgeted final report. Include this possible API work in final review.
+No Host/process may still own the run, and all its pool requests must be released.
+Missing original launch inputs/bundle support remains an explicit blocker; never
+patch an old bundle, hand-edit SQLite or start an ordinary Host to obtain a socket.
+`cancellation.prepare_after_cleanup` is an executable plan, not proof of closure.
+On `dependency_cleanup_pending`, preserve the exact selected revisions and recheck
+with `interaction.inspect_argv`; do not repeatedly launch recovery or recommend
+nonpooled merely because cleanup is still pending. A changed selection requires
+review of the affected item. Already accepted cancellations retain their identity.
+When cleanup finishes and the remaining actions stay within the previous Start
+now authorization, continue that launch without asking for the same approval again.
+
 Distinguish `start_ready` from `prepare_available`: a safe creation/upgrade plan
 can offer Start now before the service is ready. For blockers, keep this init
 open: recheck, revise affected choices, Prepare only or cancel. Preserve prior
@@ -204,6 +220,12 @@ text without carriage returns or terminal control sequences; pass generated
 
 Use the session's program-rendered review when available; otherwise use one final `AskUserQuestion` for the concrete effective configuration,
 bootstrap writes, pool operation and research launch:
+
+Display `gpu.concurrency` with the GPU/pool review: max_active_processes is a
+whole-run Process cap, including CPU work. A cap below authorized GPU count can
+limit independent single-GPU experiments even when the pool has capacity. Suggest
+reviewing that Profile value, without automatically changing it; pool queueing
+does not raise the cap or guarantee sufficient memory.
 
 - **Start now (Recommended)** when all prerequisites either pass or have the
   displayed executable managed-pool plan. Execute only the reviewed actions.

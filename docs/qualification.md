@@ -2,6 +2,53 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Init pool dependency recovery (2026-10-24)
+
+The implementation adds exact run/revision cancellation review to init and uses
+the original frozen Host to commit CANCEL before recovering abandoned Attempts.
+Only closure and the original budgeted final report may run. Existing CREATED
+metadata holds non-secret launch inputs; no SQL schema, registry, digest or
+migration is added. Pool maintenance still requires terminal dependencies and
+absent Host/process ownership. Final GPU review explains the whole-run Process
+cap independently of pool capacity. [Design](design/init-pool-dependency-recovery.md).
+
+The initial selected run has **325 passes / three setup errors**, in 112.59 s.
+All three errors are unchanged shared-pool fixtures exceeding the AF_UNIX path
+limit under the long evidence directory. The short-directory remainder passes
+**30 tests**, including native CC/broker/CPU publication, in 36.79 s. A final
+affected refresh after bounded-review and missing-root checks passes **251 tests**
+in 88.63 s. Reconciliation yields **351 distinct passing runtime tests**, no
+unresolved failures. This is focused validation across those invocations, not a
+single uninterrupted full G1 or a new G0–G5 promotion. Original errors remain in
+`focused.xml`; no assertion is weakened to accommodate them. Early development
+tests also exposed a command-status column mismatch; the reader now uses the
+existing `response_status`, verified through real Host recovery.
+
+The new disposable frozen-CLI flow starts an actual CPU Process, terminates its
+Host, verifies absent process ownership with a retained OPEN Attempt, and runs
+reviewed cancellation. The old run closes three Attempts (two Agents/one LOST
+Process), without starting another Process. Pool restoration preserves its
+database inode and RELEASED history. The next run completes four Attempts (two
+Agents/two CPU Processes), with clean independent Oracles for both runs. The
+original frozen source remains byte-for-byte unchanged. Separately, the existing
+native CC flow closes **11 Agents/one CPU Process**, publishes one outcome, keeps
+its released pool request and passes run/pool Oracles.
+
+An independent scan of 126 disposable databases finds **39 recorded process
+groups, none live**. Ten deliberately malformed fixture databases are reported
+separately rather than counted as clean. The changed-file F-rule lint comparison
+has the same 11 pre-existing findings and no new findings. Real supervisor launch
+and GPU telemetry are substituted in these tests; no paid provider, physical-GPU
+qualification, shared-install change or production service operation is claimed.
+All seven documentation/Profile checks also pass; `git diff --check` is clean.
+
+Read-only inspection confirms both historical MERC dependencies still ACTIVE
+(revisions 106 and 29) and lacking original cancellation-launch support. They
+remain explicitly blocked; their bundles/state are not backfilled or migrated.
+The current research run and private Profile are unchanged. Local reports and
+censuses: `.local/qualification/init-pool-recovery-20261024/`; short follow-up
+fixtures remain at `/tmp/pdr-tail-20261024/` and `/tmp/pdr-refresh-20261024/`.
+
 ## Provider stream I/O and history performance (2026-10-18)
 
 The candidate moves provider diagnostic copies to one bounded Host writer and

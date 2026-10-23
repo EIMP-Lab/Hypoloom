@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- October 24 init pool recovery is implemented: exact run/revision review,
+  original frozen Host cancellation before Attempt recovery, bounded recheck,
+  then ordinary pool maintenance and new-run creation. Existing CREATED metadata
+  stores non-secret launch inputs; no SQL schema, registry or migration. Review
+  also explains whole-run Process concurrency versus authorized GPU count.
+  Focused reconciliation: 351 distinct runtime passes; three long-socket fixture
+  errors pass under a short path. CPU recovery/next-run and native CC publication
+  have clean Oracles; 39 recorded groups are absent. Not a full G0–G5 promotion.
+  Two legacy MERC roots still lack recovery-launch support and remain blocked;
+  retained runs, private Profiles and services were only inspected, never changed.
+  Publication is authorized for dev and main. Main receives the runtime and user
+  guides through a new commit, preserving its public layout and existing history;
+  dev retains the design, regression tests and validation records.
+  [Design](../design/init-pool-dependency-recovery.md) /
+  [validation](../qualification.md#init-pool-dependency-recovery-2026-10-24).
+
 - October 18 provider-stream/history performance repair is implemented on dev.
   Offline/CPU/package validation is complete. One bounded Host writer separates
   provider copies from network I/O; Agent closure consumes existing live exchanges,
