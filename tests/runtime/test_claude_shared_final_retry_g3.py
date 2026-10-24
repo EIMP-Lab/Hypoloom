@@ -52,6 +52,10 @@ class _FinalRetryScenario(_AcceptanceScenario):
 
 
 def test_native_shared_final_report_retries_with_one_common_input_and_same_session(tmp_path: Path):
+    _run_final_retry(tmp_path, require_resume=True)
+
+
+def _run_final_retry(tmp_path: Path, *, require_resume=False):
     scenario = _FinalRetryScenario(tmp_path, "shared-final-retry-" + secrets.token_hex(12))
     key = "local-final-retry-provider-" + secrets.token_hex(16)
     provider, thread = _start_provider(scenario, key)
@@ -94,17 +98,30 @@ def test_native_shared_final_report_retries_with_one_common_input_and_same_sessi
             accepted = retry[1]["diagnostics"]["structured_output_correction"]
             assert accepted["status"] == "first_pass" and accepted["accepted"] is True
             assert accepted["call_count"] == 1 and accepted["rejected_count"] == 0
+            context = failed[1]["diagnostics"]["context"]
+            # Added rejection evidence can legitimately cross the continuation
+            # boundary. Verify the observed byte headroom independently; never
+            # bypass the runtime's reconstruction guard to keep a session ID.
+            fits_continuation = (context["request_input_bytes"] + failed[1]["diagnostics"]["prompt_bytes"]
+                + failed[1]["diagnostics"]["context_policy"]["estimate_margin_tokens"] <= context["available_input_tokens"])
+            if require_resume:
+                assert fits_continuation, "the dedicated resume fixture must retain continuation headroom"
             session_id = failed[1]["session"]["session_id"]
-            assert retry[1]["session"]["session_id"] == session_id
-            assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
+            if fits_continuation:
+                assert retry[1]["session"]["session_id"] == session_id
+                assert retry[1]["session"]["launch_arguments"] == ["--resume", session_id]
+                assert retry[1]["diagnostics"]["provider_session_carryover"]["source"] == "session_cost_state"
+            else:
+                assert retry[1]["session"]["session_id"] != session_id
+                assert retry[1]["session"]["parent_session_id"] is None
+                assert retry[1]["session"]["launch_arguments"] == ["--session-id", retry[1]["session"]["session_id"]]
+                assert "provider_session_carryover" not in retry[1]["diagnostics"]
             assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]
             for name in ("command_id", "task_context", "required_model_identity", "required_adapter_version", "tool_permission_profile"):
                 assert failed[1]["request"][name] == retry[1]["request"][name]
-            context = failed[1]["diagnostics"]["context"]
             assert context["current_request_fits"] is True
             assert context["last_observed_exchange"] == context["current_request_exchange"]
             assert failed[1]["session"]["transcript_complete"] is True
-            assert retry[1]["diagnostics"]["provider_session_carryover"]["source"] == "session_cost_state"
             common = []
             for _, observed in finals:
                 request = observed["request"]
@@ -157,6 +174,7 @@ def test_native_shared_final_report_retries_with_one_common_input_and_same_sessi
             assert not host.running and not host.running_agents
             assert all(not process_group_exists(row["process_group_id"]) for row in attempts if row["process_group_id"])
             evidence.update(agent_count=len(agents), process_count=1, session_id=session_id,
+                final_retry_mode="resume" if fits_continuation else "reconstruct",
                 final_attempts=[row["attempt_id"] for row, _ in finals],
                 shared_input_ref=common[0]["ref"], correction_ref=diagnostic_ref,
                 outcomes=outcomes, verdicts=verdicts, oracle=audit.to_dict())

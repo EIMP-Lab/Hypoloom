@@ -86,7 +86,7 @@ def test_native_query_plan_root_field_rejects_then_same_session_retry_closes_cpu
         return scenario
 
     monkeypatch.setattr(shared_retry, "_FinalRetryScenario", scenario_factory)
-    shared_retry.test_native_shared_final_report_retries_with_one_common_input_and_same_session(tmp_path)
+    shared_retry._run_final_retry(tmp_path)
     scenario = scenarios[0]
     attempts = _rows(tmp_path / "state/state.sqlite", "SELECT * FROM execution_attempts ORDER BY started_at")
     queries = []

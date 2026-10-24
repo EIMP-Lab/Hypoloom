@@ -153,6 +153,21 @@ def _snapshot() -> dict:
     }
 
 
+def _skill_effects() -> dict:
+    return {"groups": [{"role": "expert-a", "commit": "accepted-v2", "stage": "EXPERIMENT_DESIGN_IMPLEMENT",
+        "component_id": "component-a", "model": "model-a", "basis": "observed_call", "name": "resource-planning",
+        "failed_attempts": 3, "metrics": {"node_delivery": {"numerator": 0, "denominator": 2, "rate": 0, "unknown": 1, "excluded": 0}},
+        "costs": {"retry_reported_usd": "0.5", "retry_reported_tokens": 10},
+        "failures": [{"attempt_id": "failed-design", "failure_code": "invalid_candidate", "diagnostic": "<script>window.injected=true</script>",
+            "source_proposals": [{"attempt_id": "proposal-source", "hypothesis_id": "h1"}]}]}],
+        "followups": [{"role": "expert-a", "name": "resource-planning", "commit": "accepted-v2", "attempt_id": "evolution-source",
+            "status": "recurrence_observed", "comparisons": [{"stage": "EXPERIMENT_DESIGN_IMPLEMENT", "component_id": "component-a", "model": "model-a",
+                "status": "recurrence_observed", "failure_code": "invalid_candidate", "diagnostic": "frozen measurement",
+                "baseline_failed_attempts": 6, "later_nodes": 2, "later_finished_nodes": 2, "later_failed_attempts": 6,
+                "baseline_attempt_ids": ["before-update"], "later_attempt_ids": ["after-update"], "later_commits": ["accepted-v3"]}]},
+            {"role": "expert-a", "name": "resource-planning", "commit": "accepted-v3", "attempt_id": "latest-evolution", "status": "awaiting_samples"}]}
+
+
 def _activity() -> dict:
     return {
         "run_id": "browser-run",
@@ -199,6 +214,7 @@ def _detail(query: dict[str, list[str]]) -> dict:
             skills=[dict(_SKILL, name="next-page-skill")] if offset else [_SKILL],
             total=51,
             activity={"coverage": "partial", "observed_calls": 2, "attempts": 2,
+                "effects": _skill_effects(),
                 "untimed_calls": 0, "bin_seconds": 60,
                 "skills": [{"role": "expert-a", "name": "resource-planning", "calls": 2,
                             "last_called_commit": "accepted-v2"}],
@@ -213,6 +229,7 @@ def _detail(query: dict[str, list[str]]) -> dict:
     elif kind == "skill":
         result.update(
             _SKILL,
+            effects=_skill_effects(),
             body="# Resource planning\n<script>window.injected=true</script>\n"
             + "Keep measurements separate from estimates.\n" * 80,
             diff={
@@ -667,6 +684,9 @@ def browser(tmp_path: Path, request):
                 page["webSocketDebuggerUrl"] for page in pages if page["type"] == "page"
             ),
             proxy=None,
+            # CDP echoes the fully embedded data URL in navigation events.
+            # Size the test transport for that page; keep every UI assertion.
+            max_size=max(1024 * 1024, len(markup.encode()) * 4),
         )
         driver = _Browser(socket)
         driver.call("Page.enable")
@@ -886,6 +906,23 @@ def test_browser_expert_skill_library_filters_trend_and_evolution(browser, tmp_p
     page.wait("document.querySelector('[data-detail-tab=usage]') !== null")
     page.click("[data-detail-tab=usage]")
     assert "No calls observed" in page.text("#research-detail-content")
+    assert page.evaluate("window.injected === undefined")
+
+
+def test_browser_skill_effects_show_counts_unknowns_followup_and_source_links(browser):
+    page = browser
+    page.click('[data-expert-skills="expert-a"]')
+    page.wait("document.querySelector('.skill-scorecard summary') !== null")
+    assert "Awaiting validation" in page.text(".skill-effects")
+    assert "Failure recurred" in page.text(".skill-effects")
+    page.click(".skill-scorecard summary")
+    assert "0/2 · 0.0% · unknown 1" in page.text(".skill-scorecard")
+    assert "not causal skill scores" in page.text(".skill-effects")
+    assert "<script>" in page.text(".skill-failure")
+    page.click(".skill-followup summary")
+    assert "same-diagnostic failures 6" in page.text(".skill-followup")
+    page.evaluate("Array.from(document.querySelectorAll('.skill-failure button')).find(b => b.textContent === 'Inspect source proposal').click()")
+    page.wait("fixtureRequests.some(row => row[1].includes('attempt_id=proposal-source'))")
     assert page.evaluate("window.injected === undefined")
 
 

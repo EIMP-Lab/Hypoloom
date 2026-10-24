@@ -82,7 +82,7 @@ def test_native_rejected_grounding_archive_survives_reconstruction_and_cpu(tmp_p
     monkeypatch.setattr(shared_retry, "_FinalRetryScenario", scenario_factory)
     inherited_error = None
     try:
-        shared_retry.test_native_shared_final_report_retries_with_one_common_input_and_same_session(tmp_path)
+        shared_retry._run_final_retry(tmp_path)
     except AssertionError as error:
         # Preserve scoped evidence even when the unchanged old Oracle rejects
         # the archived evaluator. Never suppress an inherited acceptance check.

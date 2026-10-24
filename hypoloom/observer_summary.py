@@ -611,7 +611,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
                       agent_aci_version=None) -> dict[str, Any]:
     """Build all-run counts from complete transaction rows, never event pages."""
     from .observer_details import skill_catalog
-    from .observer_reliability import build_reliability, summarize_reliability
+    from .observer_reliability import build_reliability, reliability_context, summarize_reliability
     from .observer_scope import attempt_scopes, grounding_sharing
 
     # Decode transaction rows once for all projections and expert subsets. These
@@ -633,15 +633,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
     experiments = _experiment_records(facts, transitions, agents, experts)
     run_rows = [row for row in transitions if row.get("workflow_kind") == "RUN"]
     terminal = next((row for row in run_rows if row.get("state") in _TERMINAL), None)
-    interruptions = [_time(row.get("created_at")) for row in facts
-        if row["fact_type"] == "GoalVerdictRecorded" and _payload(row).get("verdict") == "GOAL_MET"]
-    interruptions.extend(_time(row.get("created_at")) for row in run_rows
-        if row.get("state") == "STOPPING" and _payload(row).get("stop_disposition") == "CANCELLED")
-    if terminal is not None and terminal.get("state") == "CANCELLED":
-        interruptions.append(_time(terminal.get("created_at")))
-    interrupted_at = min((value for value in interruptions if value is not None), default=None)
-    reliability = build_reliability(state_root, run_id, attempts, run_terminal=terminal is not None,
-        interrupted_at=interrupted_at)
+    reliability = build_reliability(state_root, run_id, attempts, **reliability_context(transitions, facts))
     reliability = summarize_reliability([{**node, **scopes[node["attempt_ids"][-1]]} for node in reliability["nodes"]])
     finish = _time(terminal["created_at"]) if terminal else observed
     created = _time(created_at)

@@ -111,6 +111,47 @@ skill evolution and later binding, including independent terminal/ownership/resi
 counts. Check packaging of the new reference and source/bundle parity at freeze.
 Record environmental qualification failures rather than weakening assertions.
 
+## Run-local skill outcomes and follow-up (2026-10-24)
+
+The retained affective-computing expert made three private plugin updates, but
+the next two cycles each repeated six failed DESIGN Attempts and delivered no
+design nodes. The third update has no later sample. Accepted Git changes and
+successful Skill loads therefore cannot stand in for improved task outcomes.
+Some failures originate in the previously accepted hypothesis measurement, a
+boundary that design instructions cannot repair by changing frozen declarations.
+
+Project disposable scorecards from the existing bound plugin commits, Attempts,
+native Skill calls and final-failure transitions. Reuse the execution-reliability
+reducer for first-pass validation, logical-node delivery/retry and reported retry
+costs. Group by owner, commit, stage, component and model. Show bound-version
+context separately from nodes with observed calls to a named skill; a repeated
+call in one Attempt is one exposure. Missing capture, incomplete nodes and mixed
+bindings remain explicit. Valid scientific refutations are not execution failures.
+
+Trace failed Attempts back to the exact accepted hypothesis relation and proposal
+Attempt when retained. Follow each changed skill subtree through later comparable
+stage/component/model observations, retaining exact diagnostic recurrence and
+the actual later commits. No samples means awaiting validation; absence of the
+same diagnostic is not a resolution or causal quality verdict. Multiple skills
+may share nodes and costs; their scorecards must not be summed.
+
+Give CYCLE_REPORT, SELF_EVOLVE and subsequent proposal work a bounded projection
+of their owner's durable failures and version outcomes. This path reads metadata,
+not transcripts or Git trees, and carries original Attempt references. Existing
+reports and evolution summaries retain the target problem, supporting evidence,
+expected observable change and later follow-up. Rebuild observations from the
+ordinary evidence on each new input; do not create a scoring or issue database.
+Keep the existing cycle triggers, budgets, version freezing and pin/revert rules.
+A single-skill reversion is an ordinary SELF_EVOLVE commit restoring that subtree,
+not a whole-plugin pin mislabeled as a skill rollback.
+
+Git, stable primary keys, existing acceptance and metric validators, atomic
+publication and focused tests suffice. No new hash, schema, gate, authority or
+persistent registry is introduced. The Web views are authenticated and read-only;
+runtime inputs apply to new bundles without changing retained runs. Verification
+covers recurrence, no-sample updates, incomplete evidence, retry identity, source
+links, bounded feedback, browser drill-down and real Host/CPU closure.
+
 ## Computation efficiency guidance (2026-10-13)
 
 Read-only GPU observations and training-source inspection are retained at

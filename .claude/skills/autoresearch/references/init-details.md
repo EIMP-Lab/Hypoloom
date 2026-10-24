@@ -11,6 +11,38 @@ combined missing-choice question, one final review and one launch call. The
 performance target is at most six non-question tool calls/eight model responses,
 not permission to omit checks or necessary user decisions.
 
+## Pool dependency handling
+
+After device selection, inspect asks about a differing pool reserve: keep the
+current pool or review reconfiguration. Preserve the returned full pool membership;
+this run's device subset does not shrink the pool. Follow the generated questions
+and answer argv, rather than inventing a rebuild command. If missing-state owners
+are eligible for retirement review, ask the exact displayed identities. Never
+infer retirement from RELEASED requests or answer on the operator's behalf.
+`--pool-retired-owner namespace/run_id` records the operator's assertion for this
+maintenance only: the run was retired/deleted, not relocated, and will not resume.
+It does not delete history or authorize other owners. `none` defers and stays
+blocked; remove that deferred choice only when the operator elects to reconsider.
+Final Start now covers the displayed action, configuration and retirement scope.
+Inspect/answers/Prepare only never perform maintenance. Do not delete a pool
+database, clear requests or start another pool on the same devices to evade a block.
+
+For retained nonterminal runs, use the generated `pool_cancel_run` question when
+available. `--pool-cancel-run RUN_ID:REVISION` selects exact cancellations for the
+final review; it is not a retirement assertion. Start now uses each run's original
+frozen Host, commits CANCEL before recovery, and permits only closure plus its
+original budgeted final report. Include this possible API work in final review.
+No Host/process may still own the run, and all its pool requests must be released.
+Missing original launch inputs/bundle support remains an explicit blocker; never
+patch an old bundle, hand-edit SQLite or start an ordinary Host to obtain a socket.
+`cancellation.prepare_after_cleanup` is an executable plan, not proof of closure.
+On `dependency_cleanup_pending`, preserve the exact selected revisions and recheck
+with `interaction.inspect_argv`; do not repeatedly launch recovery or recommend
+nonpooled merely because cleanup is still pending. A changed selection requires
+review of the affected item. Already accepted cancellations retain their identity.
+When cleanup finishes and the remaining actions stay within the previous Start
+now authorization, continue that launch without asking for the same approval again.
+
 ## Detailed configuration boundaries
 
 `/autoresearch init` has no corresponding `hypoloom.cli init`

@@ -270,6 +270,18 @@ def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_pa
                     assert request.attempt_id in scenario.history
                     expected = first_update["base_commit"] if _cycle(request) == 1 else first_update["commit"]
                     assert _resources(request)["plugin"]["commit"] == expected
+                if request.command in {AgentCommand.CYCLE_REPORT, AgentCommand.SELF_EVOLVE,
+                        AgentCommand.PROPOSE_HYPOTHESIS, AgentCommand.HYPOTHESIS_PROPOSAL}:
+                    feedback = json.loads(next(item.content_bytes() for item in request.input_artifacts
+                        if item.ref.endswith("--skill-feedback")))
+                    assert feedback["scope"] == {"run_id": run_id, "role": request.role,
+                        "component_id": request.component_id}
+                    assert feedback["basis"] == "bound_version" and not feedback["history_truncated"]
+                    assert all(group["basis"] == "bound_version" for group in feedback["groups"])
+                    if _cycle(request) == 2:
+                        assert first_update["commit"] in {item["commit"] for item in feedback["updates"]}
+                        assert any(group["stage"] == "EXPERIMENT_DESIGN_IMPLEMENT" and
+                            group["metrics"]["node_delivery"]["numerator"] >= 1 for group in feedback["groups"])
             assert len(scenario.live_queries) == len(scenario.skill_results) == len(scenario.skill_names) == 4
             assert len(scenario.evolution_results) == 8
             assert len(scenario.report_attempts) == 2 and scenario.consumers
@@ -320,6 +332,11 @@ def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_pa
             changed = [item for item in activity["evolutions"] if item["status"] == "accepted_change"]
             assert any(any(skill["name"] == "resource-planning" for skill in item["skills"]) for item in changed)
             assert any(item["later_bindings"] > 0 and item["observed_later_calls"] > 0 for item in changed)
+            called = [group for group in activity["effects"]["groups"] if group["basis"] == "observed_call"
+                and group["name"] == "resource-planning"]
+            assert sum(group["metrics"]["node_delivery"]["denominator"] for group in called) == 4
+            assert all(group["metrics"]["node_delivery"]["rate"] == 1 for group in called)
+            assert {group["commit"] for group in called} == {first_update["base_commit"], first_update["commit"]}
             evidence.update(agent_attempts=len(agents), process_attempts=len(processes), absent_process_groups=len(groups),
                 transcript_count=len(archives), transcripts=archives, first_plugin_update=first_update,
                 skill_calls=resource, skill_capture=activity["capture"])

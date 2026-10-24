@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- October 24 run-local skill observation is implemented: actual bound Git
+  versions, observed Skill-call cohorts, stage/component/model execution rates,
+  exact diagnostic recurrence and source-proposal links. Reuses Attempt records,
+  final-failure transitions and the reliability/accounting reducers; no new
+  schema, score ledger, auto-selection or scheduler. Bounded metadata feedback
+  enters proposal/report/evolution inputs; existing reports retain open lessons.
+  Full G1 records 8,514 passes/four failures/159 skips; 57 affected rechecks resolve
+  all four, reconciling 8,518 passes/159 skips, not a single green full invocation.
+  Runtime bytes remain frozen; repairs retain the aggregate line budget, move init
+  detail verbatim and check native retries against actual continuation headroom.
+  Native two-cycle learning, failed-design closure, three retry flows and installed
+  CPU smoke pass with clean Oracles/no owned residue; all 198 package files match.
+  All 2,671 full-suite recorded groups are absent. Retained expert replay links 18
+  failures to source proposals and keeps the latest change unvalidated. Existing
+  runs, frozen bundles, Profiles and services are unchanged; no new paid/GPU claim.
+  Publication is authorized to dev, then corresponding public code/guides on main.
+  [Design](../design/experiment-methods-and-skill-observation.md#run-local-skill-outcomes-and-follow-up-2026-10-24) /
+  [validation](../qualification.md#run-local-skill-outcomes-and-follow-up-2026-10-24).
+
 - October 24 init pool recovery is implemented: exact run/revision review,
   original frozen Host cancellation before Attempt recovery, bounded recheck,
   then ordinary pool maintenance and new-run creation. Existing CREATED metadata

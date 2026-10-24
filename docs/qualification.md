@@ -2,6 +2,76 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Run-local skill outcomes and follow-up (2026-10-24)
+
+The change derives owner/skill/version observations from existing Git bindings,
+native calls and Attempts. It reuses execution reliability and accounting for
+stage/component/model cohorts, and accepted proposal relations for failure links.
+Final-failure records now remain undelivered even after later run cancellation.
+Reports, evolution and proposal inputs receive bounded metadata feedback; their
+existing summaries retain open lessons. No schema, scoring ledger, scheduler,
+automatic version selection or retained-run migration is added.
+[Design](design/experiment-methods-and-skill-observation.md#run-local-skill-outcomes-and-follow-up-2026-10-24).
+
+Final focused validation passes **153 tests** in 482.35 seconds, including real
+browser interaction and Host closure with one/all failed design chains. The
+public-main runtime overlay passes **108 tests**; seven documentation/Profile
+checks pass. A later public operator/docs check records 36 passes and five
+development-prose assertions incompatible with main's existing shorter guides.
+All five fail identically against the preceding main commit; the changed entry
+budget and pool-safety checks pass. Preserve the public wording/layout rather
+than importing development qualification claims into it. Both reports remain.
+Original development failures remain: a sanitizer import mistake,
+38 browser setup failures from the CDP client's 1 MiB limit, and a native test
+interrupted by the existing runtime-drift check while source edits continued.
+The browser fixture sizes its transport for its embedded page; all product and
+UI assertions remain.
+
+The complete offline G1 records **8,514 passed / four failed / 159 skipped** in
+**1,540.99 seconds**. Two failures reproduce on the preceding source: the Host
+already has 4,667 lines against its 4,650 allocation, and the init skill entry has
+280 lines against its under-260 limit. Transfer 25 unused lines from the existing
+resource-recovery allocation, preserving the counted files and **27,550** total;
+move the pool-dependency instructions verbatim into the existing init reference,
+with a mandatory entry link and unchanged authorization/ownership requirements.
+The entry now has 256 lines. Two native wrapper tests wrongly require FINAL_REPORT
+session reuse after their extra rejection evidence exceeds continuation headroom
+by 62/121 estimated units. The runtime guard is unchanged. The shared test now
+checks recorded headroom and the corresponding resume/reconstruction identity and
+accounting; the dedicated resume case still strictly requires resume, and the
+wrappers retain their original grounding/query, archive and closure assertions.
+
+All **57** affected follow-up tests pass in **163.29 seconds**. Exact test-identity
+reconciliation covers **8,677 cases: 8,518 passed / 159 skipped**, with no unresolved
+failure. This is **not one uninterrupted green full invocation**; the original
+four failures remain in `g1.xml`. Runtime package bytes did not change after G1.
+The three repaired native flows independently close **38 Agents/three Processes**
+with three outcomes, clean Oracles, no duplicate ownership and no live members of
+their 41 recorded groups. A separate liveness scan of 1,330 full-suite databases
+finds **2,671 recorded groups, none live**; 59 deliberately malformed fixture
+databases are reported separately, not counted as clean scientific histories.
+
+The full suite's two-cycle native skill flow closes **27 Agents/two Processes**,
+produces two outcomes and four observed resource-planning calls across the base
+and updated versions. Its later proposal inputs contain the earlier update and
+delivered design; the independent Oracle is clean and all 29 groups are absent.
+The earlier one/all-design-failure flows independently close **45 Agents/one
+Process**, produce one outcome and pass both Oracles, with no owned residue.
+
+Read-only replay of the retained affective-computing expert finds three used
+versions, each with six failed DESIGN Attempts and **0/2** delivered logical
+nodes; all 18 failures link to their accepted source proposal. The first two
+updates show later recurrence and the last remains unvalidated. The metadata
+feedback takes 0.31 seconds and 24,509 JSON bytes in this sample, with truncation
+explicit. This is observational evidence, not a causal skill-quality benchmark.
+
+All **198** source runtime files match the wheel; separate installed CLI/MCP and
+CPU closure pass with four CLOSED Attempts/two Processes, clean Oracle and no
+owned process groups. Installed and freshly frozen bundle bytes/identity match.
+Existing research runs, Profiles and services remain unchanged; no paid model,
+physical-GPU or full G0–G5 promotion is claimed. Evidence is retained at
+`.local/qualification/run-skill-20261024/`.
+
 ## Init pool dependency recovery (2026-10-24)
 
 The implementation adds exact run/revision cancellation review to init and uses

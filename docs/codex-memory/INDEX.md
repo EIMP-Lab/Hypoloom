@@ -1,5 +1,15 @@
 # Development memory index
 
+- [Run-local skill outcomes and follow-up, October 24](../design/experiment-methods-and-skill-observation.md#run-local-skill-outcomes-and-follow-up-2026-10-24):
+  per-owner bound/called version cohorts, existing reliability metrics, original
+  failure/proposal evidence and later diagnostic recurrence. Bounded ordinary
+  inputs and reports carry unresolved lessons without a second issue database,
+  a new evolution trigger or score-driven version selection. Implemented with
+  8,518 reconciled offline passes/159 skips, real native/CPU closure, installed
+  package parity and read-only retained-expert replay; original failures remain.
+  [Validation](../qualification.md#run-local-skill-outcomes-and-follow-up-2026-10-24).
+  Publication scope is dev and corresponding public code/user guides on main.
+
 - [Init pool dependency recovery, October 24](../design/init-pool-dependency-recovery.md):
   exact cancellation review, original frozen Host closure before pool maintenance,
   non-secret launch inputs in CREATED and global concurrency review. Preserves

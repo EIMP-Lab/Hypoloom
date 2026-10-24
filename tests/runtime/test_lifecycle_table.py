@@ -73,8 +73,11 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # transferring 100 lines from workflow_host, preserving the same total.
     # API appointments extract provider recovery beside host_settings; transfer
     # 150 lines from its allocation so the new helper is counted, not free space.
+    # Init's retained-run cancellation launch metadata stays in the sole Host.
+    # Transfer 25 unused lines from resource_recovery (102 actual) to the Host
+    # (4667 actual); preserve every counted file and the same 27,550 total.
     allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4650, "institutional_controls": 100,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4675, "institutional_controls": 100,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
@@ -83,7 +86,7 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 850, "shared_acceptance_host": 700,
-        "compute_resources": 1200, "gpu_pool": 1100, "shared_gpu_host": 500, "resource_recovery": 150,
+        "compute_resources": 1200, "gpu_pool": 1100, "shared_gpu_host": 500, "resource_recovery": 125,
         "gpu_attribution": 800, "resource_experience": 700, "host_settings": 350, "provider_recovery": 150}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations
         if name not in {"expert_batch", "expert_plugin", "expert_memory", "measurement_contract", "expert_interaction", "interaction_host", "debate_host", "profile_permissions"}

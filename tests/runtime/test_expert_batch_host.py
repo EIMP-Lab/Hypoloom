@@ -529,6 +529,21 @@ def test_failed_design_is_control_terminal_without_fabricated_scientific_outcome
     assert len(host.store.list_facts("batch-host", "HypothesisAssessed")) == surviving
     history = host._batch_history("batch-host", "primary.validation_accuracy")
     assert (history.selected_tip is None) is (surviving == 0)
+    from hypoloom.agent_aci import AgentRequest
+    feedbacks = []
+    for row in host.store.list_attempts(kind="AGENT"):
+        agent_request = AgentRequest.from_dict(json.loads(row["observation_json"])["request"])
+        if agent_request.command not in {AgentCommand.CYCLE_REPORT, AgentCommand.SELF_EVOLVE}:
+            continue
+        feedback = json.loads(next(item.content_bytes() for item in agent_request.input_artifacts
+            if item.ref.endswith("--skill-feedback")))
+        assert feedback["scope"]["component_id"] == agent_request.component_id
+        designs = [g for g in feedback["groups"] if g["stage"] == "EXPERIMENT_DESIGN_IMPLEMENT"]
+        assert sum(g["metrics"]["node_delivery"]["denominator"] for g in designs) == 2
+        assert sum(g["metrics"]["node_delivery"]["numerator"] for g in designs) == surviving
+        assert all(f["source_proposals"] for g in designs for f in g["failures"])
+        feedbacks.append(feedback)
+    assert len(feedbacks) == 2
     report = Oracle(host.store.database_path, host.publisher.root).audit("batch-host")
     assert report.ok, report.to_dict()
 
