@@ -5,11 +5,13 @@
   lifecycle; no provider/GPU execution, migration or fabricated successful report.
   Start now waits for closure, then continues the same pool/new-run plan. Actual
   read-only preview now offers this choice for both orphaned MERC roots. Focused
-  runtime checks: 303 pass; two disposable retained-root overlays pass original
+  base runtime checks: 303 pass; two disposable retained-root overlays pass original
   Oracles. Source runs/pool remain unchanged. This is not a new full G0–G5
   qualification. The user now authorizes dev/main publication, folding main's
   counterpart into its existing pool-recovery commit and replaying later commits.
   Preserve main's public layout and the scope of earlier qualification evidence.
+  Publication checks expose a controller-package mount omission for /tmp source
+  checkouts; its read-only bind repair passes 16 dev and 82 public-overlay checks.
   [Design](../design/init-pool-dependency-recovery.md#legacy-closure-inside-the-same-init-october-24-follow-up) /
   [evidence](../qualification.md#same-init-offline-legacy-closure-2026-10-24).
 

@@ -6,6 +6,8 @@
   303 focused runtime passes and clean original Oracles on disposable overlays.
   Publication is authorized for dev and for folding the public counterpart into
   main's existing pool-recovery commit, retaining subsequent changes.
+  The publication-only /tmp source reproduction is repaired with a read-only
+  package bind; 16 dev and 82 public-overlay checks pass, retaining the failure.
   [Evidence and limits](../qualification.md#same-init-offline-legacy-closure-2026-10-24).
 
 - [Init question-tool dispatch, October 24](../guides/initialization.md):

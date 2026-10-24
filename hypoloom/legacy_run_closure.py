@@ -262,8 +262,10 @@ def main(argv=None) -> int:
             sandbox = shutil.which("bwrap")
             if not sandbox:
                 raise ValueError("legacy_closure_sandbox_unavailable")
+            # A checkout under /tmp must remain readable after the private tmp mount.
             command = [sandbox, "--die-with-parent", "--unshare-net", "--ro-bind", "/", "/",
                        "--tmpfs", "/tmp", "--proc", "/proc", "--dev", "/dev",
+                       "--ro-bind", str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parent),
                        "--bind", str(root), str(root), "--ro-bind", str(root / "bundle"), str(root / "bundle"),
                        sys.executable, "-I", "-B", str(Path(__file__).resolve()), "_execute_locked",
                        "--state-root", str(root), "--run-id", args.run_id,

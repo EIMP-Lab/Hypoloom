@@ -52,6 +52,18 @@ The subsequent user request authorizes dev/main publication, folding the public
 counterpart into main's earlier pool-recovery commit while retaining later
 changes; it does not authorize closure of the retained production runs.
 
+Publication verification exports the public tree independently and overlays only
+development test code/fixtures. The first check retains **80 passes/one failure**:
+with the source checkout itself under `/tmp`, the private temp mount hides the
+controller package. Rebind that package read-only after mounting private `/tmp`;
+the selected state root remains the only persistent writable mount. A dedicated
+source-under-`/tmp` regression is added. The affected dev selection passes **16
+tests in 23.48 s**; the public overlay passes **82 in 39.73 s**, including native
+closure, exact authorization, pool recovery/next-run and managed Host routing.
+Public/development prose differences remain; the independent public patch and
+runtime comparisons verify that replayed later commits retain their changes.
+Original failure and passing logs remain in the `publication/` evidence directory.
+
 ## Qualification completion (2026-10-24)
 
 After the initial NO-GO below, the user authorized autonomous completion and

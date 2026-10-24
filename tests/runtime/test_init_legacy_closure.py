@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -53,8 +54,8 @@ def dependencies(root, target):
                          for reason in ("run_depends_on_pool", "open_attempt")]}
 
 
-def worker(root, target):
-    return subprocess.run([sys.executable, "-I", "-B", str(Path(closure.__file__).resolve()), "execute",
+def worker(root, target, *, module=None):
+    return subprocess.run([sys.executable, "-I", "-B", str(module or Path(closure.__file__).resolve()), "execute",
         "--state-root", str(root), "--run-id", target["run_id"], "--expected-revision", str(target["revision"])],
         capture_output=True, text=True, timeout=30)
 
@@ -128,6 +129,17 @@ def test_original_bundle_closes_lost_attempt_and_truthfully_fails_unavailable_re
     repeated = worker(root, target)
     assert repeated.returncode == 0, repeated.stdout + repeated.stderr
     assert store.latest_transition(target["run_id"]) == head and store.list_attempts() == closed
+
+
+def test_closure_controller_in_tmp_remains_readable_inside_private_tmp(stopped, tmp_path):
+    root, target = stopped
+    controller = tmp_path / "checkout/hypoloom"
+    shutil.copytree(Path(closure.__file__).resolve().parent, controller,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    result = worker(root, target, module=controller / "legacy_run_closure.py")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["oracle_ok"]
+    assert StateStore(root).latest_transition(target["run_id"])["state"] == "FAILED"
 
 
 @pytest.mark.parametrize("condition", ["revision", "live_host", "schema", "version"])
