@@ -137,6 +137,14 @@ retains prior choices/identity, and performs the existing admission checks. Part
 renamed, stale or contradictory answers fail without starting a run. Configuration
 that is not a question is reported in `configuration_required`.
 
+The initial choices appear through Claude Code's built-in `AskUserQuestion`,
+before any Host or institutional preparation session starts. `ToolSearch` searches
+deferred tools; an empty result does not mean this built-in is unavailable. If CC
+prints the questionnaire as ordinary text after that search, ask it to call
+`AskUserQuestion` directly with the existing `interaction.questions`. Keep the same
+inspection and choices. An actual dispatch error should be reported as such;
+it does not authorize filling in answers or launching research.
+
 After enabling access, **confirm the publisher list in the interactive session**.
 The catalog is shown in stable groups of up to three platforms, each with an
 explicit “None in this group” option. All eight may be selected together; the program

@@ -103,7 +103,10 @@ disable a Hook, expand permissions or loop through equivalent shell forms.
 ### 2. Fill only missing choices and review
 
 **Program-owned questions and answers.** Pass `--ui-language zh-CN` for a Chinese interaction,
-otherwise `--ui-language en`. Send `interaction.questions` unchanged to AskUserQuestion; do not regroup, translate, rename or extend it.
+otherwise `--ui-language en`. Call the built-in AskUserQuestion directly with `interaction.questions` unchanged;
+do not regroup, translate, rename or extend it. ToolSearch searches deferred tools only;
+no match does not make a built-in unavailable. Do not replace the question UI with prose.
+If direct dispatch fails, report that error and preserve the current choices for correction.
 Save the original returned `answers` object to a private `.local/` JSON file using Write;
 run `interaction.answer_argv` unchanged, replacing only `<answers.json>` with that path.
 The program returns the next questions/commands. Never fill unanswered fields, drop choices, split publishers or reconstruct argv.

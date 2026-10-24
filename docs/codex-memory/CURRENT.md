@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 24 init question dispatch: the 14:48 CC 2.1.310 request includes
+  built-in AskUserQuestion, but the model treats an empty deferred ToolSearch
+  result as tool absence and prints four questions instead; no direct dispatch
+  is attempted. The existing inspect result is needs_input, and its questions
+  validate against that request's actual tool schema. Entry guidance now requires
+  direct built-in dispatch and preserves choices on an actual error; bilingual
+  guides explain same-session recovery. Operator/question/documentation checks:
+  57 pass; entry remains 259 lines. This is a prompt correction, not an observed
+  live-model retry. No run, service, credential or CC session was changed.
+  Publication is authorized for dev and the corresponding init/user-guide
+  changes on main, preserving main's public documentation layout.
+  [Initialization guide](../guides/initialization.md).
+
 - October 24 qualification completes **G0–G5 within the declared bounded scope**
   after the user authorizes autonomous follow-up and dev/main publication.
   Same 198 runtime files at `8f8221c`. Fresh full G1: 8,517 pass/two fail/159 skip;

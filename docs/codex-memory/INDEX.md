@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Init question-tool dispatch, October 24](../guides/initialization.md):
+  call built-in AskUserQuestion directly; an empty deferred-tool search does not
+  establish absence. Same-session recovery reuses generated questions. 57 focused
+  checks pass; no live-model retry or existing-run change. Original evidence stays
+  in CC session `6e50fab7-4230-44d6-a34c-124c3782df26` and
+  `.local/autoresearch-init/inspect-01.json`.
+
 - [Qualification completion, October 24](../qualification.md#qualification-completion-2026-10-24):
   **bounded G0–G5 pass** after authorized follow-up; runtime remains `8f8221c`.
   Fresh full G1 plus fixture repairs reconciles 8,524 passes/159 skips; all
