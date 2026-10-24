@@ -113,7 +113,7 @@ def _snapshot() -> dict:
     return {
         "run_id": "browser-run",
         "observed_at": time.time(),
-        "status": {"run_state": "RUNNING", "open_attempts": 0},
+        "status": {"run_state": "RUNNING", "run_revision": 1, "open_attempts": 0},
         "overview": {"reliability": _reliability()},
         "oracle": {"ok": True},
         "goal": {"objective": "Observe research evidence"},
@@ -986,7 +986,10 @@ def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
     )
     # Unchanged snapshots deliberately avoid fetching the same detail list.
     # Trigger a real new revision before checking that refresh preserves context.
+    revision = page.evaluate("fixture.snapshot.status.run_revision")
+    assert type(revision) is int, "fixture must supply the Host's numeric run revision"
     page.evaluate("fixture.snapshot.status.run_revision += 1")
+    page.wait(f"document.querySelector('#run-revision').textContent === '{revision + 1}'")
     page.wait(
         "document.querySelector('#observed-at').textContent !== '' && document.querySelector('[data-detail-tab=body]').getAttribute('aria-pressed') === 'true'"
     )

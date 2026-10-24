@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- October 24 qualification completes **G0–G5 within the declared bounded scope**
+  after the user authorizes autonomous follow-up and dev/main publication.
+  Same 198 runtime files at `8f8221c`. Fresh full G1: 8,517 pass/two fail/159 skip;
+  test-only revision/cancellation-fixture repairs pass 45 checks. Reconciliation:
+  8,524 pass/159 skip, not one uninterrupted green full run. G2's 14 retained
+  roots/findings stay unchanged. Fresh seven-case G3 closes 169 Agents/16
+  Processes with 15 outcomes. The new authorized ordinary G4 case passes all
+  original checks, with 18.35 s shared overlap, 36 Agents/four CUDA Processes
+  closed and four pool requests released; initial G4 FAIL remains historical.
+  All three G5 closures/replays pass; total 10.8409512 of 20 USD, no new paid
+  calls or unknowns. Skill follow-up proves propagation, not quality improvement
+  (eight later bindings, zero calls to the changed Skill). All 2,671 full-suite
+  groups are absent; public wheel/install/bundle and CPU/CLI/MCP smoke pass.
+  No retained-run writes or production operations. Dev keeps tests and detailed
+  evidence; main receives the corresponding public validation note, preserving
+  its user-guide layout and two documentation-only runtime-string differences.
+  [Qualification](../qualification.md#qualification-completion-2026-10-24).
+
 - October 24 run-local skill observation is implemented: actual bound Git
   versions, observed Skill-call cohorts, stage/component/model execution rates,
   exact diagnostic recurrence and source-proposal links. Reuses Attempt records,

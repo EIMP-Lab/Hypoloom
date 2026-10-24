@@ -735,6 +735,13 @@ def _has_seeded_repair(uses, results):
         and re.fullmatch(r'python -m unittest -v test_accuracy\.py 2>&1'
                          r'(?: \| tail -[1-9][0-9]*|; ls (?:/workspace|\.))',
                          item.get("input", {}).get("command", "").strip())}
+    # The native common canary also prints its admitted input after unittest.
+    # That read succeeds while the preceding complete test summary proves red.
+    # Keep this observed read-only postlude exact; arbitrary output is not proof.
+    fixture_display = ('python -m unittest -v test_accuracy.py 2>&1; echo ---; python -c "import json,os; '
+        "print(json.load(open(os.path.join(json.loads(os.environ['HYPOLOOM_READ_ROOTS'])[0],'validation.json'))))\"")
+    summary_test.update(item["id"] for item in uses if item["name"] == "Bash"
+        and item.get("input", {}).get("command", "").strip() == fixture_display)
     # This observed wrapper copies the known, unchanged fixture before testing.
     # Its short tail loses the method name but retains the full failure summary.
     copied_seeded_test = {item["id"] for item in uses if item["name"] == "Bash"

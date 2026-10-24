@@ -29,6 +29,42 @@ def _main(request):
             and request.task_context.key.subkind.value == "MAIN")
 
 
+def _send_reading_response(scenario, send_response, *args, **kwargs):
+    request = scenario.current
+    try:
+        return send_response(*args, **kwargs)
+    except (BrokenPipeError, ConnectionResetError) as exc:
+        # End run terminates these exact native clients, including a response
+        # already being written. Other disconnects remain provider-test errors.
+        if request is None or request.attempt_id not in scenario.cancelled_attempts:
+            raise
+        scenario.cancelled_disconnects.append({
+            "attempt_id": request.attempt_id, "error": type(exc).__name__})
+
+
+@pytest.mark.parametrize("error,cancelled,handled", [
+    (ConnectionResetError, (), False),
+    (ConnectionResetError, ("peer",), False),
+    (ConnectionResetError, ("reader",), True),
+    (BrokenPipeError, ("reader",), True),
+    (RuntimeError, ("reader",), False),
+])
+def test_reading_provider_disconnect_requires_exact_cancelled_client(error, cancelled, handled):
+    from types import SimpleNamespace
+
+    scenario = SimpleNamespace(current=SimpleNamespace(attempt_id="reader"),
+        cancelled_attempts=set(cancelled), cancelled_disconnects=[])
+    def disconnected():
+        raise error("client ended")
+    if handled:
+        _send_reading_response(scenario, disconnected)
+        assert scenario.cancelled_disconnects == [{"attempt_id": "reader", "error": error.__name__}]
+    else:
+        with pytest.raises(error):
+            _send_reading_response(scenario, disconnected)
+        assert not scenario.cancelled_disconnects
+
+
 class ReadingScenario(_FinalReportHostScenario):
     def __init__(self, root, *, batch_documents=False, correct_errors=False):
         super().__init__(root)
@@ -37,6 +73,8 @@ class ReadingScenario(_FinalReportHostScenario):
         self.nonce = "method-page-" + secrets.token_hex(12)
         self.sources = {}; self.results = {}; self.readers = set()
         self.source_retries = set()
+        self.cancelled_attempts = set()
+        self.cancelled_disconnects = []
         # Different disciplines/depths travel through the existing free-text
         # commission. This scripted provider checks delivery, not reading quality.
         self.questions = (
@@ -182,6 +220,11 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
         monkeypatch.setattr(sys.modules[__name__], "DOC", "https://www.nature.com/articles/s41586-026-00001-1")
     scenario_type = CrossrefReadingScenario if catalog_fallback else ReadingScenario
     scenario = scenario_type(tmp_path, batch_documents=batch_documents, correct_errors=correct_errors)
+    if end_run:
+        import test_claude_file_tool_cli as provider_fixture
+        send_response = provider_fixture._send_response
+        monkeypatch.setattr(provider_fixture, "_send_response",
+            lambda *args, **kwargs: _send_reading_response(scenario, send_response, *args, **kwargs))
     secret = "isolated-script-only-" + secrets.token_hex(12)
     provider, thread = _start_provider(scenario, secret)
     settings_file = tmp_path / "settings.json"
@@ -400,6 +443,8 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             if max_readers == 3:
                 scenario.readers_ready.set()
             if end_run and not stopped and max_readers == 3:
+                scenario.cancelled_attempts.update(handle.request.attempt_id
+                    for handle in host.running_agents.values())
                 reply = host.handle(ControlRequest(schema_version=1, request_id="end-paper-test", expected_revision=None,
                     command="CANCEL", payload={"run_id": run_id, "cause": "bounded paper-reader End run test"}))
                 assert reply.status == "accepted", reply
@@ -441,6 +486,12 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
             assert len(host.store.inspect("SELECT * FROM workflow_commands WHERE command_type='LITERATURE_ACCESS'")) == (0 if arxiv_oa or institutional_oa in {'preparation-failure', 'browser'} else 1)
         attempts = host.store.list_attempts()
         assert all(row["state"] == "CLOSED" for row in attempts)
+        if end_run:
+            # Drain the local handler before inspecting its late write result.
+            provider.shutdown(); thread.join(timeout=5)
+            assert not thread.is_alive() and not scenario.errors, scenario.errors
+            assert all(host.store.get_attempt(item["attempt_id"])["terminal_reason"] == "CANCELLED"
+                for item in scenario.cancelled_disconnects)
         service_failures = [row for row in attempts
             if json.loads(row["observation_json"]).get("failure_stage") == "literature_retrieval"] if service_recovery else []
         if not end_run:
@@ -535,7 +586,8 @@ def test_native_three_readers_original_sources_parent_collects_and_cpu_closes(tm
     finally:
         scenario.readers_ready.set()
         (tmp_path / "provider-errors.json").write_text(json.dumps(scenario.errors))
-        (tmp_path / "reader-evidence.json").write_text(json.dumps({"max_readers": max_readers, "observed_readers": sorted(scenario.readers), "results": scenario.results}, indent=2))
+        (tmp_path / "reader-evidence.json").write_text(json.dumps({"max_readers": max_readers, "observed_readers": sorted(scenario.readers), "results": scenario.results,
+            "cancelled_disconnects": scenario.cancelled_disconnects}, indent=2))
         host.close()
         provider.shutdown(); provider.server_close(); thread.join(timeout=5)
         if (tmp_path / "admitted-target.txt").exists(): shutil.rmtree(Path((tmp_path / "admitted-target.txt").read_text().strip()))

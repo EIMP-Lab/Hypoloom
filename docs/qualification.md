@@ -2,6 +2,180 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Qualification completion (2026-10-24)
+
+After the initial NO-GO below, the user authorized autonomous completion and
+publication to dev, then corresponding updates to main. The existing exact GPU
+1/3 and per-scenario bounds remain in force. A separately recorded G4 follow-up
+supplies the missing evidence; no further paid-model call is made. **G0–G5 pass
+within this declared bounded scope.** Original failures remain in their original
+reports. The runtime remains the 198 files at dev `8f8221c`; this continuation
+changes test fixtures/checkers and documentation only. Evidence:
+`.local/qualification/current-dev-20261024-followup/`, alongside the initial
+`.local/qualification/current-dev-20261024/` cohort.
+
+| Stage | Final evidence |
+| --- | --- |
+| G0 | The common-canary checker correction below passes 320 checks; browser revision and cancellation-provider regressions described here resolve the two new full-suite failures. |
+| G1 | Fresh complete selection: **8,517 passed / two failed / 159 skipped**, **1,717.78 s**. All **45** affected follow-ups pass in **154.31 s**. Exact identity reconciliation: **8,524 passed / 159 skipped, 8,683 identities**, no unresolved failure. This is **not one uninterrupted green full invocation**. |
+| G2 | Same-runtime evidence covers all **191** persistence fixtures and all **14** retained roots. No state/artifact changes or finding deltas: 12 clean roots, one with 11 known parser findings and one with two known work residues. |
+| G3 | All seven prescribed scenarios pass in the fresh full selection. Independent census: **169 Agents / 16 Processes CLOSED**, 15 outcomes, clean Oracles, no duplicate ownership and no live members of 154 recorded groups. Expected injected FAILED/LOST/CANCELLED outcomes remain visible. |
+| G4 | The previously failed ordinary shared case passes unchanged assertions in **158.70 s** (159.33 s parent). The initial-memory waiting/calibration case and 16 offline helpers retain their earlier passes on identical code. |
+| G5 | The three completed local/common/resource samples below retain their complete closure checks, including the documented read-only checker replays. **45 Agents / four Processes** close with four outcomes, clean Oracles and no owned residue. |
+
+The browser failure was an invalid fixture revision: `_snapshot().status` omitted
+`run_revision`, so JavaScript `+= 1` produced NaN; the serialized workbench input
+did not acquire a new numeric revision. A browser regression reproduces this
+directly before the fix. The fixture now supplies the Host's integer revision,
+and the interaction test also requires the displayed revision to advance. Detail
+refetch, selected tab, scrolling, filter and injection checks remain intact.
+
+The reader End run test cancels real native clients while its local scripted
+provider can still be writing a response. A resulting connection reset was
+incorrectly treated as an unexpected provider failure. Only this cancellation
+case now handles BrokenPipe/ConnectionReset for exact Attempts present at its
+CANCEL boundary. Five regression cases keep unapproved/other-client disconnects
+and unrelated exceptions failing. The real test requires accepted cancellation,
+drains the local handler, checks any recorded disconnect's Attempt is CANCELLED,
+and retains all terminal, Oracle and descendant-cleanup assertions. Its new live
+invocation has no disconnect to classify; the injected cases exercise both
+transport exceptions. Ordinary three-reader CPU completion also passes. The two
+native follow-ups independently close **26 Agents / one Process**, with one
+outcome, clean Oracles and no live members of 27 recorded groups.
+
+The G4 follow-up records **18.35 seconds** of actual overlap between the two
+Hosts' second Processes and **21** complete shared-capacity observations.
+Every counted own-memory sample is complete. An observation-only test hook logs
+eight `root_process_exited` observations; none enters an owned-memory accumulator
+as unknown. No sampler result,
+learning policy, capacity rule or test assertion changes. Independent inspection
+closes **36 Agents / four real GPU Processes**, four outcomes, clean run/pool
+Oracles, all four requests RELEASED and all 40 groups absent. The first sample's
+unknown cause cannot be reconstructed and its FAIL remains; this successful new
+sample supplies bounded evidence, not a universal absence-of-races guarantee.
+
+The full offline residue scan reads Attempt ownership from 1,271 databases and
+lists 59 unreadable/old-schema fixture databases separately. **All 2,671 recorded
+groups are absent.** The dev runtime still matches its tested wheel/install in
+all 198 files. Public main differs only in two documentation strings, preserving
+its user-guide references; executable syntax matches. A fresh public wheel and
+isolated install match all 198 public files. Outside-checkout CLI/MCP and CPU
+smoke close four Attempts/two Processes, pass the Oracle, leave no owned groups
+and match the newly frozen bundle.
+
+Total paid usage remains **10.8409512 USD**, with no unknown reservations, against
+the same 20 USD cohort. No further paid retry or retained-run operation occurs.
+The skill update's eight later bindings and zero observed later calls still do
+not establish a quality gain. Existing historical findings and optional science,
+model/topology and long-soak coverage limits remain. Final documentation/Profile,
+compile, undefined-name and Git whitespace checks pass before publication.
+
+## Current dev qualification (2026-10-24)
+
+User requested bounded qualification of dev `8f8221c` and approved exact GPU 1/3
+(`GPU-e96b09e9-0bcc-d031-acce-bb705dabfa31` and
+`GPU-20ca7d4a-89d1-ec85-9bee-690afdd3283a`), the existing CUDA environment,
+`glm-5.3-flash` through the existing private settings, and a new **20 USD** cohort.
+The CPU skill-follow-up/common/resource samples receive **6/8/6 USD** and
+**1,800/1,200/1,200 seconds**, respectively. Unknown usage remains reserved and
+failed samples are not automatically rerun. Earlier cohorts remain separate.
+Evidence: `.local/qualification/current-dev-20261024/`.
+
+Initial invocation status is **NO-GO: G4 has an unresolved failure**. The authorized
+continuation above retains this failure and supplies the missing evidence. G0/package evidence below
+is reused against the same runtime bytes: all **198** installed package files
+still match. Only test/checker code and qualification documentation change during
+this audit. The original full G1 and its 57 follow-ups, plus the checker refresh
+below, reconcile **8,519 passed / 159 skipped, 8,678 identities**. This remains
+multiple invocations, not one uninterrupted green full run; original failures
+remain available. The full selection contains all **191 G2 persistence fixtures**
+and all **seven G3 scenarios**, passing. Independent G3 inspection counts **169
+Agents/16 Processes CLOSED**, 15 outcomes, clean Oracles, no duplicate ownership
+and no live members of 154 recorded groups. The new two-cycle fixture also passes
+offline admission/budget/data checks; live cases skip without explicit opt-ins.
+
+G2 compares all **14 retained roots** with their frozen reader, the previously
+accepted installed reader and this candidate. All logical state and artifacts
+remain unchanged, with no new or lost findings against the accepted baseline.
+Twelve current audits are clean; `MERC-causal-202610120121` retains its 11 known
+historical parser findings, and `MERC-causal-202610170216` retains two known
+`owned_work_residue` findings. All 1,783 recorded process groups are absent.
+Two roots retain ACTIVE state while their controller locks are unheld and their
+old sockets have no listener. This is inspection only, not recovery or settlement.
+
+G4 finishes **17 passed / one failed** in **348.41 seconds**. Ordinary shared
+CUDA closure records one unknown own-memory sample out of 36 for the plural
+Host's first Process on GPU 1; its latest/peak samples are complete, but the
+original unknown observation's reason is not retained. The existing strict
+zero-unknown assertion fails and remains unchanged. Raw preregistration rows
+show the plural Host conservatively keeping its second Process exclusive; the
+single Host switches to shared, but their second Processes do not overlap.
+The sample therefore also lacks the required ordinary shared-execution evidence;
+the unknown sample's cause cannot be established from the retained summaries.
+The initial-memory waiting
+and calibration-to-sharing scenario passes. Across both scenarios, **72 Agents
+and eight real GPU Processes are CLOSED/SUCCEEDED**, with eight outcomes, clean
+independent run Oracles, no duplicate ownership and no live members of all 80
+recorded groups. Successful closure does not turn the failed G4 case into a pass.
+Both independent pool Oracles pass and all eight pool requests are RELEASED.
+
+All three G5 runs reach **COMPLETED** in separate disposable roots. Final bounded
+closure checks pass, with the two original checker failures retained and resolved
+by read-only replays of their original evidence, **without another provider call**:
+
+| Sample | Parent elapsed seconds | Closed Agents / Processes | CLI-reported USD | Final evidence |
+| --- | ---: | ---: | ---: | --- |
+| CPU skill follow-up | 1,552.01 | 23 / 2 | 5.3135504 | Full canary passed live; follow-up checker corrected and replayed |
+| Common acceptance | 816.45 | 11 / 1 | 2.7888240 | Complete existing canary validator passed after checker correction |
+| Shared-pool GPU | 717.09 | 11 / 1 | 2.7385768 | Original live invocation passed |
+
+The common sample really reads the target, runs the seeded failing unittest,
+edits the function and passes the same test. Its first Bash command subsequently
+prints the admitted input JSON, yielding a successful shell exit while retaining
+the complete failing unittest output. The checker missed that observed form.
+An actual-shell regression first records **one failure / six passes**; the narrow
+repair admits this exact read-only postlude while retaining the test method,
+complete failure summary and failure/edit/success ordering requirements. Missing
+summaries, another test file and inserted output remain rejected. The affected
+refresh passes **320 tests / three opt-in skips**. The **entire** common validator,
+including independent evaluator evidence, then passes on unchanged state and
+artifacts. The original `common.xml` remains failed evidence.
+
+The CPU fixture commissions a **0.75 CLEAN_REFUTATION**, followed by the unchanged
+**0.875 SUCCESS** criterion, two actual Processes, seeded test repair, cycle report,
+SELF_EVOLVE and next-cycle proposals. Its full canary passed during the live run.
+The extra local checker incorrectly required `supporting_refs` on SYNTHESIS's
+existing `HypothesisSetCandidate`, which has no such field. The correction checks
+the actual request alias, accepted update commit and evolution Attempt in its
+existing assumptions; reports and the two proposal wings retain exact structured
+reference checks. All three next-cycle proposals bind the accepted version and
+receive prior DESIGN delivery evidence. Deleting any of those three synthesis
+citations makes the recheck fail. Both the complete canary and the corrected
+follow-up checker pass read-only replay; original `local.xml` remains failed
+evidence. No runtime output schema or assertion about actual work is relaxed.
+
+The accepted `experiment-repair` update has **eight later bindings but zero
+observed later calls** to that changed Skill. This proves version/feedback
+propagation and bounded two-cycle closure, **not a causal skill-quality gain**.
+The separately reused G3 covers actual cross-version resource-Skill calls. These
+commissioned fixtures do not establish scientific effectiveness or long-run rates.
+
+Independent G5 inspection counts **45 Agents/four Processes CLOSED/SUCCEEDED**,
+four outcomes, clean Oracles, no duplicate ownership and no live members of all
+49 recorded groups. The GPU sample passes actual CUDA checksum, native Skill/MCP,
+exact GPU binding, history and final-report checks. Its pool Oracle is clean and
+its sole request is RELEASED; cleanup reports no errors or owned residue.
+
+The new cohort totals **10.8409512 USD reported/accounted**, with **no unknown
+usage** and **9.1590488 USD unspent** against the approved dispatch allowance.
+This is CLI-reported usage, not an upstream invoice. At launch, in-flight samples
+retain their full allocations; those temporary reservations are not added to final
+charges. Earlier cohorts stay separate. There are **no failed-sample reruns**.
+Existing research roots, private Profiles and production services are unchanged.
+Seven final documentation/Profile checks and undefined-name checks pass. No
+G0–G5 promotion is claimed: a separately authorized new G4 sample must supply the
+missing complete sampling/shared-overlap evidence before qualification can close.
+
 ## Run-local skill outcomes and follow-up (2026-10-24)
 
 The change derives owner/skill/version observations from existing Git bindings,

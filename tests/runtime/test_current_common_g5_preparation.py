@@ -698,6 +698,8 @@ def test_seeded_repair_recognizes_a_printed_test_exit_without_accepting_masked_f
     'python -m unittest -v test_accuracy.py 2>&1; echo "EXIT=$?"',
     'python -m unittest -v test_accuracy.py 2>&1; echo "EXIT=$?"; echo ---; cat validation.json; echo; ls .',
     'cat /var/tmp/prom-current-g5-fixture/data/validation.json; echo "---"; cd /workspace && python -m unittest -v test_accuracy.py 2>&1; echo "exit=$?"',
+    'python -m unittest -v test_accuracy.py 2>&1; echo ---; python -c "import json,os; '
+    "print(json.load(open(os.path.join(json.loads(os.environ['HYPOLOOM_READ_ROOTS'])[0],'validation.json'))))\"",
 ])
 def test_seeded_repair_recognizes_actual_unittest_failure_with_successful_shell_exit(tmp_path, command):
     import os
@@ -713,7 +715,7 @@ def test_seeded_repair_recognizes_actual_unittest_failure_with_successful_shell_
     )
     (tmp_path / "validation.json").write_text('{"accuracy": 0.875}\n')
     environment = {**os.environ, "PATH": str(Path(sys.executable).parent),
-                   "PYTHONDONTWRITEBYTECODE": "1"}
+                   "PYTHONDONTWRITEBYTECODE": "1", "HYPOLOOM_READ_ROOTS": json.dumps([str(tmp_path)])}
     # Preserve real shell semantics: tail, echo and inspection can exit zero
     # after unittest fails, without changing that preceding test's outcome.
     environment["PATH"] += ":/usr/bin:/bin"
@@ -744,6 +746,10 @@ def test_seeded_repair_recognizes_actual_unittest_failure_with_successful_shell_
                        red.stdout.replace("FAILED (failures=1)", "truncated"),
                        red.stdout.replace("test_known_validation_pairs", "another_test")]:
         assert not canary._has_seeded_repair(uses, [{**results[0], "content": incomplete}, results[1]])
+    if "HYPOLOOM_READ_ROOTS" in command:
+        for altered in (command.replace("test_accuracy.py", "other_test.py"),
+                        command.replace("print(json.load", "print('fake'); print(json.load")):
+            assert not canary._has_seeded_repair([{**uses[0], "input": {"command": altered}}, *uses[1:]], results)
 
 
 def test_seeded_repair_recognizes_copied_fixture_summary_before_workspace_repair():

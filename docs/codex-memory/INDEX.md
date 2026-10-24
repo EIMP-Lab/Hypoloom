@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Qualification completion, October 24](../qualification.md#qualification-completion-2026-10-24):
+  **bounded G0–G5 pass** after authorized follow-up; runtime remains `8f8221c`.
+  Fresh full G1 plus fixture repairs reconciles 8,524 passes/159 skips; all
+  original failures remain. Fresh seven-case G3, new ordinary G4 shared overlap,
+  unchanged 14-root G2 and completed G5 evidence close the declared scope.
+  CLI total 10.8409512 USD, no new paid calls or retained-run writes. Publication
+  is authorized to dev, then the corresponding public validation note on main.
+
 - [Run-local skill outcomes and follow-up, October 24](../design/experiment-methods-and-skill-observation.md#run-local-skill-outcomes-and-follow-up-2026-10-24):
   per-owner bound/called version cohorts, existing reliability metrics, original
   failure/proposal evidence and later diagnostic recurrence. Bounded ordinary
