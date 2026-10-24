@@ -110,6 +110,14 @@ def questions(args, result):
             f"以下运行仍依赖共享池，但 Host/进程已退出，池请求均已释放：{identities}。是否审阅通过原冻结 Host 结束这些运行？先提交取消，再恢复遗留 Attempt；仅进行收尾及原预算内的最终报告，仍需最后选择 Start now。", "End old runs", [
                 ("Keep these runs", "保留这些运行", False, "Keep maintenance blocked; preserve this init for recheck", "保持维护阻塞，保留本次 init 供复查"),
                 ("Review ending listed runs", "审阅结束所列运行", True, "Include exactly these cancellations in the final launch review", "将以上准确运行的取消操作纳入最终启动审阅")])
+    if "pool_retire_run" in missing:
+        runs = result["choices"]["pool_retire_run"]
+        identities = ", ".join(f"{r['run_id']}:{r['revision']} ({r['state']})" for r in runs)
+        add("pool_retire_run",
+            f"These legacy runs block pool maintenance, have no live Host/process or unreleased pool request, and cannot use normal cancellation recovery: {identities}. Review offline closure using their original frozen lifecycle? Evidence is retained; no model or GPU work starts. An unavailable final report is recorded as a failure, so a run may end FAILED. After Start now, init waits for closure and continues pool preparation automatically.",
+            f"以下旧运行阻塞池维护，Host/进程已退出、池请求均已释放，且不支持普通取消恢复：{identities}。是否审阅通过原冻结生命周期离线收尾？保留历史证据，不发起模型或 GPU 工作；无法生成最终报告将如实记为失败，运行可能以 FAILED 结束。最后选择 Start now 后，init 等待收尾并自动继续准备共享池。", "Legacy runs", [
+                ("Keep these runs", "保留这些运行", False, "Keep maintenance blocked; preserve this init for recheck", "保持维护阻塞，保留本次 init 供复查"),
+                ("Review offline closure", "审阅离线收尾", True, "Include exactly these runs and the report limitation in the final review", "将以上准确运行及报告限制纳入最终审阅")])
     # Missing credentials/executable/default model are configuration problems,
     # not secrets or paths to collect through multiple-choice guesses.
     return rows[:4]
@@ -183,9 +191,9 @@ def apply_answers(args, result, response):
             if not isinstance(value, bool): raise ValueError("choose a displayed retirement answer")
             changes[field] = (list(dict.fromkeys([*(args.pool_retired_owner or []),
                 *(o["namespace"] + "/" + o["run_id"] for o in result["choices"][field])])) if value else ["none"])
-        elif field == "pool_cancel_run":
+        elif field in {"pool_cancel_run", "pool_retire_run"}:
             if not isinstance(value, bool): raise ValueError("choose a displayed cancellation answer")
-            changes[field] = (list(dict.fromkeys([*(args.pool_cancel_run or []),
+            changes[field] = (list(dict.fromkeys([*(getattr(args, field, None) or []),
                 *(f"{r['run_id']}:{r['revision']}" for r in result["choices"][field])])) if value else ["none"])
     if any(field == "institutional_prepare_provider" for field, _, _ in rows):
         from .institutional_options import preparation_selection

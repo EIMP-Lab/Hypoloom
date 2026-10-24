@@ -33,10 +33,18 @@ final review; it is not a retirement assertion. Start now uses each run's origin
 frozen Host, commits CANCEL before recovery, and permits only closure plus its
 original budgeted final report. Include this possible API work in final review.
 No Host/process may still own the run, and all its pool requests must be released.
-Missing original launch inputs/bundle support remains an explicit blocker; never
-patch an old bundle, hand-edit SQLite or start an ordinary Host to obtain a socket.
+For supported legacy bundles without normal cancellation recovery, inspect offers
+the separate `pool_retire_run` question. `--pool-retire-run RUN_ID:REVISION` reviews
+offline closure with the original frozen lifecycle, retaining history and making
+no provider/GPU calls. An unavailable final report is recorded as failure; the
+old run may end FAILED. Disclose this in final review, and never infer this choice
+from ordinary cancellation or missing-state retirement authorization. Unsupported
+bundles remain blocked; never patch an old bundle, hand-edit SQLite or start an
+ordinary Host to obtain a socket.
 `cancellation.prepare_after_cleanup` is an executable plan, not proof of closure.
-On `dependency_cleanup_pending`, preserve the exact selected revisions and recheck
+After Start now, bootstrap waits up to five minutes for cleanup and automatically
+continues pool preparation and the same reviewed new-run identity. If it returns
+`dependency_cleanup_pending`, preserve the exact selected revisions and recheck
 with `interaction.inspect_argv`; do not repeatedly launch recovery or recommend
 nonpooled merely because cleanup is still pending. A changed selection requires
 review of the affected item. Already accepted cancellations retain their identity.

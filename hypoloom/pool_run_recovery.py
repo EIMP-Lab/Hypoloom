@@ -53,7 +53,7 @@ def launch_binding(arguments: list[str]) -> dict | None:
     return {"python": sys.executable, "arguments": arguments, "working_directory": str(Path.cwd())}
 
 
-def read_target(root: Path, run: str, revision: int | None = None, *, allow_pending: bool = False) -> dict:
+def read_target(root: Path, run: str, revision: int | None = None, *, allow_pending: bool = False, retire: bool = False) -> dict:
     """Bounded read-only validation; callers separately hold controller ownership."""
     if root.is_symlink() or not root.is_dir() or root.stat().st_uid != os.geteuid():
         raise ValueError("run_root_unavailable")
@@ -67,7 +67,11 @@ def read_target(root: Path, run: str, revision: int | None = None, *, allow_pend
             raise ValueError("run_binding_unavailable")
         accepted = False
         if revision is not None:
-            request = cancel_request(run, revision)
+            if retire:
+                from .legacy_run_closure import retirement_request
+                request = retirement_request(run, revision)
+            else:
+                request = cancel_request(run, revision)
             prior = db.execute("SELECT request_json,response_status FROM workflow_commands WHERE command_id=?", (request.request_id,)).fetchone()
             accepted = prior is not None and prior["response_status"] == "accepted" and json.loads(prior["request_json"]) == request.to_mapping()
             if not accepted and head["revision"] != revision:
@@ -128,8 +132,12 @@ def recovery_launch(target: dict) -> tuple[list[str], str, str]:
     return [str(python), "-m", "hypoloom.cli", *values], str(directory), "settings" if args.claude_settings else "none"
 
 
-def review(dependencies: dict, values=(), *, timeout: float = 8) -> dict:
+def review(dependencies: dict, values=(), *, retire_values=(), timeout: float = 8) -> dict:
     selected = selections(values)
+    retirements = selections(retire_values)
+    if selected.keys() & retirements.keys():
+        raise ValueError("conflicting_pool_closure_selections")
+    selected.update(retirements)
     plans = []
     known = set()
     deadline = time.monotonic() + timeout
@@ -144,7 +152,9 @@ def review(dependencies: dict, values=(), *, timeout: float = 8) -> dict:
             continue
         item = {"run_id": run, "state_root": binding["state_root"], "selected": run in selected, "available": False}
         try:
-            target = read_target(Path(binding["state_root"]), run, selected.get(run), allow_pending=True)
+            target = read_target(Path(binding["state_root"]), run, selected.get(run), allow_pending=True,
+                                 retire=run in retirements)
+            item["closure"] = "offline" if run in retirements else "original_host"
             item.update(state=target["state"], revision=selected.get(run, target["revision"]), cancel_accepted=target["cancel_accepted"])
             with ExitStack() as locks:
                 try:
@@ -160,7 +170,20 @@ def review(dependencies: dict, values=(), *, timeout: float = 8) -> dict:
                     if target["state"] in TERMINAL:
                         item.update(available=True, status="terminal")
                     else:
-                        recovery_launch(target)
+                        try:
+                            recovery_launch(target)
+                        except ValueError as exc:
+                            if str(exc) != "original_recovery_launch_unavailable":
+                                raise
+                            from .legacy_run_closure import inspect_target
+                            inspect_target(Path(target["state_root"]), run, target["revision"],
+                                           timeout=max(.1, deadline - time.monotonic()))
+                            item["closure"] = "offline"
+                            if run in selected and run not in retirements:
+                                raise ValueError("explicit_legacy_closure_required")
+                        else:
+                            if run in retirements:
+                                raise ValueError("legacy_closure_not_required")
                         item.update(available=True, status="ready")
         except (OSError, ValueError, TypeError, KeyError, sqlite3.Error) as exc:
             item["reason"] = str(exc) if isinstance(exc, ValueError) else "recovery_state_unavailable"
@@ -177,7 +200,8 @@ def request_cleanup(repository: Path, plan: dict, *, timeout: float = 15) -> dic
     if plan["status"] in {"terminal", "cancellation_pending"}:
         return {"run_id": plan["run_id"], "status": plan["status"]}
     command = [sys.executable, "-B", str(repository / ".claude/skills/autoresearch/scripts/manage_host.py"),
-        "recover", "--state-root", plan["state_root"], "--run-id", plan["run_id"],
+        "retire" if plan.get("closure") == "offline" else "recover",
+        "--state-root", plan["state_root"], "--run-id", plan["run_id"],
         "--expected-revision", str(plan["revision"]), "--ready-timeout", str(min(timeout, 10))]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 2,

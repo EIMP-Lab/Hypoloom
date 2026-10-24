@@ -776,6 +776,51 @@ def recover(args: argparse.Namespace) -> Context:
         raise ManagedHostError("cancellation_recovery_unavailable") from exc
 
 
+def retire(args: argparse.Namespace) -> Context:
+    """Run the reviewed, isolated legacy closure; never resume its research."""
+    from hypoloom.pool_run_recovery import read_target, recovery_launch, TERMINAL
+    from hypoloom.gpu_pool_lifecycle import _hold_controller
+    from hypoloom import legacy_run_closure
+    root = Path(args.state_root)
+    ready_timeout = _validate_ready_timeout(args.ready_timeout)
+    try:
+        with ExitStack() as locks:
+            _hold_controller(root, locks)
+            target = read_target(root, args.run_id, args.expected_revision, retire=True)
+            if target["state"] not in TERMINAL:
+                try:
+                    recovery_launch(target)
+                except ValueError as exc:
+                    if str(exc) != "original_recovery_launch_unavailable":
+                        raise
+                else:
+                    raise ValueError("legacy_closure_not_required")
+                legacy_run_closure.inspect_target(root, args.run_id, args.expected_revision)
+        context = _path_context(str(root), "none")
+        tools = _find_tools()
+        environment = _minimal_environment(include_api_key=False)
+        context = _derive_unit(context, tools, environment)
+        if target["state"] in TERMINAL:
+            return context
+        if not _unit_is_absent(context, tools, environment):
+            raise ManagedHostError("unit_exists")
+        worker = Path(legacy_run_closure.__file__).resolve()
+        command = [sys.executable, "-I", "-B", str(worker), "execute", "--state-root", str(root),
+                   "--run-id", args.run_id, "--expected-revision", str(args.expected_revision)]
+        _launch_service(context, tools, worker.parent.parent, command, environment)
+        deadline = time.monotonic() + ready_timeout
+        while time.monotonic() < deadline:
+            target = read_target(root, args.run_id, args.expected_revision, allow_pending=True, retire=True)
+            if target["cancel_accepted"] or target["state"] in TERMINAL:
+                return context
+            if _unit_is_absent(context, tools, environment):
+                raise ManagedHostError("legacy_closure_start_failed")
+            time.sleep(.1)
+        raise ManagedHostError("legacy_closure_start_uncertain")
+    except (OSError, ValueError) as exc:
+        raise ManagedHostError("legacy_closure_unavailable") from exc
+
+
 def build_parser() -> JsonArgumentParser:
     parser = JsonArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -798,11 +843,12 @@ def build_parser() -> JsonArgumentParser:
         required=True,
         choices=("none", "settings", "environment"),
     )
-    recovery = subparsers.add_parser("recover", add_help=False)
-    recovery.add_argument("--state-root", required=True)
-    recovery.add_argument("--run-id", required=True)
-    recovery.add_argument("--expected-revision", required=True, type=int)
-    recovery.add_argument("--ready-timeout", type=float, default=10)
+    for command in ("recover", "retire"):
+        recovery = subparsers.add_parser(command, add_help=False)
+        recovery.add_argument("--state-root", required=True)
+        recovery.add_argument("--run-id", required=True)
+        recovery.add_argument("--expected-revision", required=True, type=int)
+        recovery.add_argument("--ready-timeout", type=float, default=10)
     return parser
 
 
@@ -838,6 +884,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             status_value = "ready"
         elif args.command == "recover":
             context = recover(args)
+            status_value = "cancellation_pending"
+        elif args.command == "retire":
+            context = retire(args)
             status_value = "cancellation_pending"
         else:
             context = stop(args)

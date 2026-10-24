@@ -34,8 +34,9 @@ arguments and paths, never credential values. Ordinary transactions and the
 existing runtime/configuration validator remain sufficient. Maintenance cost is
 CLI argument validation and compatibility tests; merge this metadata with a
 future canonical Host configuration if one is introduced. No separate file or
-authority is added. Old bundles/records lacking this capability remain explicitly
-unsupported rather than being patched or run through current code.
+authority is added. Old bundles/records lacking this capability cannot use this
+normal cancellation path; the separate administrative extension below handles
+supported legacy bundles without patching them or resuming research.
 
 Only a sole-run root with absent Host/process ownership and no unreleased pool
 request is eligible for automatic cancellation startup. The original bundle and
@@ -72,3 +73,49 @@ requests, pool restoration after closure, and bilingual concurrency review.
 Use disposable real Host/SQLite/socket/CPU flows and independent Oracle/residue
 checks. No retained run, production service or paid/GPU experiment is changed.
 Full candidate promotion remains separate from these focused checks.
+
+## Legacy closure inside the same init (October 24 follow-up)
+
+The afternoon init reproduces the remaining operational gap: both retained ACI 29
+runs have no launch metadata or cancellation-first entry, and one original Claude
+binary is no longer installed. The new run has not been created. All 510 pool
+requests are released, but terminal run/Attempt ownership is still required.
+Requiring the operator to repair these separately defeats init's reviewed flow.
+
+Add an explicitly reviewed **offline closure** option for these stopped legacy
+runs, distinct from ordinary frozen-Host cancellation. This authorizes ending the
+exact run/revision without provider or GPU execution; it does not authorize
+resumption with replacement settings or a different runtime. Keep the original
+bundle, schema, version row, scientific history, pool requests and artifacts.
+Use the bundled Host's CANCEL, abandoned-Attempt recovery, result collection,
+failure publication and FINISH_STOP operations. A missing final report produces
+an actual locally rejected report Attempt and the existing FINAL_REPORT_FAILED
+transition, so the final run is FAILED, never falsely reported successful.
+
+The failed asset is the executable recovery path across the supervisor/frozen
+environment boundary, not the pool's ownership database. Git and the existing
+version validator cannot recover a missing executable or invocation. They remain
+mandatory for ordinary research startup; this separate administrative operation
+has no scientific scheduler or provider adapter. Its process uses the original
+bundle's types, storage and lifecycle validators, under the controller lock and
+existing Linux filesystem/network isolation. Only the selected state root is
+writable; the bundle and all other paths remain read-only. No migration, SQL
+state rewrite, new schema, hash, registry, receipt or retirement exemption is
+introduced. Compatibility code is limited to the observed bundled interfaces
+and can be removed when these pre-recovery runs no longer require closure.
+
+The original session preparation can reject its own auxiliary input directories
+before archiving an interrupted invocation. Closure must preserve that diagnostic
+and archive independently through the original session/Git/paper-source helpers;
+it must not delete inputs, claim a successful invocation or weaken the Oracle.
+Two disposable filesystem overlays of the actual retained roots demonstrate
+ordinary collection/closure and complete session archives with clean bundled
+Oracles. Source roots stay read-only and the overlays have no network or GPU.
+
+Carry the separate choice through ordinary init arguments and the final review.
+Prepare only stays read-only. After Start now, use a bounded managed worker;
+persist the existing CANCEL command before recovery, retain that command across
+rechecks, wait for closure in the same launch and prepare the same pool before
+creating the already reviewed new-run identity. An ambiguous launch is observed,
+not duplicated. A changed revision, live owner/process, unreleased request,
+unsupported bundle or unreadable ownership state remains a specific blocker.

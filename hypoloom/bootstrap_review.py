@@ -51,6 +51,10 @@ def gpu_reserve_summary(gpu, language="en"):
                           f"Operator-confirmed retirements for this maintenance: {identities}. These runs were not relocated and will not resume; no permanent exemption or history deletion."))
         for run in pool.get("cancellation", {}).get("runs", []):
             if run["selected"]:
+                if run.get("closure") == "offline":
+                    lines.append((f"启动前离线收尾旧运行：{run['run_id']}，审阅版本 {run.get('revision')}；状态 {run.get('status', run.get('reason'))}。使用原冻结生命周期保留证据，不发起模型或 GPU 工作；缺少最终报告如实记为失败，运行可能以 FAILED 结束。init 等待收尾并自动继续池准备。" if zh else
+                                  f"Offline closure before startup: {run['run_id']}, reviewed revision {run.get('revision')}; {run.get('status', run.get('reason'))}. Use its original frozen lifecycle and preserve evidence, without model or GPU work. An unavailable final report is recorded as a failure; the run may end FAILED. Init waits for closure, then continues pool preparation automatically."))
+                    continue
                 lines.append((f"启动前结束旧运行：{run['run_id']}，审阅版本 {run.get('revision')}；状态 {run.get('status', run.get('reason'))}。使用原冻结 Host，仅执行取消收尾和原预算内最终报告；完成后复查池依赖。" if zh else
                               f"End old run before startup: {run['run_id']}, reviewed revision {run.get('revision')}; {run.get('status', run.get('reason'))}. Use its original frozen Host for cancellation closure and the original budgeted final report, then recheck pool dependencies."))
     return lines

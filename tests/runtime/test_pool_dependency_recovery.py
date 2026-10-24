@@ -136,6 +136,32 @@ def test_pending_cancellation_reuses_accepted_command_without_starting_another_h
     assert state["events"] == ["launch"]
 
 
+def test_managed_pool_routes_explicit_offline_choice_and_rejects_conflicting_modes(managed, monkeypatch):
+    from hypoloom import legacy_run_closure
+    args, state, pool, root = recoverable(managed)
+    with sqlite3.connect(root / "state.sqlite") as db:
+        first = json.loads(db.execute("SELECT payload_json FROM workflow_transitions WHERE revision=1").fetchone()[0])
+        first.pop("host_launch")
+        db.execute("UPDATE workflow_transitions SET payload_json=? WHERE revision=1", (json.dumps(first),))
+    monkeypatch.setattr(legacy_run_closure, "inspect_target", lambda *a, **k: {"status": "ready"})
+    args.pool_retire_run = ["known:2"]
+    assert manager.review(args)["cancellation"]["prepare_after_cleanup"]
+    calls = []
+    def invoke(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"status": "cancellation_pending"}), "")
+    monkeypatch.setattr(recovery.subprocess, "run", invoke)
+    with pytest.raises(manager.ManagedPoolError, match="dependency_cleanup_pending"):
+        manager.ensure(args)
+    assert len(calls) == 1 and calls[0][3] == "retire"
+    assert calls[0][calls[0].index("--run-id") + 1] == "known"
+    assert calls[0][calls[0].index("--expected-revision") + 1] == "2"
+    assert state["events"] == ["launch"]
+    args.pool_cancel_run = ["known:2"]
+    assert manager.review(args)["reason"] == "cancellation_selection_invalid"
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("values", [["known"], ["known:0"], ["known:2", "known:3"], ["none", "known:2"], ["../run:2"]])
 def test_cancellation_selection_is_exact(values):
     with pytest.raises(ValueError): recovery.selections(values)
@@ -200,7 +226,8 @@ def test_managed_host_recovery_uses_only_recorded_serve_arguments(managed, monke
         sys.modules.pop(name, None)
 
 
-def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending(checkout, capsys, monkeypatch):
+@pytest.mark.parametrize("selection", ["pool_cancel_run", "pool_retire_run"])
+def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending(checkout, capsys, monkeypatch, selection):
     from hypoloom.compute_resources import ComputeCapabilities, GpuCapability, LocalComputeResources
     repo, overrides = checkout
     assert bootstrap.main([*arguments(repo, [*overrides, "safety.gpus=auto", "methodology.budget.max_active_processes=1",
@@ -212,14 +239,14 @@ def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending
     monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=(
         GpuCapability(index=0, uuid=GPU, name="synthetic", total_memory_mib=24000, free_memory_mib=20000, driver_version="synthetic"),)))
     def proposal(args):
-        assert args.pool_cancel_run == ["old:2"]
+        assert getattr(args, selection) == ["old:2"]
         return {"status": "ok", "action": "restore", "prepare_available": False, "start_ready": False,
             "members": {str(os.geteuid()): [GPU]}, "reserve_mib": 512,
             "cancellation": {"prepare_after_cleanup": True, "runs": [{"run_id": "old", "revision": 2,
                 "selected": True, "available": True, "status": "ready"}]}}
     monkeypatch.setattr(manager, "review", proposal)
     argv = ["inspect", "topic", "--repository", str(repo), "--allow-gpu", "--managed-pool",
-        "--pool-action", "restore", "--pool-cancel-run", "old:2", "--gpu-device-uuid", GPU,
+        "--pool-action", "restore", "--" + selection.replace("_", "-"), "old:2", "--gpu-device-uuid", GPU,
         "--auth-transport", "none", "--offline", "--institutional-browser-mode", "off"]
     assert bootstrap.main(argv) == 0
     inspected = json.loads(capsys.readouterr().out)
@@ -229,7 +256,7 @@ def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending
     launched = json.loads(capsys.readouterr().out)
     commands = launched["commands"]
     pool_args = manager.build_parser().parse_args(commands["pool_prepare"][4:])
-    assert pool_args.pool_cancel_run == ["old:2"]
+    assert getattr(pool_args, selection) == ["old:2"]
     assert commands["pool_preflight_available"] and commands["pool_prepare_available"]
     calls = []
     def invoke(argv, *a, **k):
@@ -239,8 +266,11 @@ def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending
         assert argv == commands["pool_prepare"], "new Host started before old cancellation drained"
         return 2, {"status": "dependency_cleanup_pending", "effects": {"run_cancellations": [{"run_id": "old", "status": "cancellation_pending"}]}}
     monkeypatch.setattr(bootstrap, "_invoke", invoke)
+    clock = [0.0]
+    monkeypatch.setattr(bootstrap.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda _: clock.__setitem__(0, clock[0] + 301))
     result = bootstrap.start_fresh(commands, launched["admission"]["create_run_payload"])
-    assert result["status"] == "dependency_cleanup_pending" and len(calls) == 2
+    assert result["status"] == "dependency_cleanup_pending" and len(calls) == 4
     assert result["pool"]["effects"]["run_cancellations"][0]["run_id"] == "old"
     assert not (repo / "state").exists()
 

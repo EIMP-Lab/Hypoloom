@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- October 24 same-init legacy pool closure is implemented. A separate exact
+  run/revision choice authorizes offline closure through the original frozen
+  lifecycle; no provider/GPU execution, migration or fabricated successful report.
+  Start now waits for closure, then continues the same pool/new-run plan. Actual
+  read-only preview now offers this choice for both orphaned MERC roots. Focused
+  runtime checks: 303 pass; two disposable retained-root overlays pass original
+  Oracles. Source runs/pool remain unchanged. This is not a new full G0–G5
+  qualification. The user now authorizes dev/main publication, folding main's
+  counterpart into its existing pool-recovery commit and replaying later commits.
+  Preserve main's public layout and the scope of earlier qualification evidence.
+  [Design](../design/init-pool-dependency-recovery.md#legacy-closure-inside-the-same-init-october-24-follow-up) /
+  [evidence](../qualification.md#same-init-offline-legacy-closure-2026-10-24).
+
 - October 24 init question dispatch: the 14:48 CC 2.1.310 request includes
   built-in AskUserQuestion, but the model treats an empty deferred ToolSearch
   result as tool absence and prints four questions instead; no direct dispatch

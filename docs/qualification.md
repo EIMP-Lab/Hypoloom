@@ -2,6 +2,56 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Same-init offline legacy closure (2026-10-24)
+
+The afternoon init was blocked by two retained ACI 29 runs without recorded
+cancellation launch inputs. Both Hosts and recorded processes were absent and
+all pool requests were RELEASED. One original provider executable is also gone.
+The follow-up adds a distinct exact run/revision review for administrative offline
+closure, using the original frozen Host lifecycle and validators under controller
+ownership. No provider/GPU work, schema migration, bundle change or direct SQL
+state repair occurs. Missing final reports are recorded as actual failed Attempts;
+these closures end FAILED. After Start now, bootstrap waits for cleanup and
+continues the same reviewed pool and new-run identity. [Design](design/init-pool-dependency-recovery.md#legacy-closure-inside-the-same-init-october-24-follow-up).
+
+The final focused selection passes **275 tests in 105.26 s**; the managed Host
+helper separately passes **28 in 6.48 s**. Coverage includes distinct authorization,
+read-only/deferred review, stale revisions, live controller ownership, incompatible
+bundles/schema, no duplicate worker, original configuration-pin enforcement,
+truthful failed reports, automatic continuation/deadlines, and one new-run create.
+The existing real CPU cancellation → pool restore → next-run case passes. The
+initial selection retains four failures/42 passes: old ACI fixture selection,
+an immutable-row corruption setup and `/tmp` hidden by the new sandbox. The
+fixture now creates ACI 29, the negative case corrupts only its disposable bundle,
+and the sandbox mounts the private temp directory before the selected root. A
+follow-up retains 12 passes/one test-query failure; the raw-row check now joins
+the existing command table, preserving its two terminal-effect assertions.
+Four documentation checks, changed-file syntax/undefined-name checks and Git
+whitespace checks pass. Independent inspection of 60 test databases finds all
+eight recorded process groups absent; one incomplete fixture is listed separately.
+
+Both actual retained roots are exercised through disposable filesystem overlays
+in private mount/network namespaces, with only the overlay writable and no GPU
+devices. The final worker passes both original bundled Oracles: the first closes
+125 Attempts and collects its two remaining experiments; the second closes 22
+Attempts, including four LOST Agents with preserved session archives. Each adds
+one failed final-report Attempt. Independent raw-row census confirms unchanged
+version records, 147 CLOSED Attempts, 21 terminal experiments/outcomes, exactly
+one FINAL_REPORT_FAILED and FINISH_STOP per run, and no pending effects or live
+recorded groups. Original input-validation errors remain evidence; no input is
+deleted or accepted by exception. Private prototype/oracle failures and pre-write
+census harness errors remain under `.local/analysis/init-legacy-cleanup-20261024/`
+alongside the final passing records.
+
+A fresh **read-only** review of the actual latest init offers `pool_retire_run`
+for the exact two roots at revisions 106 and 29. Actual retained state, pool,
+services, credentials and Profile remain unchanged by this follow-up. No live
+model interaction, paid/GPU run, package promotion or full G0–G5 qualification is
+claimed. Existing production runs require the displayed init authorization.
+The subsequent user request authorizes dev/main publication, folding the public
+counterpart into main's earlier pool-recovery commit while retaining later
+changes; it does not authorize closure of the retained production runs.
+
 ## Qualification completion (2026-10-24)
 
 After the initial NO-GO below, the user authorized autonomous completion and

@@ -751,12 +751,14 @@ def _arguments_plan(args):
     repository = _resolve_repository(args.repository)
     retired = getattr(args, "pool_retired_owner", None)
     cancelled = getattr(args, "pool_cancel_run", None)
-    if cancelled:
+    closures = getattr(args, "pool_retire_run", None)
+    if cancelled or closures:
         from .pool_run_recovery import selections
         if getattr(args, "reviewed_action", None) not in {"restore", "upgrade", "reconfigure"}:
             raise ManagedPoolError("cancellation_requires_maintenance_review")
         try:
-            selections(cancelled)
+            if selections(cancelled).keys() & selections(closures).keys():
+                raise ValueError("conflicting_pool_closure_selections")
         except ValueError as exc:
             raise ManagedPoolError("cancellation_selection_invalid") from exc
     if retired:
@@ -781,13 +783,14 @@ def review(args: argparse.Namespace) -> dict:
         with coordination:
             result, _ = _observe(plan, tools, environment, reconfigure=getattr(args, "reviewed_action", None) == "reconfigure",
                                  retired_owners=getattr(args, "pool_retired_owner", ()))
-            if "dependencies" not in result and getattr(args, "pool_cancel_run", None):
+            if "dependencies" not in result and (getattr(args, "pool_cancel_run", None) or getattr(args, "pool_retire_run", None)):
                 result["dependencies"] = inspect_dependencies(plan.repository, plan.socket_path,
                     retired_owners=getattr(args, "pool_retired_owner", ()), timeout=_remaining(8))
                 result["prepare_available"] = result["dependencies"]["quiescent"]
             if "dependencies" in result:
                 from .pool_run_recovery import review as recovery_review
-                result["cancellation"] = recovery_review(result["dependencies"], getattr(args, "pool_cancel_run", ()), timeout=_remaining(8))
+                result["cancellation"] = recovery_review(result["dependencies"], getattr(args, "pool_cancel_run", ()),
+                    retire_values=getattr(args, "pool_retire_run", ()), timeout=_remaining(8))
                 if result["cancellation"]["timed_out"] or result["cancellation"]["unknown_selections"] or any(not r["available"] for r in result["cancellation"]["runs"] if r["selected"]):
                     result["prepare_available"] = False
         return result
@@ -847,12 +850,13 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
         retired = getattr(args, "pool_retired_owner", ())
         preview, target = _observe(plan, tools, environment, reconfigure=approved == "reconfigure", retired_owners=retired)
         cancellations = getattr(args, "pool_cancel_run", ())
-        if cancellations:
+        closures = getattr(args, "pool_retire_run", ())
+        if cancellations or closures:
             from .pool_run_recovery import review as recovery_review, request_cleanup
             if "dependencies" not in preview:
                 preview["dependencies"] = inspect_dependencies(plan.repository, plan.socket_path,
                     retired_owners=retired, timeout=_remaining(8))
-            recovery = recovery_review(preview["dependencies"], cancellations, timeout=_remaining(8))
+            recovery = recovery_review(preview["dependencies"], cancellations, retire_values=closures, timeout=_remaining(8))
             if not recovery["prepare_after_cleanup"]:
                 raise ManagedPoolError("cancellation_review_changed")
             # Validate the entire pool plan before any irreversible cancellation.
@@ -954,6 +958,8 @@ def build_parser() -> JsonArgumentParser:
         help="explicitly attest an absent local run is retired, not relocated or resumable; maintenance only")
     ensure_parser.add_argument("--pool-cancel-run", action="append", metavar="RUN_ID:REVISION",
         help="cancel exactly this reviewed stopped run through its frozen Host before maintenance")
+    ensure_parser.add_argument("--pool-retire-run", action="append", metavar="RUN_ID:REVISION",
+        help="close exactly this reviewed legacy run offline, without model calls, before maintenance")
     return parser
 
 
@@ -989,13 +995,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             plan, status_value, devices = ensure(args)
             result = plan.result(status_value)
             result["devices"] = list(devices)
-            if getattr(args, "pool_cancel_run", None):
+            if getattr(args, "pool_cancel_run", None) or getattr(args, "pool_retire_run", None):
                 from .pool_run_recovery import selections
                 dependencies = inspect_dependencies(plan.repository, plan.socket_path,
                     retired_owners=getattr(args, "pool_retired_owner", ()))
                 result["run_cancellations"] = [{"run_id": run, "reviewed_revision": revision,
                     "state": next((b["state"] for b in dependencies["bindings"] if b["run_id"] == run), None)}
-                    for run, revision in selections(args.pool_cancel_run).items()]
+                    for run, revision in {**selections(args.pool_cancel_run), **selections(args.pool_retire_run)}.items()]
     except ManagedPoolError as exc:
         if exc.context is not None:
             context = exc.context

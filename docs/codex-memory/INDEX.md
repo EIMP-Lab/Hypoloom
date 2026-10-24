@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Same-init offline legacy closure, October 24](../design/init-pool-dependency-recovery.md#legacy-closure-inside-the-same-init-october-24-follow-up):
+  distinct exact authorization, original-bundle administrative closure and
+  automatic pool/new-run continuation. No model calls or invented report;
+  303 focused runtime passes and clean original Oracles on disposable overlays.
+  Publication is authorized for dev and for folding the public counterpart into
+  main's existing pool-recovery commit, retaining subsequent changes.
+  [Evidence and limits](../qualification.md#same-init-offline-legacy-closure-2026-10-24).
+
 - [Init question-tool dispatch, October 24](../guides/initialization.md):
   call built-in AskUserQuestion directly; an empty deferred-tool search does not
   establish absence. Same-session recovery reuses generated questions. 57 focused

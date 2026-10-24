@@ -94,6 +94,7 @@ def _hold_controller(root: Path, stack: ExitStack):
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid():
         raise ValueError("invalid controller ownership")
     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
 
 
 def retired_owner_keys(values=()) -> set[tuple[int, str, str]]:
