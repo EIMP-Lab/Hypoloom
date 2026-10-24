@@ -16,6 +16,13 @@ rounds and cite the exact accepted references supplied by the Host. Include the
 hypothesis, experiment identities, outcomes, repair lessons, limitations and next
 research question. Follow the request's output language and byte budget.
 
+Use `--skill-feedback` to follow earlier method changes and failures, including
+failed design nodes with no experiment. In the report body, retain the affected
+skill/stage and version, original Attempt/proposal references, observed counts,
+expected improvement and unresolved follow-up. Check later comparable evidence;
+an accepted skill edit alone is not improvement, and no later sample means
+unvalidated. Keep these notes in the existing report/index, not a separate ledger.
+
 For the round file's YAML frontmatter, use only the current
 `--cycle-assessments.assessments` input. Each input row is a full fact record;
 include every row exactly once using only `fact_id`, `hypothesis_id` and

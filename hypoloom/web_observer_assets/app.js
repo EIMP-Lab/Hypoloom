@@ -2856,7 +2856,7 @@
       ["hypotheses", t("Hypotheses"), totals.hypotheses, "map", t("Accepted hypothesis identities")],
       ["literature", t("Literature"), object(totals.literature).retrieved, "literature", t("{0} PDFs with extracted evidence", displayValue(object(totals.literature).pdf_available))],
       ["skills", t("Expert skill library"), object(totals.skills).count, "skills", t("{0} accepted/bound catalog", object(totals.skills).coverage || "unavailable")],
-      ["evolutions", t("Effective evolution"), object(totals.evolutions).changed, "skills", t("{0} completed / {1} failed; changed commits only", displayValue(object(totals.evolutions).completed), displayValue(object(totals.evolutions).failed))],
+      ["evolutions", t("Accepted skill changes"), object(totals.evolutions).changed, "skills", t("{0} completed / {1} failed; changed commits only", displayValue(object(totals.evolutions).completed), displayValue(object(totals.evolutions).failed))],
       ["leader", "Leader", object(totals.leader).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.leader).active))],
       ["debate", "Debate", object(totals.debate).started, "interactions", t("{0} active logical occurrences", displayValue(object(totals.debate).active))],
     ];
@@ -3563,6 +3563,64 @@
     if (!list(events).length) parent.append(element("p", "panel-copy", t("No evolution attempts in this selection.")));
   }
 
+  function renderSkillEffects(parent, raw) {
+    const effects = object(raw);
+    const section = element("section", "skill-effects");
+    section.append(element("h3", "", t("Version outcomes and follow-up")));
+    section.append(element("p", "panel-copy", t("Bound-version context and nodes with observed Skill calls are separate cohorts. Shared nodes and costs overlap; these are observations, not causal skill scores.")));
+    if (effects.unassigned_nodes || effects.partial_nodes_excluded) section.append(element("p", "panel-copy",
+      t("{0} nodes lack one known binding; {1} partial retry chains excluded by filters.", effects.unassigned_nodes || 0, effects.partial_nodes_excluded || 0)));
+    list(effects.groups).forEach((group) => {
+      const card = element("details", "detail-card skill-scorecard");
+      const basis = group.basis === "observed_call" ? t("Nodes with observed calls to {0}", group.name) : t("Bound-version context");
+      card.append(element("summary", "", `${group.role} · ${compact(group.commit, 10)} · ${group.stage} · ${basis}`));
+      card.append(element("p", "panel-copy", `${group.component_id || "—"} · ${group.model} · ${t("{0} failed Attempts", group.failed_attempts || 0)}`));
+      card.append(element("p", "panel-copy", t("Trace coverage incomplete for {0} Attempts.", object(group.counts).trace_unknown_attempts ?? "?")));
+      const grid = element("dl", "selection-grid");
+      [["output_first_pass", "First-pass validation"], ["node_delivery", "Node delivery"], ["node_retry", "Node retry"]].forEach(([key, label]) =>
+        appendDefinition(grid, t(label), reliabilityMetricText(object(group.metrics)[key])));
+      const costs = object(group.costs);
+      appendDefinition(grid, t("Reported retry cost"), `${costs.retry_reported_usd ?? "?"} USD · ${costs.retry_reported_tokens ?? "?"} tokens`);
+      appendDefinition(grid, t("Retry elapsed time / unknown Attempts"), `${costs.retry_elapsed_seconds ?? "?"} s / ${costs.retry_elapsed_unknown_attempts ?? "?"}`);
+      appendDefinition(grid, t("Reserved retry cost / unknown closed Attempts"), `${costs.retry_reserved_usd ?? "?"} USD / ${costs.retry_unknown_closed_attempts ?? "?"}`);
+      card.append(grid);
+      list(group.failures).forEach((failure) => {
+        const row = element("div", "skill-failure");
+        row.append(element("p", "panel-copy", `${failure.failure_stage || "—"} · ${failure.failure_code} · ${failure.diagnostic || t("Evidence unavailable")}`));
+        row.append(actionButton(failure.attempt_id, () => openRemoteDetail("attempt", {attempt_id: failure.attempt_id})));
+        list(failure.source_proposals).forEach((source) => {
+          row.append(element("p", "panel-copy", source.hypothesis_id));
+          row.append(actionButton(t("Inspect source proposal"), () => openRemoteDetail("attempt", {attempt_id: source.attempt_id})));
+        });
+        card.append(row);
+      });
+      if (group.failures_truncated) card.append(element("p", "panel-copy", t("Only recent failure links are shown; rates include the full selected cohort.")));
+      section.append(card);
+    });
+    if (!list(effects.groups).length) section.append(element("p", "panel-copy", t("No attributable task samples in this selection.")));
+    const labels = {awaiting_samples: t("Awaiting validation"), recurrence_observed: t("Failure recurred"),
+      observations_available: t("Later observations available"), not_observed: t("Same diagnostic not observed")};
+    section.append(element("p", "panel-copy", t("Follow-up uses retained history across later versions with the same stage, component and known model. Exact diagnostic matching can miss related failures. No recurrence does not prove a fix; scientific negative results are not execution failures.")));
+    list(effects.followups).forEach((followup) => {
+      const card = element("details", "detail-card skill-followup");
+      card.append(element("summary", "", `${followup.role} · ${followup.name} · ${compact(followup.commit, 10)} · ${labels[followup.status] || followup.status}`));
+      card.append(actionButton(t("View skill version"), () => openRemoteDetail("skill", {role: followup.role, name: followup.name, commit: followup.commit})));
+      card.append(actionButton(t("Inspect evolution session"), () => openRemoteDetail("attempt", {attempt_id: followup.attempt_id})));
+      list(followup.comparisons).forEach((comparison) => {
+        card.append(element("p", "panel-copy", `${comparison.stage} · ${comparison.component_id} · ${comparison.model} · ${labels[comparison.status] || comparison.status}`));
+        card.append(element("p", "panel-copy", `${comparison.failure_code} · ${comparison.diagnostic || t("Evidence unavailable")}`));
+        card.append(element("p", "panel-copy", t("Baseline failures {0}; later comparable nodes {1}, finished {2}, same-diagnostic failures {3}.", comparison.baseline_failed_attempts, comparison.later_nodes, comparison.later_finished_nodes, comparison.later_failed_attempts)));
+        card.append(element("p", "panel-copy", list(comparison.later_commits).map((commit) => compact(commit, 10)).join(" · ")));
+        [...list(comparison.baseline_attempt_ids), ...list(comparison.later_attempt_ids)].forEach((id) =>
+          card.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}))));
+      });
+      if (followup.comparisons_truncated) card.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
+      section.append(card);
+    });
+    if (effects.groups_truncated || effects.followups_truncated) section.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
+    parent.append(section);
+  }
+
   function renderSkillLibrary(data) {
     const container = byId("skill-library");
     const activity = object(data.activity);
@@ -3572,7 +3630,7 @@
     container.dataset.renderedKey = key;
     container.replaceChildren();
     const controls = element("div", "skill-library-controls");
-    const stages = ["", "GROUNDING", "LITERATURE_REVIEW", "PROPOSE_HYPOTHESIS", "SYNTHESIS",
+    const stages = ["", "GROUNDING", "LITERATURE_REVIEW", "PROPOSE_HYPOTHESIS", "HYPOTHESIS_PROPOSAL",
       "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS", "CYCLE_REPORT", "SELF_EVOLVE", "GRAPH_EVOLVE"];
     [["window", t("Time range"), [["", t("Entire run")], ["3600", t("Last hour of run")], ["21600", t("Last 6 hours of run")], ["86400", t("Last 24 hours of run")]]],
      ["command", t("Research stage"), stages.map((stage) => [stage, stage || t("All stages")])]].forEach(([name, label, options]) => {
@@ -3620,6 +3678,7 @@
       plot.append(bar);
     });
     trend.append(plot, caption); charts.append(frequency, trend); container.append(charts);
+    renderSkillEffects(container, activity.effects);
     const evolution = element("details", "skill-evolution-list");
     evolution.open = true;
     evolution.append(element("summary", "", t("Evolution history")));
@@ -3747,7 +3806,7 @@
     const evidenceStatus = data.available === false ? kind === "attempt" && data.attempt?.failure_code
       ? t("Recorded failure · session trace unavailable") : t("Evidence unavailable") : t("Read-only evidence");
     setText("research-detail-status", selected.data ? `${evidenceStatus}${data.scope ? ` · ${data.scope}` : ""}${data.truncated ? t(" · bounded response; more evidence exists") : ""}` : t("Reading run-bound evidence…"));
-    const names = kind === "skill" ? [["overview", "Version"], ["body", t("Skill content")], ["usage", t("Calls")], ["evolution", t("Evolution history")], ["diff", t("Recent diff")], ["adoption", "Adoption"], ["files", t("Supporting files")]]
+    const names = kind === "skill" ? [["overview", "Version"], ["body", t("Skill content")], ["usage", t("Calls")], ["effects", t("Outcomes / follow-up")], ["evolution", t("Evolution history")], ["diff", t("Recent diff")], ["adoption", "Adoption"], ["files", t("Supporting files")]]
       : kind === "attempt" ? [["overview", t("Attempt")], ["timeline", "Session / tools"], ["corrections", "Corrections"], ["execution", t("Execution evidence")]]
         : kind === "interaction" ? [["overview", "Overview"], ["timeline", "Stages / verdict"]]
           : [["overview", kind === "resource" ? "Estimate → admission → measured" : t("Evidence")]];
@@ -3803,6 +3862,8 @@
     } else if (kind === "skill" && state.detailTab === "usage") {
       structuredDetail(content, data.usage || {coverage: "unavailable"});
       renderSkillCalls(content, data.calls, data.calls_truncated);
+    } else if (kind === "skill" && state.detailTab === "effects") {
+      renderSkillEffects(content, data.effects);
     } else if (kind === "skill" && state.detailTab === "evolution") {
       renderSkillEvolution(content, data.evolutions);
     } else if (state.detailTab === "body") {

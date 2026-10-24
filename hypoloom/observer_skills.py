@@ -86,7 +86,7 @@ def _evolutions(root, run_id, attempts, versions, role, since):
     return sorted(events, key=lambda event: (details._time(event.get("started_at")), event["attempt_id"]), reverse=True)
 
 
-def skill_activity(root, run_id, attempts, selectors, versions):
+def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(), facts=()):
     """Bounded current-invocation reads. Partial capture is a lower bound.
 
     Request binding identifies the version, never proves a Skill call. Reuse
@@ -98,10 +98,11 @@ def skill_activity(root, run_id, attempts, selectors, versions):
     if any(row.get("state") == "OPEN" for row in rows):
         until = max(until, time.time())
     since = max(0, until - int(selectors["window"])) if selectors.get("window") else 0
-    selected = []
+    selected, bindings, evidence_by_attempt = [], {}, {}
     known_versions = {(item["role"], item["commit"]): item for item in versions}
     for row in rows:
         binding = details._request_plugin(row, run_id)
+        bindings[row["attempt_id"]] = binding
         if binding is None or role and binding["role"] != role:
             continue
         if selectors.get("commit") and binding["commit"] != selectors["commit"]:
@@ -122,6 +123,7 @@ def skill_activity(root, run_id, attempts, selectors, versions):
     with evidence_read_budget(32):
         for row, binding, request in reversed(selected):
             evidence = read_attempt_evidence(root, run_id, row) if time.monotonic() < deadline else {"coverage": "unavailable"}
+            evidence_by_attempt[row["attempt_id"]] = evidence
             coverage[evidence["coverage"]] += 1
             for call in evidence.get("skill_calls", ()):
                 qualified = call["name"]
@@ -188,7 +190,13 @@ def skill_activity(root, run_id, attempts, selectors, versions):
             and call["name"] in changed_names
             and call["attempt_id"] != event["attempt_id"] and details._time(call["timestamp"]) >= details._time(event["ended_at"])
             for call in calls)
+    from .skill_observations import outcome_nodes, scorecards, followups
+    nodes = outcome_nodes(root, run_id, rows, bindings, transitions=transitions, facts=facts, evidence=evidence_by_attempt)
+    effects = scorecards(nodes, calls, selected_ids={row["attempt_id"] for row, _, _ in selected}, name=selectors.get("name"))
+    effects.update(followups([node for node in nodes if not command or node["node"] == command],
+        evolutions, name=selectors.get("name")))
     return {"coverage": state, "attempts": len(selected), "capture": dict(coverage),
+        "effects": effects,
         "started_at": start, "ended_at": until, "bin_seconds": width, "untimed_calls": untimed,
         "unmatched_calls": unmatched, "observed_calls": len(calls),
         "skills": sorted(by_skill.values(), key=lambda item: (-item["calls"], item["role"], item["name"])),

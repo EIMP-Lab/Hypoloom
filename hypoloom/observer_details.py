@@ -290,7 +290,7 @@ def skill_catalog(state_root, run_id, attempts):
                    "unknown_versions": unknown, "coverage": "unavailable" if not versions else "partial" if unknown else "complete"})
 
 
-def _skill(root, run_id, attempts, selectors):
+def _skill(root, run_id, attempts, selectors, *, transitions=(), facts=()):
     from .observer_skills import skill_activity, skill_diff
     versions = [item for item in _version_sources(run_id, attempts) if item["role"] == selectors["role"]]
     commit = selectors.get("commit")
@@ -329,7 +329,8 @@ def _skill(root, run_id, attempts, selectors):
     # Publication and binding are separate. No native Skill invocation is inferred.
     adoption = [item for item in version["bindings"] if update is None or
                 (item["attempt_id"] != update["attempt_id"] and _time(item.get("started_at")) >= _time(update.get("ended_at")))]
-    activity = skill_activity(root, run_id, attempts, {"role": version["role"], "name": name, "commit": commit}, versions)
+    activity = skill_activity(root, run_id, attempts, {"role": version["role"], "name": name, "commit": commit}, versions,
+        transitions=transitions, facts=facts)
     calls = [call for call in activity["calls"] if (call["name"], call["commit"]) == (name, commit)]
     for item in adoption:
         observed = [call for call in calls if call["attempt_id"] == item["attempt_id"]]
@@ -343,6 +344,7 @@ def _skill(root, run_id, attempts, selectors):
             "usage": next((item for item in activity["versions"] if (item["name"], item["commit"]) == (name, commit)),
                           {"calls": 0, "coverage": activity["coverage"]}),
             "calls": calls, "calls_truncated": activity["calls_truncated"],
+            "effects": activity["effects"],
             "evolutions": [event for event in activity["evolutions"]
                            if any(item["name"] == name for item in event["skills"])],
             "versions": [{"commit": item["commit"], "current": item["current"]} for item in versions]}
@@ -740,20 +742,22 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         else:
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
         facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions"} else []
-        transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources"} else []
+        if kind in {"skills", "skill"}:
+            facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? AND fact_type='GoalVerdictRecorded' ORDER BY rowid", (run_id,))]
+        transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources", "skills", "skill"} else []
         commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind == "resources" else []
     if kind == "skills":
         from .observer_skills import skill_activity
         catalog = skill_catalog(root, run_id, attempts)
         values = [item for item in catalog.pop("skills") if not selectors.get("role") or item["role"] == selectors["role"]]
-        activity = skill_activity(root, run_id, attempts, selectors, catalog["versions"])
+        activity = skill_activity(root, run_id, attempts, selectors, catalog["versions"], transitions=transitions, facts=facts)
         by_version = {(item["role"], item["name"], item["commit"]): item for item in activity.pop("versions")}
         for item in values:
             item["usage"] = by_version.get((item["role"], item["name"], item["commit"]),
                 {"calls": 0, "coverage": activity["coverage"]})
         result = _page("skills", values, selectors, **catalog, activity=activity)
     elif kind == "skill":
-        result = _skill(root, run_id, attempts, selectors)
+        result = _skill(root, run_id, attempts, selectors, transitions=transitions, facts=facts)
     elif kind == "literature":
         from .observer_summary import literature_catalog
         catalog = literature_catalog(root, run_id, attempts)

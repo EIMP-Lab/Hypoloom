@@ -24,6 +24,25 @@ The shared research-workflow skill and its stage references are editable here.
 Use its evolution guidance; no change is valid when evidence does not justify
 an improvement. Your update never replaces another owner's skill version.
 
+Use the run-local `--skill-feedback` input to revisit earlier failures across
+bound versions, including failures that produced no experiment. It contains
+execution observations, not a quality ranking or proof that a skill was called.
+In the existing summary and supporting_refs, retain the target problem, original
+Attempt/proposal references, changed skill and stage, expected observable change,
+and what still needs follow-up. supporting_refs must use the current request's
+immutable_context_refs: cite the feedback input there, with original Attempt IDs
+in the summary prose. Compare like stages, components and models; state
+sample counts and unknowns. A committed update with no later task is unvalidated.
+Repeated failures after an update remain open evidence even if the report sounds
+positive. A valid scientific refutation is not a skill failure.
+
+Trace frozen measurement/evaluator failures to the accepted proposal. Repair the
+proposal-stage guidance when the declaration originates there; DESIGN cannot
+rewrite a frozen declaration. To undo a harmful change to one skill, restore that
+skill's entry and supporting files from a known private Git version in this new
+SELF_EVOLVE candidate, preserving other skills. A whole-plugin pin/revert has a
+different scope. Do not schedule extra work or bypass round/budget limits.
+
 For a resource lesson, use this request's scoped workload estimates, attributed
 peaks/unknown observations and exact Process Attempt references. Improve the
 resource-planning strategy, not the operator's floor/reserve or device authority.

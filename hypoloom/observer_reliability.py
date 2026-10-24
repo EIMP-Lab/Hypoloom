@@ -19,7 +19,7 @@ _NOTICES = [
     "Execution observations are not base-model intelligence scores or scientific goal verdicts.",
     "MODEL/INFRASTRUCTURE are retry routes, not established causes. Attribution is separate and tentative.",
     "Rates show numerator/denominator, unknown and excluded samples; zero denominators are unavailable.",
-    "Active failed nodes can still retry: final delivery remains pending until acceptance or run termination.",
+    "Active failed nodes can still retry: delivery remains pending until acceptance, recorded final failure or run termination.",
     "Tool counts are observed lower bounds when trace coverage is incomplete; tool errors can be expected tests.",
     "Required actions cover only the existing explicit resource Skill/load/query instruction, not all prose instructions.",
     "Retry tokens are reported additional-call usage. Reservations are not measured usage and unknown is not zero.",
@@ -216,15 +216,35 @@ def summarize_reliability(nodes, *, include_nodes=True, include_groups=None):
     return result
 
 
-def build_reliability(state_root, run_id, attempts, *, run_terminal=False, interrupted_at=None, evidence_reader=None):
+def reliability_context(transitions, facts=()):
+    """Existing durable closure evidence shared by all execution score views."""
+    def payload(row):
+        return _object(row.get("payload", row.get("payload_json")))
+
+    run_rows = [row for row in transitions if row.get("workflow_kind") == "RUN"]
+    terminal = next((row for row in run_rows if row.get("state") in {"COMPLETED", "FAILED", "CANCELLED"}), None)
+    interruptions = [_time(row.get("created_at")) for row in facts
+        if row.get("fact_type") == "GoalVerdictRecorded" and payload(row).get("verdict") == "GOAL_MET"]
+    interruptions.extend(_time(row.get("created_at")) for row in run_rows
+        if row.get("state") == "STOPPING" and payload(row).get("stop_disposition") == "CANCELLED")
+    if terminal is not None and terminal.get("state") == "CANCELLED":
+        interruptions.append(_time(terminal.get("created_at")))
+    return {"run_terminal": terminal is not None,
+        "interrupted_at": min((value for value in interruptions if value is not None), default=None),
+        "final_failure_ids": {payload(row).get("attempt_id") for row in transitions if payload(row).get("agent_final_failure")}}
+
+
+def build_reliability(state_root, run_id, attempts, *, run_terminal=False, interrupted_at=None,
+                      final_failure_ids=(), evidence_reader=None):
     if evidence_reader is None:
         from .observer_evidence import evidence_read_budget, read_attempt_evidence
         with evidence_read_budget(16):
-            return _build(state_root, run_id, attempts, run_terminal, interrupted_at, read_attempt_evidence)
-    return _build(state_root, run_id, attempts, run_terminal, interrupted_at, evidence_reader)
+            return _build(state_root, run_id, attempts, run_terminal, interrupted_at, final_failure_ids, read_attempt_evidence)
+    return _build(state_root, run_id, attempts, run_terminal, interrupted_at, final_failure_ids, evidence_reader)
 
 
-def _build(state_root, run_id, attempts, run_terminal, interrupted_at, evidence_reader):
+def _build(state_root, run_id, attempts, run_terminal, interrupted_at, final_failure_ids, evidence_reader):
+    final_failure_ids = set(final_failure_ids)
     grouped = defaultdict(list)
     for row in attempts:
         if row.get("kind") != "AGENT" or row.get("run_id", run_id) != run_id:
@@ -246,7 +266,10 @@ def _build(state_root, run_id, attempts, run_terminal, interrupted_at, evidence_
         last = views[-1]
         state = ("pending" if any(item["state"] == "OPEN" for item in views) else
             "delivered" if last["terminal_reason"] == "SUCCEEDED" else
-            "cancelled" if last["terminal_reason"] == "CANCELLED" or (run_terminal and interrupted_at is not None
+            "cancelled" if last["terminal_reason"] == "CANCELLED" else
+            "undelivered" if last["attempt_id"] in final_failure_ids
+                and last["terminal_reason"] in {"FAILED", "LOST", "TIMED_OUT"} else
+            "cancelled" if (run_terminal and interrupted_at is not None
                 and last["started_at"] is not None and last["started_at"] <= interrupted_at) else
             "undelivered" if run_terminal and last["terminal_reason"] in {"FAILED", "LOST", "TIMED_OUT"} else "pending")
         metrics = _sum_metrics([item["metrics"] for item in views])

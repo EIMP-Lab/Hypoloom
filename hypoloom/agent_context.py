@@ -1396,6 +1396,10 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
         report_component = component_id if host._batch_enabled(run_id) and sum(item.owner_role == role for item in contract.components) > 1 else None
         if report_component is not None: resources["report_component_id"] = report_component
         inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--expert-resources", "application/json", canonical_json(resources)))
+        if task.key.node_kind in {ResearchNodeKind.HYPOTHESIS_PROPOSAL, ResearchNodeKind.CYCLE_REPORT, ResearchNodeKind.SELF_EVOLVE}:
+            from .skill_observations import runtime_feedback
+            inputs.append(EmbeddedInput.from_bytes(f"{task.command_id}--skill-feedback", "application/json",
+                canonical_json(runtime_feedback(host.store, host.state_root, run_id, role, component_id))))
         if task.key.node_kind in {ResearchNodeKind.CYCLE_REPORT, ResearchNodeKind.SELF_EVOLVE}:
             hypothesis_ids = (set(host._batch_history(run_id, component_id, role).batches[task.key.cycle - 1].members.values()) if host._batch_enabled(run_id)
                 else {str(host._expert_hypothesis_chain(run_id, component_id, role)[task.key.cycle - 1]["hypothesis_id"])})

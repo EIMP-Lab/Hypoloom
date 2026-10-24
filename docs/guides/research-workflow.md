@@ -216,7 +216,7 @@ remain. Private numerical lessons are conditional, not automatic cross-run polic
 Choose **Skill library** on an expert card, or **Expert skill library** in the
 global summary. Both open the existing skills workbench. Filter by expert, research
 stage and the entire run or its last 1/6/24 hours. For a finished run, the window
-ends at its last recorded Agent activity. The stage filter applies to calls;
+ends at its last recorded Agent activity. The stage filter applies to calls and task outcomes;
 evolution history follows the expert/time filters.
 
 The library shows observed native Skill calls, loaded/failed/unanswered results,
@@ -235,6 +235,31 @@ skill to inspect its content, supporting files, whole-directory diff and usage.
 Concurrent bindings may use different versions. All views reuse existing logs,
 Attempt records and Git objects; they do not modify research state or create a
 second durable skills database. Existing research runs are not upgraded in place.
+
+**Outcomes / follow-up** shows first-pass validation, node delivery and retry
+rates with sample counts, unknowns and exclusions, plus reported/reserved retry
+cost and elapsed time. Cohorts keep the actual bound Git commit, research stage,
+component and model separate. Bound-version task results and nodes with observed
+calls to one skill are different views; several skills can share a node and its
+costs, so do not sum them. A scientific refutation is not an execution failure.
+
+Failure links open the original Attempt and, when the accepted relation survives,
+the source hypothesis proposal. Each changed skill has follow-up against later
+versions in comparable stage/component/model contexts. Exact repeated diagnostic
+text means recurrence; changed text can hide a related failure. No later samples
+means **Awaiting validation**. Absence of recurrence does not prove a fix or make
+the score a causal measure of skill quality. Filters exclude incomplete retry
+chains; bounded views and missing captures remain explicit.
+
+New runs also supply bounded owner-local failure/version feedback to proposal,
+CYCLE_REPORT and SELF_EVOLVE nodes, including failed designs that produced no
+experiment. Experts keep the target problem, source references, expected change
+and unresolved follow-up in their existing reports and evolution summaries.
+This follows the ordinary cycle triggers and budgets; it neither creates extra
+evolution nodes nor automatically selects or rolls back a version. To restore
+one skill, SELF_EVOLVE can produce a new private commit restoring that skill's
+whole directory while preserving the others. Whole-plugin pin/revert controls
+retain their existing scope. Retained runs and their frozen bundles stay intact.
 
 
 ## Parser inputs and bounded design
