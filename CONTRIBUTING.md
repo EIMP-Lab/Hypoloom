@@ -57,7 +57,32 @@ research data, and do not attach checks to other users' running Hosts or GPU poo
 
 ## Validation status
 
-The init offline-closure follow-up passes **303 focused runtime tests and four
+The October 27 run-audit and feedback update aligns shared-goal closing with
+accepted measurements, checks explicit Process claims in final reports, and
+preserves complete evolution summaries within the existing input budget. Native
+rejection stages, explicit execution repair links and observations for each plugin
+version make follow-up evidence easier to inspect. See [Research workflow](docs/guides/research-workflow.md)
+and [Runtime recovery](docs/guides/runtime-recovery.md) for the user-facing behavior.
+
+The corresponding [dev qualification record](https://github.com/EIMP-Lab/Hypoloom/blob/c9aae262246ab6c7f85d1550b23ee210a04d1cde/docs/qualification.md#framework-follow-up-2026-10-27)
+reconciles **8,574 passes and 159 explicit skips** after full offline testing and
+focused repairs; this is not one uninterrupted green full run. All seven native
+Host/CPU scenarios close, and all 15 retained-run audits keep their original
+findings. Original failures and their follow-up checks remain in that record.
+This update's validation covers offline and CPU paths; the earlier GPU/model
+results below retain their original runtime and configuration boundaries.
+
+Separate main publication checks pass **411 tests**: 400 focused runtime/public
+checks, five browser cases and six native checks. The five Host scenarios close
+133 Agents and 11 Processes with 11 outcomes and one accepted terminal command
+per run; all 149 recorded test process groups are absent after cleanup. Runtime
+logic matches dev, retaining only the two existing documentation-string differences.
+All 199 public runtime files match across source, wheel, isolated installation and
+fresh runtime bundles. Installed CLI/MCP and two CPU Process closures pass; three
+retained expert-feedback projections match their read-only baselines. These are
+bounded publication checks, not a new full G0–G5 qualification.
+
+The preceding init offline-closure follow-up passes **303 focused runtime tests and four
 documentation checks**. Disposable overlays of two retained runs also pass their
 original Oracles and independent closure/residue counts. These targeted checks
 do not extend the earlier full G0–G5 qualification to the updated runtime. See

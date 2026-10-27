@@ -25,9 +25,9 @@ data preparation, training, evaluation and artifact checks separately before
 changing batch sizes or parallelism; preserve scientific settings and Host grants.
 
 Change actual target files and test those changes in the selected environment.
-Exercise meaningful scientific and integration behavior, including invalid or
-boundary inputs where relevant. Scratch-only success does not validate the
-submitted implementation. Use the resource-planning and repair skills for their
+Exercise meaningful behavior, using bounded negative or boundary cases where
+relevant to show the check detects the original fault. Scratch-only success does
+not validate submitted code. Use the resource-planning and repair skills for their
 scoped duties; local exploration does not grant direct GPU experiment authority.
 
 For a declared local measurement, follow the runtime's parser and smoke contract.

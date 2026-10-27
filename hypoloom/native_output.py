@@ -311,17 +311,21 @@ class NativeOutputValidator:
             error = None
             hint = ""
             smoke = None
+            validation_stage = "json_decode"
             try:
                 output = _decode_output(document["last_assistant_message"], self._validator)
                 if self.candidate_check is not None:
+                    validation_stage = "candidate_validation"
                     self.candidate_check(output)
                 if self.final_report_check is not None:
+                    validation_stage = "final_report"
                     from .git_authoring_workspace import GitAuthoringIntegrityError
                     try:
                         self.final_report_check()
                     except (OSError, GitAuthoringIntegrityError) as exc:
                         raise ValueError(f"final report file is unavailable: {exc}") from exc
                 if self.execution_tool_socket is not None:
+                    validation_stage = "execution_completion"
                     from .agent_aci import validate_execution_completion
                     from .host_tools_server import _call_host
                     # The existing Attempt-scoped queue reads on the Host thread.
@@ -345,6 +349,7 @@ class NativeOutputValidator:
                     label = "common" if self.acceptance_smoke else "local C5"
                     declaration = output.get("typed_candidate", {}).get(key)
                     if declaration is not None:
+                        validation_stage = "parser_smoke"
                         smoke = parser_smoke(document["last_assistant_message"],
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
@@ -365,6 +370,8 @@ class NativeOutputValidator:
             except ValueError as exc:
                 error = str(exc)
                 hint = getattr(exc, "correction_hint", "")
+                if validation_stage == "json_decode" and isinstance(exc, _SchemaMismatch):
+                    validation_stage = "output_schema"
             _remaining(self.deadline_at)
             if self._closed.is_set():
                 raise ValueError("native output validator is closed")
@@ -381,12 +388,15 @@ class NativeOutputValidator:
                 self._rejected += 1
                 self._status = "unresolved"
             self._accepted = error is None
+            # Optional observation of the boundary that actually rejected this
+            # completion. Never reconstruct it later from diagnostic prose.
+            failure_source = {"validation_stage": validation_stage} if error is not None else {}
             self._rounds.append({"ordinal": ordinal, "status": "accepted" if error is None else "rejected",
-                                 "validation_error": error})
+                                 "validation_error": error, **failure_source})
             if self.diagnostics is not None:
                 self.diagnostics.write_json(f"native-output/{ordinal:06d}.json", {
                     **document, **({"parser_smoke": smoke} if self.acceptance_smoke or self.measurement_smoke else {}),
-                    "ordinal": ordinal, "error": error})
+                    "ordinal": ordinal, "error": error, **failure_source})
             _remaining(self.deadline_at)
             if error is not None and self._rejected < self.max_failed_validations:
                 return {"decision": "block", "reason": error + hint + (

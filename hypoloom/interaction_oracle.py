@@ -86,6 +86,34 @@ class _InteractionAudit:
                 == (role, component, "SELF_EVOLVE", cycle))
         return bool(reports and (evolves or failed))
 
+    def _closing(self, started):
+        if self.product.get("goal", {}).get("completion_mode") != "shared_goal":
+            return False
+        current = [self.facts[str(row["fact_id"])] for row in self.fact_rows
+            if _time(row["created_at"]) <= started]
+        assessments = [row for row in current if row["fact_type"] == "HypothesisAssessed"]
+        if self.contract["goal"].get("evaluation") != {"mode": "grounding"}:
+            return any(row["assessment"] == "SUPPORTED" for row in assessments)
+        outcomes = [row for row in current if row["fact_type"] == "CanonicalOutcomeAccepted"]
+        evidence = [row for row in current if row["fact_type"] == "EvidenceLinked"]
+        declarations = {}
+        for assessment in assessments:
+            linked = {row["outcome_id"] for row in evidence if row["evidence_id"] in assessment["evidence_ids"]}
+            for outcome in outcomes:
+                observed = outcome.get("goal_evaluation")
+                if outcome["outcome_id"] not in linked or observed is None:
+                    continue
+                source_id = observed["source_attempt_id"]
+                if source_id not in declarations:
+                    from .shared_acceptance_oracle import grounding_source
+                    declarations[source_id] = grounding_source(source_id, self.run_id,
+                        self.attempts.values(), self.observations, self.root / "artifacts")[0]
+                from .shared_acceptance_oracle import interpret_shared_acceptance
+                if interpret_shared_acceptance(declarations[source_id],
+                        {name: observed[name] for name in ("measurements", "checks")}).goal_met:
+                    return True
+        return False
+
     def qualifications(self, facts, version=14):
         by_kind = {}
         for fact in facts:
@@ -199,9 +227,7 @@ class _InteractionAudit:
             _need(context["eligible_leader_hypotheses"] == sorted(eligible_hypotheses),
                 "Observer contribution eligibility differs from its own closed cycle and budget")
         _need(context["eligible_leader_components"] == eligible, "Observer minimum-round eligible components differ from actual closed records")
-        closing = (self.product.get("goal", {}).get("completion_mode") == "shared_goal"
-            and any(item["fact_type"] == "HypothesisAssessed" and item["assessment"] == "SUPPORTED" for item in frozen)
-            and any(event["action"] in {"leader_round_finished", "debate_restarts_finished"} and _time(effect["created_at"]) <= started for effect, event in self.events))
+        closing = self._closing(started)
         expected = ["none", "leader"] if eligible and self.settings.get("leader", {}).get("enabled", False) and not closing else ["none"]
         if request["schema_version"] >= 23 and "leader" in expected:
             prior = [(effect, event) for effect, event in self.events if event["action"] == "leader_selected"

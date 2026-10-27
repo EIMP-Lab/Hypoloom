@@ -438,6 +438,8 @@ def _structured_output_correction(value: object) -> dict[str, Any] | None:
         rounds = [{
             "ordinal": item.get("ordinal") if type(item.get("ordinal")) is int and item["ordinal"] > 0 else None,
             "status": item["status"], "validation_error": bounded_diagnostic_text(item.get("validation_error")),
+            **({"validation_stage": bounded_diagnostic_text(item.get("validation_stage"))}
+               if "validation_stage" in item else {}),
         } for item in raw[:64] if isinstance(item, Mapping) and item.get("status") in {"accepted", "rejected", "error"}]
         result = {"scope": "native_stop_validation", "validation_source": "host_stop_hook",
                   "status": value["status"], "accepted": value["accepted"],

@@ -190,11 +190,13 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
             and call["name"] in changed_names
             and call["attempt_id"] != event["attempt_id"] and details._time(call["timestamp"]) >= details._time(event["ended_at"])
             for call in calls)
-    from .skill_observations import outcome_nodes, scorecards, followups
+    from .skill_observations import outcome_nodes, process_outcomes, process_repairs, scorecards, followups
     nodes = outcome_nodes(root, run_id, rows, bindings, transitions=transitions, facts=facts, evidence=evidence_by_attempt)
+    processes = process_outcomes(root, run_id, attempts, bindings, transitions=transitions, facts=facts)
     effects = scorecards(nodes, calls, selected_ids={row["attempt_id"] for row, _, _ in selected}, name=selectors.get("name"))
+    effects.update(process_repairs(processes, selected_ids={row["attempt_id"] for row, _, _ in selected}))
     effects.update(followups([node for node in nodes if not command or node["node"] == command],
-        evolutions, name=selectors.get("name")))
+        evolutions, name=selectors.get("name"), processes=processes))
     return {"coverage": state, "attempts": len(selected), "capture": dict(coverage),
         "effects": effects,
         "started_at": start, "ended_at": until, "bin_seconds": width, "untimed_calls": untimed,

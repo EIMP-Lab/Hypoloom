@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
@@ -258,7 +259,71 @@ def report_sources(request):
     return verdict, citations, context["stop_reason"]
 
 
-def validate_final_report(files, request):
+def process_consistency_errors(outcome, text):
+    """Compare explicit Process fields without interpreting scientific claims."""
+    if not isinstance(outcome, dict) or not isinstance(text, str):
+        return []
+    expected = {}
+    for detail in outcome.get("process_attempt_details", []):
+        canonical = detail.get("canonical_outcome")
+        if not isinstance(canonical, dict) or not isinstance(canonical.get("outcome_id"), str):
+            continue
+        expected[canonical["outcome_id"]] = {
+            "returncode": detail.get("returncode"),
+            "terminal_reason": detail.get("terminal_reason"),
+            "validation_code": canonical.get("validation_code"),
+        }
+    counts = outcome.get("process_attempts_by_returncode", {})
+    validation_codes = {item["validation_code"] for item in expected.values() if item["validation_code"] is not None}
+    errors = []
+    number = r"(?:None|[-−]?\d+)"
+    normalize = lambda value: value.replace("−", "-")
+    for line in text.splitlines():
+        identities = [identity for identity in expected
+            if re.search(re.escape(identity) + r"(?![A-Za-z0-9_-])", line)]
+        rc_mentions = re.findall(rf"\brc\s*=\s*({number})", line)
+        states = set(re.findall(r"\b(?:SUCCEEDED|FAILED|CANCELLED|TIMED_OUT|LOST)\b", line))
+        present_codes = {code for code in validation_codes if code in line}
+        aggregate_counts = re.search(rf"\d\s*[×x]\s*rc|{number}\s*→\s*\d+", line)
+        ambiguous = aggregate_counts or len(rc_mentions) > 1 or len(states) > 1 or len(present_codes) > 1
+        if identities and not ambiguous:
+            def single(field):
+                values = {expected[identity][field] for identity in identities}
+                return next(iter(values)) if len(values) == 1 else ...
+
+            wanted = single("returncode")
+            if wanted is not ...:
+                for match in re.finditer(rf"\brc\s*=\s*({number})", line):
+                    if normalize(match.group(1)) != str(wanted):
+                        errors.append(f"{identities[0]} returncode expected {wanted}, found {match.group(1)}")
+                if line.lstrip().startswith("|"):
+                    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                    cell = re.fullmatch(rf"(?:rc\s*=\s*)?({number})", cells[1]) if len(cells) > 1 else None
+                    if cell is not None and normalize(cell.group(1)) != str(wanted):
+                        errors.append(f"{identities[0]} returncode expected {wanted}, found {cell.group(1)}")
+            wanted = single("terminal_reason")
+            if wanted is not ... and len(states) == 1:
+                actual = next(iter(states))
+                if actual != wanted:
+                    errors.append(f"{identities[0]} terminal_reason expected {wanted}, found {actual}")
+            wanted = single("validation_code")
+            if wanted is not ...:
+                for code in present_codes:
+                    if code != wanted:
+                        errors.append(f"{identities[0]} validation_code expected {wanted}, found {code}")
+        for match in re.finditer(rf"(\d+)\s*[×x]\s*rc\s*=\s*({number})", line):
+            code = normalize(match.group(2))
+            if counts.get(code, 0) != int(match.group(1)):
+                errors.append(f"returncode {code} count expected {counts.get(code, 0)}, found {match.group(1)}")
+        if "process_attempts_by_returncode" in line or re.search(r"\brc\b", line):
+            for match in re.finditer(rf"({number})\s*→\s*(\d+)", line):
+                code = normalize(match.group(1))
+                if counts.get(code, 0) != int(match.group(2)):
+                    errors.append(f"returncode {code} count expected {counts.get(code, 0)}, found {match.group(2)}")
+    return list(dict.fromkeys(errors))
+
+
+def validate_final_report(files, request, *, summary=None):
     if set(files) != {"FINAL_REPORT.md"}:
         raise ValueError("final report requires exactly FINAL_REPORT.md")
     contents = files["FINAL_REPORT.md"]
@@ -273,6 +338,7 @@ def validate_final_report(files, request):
                          f"missing_reference_ids={json.dumps(missing)}")
     if verdict[1] is not None and verdict[1] not in report:
         raise ValueError("final report omits the actual accepted verdict")
+    outcome = {}
     for item in request.input_artifacts:
         if item.ref.endswith("--final-report-context"):
             outcome = json.loads(item.content_bytes()).get("run_outcome", {})
@@ -287,6 +353,11 @@ def validate_final_report(files, request):
             if (json.loads(source["observation_json"])["request"]["command"] == "CYCLE_REPORT"
                     and source["attempt_id"] not in report):
                 raise ValueError("final report omits its actual failed cycle-report reference")
+    errors = process_consistency_errors(outcome, report)
+    if summary is not None:
+        errors.extend(process_consistency_errors(outcome, summary))
+    if errors:
+        raise ValueError("final report disagrees with actual Process evidence: " + errors[0])
 
 
 def accepted_report_view(run_id, attempts):

@@ -146,7 +146,8 @@ def _attempt(root, run_id, row, reader):
         key: raw_correction.get(key) for key in ("scope", "status", "accepted", "call_count", "rejected_count", "truncated")}
     if correction_view is not None:
         correction_view["rounds"] = [{"ordinal": item.get("ordinal", item.get("round")),
-            "status": _text(item.get("status")), "validation_error": _text(item.get("validation_error"))}
+            "status": _text(item.get("status")), "validation_error": _text(item.get("validation_error")),
+            "validation_stage": _text(item.get("validation_stage"))}
             for item in raw_correction.get("rounds", [])[:64] if isinstance(item, dict)] if isinstance(raw_correction.get("rounds"), list) else []
     return {"attempt_id": row["attempt_id"], "state": row.get("state"), "terminal_reason": terminal,
         "attempt_ordinal": row.get("attempt_ordinal"),
