@@ -19,7 +19,7 @@ from hypoloom.oracle import Oracle
 from test_claude_file_tool_cli import _installed_claude, _result_text, _tool_results
 from test_claude_leader_host_g3 import _LeaderCandidateAgent, _LeaderHostScenario, _synthesis
 from test_claude_multichain_g3 import _payload
-from test_expert_memory_g3 import _cycle
+from test_expert_memory_g3 import _HOST_RESTART_WAIT, _cycle
 from test_full_cc_host_g3 import _new_host, _request_from_provider, _start_provider
 
 
@@ -126,7 +126,7 @@ class _DebateHostScenario(_LeaderHostScenario):
                 return (("debate_context", "Read", {"file_path": f"/inputs/{index:04d}.txt"}),)
             if step == 2:
                 if context["round"] == 2 and request.role == _ROLES[0] and not self.debate_restart_completed:
-                    return (("debate_before_restart", "Bash", {"command": "sleep 30", "timeout": 35000}),)
+                    return (("debate_before_restart", "Bash", {"command": _HOST_RESTART_WAIT, "timeout": 35000}),)
                 return (("debate_memory", "Read", {"file_path": "/memory/MEMORY.md"}),)
             if step == 3: return (("debate_web", "mcp__host-tools__web_fetch", {"url": _WEB_URL}),)
             if step == 4:

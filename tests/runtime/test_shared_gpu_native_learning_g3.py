@@ -74,6 +74,12 @@ class _ResourceLearningScenario(_FinalReportMemoryScenario):
         # separately covers restart. Do not inject its sleeping restart branch.
         self.restart_completed = True
         self.resource_nonce = "native-resource-lesson-" + secrets.token_hex(12)
+        self.evolution_summary = (
+            "CPU-only evidence cannot estimate attributed GPU memory. Preserve the original source Attempts "
+            "and inspect authorized live resources before proposing the next execution plan. " * 8
+            + "Unresolved follow-up: obtain an authorized measurement before revising the GPU estimate. "
+            + self.resource_nonce
+        )
         self.prefix_steps = defaultdict(int)
         self.frozen_requests = {}
         self.history = {}
@@ -198,7 +204,12 @@ class _ResourceLearningScenario(_FinalReportMemoryScenario):
             )
             return ((self._identity("evolve_check", request), "Bash",
                      {"command": "python3 - <<'PY'\n" + script + "PY", "timeout": 10000}),)
-        return super().tool_calls(number)
+        calls = super().tool_calls(number)
+        if request.command is AgentCommand.SELF_EVOLVE:
+            for _, name, output in calls:
+                if name == "StructuredOutput":
+                    output["typed_candidate"] = {**output["typed_candidate"], "summary": self.evolution_summary}
+        return calls
 
 
 def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -277,9 +288,13 @@ def test_native_resource_skill_query_and_self_evolve_close_two_cpu_cycles(tmp_pa
                     assert feedback["scope"] == {"run_id": run_id, "role": request.role,
                         "component_id": request.component_id}
                     assert feedback["basis"] == "bound_version" and not feedback["history_truncated"]
+                    assert len(json.dumps(feedback, ensure_ascii=False).encode()) <= 24576
                     assert all(group["basis"] == "bound_version" for group in feedback["groups"])
                     if _cycle(request) == 2:
-                        assert first_update["commit"] in {item["commit"] for item in feedback["updates"]}
+                        update = next(item for item in feedback["updates"] if item["commit"] == first_update["commit"])
+                        assert len(scenario.evolution_summary) > 1000
+                        assert update["summary"] == scenario.evolution_summary and not update["summary_truncated"]
+                        assert update["attempt_id"] == evolutions[0]["request"]["attempt_id"]
                         assert any(group["stage"] == "EXPERIMENT_DESIGN_IMPLEMENT" and
                             group["metrics"]["node_delivery"]["numerator"] >= 1 for group in feedback["groups"])
             assert len(scenario.live_queries) == len(scenario.skill_results) == len(scenario.skill_names) == 4

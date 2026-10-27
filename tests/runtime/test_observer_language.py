@@ -56,10 +56,25 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
             if app._expert_roles:
                 selector.value = app._expert_roles[0]
             selected = selector.value
-            for _ in range(2):
-                await pilot.click('#language-button')
+
+            async def switch_language(expected):
+                button = app.query_one('#language-button', Button)
+
+                async def ready():
+                    # Textual ignores clicks during the preceding active effect;
+                    # Pilot.click only confirms that the pointer hit the widget.
+                    while button.has_class('-active'):
+                        await pilot.pause(0.01)
+
+                await asyncio.wait_for(ready(), timeout=5)
+                assert await pilot.click('#language-button')
                 await pilot.pause()
-                assert app.ui_language == 'zh-CN'
+                assert app.ui_language == expected
+
+            # Exercise the real transient button state before the first toggle.
+            app.query_one('#language-button', Button)._start_active_affect()
+            for _ in range(2):
+                await switch_language('zh-CN')
                 assert str(app.query_one('#help-button', Button).label) == '帮助'
                 assert '运行概览' in str(app.query_one('#summary .panel-content', Static).render())
                 assert '连接方式：直连' in str(app.query_one('#summary .panel-content', Static).render())
@@ -71,11 +86,10 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
                     assert any(str(button.label) in button.render_line(y).text for y in range(button.size.height))
                 assert '退出监视器' in app.screen.active_bindings['q'].binding.description
                 assert '所有专家' in str(selector._options[0][0])
-                await pilot.click('#language-button')
-                await pilot.pause()
+                await switch_language('en')
                 assert 'RUN AT A GLANCE' in str(app.query_one('#summary .panel-content', Static).render())
                 assert 'route: Direct' in str(app.query_one('#summary .panel-content', Static).render())
-            await pilot.click('#language-button')
+            await switch_language('zh-CN')
             await pilot.press('i')
             await pilot.pause()
             assert str(app.screen.query_one('#literature-close', Button).label) == '关闭'
@@ -86,15 +100,14 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
             await pilot.pause()
             app.screen.query_one('#human-answer', TextArea).load_text('Keep original draft 原文')
             await pilot.press('escape')
-            await pilot.click('#language-button')
+            await switch_language('en')
             await pilot.press('h')
             await pilot.pause()
             assert app.screen.query_one('#human-answer', TextArea).text == 'Keep original draft 原文'
             assert str(app.screen.query_one('#human-submit', Button).label) == 'Review answer'
             await pilot.press('escape')
             app.on_snapshot_refresh_completed(SnapshotRefreshCompleted(None, OSError('offline')))
-            await pilot.click('#language-button')
-            await pilot.pause()
+            await switch_language('zh-CN')
             banner = app.query_one('#freshness', Static)
             assert banner.has_class('stale') and '已过期' in str(banner.render())
             assert snapshot.to_json() == original

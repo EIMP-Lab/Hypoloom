@@ -1,5 +1,27 @@
 # Current Hypoloom development state
 
+- October 27 framework follow-up is implemented and verified; dev-only
+  commit/push is authorized. Complete sanitized evolution
+  summaries fit the existing 24 KiB bound; native rejection stages come from
+  their actual validators. Existing experiment predecessors link ordinary
+  repairs, and owner-background observations separate later plugin versions
+  and missing evidence. Public implementation guidance uses meaningful bounded
+  negative checks. No automatic target attribution or new preflight interface.
+  Includes the earlier Observer-closing/report-consistency repairs; a correct
+  `rc=70` table cell now passes the existing report check. Retained ML 6→7 is
+  ordinary `.to(device)` repair under one plugin; engineering first-pass remains
+  0/4→0/9 and affective ADJUDICATE has no later sample. No causal skill gain.
+  Final G1 has 8,573 pass/one TUI timing failure/159 skip; eight fixture rechecks
+  resolve the failure. Reconciliation is **8,574 pass/159 skip**, not one green
+  full invocation. All seven G3 cases close 169 Agents/16 Processes, with 15
+  outcomes and no live members of 2,672 full-suite groups. All 15 retained audits
+  stay unchanged: 13 clean, one 11-finding history and the latest two report findings.
+  Source/wheel/install/fresh bundle match 199 runtime files; installed CLI/MCP,
+  CPU and retained-feedback checks pass. Existing runs/private plugins remain
+  unchanged; paid/GPU work and main publication are outside this scope.
+  [Design](../design/run-followup-repairs-2026-10-26.md) /
+  [qualification](../qualification.md#framework-follow-up-2026-10-27).
+
 - October 24 same-init legacy pool closure is implemented. A separate exact
   run/revision choice authorizes offline closure through the original frozen
   lifecycle; no provider/GPU execution, migration or fabricated successful report.

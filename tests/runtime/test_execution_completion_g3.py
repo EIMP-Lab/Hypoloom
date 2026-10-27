@@ -79,5 +79,18 @@ def test_native_execution_corrects_early_completion_before_publication(tmp_path,
     assert correction["accepted"] and correction["status"] == "recovered"
     assert correction["rejected_count"] == 1 and correction["call_count"] == 2
     assert "terminal submitted experiment" in correction["rounds"][0]["validation_error"]
+    assert correction["rounds"][0]["validation_stage"] == "execution_completion"
+    from hypoloom.skill_observations import runtime_feedback
+    from hypoloom.state_store import StateStore
+    request = observed["request"]
+    feedback = runtime_feedback(StateStore(tmp_path / "state"), tmp_path / "state", request["run_id"],
+        request["role"], request["component_id"])
+    assert len(feedback["repairs"]) == 1
+    repair = feedback["repairs"][0]
+    assert repair["predecessor_terminal_reason"] == "FAILED" and repair["terminal_reason"] == "SUCCEEDED"
+    assert repair["source_attempt_id"] == rejected[0]
+    with sqlite3.connect(f"file:{tmp_path / 'state' / 'state.sqlite'}?mode=ro", uri=True) as connection:
+        processes = connection.execute("SELECT attempt_id,terminal_reason FROM execution_attempts WHERE kind='PROCESS'").fetchall()
+    assert dict(processes) == {repair["predecessor_process_attempt_id"]: "FAILED", repair["process_attempt_id"]: "SUCCEEDED"}
     (tmp_path / "execution-completion-evidence.json").write_text(json.dumps({
         "attempt_id": rejected[0], "native_stop": correction}, indent=2))

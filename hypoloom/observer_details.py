@@ -743,7 +743,8 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
         facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions"} else []
         if kind in {"skills", "skill"}:
-            facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? AND fact_type='GoalVerdictRecorded' ORDER BY rowid", (run_id,))]
+            facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? "
+                "AND fact_type IN ('GoalVerdictRecorded','CanonicalOutcomeAccepted','ExperimentPreregistered') ORDER BY rowid", (run_id,))]
         transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources", "skills", "skill"} else []
         commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind == "resources" else []
     if kind == "skills":

@@ -88,6 +88,7 @@ def test_latest_replacement_and_dispatch_pause_do_not_look_completed(execution, 
         assert reply == {} if cap == 1 else reply["decision"] == "block"
         assert server.snapshot()["accepted"] is False
         assert server.snapshot()["rejected_count"] == 1
+        assert server.snapshot()["rounds"][0]["validation_stage"] == "execution_completion"
         with pytest.raises(AgentACIError, match="terminal submitted experiment"):
             host._accept_expert_packet(request, FakeAgent().invoke(request))
     finally:
@@ -108,6 +109,7 @@ def test_closed_attempt_cannot_supply_a_native_completion_view(execution, tmp_pa
             _validate(server, tools)
         assert server.snapshot()["status"] == "validation_failed"
         assert server.snapshot()["accepted"] is False
+        assert server.snapshot()["rejected_count"] == 0 and server.snapshot()["rounds"] == []
     finally:
         server.close()
         tools.close()

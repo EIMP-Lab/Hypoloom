@@ -37,6 +37,9 @@ def _cycle(request: AgentRequest) -> int:
     )
 
 
+_HOST_RESTART_WAIT = "until [ ! -d /workspace ]; do sleep 0.1; done"
+
+
 def _resources(request: AgentRequest) -> dict[str, Any]:
     return json.loads(
         next(
@@ -207,14 +210,14 @@ class _MemoryScenario(_HostScenario):
             return self._structured(request)
         if request.command is AgentCommand.LITERATURE_REVIEW and _cycle(request) == 2:
             if step == 2 and not self.restart_completed:
-                # The first Read is already in the real CC transcript. Keep
-                # this invocation open until the test restarts its Host.
+                # The first Read is already in the real CC transcript. The wait
+                # must remain pending until the Host restart interrupts this call.
                 self.restart_ready = True
                 return (
                     (
                         "before_host_restart",
                         "Bash",
-                        {"command": "sleep 30", "timeout": 35000},
+                        {"command": _HOST_RESTART_WAIT, "timeout": 35000},
                     ),
                 )
             if step in {1, 2}:

@@ -166,7 +166,8 @@ def test_native_shared_scope_preserves_the_accepted_measurement_choice(tmp_path:
                 trace = rejected[1]["diagnostics"]["structured_output_correction"]
                 assert trace["scope"] == "native_stop_validation" and trace["status"] == "unresolved"
                 assert trace["accepted"] is False and trace["call_count"] == trace["rejected_count"] == 2
-                assert trace["rounds"] == [{"ordinal": ordinal, "status": "rejected", "validation_error": diagnostic}
+                assert trace["rounds"] == [{"ordinal": ordinal, "status": "rejected", "validation_error": diagnostic,
+                                           "validation_stage": "output_schema"}
                                            for ordinal in (1, 2)]
                 # The standard validator reports its first error, not Ajv's
                 # former multi-error list. The actual full schema still freezes

@@ -3594,27 +3594,65 @@
         });
         card.append(row);
       });
+      if (group.output_rejection_count) {
+        card.append(element("p", "panel-copy", t("Output rejections {0}; these are not terminal failures.", group.output_rejection_count)));
+        list(group.output_rejections).forEach((rejection) => {
+          card.append(element("p", "panel-copy", t("Validation stage: {0}", rejection.validation_stage || t("Evidence unavailable"))));
+          card.append(actionButton(rejection.attempt_id, () => openRemoteDetail("attempt", {attempt_id: rejection.attempt_id})));
+        });
+      }
       if (group.failures_truncated) card.append(element("p", "panel-copy", t("Only recent failure links are shown; rates include the full selected cohort.")));
       section.append(card);
     });
     if (!list(effects.groups).length) section.append(element("p", "panel-copy", t("No attributable task samples in this selection.")));
     const labels = {awaiting_samples: t("Awaiting validation"), recurrence_observed: t("Failure recurred"),
-      observations_available: t("Later observations available"), not_observed: t("Same diagnostic not observed")};
+      observations_available: t("Later observations available"), not_observed: t("Same diagnostic not observed"),
+      insufficient_evidence: t("Evidence unavailable")};
+    const evidenceLabels = {agent_terminal: t("Agent terminal failure"), output_rejection: t("Output rejection"),
+      process_terminal: t("Process terminal failure")};
     section.append(element("p", "panel-copy", t("Follow-up uses retained history across later versions with the same stage, component and known model. Exact diagnostic matching can miss related failures. No recurrence does not prove a fix; scientific negative results are not execution failures.")));
+    section.append(element("p", "panel-copy", t("These are owner background observations, not identified revision targets. A matching stage and model does not prove the affected path was exercised. Process signatures describe terminal fields, not root causes.")));
+    const appendVersions = (card, comparison) => {
+      list(comparison.versions).forEach((version) => card.append(element("p", "panel-copy",
+        t("Version {0}: {1}; finished {2}, matching failures {3}.", compact(version.commit, 12),
+          labels[version.status] || version.status, version.later_finished_nodes, version.later_failed_attempts))));
+      if (comparison.versions_truncated) card.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
+    };
+    list(effects.repairs).forEach((repair) => {
+      const card = element("details", "detail-card skill-repair");
+      card.append(element("summary", "", `${t("Recorded execution repair")} · ${repair.role} · ${repair.terminal_reason || repair.state}`));
+      card.append(element("p", "panel-copy", `${repair.predecessor_experiment_id} → ${repair.experiment_id}`));
+      card.append(element("p", "panel-copy", `${repair.predecessor_terminal_reason || "—"} / ${repair.predecessor_returncode ?? "—"} → ${repair.terminal_reason || repair.state} / ${repair.returncode ?? "—"}`));
+      [repair.predecessor_process_attempt_id, repair.process_attempt_id, repair.predecessor_source_attempt_id, repair.source_attempt_id].filter(Boolean).forEach((id) =>
+        card.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}))));
+      section.append(card);
+    });
+    if (effects.unavailable_repair_links) section.append(element("p", "panel-copy", t("Repair links with incomplete evidence: {0}.", effects.unavailable_repair_links)));
+    if (effects.repairs_truncated) section.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
     list(effects.followups).forEach((followup) => {
       const card = element("details", "detail-card skill-followup");
-      card.append(element("summary", "", `${followup.role} · ${followup.name} · ${compact(followup.commit, 10)} · ${labels[followup.status] || followup.status}`));
+      card.append(element("summary", "", `${t("Owner background")} · ${followup.role} · ${followup.name} · ${compact(followup.commit, 10)} · ${labels[followup.status] || followup.status}`));
       card.append(actionButton(t("View skill version"), () => openRemoteDetail("skill", {role: followup.role, name: followup.name, commit: followup.commit})));
       card.append(actionButton(t("Inspect evolution session"), () => openRemoteDetail("attempt", {attempt_id: followup.attempt_id})));
+      if (followup.later_processes) card.append(element("p", "panel-copy", t("Later Process observations {0}.", followup.later_processes)));
       list(followup.comparisons).forEach((comparison) => {
-        card.append(element("p", "panel-copy", `${comparison.stage} · ${comparison.component_id} · ${comparison.model} · ${labels[comparison.status] || comparison.status}`));
+        card.append(element("p", "panel-copy", `${evidenceLabels[comparison.evidence_kind] || comparison.evidence_kind} · ${comparison.stage} · ${comparison.component_id} · ${comparison.model} · ${labels[comparison.status] || comparison.status}`));
         card.append(element("p", "panel-copy", `${comparison.failure_code} · ${comparison.diagnostic || t("Evidence unavailable")}`));
         card.append(element("p", "panel-copy", t("Baseline failures {0}; later comparable nodes {1}, finished {2}, same-diagnostic failures {3}.", comparison.baseline_failed_attempts, comparison.later_nodes, comparison.later_finished_nodes, comparison.later_failed_attempts)));
-        card.append(element("p", "panel-copy", list(comparison.later_commits).map((commit) => compact(commit, 10)).join(" · ")));
+        appendVersions(card, comparison);
         [...list(comparison.baseline_attempt_ids), ...list(comparison.later_attempt_ids)].forEach((id) =>
           card.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}))));
       });
-      if (followup.comparisons_truncated) card.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
+      list(followup.process_comparisons).forEach((comparison) => {
+        card.append(element("p", "panel-copy", `${evidenceLabels.process_terminal} · ${comparison.stage} · ${comparison.component_id} · ${comparison.model} · ${labels[comparison.status] || comparison.status}`));
+        card.append(element("p", "panel-copy", `${comparison.failure_code} · ${comparison.diagnostic || t("Evidence unavailable")}`));
+        card.append(element("p", "panel-copy", t("Baseline failures {0}; later comparable nodes {1}, finished {2}, same-diagnostic failures {3}.", comparison.baseline_failed_attempts, comparison.later_nodes, comparison.later_finished_nodes, comparison.later_failed_attempts)));
+        if (comparison.later_cancelled) card.append(element("p", "panel-copy", t("Cancelled Processes are not validation samples: {0}.", comparison.later_cancelled)));
+        appendVersions(card, comparison);
+        [...list(comparison.baseline_attempt_ids), ...list(comparison.later_attempt_ids)].forEach((id) =>
+          card.append(actionButton(id, () => openRemoteDetail("attempt", {attempt_id: id}))));
+      });
+      if (followup.comparisons_truncated || followup.process_comparisons_truncated) card.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
       section.append(card);
     });
     if (effects.groups_truncated || effects.followups_truncated) section.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));

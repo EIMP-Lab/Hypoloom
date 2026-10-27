@@ -2,6 +2,98 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Framework follow-up (2026-10-27)
+
+The user authorizes the reviewed framework improvements and dev commit/push,
+including the earlier phases below. [Updated plan](design/run-followup-repairs-2026-10-26.md#authorized-framework-follow-up-october-27).
+Complete sanitized evolution summaries now take priority over background groups
+within the existing 24 KiB input bound. Native rejected rounds retain the actual
+validation stage; unavailable validators remain infrastructure failure without
+consuming a correction round. Ordinary Process repair associations use existing
+experiment/outcome/source identities. Owner-background follow-up keeps later
+plugin versions separate and missing diagnostics explicit. Public implementation
+guidance consolidates meaningful bounded negative checks. No schema migration,
+automatic target attribution, extra preflight interface or private skill edit.
+
+Before/after replay of the prior installed candidate reproduces all three
+1,000-character summary cuts, absent native-stage metadata and absent repair
+links. Current retained feedback preserves the full ML/engineering/affective
+summaries (1,506/1,555/1,807 characters) in **24,437/22,706/22,196 bytes**, including
+three/two/two explicit repair associations. ML experiment-6→7 stays an ordinary
+`.to(device)` repair under the same plugin. Engineering's nine updated first
+completions all begin with prose before schema-valid JSON; acceptance remains
+strict. Affective's exact ADJUDICATE target still has no later sample. No causal
+skill improvement is inferred from background recurrence or nearby success.
+
+Evidence is in `.local/analysis/framework-followup-20261027/`. Initial focused
+checks pass **234 tests**, three skill-browser cases and the native EXECUTION
+repair case. The parser/browser/two-cycle selection records **32 passes/one
+failure**: a concurrent source edit correctly trips the existing pinned-runtime
+protection. After source freeze, the unchanged two-cycle case passes in 59.70 s
+and verifies that the next native Agent receives the complete long summary.
+Independent raw rows count **42 Agents/four Processes CLOSED**, one accepted
+COMPLETE_CLEAN per run and all **46 recorded process groups absent**. A separate
+review reproduces a correct `rc=70` table cell being rejected; the numeric capture
+repair passes all **45 report checks**. Two earlier unit iterations reported
+an outdated unknown-evidence expectation and a fixture whose
+empty message still contained a diagnostic code. The latter now removes the
+diagnostic evidence it intends to omit; neither acceptance nor checks are weakened.
+
+The isolated source/wheel/install/fresh bundle matches **199 runtime files**.
+Installed CLI/MCP and a real two-Process CPU closure pass outside the checkout,
+with a clean Oracle and both process groups absent. Installed retained feedback
+equals the source result. The first package harness used a nonexistent top-level
+`pid` column; the check now reads the existing Process observation and retains
+the original harness failure in `package-initial.log`.
+
+The first full G1 records **8,564 passes/seven failures/159 skips in 1,402.97 s**.
+All seven initially stop at exact assertions for the old three-field rejected
+round. The assertions now retain exact field checks and verify `output_schema`
+on rejected rounds, with accepted rounds unchanged. The eight-case native
+recheck records **six passes/two failures**: after the new metadata passes those
+assertions, the debug projection equality exposes its old whitelist dropping
+the stage. The existing bounded, credential-redacting projection now retains
+the optional field. Legacy absence remains unchanged, and focused cases cover
+the stage, credential-shaped content and malformed type. Both original logs
+remain. The corrected projection/native selection passes **72 tests in 84.40 s**.
+
+Independent inspection of the first full suite counts **1,294 readable fixture
+databases** and all **2,672 recorded process groups absent**. Five deliberately
+invalid databases and 58 simplified schemas with no process-group column are
+listed separately. All seven prescribed G3 scenarios pass: **169 Agents/16
+Processes CLOSED**, 15 canonical outcomes and exactly one accepted terminal
+command per run. These are raw-row/OS counts, separate from the scenario Oracles.
+
+All **15 retained Oracle results exactly match the prior candidate**: 13 clean
+roots, one unchanged 11-finding parser history and the latest run's two intended
+original-report findings. The final installed debug reader also preserves the
+original two-round engineering trace exactly, with no invented stage for legacy
+records (`installed-retained-debug.json`).
+
+The fresh final full G1 records **8,573 passes/one failure/159 skips in 1,390.31 s**;
+all seven earlier failures now pass. The remaining 50-column TUI case opens an
+English modal after an expected language toggle. The four unchanged size cases
+pass alone, but a minimal headless reproduction confirms that Textual can report
+a landed click while suppressing the action during its preceding active effect.
+The fixture now waits for that real transient state to end and asserts the
+language change before the next action, preserving every layout, draft, filter,
+staleness and read-only assertion. It exercises the active effect explicitly.
+All **eight language tests pass in 17.33 s** with four workers. Runtime bytes do
+not change after this full invocation; only this test synchronization is repaired.
+
+Exact identity reconciliation gives **8,574 passes/159 skips across 8,733
+identities**, with no unresolved failure. The only additions to the first full
+selection are the three debug redaction/type cases. This is **not one
+uninterrupted green full invocation**; `g1-final.log/xml`, `language-final.log/xml`
+and `reconciliation.json` preserve the distinction. Final full-suite raw-row/OS
+inspection again counts 1,294 readable databases, seven clean G3 closures and all
+2,672 recorded groups absent. The final isolated wheel/install/bundle matches all
+199 runtime files and passes CLI/MCP/CPU/retained-feedback checks (`package-final.json`).
+The actual latest run remains CANCELLED r185 with 182 CLOSED Attempts, no Host,
+controller lock holder, control socket or live member of 181 recorded groups.
+No existing run/report, production service, private plugin or Profile is changed.
+This scope does not claim new paid/GPU qualification or main publication.
+
 ## Same-init offline legacy closure (2026-10-24)
 
 The afternoon init was blocked by two retained ACI 29 runs without recorded
@@ -237,6 +329,99 @@ Existing research roots, private Profiles and production services are unchanged.
 Seven final documentation/Profile checks and undefined-name checks pass. No
 G0–G5 promotion is claimed: a separately authorized new G4 sample must supply the
 missing complete sampling/shared-overlap evidence before qualification can close.
+
+## Observer closing, report consistency and skill follow-up (2026-10-26)
+
+The user selected the staged repair for the retained
+`MERC-causal-advanced-20261017-202610242203` findings. Phase 1 aligns the
+independent Observer closing audit with actual shared acceptance, phase 2 checks
+explicit Process status in the final Markdown and response summary, and phase 3
+separates terminal Agent failures, first completion rejections and Process
+outcomes in skill follow-up. Phase 4 skill-content edits are not included.
+[Design](design/run-followup-repairs-2026-10-26.md).
+
+The two Observer findings are reproduced by different closing predicates, not by
+proof of an invalid extra Leader. The new audit reuses independent shared-source
+and acceptance readers: LOCAL-only or strict-threshold failures do not close,
+while a real common pass closes even with LOCAL REFUTED. The full retained replay
+after this repair has no issues and keeps all 30 result artifacts VALID. After
+all three changes, the Observer findings remain resolved, but the retained final
+report correctly retains exactly two new findings (`agent_postflight_invalid`
+and `final_report_source_or_publication_invalid`) for the pre-existing
+outcome-8 contradiction. The original run and report were never edited.
+
+Report checks cover rc, terminal reason and validation code in the Markdown and
+`typed_candidate.summary`, with exact ID boundaries, explicit aggregate counts,
+Unicode minus signs and ambiguous multi-outcome lines left unresolved rather
+than misassigned. Validation and Stop correction enforce these facts without
+adding prompt prose or continuation bytes. The original outcome-8 returns three
+specific mismatches and the summary reports six rather than seven rc=70
+Processes. An in-memory corrected report and summary pass the complete
+validator. Other retained reports were used as compatibility counterexamples;
+over-attributing mixed narratives was repaired rather than accepted as a new
+failure.
+
+Skill follow-up now links first rejection rounds and Process records through
+existing correction data, preregistration and source-Agent binding. Cancellations
+are not validation samples or skill failures, and repeated rejection rounds do
+not inflate Attempt counts. Actual retained replay shows the ML
+`rc=70/raw_execution_failed` recurrence and a separate unproven pressure
+non-recurrence; ordinary later repair is not rewritten as proof that the skill
+change prevented the failure. Engineering first-pass does not improve and the
+affective ADJUDICATE target remains without a comparable sample. Runtime feedback
+for all three owners returns the appropriate base and updated Process cohorts
+within the existing byte bound; there is no new score ledger or auto-selection.
+
+Validation evidence is under `.local/analysis/run-followup-repairs-20261026/`.
+The baseline has **119 passing tests**. The final focused selection has **356
+passes / one failure** in 564.29 seconds: the native deadline socket case ends in
+`BrokenPipeError`, and all three variants pass in a **0.48-second** recheck. The
+original failure remains in `focused-final.log`; reconciliation is 357 identities,
+not one uninterrupted green focused invocation. The native learning/batch flows
+have **38 passing tests** and the final-report/stopped Host flows have **12
+passing tests**.
+Three focused skill browser cases and seven documentation/Profile checks pass.
+An intermediate isolated source/wheel/install contains **199 identical runtime files**;
+installed CLI and a real retained feedback read pass. Static compilation, Ruff,
+`pip check`, JavaScript/JSON parsing and Git whitespace checks pass. No paid
+provider, physical-GPU, production-service or retained-run write was used.
+
+The first full xdist G1 has **8,546 passes / 10 failures / 159 skips** in
+**9,834.66 seconds**. Seven shared FINAL_REPORT retry cases fail continuation
+headroom; one dedicated case exceeds it by 88 bytes, so the additional prompt
+prose was reverted rather than weakening the resume assertion. All eight affected
+retry rechecks then pass in `native-final-retry-recheck.log`. Three other native
+manager/Debate/expert-memory cases report missing scripted tool results. Their
+shared cause is fixture-only: Claude Code 2.1.310 rejects a standalone `sleep 30`
+immediately, advancing the script before Host recovery. Actual tool IDs are
+unchanged. A bounded workspace-lifetime wait replaces those sleeps, preserving
+all recovery/content assertions. Both manager variants, Debate and expert-memory
+pass **four tests in 275.51 seconds** (`native-restart-fixture.log/xml`).
+The original ten failures remain in `g1-full.log`. The fresh final xdist G1
+passes **8,556 tests / zero failed / 159 opt-in skips in 1,378.48 seconds**, with
+zero errors and all **8,715 test identities unchanged** from the first invocation
+(`g1-final.log/xml`). The four native restart scenarios independently close **151
+Agents / 12 Processes**, with no live recorded process groups
+(`native-restart-census.json`). Full-suite residue inspection covers **1,294
+readable current-schema fixture databases** and finds all **2,835 distinct
+recorded process groups absent**. Five intentionally invalid files and 28
+simplified fixture schemas are separately excluded, not counted as clean
+(`g1-final-residue.json`).
+
+The final isolated source/wheel/install contains **199 identical runtime files**.
+Installed CLI succeeds outside the source directory, and all three real retained
+feedback reads return their base/updated Process cohorts within the 24 KiB bound:
+23,832/24,390/23,500 bytes (`installed-verified-feedback.json`). Final static
+compilation, Ruff, `pip check`, JavaScript/JSON parsing and Git whitespace checks
+pass. The latest run has no matching Host process, controller lock or listener;
+its database remains CANCELLED r185. This is a fresh full G1 and package result,
+not a full G0–G5 promotion: no paid provider, physical-GPU, production-service or
+retained-run write was used. The staged skill-content decision remains a
+separate user review; no phase-4 content edit is included.
+
+Final read-only Oracle replay of the other 14 retained roots has **13 clean
+roots**; `MERC-causal-202610120121` retains only its documented 11 historical
+parser findings. No new Observer or final-report inconsistency appears there.
 
 ## Run-local skill outcomes and follow-up (2026-10-24)
 

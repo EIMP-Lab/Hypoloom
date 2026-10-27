@@ -106,6 +106,14 @@ index identifies omitted files. Missing GOAL acceptance is not evidence that no
 raw test observations exist. LOCAL or failed-work observations cannot become a
 new accepted verdict through the report.
 
+Per-outcome Process rows and the response summary use the same
+`process_attempt_details` and `process_attempts_by_returncode` inputs. Explicit
+return codes, terminal reasons and validation codes are checked against those
+records in both the Markdown report and the response summary. A canonical
+`EXECUTION_FAILURE` can coexist with a `CANCELLED` Process; it does not establish
+`raw_execution_failed` or rc=70. Retained reports are never rewritten to make
+them pass a newer audit.
+
 When Grounding retrieval loses required literature strata after a valid query
 probe, the Host records the actual pre-model retrieval failure and replans that
 exact query within the existing retry limits. It neither invents an Agent call

@@ -247,6 +247,7 @@ def test_host_preflight_returns_environment_error_and_accepts_declared_reference
         rejected = check()
         assert rejected["decision"] == "block"
         assert "HYPOLOOM_READ_ROOTS" in rejected["reason"]
+        assert validator.snapshot()["rounds"][0]["validation_stage"] == "parser_smoke"
         # Preserve the reference check by declaring its actual input, not removing it.
         (root / "validation.json").write_bytes((reference / "validation.json").read_bytes())
         contract["parser_files"].append("validation.json")

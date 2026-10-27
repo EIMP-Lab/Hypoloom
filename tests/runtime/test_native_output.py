@@ -332,6 +332,45 @@ def test_decode_accepts_complete_object_and_checks_full_schema():
         native_output.decode_output("{}", {"$ref": "https://invalid.example/schema"})
 
 
+@pytest.mark.parametrize("stage", ["json_decode", "output_schema", "candidate_validation", "final_report"])
+def test_rejection_retains_actual_boundary_without_changing_correction(stage, tmp_path):
+    def reject(*_args):
+        # Identical text at different boundaries must not drive classification.
+        raise ValueError("invalid JSON at line 1, column 1")
+    kwargs = ({"candidate_check": reject} if stage == "candidate_validation" else
+              {"final_report_check": reject} if stage == "final_report" else {})
+    server = _server(tmp_path, **kwargs)
+    try:
+        text = "Completed.\n" + VALID if stage == "json_decode" else INVALID if stage == "output_schema" else VALID
+        assert _call(server, text)["decision"] == "block"
+        observed = server.snapshot()
+        assert observed["rounds"][0]["validation_stage"] == stage
+        assert observed["rejected_count"] == 1 and not observed["accepted"]
+        assert not server.output_path.exists()
+        server.candidate_check = server.final_report_check = None
+        assert _call(server) == {}
+        assert server.accepted_text() == VALID
+        assert server.snapshot()["status"] == "recovered"
+        assert "validation_stage" not in server.snapshot()["rounds"][-1]
+    finally:
+        server.close()
+
+
+def test_unavailable_schema_is_not_a_model_rejection(tmp_path):
+    server = native_output.NativeOutputValidator(tmp_path / "output.sock",
+        output_schema={"$ref": "https://invalid.example/schema"}, session_id="session-owned",
+        max_failed_validations=3, max_request_bytes=4096, deadline_at=time.monotonic() + 5)
+    try:
+        with pytest.raises(ValueError, match="could not be evaluated"):
+            _call(server)
+        observed = server.snapshot()
+        assert observed["status"] == "validation_failed" and not observed["accepted"]
+        assert observed["rounds"] == [] and observed["rejected_count"] == 0
+        assert not server.output_path.exists()
+    finally:
+        server.close()
+
+
 @pytest.mark.parametrize("cap", [0, -1, True, 1.5])
 def test_constructor_rejects_invalid_correction_cap(tmp_path, cap):
     with pytest.raises(ValueError):

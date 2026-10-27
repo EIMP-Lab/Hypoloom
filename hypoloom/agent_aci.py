@@ -1327,7 +1327,7 @@ def validate_postflight(
             raise AgentACIError("unexpected_workspace", "a clarification or legacy background cannot publish an evaluator")
     if request.command is AgentCommand.FINAL_REPORT:
         from .final_report import validate_final_report
-        try: validate_final_report(workspace, request)
+        try: validate_final_report(workspace, request, summary=candidate.summary)
         except ValueError as exc: raise AgentACIError("invalid_workspace", str(exc)) from exc
     if request.command is AgentCommand.CYCLE_REPORT:
         from .expert_memory import validate_report, request_report_component, report_path

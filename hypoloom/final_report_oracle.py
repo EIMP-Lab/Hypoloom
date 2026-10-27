@@ -50,6 +50,13 @@ def audit_final_reports(state_root, run_id, attempts, observations, facts, paylo
             content = base64.b64decode(files[0]["content_base64"], validate=True)
             assert 0 < len(content) <= request["budget"]["max_output_bytes"]
             report = content.decode("utf-8")
+            from .final_report import process_consistency_errors
+            inconsistencies = process_consistency_errors(context.get("run_outcome", {}), report)
+            summary = response.get("typed_candidate", {}).get("summary")
+            if isinstance(summary, str):
+                inconsistencies.extend(process_consistency_errors(context.get("run_outcome", {}), summary))
+            if inconsistencies:
+                raise ValueError("final report disagrees with actual Process evidence: " + inconsistencies[0])
             failed_sources = {}
             attempt_rows = {str(item["attempt_id"]): dict(item) for item in attempts}
             for raw_transition in transitions:

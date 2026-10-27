@@ -161,8 +161,12 @@ def test_followup_continues_across_later_commits_but_only_changed_skills(tmp_pat
 
 def test_missing_diagnostics_cannot_establish_recurrence_or_resolution(tmp_path):
     rows = [attempt("before", "a" * 40, reason="LOST"), attempt("after", "b" * 40, reason="LOST", start=20)]
+    for row in rows:
+        observation = json.loads(row["observation_json"])
+        observation.pop("diagnostics")
+        row["observation_json"] = json.dumps(observation)
     result = followups(nodes(tmp_path, rows), [event("a" * 40, "b" * 40)])["followups"][0]
-    assert result["status"] == "awaiting_samples"
+    assert result["status"] == "insufficient_evidence"
     assert result["comparisons"][0]["later_failed_attempts"] == 0
 
 
@@ -206,3 +210,239 @@ def test_runtime_feedback_is_bounded_readonly_metadata_and_owner_scoped(tmp_path
     assert len(encoded) <= 6000
     assert b"private-secret" not in encoded and b"peer" not in encoded
     assert (tmp_path / "state.sqlite").read_bytes() == before
+
+
+def test_output_rejection_followup_does_not_require_a_terminal_failure(tmp_path):
+    rows = [attempt("before", "a" * 40, reason="SUCCEEDED"), attempt("after", "b" * 40, start=20, reason="SUCCEEDED")]
+    for row in rows:
+        observation = json.loads(row["observation_json"])
+        observation["diagnostics"]["structured_output_correction"] = correction(1)
+        row["observation_json"] = json.dumps(observation)
+    result = followups(nodes(tmp_path, rows), [event("a" * 40, "b" * 40)])["followups"][0]
+    comparison = result["comparisons"][0]
+    assert result["status"] == comparison["status"] == "recurrence_observed"
+    assert comparison["evidence_kind"] == "output_rejection"
+    assert comparison["baseline_failed_attempts"] == comparison["later_failed_attempts"] == 1
+
+
+def _process_case(commit, start, terminal, returncode, validation_code):
+    from hypoloom.skill_observations import process_outcomes
+    source_id = f"source-{start}"
+    experiment_id = f"experiment-{start}"
+    source = _bound(source_id, commit, start=start - 1, command="EXPERIMENT_EXECUTION")
+    observation = json.loads(source["observation_json"])
+    observation["request"]["required_model_identity"] = "model-a"
+    source["observation_json"] = json.dumps(observation)
+    process = _bound(f"process-{start}", commit, start=start, command="EXPERIMENT_EXECUTION")
+    process.update(kind="PROCESS", experiment_id=experiment_id, terminal_reason=terminal)
+    observation = json.loads(process["observation_json"])
+    observation["returncode"] = returncode
+    process["observation_json"] = json.dumps(observation)
+    transition = {"run_id": "run", "workflow_kind": "EXPERIMENT", "revision": 1,
+        "payload": {"experiment_id": experiment_id, "role": "researcher", "component_id": "component",
+            "chain": "a", "expert_cycle": 1, "source_agent_attempt_id": source_id}}
+    outcome = "EXECUTION_FAILURE" if terminal in {"FAILED", "LOST", "TIMED_OUT", "CANCELLED"} else "SUCCESS"
+    fact = {"run_id": "run", "fact_id": f"fact-{start}", "fact_type": "CanonicalOutcomeAccepted",
+        "payload_json": json.dumps({"experiment_id": experiment_id, "outcome": outcome,
+            "validation_code": validation_code})}
+    records = process_outcomes("/unused", "run", [source, process], {source_id: _request_plugin(source, "run")},
+        transitions=[transition], facts=[fact])
+    assert len(records) == 1 and records[0]["commit"] == commit
+    return records
+
+
+def test_process_followup_tracks_failures_but_not_cancellation_as_skill_failure(tmp_path):
+    before = _process_case("a" * 40, 1, "FAILED", 70, "raw_execution_failed")
+    after = _process_case("b" * 40, 20, "FAILED", 70, "raw_execution_failed")
+    result = followups(nodes(tmp_path, []), [event("a" * 40, "b" * 40)], processes=[*before, *after])["followups"][0]
+    comparison = result["process_comparisons"][0]
+    assert result["status"] == comparison["status"] == "recurrence_observed"
+    assert comparison["evidence_kind"] == "process_terminal"
+    assert comparison["later_finished_nodes"] == 1 and comparison["later_cancelled"] == 0
+    cancelled = _process_case("c" * 40, 20, "CANCELLED", -15, None)
+    result = followups(nodes(tmp_path, []), [event("a" * 40, "b" * 40)], processes=[*before, *cancelled])["followups"][0]
+    comparison = result["process_comparisons"][0]
+    assert result["status"] == comparison["status"] == "awaiting_samples"
+    assert comparison["later_finished_nodes"] == 0 and comparison["later_cancelled"] == 1
+
+
+def _feedback_fixture(tmp_path, rows, **kwargs):
+    _database(tmp_path, rows)
+    import sqlite3
+    with sqlite3.connect(tmp_path / "state.sqlite") as db:
+        db.execute("ALTER TABLE workflow_transitions ADD COLUMN state TEXT")
+    db.close()
+    return runtime_feedback(StateStore(tmp_path), tmp_path, "run", "researcher", "component", **kwargs)
+
+
+def _evolution_summary(identity, summary, start=20):
+    row = attempt(identity, "a" * 40, start=start, command="SELF_EVOLVE", reason="SUCCEEDED",
+        update={"base_commit": "a" * 40, "commit": "b" * 40})
+    observation = json.loads(row["observation_json"])
+    observation["response"] = {"typed_candidate": {"summary": summary}}
+    row["observation_json"] = json.dumps(observation)
+    return row
+
+
+def test_feedback_preserves_full_revision_before_background_groups(tmp_path):
+    summary = "earlier evidence " * 90 + " Actual change: device placement. Next observation: same path. Unresolved: no sample."
+    rows = [attempt("failure-1", "a" * 40),
+        attempt("failure-2", "b" * 40, start=3, command="EXPERIMENT_EXECUTION"),
+        _evolution_summary("evolve", summary)]
+    result = _feedback_fixture(tmp_path, rows, max_bytes=5000)
+    assert result["updates"][0]["summary"] == summary
+    assert result["updates"][0]["summary_truncated"] is False
+    assert result["updates"][0]["attempt_id"] == "evolve"
+    assert result["groups_truncated"] and not result["history_truncated"]
+    assert len(json.dumps(result, ensure_ascii=False).encode()) <= 5000
+
+
+def test_feedback_retains_latest_source_when_unicode_summary_exceeds_budget(tmp_path):
+    summary = '修复目标😀\\"\n' * 3000 + " Authorization: Bearer private-secret"
+    result = _feedback_fixture(tmp_path, [_evolution_summary("old", "older update", start=10),
+        _evolution_summary("latest", summary)], max_bytes=5000)
+    assert result["updates_truncated"] and len(result["updates"]) == 1
+    update = result["updates"][0]
+    assert update["attempt_id"] == "latest" and update["summary_truncated"]
+    assert update["summary"] and summary.startswith(update["summary"])
+    encoded = json.dumps(result, ensure_ascii=False).encode()
+    assert len(encoded) <= 5000 and b"private-secret" not in encoded
+
+
+def test_output_rejection_stage_survives_existing_readers_and_legacy_is_unknown(tmp_path):
+    rows = [attempt("known", "a" * 40, reason="SUCCEEDED"),
+        attempt("legacy", "a" * 40, reason="SUCCEEDED", start=4)]
+    for index, row in enumerate(rows):
+        observation = json.loads(row["observation_json"])
+        rounds = correction(1)
+        if index == 0:
+            rounds["rounds"][0]["validation_stage"] = "json_decode"
+        observation["diagnostics"]["structured_output_correction"] = rounds
+        row["observation_json"] = json.dumps(observation)
+    result = scorecards(nodes(tmp_path, rows))["groups"][0]
+    assert [item["validation_stage"] for item in result["output_rejections"]] == ["json_decode", None]
+
+
+def test_followup_keeps_each_later_version_separate_from_background(tmp_path):
+    rows = [attempt("baseline", "a" * 40),
+        attempt("first-version", "b" * 40, start=20, reason="SUCCEEDED"),
+        attempt("next-version", "c" * 40, start=30)]
+    result = followups(nodes(tmp_path, rows), [event("a" * 40, "b" * 40)])["followups"][0]
+    assert result["scope"] == "owner_background" and result["status"] == "recurrence_observed"
+    versions = result["comparisons"][0]["versions"]
+    assert [(v["commit"], v["status"]) for v in versions] == [
+        ("b" * 40, "not_observed"), ("c" * 40, "recurrence_observed")]
+    assert versions[0]["later_failed_attempts"] == 0 and versions[1]["later_attempt_ids"] == ["next-version"]
+
+
+def test_missing_later_diagnostic_cannot_be_reported_as_nonrecurrence(tmp_path):
+    rows = [attempt("baseline", "a" * 40), attempt("later", "b" * 40, start=20, diagnostic="")]
+    observation = json.loads(rows[1]["observation_json"])
+    observation.pop("diagnostics")
+    rows[1]["observation_json"] = json.dumps(observation)
+    transitions = [transition({"agent_final_failure": True, "attempt_id": "later"})]
+    result = followups(nodes(tmp_path, rows, transitions), [event("a" * 40, "b" * 40)])["followups"][0]
+    comparison = next(c for c in result["comparisons"] if c["evidence_kind"] == "agent_terminal")
+    assert comparison["later_finished_nodes"] == 1
+    assert comparison["status"] == "insufficient_evidence"
+
+
+@pytest.mark.parametrize("alteration", [None, "adjacent", "foreign_owner", "missing_source", "wrong_chain"])
+def test_process_repair_requires_existing_predecessor_and_owning_sources(tmp_path, alteration):
+    from hypoloom.skill_observations import process_outcomes, process_repairs
+    rows, transitions, facts = [], [], []
+    for ordinal in (1, 2):
+        source = attempt(f"source-{ordinal}", "a" * 40, start=ordinal * 10,
+            command="EXPERIMENT_EXECUTION", reason="SUCCEEDED")
+        process = dict(source, attempt_id=f"process-{ordinal}", kind="PROCESS", experiment_id=f"experiment-{ordinal}",
+            started_at=ordinal * 10 + 1, terminal_reason="FAILED" if ordinal == 1 else "SUCCEEDED")
+        observation = json.loads(process["observation_json"])
+        observation["returncode"] = 70 if ordinal == 1 else 0
+        process["observation_json"] = json.dumps(observation)
+        rows.extend([source, process])
+        identity = {"role": "researcher", "component_id": "component", "hypothesis_id": "hypothesis",
+            "expert_cycle": 1, "chain": "a", "source_agent_attempt_id": source["attempt_id"],
+            "source_submit_command_id": f"submit-{ordinal}",
+            "revision_of_outcome_id": "outcome-1" if ordinal == 2 else None}
+        transitions.append(transition(identity, workflow_kind="EXPERIMENT", workflow_id=f"experiment-{ordinal}", revision=1))
+        facts.append({"run_id": "run", "fact_type": "CanonicalOutcomeAccepted", "payload": {
+            "experiment_id": f"experiment-{ordinal}", "outcome_id": f"outcome-{ordinal}",
+            "outcome": "EXECUTION_FAILURE" if ordinal == 1 else "CLEAN_REFUTATION"}})
+    repair = transitions[1]["payload"]
+    if alteration == "adjacent": repair["revision_of_outcome_id"] = None
+    if alteration == "foreign_owner": transitions[0]["payload"]["role"] = "peer"
+    if alteration == "missing_source": rows = [r for r in rows if r["attempt_id"] != "source-1"]
+    if alteration == "wrong_chain": repair["chain"] = "other"
+    bindings = {r["attempt_id"]: _request_plugin(r, "run") for r in rows if r["kind"] == "AGENT"}
+    records = process_outcomes(tmp_path, "run", rows, bindings, transitions=transitions, facts=facts)
+    result = process_repairs(records)
+    if alteration is not None:
+        assert result["repairs"] == []
+        assert result["unavailable_repair_links"] == (0 if alteration == "adjacent" else 1)
+    else:
+        assert len(result["repairs"]) == 1
+        link = result["repairs"][0]
+        assert link["predecessor_process_attempt_id"] == "process-1"
+        assert link["process_attempt_id"] == "process-2" and link["source_submit_command_id"] == "submit-2"
+        assert link["terminal_reason"] == "SUCCEEDED" and link["outcome"] == "CLEAN_REFUTATION"
+
+
+def test_runtime_feedback_includes_process_cohorts_without_merging_agent_counts(tmp_path):
+    source = _bound("source-1", "a" * 40, start=1, command="EXPERIMENT_EXECUTION")
+    process = _bound("process-2", "a" * 40, start=2, command="EXPERIMENT_EXECUTION")
+    process.update(kind="PROCESS", experiment_id="experiment-2", terminal_reason="FAILED")
+    observation = json.loads(process["observation_json"])
+    observation["returncode"] = 70
+    process["observation_json"] = json.dumps(observation)
+    transition = ("run", "experiment-2", "EXPERIMENT", 1, "create", 2,
+        json.dumps({"role": "researcher", "component_id": "component",
+            "chain": "a", "expert_cycle": 1, "source_agent_attempt_id": "source-1"}))
+    fact = ("run", "fact-2", "CanonicalOutcomeAccepted", json.dumps({
+        "experiment_id": "experiment-2", "outcome": "EXECUTION_FAILURE", "validation_code": "raw_execution_failed"}))
+    _database(tmp_path, [source, process], facts=[fact], transitions=[transition])
+    import sqlite3
+    with sqlite3.connect(tmp_path / "state.sqlite") as db:
+        db.execute("ALTER TABLE workflow_transitions ADD COLUMN state TEXT")
+    db.close()
+    result = runtime_feedback(StateStore(tmp_path), tmp_path, "run", "researcher", "component")
+    assert result["processes_observed"] == 1
+    assert result["process_groups"][0]["process_attempts"] == 1
+    assert result["process_groups"][0]["failed_processes"] == 1
+    assert result["process_groups"][0]["returncodes"] == {"70": 1}
+    assert result["process_groups"][0]["failures"][0]["validation_code"] == "raw_execution_failed"
+    assert result["groups"][0]["counts"]["agent_attempts"] == 1
+
+
+def test_observer_includes_processes_in_version_followups(tmp_path):
+    _, base, commit = _plugin(tmp_path)
+    agents = [_bound("source-1", base, start=1, command="EXPERIMENT_EXECUTION"),
+        _bound("evolve", base, start=5, command="SELF_EVOLVE",
+            update={"base_commit": base, "commit": commit}),
+        _bound("source-20", commit, start=20, command="EXPERIMENT_EXECUTION")]
+    for row in agents:
+        observation = json.loads(row["observation_json"])
+        observation["request"]["required_model_identity"] = "model-a"
+        row["observation_json"] = json.dumps(observation)
+    processes = []
+    for start, source_commit in ((2, base), (21, commit)):
+        row = _bound(f"process-{start}", source_commit, start=start, command="EXPERIMENT_EXECUTION")
+        row.update(kind="PROCESS", experiment_id=f"experiment-{start}", terminal_reason="FAILED")
+        observation = json.loads(row["observation_json"])
+        observation["returncode"] = 70
+        row["observation_json"] = json.dumps(observation)
+        processes.append(row)
+    transitions = [("run", f"experiment-{start}", "EXPERIMENT", 1, "create", start,
+        json.dumps({"experiment_id": f"experiment-{start}", "role": "researcher", "component_id": "component",
+            "chain": "a", "expert_cycle": 1, "source_agent_attempt_id": f"source-{start - 1}"}))
+        for start in (2, 21)]
+    facts = [("run", f"fact-{start}", "CanonicalOutcomeAccepted", json.dumps({
+        "experiment_id": f"experiment-{start}", "outcome": "EXECUTION_FAILURE",
+        "validation_code": "raw_execution_failed"})) for start in (2, 21)]
+    _database(tmp_path, [*agents, *processes], facts=facts, transitions=transitions)
+    for row in agents:
+        _capture(tmp_path, row, _calls())
+    followup = read_observer_detail(tmp_path, "run", "skills")["activity"]["effects"]["followups"][0]
+    assert followup["later_processes"] == 1
+    comparison = followup["process_comparisons"][0]
+    assert comparison["status"] == "recurrence_observed"
+    assert comparison["evidence_kind"] == "process_terminal"

@@ -146,6 +146,20 @@ def test_debug_native_trace_redacts_errors_and_drops_unadmitted_values():
     assert set(projected) == set(_native_trace()) | {"error"}
 
 
+@pytest.mark.parametrize("stage,expected", [
+    ("output_schema", "output_schema"),
+    ("Authorization: Bearer private-test-token", "[credential-shaped diagnostic redacted]"),
+    (123, None),
+])
+def test_debug_preserves_optional_validation_stage_with_existing_redaction(stage, expected):
+    trace = _native_trace()
+    trace["rounds"][0]["validation_stage"] = stage
+    projected = _structured_output_correction(trace)
+    assert projected["rounds"][0]["validation_stage"] == expected
+    assert projected["rounds"][1] == trace["rounds"][1]
+    assert trace["rounds"][0]["validation_stage"] == stage
+
+
 def test_debug_native_rounds_keep_only_observed_status_and_integer_ordinal():
     trace = _native_trace(rounds=[
         {"ordinal": 1, "status": "error", "validation_error": "hook failed"},

@@ -179,3 +179,22 @@ def test_final_report_oracle_independently_rejects_causation_reference_and_byte_
     codes = {item[0] for item in audit(tmp_path, args)}
     assert codes
     assert "final_report_completion_count" in codes if failure in {"missing", "duplicate"} else "final_report_source_or_publication_invalid" in codes
+
+
+def test_final_report_oracle_rejects_a_cancelled_process_described_as_failed(tmp_path):
+    args = records()
+    request, _, observations, *_ = args
+    observed = observations[request.attempt_id]
+    source = observed["request"]["input_artifacts"][0]
+    context = json.loads(base64.b64decode(source["content_base64"]))
+    context["run_outcome"] = {
+        "process_attempt_details": [{"attempt_id": "cancelled-process", "terminal_reason": "CANCELLED",
+            "returncode": -15, "canonical_outcome": {"outcome_id": "outcome-accepted",
+                "outcome": "EXECUTION_FAILURE", "validation_code": None}}],
+        "process_attempts_by_returncode": {"-15": 1},
+    }
+    source["content_base64"] = base64.b64encode(json.dumps(context).encode()).decode()
+    artifact = observed["response"]["proposed_workspace_artifacts"][0]
+    artifact["content_base64"] = base64.b64encode(
+        b"verdict-fact GOAL_MET\n| outcome-accepted | 70 | FAILED |").decode()
+    assert "final_report_source_or_publication_invalid" in {item[0] for item in audit(tmp_path, args)}

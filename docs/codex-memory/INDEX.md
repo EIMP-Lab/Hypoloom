@@ -1,5 +1,17 @@
 # Development memory index
 
+- [Observer closing, report consistency and skill follow-up, October 26–27](../design/run-followup-repairs-2026-10-26.md):
+  actual shared-acceptance closing, explicit Process/report consistency and
+  lifecycle/version-separated skill evidence. October 27 adds complete bounded
+  summaries, native rejection stages, exact ordinary repair predecessors and
+  per-version owner-background observations. Private skills, automatic target
+  attribution and new preflight interfaces remain outside scope. Final full G1
+  plus the TUI timing-fixture repair reconciles 8,574 passes/159 skips, with all
+  15 retained audits unchanged and 199 installed runtime files matching source.
+  Dev commit/push is authorized.
+  [Latest validation](../qualification.md#framework-follow-up-2026-10-27) /
+  [earlier phases](../qualification.md#observer-closing-report-consistency-and-skill-follow-up-2026-10-26).
+
 - [Same-init offline legacy closure, October 24](../design/init-pool-dependency-recovery.md#legacy-closure-inside-the-same-init-october-24-follow-up):
   distinct exact authorization, original-bundle administrative closure and
   automatic pool/new-run continuation. No model calls or invented report;

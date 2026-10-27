@@ -82,6 +82,11 @@ Host 做最终完整校验。更新仓库不会改变旧运行。
 获取有大小上限的评估摘要及声明的原始文本测量，并列出被省略的文件。缺少 GOAL
 验收不代表没有原始测试观测；LOCAL 或失败任务的观测不能经报告变成新的正式结论。
 
+逐 outcome 的 Process 记录与最终响应摘要共用 `process_attempt_details` 和
+`process_attempts_by_returncode`。正文和摘要中的显式返回码、终态和 validation_code
+都会与这些记录核对。规范结局 `EXECUTION_FAILURE` 可以与 Process `CANCELLED` 并存，
+不能据此反推 `raw_execution_failed` 或 rc=70。保留报告不会因新版审计而被就地改写。
+
 若查询计划的覆盖探测成功，但 Grounding 正式检索缺少必要年代分层，Host 会记录
 真实的模型调用前检索失败，并在既有重试上限内改写该精确查询，不虚构 Agent 调用、
 不复制先前模型费用。Host 重启后从持久 Attempt 重建同一决策。更新仓库不迁移旧运行。

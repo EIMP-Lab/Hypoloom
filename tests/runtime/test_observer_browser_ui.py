@@ -158,14 +158,20 @@ def _skill_effects() -> dict:
         "component_id": "component-a", "model": "model-a", "basis": "observed_call", "name": "resource-planning",
         "failed_attempts": 3, "metrics": {"node_delivery": {"numerator": 0, "denominator": 2, "rate": 0, "unknown": 1, "excluded": 0}},
         "costs": {"retry_reported_usd": "0.5", "retry_reported_tokens": 10},
+        "output_rejection_count": 1, "output_rejections": [{"attempt_id": "failed-design", "validation_stage": "json_decode"}],
         "failures": [{"attempt_id": "failed-design", "failure_code": "invalid_candidate", "diagnostic": "<script>window.injected=true</script>",
             "source_proposals": [{"attempt_id": "proposal-source", "hypothesis_id": "h1"}]}]}],
         "followups": [{"role": "expert-a", "name": "resource-planning", "commit": "accepted-v2", "attempt_id": "evolution-source",
             "status": "recurrence_observed", "comparisons": [{"stage": "EXPERIMENT_DESIGN_IMPLEMENT", "component_id": "component-a", "model": "model-a",
                 "status": "recurrence_observed", "failure_code": "invalid_candidate", "diagnostic": "frozen measurement",
                 "baseline_failed_attempts": 6, "later_nodes": 2, "later_finished_nodes": 2, "later_failed_attempts": 6,
-                "baseline_attempt_ids": ["before-update"], "later_attempt_ids": ["after-update"], "later_commits": ["accepted-v3"]}]},
-            {"role": "expert-a", "name": "resource-planning", "commit": "accepted-v3", "attempt_id": "latest-evolution", "status": "awaiting_samples"}]}
+                "baseline_attempt_ids": ["before-update"], "later_attempt_ids": ["after-update"], "later_commits": ["accepted-v3"],
+                "versions": [{"commit": "accepted-v3", "status": "recurrence_observed", "later_finished_nodes": 2, "later_failed_attempts": 6}]}]},
+            {"role": "expert-a", "name": "resource-planning", "commit": "accepted-v3", "attempt_id": "latest-evolution", "status": "awaiting_samples"}],
+        "repairs": [{"role": "expert-a", "experiment_id": "repair-exp", "predecessor_experiment_id": "original-exp",
+            "terminal_reason": "SUCCEEDED", "returncode": 0, "predecessor_terminal_reason": "FAILED", "predecessor_returncode": 70,
+            "process_attempt_id": "repair-process", "predecessor_process_attempt_id": "failed-process",
+            "source_attempt_id": "repair-source", "predecessor_source_attempt_id": "failed-source"}]}
 
 
 def _activity() -> dict:
@@ -919,8 +925,14 @@ def test_browser_skill_effects_show_counts_unknowns_followup_and_source_links(br
     assert "0/2 · 0.0% · unknown 1" in page.text(".skill-scorecard")
     assert "not causal skill scores" in page.text(".skill-effects")
     assert "<script>" in page.text(".skill-failure")
+    assert "Validation stage: json_decode" in page.text(".skill-scorecard")
+    assert "owner background observations" in page.text(".skill-effects")
     page.click(".skill-followup summary")
     assert "same-diagnostic failures 6" in page.text(".skill-followup")
+    assert "Version accepted-v3: Failure recurred; finished 2, matching failures 6." in page.text(".skill-followup")
+    page.click(".skill-repair summary")
+    assert "original-exp → repair-exp" in page.text(".skill-repair")
+    assert "FAILED / 70 → SUCCEEDED / 0" in page.text(".skill-repair")
     page.evaluate("Array.from(document.querySelectorAll('.skill-failure button')).find(b => b.textContent === 'Inspect source proposal').click()")
     page.wait("fixtureRequests.some(row => row[1].includes('attempt_id=proposal-source'))")
     assert page.evaluate("window.injected === undefined")

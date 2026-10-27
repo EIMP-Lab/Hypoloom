@@ -78,7 +78,9 @@ def test_successful_host_design_retains_native_correction_trace_and_closes_cpu(t
     assert parser["adapter_retry_policy"]["structured_output_failed_validation_cap"] == 3
     assert [item["status"] for item in trace["rounds"]] == ["rejected", "rejected", "accepted"]
     assert [item["ordinal"] for item in trace["rounds"]] == [1, 2, 3]
-    assert all(set(item) == {"ordinal", "status", "validation_error"} for item in trace["rounds"])
+    assert all(set(item) == {"ordinal", "status", "validation_error"}
+        | ({"validation_stage"} if item["status"] == "rejected" else set()) for item in trace["rounds"])
+    assert [item.get("validation_stage") for item in trace["rounds"]] == ["output_schema", "output_schema", None]
     records = [json.loads(line) for line in (source / "stdout.log").read_text().splitlines()]
     raw_outputs, observed_inputs = [], {}
     for record in records:
@@ -94,6 +96,7 @@ def test_successful_host_design_retains_native_correction_trace_and_closes_cpu(t
     validations = [json.loads(path.read_text()) for path in sorted((source / "native-output").glob("*.json"))]
     assert [json.loads(item["last_assistant_message"]) for item in validations] == [item["arguments"] for item in raw_outputs]
     assert [item["error"] for item in validations] == [item["validation_error"] for item in trace["rounds"]]
+    assert [item.get("validation_stage") for item in validations] == [item.get("validation_stage") for item in trace["rounds"]]
     assert {item["session_id"] for item in validations} == {observation["session"]["session_id"]}
     assert set(raw_outputs[0]["arguments"]["typed_candidate"]) == probe._DESIGN_FIELDS - probe._CORRECTION_FIELDS
     assert set(raw_outputs[1]["arguments"]["typed_candidate"]) == probe._CORRECTION_FIELDS

@@ -216,10 +216,13 @@ def test_native_profile_correction_in_one_design_invocation(tmp_path: Path, corr
     assert trace["status"] == ("recovered" if corrected else "unresolved")
     assert [item["ordinal"] for item in trace["rounds"]] == list(range(1, cap + 1))
     assert [item["status"] for item in trace["rounds"]] == ["rejected"] * (cap - 1) + ["accepted" if corrected else "rejected"]
-    assert all(set(item) == {"ordinal", "status", "validation_error"} for item in trace["rounds"])
+    assert all(set(item) == {"ordinal", "status", "validation_error"}
+        | ({"validation_stage"} if item["status"] == "rejected" else set()) for item in trace["rounds"])
+    assert [item.get("validation_stage") for item in trace["rounds"]] == ["output_schema"] * (cap - 1) + [None if corrected else "output_schema"]
     validations = [json.loads(path.read_text()) for path in sorted((diagnostic_root / "native-output").glob("*.json"))]
     assert [json.loads(item["last_assistant_message"]) for item in validations] == raw_outputs
     assert [item["error"] for item in validations] == [item["validation_error"] for item in trace["rounds"]]
+    assert [item.get("validation_stage") for item in validations] == [item.get("validation_stage") for item in trace["rounds"]]
     assert set(item["session_id"] for item in validations) == {metadata["design"]["session_id"]}
     assert key not in json.dumps(evidence)
     assert result["subtype"] == "success" and result["is_error"] is False and result.get("structured_output") is None

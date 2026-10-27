@@ -252,10 +252,31 @@ means **Awaiting validation**. Absence of recurrence does not prove a fix or mak
 the score a causal measure of skill quality. Filters exclude incomplete retry
 chains; bounded views and missing captures remain explicit.
 
+Follow-up summarizes the owner's background problems; it does not automatically
+identify the targets of a revision. Each later Git version has its own observed
+counts. Matching stage and model alone does not establish that the affected path
+ran, and missing diagnostics are shown as unavailable evidence.
+
+Terminal Agent failures, first completion rejections and Process terminal outcomes
+are separate evidence cohorts. First rejections reuse the recorded correction
+rounds and their validation errors; missing diagnostics stay unknown. Process
+records follow preregistered experiment/source bindings and retain terminal reason,
+return code and validation code without mixing them into Agent first-pass rates or
+scientific outcomes. A cancelled Process is not a validation sample or a skill
+failure. Repeated rejection events in one Attempt do not inflate its Attempt count.
+
+New native rejection records also retain the validation stage that produced the
+error; older records remain unknown. Recorded execution repairs link the original
+and replacement Processes and source Attempts through explicit experiment
+predecessors. A successful repair does not establish a skill's causal benefit.
+
 New runs also supply bounded owner-local failure/version feedback to proposal,
 CYCLE_REPORT and SELF_EVOLVE nodes, including failed designs that produced no
 experiment. Experts keep the target problem, source references, expected change
 and unresolved follow-up in their existing reports and evolution summaries.
+Within the existing 24 KiB feedback limit, complete recent evolution summaries
+and repair links take priority over background groups. Any shortened summary
+retains its original Attempt ID and an explicit truncation indication.
 This follows the ordinary cycle triggers and budgets; it neither creates extra
 evolution nodes nor automatically selects or rolls back a version. To restore
 one skill, SELF_EVOLVE can produce a new private commit restoring that skill's

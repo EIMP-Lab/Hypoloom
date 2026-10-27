@@ -109,7 +109,7 @@ def test_native_query_plan_root_field_rejects_then_same_session_retry_closes_cpu
     trace = failed[1]["diagnostics"]["structured_output_correction"]
     assert trace["scope"] == "native_stop_validation" and trace["status"] == "unresolved"
     assert trace["rounds"] == [{"ordinal": ordinal, "status": "rejected",
-                                "validation_error": diagnostic} for ordinal in (1, 2)]
+                                "validation_error": diagnostic, "validation_stage": "output_schema"} for ordinal in (1, 2)]
     session = failed[1]["session"]["session_id"]
     assert retry[1]["session"]["session_id"] == session
     assert retry[1]["session"]["branch"] == failed[1]["session"]["branch"]

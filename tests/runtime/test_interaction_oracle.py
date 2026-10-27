@@ -357,3 +357,61 @@ def test_batch_reopening_requires_an_actual_leader_control_not_terminated_update
             audit.leader_reopen(request, "hyp-2", len(data.transitions) + 1)
     else:
         assert audit.leader_reopen(request, "hyp-2", len(data.transitions) + 1)
+
+
+def _closing_case(tmp_path, *, shared=True, common=False, assessment="SUPPORTED", score=None, source="ground"):
+    declaration = {"summary": "Common threshold", "rule": "ALL",
+        "criteria": [{"name": "score", "operator": "GT", "target": "0.5"}],
+        "validity_checks": [], "parser_argv": ["python", "evaluate.py"],
+        "parser_files": ["evaluate.py"], "raw_artifacts": ["result.json"]}
+    contract = {"schema_version": 3, "goal": {
+        "evaluation": {"mode": "grounding"} if common else {},
+        "completion_mode": "shared_goal" if shared else "explicit_signals"},
+        "components": [], "roles": [], "budget": {},
+        "methodology": {"controls": {"product": {"goal": {
+            "completion_mode": "shared_goal" if shared else "explicit_signals"},
+            "methodology": {"interaction": {}}}}}}
+    goal = {"fact_id": "goal", "fact_type": "GoalDefined", "run_id": "run-1", "goal_id": "goal",
+        "research_contract": contract}
+    outcome = {"fact_id": "outcome", "fact_type": "CanonicalOutcomeAccepted", "run_id": "run-1",
+        "experiment_id": "exp", "outcome_id": "outcome", "artifact_id": "artifact",
+        "goal_evaluation": None if score is None else {
+            "source_attempt_id": source, "measurements": {"score": score}, "checks": {}}}
+    spec = {"fact_id": "spec", "fact_type": "ExperimentPreregistered", "run_id": "run-1",
+        "experiment_id": "exp", "goal_evaluation": {
+            "scope": "GOAL", "source_attempt_id": "ground", "acceptance": declaration}}
+    evidence = {"fact_id": "evidence", "fact_type": "EvidenceLinked", "run_id": "run-1",
+        "evidence_id": "evidence", "outcome_id": "outcome"}
+    assessed = {"fact_id": "assessment", "fact_type": "HypothesisAssessed", "run_id": "run-1",
+        "assessment_id": "assessment", "assessment": assessment, "evidence_ids": ["evidence"]}
+    rows = [goal, outcome, spec, evidence, assessed]
+    facts = [{**row, "created_at": 1.0, "payload": row} for row in rows]
+    payloads = {row["fact_id"]: row for row in rows}
+    attempts = [{"attempt_id": "ground", "kind": "AGENT", "state": "CLOSED",
+        "terminal_reason": "SUCCEEDED", "run_id": "run-1", "workflow_id": "run-1", "command_id": "ground"}]
+    observations = {"ground": {
+        "request": {"run_id": "run-1", "attempt_id": "ground", "command_id": "ground",
+            "command": "GROUNDING", "schema_version": 16},
+        "response": {"typed_candidate": {"acceptance": declaration, "background": {}},
+            "proposed_workspace_artifacts": [{"path": "evaluate.py",
+                "content_base64": "cGFzcw=="}]}}}
+    audit = _InteractionAudit(tmp_path, attempts, observations, facts, payloads, [])
+    return audit._closing(100.0)
+
+
+@pytest.mark.parametrize("shared,common,assessment,score,expected", [
+    (False, False, "SUPPORTED", None, False),
+    (True, False, "SUPPORTED", None, True),
+    (True, False, "REFUTED", None, False),
+    (True, True, "SUPPORTED", None, False),
+    (True, True, "SUPPORTED", "0.4", False),
+    (True, True, "SUPPORTED", "0.5", False),
+    (True, True, "REFUTED", "0.6", True),
+])
+def test_observer_closing_uses_actual_shared_acceptance(tmp_path, shared, common, assessment, score, expected):
+    assert _closing_case(tmp_path, shared=shared, common=common, assessment=assessment, score=score) is expected
+
+
+def test_observer_closing_rejects_a_changed_common_source(tmp_path):
+    with pytest.raises(ValueError, match="another question|references another"):
+        _closing_case(tmp_path, common=True, score="0.6", source="foreign")

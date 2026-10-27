@@ -385,3 +385,55 @@ def test_report_context_uses_canonical_agent_accounting_without_pricing_unknowns
         "unknown_closed_attempts": 1,
         "open_attempts": 1,
     }
+
+
+def _process_report_request():
+    request = report_request()
+    context = json.loads(request.input_artifacts[0].content_bytes())
+    context["run_outcome"] = {
+        "process_attempt_details": [
+            {"attempt_id": "cancelled-process", "terminal_reason": "CANCELLED", "returncode": -15,
+                "canonical_outcome": {"outcome_id": "outcome-accepted", "outcome": "EXECUTION_FAILURE", "validation_code": None}},
+            {"attempt_id": "failed-process", "terminal_reason": "FAILED", "returncode": 70,
+                "canonical_outcome": {"outcome_id": "other-outcome", "outcome": "EXECUTION_FAILURE",
+                    "validation_code": "raw_execution_failed"}},
+        ],
+        "process_attempts_by_returncode": {"-15": 1, "70": 1},
+    }
+    embedded = EmbeddedInput.from_bytes(request.input_artifacts[0].ref, "application/json", json.dumps(context).encode())
+    return replace(request, input_artifacts=(embedded,), immutable_context_refs=(embedded.ref,))
+
+
+def test_final_report_checks_process_status_and_summary_against_actual_rows():
+    from hypoloom.final_report import process_consistency_errors, validate_final_report
+    request = _process_report_request()
+    validate_final_report({"FINAL_REPORT.md": b"verdict-fact GOAL_MET\n| outcome-accepted | -15 | CANCELLED |"},
+        request, summary="rc -15→1、70→1")
+    with pytest.raises(ValueError, match="outcome-accepted returncode expected -15"):
+        validate_final_report({"FINAL_REPORT.md": b"verdict-fact GOAL_MET\n| outcome-accepted | 70 | FAILED / raw_execution_failed |"}, request)
+    with pytest.raises(ValueError, match="returncode 70 count expected 1, found 7"):
+        validate_final_report({"FINAL_REPORT.md": b"verdict-fact GOAL_MET outcome-accepted"}, request, summary="7×rc=70")
+    outcome = json.loads(request.input_artifacts[0].content_bytes())["run_outcome"]
+    assert process_consistency_errors(outcome, "| outcome-accepted / other-outcome | None | CANCELLED |") == []
+    nested = json.loads(json.dumps(outcome))
+    nested["process_attempt_details"].append({"attempt_id": "nested-process", "terminal_reason": "FAILED",
+        "returncode": 70, "canonical_outcome": {"outcome_id": "outcome-accepted-8",
+            "outcome": "EXECUTION_FAILURE", "validation_code": "raw_execution_failed"}})
+    assert process_consistency_errors(nested, "| outcome-accepted-8 | 70 | FAILED / raw_execution_failed |") == []
+    assert process_consistency_errors(nested, "| outcome-accepted-8 | rc=70 | FAILED / raw_execution_failed |") == []
+    assert process_consistency_errors(nested, "| outcome-accepted-8 | rc=-15 | CANCELLED |")
+    errors = process_consistency_errors(nested, "| outcome-accepted-8 | -15 | CANCELLED |")
+    assert any("outcome-accepted-8 returncode expected 70" in error for error in errors)
+    errors = process_consistency_errors(nested, "best outcome-accepted-8; global failures 7×rc=70")
+    assert [error for error in errors if "outcome-accepted-8 returncode" in error] == []
+    assert any("returncode 70 count expected 1, found 7" in error for error in errors)
+    unicode_counts = dict(outcome)
+    unicode_counts["process_attempts_by_returncode"] = {"0": 30, "70": 14, "-15": 1}
+    assert process_consistency_errors(unicode_counts,
+        "| `process_attempts_by_returncode` | 0 → 30 · 70 → 14 · −15 → 1 |") == []
+    mixed = "outcome-accepted-8 rc=70 raw_execution_failed; another attempt rc=-15 and LOST"
+    assert process_consistency_errors(nested, mixed) == []
+    with pytest.raises(ValueError, match="actual Process evidence"):
+        response = FakeAgent().invoke(request)
+        response = with_output_digest(replace(response, typed_candidate={**response.typed_candidate, "summary": "7×rc=70"}))
+        validate_postflight(request, response)
