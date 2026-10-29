@@ -51,6 +51,11 @@ first, using a tiny forward/backward/save/reload/evaluate path on the granted
 device, and fail before expensive expansion when it fails. CPU-only checks do
 not establish CUDA compatibility. Record this planned but unrun device check in
 the DESIGN handoff; do not wait for it inside DESIGN or claim it already passed.
+When the submitted Process has a nonempty Host-provided `CUDA_VISIBLE_DEVICES`,
+its GPU grant is binding: a failed framework CUDA availability check must raise
+an execution error, never silently select CPU. The Host checks CUDA driver
+identity/context/allocation before the entrypoint; the model's device placement,
+optimizer step and reload still require the entrypoint's own smoke.
 Preserve accepted full trial counts and metrics after smoke, separate temporary
 smoke outputs, and do not turn smoke data into scientific outcomes.
 

@@ -44,7 +44,7 @@ Repository = "https://github.com/Gray-OREO/Hypoloom"
 Issues = "https://github.com/Gray-OREO/Hypoloom/issues"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/runtime", "tests/test_documentation_structure.py", "tests/test_public_profiles.py"]
+testpaths = ["tests"]
 # The console-script entry point otherwise starts with ``.venv/bin`` on
 # sys.path; a full suite happened to import the repository root indirectly,
 # while an isolated maintenance-script test could not.  Make collection order

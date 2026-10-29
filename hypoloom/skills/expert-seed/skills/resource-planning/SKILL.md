@@ -21,6 +21,13 @@ Choose `CPU` when GPU acceleration is immaterial, `AUTO` when CPU is scientifica
 valid, or `GPU_REQUIRED` for an evidenced GPU requirement. Do not change that
 scientific requirement merely because capacity is temporarily unavailable.
 
+Once the Host grants GPU, the submitted Process must use the granted CUDA
+device(s). A nonempty Host-provided `CUDA_VISIBLE_DEVICES` identifies that grant;
+if the framework cannot initialize CUDA, fail before training. Do not use
+`cuda if available else cpu` to downgrade an issued GPU grant. `AUTO` permits
+the Host to select CPU before dispatch, not an experiment-side fallback. The
+Host's driver preflight does not replace the changed implementation's device smoke.
+
 For ACI18 EXECUTION on an explicitly pooled run, pass an optional
 `resource_estimate` to `submit_experiment`:
 

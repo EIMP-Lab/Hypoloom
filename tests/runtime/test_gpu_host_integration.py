@@ -332,7 +332,7 @@ def test_host_binds_request_snapshot_and_freezes_auto_gpu_grant_before_execution
         contract = spec["execution_contract"]
         assert spec["resource_preference"] == contract["resource_preference"] == "AUTO"
         assert contract["resource_grant"] == {"kind": "GPU", "gpu_uuid": GPU_UUID}
-        assert contract["sandbox_profile"] == "bwrap-gpu-single-no-network/1"
+        assert contract["sandbox_profile"] == "bwrap-gpu-single-no-network/2"
         attempt = host.store.get_attempt(contract["source_agent_attempt_id"])
         observation = json.loads(attempt["observation_json"])
         request = observation["request"]
@@ -366,7 +366,7 @@ def test_host_binds_request_snapshot_and_freezes_auto_gpu_grant_before_execution
             "truncated": False,
         }
         assert host.configuration["resource_planning_skill"] == (
-            "experiment-resource-planning/6"
+            "experiment-resource-planning/7"
         )
         assert any(path.name == "SKILL.md" for path in host.runtime_files)
         assert response["input_digest"] == request_digest(AgentRequest.from_dict(request))

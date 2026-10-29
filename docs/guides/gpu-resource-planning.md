@@ -13,6 +13,27 @@ Start now action. Creation, restoration and upgrades are separate from the
 advisory repository version reminder; they preserve existing pool history and
 require no unresolved dependencies. See [initialization](initialization.md).
 
+## CUDA availability inside an experiment
+
+GPU sandbox profile version 2 exposes only the granted NVIDIA device nodes and
+read-only `/sys/module/nvidia/initstate` and `/sys/module/nvidia_uvm/initstate`.
+These module-state files let the NVIDIA driver helper recognize loaded modules
+when generic experiments expose `/usr/bin`; missing metadata can otherwise cause
+CUDA error 304 inside the sandbox even while host-side CUDA works.
+
+Before starting the experiment, an isolated check initializes CUDA, verifies the
+visible GPU UUIDs and creates a context with a small allocation on each granted
+device. It has a 30-second timeout. Failure exits with code 78 and logs
+`HYPOLOOM_CUDA_UNAVAILABLE`; the experiment entrypoint is not executed and the
+ordinary Process failure/cleanup path applies. No PyTorch dependency is added.
+
+The experiment must also fail if its own framework cannot use the GPU grant;
+`AUTO` allows the Host to choose CPU before dispatch, not a silent fallback after
+GPU allocation. The driver check does not prove that later training uses CUDA or
+replace the implementation's forward/backward/checkpoint smoke. CPU experiments
+and measurement parsers retain their CPU isolation. Existing runs keep their
+frozen runtime; applying this change requires a new run, not editing its bundle.
+
 ## What the budget means
 
 The Host admits the maximum of the Profile floor, the Agent's estimate, the

@@ -550,7 +550,7 @@ def test_design_request_carries_execution_environment_contract(
         assert environment["cpu"]["network"] == "none"
         assert environment["cpu"]["writable_roots"] == ["/output", "/tmp"]
         assert environment["cpu"]["gpu"] is None
-        assert environment["gpu"]["sandbox_profile"] == "bwrap-gpu-single-no-network/1"
+        assert environment["gpu"]["sandbox_profile"] == "bwrap-gpu-single-no-network/2"
         assert environment["gpu"]["gpu"] is not None
     finally:
         host.close()

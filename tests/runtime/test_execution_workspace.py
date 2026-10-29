@@ -120,7 +120,7 @@ def test_agent_workspace_reuses_pinned_target_and_captures_one_file(
         "print('candidate')\n", encoding="utf-8"
     )
 
-    assert EXECUTION_WORKSPACE_VERSION == "bwrap-workspace/3"
+    assert EXECUTION_WORKSPACE_VERSION == "bwrap-workspace/4"
     assert prepared.target_root is not None
     assert (prepared.target_root / "src" / "value.txt").read_text() == "patched\n"
     assert (target / "src" / "value.txt").read_bytes() == original
@@ -1057,6 +1057,12 @@ def test_materialize_accepts_only_sources_verified_as_character_devices(
         },
     )
     monkeypatch.setattr(execution_workspace_module, "_is_character_device", lambda _: True)
+    original_is_file = Path.is_file
+    monkeypatch.setattr(
+        Path, "is_file",
+        lambda path: str(path) in execution_workspace_module.NVIDIA_SYSFS_FILES
+        or original_is_file(path),
+    )
     request, response = candidate_pair()
     prepared = plan(workspace, request, response)
 

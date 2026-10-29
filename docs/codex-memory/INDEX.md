@@ -1,5 +1,11 @@
 # Development memory index
 
+- [CUDA sandbox initialization, October 29](../qualification.md#cuda-sandbox-initialization-repair-2026-10-29):
+  minimal NVIDIA module-state mounts, grant-identity/context/allocation checks,
+  bounded failure before workload entry, retained-profile audit compatibility,
+  three-A100 validation and focused dev regression reconciliation. Publication is
+  authorized for dev/main; the user retains manual research restart.
+
 - [Observer closing, report consistency and skill follow-up, October 26–27](../design/run-followup-repairs-2026-10-26.md):
   actual shared-acceptance closing, explicit Process/report consistency and
   lifecycle/version-separated skill evidence. October 27 adds complete bounded

@@ -2,6 +2,50 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## CUDA sandbox initialization repair (2026-10-29)
+
+The user authorizes the framework repair and publication to dev and main. An
+actual generic GPU sandbox reproduced CUDA error 304 while the same interpreter
+initialized CUDA on the host. With `/usr/bin` visible, `nvidia-modprobe` could not
+read the loaded NVIDIA/UVM module state and attempted module initialization in
+the user namespace. The experiment then silently selected CPU despite its GPU
+grant. Exposing only the two read-only module `initstate` files fixes that
+reproduction; exposing the whole `/sys` tree is unnecessary.
+
+The failed boundary is the granted Process's actual device/runtime namespace.
+Git identity, persisted grants and ordinary input validation cannot establish
+driver initialization inside that namespace. A small standard-library launcher
+therefore checks the granted UUIDs, contexts, allocation and synchronization
+before executing the original workload. Its child has a 30-second watchdog;
+failure returns 78 through the existing Process failure/cleanup path. The existing
+GPU sandbox profile advances to version 2 and Oracle validates its exact launch
+shape; retained version 1 remains readable. There is no new state ledger or
+framework dependency. Maintenance is limited to the driver ABI, the two metadata
+mounts and their regression cases. The launcher can be removed if the existing
+Process launch path supplies the same in-namespace check before workload entry.
+
+Main's focused public/regression suite passes **31 tests**, including real
+forward/backward/update/checkpoint round trips on three A100s individually and
+together. Removing the metadata again returns CUDA error 304/exit 78 without
+starting the candidate. A native failed measurement skips its parser and leaves
+no live owned process group. These are bounded sandbox checks, not a full G0–G5
+qualification or proof that later model training uses CUDA. Framework-level
+unavailability must still raise instead of selecting CPU after a GPU grant.
+Existing frozen runs are not migrated; the user will restart research manually.
+
+Dev's related Host/resource/measurement/Oracle selection initially records
+**459 passes, two failures and one opt-in skip** in 72.86 seconds. Both failures
+are old-version fixtures paired with the new workspace launcher. They now derive
+the version-2 requirement through the actual resource-contract validator; all
+mount, visibility and usage rejection assertions remain. The affected three
+modules then pass **144 tests** in 2.36 seconds. Exact identity reconciliation
+gives **461 passes and one skip**, with no unresolved failure, across the two
+invocations. The skipped hardware case passed in main's explicit A100 selection
+above. Logs/XML remain in `.local/analysis/cuda-dev-publication-20261029/`.
+All 200 runtime files match between branches except their two pre-existing
+documentation-string differences. Dev retains its full tests and detailed
+evidence; main retains its public documentation layout.
+
 ## Framework follow-up (2026-10-27)
 
 The user authorizes the reviewed framework improvements and dev commit/push,

@@ -1,5 +1,17 @@
 # Current Hypoloom development state
 
+- October 29 CUDA sandbox repair is ready for authorized dev/main publication.
+  Two read-only NVIDIA module-state files fix reproducible in-sandbox error 304.
+  GPU profile 2 requires an isolated, bounded driver check before workload entry;
+  failed initialization cannot start the CPU-fallback candidate. Legacy profile 1
+  remains auditable. Main passes 31 checks including three real A100s separately
+  and together. Dev reconciles 461 passes/one opt-in skip after two fixture repairs
+  and 144 affected rechecks; this is not full G0–G5 qualification. The 200 runtime
+  files retain only the two prior branch documentation-string differences.
+  The user ended research manually and will restart it; no run operation is
+  authorized by this publication request.
+  [Rationale and validation](../qualification.md#cuda-sandbox-initialization-repair-2026-10-29).
+
 - October 27 framework follow-up is implemented and verified; dev-only
   commit/push is authorized. Complete sanitized evolution
   summaries fit the existing 24 KiB bound; native rejection stages come from

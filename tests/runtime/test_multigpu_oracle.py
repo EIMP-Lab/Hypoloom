@@ -191,9 +191,11 @@ def test_oracle_process_mounts_match_both_uuid_bound_indices_without_gpu_io(tmp_
     workspace = ExecutionWorkspace(artifacts, state_root=state, **resources.workspace_kwargs(grant, resources.snapshot()))
     prepared = plan(workspace, *candidate_pair())
     process = prepared.process_request.to_dict()
-    resource = {"expected_kind": "GPU", "gpu_uuids": (GPU_A, GPU_B), "gpu_indices": (2, 0), "gpu_uuid": None,
-        "environment": {"CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": GPU_A + "," + GPU_B, "HYPOLOOM_PHASE2_SCORE": "1.25"}}
-    issues = []
+    case = contract_case()
+    case[1]["sandbox_profile"] = "bwrap-gpu-multi-no-network/2"
+    case[1]["environment"].append(["HYPOLOOM_PHASE2_SCORE", "1.25"])
+    resource, issues = audit_contract(case)
+    assert issues == [] and resource["cuda_preflight_required"] is True
     _audit_process_resource(process, resource, prepared.process_request.attempt_id, "experiment.py", ("python", "experiment.py"), None, issues)
     assert issues == []
     for mutate in ("missing", "foreign"):

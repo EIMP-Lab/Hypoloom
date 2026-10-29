@@ -296,8 +296,10 @@ def test_shared_attempt_bwrap_mounts_visibility_and_usage_follow_actual_grant(tm
 
     resources = _resources(tmp_path)
     case = shared_case()
+    case[1]["sandbox_profile"] = "bwrap-gpu-single-no-network/2"
     case[1]["environment"].append(["HYPOLOOM_PHASE2_SCORE", "1.25"])
     resource, issues = audit_source(case)
+    assert issues == [] and resource["cuda_preflight_required"] is True
     intent, attempt, observation = process_case(GPU_C)
     grant = ResourceGrant(kind=ResourceKind.GPU, gpu_uuid=GPU_C)
     state = tmp_path / "state"

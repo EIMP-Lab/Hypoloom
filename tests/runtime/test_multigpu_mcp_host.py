@@ -49,7 +49,7 @@ def test_mcp_plural_count_is_frozen_and_reconstructed_without_gpu_spawn(executio
     spec, contract, _, _, _, _, _, capabilities, grant = host._execution_inputs(request.run_id, experiment)
     assert len(grant.device_uuids) == 2
     assert contract["resource_grant"] == {"kind": "GPU", "gpu_uuids": list(grant.device_uuids)}
-    assert contract["sandbox_profile"] == "bwrap-gpu-multi-no-network/1"
+    assert contract["sandbox_profile"] == "bwrap-gpu-multi-no-network/2"
     assert dict(contract["environment"])["CUDA_VISIBLE_DEVICES"] == ",".join(grant.device_uuids)
     assert set(grant.device_uuids) <= {item.uuid for item in capabilities.gpus}
     assert host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments) == submitted
