@@ -27,6 +27,14 @@ GPU convenience is not enough. If CPU remains valid, use `AUTO` and accept that
 the Host may grant CPU. If CPU is invalid, do not disguise unavailable GPU
 capacity as a CPU-capable experiment; let the Host reject or defer it.
 
+`AUTO` is a Host scheduling choice, not permission to change an issued GPU grant.
+In the submitted Process, a nonempty Host-provided `CUDA_VISIBLE_DEVICES` means
+GPU execution: require the chosen framework to initialize CUDA and use the
+granted device(s). Never silently select CPU when `torch.cuda.is_available()` or
+an equivalent check fails. Raise an execution error before training instead.
+The Host's CUDA preflight checks driver initialization, identity and allocation;
+the entrypoint still owns its framework-specific forward/backward/reload smoke.
+
 Pure documentation, report, checklist, and other non-production artifact work
 must use `CPU`. Available GPU capacity does not make that work `AUTO`, and such
 work must not request `GPU_REQUIRED`.

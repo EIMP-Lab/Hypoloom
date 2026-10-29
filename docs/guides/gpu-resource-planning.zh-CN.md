@@ -11,6 +11,23 @@
 提醒是独立流程；它们保留已有池历史，并要求不存在未结束依赖。
 用法见[初始化指南](initialization.zh-CN.md)。
 
+## 实验沙箱中的 CUDA 可用性
+
+GPU 沙箱配置第 2 版只绑定获准的 NVIDIA 设备节点，并只读挂载
+`/sys/module/nvidia/initstate` 与 `/sys/module/nvidia_uvm/initstate`。
+通用实验开放 `/usr/bin` 后，NVIDIA 驱动辅助程序依赖这些状态文件识别已加载的模块；
+缺少它们可能导致宿主机 CUDA 正常、沙箱内却出现 CUDA 304 错误。
+
+实验入口启动前，隔离的检查进程会初始化 CUDA、核对可见 GPU 的 UUID，
+并在每张获准设备上创建上下文、进行小量显存分配。检查限时 30 秒；
+失败时以退出码 78 结束，记录 `HYPOLOOM_CUDA_UNAVAILABLE`，不执行实验入口，
+由既有 Process 失败与清理流程处理。此检查不增加 PyTorch 依赖。
+
+实验自身的框架无法使用获准 GPU 时，也必须报错；`AUTO` 允许 Host 在派发前选择 CPU，
+不允许分配 GPU 后静默回退 CPU。驱动检查不证明后续训练实际使用 CUDA，
+也不替代实现自身的前向、反向和 checkpoint 小规模检查。CPU 实验及指标解析器
+继续保持 CPU 隔离。既有运行保留冻结运行时；应用本修复需要新运行，不能修改旧 bundle。
+
 ## 预算含义
 
 Host 取 Profile 硬下限、Agent 申报、可比实测预算和实际 OOM 预算下界中的最大值。

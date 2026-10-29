@@ -42,7 +42,7 @@ Repository = "https://github.com/EIMP-Lab/Hypoloom"
 Issues = "https://github.com/EIMP-Lab/Hypoloom/issues"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/test_documentation_structure.py", "tests/test_public_profiles.py"]
+testpaths = ["tests"]
 # Public checks use the source checkout without requiring an editable install.
 pythonpath = ["."]
 

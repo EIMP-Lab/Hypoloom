@@ -5270,12 +5270,15 @@ def _audit_resource_contract(
             and type(reserve) is int and 0 <= reserve <= 2**53 - 1
             and type(raw.get("workload_memory_mib")) is int and raw["workload_memory_mib"] == resolved
             and type(raw.get("reserve_memory_mib")) is int and raw["reserve_memory_mib"] == reserve
-            and contract.get("sandbox_profile") == ("bwrap-gpu-multi-no-network/1" if count > 1 else "bwrap-gpu-single-no-network/1")
+            and contract.get("sandbox_profile") in {
+                f"bwrap-gpu-{'multi' if count > 1 else 'single'}-no-network/{version}"
+                for version in (1, 2)}
             and environment is not None and environment.get("CUDA_VISIBLE_DEVICES") == ""
             and environment.get("CUDA_DEVICE_ORDER") == "PCI_BUS_ID")
         if not valid:
             issues.append(OracleIssue("resource_intent_mismatch", "shared GPU intent differs from its version, source count, authorized inventory or Profile floor", (fact_id,)))
         return {"shared": True, "intent": raw, "pool_binding": pool_binding,
+                "cuda_preflight_required": str(contract.get("sandbox_profile", "")).endswith("/2"),
                 "attributable": research_contract_version == "hypoloom-research-v12",
                 "source_valid": valid and len(issues) == initial_issue_count,
                 "expected_kind": "GPU", "environment": environment,
@@ -5345,10 +5348,11 @@ def _audit_resource_contract(
             (fact_id, unknown_uuid),
         ))
     environment_map = _raw_resource_environment(contract)
-    expected_profile = ("bwrap-gpu-multi-no-network/1" if len(grant_uuids) > 1 else "bwrap-gpu-single-no-network/1") if grant_kind == "GPU" else "bwrap-cpu-no-network/2"
+    expected_profiles = ({f"bwrap-gpu-{'multi' if len(grant_uuids) > 1 else 'single'}-no-network/{version}"
+                          for version in (1, 2)} if grant_kind == "GPU" else {"bwrap-cpu-no-network/2"})
     expected_visible = ",".join(grant_uuids)
     if (
-        contract.get("sandbox_profile") != expected_profile
+        contract.get("sandbox_profile") not in expected_profiles
         or environment_map is None
         or environment_map.get("CUDA_VISIBLE_DEVICES") != expected_visible
         or environment_map.get("CUDA_DEVICE_ORDER") != "PCI_BUS_ID"
@@ -5378,6 +5382,7 @@ def _audit_resource_contract(
     )
     return {
         "expected_kind": None if expected is None else expected[0],
+        "cuda_preflight_required": grant_kind == "GPU" and str(contract.get("sandbox_profile", "")).endswith("/2"),
         "grant_kind": grant_kind,
         "gpu_uuid": grant_uuid,
         "gpu_index": None if selected is None else selected["index"],
@@ -5578,6 +5583,7 @@ def _audit_process_resource(
                 else None
             ),
             allow_generic=allow_generic,
+            cuda_preflight_required=expected_kind == "GPU" and resource.get("cuda_preflight_required") is True,
         )
         and request.get("env") == {}
         and _canonical_attempt_cwd(request.get("cwd"), attempt_id)
@@ -5823,6 +5829,7 @@ def _canonical_bwrap_argv(
     expected_environment: Mapping[str, Any],
     expected_component_mounts: _OracleComponentMounts | None = None,
     allow_generic: bool = False,
+    cuda_preflight_required: bool = False,
 ) -> bool:
     if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
         return False
@@ -5848,6 +5855,12 @@ def _canonical_bwrap_argv(
         index += 3
     if tuple(actual_bindings) != expected_bindings:
         return False
+    if cuda_preflight_required:
+        if not expected_bindings:
+            return False
+        for path in ("/sys/module/nvidia/initstate", "/sys/module/nvidia_uvm/initstate"):
+            if not consume("--ro-bind", path, path):
+                return False
     if not consume("--tmpfs", "/tmp", "--dir", "/runtime", "--ro-bind"):
         return False
     if index + 1 >= len(argv):
@@ -5925,6 +5938,16 @@ def _canonical_bwrap_argv(
             return False
     if not consume("--chdir", "/output", "--") or index >= len(argv):
         return False
+    if cuda_preflight_required:
+        interpreter = PurePosixPath(argv[index])
+        if (not interpreter.is_absolute() or interpreter.parts[:3] != ("/", "runtime", "bin")
+                or not interpreter.name.startswith("python")):
+            return False
+        # Compare the complete trusted bytes, not only a marker that an
+        # experiment could copy while omitting the check.
+        source = Path(__file__).with_name("cuda_preflight.py").read_text(encoding="utf-8")
+        if not consume(str(interpreter), "-I", "-S", "-c", source) or index >= len(argv):
+            return False
     executable = argv[index]
     command = argv[index + 1:]
     executable_path = PurePosixPath(executable)

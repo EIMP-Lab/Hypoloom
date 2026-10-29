@@ -160,7 +160,7 @@ does not require termination or prove goal success; continue useful local work
 or submit a complete GOAL experiment against the accepted common evaluator.
 For
 `DRAFT_EXPERIMENT_SPEC`, the Host renders one packaged, role-parameterized
-`experiment-resource-planning/6` compatibility guidance (not a callable native
+`experiment-resource-planning/7` compatibility guidance (not a callable native
 Skill; use the request-bound plugin's advertised entrypoint) and one bounded
 `resource-experience/1` summary as advisory inputs. For that component's bounded
 preflight `ANSWER_RENDEZVOUS`, the Host performs allow-listed deterministic

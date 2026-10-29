@@ -61,9 +61,9 @@ _TERMINAL_RUNS = {state.value for state in (RunState.COMPLETED, RunState.FAILED,
 _VERSION_FIELDS = tuple(RunVersion.__dataclass_fields__)
 _PRESSURE_TERMINATE_GRACE_SECONDS = 30.0
 _CONFIG = {"agent_attempt_cap": 2, "agent_infrastructure_attempt_cap": 3, "process_attempt_cap": 2, "process_timeout": 10.0, "evaluator_retry_delay": 1.0}
-_RESOURCE_SKILL = Path(__file__).resolve().parent / "skills/experiment-resource-planning/SKILL.md"; _RESOURCE_SKILL_VERSION = "experiment-resource-planning/6"; _QUERY_SKILL = Path(__file__).resolve().parent / "skills/openalex-query-planning/SKILL.md"; _QUERY_SKILL_VERSION = "openalex-query-planning/6"
-_CPU_SANDBOX_PROFILE = "bwrap-cpu-no-network/2"; _GPU_SANDBOX_PROFILE = "bwrap-gpu-single-no-network/1"
-_GPU_MULTI_SANDBOX_PROFILE = "bwrap-gpu-multi-no-network/1"
+_RESOURCE_SKILL = Path(__file__).resolve().parent / "skills/experiment-resource-planning/SKILL.md"; _RESOURCE_SKILL_VERSION = "experiment-resource-planning/7"; _QUERY_SKILL = Path(__file__).resolve().parent / "skills/openalex-query-planning/SKILL.md"; _QUERY_SKILL_VERSION = "openalex-query-planning/6"
+_CPU_SANDBOX_PROFILE = "bwrap-cpu-no-network/2"; _GPU_SANDBOX_PROFILE = "bwrap-gpu-single-no-network/2"
+_GPU_MULTI_SANDBOX_PROFILE = "bwrap-gpu-multi-no-network/2"
 def _grant_profile(grant: ResourceGrant | ResourceIntent) -> str:
     count = grant.gpu_count if isinstance(grant, ResourceIntent) else len(grant.device_uuids)
     return _GPU_MULTI_SANDBOX_PROFILE if count > 1 else _GPU_SANDBOX_PROFILE if grant.kind is ResourceKind.GPU else _CPU_SANDBOX_PROFILE

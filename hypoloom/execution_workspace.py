@@ -24,16 +24,17 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from .agent_aci import AgentRequest, validate_postflight, validate_submission_snapshot
 from .component_contract import downstream_source_contract_plans
+from .cuda_preflight import NVIDIA_SYSFS_FILES, launch_prefix as cuda_launch_prefix
 from .domain import AttemptTerminalReason
 from .outcome_adapter import ComponentResultValidationError
 from .runner import ProcessObservation, ProcessRequest
 
 
-EXECUTION_WORKSPACE_VERSION = "bwrap-workspace/3"
+EXECUTION_WORKSPACE_VERSION = "bwrap-workspace/4"
 _GIT_OUTPUT_LIMIT = 8 * 1024 * 1024
 _PATCH_SIZE_LIMIT = 64 * 1024 * 1024
 
-EXECUTION_ENVIRONMENT_CONTRACT_VERSION = "execution-environment/1"
+EXECUTION_ENVIRONMENT_CONTRACT_VERSION = "execution-environment/2"
 
 
 def execution_read_root_projection(
@@ -99,7 +100,7 @@ def execution_environment_contract(sandbox_profile: str) -> dict[str, Any]:
             "empty_valued_entries_are_unset": True,
             "result_path": "HYPOLOOM_RESULT_PATH names the result file relative to /output (result.json)",
         },
-        "gpu": ("each granted GPU has its exact /dev/nvidia* device bound; CUDA_VISIBLE_DEVICES lists only the frozen granted UUIDs in canonical order"
+        "gpu": ("each granted GPU has its exact /dev/nvidia* device bound; CUDA_VISIBLE_DEVICES lists only the frozen granted UUIDs in canonical order. NVIDIA and UVM module initstate files are read-only. Before the workload starts, an isolated Host check verifies CUDA device identities, contexts and a small allocation on every granted GPU; failure stops the Process without CPU fallback. The workload must use the granted CUDA device(s) and fail if its framework cannot initialize CUDA; never replace a GPU grant with CPU based on is_available()"
                 if "gpu" in sandbox_profile else None),
     }
     return contract
@@ -939,6 +940,12 @@ class ExecutionWorkspace:
         ]
         for source, destination in self.device_bindings:
             argv.extend(("--dev-bind", str(source), destination))
+        if self.device_bindings:
+            # nvidia-modprobe is visible in generic experiments through /usr/bin.
+            # Without these two module-state files it tries to load already
+            # loaded drivers inside the user namespace and CUDA returns 304.
+            for path in NVIDIA_SYSFS_FILES:
+                argv.extend(("--ro-bind", path, path))
         argv.extend([
             "--tmpfs",
             "/tmp",
@@ -988,6 +995,8 @@ class ExecutionWorkspace:
         command = [sandbox_executable if execution_argv[0] == "python" else execution_argv[0], *execution_argv[1:]]
         if len(command) > 1 and command[1] == source_relative_path:
             command[1] = str(PurePosixPath("/input") / source_relative_path)
+        if self.device_bindings:
+            command = [*cuda_launch_prefix(sandbox_executable), *command]
         argv.extend(("--chdir", "/output", "--", *command))
         return tuple(argv)
 
@@ -1014,6 +1023,10 @@ class ExecutionWorkspace:
                 raise SandboxUnavailable(
                     f"bound GPU source is not an available character device: {source}"
                 )
+        if self.device_bindings:
+            for path in NVIDIA_SYSFS_FILES:
+                if not Path(path).is_file():
+                    raise SandboxUnavailable(f"NVIDIA driver module state is unavailable: {path}")
 
     def _check_prepared(self, prepared: PreparedExecution) -> None:
         expected = self.paths(prepared.attempt_id)
