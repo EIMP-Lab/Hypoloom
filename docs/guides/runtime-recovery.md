@@ -78,6 +78,21 @@ have exhausted automatic recovery; unrelated work may continue. Check Host
 liveness, dispatch errors and Process observations to assess the whole run.
 Failures remain visible after completion, and TUI uses the same node count.
 
+New runs keep bounded diagnostic log excerpts valid UTF-8, including progress
+bars cut at the byte limit; non-text log bytes appear as replacement characters.
+Original logs remain available unchanged. This prevents a log excerpt from
+blocking an otherwise valid analysis request before the model is called.
+
+Complete responses must be one JSON object as ordinary final text. Let the native
+Stop hook validate that message; calling its internal socket manually does not
+finish the response. A connection closed before a complete request is recorded
+without disabling later validation. A changed invalid completion revokes prior
+acceptance and can be corrected within the same configured limit and deadline.
+The Host requires the actual final message to match the accepted text; it never
+substitutes an earlier candidate or removes surrounding prose. Invalid session
+identity, malformed complete transport frames and validator failures remain fatal.
+These changes apply to new runs and do not rewrite historical red error records.
+
 Local parser `value` and optional `baseline` must be finite scalar numbers;
 per-dataset detail belongs in raw artifacts. Invalid fields are named as
 `result.value` or `result.baseline`. Native Stop rejections survive into retry
@@ -93,7 +108,7 @@ actual files when this feedback appears. The final response still undergoes full
 validation, including usage and diagnostics that become available only at exit;
 leave space for that metadata. Updating the checkout does not change old runs.
 
-New runs accept identical native completion replies caused by same-session
+After the CLI exits, new runs accept identical completion replies caused by same-session
 background-task notifications only after identity, current-output validation and
 cumulative accounting checks. The final cumulative ledger is charged once.
 Changed or unaccounted extra completions remain failures.

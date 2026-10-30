@@ -81,6 +81,10 @@ def test_local_test_keeps_formal_entrypoint_imports_and_checkpoint_writer(coding
     assert "Do not derive target imports from the standalone script's __file__" in instruction
     assert "model registration, a tiny optimizer step, checkpoint save/reload" in instruction
     assert "A PYTHONPATH override that bypasses the wrapper" in instruction
+    assert "Check each child CLI's required arguments" in instruction
+    assert "real metric serialization and downstream loading" in instruction
+    assert "including seed and extension placement" in instruction
+    assert "leave device-dependent checks to the Host-granted Process" in instruction
 
 
 @pytest.mark.parametrize("command", [AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT,

@@ -68,6 +68,80 @@ def test_repeated_stop_revalidates_changed_text_and_delivers_exact_file(tmp_path
         server.close()
 
 
+@pytest.mark.parametrize("partial", [b"", b'{"session_id":'])
+def test_abandoned_request_does_not_poison_later_native_completion(tmp_path, partial):
+    server = _server(tmp_path)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2)
+            client.connect(str(server.socket_path))
+            if partial:
+                client.sendall(partial)
+            client.shutdown(socket.SHUT_WR)
+            assert json.loads(client.makefile("rb").readline())["ok"] is False
+        assert server.snapshot()["call_count"] == 0
+        assert not server.snapshot()["accepted"]
+        assert _call(server) == {}
+        assert server.accepted_text() == VALID
+        assert "error" not in server.snapshot()
+    finally:
+        server.close()
+
+
+def test_changed_final_text_can_correct_after_prior_acceptance(tmp_path):
+    server = _server(tmp_path, cap=2)
+    try:
+        assert _call(server) == {}
+        rejected = _call(server, "The validated object follows. " + VALID)
+        assert rejected["decision"] == "block"
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
+        assert server.snapshot()["rejected_count"] == 1
+        assert "error" not in server.snapshot()
+        corrected = VALID.replace("1", "2")
+        assert _call(server, corrected) == {}
+        assert server.accepted_text() == corrected
+        assert [row["status"] for row in server.snapshot()["rounds"]] == ["accepted", "rejected", "accepted"]
+        # A later bad message consumes the last correction; the old file cannot win.
+        assert _call(server, "Still not JSON") == {}
+        assert server.snapshot()["rejected_count"] == 2
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
+        with pytest.raises(ValueError, match="already completed"):
+            _call(server)
+    finally:
+        server.close()
+
+
+def test_disconnected_probe_records_diagnostic_without_response_poisoning(tmp_path):
+    from hypoloom.runtime_diagnostics import RuntimeDiagnostics
+
+    diagnostics = RuntimeDiagnostics(tmp_path / "diagnostics")
+    server = _server(tmp_path, diagnostics=diagnostics)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.connect(str(server.socket_path))
+            peer.sendall(b'{"private-candidate-value":')
+        events = diagnostics.root / "events.jsonl"
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with server._lock:
+                finished = events.is_file() and not server._connections
+            if finished:
+                break
+            time.sleep(0.01)
+        assert finished
+        recorded = [json.loads(line) for line in events.read_text().splitlines()]
+        assert [row["kind"] for row in recorded] == ["native_output_incomplete_request"]
+        assert "private-candidate-value" not in events.read_text()
+        assert server.snapshot()["call_count"] == 0
+        assert "error" not in server.snapshot()
+        assert _call(server) == {}
+        assert server.accepted_text() == VALID
+    finally:
+        server.close()
+
+
 @pytest.mark.parametrize("change", ["source", "session", "invalid"])
 def test_repeated_stop_rejects_identity_or_source_drift(tmp_path, change):
     def check(output):
@@ -78,12 +152,23 @@ def test_repeated_stop_rejects_identity_or_source_drift(tmp_path, change):
     try:
         assert _call(server) == {}
         changed[0] = change == "source"
-        with pytest.raises(ValueError):
-            _call(server, INVALID if change == "invalid" else VALID,
-                  session_id="foreign" if change == "session" else "session-owned")
+        if change == "session":
+            with pytest.raises(ValueError, match="session mismatch"):
+                _call(server, session_id="foreign")
+        else:
+            response = _call(server, INVALID if change == "invalid" else VALID)
+            assert response["decision"] == "block"
         assert not server.snapshot()["accepted"]
         with pytest.raises(ValueError, match="not accepted"):
             server.accepted_text()
+        if change == "session":
+            with pytest.raises(ValueError, match="unavailable"):
+                _call(server)
+        else:
+            assert server.snapshot()["rejected_count"] == 1
+            changed[0] = False
+            assert _call(server) == {}
+            assert server.accepted_text() == VALID
     finally:
         server.close()
 

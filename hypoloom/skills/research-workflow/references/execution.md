@@ -29,7 +29,12 @@ the current node's output. Use existing Host records rather than a second ledger
 For a long experiment, inspect the implementation's small end-to-end check and
 whether it covers the selected artifact-loading and evaluator path. If a relevant
 integration gap remains, use a small Host-owned experiment to resolve it before
-a full run. After technical failure, isolate and test the failing path rather
+a full run. Include the actual child-process commands and their required CLI
+arguments, metric serialization, full emitted filenames (seed and extension
+placement included), and the consumer that loads them. Use bounded CPU fixtures
+where supported; a forward/backward probe or synthetic parser fixture alone
+does not cover this path. Record pending device checks for the Host-granted
+Process in existing notes. After technical failure, isolate and test the failing path rather
 than repeating all training unchanged. Reuse published artifacts only through
 the existing ownership and submission rules; never relabel a failed Process as
 a successful experiment. Report any unchecked path in existing notes.

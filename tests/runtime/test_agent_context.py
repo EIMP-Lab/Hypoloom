@@ -353,6 +353,45 @@ class _ResultAnalysisStore:
         return self.attempts.get(attempt_id)
 
 
+@pytest.mark.parametrize("glyph", ["é", "█", "🙂"])
+def test_bounded_log_tail_remains_renderable_at_multibyte_boundary(tmp_path, glyph):
+    from types import SimpleNamespace
+    from hypoloom.agent_context import _attempt_log_tail
+    from hypoloom.claude_agent_host import _render_input
+
+    publisher = SimpleNamespace(root=tmp_path)
+    path = tmp_path / "result-staging/process/logs/stderr.log"
+    path.parent.mkdir(parents=True)
+    suffix = b"" if len(glyph.encode()) == 3 else b"x"
+    original = glyph.encode() * 70000 + suffix
+    path.write_bytes(original)
+    with pytest.raises(UnicodeDecodeError):
+        original[-65536:].decode("utf-8")
+    tail = _attempt_log_tail(publisher, "process", "stderr")
+    rendered = _render_input(EmbeddedInput.from_bytes("node--current-stderr", "text/plain", tail))
+    assert rendered["content_utf8"].endswith(suffix.decode() or glyph)
+    assert "\ufffd" not in rendered["content_utf8"]
+    assert len(tail) <= 65536
+    assert path.read_bytes() == original
+
+
+def test_non_utf8_diagnostic_tail_is_visible_without_rejecting_agent_input(tmp_path):
+    from types import SimpleNamespace
+    from hypoloom.agent_context import _attempt_log_tail
+    from hypoloom.claude_agent_host import _render_input
+
+    path = tmp_path / "result-staging/process/logs/stderr.log"
+    path.parent.mkdir(parents=True)
+    original = b"\xff" * 70000 + b"\nactual failure\n"
+    path.write_bytes(original)
+    tail = _attempt_log_tail(SimpleNamespace(root=tmp_path), "process", "stderr")
+    rendered = _render_input(EmbeddedInput.from_bytes("stderr", "text/plain", tail))
+    assert "\ufffd" in rendered["content_utf8"]
+    assert rendered["content_utf8"].endswith("\nactual failure\n")
+    assert len(tail) <= 65536
+    assert path.read_bytes() == original
+
+
 def test_result_analysis_inputs_select_exact_current_experiment_and_diagnostics(
     tmp_path: Path,
 ) -> None:

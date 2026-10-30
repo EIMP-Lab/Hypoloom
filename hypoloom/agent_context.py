@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import replace
 import json
+import os
 from typing import Any, Iterable, Mapping
 from .agent_aci import AgentACIError, AgentRequest, AgentResponse, EmbeddedInput, ValidatedSubmission, canonical_json, validate_submission_snapshot
 from .collaboration import ExpertSignal, ExpertSignalKind, RendezvousOrigin, RendezvousReply
@@ -512,7 +513,18 @@ def _attempt_log_tail(
         / "logs"
         / f"{name}.log"
     )
-    return path.read_bytes()[-65_536:] if path.is_file() else None
+    if not path.is_file():
+        return None
+    limit = 65_536
+    # Include one UTF-8 character's lookbehind before clipping the rendered
+    # diagnostic. Raw logs stay intact; non-text bytes remain visible as U+FFFD.
+    with path.open("rb") as source:
+        size = source.seek(0, os.SEEK_END)
+        source.seek(max(0, size - limit - 3))
+        text = source.read(limit + 3).decode("utf-8", errors="replace")
+    # Replacement characters can expand the byte count. This slice is normalized
+    # UTF-8, so ignoring a clipped leading fragment cannot hide an interior error.
+    return text.encode("utf-8")[-limit:].decode("utf-8", errors="ignore").encode("utf-8")
 
 
 def _validated_submission_source(

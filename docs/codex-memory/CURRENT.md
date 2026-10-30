@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- October 30 framework input/completion repairs are implemented; the user
+  authorizes dev commit/push, then corresponding public main synchronization.
+  Bounded diagnostic tails remain UTF-8 without changing raw logs. Incomplete
+  native validation connections no longer poison an invocation; changed invalid
+  final text revokes acceptance and uses the remaining correction budget. Session,
+  schema, current-source and exact-final-text checks remain enforced. Adapter /86.
+  Direct coding instructions and seed references cover actual child CLI arguments,
+  metric filenames and downstream loading; project algorithms remain project-owned.
+  Seven pre-fix failures are retained; 481 affected checks and two real CLI/Host/CPU
+  closures pass (30 Agents, four Processes, clean Oracles and 34 reaped groups).
+  The original Unicode log failure replays read-only; 201 source/wheel/install/bundle
+  files match. These are bounded checks, not renewed full G0–G5 qualification.
+  The user manually stopped MERC; observed STOPPING and Process disappearance do
+  not authorize administrative closure. Do not resume/migrate/settle its retained
+  state or update its private plugins. New runtime behavior applies to new runs.
+  [Design](../design/framework-input-and-completion-repairs-2026-10-30.md) /
+  [evidence](../qualification.md#framework-input-and-completion-repairs-2026-10-30).
+
 - October 30 run trends now keep metric cells and the dialog frame stable across
   RPM digits/unknown states. Custom local start/end intervals filter both charts
   at the original bucket resolution; applied ranges, inspected time and input

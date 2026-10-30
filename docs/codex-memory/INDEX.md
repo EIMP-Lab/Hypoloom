@@ -1,5 +1,14 @@
 # Development memory index
 
+- [Framework input and completion repairs, October 30](../design/framework-input-and-completion-repairs-2026-10-30.md):
+  bounded UTF-8 diagnostic tails, request-local incomplete transport, ordinary
+  correction after prior acceptance and actual CLI/writer/reader integration
+  guidance. [Validation](../qualification.md#framework-input-and-completion-repairs-2026-10-30):
+  seven reproduced failures, 481 affected checks, two native Host/CPU closures,
+  read-only original-log replay and 201-file installation parity. Dev publication
+  followed by public main synchronization is authorized; retained runs/plugins
+  stay unchanged and full G0–G5 qualification is not renewed.
+
 - [Stable run trends and custom intervals, October 30](../design/issue-report-evidence.md#stable-inspection-and-custom-time-intervals-2026-10-30):
   fixed metric geometry, local start/end filtering of existing buckets and
   retained point/range/draft state. [Validation](../qualification.md#stable-run-trends-and-custom-intervals-2026-10-30):

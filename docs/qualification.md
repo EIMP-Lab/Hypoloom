@@ -2,6 +2,61 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Framework input and completion repairs (2026-10-30)
+
+[Design](design/framework-input-and-completion-repairs-2026-10-30.md).
+The user manually stopped the research run and requests general framework repairs,
+dev commit/push and subsequent public main synchronization. Adapter /86 fixes
+bounded diagnostic text and native output correction while retaining strict final
+JSON, session identity, current-source validation, correction caps and deadlines.
+Existing coding instructions and seed references now cover actual child CLI
+arguments and metric producer/filename/consumer integration. They do not implement
+project algorithms or establish that a model obeyed the guidance.
+
+Evidence is in `.local/analysis/framework-completion-20261030/`:
+
+- **Seven reproduced failures**, 0.97 s (`before.xml`): three clipped UTF-8 widths,
+  genuinely non-text log bytes, two abandoned request frames and invalid final text
+  following accepted output. Initial focused verification passes **125** checks,
+  4.39 s (`focused.xml`). Final affected regression passes **481**, 32.90 s
+  (`regression.xml`), including a fully disconnected peer, redacted diagnostics,
+  remaining correction cap, invalidated old output, current-source drift,
+  session mismatch, malformed/oversized frames, storage failures, deadlines,
+  context/retry delivery, adapter wiring and retained-bundle behavior.
+- **Two real CLI/Host/CPU closures pass**, 80.31 s (`g3.xml`), using the installed
+  Claude CLI, native Stop, local scripted provider, production broker, submission,
+  failed Process and successful replacement, collection, publication and Oracle.
+  The new scenario reproduces an incomplete connection, accepted candidate and
+  prose-prefixed final JSON in one ADJUDICATE invocation. It gets native feedback
+  and closes successfully with accepted/rejected/accepted rounds and one rejection.
+  Existing early-execution completion correction also passes. Independent read-only
+  counts show **30 successful closed Agents, four closed Processes** (two expected
+  failures/two successes), four canonical outcomes, clean Oracles and **zero live
+  members of 34 recorded process groups** (`g3-closure.json`). Per-run evidence
+  remains under `/tmp/hypoloom-completion-g3-20261030/`.
+- Read-only replay of the actual **614,326-byte** stderr confirms the full log is
+  valid UTF-8 while its old 65,536-byte suffix starts with `0x88` and is rejected
+  by the production input renderer. The repaired **65,535-byte** suffix renders
+  successfully without replacement characters. Original bytes, size and mtime
+  remain unchanged (`retained-log-replay.json`). No scientific state was written.
+- Source, wheel, isolated installation and a fresh frozen bundle match all **201
+  runtime files** (`installation.json`). Installed CLI help, MCP tool listing,
+  new plugin reference content, UTF-8 tail rendering and accepted→rejected→corrected
+  native output pass outside the source checkout. Build/install use existing tools,
+  no dependency downloads and no shared-environment installation.
+
+Publication preparation additionally passes **24** checks, 3.35 s
+(`publication-checks.xml`): 17 plugin checks and the seven required dev
+documentation/public-Profile checks. Main's public counterpart is checked during
+the subsequent synchronization; development-only tests and evidence remain on dev.
+
+These checks use Python 3.12/SQLite 3.53.4 and existing pytest with plugin autoload
+disabled. They are bounded regression/G3 evidence, not a new full G0–G5 candidate
+qualification, GPU performance result or paid-model compatibility claim. The
+existing run remains read-only: STOPPING and the original Process's disappearance
+are separate observations, not completed administrative closure. Its frozen
+runtime, private experts, repair budgets and historical red errors are unchanged.
+
 ## Web observer publication (2026-10-30)
 
 The user now authorizes dev commit/push followed by the corresponding public main

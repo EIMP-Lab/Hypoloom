@@ -99,6 +99,9 @@ def test_instruction_requires_normal_final_json_without_reducing_capabilities():
     assert "one complete JSON object" in instruction
     assert "Read/Write/Edit/Glob/Grep/Bash/Skill" in instruction
     assert "declared_effects" in instruction
+    assert "Let the normal Stop hook validate that final message" in instruction
+    assert "do not manually call internal validation sockets or hook clients" in instruction
+    assert "without introductory or trailing prose" in instruction
     assert "StructuredOutput" not in instruction
 
 
