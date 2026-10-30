@@ -2,6 +2,46 @@
 
 [English](qualification.md) · 简体中文
 
+## 性能指导送达（2026-10-30）
+
+用户授权实施、提交推送 dev，之后同步 main。
+[设计方案](design/research-workflow-skill.zh-CN.md#性能指导送达与阶段交接2026-10-30)。
+原生实验设计、执行和结果分析直接收到绑定版本的性能参考，不再只依赖嵌套条件
+链接。现有工作记录交接可复用测量、待测项或具体不适用理由；实际 DataLoader
+配置及有界对照仍由实验自己实现。已有研究运行和私有插件未修改。main 保留公开
+布局，完整设计、开发记忆和原生测试夹具保留在 dev。
+
+证据在 dev worktree 的 `.local/analysis/performance-guidance-20261030/`。控制环境为
+Python 3.12／SQLite 3.53.4，通过 `PYTHONPATH` 使用已有工具环境的 pytest 8.4.2；
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 避开全局声明但不可导入的
+`platformdirs.pytest_plugin`。未修改或安装软件到共享环境。
+
+- 指导、工作流 skill、上下文、插件版本、运行副本及原生适配器／Host 相关测试
+  首次 **296 通过、1 个新夹具失败**，48.54 秒（`focused.xml`）。Grounding 夹具
+  提升 ACI 后未同步输出 schema，现通过已有函数取得；**15 个指导测试通过**，
+  1.97 秒（`guidance-final.xml`）。逐项合并为 **297 项通过**，不是一次全绿运行。
+  早期新夹具还遗漏过实验合同，已补齐，未放宽生产校验器。
+- 最后收窄阶段措辞后，指导与工作流 skill **40 项通过**，7.46 秒
+  （`skill-final.xml`），覆盖绑定正文和版本、所有者隔离与进化、旧版本缺文件、
+  超长正文转挂载读取、极小输入预算、请求不变及其他阶段排除。未定义名称检查
+  与 skill 格式校验通过。
+- 真实 CLI／Host／broker／CPU 修复及发布闭环 **通过**，32.69 秒（`native.xml`）。
+  直接检查实际 provider 请求：DESIGN、EXECUTION、RESULT_ANALYSIS 均收到完整
+  **9,824 字节**性能正文及绑定提交号，无需模型先 Read／调用 Skill。提交已落盘
+  后崩溃恢复测试 **通过**，93.69 秒（`recovery.xml`）。模型选择为本地夹具，
+  并非付费真实模型遵从性试验。
+- 独立只读 SQLite／Oracle／进程检查：**31 个 Agent、4 个 Process，35 个 Attempt
+  全部 CLOSED**；4 个正式 outcome、两个 Oracle 均干净、35 个记录进程组无存活
+  成员（`cleanup.json`）。
+- sdist 与 wheel 构建通过；源码、wheel、隔离安装、新建安装版运行副本的 **201 个
+  运行时文件完全一致**。从工作区外验证安装版 CLI 帮助、MCP stdio 工具发现及
+  新插件性能正文送达通过（`installation.json`）。Skill 入口 2,368 字节；完整
+  指导渲染限 16 KiB，并纳入现有输入内联预算。
+
+这是定向回归、打包及原生 CPU 集成证据，不是全套 G0–G5 资格、真实模型遵从率
+或 GPU 加速测量。未启动 GPU 训练、付费模型调用或已有运行迁移；未改项目算法，
+未规定固定 worker 数。送达保证可见性，执行检查与调参收益仍需真实工作负载证据。
+
 ## CUDA 沙箱初始化修复（2026-10-29）
 
 用户授权修复框架并提交推送 dev、相应更新 main。实际通用 GPU 沙箱在宿主机

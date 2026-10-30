@@ -7,6 +7,47 @@ Status: implemented, 2026-09-28; qualification is recorded in
 The user authorized implementation and submission to dev. Finer time
 instrumentation remains excluded; existing research runs remain unchanged.
 
+## Performance guidance delivery and handoff (2026-10-30)
+
+A read-only audit of 110 retained invocation logs found 83 successful calls to
+the workflow Skill, but no explicit Read/Bash reads or returned bodies for its
+performance references. Two active experiment chains loaded the entrypoint and
+stage/resource guidance without observed performance-reference reads. Source inspection found
+a default zero-worker loader; it suggests a candidate bottleneck, not a measured
+cause of low board power. The failed boundary is conditional reference discovery:
+the reference existed in the bound plugin, but loading the entrypoint did not
+deliver it. A Skill-call count cannot establish review or optimization.
+
+Reuse the request's already validated read-only plugin view and Git binding.
+Native DESIGN, EXECUTION and RESULT_ANALYSIS prompts now render that version's
+`performance.md` directly, with its existing mounted path and commit. This is a
+disposable prompt projection, not a new accepted input, receipt or performance
+validator. Ordinary tests and the existing Git/mount lifecycle suffice; no new
+schema, database, acceptance condition, model call or enforcement gate is needed.
+Whole rendered guidance is capped at 16 KiB and shares the existing inline input
+budget. Larger text uses the mounted-file instruction; a missing retained
+reference is reported without substitution from the current seed. Unrelated
+stages and unbound auxiliaries receive no performance projection. Prompt
+diagnostics report delivery size/status only, not completion of the review.
+
+Stage instructions carry a decision through existing working notes: comparable
+measurements and reuse conditions, a bounded pending measurement, or a concrete
+reason no probe is useful/feasible. DESIGN examines the actual pipeline and
+effective settings, EXECUTION resolves the handoff before costly expansion,
+and ANALYSIS checks returned measurements and carries gaps to the next design.
+Correctness smoke is distinct from throughput evidence. The PyTorch reference
+covers effective `num_workers`, feasible zero/positive-worker comparisons for
+unmeasured I/O/preprocessing, worker startup/lifetime, resource bounds and
+preservation of random/model state. No fixed worker count, utilization target,
+algorithm substitution or reduced scientific coverage is imposed.
+
+Maintenance is one reference route plus its bounded prompt rendering and ordinary
+regressions. Remove the explicit projection if native skill loading provides the
+same stage-specific delivery from the exact bound version. Existing frozen runs
+and private plugins are not patched. Validation distinguishes actual provider
+delivery and CPU lifecycle closure from real-model compliance or GPU speedup;
+see [qualification](../qualification.md#performance-guidance-delivery-2026-10-30).
+
 ## Grounding completion and recoverable authoring (2026-10-08)
 
 The inspected invocation timed out after a 3,000-second budget without reaching

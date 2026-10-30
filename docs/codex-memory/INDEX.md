@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Performance guidance delivery, October 30](../design/research-workflow-skill.md#performance-guidance-delivery-and-handoff-2026-10-30):
+  direct bound-reference delivery for experiment design, execution and analysis;
+  measured/pending/non-applicable handoff in existing notes, effective DataLoader
+  configuration, bounded comparisons and existing plugin/context lifecycle.
+  [Validation](../qualification.md#performance-guidance-delivery-2026-10-30):
+  297 reconciled focused passes, two native CPU closures, 201-file installation
+  parity. Dev publication and public main sync authorized; live runs unchanged.
+
 - [CUDA sandbox initialization, October 29](../qualification.md#cuda-sandbox-initialization-repair-2026-10-29):
   minimal NVIDIA module-state mounts, grant-identity/context/allocation checks,
   bounded failure before workload entry, retained-profile audit compatibility,

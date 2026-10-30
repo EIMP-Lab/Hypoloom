@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- October 30 performance guidance repair is verified for authorized dev push,
+  then public main sync. DESIGN/EXECUTION/RESULT_ANALYSIS receive the exact bound
+  performance reference directly, capped at 16 KiB within the inline input budget;
+  oversize and missing retained versions use explicit existing-path handling.
+  Stage handoffs require measured/reusable evidence, pending probes or concrete
+  non-applicability in existing notes, including effective DataLoader settings.
+  No new gate, fixed worker count, algorithm edit or existing-run mutation.
+  297 focused cases reconcile after a new-fixture schema fix; final skill/guidance
+  40 pass. Two native CPU closures leave 35 CLOSED Attempts, clean Oracles and
+  no live groups. Source/wheel/install/fresh bundle match 201 runtime files.
+  Delivery is not proof of model compliance or GPU speedup; no full G0–G5 claim.
+  [Design](../design/research-workflow-skill.md#performance-guidance-delivery-and-handoff-2026-10-30) /
+  [evidence](../qualification.md#performance-guidance-delivery-2026-10-30).
+
 - October 29 CUDA sandbox repair is ready for authorized dev/main publication.
   Two read-only NVIDIA module-state files fix reproducible in-sandbox error 304.
   GPU profile 2 requires an isolated, bounded driver check before workload entry;

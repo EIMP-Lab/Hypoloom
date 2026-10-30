@@ -2,6 +2,58 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Performance guidance delivery (2026-10-30)
+
+The user authorizes implementation, dev commit/push and subsequent main sync.
+[Design](design/research-workflow-skill.md#performance-guidance-delivery-and-handoff-2026-10-30).
+The repair delivers the bound performance reference to native experiment design,
+execution and result analysis, instead of relying only on nested conditional
+links. The method uses existing notes for measured/reusable evidence, pending
+probes or concrete non-applicability; effective DataLoader settings and bounded
+comparisons remain the experiment author's responsibility. Frozen research runs
+and private plugins were not changed.
+
+Evidence is under `.local/analysis/performance-guidance-20261030/` in the dev
+worktree. Runtime Python 3.12/SQLite 3.53.4 uses pytest 8.4.2 from the existing
+tool environment through `PYTHONPATH`; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` avoids
+an unrelated globally advertised, missing `platformdirs.pytest_plugin`. No
+shared environment was installed into or modified. Main synchronization retains
+the public layout; development design, memory and native harness stay on dev.
+
+- The focused selection of guidance, workflow skill, context management, plugin
+  versions, runtime bundles and native adapter/Host records **296 passes / one
+  new-fixture failure**, 48.54 s (`focused.xml`). The unrelated-stage Grounding
+  fixture had advanced ACI without updating its output schema. It now derives
+  that schema through the existing function; all **15 guidance tests pass**,
+  1.97 s (`guidance-final.xml`). Exact test-identity reconciliation gives **297
+  passes**, not one all-green invocation. Earlier fixture construction also
+  omitted its experiment contract; no production validator was weakened.
+- After the final narrow stage wording, the guidance and workflow-skill
+  selection passes **40 tests**, 7.46 s (`skill-final.xml`). It covers exact bound
+  contents/version, owner isolation and evolution, missing retained references,
+  oversize mounted-file fallback, tiny inline budgets, request immutability and
+  unrelated stages. Undefined-name checks and skill validation pass.
+- The real CLI/Host/broker/CPU repair and publication test passes in **32.69 s**
+  (`native.xml`). Assertions inspect the actual provider request: DESIGN,
+  EXECUTION and RESULT_ANALYSIS each receive the exact **9,824-byte** performance
+  body and bound commit without a model Read/Skill call. A second native
+  submit-commit crash/recovery test passes in **93.69 s** (`recovery.xml`). Model
+  choices are local fixtures; these are not paid model-compliance experiments.
+- Independent read-only SQLite/Oracle/process inspection finds **31 Agent and
+  four Process Attempts, all 35 CLOSED**, four canonical outcomes, two clean
+  Oracles and no live members of the 35 recorded groups (`cleanup.json`).
+- Both sdist and wheel build. Source, wheel, isolated installation and fresh
+  installed bundle match all **201 runtime files**. From outside the checkout,
+  installed CLI help, MCP stdio tool discovery and fresh-plugin performance
+  delivery pass (`installation.json`). The Skill entrypoint is 2,368 bytes;
+  complete rendered guidance stays within 16 KiB and the existing inline budget.
+
+These are focused regression, packaging and native CPU integration results,
+not full G0–G5 promotion, a real-model adherence score or measured GPU speedup.
+No GPU training, paid provider request, existing-run migration, algorithm change
+or fixed worker count was introduced. Delivery ensures visibility, not execution
+of a check; actual throughput and tuning choices still need workload evidence.
+
 ## CUDA sandbox initialization repair (2026-10-29)
 
 The user authorizes the framework repair and publication to dev and main. An

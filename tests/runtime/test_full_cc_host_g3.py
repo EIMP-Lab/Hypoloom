@@ -44,6 +44,7 @@ from hypoloom.workflow_host import WorkflowHost as _ProductionWorkflowHost
 from test_claude_file_tool_cli import (
     _handler_for,
     _installed_claude,
+    native_prompt,
     _result_text,
     _tool_results,
 )
@@ -744,6 +745,7 @@ def _exercise_full_cc_host(
                 )
                 assert host_key.encode() not in transcript.read_bytes()
             _assert_current_reports(scenario, attempts, host.publisher.root, tmp_path)
+            _assert_performance_guidance_delivery(scenario, tmp_path)
             report = Oracle(host.store.database_path, host.publisher.root).audit(run_id)
             (tmp_path / "oracle.json").write_text(json.dumps(report.to_dict(), indent=2))
             assert report.ok, report.to_dict()
@@ -757,6 +759,32 @@ def _exercise_full_cc_host(
         provider.shutdown()
         provider.server_close()
         thread.join(timeout=5)
+
+
+def _assert_performance_guidance_delivery(scenario, evidence_root: Path) -> None:
+    """Inspect the real provider's input, independent of any model Read/Skill call."""
+    from hypoloom.expert_plugin import WORKFLOW_SKILL_ROOT
+
+    stages = {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}
+    received = {}
+    expected = (WORKFLOW_SKILL_ROOT / "references/performance.md").read_text()
+    for document in scenario.requests:
+        prompt = native_prompt(document)
+        metadata = prompt["agent_request_metadata"]
+        if metadata["command"] not in stages:
+            assert "workflow_guidance" not in prompt
+            continue
+        request = _request_from_provider(document)
+        resource = next(item for item in request.input_artifacts if item.ref.endswith("--expert-resources"))
+        binding = json.loads(resource.content_bytes())["plugin"]
+        guidance = prompt["workflow_guidance"]
+        assert guidance["status"] == "inline"
+        assert guidance["plugin_commit"] == binding["commit"]
+        assert guidance["content"] == expected
+        received[request.attempt_id] = {"command": request.command.value,
+            "plugin_commit": binding["commit"], "content_bytes": len(expected.encode())}
+    assert {item["command"] for item in received.values()} == stages
+    (evidence_root / "workflow-guidance-evidence.json").write_text(json.dumps(received, indent=2))
 
 
 def _current_host_scenario(private_root: Path) -> _HostScenario:
