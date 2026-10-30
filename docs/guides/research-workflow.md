@@ -180,8 +180,28 @@ do not cover all Bash reads; unknown CLI pricing is not verified billing.
 
 ## Current-experiment timing and performance
 
-For costly computation, the shared skill routes to a conditional performance
-reference. The task chooses meaningful work units and reuses its logs; it may add
+DESIGN, EXECUTION and RESULT_ANALYSIS receive the performance reference directly
+from their bound plugin version in the native prompt. The complete text shares
+the existing inline input budget, up to 16 KiB; longer references use the existing
+mounted path. A retained version missing the reference is reported without
+replacement from the latest seed. Other stages keep conditional discovery.
+Delivery or a successful Skill call does not prove a performance check occurred.
+
+Before costly work or a materially changed pipeline, DESIGN records applicable
+measurements and reuse conditions, a bounded pending probe, or a concrete reason
+no probe is useful/feasible in its existing notes. EXECUTION checks that handoff
+against the submitted code and arranges missing measurements within its granted
+Process; ANALYSIS compares the returned logs and carries remaining gaps into the
+next design. A correctness/device smoke alone is not throughput evidence.
+
+For PyTorch loaders, record the effective `num_workers`, including helper defaults,
+and actual I/O/preprocessing. Without comparable evidence, compare zero workers
+and feasible positive counts for file-backed or online preparation. Include data
+wait, end-to-end throughput and worker startup/lifetime costs; preserve scientific
+data order and random/model state. Zero workers may remain the justified choice.
+No fixed worker count, algorithm or GPU power target is imposed.
+
+The task chooses meaningful work units and reuses its logs; it may add
 flushed stage/progress/duration messages and calculate estimates in its own code.
 Initialization, warmup, steady work, evaluation and artifact checks are separate.
 Current-design pilot measurements inform the initial timeout; current progress

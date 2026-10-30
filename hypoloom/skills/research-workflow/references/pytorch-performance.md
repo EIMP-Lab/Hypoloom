@@ -1,7 +1,8 @@
 # PyTorch computation and data loading
 
-Use when the actual implementation uses PyTorch and evidence indicates a
-throughput problem. Follow [Progress and performance](performance.md) for budget,
+Use when preparing a new or materially changed PyTorch data pipeline, or when
+evidence indicates a compute/throughput problem. Follow
+[Progress and performance](performance.md) for budget,
 Host submission, scientific scope and comparison rules. Inspect the installed
 API and submitted code; options below are candidates, not a tuning checklist.
 
@@ -47,14 +48,23 @@ Do not install or replace a shared runtime to enable an optimization.
 
 ## Data preparation and transfers
 
-For DataLoader, compare a small range of `num_workers` permitted by CPU, RAM,
+Record the selected loader's actual `num_workers` and reader/preprocessing behavior,
+including defaults inherited from helpers. Compare a small range of `num_workers`
+permitted by CPU, RAM,
 shared memory and concurrent workload limits. Zero workers can be appropriate
 for small in-memory data. More workers are not automatically better. Consider
 `persistent_workers`/`prefetch_factor` only when workers are enabled and their
 lifetime/memory cost is justified. Check worker seeding and data order when
 comparing results. Check reader-handle isolation and compatibility with the
 runtime's multiprocessing start method before adding workers. Do not hardcode
-one best configuration for every workload.
+one best configuration for every workload. For file/decompression/online processing,
+compare zero and a few feasible positive worker counts when no applicable evidence
+exists. Measure end-to-end throughput and loader wait after warmup, and include
+worker startup/teardown across the actual epoch/trial length. For short epochs,
+steady-state speed alone may hide a net slowdown. Retain the chosen setting and
+evidence, or a concrete compatibility/resource reason for not comparing, in the
+existing handoff. Restore generator/RNG and model/optimizer state after a probe;
+do not let tuning consume or reorder the scientific trial's samples.
 
 If host-to-device copies dominate, inspect `pin_memory` and transfer behavior
 before testing pinned memory or `non_blocking` transfers. Verify correctness,

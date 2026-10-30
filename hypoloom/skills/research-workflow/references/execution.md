@@ -1,7 +1,9 @@
 # Execution and repair
 
-Use [Progress and performance](performance.md) when current-design timing is
-uncertain or execution diagnostics show a throughput problem. Preserve handoff.
+Check the design's [performance review](performance.md) before costly submission.
+Use the supplied bound text when inlined. Verify its reusable evidence or pending
+probe against the actual entrypoint; address missing preparation or explain a
+specific limitation through existing repair/handoff paths. Preserve handoff.
 
 Use the Host's current experiment state, returned diagnostics and exact ownership
 before deciding whether to submit, replace, wait or hand off. Reuse successful

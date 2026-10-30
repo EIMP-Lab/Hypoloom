@@ -1,7 +1,9 @@
 # Implementation
 
-For costly or timing-sensitive computation, use [Progress and performance](performance.md)
-to make the current implementation observable and plan any necessary small probe.
+Address the [performance review](performance.md) for the selected implementation.
+Use the supplied bound text when inlined. Hand off reusable measurements, a bounded
+pending probe or a concrete non-applicability reason in existing notes; a correctness
+smoke alone does not establish efficient data loading or representative throughput.
 
 Read the accepted hypothesis, supplied interface declarations, actual evaluator
 source and relevant existing implementation. Reuse components whose assumptions

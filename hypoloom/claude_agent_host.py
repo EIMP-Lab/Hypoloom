@@ -555,6 +555,7 @@ class ClaudeAgentHost:
             git_authoring=isinstance(tool_workspace, (PreparedGitAuthoringWorkspace, PreparedSessionWorkspace)),
             manifest=prompt_manifest,
             continuation=getattr(tool_workspace, "continuation_observation", None),
+            plugin_root=getattr(tool_workspace, "plugin_root", None) if full_cc else None,
         )
         prompt_manifest["prompt_bytes"] = len(prompt)
         remaining_wall_seconds = _request_deadline_remaining(request)
@@ -3029,6 +3030,7 @@ def _prompt(
     request: AgentRequest, *, tool_workspace: bool = False, git_authoring: bool = False,
     manifest: dict[str, object] | None = None,
     continuation: Mapping[str, Any] | None = None,
+    plugin_root: Path | None = None,
 ) -> bytes:
     request_metadata = request.to_dict()
     # The same immutable input bytes are rendered below in their usable form.
@@ -3062,11 +3064,16 @@ def _prompt(
     rendered_input_bytes: dict[str, int] = {}
     offloaded_refs: list[str] = []
     from .context_management import context_policy
+    from .workflow_guidance import MAX_GUIDANCE_BYTES, performance_guidance
     policy = context_policy(request)
+    guidance = performance_guidance(request, plugin_root if tool_workspace else None,
+        max_bytes=min(MAX_GUIDANCE_BYTES, policy["max_inline_input_bytes"])
+            if policy is not None else MAX_GUIDANCE_BYTES)
+    guidance_bytes = len(canonical_json(guidance)) if guidance is not None else 0
     inline_indices = set(range(len(request.input_artifacts)))
     if policy is not None and tool_workspace:
         inline_indices = set()
-        remaining = policy["max_inline_input_bytes"]
+        remaining = policy["max_inline_input_bytes"] - guidance_bytes
         seen_content = set()
         def priority(pair):
             ref = pair[1].ref
@@ -3101,6 +3108,8 @@ def _prompt(
         if manifest is not None:
             rendered_input_bytes[item.ref] = len(canonical_json(rendered))
     if manifest is not None:
+        manifest["workflow_guidance_bytes"] = guidance_bytes
+        manifest["workflow_guidance_status"] = guidance["status"] if guidance else "not_inlined"
         manifest["rendered_input_bytes"] = rendered_input_bytes
         manifest["offloaded_refs"] = offloaded_refs
         contents = [item.content_bytes() for item in request.input_artifacts]
@@ -3114,6 +3123,7 @@ def _prompt(
                 "instruction": instruction,
                 "agent_request_metadata": request_metadata,
                 "rendered_inputs": rendered_inputs,
+                **({"workflow_guidance": guidance} if guidance is not None else {}),
                 **({"continuation_observation": continuation} if continuation is not None else {}),
                 **({"ref_aliases": aliases} if request.schema_version >= 19 else {}),
             }
