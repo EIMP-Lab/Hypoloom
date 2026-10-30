@@ -44,6 +44,25 @@ def _counter(role, name, commit=None):
             "last_called_at": None}
 
 
+def _capture_coverage(capture, attempts, unmatched, untimed, window):
+    complete = not capture["partial"] and not capture["unavailable"] and not unmatched
+    if window and untimed:
+        complete = False
+    return ("unavailable" if not attempts else "complete" if complete else
+            "partial" if capture["complete"] or capture["partial"] else "unavailable")
+
+
+def _call_timeline(calls, start, until, width, count):
+    bins = [{"started_at": start + i * width, "ended_at": min(until, start + (i + 1) * width),
+             "calls": 0, "failed": 0} for i in range(count)]
+    for call in calls:
+        if call["timestamp"] is not None:
+            bucket = bins[min(count - 1, max(0, int((call["timestamp"] - start) // width)))]
+            bucket["calls"] += 1
+            bucket["failed"] += call["status"] == "failed"
+    return bins
+
+
 def _evolutions(root, run_id, attempts, versions, role, since):
     known = {(item["role"], item["commit"]): item for item in versions}
     events = []
@@ -116,6 +135,7 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
 
     by_version, by_skill, calls, version_files = {}, {}, [], {}
     coverage = Counter()
+    owner_capture, owner_untimed, owner_unmatched = {}, Counter(), Counter()
     untimed = unmatched = 0
     deadline = time.monotonic() + 4
     # Newest calls remain useful on a very long run. Missing older capture is
@@ -125,11 +145,13 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
             evidence = read_attempt_evidence(root, run_id, row) if time.monotonic() < deadline else {"coverage": "unavailable"}
             evidence_by_attempt[row["attempt_id"]] = evidence
             coverage[evidence["coverage"]] += 1
+            owner_capture.setdefault(binding["role"], Counter())[evidence["coverage"]] += 1
             for call in evidence.get("skill_calls", ()):
                 qualified = call["name"]
                 prefix = binding.get("name", "") + ":"
                 if not qualified.startswith(prefix) or not details._SKILL.fullmatch(qualified[len(prefix):]):
                     unmatched += 1
+                    owner_unmatched[binding["role"]] += 1
                     continue
                 timestamp = details._time(call.get("timestamp")) or None
                 if timestamp is not None and not since <= timestamp <= until:
@@ -137,6 +159,7 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
                 # Untimed calls cannot be assigned to a requested time window.
                 if timestamp is None:
                     untimed += 1
+                    owner_untimed[binding["role"]] += 1
                     if selectors.get("window"):
                         continue
                 name = qualified[len(prefix):]
@@ -164,26 +187,33 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
                     "attempt_id": row["attempt_id"], "tool_use_id": call["tool_use_id"],
                     "command": request.get("command"), "timestamp": timestamp, "status": call["status"]})
 
-    complete = not coverage["partial"] and not coverage["unavailable"] and not unmatched
-    if selectors.get("window") and untimed:
-        complete = False
-    state = ("unavailable" if not selected else "complete" if complete else
-             "partial" if coverage["complete"] or coverage["partial"] else "unavailable")
-    for counter in (*by_skill.values(), *by_version.values()):
-        counter["coverage"] = state
-    timed = [call for call in calls if call["timestamp"] is not None]
+    state = _capture_coverage(coverage, len(selected), unmatched, untimed, selectors.get("window"))
     start = since or min((details._time(row.get("started_at")) for row, _, _ in selected), default=until)
     width = max(60, math.ceil(max(0, until - start) / 60))
     bin_count = max(1, math.ceil(max(0, until - start) / width))
-    bins = {index: {"started_at": start + index * width,
-        "ended_at": min(until, start + (index + 1) * width), "calls": 0, "failed": 0}
-        for index in range(bin_count)}
-    for call in timed:
-        index = min(bin_count - 1, max(0, int((call["timestamp"] - start) // width)))
-        bucket = bins[index]
-        bucket["calls"] += 1
-        bucket["failed"] += call["status"] == "failed"
+    bins = _call_timeline(calls, start, until, width, bin_count)
+    owners = sorted({item["role"] for item in versions if not role or item["role"] == role}
+                    | {binding["role"] for _, binding, _ in selected})
+    experts = []
+    for owner in owners:
+        capture = owner_capture.get(owner, Counter())
+        owner_calls = [call for call in calls if call["role"] == owner]
+        attempts_count = sum(capture.values())
+        experts.append({"role": owner, "attempts": attempts_count, "capture": dict(capture),
+            "coverage": _capture_coverage(capture, attempts_count, owner_unmatched[owner],
+                owner_untimed[owner], selectors.get("window")),
+            "observed_calls": len(owner_calls), "untimed_calls": owner_untimed[owner],
+            "unmatched_calls": owner_unmatched[owner],
+            **{status: sum(call["status"] == status for call in owner_calls)
+               for status in ("succeeded", "failed", "unanswered")},
+            "timeline": _call_timeline(owner_calls, start, until, width, bin_count)})
+    coverage_by_owner = {item["role"]: item["coverage"] for item in experts}
+    for counter in (*by_skill.values(), *by_version.values()):
+        counter["coverage"] = coverage_by_owner[counter["role"]]
     evolutions = _evolutions(root, run_id, rows, versions, role, since)
+    accepted_changes = Counter(event["role"] for event in evolutions if event["status"] == "accepted_change")
+    for expert in experts:
+        expert["accepted_changes"] = accepted_changes[expert["role"]]
     for event in evolutions:
         changed_names = {skill["name"] for skill in event["skills"]}
         event["observed_later_calls"] = sum(call["role"] == event["role"] and call["commit"] == event["commit"]
@@ -198,11 +228,11 @@ def skill_activity(root, run_id, attempts, selectors, versions, *, transitions=(
     effects.update(followups([node for node in nodes if not command or node["node"] == command],
         evolutions, name=selectors.get("name"), processes=processes))
     return {"coverage": state, "attempts": len(selected), "capture": dict(coverage),
-        "effects": effects,
+        "effects": effects, "experts": experts,
         "started_at": start, "ended_at": until, "bin_seconds": width, "untimed_calls": untimed,
         "unmatched_calls": unmatched, "observed_calls": len(calls),
         "skills": sorted(by_skill.values(), key=lambda item: (-item["calls"], item["role"], item["name"])),
-        "versions": list(by_version.values()), "timeline": [bins[key] for key in sorted(bins)],
+        "versions": list(by_version.values()), "timeline": bins,
         "calls": sorted(calls, key=lambda item: item["timestamp"] or 0, reverse=True)[:200],
         "calls_truncated": len(calls) > 200, "evolutions": evolutions[:200],
         "evolutions_truncated": len(evolutions) > 200}

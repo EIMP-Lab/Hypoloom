@@ -374,9 +374,9 @@
         <p id="workbench-status" class="panel-copy workbench-copy" role="status" data-i18n>Select a category to browse accepted evidence.</p>
         <div id="skill-library" hidden></div>
         <div id="workbench-list" class="workbench-list"></div>
-        <div class="pagination">
+        <div id="workbench-pagination" class="pagination">
           <button id="workbench-previous" type="button" disabled data-i18n>Previous</button>
-          <span id="workbench-page" class="panel-copy" data-i18n>No page loaded</span>
+          <span id="workbench-page" class="panel-copy" role="status" data-i18n>No page loaded</span>
           <button id="workbench-next" type="button" disabled data-i18n>Next</button>
         </div>
       </section>
@@ -403,15 +403,38 @@
     <div class="support-content">
       <div class="support-heading"><h2 id="trends-title" data-i18n>Run trends</h2><button id="close-trends" type="button" data-i18n>Close</button></div>
       <p class="panel-copy" data-i18n>Recorded on the server, independent of this browser. Occupancy is recorded Attempt activity, not proof of process liveness. RPM includes retries and is averaged within each time bucket; missing capture is not zero.</p>
-      <div class="trend-controls"><label><span data-i18n>Time range</span> <select id="trends-range"><option value="3600" data-i18n>Last hour</option><option value="21600" data-i18n>Last 6 hours</option><option value="86400" data-i18n>Last 24 hours</option><option value="all" selected data-i18n>Entire run</option></select></label><button id="refresh-trends" type="button" data-i18n>Refresh trends</button></div>
+      <div class="trend-controls"><label><span data-i18n>Time range</span> <select id="trends-range"><option value="3600" data-i18n>Last hour</option><option value="21600" data-i18n>Last 6 hours</option><option value="86400" data-i18n>Last 24 hours</option><option value="all" selected data-i18n>Entire run</option><option value="custom" data-i18n>Custom interval</option></select></label><button id="refresh-trends" type="button" data-i18n>Refresh trends</button></div>
+      <form id="trends-custom-range" class="trend-custom-range" hidden novalidate>
+        <label><span data-i18n>Start time</span><input id="trends-start" type="datetime-local" step="1" required aria-describedby="trends-range-help trends-range-error"></label>
+        <label><span data-i18n>End time</span><input id="trends-end" type="datetime-local" step="1" required aria-describedby="trends-range-help trends-range-error"></label>
+        <button id="apply-trends-range" type="submit" data-i18n>Apply interval</button>
+        <p id="trends-range-help" class="panel-copy"></p>
+        <p id="trends-range-error" role="status" aria-live="polite"></p>
+      </form>
       <p id="trends-status" role="status" aria-live="polite"></p>
       <p id="trends-coverage" class="panel-copy"></p>
+      <p id="trends-window" class="panel-copy"></p>
+      <p id="trends-empty" class="panel-copy" role="status" hidden data-i18n>No recorded buckets overlap this interval. Choose another interval.</p>
       <div id="trends-content" hidden>
         <section class="trend-card"><h3 data-i18n>Experiment and Agent concurrency</h3><p class="panel-copy" data-i18n>Solid: occupancy at bucket end. Dashed: peak within bucket.</p><div id="trends-concurrency-legend" class="trend-legend"></div><div id="trends-concurrency" class="trend-chart"></div></section>
         <section class="trend-card"><h3 data-i18n>Requests per minute</h3><div id="trends-rpm-legend" class="trend-legend"></div><div id="trends-rpm" class="trend-chart"></div></section>
-        <label class="trend-scrubber"><span data-i18n>Inspect time bucket</span><input id="trends-cursor" type="range" min="0" max="0" value="0"></label>
-        <div id="trends-inspect" class="trend-inspect" aria-live="polite"></div>
       </div>
+      <section id="trends-navigator" class="trend-navigator" hidden aria-labelledby="trends-navigation-title">
+        <div class="trend-navigation-heading"><h3 id="trends-navigation-title" data-i18n>Time window</h3><button id="trends-window-reset" type="button" data-i18n>View entire run</button></div>
+        <p id="trends-selection" class="trend-selection"></p>
+        <p class="trend-overview-label" data-i18n>Total RPM · entire run</p>
+        <div id="trends-window-track" class="trend-window-track">
+          <div id="trends-overview" aria-hidden="true"></div>
+          <div id="trends-window-before" class="trend-window-shade"></div><div id="trends-window-after" class="trend-window-shade"></div>
+          <button id="trends-window-pan" class="trend-window-pan" type="button" role="slider" aria-label="Move selected interval" data-i18n-aria-label aria-describedby="trends-navigation-help"></button>
+          <button id="trends-window-start" class="trend-window-handle start" type="button" role="slider" aria-label="Interval start" data-i18n-aria-label aria-describedby="trends-navigation-help"></button>
+          <button id="trends-window-end" class="trend-window-handle end" type="button" role="slider" aria-label="Interval end" data-i18n-aria-label aria-describedby="trends-navigation-help"></button>
+        </div>
+        <div class="trend-navigation-axis"><span id="trends-navigation-from"></span><span id="trends-navigation-to"></span></div>
+        <p id="trends-navigation-help" class="panel-copy" data-i18n>Drag either edge to resize; drag the selected window to move it. Arrow keys move one bucket; Shift moves ten.</p>
+      </section>
+      <p id="trends-point-help" class="panel-copy" hidden data-i18n>Hover or touch a chart to inspect a point. When the chart is focused, use the arrow keys.</p>
+      <div id="trends-inspect" class="trend-inspect" aria-live="polite" hidden></div>
     </div>
   </dialog>
 

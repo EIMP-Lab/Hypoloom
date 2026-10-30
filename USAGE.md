@@ -118,7 +118,19 @@ Reservations contribute to budget limits but are not consumed tokens. Current
 context usage and cumulative run usage are separate; see
 [context and memory](docs/guides/context-management.md).
 
-**Run trends** shows recorded concurrency and request rates. Solid occupancy
+**Run trends** shows recorded concurrency and request rates. The **Time window**
+navigator below the charts displays the full-run RPM overview. Drag either edge
+to resize the interval, or drag its middle to move the window. Both charts and
+local start/end inputs update together. Touch and arrow keys are supported;
+Shift moves ten buckets, and **View entire run** resets the window. Presets and
+precise date inputs with **Apply interval** remain available. The page shows the
+timezone, recorded resolution and actual displayed range; complete overlapping
+buckets are retained. Invalid intervals leave the previous view intact, and
+empty ranges show a message. Hover or touch a chart to inspect a point, or use
+arrow keys while it is focused. Trend refresh preserves the interval, inspected time
+and unfinished input edits. Fixed metric cells prevent movement when RPM digits
+or unknown states change. Reload the page to load these frontend updates.
+Solid occupancy
 lines show bucket-end counts; dashed lines show peaks. Request rates include
 retries. Missing observations remain gaps, and historical activity does not
 establish current process liveness. **Tokens by stage** shows usage and diagnostic
