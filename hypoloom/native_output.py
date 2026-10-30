@@ -30,6 +30,10 @@ class _ValidationUnavailable(ValueError):
     pass
 
 
+class _IncompleteRequest(ValueError):
+    pass
+
+
 class _SchemaMismatch(ValueError):
     def __init__(self, message: str, hint: str = ""):
         super().__init__(message)
@@ -138,7 +142,7 @@ def _read_line(connection: socket.socket, maximum: int, deadline: float) -> byte
         connection.settimeout(_remaining(deadline))
         chunk = connection.recv(min(65536, maximum + 1 - len(raw)))
         if not chunk:
-            raise ValueError("native output transport ended before a complete JSON line")
+            raise _IncompleteRequest("native output transport ended before a complete JSON line")
         raw.extend(chunk)
         if len(raw) > maximum:
             raise ValueError("native output transport exceeds size limit")
@@ -215,6 +219,7 @@ class NativeOutputValidator:
 
         class Handler(socketserver.BaseRequestHandler):
             def handle(self) -> None:
+                incomplete = False
                 try:
                     with endpoint._lock:
                         if endpoint._closed.is_set():
@@ -225,6 +230,13 @@ class NativeOutputValidator:
                     payload = _encode(response)
                     if len(payload) > endpoint.max_request_bytes:
                         raise ValueError("native output response exceeds size limit")
+                except _IncompleteRequest as exc:
+                    # No complete candidate was submitted. A disconnected probe
+                    # must not poison later native Stop requests in this invocation.
+                    incomplete = True
+                    if endpoint.diagnostics is not None:
+                        endpoint.diagnostics.event("native_output_incomplete_request", message=str(exc))
+                    payload = _encode({"ok": False, "error": str(exc)})
                 except (ValueError, OSError) as exc:
                     message = str(exc) if isinstance(exc, ValueError) else (
                         "native output validation deadline exceeded" if time.monotonic() >= endpoint.deadline_at
@@ -237,7 +249,8 @@ class NativeOutputValidator:
                 try:
                     self.request.sendall(payload)
                 except OSError:
-                    endpoint._fail("native output response transport failed")
+                    if not incomplete:
+                        endpoint._fail("native output response transport failed")
                 finally:
                     with endpoint._lock:
                         endpoint._connections.discard(self.request)
@@ -305,7 +318,6 @@ class NativeOutputValidator:
                 raise ValueError("native output session mismatch")
             if not isinstance(document["last_assistant_message"], str):
                 raise ValueError("native output last_assistant_message must be text")
-            repeated = self._accepted
             if self._rejected >= self.max_failed_validations:
                 raise ValueError("native output validation already completed")
             error = None
@@ -375,11 +387,8 @@ class NativeOutputValidator:
             _remaining(self.deadline_at)
             if self._closed.is_set():
                 raise ValueError("native output validator is closed")
-            # CC can repeat Stop after a background-task notification. Reuse
-            # the same validator, including current files and Host state: prior
-            # acceptance alone must not bless changed source or report content.
-            if repeated and error is not None:
-                raise ValueError(error)
+            # Repeated Stop rechecks current files and Host state. Changed invalid
+            # output revokes acceptance and uses the same remaining correction cap.
             ordinal = len(self._rounds) + 1
             if error is None:
                 self._write_output(document["last_assistant_message"])

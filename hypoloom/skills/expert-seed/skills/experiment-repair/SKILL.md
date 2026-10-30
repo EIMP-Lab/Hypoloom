@@ -73,6 +73,12 @@ Before expanding a repaired training experiment, test the actual entrypoint on a
 admitted training/validation sample, including finite losses, optimizer update,
 checkpoint reload and the real audit path. CPU checks do not validate GPU device
 placement; device-specific probes must use authorized Host-owned Processes.
+Include each child CLI's required arguments and the actual metric writer and
+reader in this bounded test. Check the complete emitted filename, including seed
+and extension placement, against the consumer's path. A tiny forward/backward
+pass or synthetic parser fixture alone does not exercise that integration.
+Record covered paths and pending device checks in the existing handoff notes;
+fix the project's command construction or producer/consumer contract at its source.
 Use validation data for development, preserving the confirmed test protocol.
 Do not install into shared runtimes, edit read-only data,
 write scientific state directly or bypass resource authorization.

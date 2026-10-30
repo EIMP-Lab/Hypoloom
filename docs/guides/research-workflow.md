@@ -118,6 +118,11 @@ Exercise relevant devices, dimensions, units and invalid/boundary cases. GPU
 checks use existing Host-owned submission and resource scheduling. Record actual
 checks and gaps in existing notes, and reuse still-applicable successful checks.
 After a technical failure, test its corrected path before repeating the full run.
+Include the actual child-process CLI arguments, metric writer, complete emitted
+filenames (including seed and extension placement), and downstream reader.
+A forward/backward probe or synthetic parser fixture alone does not cover this
+integration. Record unchecked device paths for the Host-granted Process in the
+existing handoff notes. The project implements its own commands and algorithms.
 This is task-specific agent guidance, not an extra universal admission gate.
 
 A LOCAL criterion should answer the hypothesis's screening question. Improvement
