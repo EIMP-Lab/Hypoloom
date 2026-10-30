@@ -106,3 +106,32 @@ disclose unavailable or omitted data. Startup-only exports have no run history.
 No Host or retained state is changed. A current observer can reconstruct old
 runs where the existing evidence is present. Reopen the observer to load the new
 endpoint and assets.
+
+### Stable inspection and custom time intervals (2026-10-30)
+
+The point inspector used content-sized wrapping rows. RPM digits and unknown
+lower-bound text changed row positions and height during pointer movement,
+which also moved an auto-sized centered dialog. The existing slider selected
+one bucket, while range controls only offered the entire run or trailing windows;
+every trend refresh also reset inspection to the last bucket.
+
+Use responsive fixed-column metric cells with separate bounded label/value/state
+areas and tabular numerals. Keep the dialog frame stable and update existing
+inspector fields when a point changes. Add local start/end inputs for a custom
+interval, with explicit validation, an empty selection state and the actual
+displayed bucket range. This filters the existing bounded projection: preserve
+whole overlapping buckets, original resolution and unknown gaps rather than
+inventing finer observations or recomputing partial-bucket RPM. Keep the applied
+interval and inspected timestamp during refresh, separately from unsubmitted
+input edits. The slider is explicitly labeled as single-point inspection.
+No backend endpoint, collector, durable schema or research-state change is needed.
+
+The subsequent window-navigation refinement replaces the single-point slider
+with a full-run RPM overview and two independently adjustable endpoints. The
+selected window can also be dragged as a whole, with bucket-aligned bounds,
+keyboard/touch controls and a full-range reset. Both charts reuse the same applied
+interval and the existing projection; inspection stays on the charts. Date
+inputs remain visible so switching from presets to dragging does not move the
+drag target. Gesture renders are limited to animation frames; refresh retains
+absolute timestamps, and unknown RPM remains a gap in the overview. No chart
+dependency, backend selector or second persisted range representation is needed.

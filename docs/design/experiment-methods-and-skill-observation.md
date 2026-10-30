@@ -201,3 +201,68 @@ Network failure handling and restart recovery are outside this user-selected rep
 
 See [qualification](../qualification.md#optional-gpu-telemetry-audit-2026-10-16)
 for before/after audit and validation scope.
+
+## Expert cards and version trends (2026-10-30)
+
+The shared skill workbench interleaves experts in one frequency list, timeline,
+version catalog and outcome section. This makes ownership hard to follow, and
+the run-wide capture flag makes a fully captured expert appear incomplete when
+another expert's evidence is missing. The user requests separate expert cards
+and line charts for changes during skill evolution.
+
+Reuse `skill_activity`'s bounded native-call reads to aggregate capture coverage,
+counts and time bins by bound plugin owner before truncating the latest-call
+listing. Count accepted changes from the existing complete evolution projection.
+No new read pass, persistent observation stream, schema, gate or quality score is
+needed. Git versions, Attempt bindings and the existing outcome reducer remain
+the sources of truth; these additions are disposable read-only projections.
+
+Each responsive card contains its own invocation totals, skill-frequency list,
+calls/failures line chart and version outcome chart. Existing skill details,
+outcome/repair follow-up and evolution history remain available inside the card.
+Catalog pagination remains bounded; name search narrows the catalog/frequency
+list, while charts follow expert/stage/time selection. Coverage belongs to the
+owner, even when another owner's evidence is unavailable. Unknown repair links
+and other unattributable totals stay above the cards.
+
+The version chart reuses first-pass validation, node delivery and node retry
+metrics within an exact basis/skill, stage, component and model context. It
+orders versions by retained binding/update times, marks accepted updates and
+shows raw numerators, denominators, unknowns and exclusions for the selected
+point. Missing samples break the line; unknown/mixed models never connect across
+versions. Accepted changes and correlated rates do not establish improvement or
+causality. Sample task and skill-version links open existing detail endpoints.
+Selection and expanded details survive polling, with keyboard/touch interactions
+and English/Chinese labels. No experiment, Host, private plugin, live run or
+frozen bundle is modified by this UI change.
+
+Focused verification covers owner isolation, more than 200 calls, incomplete
+capture, filters and immutable database reads, then actual Chrome interaction,
+version gaps, context separation, refresh retention and responsive layouts.
+See [qualification](../qualification.md#expert-skill-cards-and-trends-2026-10-30)
+for evidence and validation limits.
+
+The pagination follow-up addresses the user's report that the bottom buttons
+appear inactive: they replace the bounded version catalog inside collapsed
+expert cards while the visible call statistics and charts keep their scope.
+A retained-run read returned 55 catalog entries, so the next page contains five
+entries. Label the controls as skill-version pagination, hide them for a single
+page, and expand/focus the changed catalogs on successful user pagination.
+Reuse the existing request identity and pending promise for loading feedback,
+duplicate-click prevention and keeping the old offset after a failed load. A
+late response from another category cannot move the current page. These are
+ordinary browser presentation states; no backend or durable evidence changes.
+
+The user's subsequent refinement moves pagination into each expert card. Retire
+the shared skill pager and keep ten entries per owner page, with the controls
+next to the catalog heading. Reuse the existing `skills` detail endpoint's role,
+offset and limit selectors. Only expanded catalogs request their page; no new
+endpoint, aggregate ledger or all-owner prefetch is required. The browser retains
+one bounded page, pending request and error per owner, scoped by run/stage/window.
+Changing a page patches only that catalog's DOM. Charts and other expert cards
+retain their state. Main observation refresh reloads expanded catalogs at their
+current offset; reopening a catalog also refreshes its current page. Owner focus
+retains pages, while stage/time changes and explicit clearing reset them. A late
+response from an old scope is discarded; local retry keeps other cards usable.
+Search applies to loaded lists, and single-page controls remain hidden. Existing
+global pagination continues to serve the other workbench categories.

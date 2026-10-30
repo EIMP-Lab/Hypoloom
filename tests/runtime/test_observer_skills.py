@@ -1,5 +1,6 @@
 """Skill activity is observed use, distinct from binding and accepted evolution."""
 import json
+import shutil
 
 import pytest
 
@@ -58,6 +59,39 @@ def test_binding_and_prompt_mentions_are_not_skill_calls(tmp_path):
     assert data["activity"]["coverage"] == "complete"
     assert data["activity"]["observed_calls"] == 0
     assert data["skills"][0]["bindings"]
+
+
+def test_expert_cards_keep_full_counts_and_separate_capture_coverage(tmp_path):
+    repo, _, commit = _plugin(tmp_path)
+    shutil.copytree(repo, tmp_path / "run/experts/peer/plugin")
+    ours = _bound("ours", commit)
+    peer = _attempt("peer", role="peer", command="RESULT_ANALYSIS", started_at=5,
+        observation={"session": {"session_id": "peer-chain", "expert_resources": {
+            "plugin": {"run_id": "run", "role": "peer", "name": "hypoloom-peer", "commit": commit}}}})
+    _database(tmp_path, [ours, peer])
+    events = [_init()]
+    for index in range(230):
+        events.extend([_call(str(index), "Skill", {"skill": NAME}, timestamp=1 + index / 1000), _result(str(index))])
+    _capture(tmp_path, ours, [*events, _terminal()])
+    _capture(tmp_path, peer, [_init(), _call("pending", "Skill", {"skill": "hypoloom-peer:resource-planning"}, timestamp=5.5), _terminal()])
+    before = (tmp_path / "state.sqlite").read_bytes()
+    result = read_observer_detail(tmp_path, "run", "skills")
+    activity = result["activity"]
+    experts = {item["role"]: item for item in activity["experts"]}
+    assert len(activity["calls"]) == 200 and activity["calls_truncated"]
+    assert experts["researcher"]["observed_calls"] == experts["researcher"]["succeeded"] == 230
+    assert sum(item["calls"] for item in experts["researcher"]["timeline"]) == 230
+    assert experts["researcher"]["coverage"] == "complete"
+    assert experts["peer"]["observed_calls"] == experts["peer"]["unanswered"] == 1
+    assert experts["peer"]["coverage"] == "partial"
+    assert sum(item["observed_calls"] for item in experts.values()) == activity["observed_calls"]
+    assert next(item for item in result["skills"] if item["role"] == "researcher")["usage"]["coverage"] == "complete"
+    selected = read_observer_detail(tmp_path, "run", "skills", role="peer")["activity"]
+    assert [item["role"] for item in selected["experts"]] == ["peer"]
+    assert selected["observed_calls"] == 1
+    stage = read_observer_detail(tmp_path, "run", "skills", command="RESULT_ANALYSIS")["activity"]
+    assert next(item for item in stage["experts"] if item["role"] == "researcher")["attempts"] == 0
+    assert (tmp_path / "state.sqlite").read_bytes() == before
 
 
 def test_version_time_and_stage_filters_preserve_actual_binding(tmp_path):

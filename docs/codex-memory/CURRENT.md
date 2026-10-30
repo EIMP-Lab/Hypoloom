@@ -1,5 +1,38 @@
 # Current Hypoloom development state
 
+- October 30 run trends now keep metric cells and the dialog frame stable across
+  RPM digits/unknown states. Custom local start/end intervals filter both charts
+  at the original bucket resolution; applied ranges, inspected time and input
+  drafts survive trend refresh. The lower control is now a full-run overview
+  with two resize handles and a draggable window; point inspection stays on
+  the charts. Date inputs synchronize with the selected window, with pointer,
+  touch, keyboard and full-range reset support.
+  Three browser regressions reproduce the old failure; final 18 focused checks
+  pass; the window-navigation follow-up passes 21 focused checks, including
+  fractional timestamp and coarsening regressions. Desktop/mobile captures are
+  inspected. The user authorizes dev commit/push and public main synchronization
+  for these changes together with the expert cards below. Public assets/guides
+  are mirrored locally in main. Reload the page; no backend, Host, monitor or
+  existing research state changed.
+  [Design](../design/issue-report-evidence.md#stable-inspection-and-custom-time-intervals-2026-10-30) /
+  [evidence](../qualification.md#stable-run-trends-and-custom-intervals-2026-10-30).
+
+- October 30 expert skill cards and line charts are implemented locally in dev
+  and mirrored public files in main, now authorized for dev/main publication.
+  Each owner retains separate
+  capture/counts/timeline, with same-context version rates, sample gaps and
+  existing details/follow-up. 202 regression tests, one translation check and
+  one retained-payload browser replay pass; desktop/mobile views were inspected.
+  Pagination now lives inside each expert's catalog, ten records per page,
+  loaded on expansion via existing role/offset/limit selectors. Other cards and
+  charts retain their state; refresh retains each page and old-scope responses
+  are discarded. Latest 16 focused checks pass, plus actual role-page reads.
+  This supersedes the earlier shared-pager visibility fix (7 + 49 checks).
+  Existing Host/monitor processes and research state are unchanged; reopening
+  the monitor loads the new reader. No new ledger, gate or causal skill score.
+  [Design](../design/experiment-methods-and-skill-observation.md#expert-cards-and-version-trends-2026-10-30) /
+  [evidence](../qualification.md#expert-skill-cards-and-trends-2026-10-30).
+
 - October 30 performance guidance repair is verified for authorized dev push,
   then public main sync. DESIGN/EXECUTION/RESULT_ANALYSIS receive the exact bound
   performance reference directly, capped at 16 KiB within the inline input budget;

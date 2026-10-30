@@ -753,9 +753,10 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         values = [item for item in catalog.pop("skills") if not selectors.get("role") or item["role"] == selectors["role"]]
         activity = skill_activity(root, run_id, attempts, selectors, catalog["versions"], transitions=transitions, facts=facts)
         by_version = {(item["role"], item["name"], item["commit"]): item for item in activity.pop("versions")}
+        owner_coverage = {item["role"]: item["coverage"] for item in activity["experts"]}
         for item in values:
             item["usage"] = by_version.get((item["role"], item["name"], item["commit"]),
-                {"calls": 0, "coverage": activity["coverage"]})
+                {"calls": 0, "coverage": owner_coverage.get(item["role"], "unavailable")})
         result = _page("skills", values, selectors, **catalog, activity=activity)
     elif kind == "skill":
         result = _skill(root, run_id, attempts, selectors, transitions=transitions, facts=facts)

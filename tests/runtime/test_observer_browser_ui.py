@@ -220,6 +220,10 @@ def _detail(query: dict[str, list[str]]) -> dict:
             skills=[dict(_SKILL, name="next-page-skill")] if offset else [_SKILL],
             total=51,
             activity={"coverage": "partial", "observed_calls": 2, "attempts": 2,
+                "experts": [{"role": "expert-a", "coverage": "partial", "observed_calls": 2,
+                    "attempts": 2, "capture": {"complete": 1}, "untimed_calls": 0,
+                    "succeeded": 1, "failed": 1, "unanswered": 0,
+                    "timeline": [{"started_at": 10, "ended_at": 70, "calls": 2, "failed": 1}]}],
                 "effects": _skill_effects(),
                 "untimed_calls": 0, "bin_seconds": 60,
                 "skills": [{"role": "expert-a", "name": "resource-planning", "calls": 2,
@@ -585,6 +589,8 @@ def browser(tmp_path: Path, request):
             )
             for offset in (0, 50)
         },
+        "skillCatalogs": {"expert-a": [_SKILL, *[{**_SKILL, "name": f"method-{index}"} for index in range(1, 10)],
+            {**_SKILL, "name": "next-page-skill"}]},
     }
     payloads["snapshot"]["overview"].update(payloads["activity"]["summary"])
     mock = (
@@ -614,7 +620,15 @@ def browser(tmp_path: Path, request):
         : query.pathname === '/api/snapshot' ? fixture.snapshot
         : query.pathname === '/api/activity' ? fixture.activity
         : fixture.details[query.searchParams.get('kind') + ':' + (query.searchParams.get('offset') || '0')];
-      const response = structuredClone(data);
+      const ownerCatalog = query.searchParams.get('kind') === 'skills' && query.searchParams.get('limit') === '10'
+        ? fixture.skillCatalogs[query.searchParams.get('role')] : undefined;
+      const response = structuredClone(ownerCatalog ? fixture.details['skills:0'] : data);
+      if (ownerCatalog) {
+        const offset = Number(query.searchParams.get('offset') || 0);
+        response.skills = structuredClone(ownerCatalog.slice(offset, offset + 10));
+        response.items = response.skills; response.offset = offset; response.limit = 10;
+        response.total = ownerCatalog.length; response.has_more = offset + 10 < ownerCatalog.length;
+      }
       if (query.searchParams.get('kind') === 'resources' && query.searchParams.has('experiment_id')) {
         response.experiments = response.experiments.filter(item => item.experiment_id === query.searchParams.get('experiment_id'));
         response.total = response.experiments.length;
@@ -899,8 +913,9 @@ def test_browser_expert_skill_library_filters_trend_and_evolution(browser, tmp_p
     assert page.evaluate("document.querySelector('#filter-expert').value") == "expert-a"
     assert "2 observed calls" in page.text(".skill-coverage")
     assert "lower bounds" in page.text("#skill-library")
-    page.click(".skill-trend-bar")
+    page.click(".skill-call-trend [data-point-index]")
     assert "2 calls / 1 failures" in page.text(".skill-trend-caption")
+    page.click(".skill-evolution-list > summary")
     page.click(".skill-change summary")
     assert "references/performance.md" in page.text(".skill-change")
     page.evaluate("document.querySelector('#skills-window').value='3600'; document.querySelector('#skills-window').dispatchEvent(new Event('change'))")
@@ -915,10 +930,82 @@ def test_browser_expert_skill_library_filters_trend_and_evolution(browser, tmp_p
     assert page.evaluate("window.injected === undefined")
 
 
+def test_browser_skill_cards_isolate_owners_and_version_gaps(browser, tmp_path):
+    page = browser
+    data = _detail({"kind": ["skills"]})
+    activity = data["activity"]
+    def group(commit, numerator, denominator=2, *, model="model-a", component="component-a"):
+        metric = {"numerator": numerator, "denominator": denominator,
+            "rate": numerator / denominator if denominator else None, "unknown": 1, "excluded": 0}
+        return {"role": "expert-a", "commit": commit, "stage": "EXPERIMENT_DESIGN_IMPLEMENT",
+            "component_id": component, "model": model, "basis": "bound_version", "name": None,
+            "metrics": {"output_first_pass": metric, "node_delivery": metric, "node_retry": metric},
+            "attempt_ids": ["sample-" + commit], "counts": {}, "costs": {}}
+    activity["effects"] = {"groups": [group("version-1", 1), group("version-2", 0), group("version-4", 2),
+        group("version-1", 2, model="model-b"), group("version-2", 1, 4, model="model-b"),
+        group("version-1", 1, model="unknown"), group("version-4", 2, model="unknown"),
+        group("version-1", 0, component="other-component")], "followups": [], "repairs": []}
+    activity["experts"].append({"role": "expert-b", "coverage": "complete", "observed_calls": 7,
+        "attempts": 1, "capture": {"complete": 1}, "succeeded": 7, "failed": 0, "unanswered": 0,
+        "untimed_calls": 0,
+        "timeline": [{"started_at": 10, "ended_at": 70, "calls": 1, "failed": 0},
+            {"started_at": 70, "ended_at": 130, "calls": 4, "failed": 0},
+            {"started_at": 130, "ended_at": 190, "calls": 2, "failed": 0}]})
+    activity["skills"].append({"role": "expert-b", "name": "peer-method", "calls": 7, "last_called_commit": "peer-v1"})
+    data["skills"].append({**_SKILL, "role": "expert-b", "name": "peer-method", "commit": "peer-v1"})
+    data["versions"] = [{"role": "expert-a", "commit": f"version-{i}", "bindings": [{"started_at": i * 100}],
+        "updates": [] if i == 1 else [{"ended_at": i * 100, "base_commit": f"version-{i-1}", "commit": f"version-{i}"}]} for i in range(1, 5)]
+    activity["evolutions"] = []
+    page.evaluate("fixture.details['skills:0']=" + json.dumps(data))
+    page.click("#total-skills")
+    page.wait("document.querySelectorAll('.skill-expert-card').length === 2")
+    a, b = '[data-skill-owner="expert-a"]', '[data-skill-owner="expert-b"]'
+    assert "peer-method" not in page.text(a)
+    assert "resource-planning" not in page.text(b)
+    assert "≥2" in page.text(a + " .skill-expert-stats")
+    assert page.text(b + " .skill-expert-stats strong") == "7"
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{b} .skill-call-trend [data-series-point=calls]'), n=>Number(n.dataset.value))") == [1, 4, 2]
+    chart = a + " .skill-version-plot"
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{chart} [data-series-point=output_first_pass]'), n=>Number(n.dataset.value))") == [50, 0, 100]
+    # The line stops at v2; a missing v3 must not become zero or bridge to v4.
+    assert page.evaluate(f"document.querySelectorAll('{chart} path[data-series=output_first_pass]').length") == 1
+    assert page.evaluate(f"document.querySelector('{chart} path[data-series=output_first_pass]').getAttribute('d').split('L').length") == 2
+    assert page.evaluate(f"document.querySelectorAll('{chart} [data-version-marker]').length") == 3
+    page.click(chart + ' [data-point-index="1"]')
+    assert "0/2 · 0.0% · unknown 1" in page.text(chart + " .skill-chart-caption")
+    page.evaluate(f"document.querySelector('{chart} [data-point-index=\"1\"]').focus()")
+    page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "ArrowRight"})
+    assert "Awaiting validation" in page.text(chart + " .skill-chart-caption")
+    select = a + " .skill-context-label select"
+    page.evaluate(f"{{ const s=document.querySelector('{select}'); s.value=Array.from(s.options).find(o=>o.textContent.includes('model-b')).value; s.dispatchEvent(new Event('change')); }}")
+    assert page.evaluate(f"Array.from(document.querySelectorAll('{chart} [data-series-point=output_first_pass]'), n=>Number(n.dataset.value))") == [100, 25]
+    page.click(a + " .skill-owner-effects > summary")
+    page.evaluate("fixture.details['skills:0'].activity.experts[0].observed_calls=3; fixture.snapshot.status.run_revision+=1")
+    page.wait(f"document.querySelector('{a} .skill-expert-stats strong').textContent === '≥3'")
+    assert page.evaluate(f"document.querySelector('{select}').selectedOptions[0].textContent.includes('model-b')")
+    assert page.evaluate(f"document.querySelector('{a} .skill-owner-effects').open")
+    page.click(a + " .skill-owner-effects > summary")
+    page.evaluate(f"{{ const s=document.querySelector('{select}'); s.value=Array.from(s.options).find(o=>o.textContent.includes('unknown')).value; s.dispatchEvent(new Event('change')); }}")
+    assert page.evaluate(f"document.querySelectorAll('{chart} path[data-series]').length") == 0
+    assert "without connecting versions" in page.text(chart)
+    page.evaluate(f"{{ const s=document.querySelector('{select}'); s.selectedIndex=0; s.dispatchEvent(new Event('change')); }}")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 1250, "deviceScaleFactor": 1, "mobile": False})
+    page.evaluate("document.querySelector('.skill-library-controls').scrollIntoView({block:'start'})")
+    page.screenshot(tmp_path / "skill-expert-cards-desktop.png")
+    page.click("#language-toggle")
+    page.wait("document.querySelector('.skill-version-trend').textContent.includes('技能版本运行趋势')")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 900, "deviceScaleFactor": 1, "mobile": True})
+    page.evaluate("document.querySelector('.skill-expert-heading').scrollIntoView({block:'start'})")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    page.screenshot(tmp_path / "skill-expert-cards-mobile.png")
+    assert not page.errors
+
+
 def test_browser_skill_effects_show_counts_unknowns_followup_and_source_links(browser):
     page = browser
     page.click('[data-expert-skills="expert-a"]')
     page.wait("document.querySelector('.skill-scorecard summary') !== null")
+    page.click(".skill-owner-effects > summary")
     assert "Awaiting validation" in page.text(".skill-effects")
     assert "Failure recurred" in page.text(".skill-effects")
     page.click(".skill-scorecard summary")
@@ -973,8 +1060,9 @@ def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
 ) -> None:
     page = browser
     page.click("#total-skills")
+    page.click(".skill-owner-catalog > summary")
     page.wait(
-        "document.querySelector('#workbench-list .record-title')?.textContent === 'resource-planning'"
+        "document.querySelector('.skill-owner-catalog .record-title')?.textContent === 'resource-planning'"
     )
     assert page.text("#total-experiments strong") == "123"
     assert page.text("#total-literature strong") == "321"
@@ -984,7 +1072,7 @@ def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
     page.evaluate(
         "document.querySelector('#filter-search').value='resource'; document.querySelector('#filter-search').dispatchEvent(new Event('input'))"
     )
-    page.click("#workbench-list .record-title")
+    page.click(".skill-owner-catalog .record-title")
     page.wait("document.querySelector('[data-detail-tab=body]') !== null")
     page.click("[data-detail-tab=body]")
     page.wait("document.querySelector('.skill-body')?.textContent.includes('<script>')")
@@ -1033,12 +1121,125 @@ def test_browser_skill_click_diff_adoption_and_refresh_preserve_context(
     assert "print('estimate')" in page.text("#research-detail-content")
     page.click("#close-drawer")
     page.click("#clear-filters")
-    page.click("#workbench-next")
+    page.click(".skill-owner-catalog > summary")
+    page.wait("document.querySelector('.skill-catalog-next')?.disabled === false")
+    page.click(".skill-catalog-next")
     page.wait(
-        "document.querySelector('#workbench-list .record-title')?.textContent === 'next-page-skill'"
+        "document.querySelector('.skill-owner-catalog .record-title')?.textContent === 'next-page-skill'"
     )
-    assert "51–51 of 51" in page.text("#workbench-page")
+    assert "11–11 of 11" in page.text(".skill-catalog-page")
     assert page.text("#total-skills strong") == "2"
+
+
+def test_browser_skill_cards_page_independently_and_keep_refresh_position(browser, tmp_path):
+    page = browser
+    data = _detail({"kind": ["skills"]})
+    data["activity"]["experts"].append({**data["activity"]["experts"][0], "role": "expert-b", "observed_calls": 7})
+    catalogs = {role: [{**_SKILL, "role": role, "name": f"{role}-method-{i}"} for i in range(count)]
+        for role, count in [("expert-a", 13), ("expert-b", 12)]}
+    page.evaluate("fixture.details['skills:0']=" + json.dumps(data) + ";fixture.skillCatalogs=" + json.dumps(catalogs))
+    page.click("#total-skills")
+    page.wait("document.querySelectorAll('.skill-expert-card').length === 2")
+    a, b = '[data-skill-owner="expert-a"]', '[data-skill-owner="expert-b"]'
+    assert page.evaluate("document.querySelector('#workbench-pagination').hidden")
+    assert page.evaluate("fixtureRequests.filter(row=>row[1].includes('kind=skills') && row[1].includes('limit=10')).length") == 0
+    page.click(a + " .skill-owner-catalog > summary")
+    page.click(b + " .skill-owner-catalog > summary")
+    page.wait(f"document.querySelectorAll('{a} .skill-owner-catalog .detail-card').length === 10 && document.querySelectorAll('{b} .skill-owner-catalog .detail-card').length === 10")
+    page.evaluate(f"window.beforePeer=document.querySelector('{b}'); window.beforeChart=document.querySelector('{a} .skill-call-trend svg')")
+    before = page.text(a + " .skill-expert-stats")
+    page.evaluate("window.fixtureDetailDelay=900")
+    page.click(a + " .skill-catalog-next")
+    assert "Loading skill versions" in page.text(a + " .skill-catalog-page")
+    assert page.evaluate(f"document.querySelector('{a} .skill-catalog-next').disabled && !document.querySelector('{b} .skill-catalog-next').disabled")
+    assert "1–10 of 12" in page.text(b + " .skill-catalog-page")
+    page.click(b + " .skill-catalog-next")
+    page.wait(f"document.querySelector('{a} .skill-catalog-page').textContent.includes('11–13 of 13') && document.querySelector('{b} .skill-catalog-page').textContent.includes('11–12 of 12')")
+    assert page.text(a + " .skill-owner-catalog .record-title") == "expert-a-method-10"
+    assert page.text(b + " .skill-owner-catalog .record-title") == "expert-b-method-10"
+    assert page.evaluate(f"document.querySelector('{b}') === window.beforePeer && document.querySelector('{a} .skill-call-trend svg') === window.beforeChart")
+    assert page.text(a + " .skill-expert-stats") == before
+    assert page.evaluate(f"document.querySelector('{a} .skill-owner-catalog .record-title').getBoundingClientRect().height > 0")
+    assert page.evaluate(f"document.querySelector('{a} .skill-catalog-next').disabled && document.querySelector('{b} .skill-catalog-next').disabled")
+    page.evaluate("window.fixtureDetailDelay=0; fixture.details['skills:0'].activity.experts[0].observed_calls=3; fixture.snapshot.status.run_revision+=1")
+    page.wait(f"document.querySelector('{a} .skill-expert-stats strong').textContent === '≥3'")
+    page.wait(f"document.querySelector('{b} .skill-catalog-page').textContent.includes('11–12 of 12')")
+    assert "11–13 of 13" in page.text(a + " .skill-catalog-page")
+    page.click(a + " .skill-catalog-previous")
+    page.wait(f"document.querySelector('{a} .skill-catalog-page').textContent.includes('1–10 of 13')")
+    assert "11–12 of 12" in page.text(b + " .skill-catalog-page")
+    assert page.evaluate("fixtureRequests.some(row=>{const q=new URL(row[1],'http://fixture').searchParams;return q.get('role')==='expert-b' && q.get('offset')==='10' && q.get('limit')==='10';})")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 1250, "deviceScaleFactor": 1, "mobile": False})
+    page.evaluate("window.scrollTo(0, document.querySelector('.skill-owner-catalog').getBoundingClientRect().top + scrollY - document.querySelector('.topbar').offsetHeight - 12)")
+    page.screenshot(tmp_path / "skill-card-pagination-desktop.png")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 900, "deviceScaleFactor": 1, "mobile": True})
+    page.evaluate("document.querySelector('.skill-owner-catalog').scrollIntoView({block:'start'})")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.screenshot(tmp_path / "skill-card-pagination-mobile.png")
+    assert not page.errors
+
+
+def test_browser_single_skill_page_explains_hidden_pagination(browser):
+    page = browser
+    page.evaluate("fixture.skillCatalogs['expert-a']=[fixture.skillCatalogs['expert-a'][0]]")
+    page.click("#total-skills")
+    page.click(".skill-owner-catalog > summary")
+    page.wait("document.querySelector('.skill-catalog-page').textContent.includes('All 1 skill version records')")
+    assert page.evaluate("document.querySelector('.skill-catalog-next').hidden && document.querySelector('.skill-catalog-previous').hidden && document.querySelector('#workbench-pagination').hidden")
+    page.click("#language-toggle")
+    assert "无需翻页" in page.text(".skill-catalog-page")
+    page.click('[data-workbench="literature"]')
+    page.wait("!document.querySelector('#workbench-pagination').hidden")
+    assert page.text("#workbench-next") == "下一页"
+
+
+def test_browser_skill_page_failure_keeps_page_and_allows_retry(browser):
+    page = browser
+    page.click("#total-skills")
+    page.click(".skill-owner-catalog > summary")
+    page.wait("document.querySelector('.skill-owner-catalog .record-title') !== null")
+    page.evaluate("""window.fixturePageError=true; const originalPageFetch=window.fetch;
+      window.fetch=(path, options) => {
+        const q=new URL(path,'http://fixture').searchParams;
+        return window.fixturePageError && q.get('kind')==='skills' && q.get('role')==='expert-a' && q.get('offset')==='10'
+          ? Promise.resolve({ok:false,status:503}) : originalPageFetch(path, options);
+      };""")
+    page.click(".skill-catalog-next")
+    page.wait("document.querySelector('.skill-catalog-page').textContent.includes('previous page is retained')")
+    assert "1–10 of 11" in page.text(".skill-catalog-page")
+    assert page.text(".skill-owner-catalog .record-title") == "resource-planning"
+    assert page.evaluate("!document.querySelector('.skill-catalog-next').disabled && document.querySelector('.skill-catalog-previous').disabled")
+    page.evaluate("window.fixturePageError=false")
+    page.click(".skill-catalog-retry")
+    page.wait("document.querySelector('.skill-owner-catalog .record-title').textContent === 'next-page-skill'")
+    assert page.evaluate("document.querySelector('.skill-owner-catalog').open")
+    assert "11–11 of 11" in page.text(".skill-catalog-page")
+    assert not page.errors
+
+
+def test_browser_skill_catalog_discards_response_from_old_stage(browser):
+    page = browser
+    page.click("#total-skills")
+    page.evaluate("""const savedSkillFetch=window.fetch;
+      window.fetch=async (path, options) => {
+        const response=await savedSkillFetch(path, options), q=new URL(path,'http://fixture').searchParams;
+        if(q.get('kind')==='skills' && q.get('role')==='expert-a' && q.get('limit')==='10' && !q.has('command')) {
+          const data=await response.json(); data.skills[0].name='stale-page';
+          await new Promise(resolve=>setTimeout(resolve,900));
+          return {ok:true,status:200,json:async()=>data};
+        }
+        return response;
+      };""")
+    page.click(".skill-owner-catalog > summary")
+    page.wait("document.querySelector('.skill-catalog-page').textContent.includes('Loading')")
+    page.evaluate("document.querySelector('#skills-command').value='RESULT_ANALYSIS'; document.querySelector('#skills-command').dispatchEvent(new Event('change'))")
+    page.wait("document.querySelector('.skill-owner-catalog').open === false")
+    page.click(".skill-owner-catalog > summary")
+    page.wait("document.querySelector('.skill-owner-catalog .record-title')?.textContent === 'resource-planning'")
+    page.call("Runtime.evaluate", {"expression": "new Promise(r=>setTimeout(r,1000))", "awaitPromise": True})
+    assert page.text(".skill-owner-catalog .record-title") == "resource-planning"
+    assert page.evaluate("fixtureRequests.some(row=>row[1].includes('role=expert-a') && row[1].includes('limit=10') && row[1].includes('command=RESULT_ANALYSIS'))")
+    assert not page.errors
 
 
 def test_browser_session_corrections_literature_interactions_and_resource_details(
@@ -1990,17 +2191,19 @@ def test_browser_cold_poll_and_authentication_states(browser):
     page.wait("document.querySelector('#connection-text').textContent === 'CONNECTED'")
 
 
-def test_browser_run_trends_interaction_unknowns_and_responsive_layout(browser, tmp_path):
-    page = browser
+def _trends_fixture():
     points = [dict(at=1800000000+i*60, until=1800000060+i*60,
         experiments=i%3, experiments_peak=3, agents=(i%4)+1, agents_peak=5,
         rpm=8 if i != 58 else None, rpm_lower_bound=8 if i != 58 else 2) for i in range(120)]
     values = [3] * 120
-    data = dict(observed_at=1800007200, ended_at=1800007200, interval_seconds=60, points=points,
+    return dict(observed_at=1800007200, started_at=1800000000, ended_at=1800007200, interval_seconds=60, points=points,
         coverage=dict(request_count=950, incomplete_attempts=1),
         experts=[dict(role="expert <script>injected=true</script>", rpm=values, rpm_lower_bound=values)],
         grounding=dict(rpm=values, rpm_lower_bound=values), other=dict(rpm=[2]*120, rpm_lower_bound=[2]*120))
-    page.evaluate("window.trendFixture=" + json.dumps(data))
+
+
+def _install_trends(page, data=None):
+    page.evaluate("window.trendFixture=" + json.dumps(data or _trends_fixture()))
     page.evaluate("""window.trendCalls=0; window.baseFetch=window.fetch;
       window.fetch=async (path, options) => {
         if (path !== '/api/trends') return baseFetch(path, options);
@@ -2008,18 +2211,157 @@ def test_browser_run_trends_interaction_unknowns_and_responsive_layout(browser, 
         if(window.trendError) return {ok:false,status:503};
         return {ok:true,status:200,json:async()=>structuredClone(trendFixture)};
       };""")
+
+
+def _trend_point_count(page):
+    return page.evaluate("(document.querySelector('#trends-concurrency path').getAttribute('d').match(/[ML]/g) || []).length")
+
+
+def _inspect_trend_point(page, index):
+    page.evaluate(f"""{{const chart=document.querySelector('#trends-rpm svg');
+      chart.dispatchEvent(new KeyboardEvent('keydown',{{key:'Home',bubbles:true}}));
+      for(let i=0;i<{index};i++) chart.dispatchEvent(new KeyboardEvent('keydown',{{key:'ArrowRight',bubbles:true}}));}}""")
+
+
+def _drag_trend_window(page, handle, fraction, *, touch=False):
+    selector = json.dumps(f"#trends-window-{handle}")
+    result = page.call("Runtime.evaluate", {
+        "expression": f"""new Promise(resolve=>{{
+          document.querySelector('#trends-navigator').scrollIntoView({{block:'center'}});
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{{
+            const r=document.querySelector({selector}).getBoundingClientRect();
+            resolve({{x:r.x+r.width/2,y:r.y+r.height/2,width:document.querySelector('#trends-window-track').getBoundingClientRect().width}});
+          }}));}})""", "awaitPromise": True, "returnByValue": True,
+    })
+    origin = result["result"]["value"]
+    def dispatch(kind, x):
+        point = {"x": x, "y": origin["y"]}
+        if touch:
+            page.call("Input.dispatchTouchEvent", {"type": {"start":"touchStart", "move":"touchMove", "end":"touchEnd"}[kind],
+                "touchPoints": [] if kind == "end" else [{**point, "id": 1, "radiusX": 4, "radiusY": 4, "force": 1}]})
+        else:
+            page.call("Input.dispatchMouseEvent", {"type": {"start":"mousePressed", "move":"mouseMoved", "end":"mouseReleased"}[kind],
+                "button": "left", "buttons": 0 if kind == "end" else 1, "clickCount": 1, **point})
+    dispatch("start", origin["x"])
+    for step in range(1, 9):
+        dispatch("move", origin["x"] + origin["width"] * fraction * step / 8)
+    dispatch("end", origin["x"] + origin["width"] * fraction)
+    page.call("Runtime.evaluate", {"expression":"new Promise(resolve=>requestAnimationFrame(resolve))", "awaitPromise":True})
+
+
+@pytest.mark.parametrize("width,height,touch", [(1440,1000,False), (390,844,True)])
+def test_browser_trend_window_resizes_pans_and_syncs_inputs(browser, tmp_path, width, height, touch):
+    page = browser
+    _install_trends(page)
+    page.call("Emulation.setDeviceMetricsOverride", {"width":width,"height":height,"deviceScaleFactor":1,"mobile":False})
+    if touch:
+        page.call("Emulation.setTouchEmulationEnabled", {"enabled":True,"maxTouchPoints":1})
+    page.click("#open-trends")
+    page.wait("document.querySelector('#trends-window-end')?.getAttribute('aria-valuenow') === '120'")
+    page.evaluate("window.originalOverview=document.querySelector('#trends-overview svg')")
+    assert page.evaluate("document.querySelector('#trends-overview path').getAttribute('d').match(/M/g).length") == 2
+    _drag_trend_window(page, "start", .25, touch=touch)
+    _drag_trend_window(page, "end", -.25, touch=touch)
+    assert _trend_point_count(page) == 60
+    times = "['start','end'].map(k=>new Date(document.querySelector('#trends-'+k).value).getTime()/1000)"
+    assert page.evaluate(times) == [1800001800, 1800005400]
+    assert page.evaluate("document.querySelector('#trends-range').value") == "custom"
+    _inspect_trend_point(page, 28)
+    assert "Unknown total" in page.text('[data-trend-series="run"] .trend-metric-note')
+    _drag_trend_window(page, "pan", 1/12, touch=touch)
+    assert page.evaluate(times) == [1800002400, 1800006000]
+    assert _trend_point_count(page) == 60
+    assert page.evaluate("originalOverview === document.querySelector('#trends-overview svg')")
+    assert page.evaluate("trendCalls") == 1
+    # A growing run must expand the overview without moving an absolute selection.
+    page.evaluate("""{const p=trendFixture.points.at(-1); trendFixture.points.push({...p,at:p.until,until:p.until+60});
+      trendFixture.ended_at+=60; trendFixture.observed_at+=60;
+      [...trendFixture.experts,trendFixture.grounding,trendFixture.other].forEach(s=>{s.rpm.push(3);s.rpm_lower_bound.push(3);});}""")
+    page.click("#refresh-trends")
+    page.wait("trendCalls === 2 && !document.querySelector('#refresh-trends').disabled")
+    assert page.evaluate(times) == [1800002400, 1800006000]
+    assert _trend_point_count(page) == 60
+    page.evaluate("document.querySelector('#trends-navigator').scrollIntoView({block:'center'})")
+    page.screenshot(tmp_path / f"trend-navigator-{width}.png")
+    # Handles cannot cross; keyboard movement and full-range reset remain usable.
+    _drag_trend_window(page, "start", 1, touch=touch)
+    assert _trend_point_count(page) == 1
+    page.evaluate("document.querySelector('#trends-window-start').focus({preventScroll:true})")
+    page.call("Input.dispatchKeyEvent", {"type":"keyDown","key":"ArrowLeft","modifiers":8})
+    page.call("Input.dispatchKeyEvent", {"type":"keyUp","key":"ArrowLeft"})
+    assert _trend_point_count(page) == 11
+    page.call("Input.dispatchKeyEvent", {"type":"keyDown","key":"Home"})
+    page.call("Input.dispatchKeyEvent", {"type":"keyUp","key":"Home"})
+    assert page.evaluate(times)[0] == 1800000000
+    page.click("#trends-window-reset")
+    assert _trend_point_count(page) == 121
+    assert page.evaluate("document.querySelector('#trends-range').value") == "all"
+    # Following the full run updates pristine inputs, but leaves unfinished drafts alone.
+    page.evaluate("trendFixture.ended_at+=60")
+    page.click("#refresh-trends")
+    page.wait("trendCalls === 3 && !document.querySelector('#refresh-trends').disabled")
+    assert page.evaluate(times)[1] == 1800007320
+    page.evaluate("document.querySelector('#trends-start').value='2027-01-01T00:00'; trendFixture.ended_at+=60")
+    page.click("#refresh-trends")
+    page.wait("trendCalls === 4 && !document.querySelector('#refresh-trends').disabled")
+    assert page.evaluate("document.querySelector('#trends-start').value") == "2027-01-01T00:00"
+    assert page.evaluate(times)[1] == 1800007320
+    assert page.evaluate("document.querySelector('#trends-dialog').scrollWidth <= document.querySelector('#trends-dialog').clientWidth")
+    assert not page.errors
+
+
+def test_browser_trend_window_retains_fractional_boundaries_when_data_coarsens(browser):
+    page = browser
+    data = _trends_fixture()
+    for key in ["started_at", "ended_at", "observed_at"]:
+        data[key] += .125
+    for point in data["points"]:
+        point["at"] += .125
+        point["until"] += .125
+    _install_trends(page, data)
+    page.click("#open-trends")
+    page.wait("document.querySelector('#trends-window-end')?.getAttribute('aria-valuenow') === '120'")
+    _drag_trend_window(page, "start", .25)
+    _drag_trend_window(page, "end", -.25)
+    assert _trend_point_count(page) == 60
+    # The inputs display seconds, while recorded bucket boundaries can be fractional.
+    # Reapplying unchanged inputs must not acquire the preceding bucket.
+    page.click("#apply-trends-range")
+    assert _trend_point_count(page) == 60
+    _inspect_trend_point(page, 10)
+    before = page.evaluate("document.querySelector('#trends-inspect').dataset.at")
+    page.evaluate("""trendFixture.points=trendFixture.points.filter((p,i)=>i%2===0).map(p=>({...p,until:p.at+120}));
+      [...trendFixture.experts,trendFixture.grounding,trendFixture.other].forEach(s=>{
+        s.rpm=s.rpm.filter((p,i)=>i%2===0);s.rpm_lower_bound=s.rpm_lower_bound.filter((p,i)=>i%2===0);});
+      trendFixture.interval_seconds=120;""")
+    page.click("#refresh-trends")
+    page.wait("trendCalls === 2 && !document.querySelector('#refresh-trends').disabled")
+    assert _trend_point_count(page) == 30
+    assert page.evaluate("document.querySelector('#trends-inspect').dataset.at") == before
+    assert page.evaluate("['start','end'].map(k=>document.querySelector('#trends-window-'+k).getAttribute('aria-valuenow'))") == ["15", "45"]
+    assert "120" in page.text("#trends-range-help")
+    page.click("#apply-trends-range")
+    assert _trend_point_count(page) == 30
+    assert not page.errors
+
+
+def test_browser_run_trends_interaction_unknowns_and_responsive_layout(browser, tmp_path):
+    page = browser
+    _install_trends(page)
     assert page.evaluate("trendCalls") == 0
     page.click("#open-trends")
     page.wait("document.querySelectorAll('#trends-rpm svg path').length === 4")
     assert "950" in page.text("#trends-coverage")
     assert page.evaluate("window.injected === undefined")
-    page.evaluate("document.querySelector('#trends-cursor').value=58; document.querySelector('#trends-cursor').dispatchEvent(new Event('input'))")
-    assert "unknown; recorded ≥2 RPM" in page.text("#trends-inspect")
+    _inspect_trend_point(page, 58)
+    assert "≥2 RPM" in page.text('[data-trend-series="run"] .trend-metric-value')
+    assert "Unknown total" in page.text('[data-trend-series="run"] .trend-metric-note')
+    assert page.evaluate("document.querySelector('[data-trend-series=run] .trend-metric-value').getAttribute('aria-label')") == "unknown; recorded ≥2 RPM"
     page.click("#trends-rpm-legend button")
     assert page.evaluate("document.querySelectorAll('#trends-rpm svg path').length") == 3
     assert page.evaluate("document.querySelector('#trends-rpm-legend button').getAttribute('aria-pressed')") == "false"
     page.evaluate("document.querySelector('#trends-range').value='3600'; document.querySelector('#trends-range').dispatchEvent(new Event('change'))")
-    assert int(page.evaluate("document.querySelector('#trends-cursor').max")) < 119
+    assert _trend_point_count(page) < 120
     before = page.evaluate("fixtureRequests.filter(r=>r[1]==='/api/refresh').length")
     page.wait(f"fixtureRequests.filter(r=>r[1]==='/api/refresh').length > {before}")
     page.evaluate("window.trendError=true")
@@ -2038,6 +2380,97 @@ def test_browser_run_trends_interaction_unknowns_and_responsive_layout(browser, 
     page.screenshot(tmp_path / "trends-mobile.png")
     page.click("#close-trends")
     assert page.evaluate("fixtureRequests.filter(r=>r[1]==='/api/trends').every(r=>r[2]==='Bearer browser-fixture-token')")
+    assert not page.errors
+
+
+@pytest.mark.parametrize("width,height", [(1440, 1000), (390, 844)])
+def test_browser_trend_values_keep_geometry_across_rpm_lengths(browser, tmp_path, width, height):
+    page = browser
+    data = _trends_fixture()
+    values = [0, 9.1, 987654.32, None]
+    for i, value in enumerate(values):
+        data["points"][i].update(rpm=value, rpm_lower_bound=999999.99 if value is None else value,
+            experiments=i*12345, experiments_peak=i*999999, agents=i*88888, agents_peak=i*999999)
+    data["experts"] = [{"role": "expert-with-a-long-label-" + str(i),
+        "rpm": values * 30, "rpm_lower_bound": [999999.99] * 120} for i in range(5)]
+    _install_trends(page, data)
+    page.call("Emulation.setDeviceMetricsOverride", {"width":width, "height":height, "deviceScaleFactor":1, "mobile":False})
+    page.click("#open-trends")
+    page.wait("document.querySelector('.trend-values') !== null")
+    geometry = """[document.querySelector('#trends-dialog'),document.querySelector('#trends-rpm'),
+      ...document.querySelector('.trend-values').children].map(node=>{
+        const r=node.getBoundingClientRect();return [r.x,r.y,r.width,r.height];})"""
+    positions = []
+    for index in range(4):
+        _inspect_trend_point(page, index)
+        positions.append(page.evaluate(geometry))
+    for position in positions[1:]:
+        assert len(position) == len(positions[0])
+        assert all(abs(a-b) < 1 for row, before in zip(position, positions[0]) for a,b in zip(row,before)), (positions[0],position)
+    assert page.evaluate("document.querySelector('#trends-dialog').scrollWidth <= document.querySelector('#trends-dialog').clientWidth")
+    page.evaluate("document.querySelector('#trends-inspect').scrollIntoView({block:'end'})")
+    page.screenshot(tmp_path / f"trend-values-{width}.png")
+    assert not page.errors
+
+
+def test_browser_custom_trend_interval_preserves_selection_and_validates_range(browser, tmp_path):
+    page = browser
+    _install_trends(page)
+    page.click("#open-trends")
+    page.wait("document.querySelector('#trends-window-end')?.getAttribute('aria-valuenow') === '120'")
+    page.evaluate("""window.localTimeInput = seconds => {
+      const d=new Date(seconds*1000), p=n=>String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }; document.querySelector('#trends-range').value='custom'; document.querySelector('#trends-range').dispatchEvent(new Event('change'));""")
+    page.wait("document.querySelector('#trends-custom-range')?.hidden === false")
+    page.evaluate("document.querySelector('#trends-start').value=localTimeInput(1800001200); document.querySelector('#trends-end').value=localTimeInput(1800002400)")
+    page.click("#apply-trends-range")
+    # Exact boundary overlap excludes the bucket ending at the selected start.
+    assert _trend_point_count(page) == 20
+    assert page.evaluate("['start','end'].map(k=>document.querySelector('#trends-window-'+k).getAttribute('aria-valuenow'))") == ["20", "40"]
+    _inspect_trend_point(page, 7)
+    inspected = page.evaluate("document.querySelector('#trends-inspect').dataset.at")
+    assert float(inspected) == 1800001620
+    assert page.evaluate("trendCalls") == 1
+    page.click("#trends-rpm-legend button")
+    page.evaluate("document.querySelector('#trends-end').value=localTimeInput(1800003000); trendFixture.observed_at+=120")
+    draft = page.evaluate("document.querySelector('#trends-end').value")
+    page.click("#refresh-trends")
+    page.wait("trendCalls === 2 && !document.querySelector('#refresh-trends').disabled")
+    assert page.evaluate("document.querySelector('#trends-inspect').dataset.at") == inspected
+    assert _trend_point_count(page) == 20
+    assert page.evaluate("document.querySelector('#trends-end').value") == draft
+    assert page.evaluate("document.querySelector('#trends-rpm-legend button').getAttribute('aria-pressed')") == "false"
+    page.evaluate("document.querySelector('#trends-end').value=localTimeInput(1800000000)")
+    page.click("#apply-trends-range")
+    assert "before" in page.text("#trends-range-error")
+    assert _trend_point_count(page) == 20
+    page.evaluate("document.querySelector('#trends-start').value=localTimeInput(1800001210); document.querySelector('#trends-end').value=localTimeInput(1800001220)")
+    page.click("#apply-trends-range")
+    assert _trend_point_count(page) == 1
+    assert page.evaluate("document.querySelectorAll('#trends-rpm .trend-time-label').length") == 1
+    assert "60" in page.text("#trends-range-help")
+    page.evaluate("document.querySelector('#trends-start').value=localTimeInput(1799992800); document.querySelector('#trends-end').value=localTimeInput(1799996400)")
+    page.click("#apply-trends-range")
+    assert page.evaluate("document.querySelector('#trends-content').hidden && !document.querySelector('#trends-empty').hidden")
+    page.evaluate("document.querySelector('#trends-range').value='3600'; document.querySelector('#trends-range').dispatchEvent(new Event('change'))")
+    assert _trend_point_count(page) == 60
+    assert page.evaluate("!document.querySelector('#trends-custom-range').hidden && !document.querySelector('#trends-content').hidden")
+    page.evaluate("document.querySelector('#trends-range').value='custom'; document.querySelector('#trends-range').dispatchEvent(new Event('change')); document.querySelector('#trends-start').value=localTimeInput(1800001200); document.querySelector('#trends-end').value=localTimeInput(1800002400)")
+    page.click("#apply-trends-range")
+    page.screenshot(tmp_path / "trend-range-desktop.png")
+    page.click("#close-trends")
+    page.click("#language-toggle")
+    page.click("#open-trends")
+    page.wait("document.querySelector('#trends-status').textContent.includes('观测时间')")
+    assert page.text("#apply-trends-range") == "应用时间段"
+    assert page.text("#trends-navigation-title") == "时间窗口"
+    assert page.evaluate("document.querySelector('#trends-window-start').getAttribute('aria-label')") == "时间窗口起点"
+    assert _trend_point_count(page) == 20
+    page.call("Emulation.setDeviceMetricsOverride", {"width":390, "height":844, "deviceScaleFactor":1, "mobile":False})
+    assert page.evaluate("document.querySelector('#trends-dialog').scrollWidth <= document.querySelector('#trends-dialog').clientWidth")
+    page.evaluate("document.querySelector('#trends-dialog').scrollTop=0")
+    page.screenshot(tmp_path / "trend-range-mobile.png")
     assert not page.errors
 
 

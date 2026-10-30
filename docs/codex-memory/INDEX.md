@@ -1,5 +1,27 @@
 # Development memory index
 
+- [Stable run trends and custom intervals, October 30](../design/issue-report-evidence.md#stable-inspection-and-custom-time-intervals-2026-10-30):
+  fixed metric geometry, local start/end filtering of existing buckets and
+  retained point/range/draft state. [Validation](../qualification.md#stable-run-trends-and-custom-intervals-2026-10-30):
+  three reproduced browser failures, final 18 focused checks passing and
+  desktop/mobile visual inspection. Frontend-only, mirrored locally to main;
+  page reload loads the change without restarting research or the observer.
+  The follow-up replaces point scrubbing with a two-ended, draggable time window
+  over a full-run RPM overview. Touch/keyboard/input synchronization, reset,
+  fractional boundaries and coarsened refresh pass 21 focused checks. Combined
+  dev commit/push and public main sync are authorized with the expert cards below.
+
+- [Expert skill cards and trends, October 30](../design/experiment-methods-and-skill-observation.md#expert-cards-and-version-trends-2026-10-30):
+  separate owner capture, calls and timelines; same-context version rates with
+  missing-sample gaps, accepted-update markers and retained detail links.
+  [Validation](../qualification.md#expert-skill-cards-and-trends-2026-10-30):
+  202 regressions, translation invariant and actual retained-payload browser
+  replay pass; desktop/mobile inspected. Dev/main publication is now authorized;
+  existing research and monitor processes remain unchanged.
+  Card-local pagination supersedes the shared-pager visibility follow-up:
+  ten records per owner, lazy loading, separate pending/error/page state and
+  retained position. Latest 16 focused checks and actual role-page reads pass.
+
 - [Performance guidance delivery, October 30](../design/research-workflow-skill.md#performance-guidance-delivery-and-handoff-2026-10-30):
   direct bound-reference delivery for experiment design, execution and analysis;
   measured/pending/non-applicable handoff in existing notes, effective DataLoader

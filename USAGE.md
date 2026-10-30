@@ -300,13 +300,26 @@ are filtered by default; private content requires an explicit
 `--include-private-data`. Exports are never uploaded automatically.
 
 In Web, **Run trends** shows experiment/Agent concurrency and total/per-expert
-RPM across the run. Choose a time range, toggle request series, and inspect a
-time bucket with the pointer or slider. Solid occupancy lines show bucket-end
-counts; dashed lines show peaks. RPM is averaged within each bucket, includes
+RPM across the run. The **Time window** navigator below the charts shows the
+full-run RPM overview. Drag either edge to resize the selected interval, or drag
+its middle to move the window; both charts and the local start/end inputs update
+together. Handles support touch and arrow keys (Shift moves ten buckets), and
+**View entire run** resets the window. Preset ranges and precise start/end inputs
+with **Apply interval** remain available. The timezone and displayed recorded
+range are shown. Custom intervals retain complete
+overlapping buckets at the recorded resolution; zooming does not create finer
+observations. Invalid intervals leave the previous view intact, and empty ranges
+show an explicit message. Toggle request series and inspect one bucket by hovering
+or touching a chart, or use arrow keys while the chart is focused. Refresh preserves
+the applied interval and inspected time, without overwriting unfinished input
+edits. Metric cells keep their positions as RPM digits and unknown states change.
+Solid occupancy lines show bucket-end counts; dashed lines show peaks.
+RPM is averaged within each bucket, includes
 retries, and leaves gaps for unavailable capture. These recorded intervals do
 not establish process liveness. The data comes from server records even while
-the browser is closed. Reopen the observer after updating to load the new API;
-old runs are readable where their diagnostic evidence exists.
+the browser is closed. Reload the page to load frontend updates. An older
+observer without the trends API must be reopened after updating; old runs are
+readable where their diagnostic evidence exists.
 
 Run-scoped downloads automatically include `runtime-trends.json` and
 `runtime-trends.csv`, regardless of the selected Attempt scope. Public copies

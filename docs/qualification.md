@@ -2,6 +2,164 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Web observer publication (2026-10-30)
+
+The user now authorizes dev commit/push followed by the corresponding public main
+commit/push. The publication combines expert skill cards, owner-local counts and
+version charts, independent card pagination, stable trend metrics and the
+draggable time-window navigator described below. Development evidence/tests stay
+on dev; main retains its public documentation layout. All six changed runtime
+files match byte-for-byte between worktrees.
+
+The existing feature evidence remains applicable: 202 skill-card regressions,
+16 final pagination checks and 21 final window-navigation checks pass in their
+respective invocations. No runtime code changed during publication preparation.
+Required documentation/Profile checks pass on both branches: **seven dev** and
+**six main** tests. Evidence is `.local/analysis/web-publication-20261030/`.
+This publication does not renew full G0–G5 qualification or authorize a change to
+any retained research run, Host, monitor process or private plugin.
+
+## Stable run trends and custom intervals (2026-10-30)
+
+[Design](design/issue-report-evidence.md#stable-inspection-and-custom-time-intervals-2026-10-30).
+Fixed metric cells and a stable dialog frame remove RPM-dependent movement.
+Custom local start/end times filter both charts using complete overlapping
+recorded buckets, with validation, empty-state feedback and explicit resolution.
+The point inspector now retains its timestamp through refresh, independently of
+the applied interval and unfinished input edits. The existing authenticated,
+read-only trends endpoint and its bounded projection are unchanged.
+
+Evidence is in dev `.local/analysis/trend-window-20261030/`:
+
+- Before the repair, the new desktop/mobile geometry checks and custom-range
+  check all fail against the old assets: **three reproduced failures**, 13.68 s
+  (`before.xml`). The geometry assertions expose moving cells; the interval
+  assertion exposes the missing controls. Browser JavaScript has no exceptions.
+- An intermediate four-case invocation has three passes and one test assertion
+  failure (`focused.xml`): Chrome normalizes zero seconds in `datetime-local`
+  values. The assertion now compares the actual draft before and after refresh,
+  preserving the input-retention requirement. Production code needed no change.
+- Final **18 focused checks pass**, 18.28 s, 54 deselected (`final.xml`), covering
+  trend source/ownership/coverage/coarsening/partial buckets, HTTP authentication
+  and static assets, translations, browser geometry, precise interval boundaries,
+  a single bucket, invalid/empty ranges, refresh and draft retention, keyboard
+  and pointer inspection, bilingual/mobile layout and independent skill-card
+  pagination. Actual Chrome 156.0.8078.80 runs the shipped frontend. Desktop and
+  mobile captures were visually inspected. This is a focused selection, not a
+  full G0–G5 qualification or a new paid/GPU run.
+- A read-only projection of `MERC-causal-advanced-202610292250` took 0.25 s and
+  returned 1,060 buckets at 60-second resolution and three expert series, with
+  recorded coverage (`retained-read.json`). This describes that observation;
+  the run continues independently. Its private payload remains ignored local
+  evidence and is not a public fixture or an additional browser replay.
+
+Python 3.12/SQLite 3.53.4 uses pytest from the existing tool environment, with
+plugin autoload disabled; Chrome remains isolated under `/tmp`. No shared
+environment was changed. Public assets and bilingual usage edits are mirrored
+locally to main, preserving its public guide layout; changes remain uncommitted.
+Reloading the page loads these frontend changes. Existing Host/monitor processes,
+research state and private plugins were not restarted or modified.
+
+The subsequent **time-window navigator** replaces the single-point slider with
+a full-run RPM overview, two resize handles, whole-window panning and a reset.
+Pointer/touch gestures snap to recorded boundaries and render once per animation
+frame. Keyboard arrows adjust handles or move the window; Shift moves ten buckets.
+Date inputs remain visible, follow the selected interval, and preserve unfinished
+drafts during refresh. Point inspection stays on the focused/hovered chart.
+
+Evidence is in `.local/analysis/trend-navigator-20261030/`. The initial six browser
+checks pass in 18.88 s (`first.xml`). A broader invocation exposes an actual
+fractional-boundary bug: Chrome omits zero seconds, so comparing serialized input
+strings before reapplying a window acquired the preceding bucket (**20 pass,
+one failure**, 28.73 s, `fractional-before-fix.xml`). Comparing parsed seconds to
+the current boundary preserves its exact fractional timestamp. Pristine preset
+inputs now follow refresh while edited drafts remain untouched.
+
+Final **21 focused checks pass**, 29.01 s, 54 deselected (`final.xml`), using the
+same isolated actual browser and Python environment. They include mouse and
+emulated touch drags, independent endpoints, minimum one-bucket width, panning,
+keyboard boundaries, reset, full-run context with unknown gaps, date/window
+synchronization, a growing/coarsening projection, fractional timestamps, retained
+inspection, prior geometry/invalid/empty/mobile/translation checks, existing
+skill-card pagination and unchanged trends/API/export contracts. Desktop/mobile
+captures were inspected. Public assets/guides are mirrored locally to main,
+uncommitted. No new backend, dependencies, retained-run reads or process restarts
+were needed. This remains bounded UI verification, not full G0–G5 promotion.
+
+## Expert skill cards and trends (2026-10-30)
+
+[Design](design/experiment-methods-and-skill-observation.md#expert-cards-and-version-trends-2026-10-30).
+The skill library now groups calls, versions and follow-up inside responsive
+expert cards. Owner-local capture counts and timelines reuse existing bounded
+reads before the latest-200-call listing is truncated. Version charts reuse
+existing first-pass, delivery and retry metrics within one basis/skill, stage,
+component and model context. Missing samples leave gaps; accepted updates are
+marked without treating changes as demonstrated improvements.
+
+Evidence is in `.local/analysis/skill-cards-20261030/` in the dev worktree:
+
+- **202 tests pass**, 405.52 s (`regression.xml`): complete selected modules for
+  skill observation, skill outcomes, details, actual browser interaction, Web
+  HTTP, evidence parsing, reliability and runtime bundles. The new checks cover
+  more than 200 calls, expert-local coverage, filters, read-only database access,
+  disconnected missing samples, model/component separation, keyboard controls,
+  refresh retention and mobile overflow. Existing version/diff, adoption and
+  pagination interactions remain covered. An initial browser smoke expected
+  the removed bar-chart selector; it was updated to exercise the new line-chart
+  points and card disclosures, without relaxing the behavioral assertions.
+- The existing translation-field invariant passes separately (`language.xml`,
+  **one test**, 0.50 s). The earlier 49-case focused selection and one-card-browser
+  invocation are retained as intermediate evidence, not added to the 202 total.
+- A read-only projection of `MERC-causal-advanced-202610292250` took 2.803 s and
+  observed four owners, 41 calls, eight versions and 77 outcome groups. Coverage
+  remained partial. These are one bounded observation's lower bounds, not fixed
+  totals for the running research. Replaying this exact payload through shipped
+  browser assets passes (**one test**, 2.30 s, `retained.xml`). Desktop and mobile
+  screenshots were inspected; private payloads/screenshots remain ignored local
+  evidence and are not public fixtures.
+
+Python 3.12/SQLite 3.53.4 uses pytest from the existing tool environment with
+plugin autoload disabled. Actual browser checks use isolated Chrome for Testing
+156.0.8078.80 under `/tmp`; no shared environment was installed into. The public
+runtime files and bilingual guide changes are mirrored into the local main
+worktree, preserving its public layout. This feature remains uncommitted; the
+earlier performance-guidance publication is a separate completed change.
+
+Existing Host, monitor process, private plugins and frozen research bundles were
+not restarted or modified. Reopening the monitor loads the new reader; the Host
+does not require a restart. This is focused read-only UI verification, not full
+G0–G5 promotion, paid/GPU qualification or evidence of causal skill improvement.
+
+The pagination follow-up fixes invisible changes inside collapsed catalogs and
+ambiguous disabled controls. A new read of the running catalog returned 55
+records (50 on page one, five on page two). Skill-version labels and ranges,
+single-page hiding, loading feedback, automatic catalog expansion/focus and
+failed-page retention now make the existing pagination visible. Charts keep
+their selected scope. **Seven skill browser checks pass** in 18.29 s, including
+55-record forward/back navigation, unchanged charts, actual visible content,
+mobile layout, single-page bilingual behavior and failure/retry. **49 related
+checks pass** in 22.57 s across details, Web HTTP, translations and other browser
+workbenches. Evidence is `.local/analysis/skill-pagination-20261030/`; these are
+two focused invocations, not a rerun of the earlier 202-case suite. Public assets
+and guides are mirrored locally; a page reload loads this frontend follow-up.
+
+The subsequent card-local pagination refinement replaces that shared skill pager.
+Each expert's expanded catalog independently requests ten records using the
+existing role/offset/limit interface; other cards and charts are untouched by
+pagination. Refresh preserves page position, reopening refreshes the current
+page, and a changed stage/time scope discards stale responses. Only open catalogs
+are read; no backend or research-state change is needed. The first eight browser
+checks pass (23.42 s), then the final **16 focused checks pass** (44.81 s), including
+independent/concurrent paging, no closed-card prefetch, unchanged peer/chart DOM,
+refresh retention, local failure/retry, stale-response rejection, bilingual and
+mobile behavior, existing detail links, Web assets and other workbenches.
+Evidence is `.local/analysis/skill-card-pagination-20261030/` (`browser.xml`,
+`final.xml`). Actual read-only owner requests return ML pages of 10 and two
+records (total 12) and engineering's first ten (total 18), with correct ownership
+and disjoint ML pages (`retained-api.json`). Desktop/mobile captures were
+inspected. Public assets and guide edits are mirrored locally, retaining main's
+public guide text and excluding dev-only links; changes remain uncommitted.
+
 ## Performance guidance delivery (2026-10-30)
 
 The user authorizes implementation, dev commit/push and subsequent main sync.

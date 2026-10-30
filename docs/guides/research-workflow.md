@@ -240,9 +240,22 @@ stage and the entire run or its last 1/6/24 hours. For a finished run, the windo
 ends at its last recorded Agent activity. The stage filter applies to calls and task outcomes;
 evolution history follows the expert/time filters.
 
-The library shows observed native Skill calls, loaded/failed/unanswered results,
-frequency distribution and an interactive time chart. Calls link to their original
-invocation. Availability, prompt mentions, request bindings and reference-file reads
+Each expert has a separate card with observed native Skill calls,
+loaded/failed/unanswered counts, accepted skill changes and a skill-frequency list.
+The **Calls over time** line chart shows calls and failures in each time interval.
+Capture coverage is counted per expert; one expert's missing logs do not change
+another's coverage. **Focus expert** opens that expert's view. Expand the card's
+skill versions, outcomes/follow-up or evolution history for the existing details.
+Expand **Skill versions** inside an expert card to load that expert's catalog.
+Each card has its own previous/next controls, page number and total, with ten
+records per page. Paging updates that catalog without changing other cards or
+charts. Automatic refresh and switching the focused expert retain each card's
+page; changing the research stage/time filter or clearing filters resets it.
+Closed catalogs load on demand. A single page hides its buttons and reports that
+all records are shown. Loading disables that card's buttons; a failed load retains
+its previous page and offers retry. Search narrows the loaded skill lists; charts
+use the expert, stage and time filters. Calls link to their original invocation.
+Availability, prompt mentions, request bindings and reference-file reads
 are not Skill calls. Loading does not prove that the method was followed or useful.
 Replayed session history and duplicate tool IDs are excluded. Missing, bounded or
 live capture gives lower bounds; untimed calls are excluded from time windows/charts.
@@ -263,6 +276,15 @@ cost and elapsed time. Cohorts keep the actual bound Git commit, research stage,
 component and model separate. Bound-version task results and nodes with observed
 calls to one skill are different views; several skills can share a node and its
 costs, so do not sum them. A scientific refutation is not an execution failure.
+
+The **Outcomes across skill versions** line chart compares these three rates
+within one selected stage, component and model, keeping bound-version and
+observed-call cohorts separate. Versions follow their first recorded binding or
+accepted update; dashed markers identify accepted updates. Select a point by
+mouse, touch or keyboard to see its commit, sample counts, unknowns and exclusions,
+or open a sample task. Missing samples leave gaps instead of zeroes; unknown or
+mixed models show disconnected points. A single version is not yet a change trend.
+Polling preserves the selected comparison group, point and expanded details.
 
 Failure links open the original Attempt and, when the accepted relation survives,
 the source hypothesis proposal. Each changed skill has follow-up against later

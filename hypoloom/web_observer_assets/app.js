@@ -116,10 +116,14 @@
     logSocket: null,
     workbenchKind: "skills",
     skillFilters: {window: "", command: ""},
+    skillContexts: new Map(),
+    skillPoints: new Map(),
+    skillCatalogs: new Map(),
     reliabilityFilters: {role: "", node: "", model: ""},
     reliabilityMetric: "",
     workbenchOffset: 0,
     workbenchData: null,
+    workbenchDataKey: null,
     workbenchRequest: 0,
     workbenchContext: {},
     drawerMode: "evidence",
@@ -2837,6 +2841,7 @@
   });
   const WORKBENCH_KEYS = {skills: "skills", literature: "papers", sessions: "sessions", interactions: "interactions", resources: "experiments"};
   const DETAIL_PAGE_SIZE = 50;
+  const SKILL_CATALOG_PAGE_SIZE = 10;
 
   function displayValue(value) {
     if (value === undefined || value === null) return "unavailable";
@@ -3100,24 +3105,45 @@
     setActiveView("workbench");
   }
 
-  async function loadWorkbench() {
+  async function loadWorkbench({pageChange = false} = {}) {
     if (!accessToken) return;
     if (state.workbenchKind === "reliability" || state.workbenchKind === "institutional") { renderWorkbench(); return; }
     const parameters = workbenchQuery();
     const key = JSON.stringify(parameters);
     if (state.workbenchPending?.key === key) return state.workbenchPending.promise;
     const request = ++state.workbenchRequest;
-    const pending = {key, promise: fetchDetail(parameters)};
+    const previousOffset = object(state.workbenchData).offset ?? 0;
+    const pending = {key, pageChange, promise: fetchDetail(parameters)};
     state.workbenchPending = pending;
+    if (pageChange) renderWorkbenchPagination();
+    let pageError = "";
     try {
       const data = await pending.promise;
-      if (request !== state.workbenchRequest) return;
-      const changed = JSON.stringify(state.workbenchData) !== JSON.stringify(data);
+      if (request !== state.workbenchRequest || state.workbenchKind !== parameters.kind) return;
+      const changed = state.workbenchDataKey !== key || JSON.stringify(state.workbenchData) !== JSON.stringify(data);
       state.workbenchData = data;
+      state.workbenchDataKey = key;
       if (changed && state.activeView === "workbench" && !document.hidden) renderWorkbench();
+      if (parameters.kind === "skills" && state.activeView === "workbench" && !document.hidden) {
+        document.querySelectorAll(".skill-owner-catalog[open]").forEach(node => {
+          const role = node.closest("[data-skill-owner]").dataset.skillOwner;
+          const entry = skillCatalogState(role);
+          if (!entry.pending) void loadSkillCatalog(role, entry.data?.offset ?? 0);
+        });
+      }
     } catch (error) {
-      if (request === state.workbenchRequest) setText("workbench-status", t("{0} Retained rows may be stale.", error.message));
-    } finally { if (state.workbenchPending === pending) state.workbenchPending = null; }
+      if (request === state.workbenchRequest && state.workbenchKind === parameters.kind) {
+        if (pageChange) state.workbenchOffset = previousOffset;
+        pageError = error.message;
+        setText("workbench-status", t("{0} Retained rows may be stale.", error.message));
+      }
+    } finally {
+      if (state.workbenchPending === pending) state.workbenchPending = null;
+      if (pageChange && request === state.workbenchRequest && state.workbenchKind === parameters.kind
+          && state.activeView === "workbench" && !document.hidden) {
+        renderWorkbenchPagination(pageError);
+      }
+    }
   }
 
   function actionButton(title, action, className = "detail-link") {
@@ -3659,12 +3685,234 @@
     parent.append(section);
   }
 
+  function skillLineChart(parent, {id, label, points, series, maximum, xLabel, describe, connect = true}) {
+    const width = 620, height = 205, left = 40, right = 18, top = 18, bottom = 35;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const peak = Math.max(1, maximum ?? Math.max(0, ...series.flatMap(item => item.values.filter(Number.isFinite))));
+    const x = index => left + (points.length < 2 ? plotWidth / 2 : index * plotWidth / (points.length - 1));
+    const y = value => top + plotHeight * (1 - value / peak);
+    const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, class: "skill-line-chart", role: "group", "aria-label": label});
+    [0, peak / 2, peak].forEach(value => {
+      svg.append(svgElement("line", {x1: left, x2: width - right, y1: y(value), y2: y(value), class: "skill-chart-grid"}));
+      const text = svgElement("text", {x: left - 8, y: y(value) + 4, "text-anchor": "end", class: "skill-chart-label"});
+      text.textContent = maximum === 100 ? `${value}%` : Number(value.toFixed(1)); svg.append(text);
+    });
+    const legend = element("div", "skill-chart-legend");
+    series.forEach(item => {
+      const entry = element("span", "", item.label); entry.style.setProperty("--series-color", item.color); legend.append(entry);
+      let segment = [];
+      const flush = () => {
+        if (connect && segment.length > 1) svg.append(svgElement("path", {
+          d: segment.map(([px, py], index) => `${index ? "L" : "M"}${px},${py}`).join(" "),
+          fill: "none", stroke: item.color, "stroke-width": 2.5, "data-series": item.key,
+        }));
+        segment = [];
+      };
+      item.values.forEach((value, index) => {
+        if (!Number.isFinite(value)) { flush(); return; }
+        segment.push([x(index), y(value)]);
+        svg.append(svgElement("circle", {cx: x(index), cy: y(value), r: 3.2, fill: item.color,
+          "data-series-point": item.key, "data-value": value, "data-index": index}));
+      });
+      flush();
+    });
+    const caption = element("div", "skill-chart-caption"); caption.setAttribute("aria-live", "polite");
+    const select = index => {
+      const point = points[index]; if (!point) return;
+      state.skillPoints.set(id, point.key);
+      svg.querySelectorAll("[data-point-index]").forEach(node => node.classList.toggle("selected", Number(node.dataset.pointIndex) === index));
+      caption.replaceChildren(); describe(point, caption);
+    };
+    points.forEach((point, index) => {
+      if (point.changed) svg.append(svgElement("line", {x1: x(index), x2: x(index), y1: top, y2: height - bottom,
+        class: "skill-version-marker", "data-version-marker": point.key}));
+      const hit = svgElement("rect", {x: x(index) - Math.min(18, plotWidth / Math.max(2, points.length) / 2), y: top - 6,
+        width: Math.min(36, plotWidth / Math.max(2, points.length)), height: plotHeight + 12,
+        class: "skill-chart-hit", tabindex: 0, role: "button", "aria-label": point.label,
+        "data-point-index": index, id: `${id}-point-${index}`});
+      hit.addEventListener("mouseenter", () => select(index));
+      hit.addEventListener("focus", () => select(index));
+      hit.addEventListener("click", () => select(index));
+      hit.addEventListener("keydown", event => {
+        if (["Enter", " "].includes(event.key)) { event.preventDefault(); select(index); }
+        if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+          event.preventDefault(); byId(`${id}-point-${Math.max(0, Math.min(points.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)))}`)?.focus();
+        }
+      });
+      const title = svgElement("title"); title.textContent = point.label; hit.append(title); svg.append(hit);
+      if (index === 0 || index === points.length - 1 || index % Math.max(1, Math.ceil(points.length / 5)) === 0) {
+        const anchor = points.length < 2 ? "middle" : index === 0 ? "start" : index === points.length - 1 ? "end" : "middle";
+        const text = svgElement("text", {x: x(index), y: height - 10, "text-anchor": anchor, class: "skill-chart-label"});
+        text.textContent = xLabel(point, index); svg.append(text);
+      }
+    });
+    parent.append(legend, svg, caption);
+    const previous = points.findIndex(point => point.key === state.skillPoints.get(id));
+    select(previous >= 0 ? previous : points.length - 1);
+  }
+
+  function renderSkillVersionTrend(parent, role, data, activity, prefix) {
+    const section = element("section", "skill-version-trend");
+    section.append(element("h4", "", t("Outcomes across skill versions")),
+      element("p", "panel-copy", t("Compare the same stage, component and model. Dashed markers show accepted updates; gaps have no known samples.")));
+    const contexts = new Map();
+    list(object(activity.effects).groups).filter(group => group.role === role).forEach(group => {
+      const key = JSON.stringify([group.basis, group.name, group.stage, group.component_id, group.model]);
+      if (!contexts.has(key)) contexts.set(key, []); contexts.get(key).push(group);
+    });
+    if (!contexts.size) {
+      section.append(element("p", "empty-copy", t("No attributable task samples in this selection."))); parent.append(section); return;
+    }
+    const field = element("label", "skill-context-label", t("Comparison group"));
+    const select = element("select"); select.id = `${prefix}-context`;
+    const entries = [...contexts.entries()].sort((a, b) => Number(a[1][0].basis !== "bound_version") - Number(b[1][0].basis !== "bound_version")
+      || b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    entries.forEach(([key, groups]) => {
+      const group = groups[0], basis = group.basis === "observed_call" ? t("Nodes with observed calls to {0}", group.name) : t("Bound-version context");
+      const option = element("option", "", `${group.stage} · ${group.model} · ${group.component_id || "—"} · ${basis}`);
+      option.value = key; select.append(option);
+    });
+    select.value = contexts.has(state.skillContexts.get(role)) ? state.skillContexts.get(role) : entries[0][0];
+    field.append(select); section.append(field);
+    const plot = element("div", "skill-version-plot"); section.append(plot);
+    const draw = () => {
+      state.skillContexts.set(role, select.value); plot.replaceChildren();
+      const groups = contexts.get(select.value), context = groups[0], versions = new Map();
+      const add = (commit, at = 0, changed = false) => {
+        if (!commit) return;
+        const prior = versions.get(commit) || {key: commit, at: 0, changed: false};
+        if (Number.isFinite(at) && at > 0) prior.at = prior.at ? Math.min(prior.at, at) : at;
+        prior.changed ||= changed; versions.set(commit, prior);
+      };
+      list(data.versions).filter(version => version.role === role).forEach(version => {
+        const bindings = list(version.bindings), updates = list(version.updates);
+        if (state.skillFilters.window && !groups.some(group => group.commit === version.commit)
+            && ![...bindings, ...updates].some(item => (item.ended_at || item.started_at || 0) >= activity.started_at)) return;
+        add(version.commit);
+        bindings.forEach(item => add(version.commit, item.started_at));
+        updates.forEach(item => add(version.commit, item.ended_at, item.base_commit !== item.commit));
+      });
+      list(activity.evolutions).filter(event => event.role === role && event.status === "accepted_change").forEach(event => {
+        add(event.base_commit); add(event.commit, event.ended_at, true);
+      });
+      groups.forEach(group => {
+        if (!versions.has(group.commit)) add(group.commit, group.last_observed_at);
+        versions.get(group.commit).group = group;
+      });
+      const points = [...versions.values()].sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
+      points.forEach(point => { point.label = `${point.key} · ${point.changed ? t("Accepted change") : t("accepted / bound version")}`; });
+      const metrics = [["output_first_pass", "First-pass validation", "var(--green)"],
+        ["node_delivery", "Node delivery", "var(--accent, #78dcff)"], ["node_retry", "Node retry", "var(--warning, #e4ad58)"]];
+      const knownModel = context.model && context.model !== "unknown" && !context.model.startsWith("mixed:");
+      if (!knownModel) plot.append(element("p", "panel-copy", t("Model identity is unknown or mixed; points are shown without connecting versions.")));
+      if (points.length < 2) plot.append(element("p", "panel-copy", t("Only one version has been observed; a change trend is not yet available.")));
+      skillLineChart(plot, {id: `${prefix}-versions`, label: t("Outcomes across skill versions"), points, maximum: 100, connect: knownModel,
+        xLabel: (point, index) => `${index + 1} · ${compact(point.key, 7)}`,
+        series: metrics.map(([key, label, color]) => ({key, label: t(label), color, values: points.map(point => {
+          const metric = object(object(point.group).metrics)[key];
+          return metric && metric.denominator > 0 && typeof metric.rate === "number" ? metric.rate * 100 : null;
+        })})),
+        describe: (point, caption) => {
+          caption.append(element("strong", "", point.key), element("p", "panel-copy", point.at ? formatTimestamp(point.at) : t("Time unavailable")));
+          if (!point.group) { caption.append(element("p", "panel-copy", t("Awaiting validation"))); return; }
+          const grid = element("dl", "selection-grid");
+          metrics.forEach(([key, label]) => appendDefinition(grid, t(label), reliabilityMetricText(object(point.group.metrics)[key])));
+          caption.append(grid);
+          const sample = list(point.group.attempt_ids)[0];
+          if (sample) caption.append(actionButton(t("Inspect sample task"), () => openRemoteDetail("attempt", {attempt_id: sample}), "detail-link"));
+          if (context.name) caption.append(actionButton(t("View skill version"), () => openRemoteDetail("skill", {role, name: context.name, commit: point.key}), "detail-link"));
+        }});
+      if (object(activity.effects).groups_truncated) plot.append(element("p", "panel-copy", t("Additional observation groups exist outside this bounded view.")));
+    };
+    select.addEventListener("change", draw); draw(); parent.append(section);
+  }
+
+  function skillCatalogScope() {
+    return JSON.stringify([state.snapshot?.run_id, state.skillFilters]);
+  }
+
+  function skillCatalogState(role) {
+    const scope = skillCatalogScope();
+    let entry = state.skillCatalogs.get(role);
+    if (!entry || entry.scope !== scope) {
+      entry = {scope, data: null, pending: null, error: "", failedOffset: 0, open: false};
+      state.skillCatalogs.set(role, entry);
+    }
+    return entry;
+  }
+
+  function renderSkillCatalog(role, inventory = byId(`skill-catalog-${encodeURIComponent(role)}`)) {
+    if (!inventory) return;
+    const entry = skillCatalogState(role), data = object(entry.data), rows = list(data.skills);
+    const offset = data.offset ?? 0, total = data.total, loading = Boolean(entry.pending);
+    const focus = inventory.contains(document.activeElement) ? document.activeElement.id : null;
+    inventory.replaceChildren();
+    const summary = element("summary", "", typeof total === "number" ? t("Skill versions ({0})", total) : t("Skill versions"));
+    summary.id = `${inventory.id}-summary`; inventory.append(summary);
+    const controls = element("nav", "skill-catalog-pagination");
+    controls.setAttribute("aria-label", t("Skill versions for {0}", role));
+    const previous = actionButton(t("Previous"), () => loadSkillCatalog(role, Math.max(0, offset - SKILL_CATALOG_PAGE_SIZE), true), "skill-catalog-previous");
+    const next = actionButton(t("Next"), () => loadSkillCatalog(role, offset + SKILL_CATALOG_PAGE_SIZE, true), "skill-catalog-next");
+    previous.id = `${inventory.id}-previous`; next.id = `${inventory.id}-next`;
+    previous.disabled = loading || offset === 0;
+    next.disabled = loading || typeof total !== "number" || offset + SKILL_CATALOG_PAGE_SIZE >= total;
+    previous.hidden = next.hidden = typeof total !== "number" || total <= SKILL_CATALOG_PAGE_SIZE && offset === 0;
+    const status = element("span", "skill-catalog-page"); status.setAttribute("role", "status");
+    status.setAttribute("aria-busy", String(loading));
+    let caption = typeof total !== "number" ? t("Expand to load this expert's skill versions.")
+      : total <= SKILL_CATALOG_PAGE_SIZE && offset === 0 ? t("All {0} skill version records are on this page.", total)
+        : t("Page {0}/{1} · versions {2}–{3} of {4}", Math.floor(offset / SKILL_CATALOG_PAGE_SIZE) + 1,
+          Math.max(1, Math.ceil(total / SKILL_CATALOG_PAGE_SIZE)), rows.length ? offset + 1 : 0, offset + rows.length, total);
+    if (loading) caption = t("Loading skill versions…");
+    if (entry.error) caption = entry.data ? t("Page could not be loaded; the previous page is retained. {0}", caption) : entry.error;
+    status.textContent = caption; controls.append(previous, status, next);
+    if (entry.error) controls.append(actionButton(t("Retry loading"), () => loadSkillCatalog(role, entry.failedOffset, true), "skill-catalog-retry"));
+    inventory.append(controls);
+    const search = selectedFilters().search;
+    const matching = rows.filter(item => item.role === role && (!search || searchable(item).includes(search)));
+    matching.forEach(item => inventory.append(detailCard("skills", item)));
+    if (entry.data && !matching.length) inventory.append(element("p", "panel-copy", t("No matching records in this page. Missing retained evidence remains unavailable.")));
+    inventory.open = entry.open;
+    if (focus && byId(focus) && !byId(focus).disabled) byId(focus).focus({preventScroll: true});
+  }
+
+  async function loadSkillCatalog(role, offset, reveal = false) {
+    const entry = skillCatalogState(role);
+    if (entry.pending || !accessToken) return;
+    const pending = {offset}; entry.pending = pending; entry.error = "";
+    renderSkillCatalog(role);
+    let loaded = false;
+    try {
+      const data = await fetchDetail({kind: "skills", role, offset, limit: SKILL_CATALOG_PAGE_SIZE, ...state.skillFilters});
+      if (state.skillCatalogs.get(role) !== entry || entry.scope !== skillCatalogScope()) return;
+      // Keep only this owner's bounded page; charts retain the workbench's own observations.
+      entry.data = {skills: data.skills, offset: data.offset, total: data.total};
+      loaded = true;
+    } catch (error) {
+      if (state.skillCatalogs.get(role) !== entry || entry.scope !== skillCatalogScope()) return;
+      entry.error = error.message; entry.failedOffset = offset;
+    } finally {
+      if (entry.pending === pending) entry.pending = null;
+      if (state.skillCatalogs.get(role) === entry && entry.scope === skillCatalogScope()) {
+        renderSkillCatalog(role);
+        const node = byId(`skill-catalog-${encodeURIComponent(role)}`);
+        if (loaded && reveal && entry.open && node && state.activeView === "workbench" && state.workbenchKind === "skills" && !document.hidden) {
+          const summary = node.querySelector("summary");
+          summary.focus({preventScroll: true}); summary.scrollIntoView({block: "nearest"});
+        }
+      }
+    }
+  }
+
   function renderSkillLibrary(data) {
     const container = byId("skill-library");
     const activity = object(data.activity);
-    const key = JSON.stringify([uiLanguage, activity, state.skillFilters]);
+    const filters = selectedFilters();
+    const key = JSON.stringify([uiLanguage, activity, data.skills, data.versions, state.skillFilters, filters.search, filters.expert]);
     if (container.dataset.renderedKey === key) return;
     const focus = container.contains(document.activeElement) ? document.activeElement.id : null;
+    const expanded = new Set([...container.querySelectorAll("details[open]")].map(node =>
+      `${node.closest("[data-skill-owner]")?.dataset.skillOwner || ""}:${node.querySelector("summary")?.textContent}`));
     container.dataset.renderedKey = key;
     container.replaceChildren();
     const controls = element("div", "skill-library-controls");
@@ -3685,55 +3933,101 @@
     container.append(element("p", "panel-copy skill-coverage", t("{0} · {1} observed calls · complete capture for {2}/{3} sessions · {4} untimed calls", coverage, activity.observed_calls ?? "?", object(activity.capture).complete ?? 0, activity.attempts ?? "?", activity.untimed_calls ?? "?")));
     container.append(element("p", "panel-copy", t("Partial capture gives lower bounds. Binding is not a call; loading is not proof of following a skill or improving results.")));
     if (activity.unmatched_calls) container.append(element("p", "panel-copy", t("{0} calls could not be assigned to a bound skill version.", activity.unmatched_calls)));
-    const charts = element("div", "skill-charts");
-    const frequency = element("section", "detail-card");
-    frequency.append(element("h3", "", t("Most frequently called skills")));
-    const ranked = list(activity.skills).slice(0, 20);
-    const maximum = Math.max(1, ...ranked.map((item) => item.calls || 0));
-    ranked.forEach((item) => {
-      const row = element("div", "skill-frequency");
-      row.append(actionButton(`${item.role} · ${item.name}`, () => item.entrypoint_available === false
-        ? openRemoteDetail("attempt", {attempt_id: item.last_attempt_id})
-        : openRemoteDetail("skill", {role: item.role, name: item.name, commit: item.last_called_commit})));
-      const track = element("div", "skill-frequency-track");
-      const bar = element("span", "skill-frequency-bar"); bar.style.width = `${100 * item.calls / maximum}%`; track.append(bar);
-      row.append(track, element("span", "", `${coverage === "complete" ? "" : "≥"}${item.calls}`));
-      frequency.append(row);
+    const effects = object(activity.effects);
+    if (effects.unassigned_nodes || effects.partial_nodes_excluded) container.append(element("p", "panel-copy",
+      t("{0} nodes lack one known binding; {1} partial retry chains excluded by filters.", effects.unassigned_nodes || 0, effects.partial_nodes_excluded || 0)));
+    if (effects.unavailable_repair_links) container.append(element("p", "panel-copy", t("Repair links with incomplete evidence: {0}.", effects.unavailable_repair_links)));
+    const roles = [...new Set([...list(activity.experts), ...list(activity.skills), ...list(data.skills), ...list(data.versions),
+      ...list(activity.evolutions), ...list(effects.groups)].map(item => item.role).filter(Boolean))]
+      .filter(role => !filters.expert || role === filters.expert).sort();
+    const cards = element("div", "skill-expert-grid");
+    roles.forEach(role => {
+      const ranked = list(activity.skills).filter(item => item.role === role && (!filters.search || searchable(item).includes(filters.search)));
+      const own = object(list(activity.experts).find(item => item.role === role));
+      const ownerCoverage = own.coverage || (roles.length === 1 ? coverage : "unavailable");
+      const calls = own.observed_calls ?? list(activity.skills).filter(item => item.role === role).reduce((total, item) => total + (item.calls || 0), 0);
+      const card = element("article", "skill-expert-card"); card.dataset.skillOwner = role;
+      const prefix = `skill-owner-${encodeURIComponent(role)}`, heading = element("header", "skill-expert-heading");
+      heading.append(element("h3", "", role), actionButton(t("Focus expert"), () => { byId("filter-expert").value = role; openWorkbench("skills"); }, "detail-link"));
+      card.append(heading);
+      const stats = element("div", "skill-expert-stats");
+      const changes = own.accepted_changes ?? `${activity.evolutions_truncated ? "≥" : ""}${list(activity.evolutions).filter(event => event.role === role && event.status === "accepted_change").length}`;
+      [[t("Observed calls"), `${ownerCoverage === "complete" ? "" : "≥"}${calls}`],
+       [t("Loaded / failed / unanswered"), [own.succeeded, own.failed, own.unanswered].map(displayValue).join(" / ")],
+       [t("Accepted skill changes"), changes]].forEach(([label, value]) => {
+        const stat = element("div"); stat.append(element("strong", "", value), element("span", "", label)); stats.append(stat);
+      });
+      card.append(stats, element("p", "panel-copy", t("{0} · complete capture for {1}/{2} sessions · {3} untimed calls",
+        ownerCoverage, object(own.capture).complete ?? "?", own.attempts ?? "?", own.untimed_calls ?? "?")));
+      const frequency = element("section", "skill-owner-usage"); frequency.append(element("h4", "", t("Skill calls")));
+      const maximum = Math.max(1, ...ranked.map(item => item.calls || 0));
+      ranked.forEach(item => {
+        const row = element("div", "skill-frequency");
+        row.append(actionButton(item.name, () => item.entrypoint_available === false
+          ? openRemoteDetail("attempt", {attempt_id: item.last_attempt_id})
+          : openRemoteDetail("skill", {role, name: item.name, commit: item.last_called_commit})));
+        const track = element("div", "skill-frequency-track"), bar = element("span", "skill-frequency-bar");
+        bar.style.width = `${100 * item.calls / maximum}%`; track.append(bar);
+        row.append(track, element("span", "", `${ownerCoverage === "complete" ? "" : "≥"}${item.calls}`)); frequency.append(row);
+      });
+      if (!ranked.length) frequency.append(element("p", "panel-copy", t(filters.search
+        ? "No matching records in this page. Missing retained evidence remains unavailable."
+        : "No calls observed in the retained capture. This does not prove the skill was unused.")));
+      card.append(frequency);
+      const trend = element("section", "skill-call-trend"); trend.append(element("h4", "", t("Calls over time")),
+        element("p", "panel-copy", t("Calls per {0}-second interval; untimed calls are excluded.", activity.bin_seconds ?? "?")));
+      const timeline = own.timeline || (roles.length === 1 ? activity.timeline : []);
+      const points = list(timeline).map(bin => ({...bin, key: String(bin.started_at),
+        label: `${formatTimestamp(bin.started_at)} – ${formatTimestamp(bin.ended_at)} · ${t("{0} calls / {1} failures", bin.calls, bin.failed)}`}));
+      if (points.length) skillLineChart(trend, {id: `${prefix}-calls`, label: t("Calls over time"), points,
+        series: [{key: "calls", label: t("Observed calls"), color: "var(--accent, #78dcff)", values: points.map(point => point.calls)},
+          {key: "failed", label: t("Failed"), color: "var(--warning, #e4ad58)", values: points.map(point => point.failed)}],
+        xLabel: point => new Date(point.started_at * 1000).toLocaleTimeString(uiLanguage, {hour: "2-digit", minute: "2-digit"}),
+        describe: (point, caption) => caption.append(element("p", "panel-copy skill-trend-caption", point.label))});
+      else trend.append(element("p", "panel-copy", t("Evidence unavailable")));
+      card.append(trend); renderSkillVersionTrend(card, role, data, activity, prefix);
+      const inventory = element("details", "skill-owner-catalog");
+      inventory.id = `skill-catalog-${encodeURIComponent(role)}`;
+      renderSkillCatalog(role, inventory);
+      inventory.addEventListener("toggle", () => {
+        if (!inventory.isConnected) return;
+        const entry = skillCatalogState(role), opened = inventory.open && !entry.open;
+        entry.open = inventory.open;
+        if (opened && !entry.pending) void loadSkillCatalog(role, entry.data?.offset ?? 0);
+      });
+      card.append(inventory);
+      const observations = element("details", "skill-owner-effects"); observations.append(element("summary", "", t("Version outcomes and follow-up")));
+      renderSkillEffects(observations, {...effects, unassigned_nodes: 0, partial_nodes_excluded: 0, unavailable_repair_links: 0,
+        groups: list(effects.groups).filter(item => item.role === role), followups: list(effects.followups).filter(item => item.role === role),
+        repairs: list(effects.repairs).filter(item => item.role === role)}); card.append(observations);
+      const evolution = element("details", "skill-evolution-list"); evolution.append(element("summary", "", t("Evolution history")));
+      evolution.append(element("p", "panel-copy", t("Accepted changes describe file updates, not demonstrated improvements. The stage filter applies to calls; evolution history uses the expert and time filters.")));
+      renderSkillEvolution(evolution, list(activity.evolutions).filter(event => event.role === role)); card.append(evolution);
+      if (activity.evolutions_truncated) evolution.append(element("p", "panel-copy", t("Only the latest 200 evolution attempts are shown.")));
+      cards.append(card);
     });
-    if (!ranked.length) frequency.append(element("p", "panel-copy", t("No calls observed in the retained capture. This does not prove the skill was unused.")));
-    const trend = element("section", "detail-card");
-    trend.append(element("h3", "", t("Calls over time")));
-    trend.append(element("p", "panel-copy", t("Calls per {0}-second interval; untimed calls are excluded.", activity.bin_seconds ?? "?")));
-    const plot = element("div", "skill-trend"); plot.setAttribute("aria-label", t("Calls over time"));
-    const caption = element("p", "panel-copy skill-trend-caption", t("Select a bar to inspect its interval."));
-    const peak = Math.max(1, ...list(activity.timeline).map((bin) => bin.calls || 0));
-    list(activity.timeline).forEach((bin) => {
-      const label = `${formatTimestamp(bin.started_at)} – ${formatTimestamp(bin.ended_at)} · ${t("{0} calls / {1} failures", bin.calls, bin.failed)}`;
-      const bar = actionButton("", () => { caption.textContent = label; }, "skill-trend-bar");
-      bar.style.height = `${Math.max(3, 100 * bin.calls / peak)}%`;
-      bar.dataset.calls = bin.calls; bar.title = label; bar.setAttribute("aria-label", label);
-      bar.addEventListener("focus", () => { caption.textContent = label; });
-      plot.append(bar);
+    container.append(cards);
+    if (!cards.children.length) container.append(element("p", "empty-copy", t("No matching records in this page. Missing retained evidence remains unavailable.")));
+    container.querySelectorAll("details").forEach(node => {
+      if (node.classList.contains("skill-owner-catalog")) return;
+      node.open = expanded.has(`${node.closest("[data-skill-owner]")?.dataset.skillOwner || ""}:${node.querySelector("summary")?.textContent}`);
     });
-    trend.append(plot, caption); charts.append(frequency, trend); container.append(charts);
-    renderSkillEffects(container, activity.effects);
-    const evolution = element("details", "skill-evolution-list");
-    evolution.open = true;
-    evolution.append(element("summary", "", t("Evolution history")));
-    evolution.append(element("p", "panel-copy", t("Accepted changes describe file updates, not demonstrated improvements. The stage filter applies to calls; evolution history uses the expert and time filters.")));
-    renderSkillEvolution(evolution, activity.evolutions);
-    if (activity.evolutions_truncated) evolution.append(element("p", "panel-copy", t("Only the latest 200 evolution attempts are shown.")));
-    container.append(evolution);
     if (focus) byId(focus)?.focus({preventScroll: true});
   }
 
   function renderWorkbench() {
     const kind = state.workbenchKind;
     const data = object(state.workbenchData);
+    byId("workbench-pagination").hidden = kind === "skills";
+    ["previous", "next"].forEach(direction => {
+      byId(`workbench-${direction}`).hidden = false;
+      setText(`workbench-${direction}`, t(direction === "previous" ? "Previous" : "Next"));
+    });
     byId("workbench-list").classList.toggle("execution-reliability", kind === "reliability");
     setText("workbench-title", WORKBENCH_TITLES()[kind]);
     document.querySelectorAll("[data-workbench]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.workbench === kind)));
     byId("skill-library").hidden = kind !== "skills";
+    byId("workbench-list").hidden = kind === "skills";
     if (kind === "skills") renderSkillLibrary(data);
     if (kind === "reliability") { renderReliability(); return; }
     if (kind === "institutional") { renderInstitutional(); return; }
@@ -3742,7 +4036,15 @@
     const scope = kind === "sessions" && context.task_scope ? t("{0} tasks; expert/component filters retained for other views", taskScopeLabel(context))
       : kind === "sessions" && context.session_id ? t("Exact session {0}; expert/component filters retained for other views", context.session_id)
       : `${filters.expert || t("All experts")}${context.component_id ? t(" · component {0}", context.component_id) : ""}`;
-    setText("workbench-scope", t("{0}. Search narrows the current page; totals count the complete run.", scope));
+    setText("workbench-scope", kind === "skills"
+      ? t("{0}. Search narrows loaded skill lists; charts use expert, stage and time filters.", scope)
+      : t("{0}. Search narrows the current page; totals count the complete run.", scope));
+    if (kind === "skills") {
+      let note = t("Expand an expert's skill versions to browse its pages. Each card keeps its own page; charts keep the selected scope.");
+      if (data.unknown_versions) note += t(" {0} plugin versions unavailable.", data.unknown_versions);
+      setText("workbench-status", note);
+      return;
+    }
     const all = list(data[WORKBENCH_KEYS[kind]] || data.items);
     const items = all.filter((item) => !filters.search || searchable(item).includes(filters.search));
     const container = byId("workbench-list");
@@ -3767,7 +4069,7 @@
         if (pool.truncated) capacity.append(element("p", "panel-copy", t("Device list truncated at the observation limit.")));
         container.append(capacity);
       }
-      items.forEach((item) => container.append(detailCard(kind, item)));
+      if (kind !== "skills") items.forEach((item) => container.append(detailCard(kind, item)));
       if (!items.length) container.append(element("p", "empty-copy", state.workbenchData ? t("No matching records in this page. Missing retained evidence remains unavailable.") : t("Loading selected evidence…")));
     }
     const available = data.available === false ? "unavailable" : data.coverage || t("read-only evidence");
@@ -3775,10 +4077,23 @@
     if (data.unknown_versions) note += t(" {0} plugin versions unavailable.", data.unknown_versions);
     if (kind === "resources") note += t(" Shared pool: {0}.", pool.available ? t("observed {0}", formatTimestamp(pool.sampled_at)) : pool.reason || t("unavailable; no live pool observation"));
     setText("workbench-status", note);
-    const total = data.total;
-    setText("workbench-page", t("{0}–{1} of {2} records", all.length ? state.workbenchOffset + 1 : 0, state.workbenchOffset + all.length, displayValue(total)));
-    byId("workbench-previous").disabled = state.workbenchOffset === 0;
-    byId("workbench-next").disabled = typeof total !== "number" || state.workbenchOffset + DETAIL_PAGE_SIZE >= total;
+    renderWorkbenchPagination();
+  }
+
+  function renderWorkbenchPagination(error = "") {
+    const data = object(state.workbenchData);
+    const rows = list(data[WORKBENCH_KEYS[state.workbenchKind]] || data.items);
+    const offset = data.offset ?? 0, total = data.total;
+    const loading = state.workbenchPending?.pageChange === true && state.workbenchPending.key === JSON.stringify(workbenchQuery());
+    const previous = byId("workbench-previous"), next = byId("workbench-next");
+    previous.disabled = loading || offset === 0;
+    next.disabled = loading || typeof total !== "number" || offset + DETAIL_PAGE_SIZE >= total;
+    const range = [rows.length ? offset + 1 : 0, rows.length ? offset + rows.length : 0, displayValue(total)];
+    let caption = t("{0}–{1} of {2} records", ...range);
+    if (loading) caption = t("Loading selected evidence…");
+    if (error) caption = t("Page could not be loaded; the previous page is retained. {0}", caption);
+    setText("workbench-page", caption);
+    byId("workbench-page").setAttribute("aria-busy", String(loading));
   }
 
   function setDrawerMode(mode) {
@@ -4235,8 +4550,8 @@
     loadWorkbench();
     if (!drawer.hidden && state.detail && state.detail.parameters) openRemoteDetail(state.detail.requestKind || state.detail.kind, state.detail.parameters, true);
   });
-  byId("workbench-previous").addEventListener("click", () => { state.workbenchOffset = Math.max(0, state.workbenchOffset - DETAIL_PAGE_SIZE); loadWorkbench(); });
-  byId("workbench-next").addEventListener("click", () => { state.workbenchOffset += DETAIL_PAGE_SIZE; loadWorkbench(); });
+  byId("workbench-previous").addEventListener("click", () => { state.workbenchOffset = Math.max(0, (object(state.workbenchData).offset ?? 0) - DETAIL_PAGE_SIZE); loadWorkbench({pageChange: true}); });
+  byId("workbench-next").addEventListener("click", () => { state.workbenchOffset = (object(state.workbenchData).offset ?? 0) + DETAIL_PAGE_SIZE; loadWorkbench({pageChange: true}); });
   drawerBackdrop.addEventListener("click", closeDrawer);
   document.querySelectorAll("[role='tab'][data-view]").forEach((tab, index, tabs) => {
     tab.addEventListener("click", () => setActiveView(tab.dataset.view));
@@ -4260,6 +4575,9 @@
   byId("clear-filters").addEventListener("click", () => {
     filterIds.forEach((id) => { byId(id).value = ""; });
     state.skillFilters = {window: "", command: ""};
+    state.skillContexts.clear(); state.skillPoints.clear();
+    state.skillCatalogs.clear();
+    byId("skill-library").dataset.renderedKey = "";
     renderFilteredViews();
     if (state.activeView === "workbench") { state.workbenchOffset = 0; state.workbenchContext = {}; loadWorkbench(); }
     byId("filter-search").focus();
@@ -4414,13 +4732,95 @@
   const trendsDialog = byId("trends-dialog");
   let trendsData = null, trendsController = null, trendsTimer = null;
   let trendIndices = [], trendSeries = [], hiddenTrendSeries = new Set();
+  let trendCustomWindow = null, trendSelectedAt = null;
+  let trendPointIndex = 0, trendInputValues = null;
+  let trendNavigation = null, trendDrag = null, trendDragFrame = null, trendOverviewData = null;
   const trendColors = ["#78dcff", "#e5b66f", "#b69cff", "#73e0b1", "#ff97bd", "#b3ce70", "#8aafff", "#efa07e"];
   const trendTime = at => new Date(at * 1000).toLocaleString(uiLanguage, {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
   const trendNumber = value => value == null ? "—" : Number(value).toLocaleString(uiLanguage, {maximumFractionDigits:2});
+  function trendLocalInput(at) {
+    const date = new Date(at * 1000), pad = value => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
   function trendSvg(tag, attributes = {}) {
     const node = document.createElementNS(SVG_NS, tag);
     Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
     return node;
+  }
+  function trendAppliedWindow() {
+    const range = byId("trends-range").value;
+    if (range === "custom" && trendCustomWindow) return trendCustomWindow;
+    return {since: range === "all" ? trendsData.started_at : trendsData.ended_at - Number(range), until: trendsData.ended_at};
+  }
+  function syncTrendInputs() {
+    const {since, until} = trendAppliedWindow();
+    byId("trends-start").value = trendLocalInput(since);
+    byId("trends-end").value = trendLocalInput(until);
+    trendInputValues = [byId("trends-start").value, byId("trends-end").value];
+  }
+  function setTrendWindow(since, until, syncInputs = true) {
+    byId("trends-range").value = "custom";
+    byId("trends-range-error").textContent = "";
+    trendCustomWindow = {since, until};
+    if (syncInputs) syncTrendInputs();
+    else trendInputValues = [byId("trends-start").value, byId("trends-end").value];
+    renderTrends();
+  }
+  function nearestTrendBoundary(edges, at) {
+    let nearest = 0;
+    edges.forEach((value, i) => { if (Math.abs(value-at) < Math.abs(edges[nearest]-at)) nearest = i; });
+    return nearest;
+  }
+  function renderTrendNavigator(since, until) {
+    const points = trendsData.points, root = byId("trends-navigator");
+    root.hidden = !points.length;
+    if (!points.length) { trendNavigation = null; return; }
+    const edges = [points[0].at, ...points.map(p => p.until)], first = edges[0], last = edges.at(-1), duration = last-first;
+    const start = trendIndices[0] ?? Math.min(points.length-1, nearestTrendBoundary(edges, since));
+    const end = trendIndices.length ? trendIndices.at(-1)+1 : start+1;
+    trendNavigation = {edges, start, end};
+    const percent = at => Math.max(0, Math.min(100, (at-first) / (duration || 1) * 100));
+    const left = percent(since), right = percent(until);
+    byId("trends-window-before").style.width = `${left}%`;
+    byId("trends-window-after").style.width = `${100-right}%`;
+    const selection = byId("trends-window-pan");
+    selection.style.left = `${left}%`; selection.style.width = `${Math.max(0, right-left)}%`;
+    byId("trends-window-start").style.left = `${left}%`;
+    byId("trends-window-end").style.left = `${right}%`;
+    const label = t("Selected interval: {0} – {1}", trendTime(since), trendTime(until));
+    byId("trends-selection").textContent = label;
+    byId("trends-navigation-from").textContent = trendTime(first);
+    byId("trends-navigation-to").textContent = trendTime(last);
+    [["start", 0, end-1, start, trendTime(since)], ["end", start+1, points.length, end, trendTime(until)],
+      ["pan", 0, points.length-(end-start), start, label]].forEach(([key, min, max, value, text]) => {
+      const control = byId(`trends-window-${key}`); control.disabled = duration <= 0;
+      Object.entries({"aria-valuemin":min, "aria-valuemax":max, "aria-valuenow":value,
+        "aria-valuetext":text, "aria-orientation":"horizontal"}).forEach(([name, value]) => control.setAttribute(name, value));
+    });
+    if (trendOverviewData === trendsData) return;
+    trendOverviewData = trendsData;
+    const overview = byId("trends-overview"); overview.replaceChildren();
+    const svg = trendSvg("svg", {viewBox:"0 0 1000 76", preserveAspectRatio:"none"});
+    const ceiling = Math.max(1, ...points.map(p => Number.isFinite(p.rpm) ? p.rpm : 0));
+    let path = "", connected = false;
+    points.forEach(p => {
+      if (!Number.isFinite(p.rpm)) { connected = false; return; }
+      const x = percent((p.at+p.until)/2)*10, y = 69-p.rpm/ceiling*62;
+      if (!connected) svg.append(trendSvg("circle", {cx:x, cy:y, r:2, fill:trendColors[0]}));
+      path += `${connected ? "L" : "M"}${x},${y} `; connected = true;
+    });
+    svg.append(trendSvg("path", {d:path, fill:"none", stroke:trendColors[0], "stroke-width":1.5, "vector-effect":"non-scaling-stroke"}));
+    overview.append(svg);
+  }
+  function moveTrendWindow(key, value, navigation = trendNavigation) {
+    if (!navigation) return;
+    const {edges, start, end} = navigation, count = edges.length-1;
+    let left = start, right = end;
+    if (key === "start") left = Math.max(0, Math.min(end-1, value));
+    else if (key === "end") right = Math.max(start+1, Math.min(count, value));
+    else { left = Math.max(0, Math.min(count-(end-start), value)); right = left+(end-start); }
+    if (edges[right] > edges[left] && (byId("trends-range").value !== "custom"
+      || trendCustomWindow.since !== edges[left] || trendCustomWindow.until !== edges[right])) setTrendWindow(edges[left], edges[right]);
   }
   function renderTrendChart(id, series) {
     const root = byId(id); root.replaceChildren();
@@ -4428,8 +4828,9 @@
     const plotWidth = width - left - right, plotHeight = height - top - bottom;
     const values = series.flatMap(s => trendIndices.map(i => s.values[i])).filter(v => Number.isFinite(v));
     const ceiling = Math.max(1, Math.ceil(values.reduce((highest, value) => Math.max(highest, value), 0)));
-    const svg = trendSvg("svg", {viewBox:`0 0 ${width} ${height}`, role:"img", "aria-label":id === "trends-rpm" ? t("Requests per minute") : t("Experiment and Agent concurrency")});
-    const x = j => left + (j / Math.max(1, trendIndices.length - 1)) * plotWidth;
+    const svg = trendSvg("svg", {viewBox:`0 0 ${width} ${height}`, role:"img", tabindex:0, "aria-describedby":"trends-point-help",
+      "aria-label":id === "trends-rpm" ? t("Requests per minute") : t("Experiment and Agent concurrency")});
+    const x = j => left + (trendIndices.length < 2 ? .5 : j / (trendIndices.length - 1)) * plotWidth;
     const y = value => top + plotHeight * (1 - value / ceiling);
     for (let i = 0; i <= 4; i++) {
       const value = ceiling * i / 4;
@@ -4437,9 +4838,10 @@
       const label = trendSvg("text", {x:left-8, y:y(value)+4, "text-anchor":"end"}); label.textContent = trendNumber(value); svg.append(label);
     }
     if (trendIndices.length) {
-      const ticks = width < 500 ? [0, trendIndices.length-1] : [0, Math.floor((trendIndices.length-1)/2), trendIndices.length-1];
+      const ticks = [...new Set(width < 500 ? [0, trendIndices.length-1] : [0, Math.floor((trendIndices.length-1)/2), trendIndices.length-1])];
       ticks.forEach((j, k) => {
-        const label = trendSvg("text", {x:x(j), y:height-9, "text-anchor":k === 0 ? "start" : k === ticks.length-1 ? "end" : "middle"});
+        const label = trendSvg("text", {class:"trend-time-label", x:x(j), y:height-9,
+          "text-anchor":ticks.length === 1 ? "middle" : k === 0 ? "start" : k === ticks.length-1 ? "end" : "middle"});
         label.textContent = trendTime(trendsData.points[trendIndices[j]].until); svg.append(label);
       });
     }
@@ -4455,42 +4857,97 @@
         "stroke-dasharray":s.dashed ? "5 5" : "none", "vector-effect":"non-scaling-stroke"}));
     });
     svg.append(trendSvg("line", {class:"trend-crosshair", x1:left, x2:left, y1:top, y2:height-bottom}));
-    svg.addEventListener("pointermove", event => {
+    const inspect = event => {
       const rect = svg.getBoundingClientRect();
       const j = Math.round((((event.clientX-rect.left) / rect.width * width)-left) / plotWidth * (trendIndices.length-1));
-      byId("trends-cursor").value = String(Math.max(0, Math.min(trendIndices.length-1, j)));
-      inspectTrendPoint();
+      trendPointIndex = Math.max(0, Math.min(trendIndices.length-1, j));
+      inspectTrendPoint(true);
+    };
+    svg.addEventListener("pointermove", inspect);
+    svg.addEventListener("pointerdown", inspect);
+    svg.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      trendPointIndex = event.key === "Home" ? 0 : event.key === "End" ? trendIndices.length-1
+        : Math.max(0, Math.min(trendIndices.length-1, trendPointIndex+(event.key === "ArrowLeft" ? -1 : 1)));
+      inspectTrendPoint(true);
     });
     root.append(svg);
   }
-  function inspectTrendPoint() {
+  function renderTrendInspector() {
+    const content = byId("trends-inspect"), visible = trendSeries.filter(s => !hiddenTrendSeries.has(s.key));
+    const key = JSON.stringify([uiLanguage, visible.map(s => [s.key, s.label, s.color])]);
+    if (content.dataset.renderedKey === key) return;
+    content.dataset.renderedKey = key; content.replaceChildren();
+    content.append(element("strong", "trend-inspect-time"));
+    const cell = (label, color) => {
+      const node = element("div", "trend-metric"); if (color) node.style.color = color;
+      const name = element("span", "trend-metric-name", label); name.title = label;
+      node.append(name, element("strong", "trend-metric-value"), element("span", "trend-metric-note"));
+      return node;
+    };
+    const counts = element("div", "trend-counts"), metrics = element("div", "trend-values");
+    [["experiments", t("Experiments")], ["agents", "Agents"]].forEach(([name, label]) => {
+      const node = cell(label); node.dataset.trendCount = name; counts.append(node);
+    });
+    visible.forEach(s => { const node = cell(s.label, s.color); node.dataset.trendSeries = s.key; metrics.append(node); });
+    content.append(counts, metrics);
+  }
+  function inspectTrendPoint(selected = false) {
     if (!trendIndices.length) return;
-    const j = Number(byId("trends-cursor").value), index = trendIndices[j], point = trendsData.points[index];
+    const j = Math.max(0, Math.min(trendIndices.length-1, trendPointIndex));
+    const index = trendIndices[j], point = trendsData.points[index];
+    if (selected) trendSelectedAt = (point.at + point.until) / 2;
     document.querySelectorAll(".trend-crosshair").forEach(line => {
-      const x = 40 + j / Math.max(1, trendIndices.length-1) * (line.ownerSVGElement.viewBox.baseVal.width - 55);
+      const x = 40 + (trendIndices.length < 2 ? .5 : j / (trendIndices.length-1)) * (line.ownerSVGElement.viewBox.baseVal.width - 55);
       line.setAttribute("x1", x); line.setAttribute("x2", x);
     });
-    const content = byId("trends-inspect"); content.replaceChildren();
-    content.append(element("strong", "", `${trendTime(point.at)} – ${trendTime(point.until)}`));
-    content.append(element("p", "", t("Experiments: {0} (peak {1}) · Agents: {2} (peak {3})", point.experiments, point.experiments_peak, point.agents, point.agents_peak)));
-    const metrics = element("div", "trend-values");
-    trendSeries.forEach(s => {
-      if (hiddenTrendSeries.has(s.key)) return;
-      const value = s.values[index];
-      const label = value == null ? t("unknown; recorded ≥{0} RPM", trendNumber(s.lower[index])) : `${trendNumber(value)} RPM`;
-      const row = element("span", "", `${s.label}: ${label}`); row.style.color = s.color; metrics.append(row);
+    const content = byId("trends-inspect"); content.dataset.at = String(point.at);
+    content.querySelector(".trend-inspect-time").textContent = `${trendTime(point.at)} – ${trendTime(point.until)}`;
+    content.querySelectorAll("[data-trend-count]").forEach(node => {
+      const key = node.dataset.trendCount;
+      node.querySelector(".trend-metric-value").textContent = trendNumber(point[key]);
+      node.querySelector(".trend-metric-note").textContent = t("Peak {0}", trendNumber(point[key+"_peak"]));
     });
-    content.append(metrics);
+    const rows = new Map([...content.querySelectorAll("[data-trend-series]")].map(node => [node.dataset.trendSeries, node]));
+    trendSeries.forEach(s => {
+      const row = rows.get(s.key); if (!row) return;
+      const value = s.values[index], known = Number.isFinite(value), lower = s.lower[index];
+      const label = known ? `${trendNumber(value)} RPM` : Number.isFinite(lower) ? `≥${trendNumber(lower)} RPM` : "—";
+      const detail = known ? label : t("unknown; recorded ≥{0} RPM", trendNumber(lower));
+      const field = row.querySelector(".trend-metric-value"); field.textContent = label;
+      field.title = detail; field.setAttribute("aria-label", detail);
+      row.querySelector(".trend-metric-note").textContent = known ? "" : t("Unknown total; recorded lower bound");
+    });
   }
   function renderTrends() {
     if (!trendsData) return;
-    const range = byId("trends-range").value;
-    const since = range === "all" ? -Infinity : trendsData.ended_at - Number(range);
-    trendIndices = trendsData.points.map((_, i) => i).filter(i => trendsData.points[i].until >= since);
+    const range = byId("trends-range").value, custom = range === "custom";
+    byId("trends-custom-range").hidden = false;
+    if (custom && !trendCustomWindow) {
+      const first = trendsData.points[trendIndices[0] ?? 0], last = trendsData.points[trendIndices.at(-1) ?? trendsData.points.length-1];
+      const since = Math.floor(first?.at ?? trendsData.started_at), until = Math.ceil(last?.until ?? trendsData.ended_at);
+      trendCustomWindow = {since, until: Math.max(since + 1, until)};
+    }
+    const {since, until} = trendAppliedWindow();
+    if (!trendInputValues || trendInputValues.every((value, i) => value === byId(i ? "trends-end" : "trends-start").value)) syncTrendInputs();
+    trendIndices = trendsData.points.map((_, i) => i).filter(i => {
+      const point = trendsData.points[i];
+      return point.until > since && point.at < until || point.at === point.until && point.at >= since && point.at <= until;
+    });
     byId("trends-content").hidden = !trendIndices.length;
+    byId("trends-inspect").hidden = !trendIndices.length;
+    byId("trends-point-help").hidden = !trendIndices.length;
+    byId("trends-empty").hidden = Boolean(trendIndices.length);
+    byId("trends-range-help").textContent = t("Local time ({0}); whole recorded buckets are shown at {1}-second resolution.",
+      Intl.DateTimeFormat().resolvedOptions().timeZone, trendsData.interval_seconds);
+    byId("trends-window").textContent = trendIndices.length ? t("Displayed recorded buckets: {0} – {1} · {2} buckets.",
+      trendTime(trendsData.points[trendIndices[0]].at), trendTime(trendsData.points[trendIndices.at(-1)].until), trendIndices.length) : "";
     const coverage = object(trendsData.coverage);
     byId("trends-coverage").textContent = t("{0} s buckets · {1} recorded requests · {2} Attempts with incomplete capture. Gaps are unknown; known lower bounds remain available below. Data is included in Report issue.",
       trendsData.interval_seconds, coverage.request_count ?? 0, coverage.incomplete_attempts ?? 0);
+    renderTrendNavigator(since, until);
+    if (!trendIndices.length) return;
     const concurrency = [
       {key:"experiments", label:t("Experiments"), color:trendColors[0]},
       {key:"agents", label:"Agents", color:trendColors[1]},
@@ -4515,12 +4972,24 @@
       }); rpmLegend.append(button);
     });
     renderTrendChart("trends-rpm", trendSeries.filter(s => !hiddenTrendSeries.has(s.key)));
-    byId("trends-cursor").max = String(Math.max(0, trendIndices.length-1));
+    renderTrendInspector();
+    let selected = trendIndices.length - 1;
+    if (trendSelectedAt !== null) {
+      let nearest = Infinity;
+      trendIndices.forEach((index, j) => {
+        const point = trendsData.points[index];
+        const distance = point.at <= trendSelectedAt && trendSelectedAt < point.until ? -1
+          : Math.abs((point.at + point.until) / 2 - trendSelectedAt);
+        if (distance < nearest) { nearest = distance; selected = j; }
+      });
+    }
+    trendPointIndex = selected;
     inspectTrendPoint();
   }
   async function loadTrends() {
     if (!trendsDialog.open || trendsController) return;
     clearTimeout(trendsTimer);
+    if (trendDrag) { trendsTimer = setTimeout(loadTrends, 1000); return; }
     const controller = new AbortController(); trendsController = controller;
     const timeout = setTimeout(() => controller.abort(), 30000);
     byId("refresh-trends").disabled = true;
@@ -4530,10 +4999,9 @@
       if (!response.ok) throw new Error("unavailable");
       const data = await response.json();
       if (!trendsDialog.open || controller.signal.aborted) return;
+      finishTrendDrag();
       trendsData = data;
       renderTrends();
-      byId("trends-cursor").value = byId("trends-cursor").max;
-      inspectTrendPoint();
       byId("trends-status").textContent = t("Observed {0}. Refreshes every minute while open.", trendTime(data.observed_at));
     } catch (_error) {
       if (trendsDialog.open) byId("trends-status").textContent = t("Trends unavailable. Any previous chart is retained; use Refresh trends to retry.");
@@ -4545,13 +5013,72 @@
   }
   byId("open-trends").addEventListener("click", () => { trendsDialog.showModal(); loadTrends(); });
   byId("close-trends").addEventListener("click", () => trendsDialog.close());
-  trendsDialog.addEventListener("close", () => { clearTimeout(trendsTimer); trendsController?.abort(); });
+  trendsDialog.addEventListener("close", () => { finishTrendDrag(); clearTimeout(trendsTimer); trendsController?.abort(); });
   byId("refresh-trends").addEventListener("click", loadTrends);
-  byId("trends-range").addEventListener("change", () => { renderTrends(); byId("trends-cursor").value=byId("trends-cursor").max; inspectTrendPoint(); });
-  byId("trends-cursor").addEventListener("input", inspectTrendPoint);
+  byId("trends-range").addEventListener("change", () => {
+    byId("trends-range-error").textContent = ""; renderTrends();
+    if (trendsData) syncTrendInputs();
+  });
+  byId("trends-custom-range").addEventListener("submit", event => {
+    event.preventDefault();
+    if (!trendsData) return;
+    const current = trendAppliedWindow(), start = new Date(byId("trends-start").value).getTime()/1000,
+      end = new Date(byId("trends-end").value).getTime()/1000;
+    // Keep exact recorded boundaries when an unchanged seconds-only input is
+    // reapplied; otherwise fractional timestamps can include an adjacent bucket.
+    const since = start === Math.floor(current.since) ? current.since : start;
+    const until = end === Math.floor(current.until) ? current.until : end;
+    if (!Number.isFinite(since) || !Number.isFinite(until) || since >= until) {
+      byId("trends-range-error").textContent = t("Enter valid start and end times, with the start before the end."); return;
+    }
+    setTrendWindow(since, until, false);
+  });
+  function updateTrendDrag() {
+    trendDragFrame = null;
+    if (!trendDrag) return;
+    const {key, navigation, originX, currentX, width} = trendDrag;
+    const {edges, start, end} = navigation;
+    const at = edges[key === "end" ? end : start] + (currentX-originX)/width*(edges.at(-1)-edges[0]);
+    moveTrendWindow(key, nearestTrendBoundary(edges, at), navigation);
+  }
+  function finishTrendDrag(event) {
+    if (!trendDrag || event && event.pointerId !== trendDrag.pointerId) return;
+    if (trendDragFrame !== null) { cancelAnimationFrame(trendDragFrame); trendDragFrame = null; updateTrendDrag(); }
+    const {key, pointerId} = trendDrag; trendDrag = null;
+    const control = byId(`trends-window-${key}`);
+    if (control.hasPointerCapture(pointerId)) control.releasePointerCapture(pointerId);
+  }
+  ["start", "end", "pan"].forEach(key => {
+    const control = byId(`trends-window-${key}`);
+    control.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !trendNavigation || control.disabled || trendDrag) return;
+      event.preventDefault(); control.focus({preventScroll:true}); control.setPointerCapture(event.pointerId);
+      trendDrag = {key, pointerId:event.pointerId, navigation:trendNavigation, originX:event.clientX, currentX:event.clientX,
+        width:byId("trends-window-track").getBoundingClientRect().width};
+    });
+    control.addEventListener("pointermove", event => {
+      if (!trendDrag || event.pointerId !== trendDrag.pointerId) return;
+      trendDrag.currentX = event.clientX;
+      if (trendDragFrame === null) trendDragFrame = requestAnimationFrame(updateTrendDrag);
+    });
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(name => control.addEventListener(name, finishTrendDrag));
+    control.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) || !trendNavigation) return;
+      event.preventDefault();
+      const value = event.key === "Home" ? Number(control.getAttribute("aria-valuemin"))
+        : event.key === "End" ? Number(control.getAttribute("aria-valuemax"))
+        : Number(control.getAttribute("aria-valuenow"))+(["ArrowLeft", "ArrowDown"].includes(event.key) ? -1 : 1)*(event.shiftKey ? 10 : 1);
+      moveTrendWindow(key, value);
+    });
+  });
+  byId("trends-window-reset").addEventListener("click", () => {
+    byId("trends-range").value = "all"; byId("trends-range-error").textContent = "";
+    renderTrends(); syncTrendInputs();
+  });
   let trendResizeFrame = null;
   window.addEventListener("resize", () => {
     if (!trendsDialog.open || trendResizeFrame) return;
+    finishTrendDrag();
     trendResizeFrame = requestAnimationFrame(() => { trendResizeFrame = null; renderTrends(); });
   });
 
