@@ -1,7 +1,10 @@
 # Analysis, decisions and reports
 
-When reporting costly computation, follow [Progress and performance](performance.md)
-for estimate/actual differences, measured bottlenecks and scoped evolution evidence.
+For experiment result analysis, check the [performance review](performance.md)
+against returned execution evidence,
+using the supplied bound text when inlined. Carry missing or inconclusive planned
+measurements into the next design's notes; report actual settings, estimate/actual
+differences and supported tradeoffs without calling a missing probe completed.
 
 Use accepted outcomes and original evidence relevant to the current question.
 Check metric direction, splits, aggregation, configuration and comparison scope

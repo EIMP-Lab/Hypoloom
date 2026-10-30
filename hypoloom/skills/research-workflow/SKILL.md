@@ -27,10 +27,11 @@ Read only the applicable reference; do not execute all stages as a checklist:
 | analysis | [Analysis and reporting](references/analysis.md) |
 | evolution | [Method evolution](references/evolution.md) |
 
-For costly computation, uncertain completion time or an observed throughput
-problem, also read [Progress and performance](references/performance.md). Apply
-its measurement, implementation-equivalence and bounded comparison guidance;
-ordinary reading/reporting needs no probe. PyTorch-specific methods are conditional.
+Experiment design, execution and result analysis must address the
+[performance review](references/performance.md), supplied inline when available.
+Reuse applicable measurements, plan a bounded probe or explain non-applicability.
+For PyTorch pipelines or compute bottlenecks, read [PyTorch](references/pytorch-performance.md).
+Other stages need no routine probe.
 
 Continue using the bound specialist skills for literature, resources, repairs,
 reports and interactions. Do not duplicate their procedures here. Host validators

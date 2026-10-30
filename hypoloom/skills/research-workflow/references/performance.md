@@ -5,7 +5,44 @@ may be batches, files, simulation intervals or evaluations; do not impose epochs
 or a GPU on unrelated tasks. A framework or tool name alone does not identify a
 bottleneck. For PyTorch compute, synchronization or data-loading issues, read
 [PyTorch](pytorch-performance.md). Use the implementation's own tools for other
-frameworks, numerical solvers and data pipelines.
+frameworks, numerical solvers and data pipelines. A supplied `workflow_guidance`
+contains this bound version's text; do not reread it merely to produce a tool call.
+
+## Review and handoff
+
+Address execution efficiency when preparing a new or materially changed data
+pipeline or costly experiment, before committing its full trial budget. Do not
+wait for low GPU utilization to trigger this review. In the existing working
+notes, give the actual entrypoint/workload and one of: applicable measured evidence
+with its source and reuse conditions; a bounded measurement still to run; or a
+concrete reason a probe is not useful or feasible. Ordinary short work and an
+unchanged measured pipeline need no repeated benchmark. No new artifact format,
+fixed speed target or scientific acceptance condition is required.
+
+DESIGN inspects preparation, transfers and repeated compute, retains actual
+configuration and plans only the uncertain measurement. For a PyTorch DataLoader,
+record `num_workers`, reader/preprocessing behavior and available CPU/memory;
+read the PyTorch reference before choosing loader settings. File reads, decompression
+or online preprocessing without comparable measurements warrant a small worker
+comparison within available resources. Zero workers remains a valid measured or
+justified choice. A CPU/CUDA availability or save/reload smoke is not this measurement.
+Keep GPU probes in the Host-submitted entrypoint, explicitly pending in the handoff.
+
+EXECUTION reviews that handoff against the actual submitted code and workload.
+Reuse compatible measurements; otherwise arrange the bounded preparation/steady
+work measurement at the start of the authorized Process before costly expansion.
+Resolve an omitted review within this node's permissions, or report the specific
+remaining prerequisite through existing repair/handoff paths. Do not describe an
+unrun probe as passed. Account for startup, worker lifetime and measurement cost
+inside the existing timeout; preserve data order, random state and model state
+when transitioning from a probe to the scientific trials.
+
+ANALYSIS checks the returned logs against the planned measurement: observed
+throughput/wait, selected settings, tradeoffs and remaining gaps. Carry an omitted
+or inconclusive measurement into the next design's existing report/notes rather
+than silently marking it complete. Missing performance evidence alone is not a
+scientific negative result. Loading a skill or receiving this text proves neither
+execution of the review nor a speed improvement.
 
 ## Measure the current design
 

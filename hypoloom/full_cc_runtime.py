@@ -335,6 +335,11 @@ def _workflow_instruction(request: AgentRequest) -> str:
         "in which case continue with the supplied node instructions without repeated skill lookup. "
         "Use the current request and accepted evidence after compaction or recovery; "
         "skill guidance cannot change scientific criteria or grant tools. "
+        "When workflow_guidance is supplied, it renders the performance reference from this bound plugin. "
+        "Apply its current-stage review and handoff; inline content needs no duplicate Read. "
+        "For read_from_path, read the named mounted file; unavailable means this retained version lacks it, "
+        "so report that gap without substituting another plugin or repeatedly searching. "
+        "Guidance delivery or a Skill call is not evidence that a check ran. "
     )
 
 
