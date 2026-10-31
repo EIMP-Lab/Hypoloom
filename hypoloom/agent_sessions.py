@@ -1068,7 +1068,7 @@ class AgentSessions:
                 raise GitAuthoringIntegrityError("plugin binding belongs to another expert")
             snapshot = ExpertPluginStore(self.state_root).read(request.run_id, request.role,
                 commit=plugin["commit"], attempt_id=request.attempt_id,
-                max_bytes=node_memory_limit(request, "max_plugin_bytes", request.max_input_bytes))
+                max_bytes=node_memory_limit(request, "max_plugin_bytes", 1024 * 1024))
             workspace.resources.append(snapshot); workspace.plugin_root = snapshot.root
             workspace.expert_resources = resources
             if request.command is AgentCommand.SELF_EVOLVE:

@@ -35,8 +35,9 @@ def _grounding(manager, *, ordinal=1):
 def test_common_seed_is_identical_for_both_owners_and_includes_stage_files(tmp_path):
     expected = {p.relative_to(WORKFLOW_SKILL_ROOT).as_posix(): p.read_bytes()
         for p in WORKFLOW_SKILL_ROOT.rglob("*") if p.is_file()}
-    assert len(expected) == 9
-    assert len(expected["SKILL.md"]) < 2400
+    assert len(expected) == 11
+    assert len(expected["SKILL.md"]) < 2800
+    expected["scripts/configuration_study.py"] = (WORKFLOW_SKILL_ROOT.parents[1] / "configuration_study.py").read_bytes()
     for kind, role in (("expert", "numerical"), ("grounding", "grounding")):
         store = ExpertPluginStore(tmp_path, owner_kind=kind)
         bound = store.ensure("run", role, "Different scientific domain")
@@ -50,7 +51,8 @@ def test_common_seed_is_identical_for_both_owners_and_includes_stage_files(tmp_p
 
 
 @pytest.mark.parametrize("kind,role", [("expert", "alpha"), ("grounding", "grounding")])
-@pytest.mark.parametrize("changed_path", [ENTRY, "skills/research-workflow/references/performance.md"])
+@pytest.mark.parametrize("changed_path", [ENTRY, "skills/research-workflow/references/performance.md",
+    "skills/research-workflow/references/configuration-studies.md", "skills/research-workflow/scripts/configuration_study.py"])
 def test_workflow_evolves_only_in_owner_git_and_preserves_bound_views(tmp_path, kind, role, changed_path):
     store = ExpertPluginStore(tmp_path, owner_kind=kind)
     base = store.ensure("run", role, "Method evolution")
@@ -95,6 +97,34 @@ def test_retained_plugin_is_not_backfilled_and_common_bytes_count_toward_budget(
     with pytest.raises(ValueError, match="budget"):
         current.ensure("new", "alpha", "Original", max_bytes=size)
     assert not (tmp_path / "state/new/experts/alpha/plugin").exists()
+
+
+@pytest.mark.parametrize("explicit_limit", [None, 65536])
+def test_plugin_source_uses_its_own_budget_and_honors_an_explicit_limit(tmp_path, explicit_limit):
+    from hypoloom.expert_memory import ExpertMemory
+
+    manager = _manager(tmp_path)
+    base = default_request(AgentCommand.RESULT_ANALYSIS)
+    plugin = ExpertPluginStore(manager.state_root).ensure(base.run_id, base.role, "Configuration studies")
+    memory = ExpertMemory(manager.state_root).ensure(base.run_id, base.role)
+    settings = {} if explicit_limit is None else {"max_plugin_bytes": explicit_limit}
+    inputs = (EmbeddedInput.from_bytes("node--expert-resources", "application/json",
+        json.dumps({"plugin": plugin.to_dict(), "memory_commit": memory}).encode()),
+        EmbeddedInput.from_bytes("node--expert-config", "application/json",
+        json.dumps({"node_runtime": {"memory": settings}}).encode()))
+    request = replace(base, schema_version=28, max_input_bytes=65536, input_artifacts=inputs,
+        immutable_context_refs=tuple(item.ref for item in inputs),
+        required_output_schema=required_output_schema(base.command, base.task_context, schema_version=28))
+    if explicit_limit is not None:
+        with pytest.raises((ValueError, GitAuthoringIntegrityError), match="byte|budget"):
+            manager.prepare(request, None)
+    else:
+        workspace = manager.prepare(request, None)
+        try:
+            assert sum(path.stat().st_size for path in workspace.plugin_root.rglob("*") if path.is_file()) > request.max_input_bytes
+            assert (workspace.plugin_root / "skills/research-workflow/scripts/configuration_study.py").is_file()
+        finally:
+            workspace.cleanup()
 
 
 @pytest.mark.parametrize("ordinal", [1, 2])

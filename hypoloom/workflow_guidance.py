@@ -14,11 +14,22 @@ _PERFORMANCE_STAGES = frozenset({
     AgentCommand.RESULT_ANALYSIS,
 })
 _PERFORMANCE_PATH = "skills/research-workflow/references/performance.md"
+_CONFIGURATION_PATH = "skills/research-workflow/references/configuration-studies.md"
 MAX_GUIDANCE_BYTES = 16 * 1024
 
 
 def performance_guidance(request: AgentRequest, plugin_root: Path | None, *,
                          max_bytes: int = MAX_GUIDANCE_BYTES) -> dict | None:
+    return _reference_guidance(request, plugin_root, _PERFORMANCE_PATH, max_bytes=max_bytes)
+
+
+def configuration_guidance(request: AgentRequest, plugin_root: Path | None, *,
+                           max_bytes: int = MAX_GUIDANCE_BYTES) -> dict | None:
+    return _reference_guidance(request, plugin_root, _CONFIGURATION_PATH, max_bytes=max_bytes)
+
+
+def _reference_guidance(request: AgentRequest, plugin_root: Path | None, path: str, *,
+                        max_bytes: int) -> dict | None:
     """Use only the validated, read-only plugin view; never backfill old versions.
 
     This is a prompt projection, not a Skill-call receipt or performance evidence.
@@ -32,13 +43,13 @@ def performance_guidance(request: AgentRequest, plugin_root: Path | None, *,
         return None
     plugin = json.loads(resource.content_bytes())["plugin"]
     limit = min(MAX_GUIDANCE_BYTES, max_bytes)
-    value = {"path": "/expert-plugin/" + _PERFORMANCE_PATH,
+    value = {"path": "/expert-plugin/" + path,
              "plugin_commit": plugin["commit"], "status": "unavailable"}
 
     if len(canonical_json(value)) > limit:
         return None
     try:
-        with (plugin_root / _PERFORMANCE_PATH).open("rb") as handle:
+        with (plugin_root / path).open("rb") as handle:
             content = handle.read(limit + 1)
     except FileNotFoundError:
         return value

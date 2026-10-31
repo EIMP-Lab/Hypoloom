@@ -768,11 +768,13 @@ def _assert_performance_guidance_delivery(scenario, evidence_root: Path) -> None
     stages = {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}
     received = {}
     expected = (WORKFLOW_SKILL_ROOT / "references/performance.md").read_text()
+    configuration_text = (WORKFLOW_SKILL_ROOT / "references/configuration-studies.md").read_text()
     for document in scenario.requests:
         prompt = native_prompt(document)
         metadata = prompt["agent_request_metadata"]
         if metadata["command"] not in stages:
             assert "workflow_guidance" not in prompt
+            assert "configuration_guidance" not in prompt
             continue
         request = _request_from_provider(document)
         resource = next(item for item in request.input_artifacts if item.ref.endswith("--expert-resources"))
@@ -781,8 +783,13 @@ def _assert_performance_guidance_delivery(scenario, evidence_root: Path) -> None
         assert guidance["status"] == "inline"
         assert guidance["plugin_commit"] == binding["commit"]
         assert guidance["content"] == expected
+        configuration = prompt["configuration_guidance"]
+        assert configuration["status"] == "inline"
+        assert configuration["plugin_commit"] == binding["commit"]
+        assert configuration["content"] == configuration_text
         received[request.attempt_id] = {"command": request.command.value,
-            "plugin_commit": binding["commit"], "content_bytes": len(expected.encode())}
+            "plugin_commit": binding["commit"], "content_bytes": len(expected.encode()),
+            "configuration_bytes": len(configuration_text.encode())}
     assert {item["command"] for item in received.values()} == stages
     (evidence_root / "workflow-guidance-evidence.json").write_text(json.dumps(received, indent=2))
 

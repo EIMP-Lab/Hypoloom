@@ -2,6 +2,67 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Configuration studies and expert guidance (2026-10-31)
+
+[Design](design/configuration-studies.md). The authorized change adds a read-only
+finite-study reader, a version-bound plugin helper and parameter-study guidance
+for DESIGN/EXECUTION/ANALYSIS. Adapter /87 shares the existing inline allowance
+with performance guidance. Expert plugin reads now use the existing independent
+plugin limit, matching seeding, Grounding and evolution. No Profile, retained
+plugin, research run, acceptance rule or training configuration is changed.
+
+Evidence is under `.local/qualification/configuration-studies/`, with the initial
+focused/integration XML files in its parent directory. The candidate is based on
+dev `528a305`; the recorded checks cover the implementation in this change.
+
+- Initial focused checks: **91 passed**. The first integration invocation has
+  238 passes and three failures: one stale adapter assertion and two unsupported
+  SQLite environment failures. The corrected adapter assertion and two real
+  CLI/Host/CPU cases pass in **128.19 s**. Their 31 Agents and four Processes are
+  closed, including the injected lost Agent and two expected failed Processes;
+  all **35 recorded process groups** have no live members (`g3-closure.json`).
+- Full offline G1 initially records **8,582 passes, 24 failures, 239 skips**,
+  **1,178.40 s** (`g1.xml`). Keep those failures: old Node.js, excessive temporary
+  socket path lengths, a mixed dependency search path, stale adapter/Stop
+  assertions, an inline-only resource fixture, insufficient continuation/transport
+  fixture context, the plugin input-budget coupling, and a cancellation/provider
+  disconnect race. The initial Ruff launcher environment failure also remains in
+  `g1-environment-failure.log`.
+- Corrected environment uses Python **3.12.14 / SQLite 3.53.4**, private pytest
+  **8.4.2**, xdist **3.8.0**, Node.js **22.16.0**, short temporary roots and disabled
+  pytest plugin autoload. No shared environment is modified. The dedicated
+  continuation/transport fixtures explicitly configure their local provider's
+  context through ordinary settings; capacity checks and resume assertions remain
+  intact. The Stop fixture now verifies rejection and subsequent correction.
+  Resource guidance checks cover inline and file-backed input. Explicit plugin
+  limits still reject oversized views.
+- Final affected units: **150 passed**; session/plugin/docs/Profile checks:
+  **44 passed**. Rechecking the original 24 failures gives **16 passes / eight
+  failures**, retained in `g1-recheck.xml`; after the fixture context correction,
+  the remaining eight plus the positive transport control give **nine passes**,
+  **121.89 s**. Per-test identity reconciliation gives **8,608 passed / 239 skipped /
+  zero unresolved failures** (`reconciled.json`), including two new budget cases.
+  This is a full run plus affected rechecks, not a second full-suite execution.
+- The final nine native cases have **109 closed Agents** (eight expected failures)
+  and **eight closed successful CPU Processes**, clean Oracles and **zero live
+  members of 117 recorded process groups** (`final-native-closure.json`). Earlier
+  cancellation-disconnect evidence remains; its bounded recheck passes unchanged.
+- Read-only baseline/candidate audits agree for all **three retained research
+  roots** in the main checkout's `state/` cohort. Logical database contents and
+  **1,685 artifact files** remain byte-identical (`retained-comparison.json`).
+  No Host was started for this comparison.
+- Final source, wheel, isolated installation and fresh frozen bundle match all
+  **204 runtime files**. Installed CLI/MCP, helper module and standalone bound
+  script agree, using the documented example (`installation-final.json`). The
+  standalone helper also runs with the native sandbox's Python 3.8 interpreter.
+  Compilation, undefined-name checks, Skill validation and whitespace checks pass.
+
+These results support configuration evidence checking and native delivery, not
+parameter optimality, training speedup or real-model compliance. Optional browser,
+GPU and paid lanes remain explicit skips; no new GPU training or paid-model canary
+was run. Future Profile policy and synthesis of scientific findings remain deferred.
+Publication is authorized to dev, followed by the corresponding public main patch.
+
 ## Framework input and completion repairs (2026-10-30)
 
 [Design](design/framework-input-and-completion-repairs-2026-10-30.md).

@@ -323,6 +323,8 @@ class ExpertPluginStore:
                 # One public source; owner-local copies use the existing Git lifecycle.
                 files.update({"skills/research-workflow/" + name: data
                     for name, data in _files(WORKFLOW_SKILL_ROOT, max_bytes).items()})
+                files["skills/research-workflow/scripts/configuration_study.py"] = (
+                    Path(__file__).with_name("configuration_study.py").read_bytes())
             files[_MANIFEST] = json.dumps(
                 {**json.loads(files[_MANIFEST]), "name": _name(role)}
             ).encode()

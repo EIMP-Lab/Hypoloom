@@ -59,7 +59,11 @@ def _run_final_retry(tmp_path: Path, *, require_resume=False):
     scenario = _FinalRetryScenario(tmp_path, "shared-final-retry-" + secrets.token_hex(12))
     key = "local-final-retry-provider-" + secrets.token_hex(16)
     provider, thread = _start_provider(scenario, key)
-    (tmp_path / "settings.json").write_text("{}\n")
+    # This local provider's dedicated continuation case must have room for the
+    # native Skill catalog and retry evidence. Configure both CC and the relay
+    # through the normal settings path; keep the runtime's capacity guard intact.
+    settings = {"env": {"DISABLE_COMPACT": "1", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "400000"}} if require_resume else {}
+    (tmp_path / "settings.json").write_text(json.dumps(settings) + "\n")
     (tmp_path / "settings.json").chmod(0o600)
     host = _new_host(tmp_path, _installed_claude(), f"http://127.0.0.1:{provider.server_port}", key)
     host.grounding_web = _NoPublicWeb()

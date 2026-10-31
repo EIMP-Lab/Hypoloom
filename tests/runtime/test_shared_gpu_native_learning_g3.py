@@ -61,8 +61,14 @@ def _resource_skill_from_prompt(document, request):
         assert any(line.startswith("- " + name + ": ") for text in texts for line in text.splitlines()), (
             "production prompt names a Skill absent from the native available list")
         guidance = next(item for item in prompt["rendered_inputs"] if item["ref"].endswith("--resource-planning-skill"))
-        assert not guidance["content_utf8"].startswith("---\n")
-        assert "not a callable Skill" in guidance["content_utf8"]
+        if "path" in guidance:
+            index, bound = next((i, item) for i, item in enumerate(request.input_artifacts) if item.ref == guidance["ref"])
+            assert guidance["path"] == f"/inputs/{index:04d}.txt"
+            content = bound.content_bytes().decode("utf-8")
+        else:
+            content = guidance["content_utf8"]
+        assert not content.startswith("---\n")
+        assert "not a callable Skill" in content
         return name
     raise AssertionError("actual native provider request lacks its production prompt")
 

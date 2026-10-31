@@ -75,7 +75,10 @@ def test_native_fragmented_thinking_transport(tmp_path, monkeypatch, limited):
         monkeypatch.setattr(ProviderRelay, "__init__", bounded_relay)
     key = "transport-test-" + secrets.token_hex(12)
     provider, thread = _start_provider(scenario, key)
-    (tmp_path / "settings.json").write_text("{}\n")
+    # Isolate the response-byte boundary from the separate context-capacity
+    # boundary, including the real CLI's evolving Skill catalog and tool schema.
+    (tmp_path / "settings.json").write_text(json.dumps({"env": {
+        "DISABLE_COMPACT": "1", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "400000"}}) + "\n")
     (tmp_path / "settings.json").chmod(0o600)
     host = _new_host(tmp_path, executable, f"http://127.0.0.1:{provider.server_port}", key)
     host.grounding_web = _NoPublicWeb()

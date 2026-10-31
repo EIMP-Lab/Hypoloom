@@ -108,9 +108,12 @@ def test_design_stop_rechecks_source_after_previous_acceptance(tmp_path):
     try:
         assert _call(server, output) == {}
         source.write_bytes(b"#" + b"x" * 51998 + b"\n")
-        with pytest.raises(ValueError, match="byte"):
-            _call(server, output)
+        rejected = _call(server, output)
+        assert rejected.get("decision") == "block" and "byte" in rejected["reason"]
         assert not server.snapshot()["accepted"]
+        source.write_text("# corrected current source\n")
+        assert _call(server, output) == {}
+        assert server.snapshot()["accepted"] and server.snapshot()["rejected_count"] == 1
     finally:
         server.close()
 

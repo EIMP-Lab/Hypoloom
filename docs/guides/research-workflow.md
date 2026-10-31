@@ -34,7 +34,7 @@ a new user switch. Existing runs and retained Git plugins are not backfilled.
 
 ## Task-specific science
 
-The skill contains no dataset names, project directories, seed counts or fixed
+The skill prescribes no datasets, project directories, fixed seed counts or
 performance thresholds. Classification, numerical optimization and reproduction
 tasks retain their own metrics, checks and parser code. Reuse an implementation
 only after checking its assumptions against the current goal.
@@ -72,6 +72,50 @@ positive fixtures alone are insufficient. Keep executable tests in
 `/acceptance/work/` and actual commands/relationships in existing work notes.
 This is an evolvable Grounding method, not a universal metric format or a promise
 that structural smoke validation proves scientific correctness.
+
+## Configuration studies
+
+For new runs, DESIGN, EXECUTION and ANALYSIS receive the bound configuration-study
+reference alongside performance guidance, within the same inline context budget.
+The skill explains parameter provenance, bounded validation comparisons, actual
+resolved training settings, selection, final evaluation and transfer. Guidance
+alone is not evidence that a search occurred. Existing plugins and runs retain
+their versions; no Profile is changed automatically.
+
+The framework supplies a read-only helper for a finite candidate matrix:
+
+```bash
+python -m hypoloom.configuration_study \
+  --plan plan.json --trials trials.json \
+  --selection selected.json --evaluation evaluation.json
+```
+
+The last two inputs are optional. The same standard-library source is seeded
+into new plugins at `skills/research-workflow/scripts/configuration_study.py`.
+Its [input reference](../../hypoloom/skills/research-workflow/references/configuration-study-format.md)
+contains the format and examples. The helper checks planned versus emitted
+configurations and implementation/data references; counts failed/interrupted
+attempts and retries; ranks complete candidates using validation data; preserves
+each dataset's results; and checks final evaluation against the selected recipe.
+An incomplete search can produce only a provisional choice among completed
+candidates. Final values never influence selection. Exit 0 includes consistent
+incomplete studies; inspect the report's coverage and selection status.
+
+Architecture and training sharing are independent plan choices. A task may keep
+layers, widths and other structure identical across datasets while allowing
+necessary output/input adaptations and tuning batch size or learning rate.
+Alternatively it may test one shared training recipe. The helper does not impose
+either policy, judge the parameter categories or establish unseen-dataset
+generalization. Test transfer using declared held-out data without retuning.
+
+The plan and selection use ordinary admitted source/Git and existing artifacts;
+training must emit resolved settings after defaults and overrides. The reader
+checks supplied evidence relationships, not execution provenance or the time a
+plan was written. It neither launches experiments nor adds an acceptance gate.
+A task can include its bound helper in ordinary frozen measurement source when
+these checks are part of its accepted protocol; the experiment sandbox does not
+automatically mount the expert plugin. The existing task parser still determines
+scientific acceptance. A better aggregate never overrides separate goal targets.
 
 ## Incomplete component comparisons
 

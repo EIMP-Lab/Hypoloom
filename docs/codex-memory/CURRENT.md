@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- October 31 configuration studies are implemented; dev commit/push and selective
+  public main synchronization are authorized. A stateless finite-study reader
+  compares planned/emitted/selected/final configurations, counts retries and
+  incomplete coverage, and ranks complete candidates on validation only. New
+  plugins receive the same standalone helper and bounded stage guidance. Adapter
+  /87; expert plugin reads use the existing independent 1 MiB default, preserving
+  explicit limits. Sharing architecture/training is task-declared, not a global
+  rule. Profiles, retained plugins/runs and scientific acceptance remain unchanged;
+  synthesis of old findings and a better Profile are explicitly deferred.
+  Full G1 plus affected rechecks reconciles 8,608 passes/239 skips, with original
+  failures retained. Final nine native cases close 109 Agents/eight CPU Processes
+  with clean Oracles and no live members of 117 groups. Three retained root audits
+  and 1,685 artifacts are unchanged; 204 runtime files match final packaging.
+  No new GPU or paid-model qualification, training speedup or optimality claim.
+  [Design](../design/configuration-studies.md) /
+  [evidence](../qualification.md#configuration-studies-and-expert-guidance-2026-10-31).
+
 - October 30 framework input/completion repairs are implemented; the user
   authorizes dev commit/push, then corresponding public main synchronization.
   Bounded diagnostic tails remain UTF-8 without changing raw logs. Incomplete

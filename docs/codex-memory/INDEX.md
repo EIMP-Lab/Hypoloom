@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Configuration studies, October 31](../design/configuration-studies.md):
+  finite validation comparisons, partial search and retry coverage, configuration
+  correspondence, task-declared sharing, bound helper/guidance and independent
+  plugin byte limits. Profiles and old research remain unchanged; future synthesis
+  is deferred. [Validation](../qualification.md#configuration-studies-and-expert-guidance-2026-10-31):
+  8,608 reconciled passes/239 skips, native closure, unchanged three-root cohort,
+  1,685 artifacts and 204-file packaging parity. Dev/main publication authorized.
+
 - [Framework input and completion repairs, October 30](../design/framework-input-and-completion-repairs-2026-10-30.md):
   bounded UTF-8 diagnostic tails, request-local incomplete transport, ordinary
   correction after prior acceptance and actual CLI/writer/reader integration
