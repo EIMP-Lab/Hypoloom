@@ -33,6 +33,11 @@ Reuse applicable measurements, plan a bounded probe or explain non-applicability
 For PyTorch pipelines or compute bottlenecks, read [PyTorch](references/pytorch-performance.md).
 Other stages need no routine probe.
 
+When comparing or choosing model/training settings, use
+[configuration studies](references/configuration-studies.md), supplied inline
+at the same stages when available. Keep inherited defaults, measured choices
+and untested candidates distinct; task protocols decide sharing and acceptance.
+
 Continue using the bound specialist skills for literature, resources, repairs,
 reports and interactions. Do not duplicate their procedures here. Host validators
 own output structure, parser isolation and result acceptance; no second generic
