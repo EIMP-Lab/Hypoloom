@@ -2,8 +2,35 @@
 
 English · [简体中文](runtime-recovery.zh-CN.md)
 
-Existing runs keep their original runtime; updating the
+New runs use ACI 30. Existing runs keep their original runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
+
+## Device failure and execution allowances
+
+For a failed GPU Process, ACI 30 captures bounded kernel Xid evidence when it can
+match the granted device, owned process identity and execution time. Missing
+permissions, incomplete logs and unknown ownership remain explicit limitations.
+An attributed Xid 38 pauses that execution node through the existing GPU resource
+recovery flow; other nodes and collection can continue. Xid 43 or a CUDA error
+message alone does not receive this classification. This correlation does not
+prove a defective physical card or imply that other cards are immune.
+
+Inspect the device and driver before using the existing operator resource recheck.
+Recheck confirms availability, not long-term hardware health. The framework does
+not reset devices or automatically retry a confirmed device fault. After recheck,
+replacement experiments have a separate finite allowance using
+`budget.max_infrastructure_retries`, counted per execution node independently of
+Agent infrastructure retries. Ordinary replacements use `inner_loop.repair_attempts`.
+Total experiment, wall-clock, cost and invocation limits still apply.
+
+`list_my_experiments` and `wait_experiment` expose `execution_budget`, including
+used/remaining allowances and whether recheck is required. Web/TUI show device
+recoveries separately. An initial submission plus two ordinary repairs is three
+experiments, not three research rounds. `max_rounds_per_expert` limits full cycles:
+literature, hypotheses, design/execution/analysis, adjudication, update, report
+and evolution. Scientific iterations and repairs remain inside their cycle.
+The expert input includes current round and remaining future rounds; at round
+3 of a limit of 3, no future round remains.
 
 ## Web observation freshness
 

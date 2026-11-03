@@ -392,6 +392,7 @@ def explain_workload_memory(
     profile_floor_mib: int, estimate: ResourceEstimate | None,
     measurements: Sequence[Mapping[str, object]] = (), *,
     initial_memory_mib: int | None = None, adaptive: bool = False,
+    sharing_by_budget: bool = False,
 ) -> dict[str, object]:
     """One budget calculation for admission, previews and validated audit sources.
 
@@ -409,13 +410,15 @@ def explain_workload_memory(
         sources.append(matches[0])
     return explain_measured_memory(profile_floor_mib,
         None if estimate is None else estimate.peak_memory_mib, sources,
-        initial_memory_mib=initial_memory_mib, adaptive=adaptive)
+        initial_memory_mib=initial_memory_mib, adaptive=adaptive,
+        sharing_by_budget=sharing_by_budget)
 
 
 def explain_measured_memory(
     profile_floor_mib: int, submitted_memory_mib: int | None,
     sources: Sequence[Mapping[str, object]], *,
     initial_memory_mib: int | None = None, adaptive: bool = False,
+    sharing_by_budget: bool = False,
 ) -> dict[str, object]:
     """Pure numeric policy after callers verify identities and workload scope.
 
@@ -433,6 +436,9 @@ def explain_measured_memory(
     oom_floor = 0
     for source in sources:
         peak = source.get("sample_peak_bytes")
+        lower_bound = source.get("observed_peak_lower_bound_bytes")
+        if sharing_by_budget and _valid_memory_mib(lower_bound):
+            peaks.append((lower_bound + 1_048_575) // 1_048_576)
         if source.get("measurement_status") == "complete" and _valid_memory_mib(peak):
             mib = (peak + 1_048_575) // 1_048_576
             peaks.append(mib)
@@ -469,7 +475,7 @@ def explain_measured_memory(
         "minimum_headroom_mib": absolute_margin, "measured_budget_mib": measured_budget,
         "oom_budget_floor_mib": oom_floor, "successful_measurements": len(successes),
         "calibrated_measurements": len(calibrated),
-        "sharing": "shared" if calibrated else "exclusive",
+        "sharing": "shared" if sharing_by_budget or calibrated else "exclusive",
         "measurement_attempt_ids": [s["attempt_id"] for s in sources]}
 
 

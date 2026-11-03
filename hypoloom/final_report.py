@@ -218,6 +218,8 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
                 for item in resources]
             detail["resource_usage"] = (bounded_resources[0]
                 if isinstance(raw_resource, dict) else bounded_resources)
+        if isinstance(observation.get("gpu_diagnostic"), dict):
+            detail["gpu_diagnostic"] = observation["gpu_diagnostic"]
         if isinstance(outcome, dict):
             detail["canonical_outcome"] = {name: outcome.get(name) for name in (
                 "outcome_id", "outcome", "validation_code", "metric_value")}

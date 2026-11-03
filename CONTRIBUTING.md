@@ -57,6 +57,24 @@ research data, and do not attach checks to other users' running Hosts or GPU poo
 
 ## Validation status
 
+The November 4 GPU update lets new workloads share by admitted memory budget,
+preserves confirmed use within that budget during device pressure, and separates
+attributed device recovery from ordinary execution repairs. Expert inputs and
+tools expose remaining repair and research-round allowances. Existing runs keep
+their frozen policy. See [GPU resources](docs/guides/gpu-resource-planning.md)
+and [runtime recovery](docs/guides/runtime-recovery.md).
+
+The [corresponding dev record](https://github.com/EIMP-Lab/Hypoloom/blob/f1ae480593c27cc3c6988a23806778d2488b7bac/docs/qualification.md#gpu-sharing-and-execution-recovery-2026-11-04)
+reconciles **8,657 offline passes / 242 skips**, with all eight original failures
+resolved by affected rechecks. Seven native Host/CPU scenarios pass. Real CUDA
+sharing and capacity-wait scenarios pass after recorded fixture corrections and
+an unchanged strict sampling recheck; original failures remain visible. Five
+retained roots and 3,072 artifact files are unchanged. Public checks pass **123
+tests / one explicit CUDA skip**; real CUDA evidence is recorded separately.
+Both packages match 206 runtime files across source, wheel, isolated installation
+and fresh bundles. No paid-model test, GPU reset or driver change was performed;
+these checks do not establish hardware health or continuous peak coverage.
+
 The October 27 run-audit and feedback update aligns shared-goal closing with
 accepted measurements, checks explicit Process claims in final reports, and
 preserves complete evolution summaries within the existing input budget. Native

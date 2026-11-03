@@ -325,14 +325,19 @@ def gpu_pressure_attribution(
     latest_free_memory_mib: int,
     owned_latest_memory_mib: int | None,
     reserve_memory_mib: int,
+    workload_memory_mib: int | None = None,
 ) -> str:
-    """Would releasing this workload restore reserve? This is not causal history.
+    """Protect an admitted workload; retain the legacy counterfactual without a budget.
 
     If reserve would still be breached, other occupancy alone suffices and
     killing this workload cannot restore it. Unknown ownership stays fail-closed.
     """
     if owned_latest_memory_mib is None:
         return "unknown"
+    if workload_memory_mib is not None:
+        if type(workload_memory_mib) is not int or workload_memory_mib <= 0:
+            raise ValueError("workload_memory_mib must be positive when supplied")
+        return "within_budget" if owned_latest_memory_mib <= workload_memory_mib else "self"
     return (
         "self"
         if latest_free_memory_mib + owned_latest_memory_mib >= reserve_memory_mib

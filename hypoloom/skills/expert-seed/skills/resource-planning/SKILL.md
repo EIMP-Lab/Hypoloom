@@ -52,15 +52,17 @@ History also reports observed_over_budget (null when unmeasured) and
 pressure_exceeded. If observed_over_budget is true, explain why the next workload
 fits its new estimate before submitting; a previously admitted low estimate is
 not evidence of fit. pressure_exceeded without over-budget use can reflect
-external occupancy. Pressure attribution `self` means releasing this workload
-can restore reserve, not that it caused all occupancy. Preserve the reserve;
+external occupancy. In ACI30, `within_budget` preserves a workload whose complete
+live ownership sample fits its admitted budget; `self` means known over-budget use.
+In older runs, `self` only means releasing the workload can restore reserve.
+Neither establishes sole causation. Preserve the reserve;
 reduce actual demand or wait for capacity instead of lowering declared needs.
 Use these observations to investigate an undersized estimate and explain your
 next workload estimate in basis. A successful admission is not a measurement:
 do not reuse its budget as evidence that actual demand fits it. Review lower
 bounds from nearby workloads when scaling, and use measurement_attempt_ids only
 for exact comparable labels. Do not relabel sources or use partial coverage to
-reduce margins or enable sharing. An omitted estimate cannot learn comparable bounds.
+reduce margins. An omitted estimate cannot learn comparable bounds.
 Do not invent a precise estimate; an omitted estimate keeps the Profile initial
 workload budget (or its floor when no initial value is configured) and is
 explicitly unestimated. A bounded measurement is useful when feasible.
@@ -95,8 +97,11 @@ For ACI27+ pooled runs, preview the exact `resource_estimate` with `get_resource
 (and optional positive `gpus`). The same resolver reports Profile/initial floors,
 submitted and measured budgets, OOM bounds, device reserve and capacity shortfall.
 The preview is read-only; submit rechecks capacity and captures its own sources.
-Uncalibrated comparable history retains 25% measured headroom and requests pool
-exclusivity. Complete successful measurements after the last failed/unknown trial
+Uncalibrated comparable history retains 25% measured headroom. ACI30 shares by
+admitted budget, including new workloads; ACI27–29 retain calibration-based pool
+exclusivity. In ACI30 a comparable attributed partial peak can raise the budget,
+but cannot reduce margins or release the initial floor.
+Complete successful measurements after the last failed/unknown trial
 must cover earlier sampled peaks before 15% is allowed; three such successes
 within 5% peak variation use 10%. Calibrated margins have a 512 MiB minimum and
 64 MiB rounding. Actual OOM growth remains 25% of the old admitted budget.

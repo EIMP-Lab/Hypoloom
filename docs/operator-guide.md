@@ -73,8 +73,9 @@ Initialization inspects the managed pool and presents any creation, reuse or
 maintenance action for review; external services are only inspected and reused.
 Other users' device activity still affects available capacity.
 
-Sharing starts conservatively and uses comparable successful measurements to
-adjust memory margins. A resource estimate cannot override workload floors,
+New runs share GPU capacity according to admitted memory budgets, including
+uncalibrated workloads. Comparable successful measurements adjust memory margins.
+Retained runs keep their original sharing policy. A resource estimate cannot override workload floors,
 OOM feedback or reserves. See [GPU resources](guides/gpu-resource-planning.md).
 
 Use the recovery action matching the cause: API retry, OpenAlex retry, Telegram
