@@ -1,5 +1,26 @@
 # Current Hypoloom development state
 
+- November 4 GPU sharing and execution recovery: user ended the research run and
+  authorizes framework repairs, dev commit/push and corresponding public main
+  updates. ACI 30 separates sharing permission from measurement calibration,
+  preserves confirmed use within admitted budgets during device pressure, and
+  associates failed Processes with bounded owned-PID/device/time Xid evidence.
+  Confirmed Xid 38 uses existing node resource blocking/recheck, with a separate
+  finite replacement allowance using max_infrastructure_retries. Execution tools
+  expose remaining allowances; expert input explains full research rounds.
+  Adapter /88. ACI 27–29 policy and retained runs stay unchanged. No automatic GPU
+  reset, driver change or global quarantine. GPU 0's observed Xid 38 history is not
+  proof of physical damage or immunity of the other cards.
+  Full G1 plus affected rechecks reconciles 8,657 passes/242 skips; initial
+  failures remain. Final G3 closes 169 Agents/16 CPU Processes and 154 groups;
+  accepted G4 cases close 72 Agents/eight GPU Processes and 80 groups, with no
+  residue. One unknown-sample qualification failure remains alongside its clean
+  recheck. Five retained roots/3,072 artifact files are unchanged; both branch
+  packages match 206 runtime files. The stopped run is now CANCELLED with Host
+  exited through its own cleanup. Public tests: 123 passes/one CUDA skip. No paid
+  calls or hardware-health claim. [Design](../design/gpu-sharing-and-execution-recovery.md) /
+  [validation](../qualification.md#gpu-sharing-and-execution-recovery-2026-11-04).
+
 - October 31 configuration studies are implemented; dev commit/push and selective
   public main synchronization are authorized. A stateless finite-study reader
   compares planned/emitted/selected/final configurations, counts retries and

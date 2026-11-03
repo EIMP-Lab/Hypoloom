@@ -265,7 +265,7 @@ access checks, browser login and PDF import.
 | Field | Meaning and accepted values |
 | --- | --- |
 | `inner_loop.max_iterations_per_hypothesis` | Positive integer limit on scientific iterations of a hypothesis chain. |
-| `inner_loop.repair_attempts` | Nonnegative limit on execution-repair attempts. Repairs are distinct from scientific revisions and model-call retries. |
+| `inner_loop.repair_attempts` | Nonnegative limit on ordinary replacements per execution node, excluding the initial submission. Distinct from scientific iterations, model-call retries and confirmed device recoveries. |
 | `output_correction.max_failed_validations` | Positive limit on rejected structured submissions within one model invocation. Reaching the limit ends that correction opportunity; outer retries still use their own budgets. |
 | `interaction.observer.coalesce_reports` | Allow a successful Observer result to cover eligible peer reports it already reviewed, reducing redundant observations. |
 | `interaction.leader.enabled` | Allow evidence-based leader selection and advice. |
@@ -317,7 +317,7 @@ GPU reserves may also be zero.
 | `budget.max_active_processes` | Concurrent experiment Process ceiling. |
 | `budget.max_active_reviews` | Concurrent Review ceiling. |
 | `budget.max_retries` | Additional attempts after eligible model/output failures; `2` permits up to two retries beyond the initial attempt. |
-| `budget.max_infrastructure_retries` | Separate allowance for infrastructure retries, subject to the remaining run and invocation budgets. |
+| `budget.max_infrastructure_retries` | Infrastructure retry allowance. ACI 30 also uses this ceiling for confirmed GPU device replacements after operator recheck, counted per execution node independently of Agent retries. All run and invocation budgets still apply. |
 | `budget.max_process_lost_retries` | Additional attempts for lost experiment Processes; not permission to rerun every failed scientific result. |
 | `budget.gpu_vram_reserve_mb` | Absolute per-device reserve floor in MiB; template: 512. The field name uses `mb`. |
 | `budget.gpu_vram_reserve_percent` | Integer percentage from 0 to 100; template: 5. A positive value takes the maximum of that workload percentage, the absolute floor and 512 MiB, then rounds up to 64 MiB. Zero uses only the absolute floor. |

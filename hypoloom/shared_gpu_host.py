@@ -96,7 +96,8 @@ class SharedGpuHost:
         records = [] if estimate is None else self.measurements(request.run_id, request.role, request.component_id,
                                    request.method_family_id, estimate.measurement_attempt_ids)
         return explain_workload_memory(floor, estimate, records, initial_memory_mib=initial,
-                                      adaptive=request.schema_version >= 27)
+                                      adaptive=request.schema_version >= 27,
+                                      sharing_by_budget=request.schema_version >= 30)
 
     def plan_intent(self, request: Any, arguments: Mapping[str, Any], intent: ResourceIntent) -> ResourceIntent:
         if request.schema_version < 27: return intent
@@ -211,6 +212,14 @@ class SharedGpuHost:
         if not isinstance(latest, Mapping) or latest.get("complete") is not True:
             return None
         return latest["resident_bytes"] // (1024 * 1024)
+
+    def pressure_workload_budget(self, attempt: Mapping[str, Any]) -> int | None:
+        """Use the admitted budget only for the current pressure policy."""
+        if int(self.host.store.get_run(attempt["run_id"])["agent_aci_version"]) < 30:
+            return None
+        spec = self.host.store.find_fact(attempt["run_id"], "ExperimentPreregistered", attempt["workflow_id"])
+        return None if spec is None else spec["payload"]["execution_contract"].get(
+            "resource_intent", {}).get("workload_memory_mib")
 
     @staticmethod
     def observe_oom(payload: dict[str, Any], stderr_path: Path) -> None:

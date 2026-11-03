@@ -6,6 +6,16 @@ description: Diagnose actual local or Host experiment failures and repair within
 Expert: {{ROLE}}
 Focus: {{FOCUS}}
 
+For ACI30, read `execution_budget` from `list_my_experiments` or `wait_experiment`
+before preparing a replacement. Initial submission, ordinary repair and confirmed
+device recovery have distinct counts. If the applicable allowance is exhausted,
+finish with the recorded technical result. `research_budget.remaining_future_rounds`
+counts future full research cycles, not repairs or scientific iterations.
+An owned-process `gpu_device_fault` with Xid 38 requires operator device/driver
+inspection and resource recheck. Preserve its diagnostic and hand off; neither
+`empty_cache` nor a speculative code change repairs the device. After recheck,
+the Host enforces a separate finite device-recovery allowance and all run limits.
+
 ACI27+ GPU resource planning: `capacity_requires_revision` is a technical
 prestart failure, never scientific refutation. Inspect `get_resources` with the
 proposed `resource_estimate`, and the predecessor's `resource_planning`/`capacity`

@@ -4,7 +4,9 @@ English · [简体中文](gpu-resource-planning.zh-CN.md)
 
 See [runtime recovery](runtime-recovery.md) for ACI 28 pool preflight, node-scoped GPU recovery and context/progress observations.
 
-New ACI 27 runs use evidence-based memory margins and conservative pool sharing.
+New ACI 30 runs share pool capacity according to admitted memory budgets.
+Calibration determines memory headroom, not permission to share. Retained
+ACI 27–29 requests keep their original calibration-based exclusivity policy.
 Existing runs retain their accepted runtime and resource intent. Updating the
 checkout does not change a running Host or upgrade its shared pool.
 
@@ -47,7 +49,7 @@ For comparable, attributed measurements:
 
 | Evidence | Measured margin | Pool sharing |
 |---|---|---|
-| No qualifying completed success | 25% on any measured peak | Exclusive |
+| No qualifying completed success | 25% on any measured peak | Shared when capacity permits |
 | Complete success after the last failed or unknown trial, covering earlier peaks | 15%, at least 512 MiB | Shared when capacity permits |
 | At least three such successes, largest peak at most 105% of smallest | 10%, at least 512 MiB | Shared when capacity permits |
 
@@ -63,10 +65,12 @@ In the bounded `measurements` history, `observed_peak_lower_bound_bytes` retains
 largest known attributed per-device sample even when other samples/devices are
 unknown. This diagnostic can reveal that the requested budget was below observed
 use; it does not establish the full-run maximum or workload comparability.
-Unknown coverage keeps `sample_peak_bytes: null`, cannot release the initial
-floor, and cannot enable sharing. Exact `measurement_attempt_ids` still require
+Unknown coverage keeps `sample_peak_bytes: null` and cannot release the initial
+floor or reduce margins. In ACI 30, a comparable attributed lower bound can raise
+the budget with conservative headroom even when coverage is partial; sharing is
+already allowed according to that budget. Exact `measurement_attempt_ids` still require
 matching workload labels. Explain the next estimate using the actual workload;
-the admission resolver and its complete-coverage requirements remain unchanged.
+complete coverage is still required to calibrate a smaller margin.
 No process identity, foreign-owner history or device-wide usage becomes an owned
 measurement. A successful admission does not prove that actual demand fit its
 requested budget. Updating the checkout does not change retained runs.
@@ -125,8 +129,9 @@ when it would fit. Do not shrink declared requirements merely to jump the queue.
 The Web/TUI resource panel distinguishes:
 
 - Capacity/fairness wait: the request waits for free capacity or earlier work.
-- Exclusive wait: an uncalibrated request cannot share with an active pool job;
-  shared requests likewise cannot enter a device with an exclusive commitment.
+- Exclusive wait: an incompatible exclusive commitment exists, including a
+  retained request using the old policy. New ACI 30 requests do not require an
+  entire device merely because their measurements are incomplete.
 - Capacity unknown: reliable usable-capacity information is incomplete.
 - Revision required: even the authorized devices' known capacity upper bounds
   cannot satisfy the request. Low instantaneous free memory alone is insufficient
@@ -157,7 +162,10 @@ synthetic-device regressions do not establish CUDA OOM rates or model quality.
 
 The bounded measurement history also exposes `observed_over_budget` (unknown
 when there is no usable owned sample) and `pressure_exceeded`. These are derived
-feedback, not new admission rules: unknown coverage still cannot calibrate or
-enable sharing. A pressure attribution of `self` means releasing the workload
-can restore reserve; it does not identify the sole cause of device occupancy.
+feedback. Unknown coverage still cannot calibrate smaller margins. For ACI 30
+pooled execution, complete live ownership within the admitted budget records
+`within_budget` and does not trigger pressure cancellation. Known over-budget use
+records `self`; unknown ownership retains conservative protection. Older runs'
+`self` only means releasing the workload can restore reserve. Neither label
+establishes the sole cause of device occupancy.
 Review underestimation and external pressure separately before resubmitting.

@@ -77,8 +77,9 @@ the current init choices. See [initialization](guides/initialization.md) and
 [runtime recovery](guides/runtime-recovery.md) for scope and concurrency limits.
 Shared capacity, reserves, estimates and concurrency budgets remain enforced.
 
-New ACI 27 runs use measured 25/15/10% margins and exclusive scheduling until
-comparable successful evidence permits sharing. The resource query explains the
+New ACI 30 runs share GPU capacity according to admitted memory budgets, including
+uncalibrated workloads. Measured 25/15/10% margins still reflect evidence quality.
+Retained ACI 27–29 requests keep their original exclusivity policy. The resource query explains the
 final budget, and impossible requests return for bounded technical repair.
 See [GPU memory planning](guides/gpu-resource-planning.md), including pool
 compatibility and the limits of sampled peaks.

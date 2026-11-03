@@ -1415,7 +1415,9 @@
         : t("Cycle {0} · initial experiments {1} · scientific iterations {2} · execution repairs {3}",
           activity.cycle, activity.initial_experiments, activity.scientific_iterations, activity.operational_repairs);
     parent.append(element("p", "revision-activity", summary));
+    if (activity.device_recoveries) parent.append(element("p", "detail-note", t("GPU device recoveries: {0}", activity.device_recoveries)));
     list(activity.scopes).forEach((scope) => {
+      if (scope.device_recovery_required) parent.append(element("p", "blocked", t("GPU device failure requires resource recheck")));
       if (!scope.warning && (!details || !scope.repairs)) return;
       const row = element("div", "repair-scope");
       const scopeText = activity.mode === "legacy"

@@ -352,6 +352,10 @@ def _revision_warning_badge(component: ComponentView) -> str | None:
         summary = tr("Cycle {0} · initial experiments {1} · scientific iterations {2} · execution repairs {3}",
             activity["cycle"], activity["initial_experiments"], activity["scientific_iterations"], activity["operational_repairs"])
     lines = [escape(summary)]
+    if activity.get("device_recoveries"):
+        lines.append(escape(tr("GPU device recoveries: {0}", activity["device_recoveries"])))
+    if any(scope.get("device_recovery_required") for scope in activity["scopes"]):
+        lines.append(escape(tr("GPU device failure requires resource recheck")))
     for scope in activity["scopes"]:
         if not scope["warning"]:
             continue

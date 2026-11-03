@@ -5,6 +5,44 @@ import time
 from .runner import RunningProcess
 
 
+def sample_gpu_pressure(host, attempt, attempt_id, handle, pressure):
+    """Observe one owned Process without treating another user's occupancy as its budget."""
+    from .compute_resources import ResourceUnavailable, gpu_pressure_attribution
+    devices = {}
+    for tracker in pressure[0]:
+        try:
+            device = host.compute_resources.observe_runtime(tracker.summary.gpu_uuid)
+            devices[device.uuid] = device
+            tracker.sample(device)
+        except ResourceUnavailable:
+            pass
+    budget = None
+    if host.shared_gpu is not None:
+        host.shared_gpu.sample_owned(attempt_id, handle,
+            tuple(tracker.summary.gpu_uuid for tracker in pressure[0]), devices)
+        budget = host.shared_gpu.pressure_workload_budget(attempt)
+    summaries = tuple(tracker.summary for tracker in pressure[0])
+    for summary in (item for item in summaries if item.pressure_exceeded):
+        owned = (host.shared_gpu.owned_latest_memory_mib(attempt_id, summary.gpu_uuid)
+            if host.shared_gpu is not None else None)
+        pressure[2][summary.gpu_uuid] = (gpu_pressure_attribution(
+            latest_free_memory_mib=summary.gpu_latest_free_memory_mib,
+            owned_latest_memory_mib=owned, reserve_memory_mib=pressure[1],
+            workload_memory_mib=budget), owned)
+    cancel = any(pressure[2][item.gpu_uuid][0] not in {"external", "within_budget"}
+        for item in summaries if item.pressure_exceeded)
+    return summaries, cancel
+
+
+def observe_gpu_failure(host, attempt, payload, stderr_path):
+    host.shared_gpu.observe_oom(payload, stderr_path)
+    if host.shared_gpu.pressure_workload_budget(attempt) is not None:
+        from .gpu_diagnostics import diagnose_gpu_failure
+        diagnostic = diagnose_gpu_failure(payload)
+        if diagnostic is not None:
+            payload["gpu_diagnostic"] = diagnostic
+
+
 def process_activity(host, attempt):
     identity = attempt["attempt_id"]
     handle = host.running.get(identity)

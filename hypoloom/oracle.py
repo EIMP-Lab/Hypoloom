@@ -978,13 +978,26 @@ def _audit_resource_recovery(commands, transitions, attempts, payloads, issues):
                 assert request["schema_version"] >= 28
                 assert request["command"] in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}
                 assert request["role"] == block["role"] and request["component_id"] == block["component_id"]
-                assert block["tool"] in {"get_resources", "submit_experiment"}
-                assert block["code"] in {"unavailable", "unauthorized", "unauthorized_server", "incompatible_pool", "invalid_response"}
-                assert source["terminal_reason"] != "SUCCEEDED"
-                for submitted in commands:
-                    material = json.loads(submitted["request_json"])
-                    if material.get("tool") == "submit_experiment":
-                        assert material.get("source_request", {}).get("attempt_id") != source["attempt_id"]
+                if block["code"] == "gpu_device_fault":
+                    from .gpu_diagnostics import validate_gpu_diagnostic, owned_gpu_pids
+                    process = by_attempt[block["process_attempt_id"]]
+                    observed = payloads[process["attempt_id"]]
+                    assert request["schema_version"] >= 30 and block["tool"] == "process"
+                    assert process["kind"] == "PROCESS" and process["run_id"] == row["run_id"]
+                    assert process["state"] == "CLOSED" and process["terminal_reason"] == "FAILED"
+                    validate_gpu_diagnostic(observed, tuple(owned_gpu_pids(observed)))
+                    assert any(event["xid"] == 38 for event in observed["gpu_diagnostic"]["events"])
+                    assert any(submitted["workflow_id"] == process["experiment_id"]
+                        and json.loads(submitted["request_json"]).get("source_request") == request
+                        and json.loads(submitted["request_json"]).get("tool") == "submit_experiment" for submitted in commands)
+                else:
+                    assert block["tool"] in {"get_resources", "submit_experiment"}
+                    assert block["code"] in {"unavailable", "unauthorized", "unauthorized_server", "incompatible_pool", "invalid_response"}
+                    assert source["terminal_reason"] != "SUCCEEDED"
+                    for submitted in commands:
+                        material = json.loads(submitted["request_json"])
+                        if material.get("tool") == "submit_experiment":
+                            assert material.get("source_request", {}).get("attempt_id") != source["attempt_id"]
                 evidence.append((row, block, source))
             else:
                 check = data["resource_recheck"]
@@ -5082,7 +5095,7 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
         raise ValueError("initial memory must be JSON-safe and at least the positive Profile floor")
     if memo is None: memo = {}
     command_id = contract.get("source_submit_command_id")
-    if planning is not None: planning.update(sharing="exclusive")
+    if planning is not None: planning.update(sharing="shared" if request.get("schema_version", 0) >= 30 else "exclusive")
     if command_id is not None and command_id in memo and planning is None: return memo[command_id]
     arguments = response.get("arguments", {})
     if "resource_estimate" not in arguments: return initial
@@ -5159,6 +5172,9 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
         if oom: result = max(result, ((5 * admitted + 255) // 256) * 64)
         verified_measurements.append({"attempt_id": identity, "workload": estimate["workload"],
             "measurement_status": "complete" if peak is not None else "unknown",
+            "observed_peak_lower_bound_bytes": max((item["owned_memory"]["peak"]["resident_bytes"]
+                for item in ([observation["resource_usage"]] if isinstance(observation["resource_usage"], Mapping)
+                    else observation["resource_usage"]) if item["owned_memory"]["peak"] is not None), default=None),
             "sample_peak_bytes": peak, "terminal_status": source["terminal_reason"],
             "ended_at": source["ended_at"], "oom": oom, "admitted_workload_memory_mib": admitted})
     if not measured_success: result = max(result, initial)
@@ -5167,7 +5183,8 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
         # remain independent. Reuse the policy rather than a second reducer.
         from .resource_experience import explain_measured_memory
         explanation = explain_measured_memory(floor, estimate["peak_memory_mib"],
-            verified_measurements, initial_memory_mib=initial, adaptive=True)
+            verified_measurements, initial_memory_mib=initial, adaptive=True,
+            sharing_by_budget=request["schema_version"] >= 30)
         result = explanation["resolved_workload_memory_mib"]
         if planning is not None: planning.update(explanation)
     if not 0 < result < 2**53: raise ValueError("learned workload budget is not JSON-safe")
@@ -5278,6 +5295,7 @@ def _audit_resource_contract(
         if not valid:
             issues.append(OracleIssue("resource_intent_mismatch", "shared GPU intent differs from its version, source count, authorized inventory or Profile floor", (fact_id,)))
         return {"shared": True, "intent": raw, "pool_binding": pool_binding,
+                "budget_pressure": request.get("schema_version", 0) >= 30,
                 "cuda_preflight_required": str(contract.get("sandbox_profile", "")).endswith("/2"),
                 "attributable": research_contract_version == "hypoloom-research-v12",
                 "source_valid": valid and len(issues) == initial_issue_count,
@@ -5604,6 +5622,12 @@ def _audit_process_resource_observation(
 ) -> None:
     if not isinstance(observation, Mapping) or not isinstance(resource, Mapping):
         return
+    if not resource.get("diagnostic_checked"):
+        from .gpu_diagnostics import validate_gpu_diagnostic
+        try:
+            validate_gpu_diagnostic(observation, resource.get("gpu_uuids") or (resource.get("gpu_uuid"),))
+        except (KeyError, TypeError, ValueError) as exc:
+            issues.append(OracleIssue("gpu_diagnostic_invalid", str(exc), (attempt_id,)))
     usage = observation.get("resource_usage")
     pressure = observation.get("resource_pressure")
     if usage is None and pressure is None:
@@ -5633,15 +5657,15 @@ def _audit_process_resource_observation(
                 or renamed and pressure.get("attribution") == ("self" if any(item.get("pressure_attribution") == "self" for item in usage if item.get("gpu_uuid") in pressured) else "unknown")
             ) and pressure.get("gpu_uuids") == pressured and bool(pressured)
         else:
-            valid = valid and (not pressured or all(item.get("pressure_attribution") == "external" for item in usage if item["gpu_uuid"] in pressured))
+            valid = valid and (not pressured or all(item.get("pressure_attribution") in {"external", "within_budget"} for item in usage if item["gpu_uuid"] in pressured))
         if not valid:
             issues.append(OracleIssue("process_resource_observation_mismatch", "multi-device usage or pressure differs from its exact frozen GPU set", (attempt_id,)))
             return
         for item in usage:
             per_pressure = ({key: value for key, value in pressure.items() if key != "gpu_uuids"}
-                if pressure is not None and item["gpu_uuid"] in pressured and item.get("pressure_attribution") != "external" else None)
+                if pressure is not None and item["gpu_uuid"] in pressured and item.get("pressure_attribution") not in {"external", "within_budget"} else None)
             _audit_process_resource_observation({**observation, "resource_usage": item, "resource_pressure": per_pressure},
-                {**resource, "gpu_uuid": item["gpu_uuid"], "gpu_uuids": ()}, attempt_id, issues)
+                {**resource, "gpu_uuid": item["gpu_uuid"], "gpu_uuids": (), "diagnostic_checked": True}, attempt_id, issues)
         return
     memory_keys = (
         "total_memory_mib",
@@ -5723,7 +5747,14 @@ def _audit_process_resource_observation(
             and isinstance(usage["pressure_exceeded"], bool)
         )
     if valid and renamed and usage["pressure_exceeded"] is True:
-        valid = usage.get("pressure_attribution") in {"external", "self", "unknown"}
+        attribution = usage.get("pressure_attribution")
+        valid = attribution in {"external", "self", "unknown"}
+        if attribution == "within_budget":
+            latest = usage.get("owned_memory", {}).get("latest")
+            budget = resource.get("intent", {}).get("workload_memory_mib")
+            valid = (resource.get("budget_pressure") is True and isinstance(latest, Mapping)
+                and latest.get("complete") is True and type(latest.get("resident_bytes")) is int
+                and type(budget) is int and 0 <= latest["resident_bytes"] // 1048576 <= budget)
     if renamed:
         reserve = pressure.get("gpu_reserve_memory_mib") if isinstance(pressure, Mapping) else None
         grace = pressure.get("terminate_grace_seconds") if isinstance(pressure, Mapping) else None
@@ -5763,9 +5794,9 @@ def _audit_process_resource_observation(
         valid = (
             usage["pressure_exceeded"] is True
             and (
-                attribution == "external"
+                attribution in {"external", "within_budget"}
                 and pressure is None
-                or attribution != "external"
+                or attribution not in {"external", "within_budget"}
                 and pressure_valid
             )
         ) or (usage["pressure_exceeded"] is False and pressure is None)

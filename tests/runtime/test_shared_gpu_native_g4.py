@@ -134,10 +134,9 @@ class _SharedGpuAgent(_GpuBatchAgent):
                 _shared_cuda_source(
                     item.content_bytes(),
                     uuids=self.uuids,
-                    # Current policy calibrates an exclusive first run before
-                    # sharing. Hold both cycles long enough to sample that
-                    # second-cycle overlap after the peer's first run closes.
-                    hold_seconds=30,
+                    # A capacity wait staggers the initial jobs. The second
+                    # iteration must outlive that stagger to observe overlap.
+                    hold_seconds=60 if request.task_context.key.experiment_ordinal > 1 else 30,
                 ),
             )
             if item.path == "experiment.py"
@@ -363,7 +362,7 @@ def _assert_host_closure(host, scenario, uuids, root, key, initial_memory_mib=No
             max(128, math.ceil((peak_mib + max(math.ceil(peak_mib * 0.15), 512)) / 64) * 64)
         )
         assert budget == expected_budget
-        assert contract["resource_intent"]["sharing"] == ("exclusive" if ordinal == 0 else "shared")
+        assert contract["resource_intent"]["sharing"] == "shared"
         dispatch = next(
             item for item in dispatches if item["attempt_id"] == process["attempt_id"]
         )
@@ -466,8 +465,18 @@ def test_native_two_hosts_share_real_cuda_and_learn_from_owned_measurements(tmp_
 
 
 @_SHARED_GPU
-def test_native_initial_memory_waits_then_calibrates_into_same_gpu_overlap(tmp_path):
-    _exercise_shared_cuda(tmp_path, initial_memory_mib=16384)
+def test_native_initial_memory_waits_then_calibrates_into_same_gpu_overlap(tmp_path, monkeypatch):
+    first, _ = _configured_gpu()
+    second = os.environ.get("HYPOLOOM_REAL_GPU_SECOND_UUID")
+    assert second and second != first
+    available = sorted(observe_authorized_gpu_memory((first, second)),
+        key=lambda device: device.free_memory_mib)
+    # Force a real capacity wait on either 24 GiB or 80 GiB cards without
+    # allocating that memory or interfering with existing external workloads.
+    monkeypatch.setenv("HYPOLOOM_REAL_GPU_UUID", available[0].uuid)
+    monkeypatch.setenv("HYPOLOOM_REAL_GPU_SECOND_UUID", available[1].uuid)
+    initial = (available[0].free_memory_mib * 3 // 4 // 64) * 64
+    _exercise_shared_cuda(tmp_path, initial_memory_mib=initial)
 
 
 def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
@@ -587,8 +596,9 @@ def _exercise_shared_cuda(tmp_path, *, initial_memory_mib=None):
             for entry in entries
         ]
         first_plural, first_single = (item[0][0] for item in closed)
-        assert max(first_plural["started_at"], first_single["started_at"]) >= min(
-            first_plural["ended_at"], first_single["ended_at"]), "uncalibrated exclusive runs overlapped"
+        initial_overlap = max(first_plural["started_at"], first_single["started_at"]) < min(
+            first_plural["ended_at"], first_single["ended_at"])
+        assert initial_overlap is (initial_memory_mib is None), "cold workloads did not follow capacity-based sharing"
         if initial_memory_mib is not None:
             assert capacity_waits, "initial memory must cause a real pre-Process queue"
             assert any(item["gpu_uuid"] == first and item["active_commitments"] == 1

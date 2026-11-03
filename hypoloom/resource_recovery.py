@@ -1,4 +1,4 @@
-"""Pre-submit GPU outages use existing workflow transitions and Agent ownership."""
+"""GPU infrastructure recovery uses existing workflow transitions and Agent ownership."""
 from __future__ import annotations
 
 import json
@@ -66,6 +66,8 @@ class ResourceRecovery:
                 if attempt["state"] != "CLOSED":
                     raise ValueError("wait for the blocked Agent to finish cleanup before rechecking")
                 source = AgentRequest.from_dict(json.loads(attempt["observation_json"])["request"])
+                if any(row["state"] == "OPEN" for row in host._expert_attempts(source.task_context)):
+                    raise ValueError("wait for the blocked execution node to finish Agent cleanup before rechecking")
                 observed = host.shared_gpu.resources(source)
                 if observed.get("status") != "ok":
                     raise ValueError("GPU pool is still unavailable: " + str(observed.get("status")))

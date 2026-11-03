@@ -152,8 +152,8 @@ def test_completing_owner_releases_capacity_for_waiting_independent_root(environ
         for row in _pool_rows(pool)
     )
 
-    assert all(json.loads(row["intent_json"])["sharing"] == "exclusive" for row in _pool_rows(pool))
-    assert any(wait[1] == "exclusive_wait" for wait in second.resource_waits.values())
+    assert all(json.loads(row["intent_json"])["sharing"] == "shared" for row in _pool_rows(pool))
+    assert any(wait[1] == "capacity_unknown" for wait in second.resource_waits.values())
 
     _finish(first)
     _clean(first)

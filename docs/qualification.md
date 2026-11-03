@@ -2,6 +2,71 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## GPU sharing and execution recovery (2026-11-04)
+
+[Design](design/gpu-sharing-and-execution-recovery.md). The user ended the research
+run and authorizes framework repairs, dev publication and the corresponding public
+main patch. ACI 30 / adapter 88 separates sharing from calibration, protects
+confirmed use within the admitted budget, captures attributed failed-Process Xids,
+and uses existing node blocking/recheck with a separate finite device-replacement
+allowance. Experiment tools and expert inputs explain remaining repairs and rounds.
+Retained runs, their plugins and their accepted resource requests remain unchanged.
+
+Evidence is under `.local/qualification/gpu-recovery/` and the sibling
+`gpu-recovery-*.xml`/`.log` files. Original failures are retained.
+
+- Two pre-fix sharing regressions fail for cold and partial measurements on
+  synthetic 80 GiB devices. Affected checks pass **318** cases; independent
+  pressure/ownership/recovery-audit checks pass **12**. A real Host transaction
+  test closes an injected owned Xid failure, collects its result, blocks the node,
+  rejects premature recheck and admits a bounded replacement even with zero code
+  repair allowance. Earlier environment and fixture failures remain alongside
+  the successful Host checks; SQLite and runtime identity checks were not relaxed.
+- Full offline G1: **8,649 passed / eight failed / 242 skipped**, **1,181.38 s**.
+  Failures are two stale ACI assertions, one old exclusive-wait assertion and five
+  cases whose disposable legacy fixture paired a 29 database with 30 source.
+  Corrected fixtures author consistent ACI 29 source before run creation; the
+  production legacy-closure restrictions remain intact. **113 affected checks
+  pass**, **8.19 s**, including final conditional round guidance. Per-case
+  reconciliation gives **8,657 passed / 242 skipped / zero unresolved failures**.
+  This is a full run plus affected rechecks, not a second full-suite execution.
+- The seven native G3 scenarios included in G1 close **169 Agents / 16 CPU
+  Processes**, with clean Oracles and no live members of **154 recorded groups**.
+  They cover submit crash/reentry, debate, shared acceptance, completion correction,
+  resource learning, observation and cancellation. Provider responses are local
+  scripted fixtures, not paid-model calls.
+  A final dedicated G3 recheck passes all **seven** scenarios in **253.29 s**;
+  independent final closure confirms the same counts and zero residue.
+- Real CUDA uses only the selected A100 devices 1 and 2 and private test pools.
+  Each Process holds 64 MiB of tensors with a 256 MiB allocator cap, plus driver
+  context overhead. Cold workloads overlap on a card; the capacity scenario queues
+  before Process creation, then calibrates into overlap. The old 16 GiB fixture
+  was not portable to 80 GiB cards, so its initial request now uses available
+  capacity. A failed equal-duration timing check is retained; a longer second
+  iteration permits observation of overlap without weakening the assertion.
+  The full G4 selection records **17 passes / one failure** in **335.57 s**:
+  one successful Process had an unknown ownership sample. Its unchanged strict
+  sampling check passes on the targeted recheck (**153.83 s**). The resulting
+  **18-case reconciliation** includes both native scenarios; partial sampling
+  remains a limitation, not a successful complete measurement.
+  The accepted native cases close **72 Agents / eight GPU Processes** across four
+  roots, with clean Oracles and no live members of **80 recorded groups**.
+- Baseline/candidate audits agree for **five retained research roots**. Logical
+  database contents and **3,072 artifact files** remain unchanged. All Oracles are
+  clean. The manually stopped run finishes its own cancellation and Host exit;
+  this work does not settle or resume it. Read-only replay of experiment 14 matches
+  the actual owned child, GPU and Xid 38 using the production diagnostic parser.
+- Dev and public main each match **206 runtime files** across source, wheel,
+  isolated installation and fresh frozen bundles. Installed CLI/MCP and plugin
+  helper checks pass. The public suite passes **123** checks with **one explicit
+  CUDA skip**; real CUDA evidence above is recorded separately. Public runtime
+  changes match dev while preserving the branches' independent layouts/history.
+
+Compilation, undefined-name and whitespace checks pass. These bounded results do
+not establish GPU hardware health, continuous peak coverage, absence of future
+Xids or scientific quality. No device reset, driver change, GPU 0 stress test,
+paid-model qualification or historical-run migration is performed.
+
 ## Configuration studies and expert guidance (2026-10-31)
 
 [Design](design/configuration-studies.md). The authorized change adds a read-only

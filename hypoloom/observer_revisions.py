@@ -32,7 +32,7 @@ def _positive(value):
     return type(value) is int and value > 0
 
 
-def revision_activities(rows, outcomes, document, *, agent_aci_version, run_state):
+def revision_activities(rows, outcomes, document, *, agent_aci_version, run_state, process_attempts=()):
     """Project latest-cycle totals and exact execution-node repair scopes.
 
     Missing batch identity is unknown, never a fabricated legacy single chain.
@@ -57,6 +57,8 @@ def revision_activities(rows, outcomes, document, *, agent_aci_version, run_stat
         if isinstance(component, str) and component:
             by_component[component][str(row["workflow_id"])] = payload
     outcomes_by_experiment = {str(row["experiment_id"]): _payload(row) for row in outcomes}
+    from .execution_budget import device_fault_experiments
+    faults = device_fault_experiments(process_attempts) if agent_aci_version >= 30 else set()
     result = {}
     for component, creations in by_component.items():
         cycles = [p.get("expert_cycle", None if batch else 1) for p in creations.values()]
@@ -85,6 +87,7 @@ def revision_activities(rows, outcomes, document, *, agent_aci_version, run_stat
                 latest_iterations[(role, chain)] = max(iteration, latest_iterations.get((role, chain), 0))
         for (role, chain, iteration, command), members in sorted(groups.items(), key=lambda item: str(item[0])):
             members.sort(key=lambda item: (item[1].get("experiment_ordinal", 1), item[0]))
+            device_recoveries = sum(eid in faults for eid, _ in members[:-1])
             if batch:
                 repairs = sum(bool(p.get("revision_of_outcome_id") or p.get("preflight_repair_of_experiment_id")) for _, p in members)
                 # A repaired scientific iteration retains iteration_of_experiment_id.
@@ -100,6 +103,7 @@ def revision_activities(rows, outcomes, document, *, agent_aci_version, run_stat
             else:
                 repairs, limit = len(members) - 1, None
                 activity["initial_experiments"] += 1
+            repairs -= device_recoveries
             activity["operational_repairs"] += repairs
             tip = members[-1][0]
             outcome = outcomes_by_experiment.get(tip, {})
@@ -109,7 +113,7 @@ def revision_activities(rows, outcomes, document, *, agent_aci_version, run_stat
             if not recovered:
                 if not batch or repairs > _REVISION_BREAKER_MAX:
                     warning = warning_level(repairs)
-                elif (limit is not None and repairs >= limit
+                elif (tip not in faults and limit is not None and repairs >= limit
                         and (outcome.get("outcome") == "EXECUTION_FAILURE"
                             or outcome.get("outcome") == "INTEGRITY_REJECTED"
                             and outcome.get("validation_code") in REVISIONABLE_INTEGRITY_VALIDATION_CODES)):
@@ -120,6 +124,10 @@ def revision_activities(rows, outcomes, document, *, agent_aci_version, run_stat
                 "latest_outcome": outcome.get("outcome"),
                 "validation_code": outcome.get("validation_code"),
                 "recovered": recovered, "historical": historical, "warning": warning})
+            if agent_aci_version >= 30:
+                activity["device_recoveries"] = activity.get("device_recoveries", 0) + device_recoveries
+                activity["scopes"][-1].update(device_recoveries=device_recoveries,
+                    device_recovery_required=tip in faults and not historical)
         if not activity["complete"]:
             for key in ("initial_experiments", "scientific_iterations", "operational_repairs"):
                 activity[key] = None

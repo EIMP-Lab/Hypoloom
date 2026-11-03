@@ -1,5 +1,13 @@
 # Development memory index
 
+- [GPU sharing and execution recovery, November 4](../design/gpu-sharing-and-execution-recovery.md):
+  ACI 30 budget-based sharing, partial-peak lower bounds, pressure protection,
+  owned Xid diagnosis, existing node recheck and separate finite recovery limits.
+  User authorizes dev/main publication; retained research stays read-only.
+  [Validation](../qualification.md#gpu-sharing-and-execution-recovery-2026-11-04):
+  8,657 reconciled passes/242 skips, seven native CPU scenarios, real GPU sharing
+  and capacity waiting, five unchanged retained roots and 206-file packaging.
+
 - [Configuration studies, October 31](../design/configuration-studies.md):
   finite validation comparisons, partial search and retry coverage, configuration
   correspondence, task-declared sharing, bound helper/guidance and independent

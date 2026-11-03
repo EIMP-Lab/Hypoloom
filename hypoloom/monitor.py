@@ -1485,7 +1485,7 @@ def build_monitor_snapshot(
                 experiment_ordinals=experiment_ordinals,
                 revision_activity=revision_activities(transition_rows,
                     facts_by_type.get("CanonicalOutcomeAccepted", ()), contract.document,
-                    agent_aci_version=int(run["agent_aci_version"]), run_state=status["run_state"]),
+                    agent_aci_version=int(run["agent_aci_version"]), run_state=status["run_state"], process_attempts=raw_attempts),
             )
             hypotheses = _hypothesis_views(
                 facts_by_type.get("HypothesisProposed", ()),

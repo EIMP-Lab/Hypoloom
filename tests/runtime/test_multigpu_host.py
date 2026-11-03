@@ -120,8 +120,10 @@ def test_pressure_on_second_uuid_cancels_once_and_records_both_devices():
         "terminate_grace_seconds": 30.0, "gpu_uuids": [GPU_B.uuid]}
 
 
-@pytest.mark.parametrize("owned,spared", [(700, True), (1900, False)])
-def test_pressure_counterfactual_spares_external_and_stops_self(owned, spared):
+@pytest.mark.parametrize("owned,budget,spared", [
+    (700, None, True), (1900, None, False),
+    (4194, 18432, True), (18433, 18432, False)])
+def test_pressure_preserves_within_budget_and_legacy_counterfactual(owned, budget, spared):
     from hypoloom.compute_resources import GpuPressureTracker, GpuRuntimeObservation
     from hypoloom.domain import AttemptTerminalReason
     sample = GpuRuntimeObservation(uuid=GPU_A.uuid, total_memory_mib=16000,
@@ -132,7 +134,7 @@ def test_pressure_counterfactual_spares_external_and_stops_self(owned, spared):
     process = SimpleNamespace(returncode=None, started_at=time.monotonic(), request=SimpleNamespace(
         timeout_seconds=30, cwd="/nonexistent", stderr_path="stderr.log",
         to_dict=lambda: {"attempt_id": "spared-process"}))
-    shared = SimpleNamespace(sample_owned=lambda *args: None,
+    shared = SimpleNamespace(pressure_workload_budget=lambda attempt: budget, sample_owned=lambda *args: None,
         owned_latest_memory_mib=lambda attempt_id, gpu_uuid: owned,
         finish_owned=lambda attempt_id: {}, observe_oom=lambda payload, stderr_path: None)
     observed = SimpleNamespace(terminal_reason=AttemptTerminalReason.SUCCEEDED, process_group_id=100,
@@ -167,7 +169,8 @@ def test_pressure_counterfactual_spares_external_and_stops_self(owned, spared):
         assert payload["resource_pressure"]["attribution"] == "self"
         assert payload["resource_pressure"]["owned_memory_mib_at_decision"] == owned
     assert payload["resource_usage"]["pressure_exceeded"] is True
-    assert payload["resource_usage"]["pressure_attribution"] == ("external" if spared else "self")
+    expected = ("within_budget" if budget else "external") if spared else "self"
+    assert payload["resource_usage"]["pressure_attribution"] == expected
     assert payload["resource_usage"]["gpu_minimum_free_memory_mib"] == 1000
     assert payload["resource_usage"]["owned_memory"] == {
         "sample_count": 0, "unknown_sample_count": 0, "latest": None, "peak": None}

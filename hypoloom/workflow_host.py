@@ -3216,6 +3216,8 @@ class WorkflowHost:
         if rejection is not None:
             result.update(preflight={"status": "rejected", "reply": rejection.to_dict()}, repairable=True)
         spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
+        from .execution_budget import experiment_execution_feedback
+        result.update(experiment_execution_feedback(self, spec, observation if attempts else {}))
         if self.shared_gpu is not None and include_log: result["resource_planning"] = self.shared_gpu.experiment_view(run_id, experiment_id)
         if spec is not None and outcome is not None and self.publisher is not None:
             artifacts = self.store.inspect("SELECT path FROM execution_artifacts WHERE artifact_id=?", (outcome["artifact_id"],))
@@ -3294,7 +3296,8 @@ class WorkflowHost:
         owned = {str(item["exp_id"]): item for item in self._owned_tool_experiments(request)}
         if tool == "list_my_experiments":
             if arguments: raise AgentACIError("tool_arguments", "list_my_experiments takes no arguments")
-            return {"resource_blocked": self.resource_recovery.for_request(request), "experiments": [{**self._experiment_tool_view(request.run_id, experiment_id),
+            from .execution_budget import execution_budget
+            return {"resource_blocked": self.resource_recovery.for_request(request), **({"execution_budget": execution_budget(self, request)} if request.schema_version >= 30 else {}), "experiments": [{**self._experiment_tool_view(request.run_id, experiment_id),
                 **({"can_handoff": self._execution_can_handoff(request, experiment_id)} if request.schema_version >= 22 else {})}
                 for experiment_id in owned]}
         if tool not in {"wait_experiment", "get_experiment_log", "cancel_experiment"}:
@@ -3355,11 +3358,8 @@ class WorkflowHost:
                 **({"chain": task.key.chain, "chain_iteration": task.key.experiment_ordinal,
                     **self._scientific_iteration_source(request)} if self._batch_enabled(request.run_id) else {})},
             reason=decision.reason, policy_version=decision.policy_version)
-        contract = self._research_contract(request.run_id)
-        repairs = sum(item.get("execution_node_command_id") == task.command_id for item in owned.values())
-        repair_cap = batch_limits(contract.document, request.role)["repairs"]
-        if predecessor is not None and repairs > repair_cap:
-            raise AgentACIError("repair_budget_exhausted", "execution node exhausted its repair attempts")
+        from .execution_budget import check_replacement_budget
+        check_replacement_budget(self, request, tuple(owned.values()), predecessor)
         try: resolved_arguments = normalized_arguments if self.shared_gpu is None else self.shared_gpu.resolve_arguments(request, normalized_arguments)
         except ValueError as exc: raise AgentACIError("resource_estimate_invalid", str(exc)) from exc
         if self.shared_gpu is None and "resource_estimate" in normalized_arguments:
@@ -4159,17 +4159,9 @@ class WorkflowHost:
             run_expired = self._run_wallclock_expired(attempt["run_id"]); pressure = self.gpu_pressure.get(attempt_id); pressure_summaries = (); terminal = handle.returncode is not None; pressure_cancelled = False
             if run_expired and not terminal: self.runner.cancel(handle)
             if pressure is not None and not terminal:
-                devices = {}
-                for tracker in pressure[0]:
-                    try:
-                        device = self.compute_resources.observe_runtime(tracker.summary.gpu_uuid); devices[device.uuid] = device; tracker.sample(device)
-                    except ResourceUnavailable: pass
-                if self.shared_gpu is not None: self.shared_gpu.sample_owned(attempt_id, handle, tuple(tracker.summary.gpu_uuid for tracker in pressure[0]), devices)
-                pressure_summaries = tuple(tracker.summary for tracker in pressure[0])
-                for summary in (summary for summary in pressure_summaries if summary.pressure_exceeded):
-                    owned_mib = self.shared_gpu.owned_latest_memory_mib(attempt_id, summary.gpu_uuid) if self.shared_gpu is not None else None
-                    pressure[2][summary.gpu_uuid] = (gpu_pressure_attribution(latest_free_memory_mib=summary.gpu_latest_free_memory_mib, owned_latest_memory_mib=owned_mib, reserve_memory_mib=pressure[1]), owned_mib)
-                if any(pressure[2][summary.gpu_uuid][0] != "external" for summary in pressure_summaries if summary.pressure_exceeded): pressure_cancelled = self.runner.cancel(handle, terminate_grace_seconds=_PRESSURE_TERMINATE_GRACE_SECONDS)
+                from .process_observation import sample_gpu_pressure
+                pressure_summaries, cancel = sample_gpu_pressure(self, attempt, attempt_id, handle, pressure)
+                if cancel: pressure_cancelled = self.runner.cancel(handle, terminate_grace_seconds=_PRESSURE_TERMINATE_GRACE_SECONDS)
             expired = time.monotonic() >= handle.started_at + handle.request.timeout_seconds
             if terminal or handle.returncode is not None or expired or run_expired:
                 observation = self.runner.wait(handle); run_expired = run_expired or self._run_wallclock_expired(attempt["run_id"]); self.running.pop(attempt_id, None); pressure = self.gpu_pressure.pop(attempt_id, None)
@@ -4177,7 +4169,7 @@ class WorkflowHost:
                 reason = AttemptTerminalReason.TIMED_OUT if run_expired else AttemptTerminalReason.FAILED if pressure_cancelled else observation.terminal_reason; payload = {**observation.to_dict(), "terminal_reason": reason.value, "process_request": handle.request.to_dict()}
                 if pressure_summaries:
                     decisions = pressure[2] if pressure is not None else {}
-                    usage = [{**summary.to_dict(), "pressure_exceeded": bool((pressure_cancelled or decisions.get(summary.gpu_uuid, (None,))[0] == "external") and summary.pressure_exceeded)} for summary in pressure_summaries]
+                    usage = [{**summary.to_dict(), "pressure_exceeded": bool((pressure_cancelled or decisions.get(summary.gpu_uuid, (None,))[0] in {"external", "within_budget"}) and summary.pressure_exceeded)} for summary in pressure_summaries]
                     for item in usage:
                         if item["pressure_exceeded"]: item["pressure_attribution"] = decisions[item["gpu_uuid"]][0]
                     if self.shared_gpu is not None:
@@ -4187,13 +4179,17 @@ class WorkflowHost:
                 if pressure_cancelled:
                     payload["resource_pressure"] = gpu_pressure_payload(tuple(decisions[summary.gpu_uuid] for summary in pressure_summaries if summary.pressure_exceeded), reserve_memory_mib=pressure[1] if pressure is not None else 0, terminate_grace_seconds=_PRESSURE_TERMINATE_GRACE_SECONDS)
                     if len(pressure_summaries) > 1: payload["resource_pressure"]["gpu_uuids"] = [summary.gpu_uuid for summary in pressure_summaries if summary.pressure_exceeded]
-                if self.shared_gpu is not None and pressure_summaries: self.shared_gpu.observe_oom(payload, Path(handle.request.cwd) / handle.request.stderr_path)
+                if self.shared_gpu is not None and pressure_summaries:
+                    from .process_observation import observe_gpu_failure
+                    observe_gpu_failure(self, attempt, payload, Path(handle.request.cwd) / handle.request.stderr_path)
                 with self.store.transaction() as tx:
                     tx.close_attempt(attempt_id, terminal_reason=reason, ended_at=time.time(), process_group_id=observation.process_group_id, payload=payload)
                     transition = self._transition_record(tx, attempt["run_id"], attempt["workflow_id"],
                         "EXPERIMENT", Command.OBSERVE_ATTEMPT_TERMINAL, ExperimentState.EVALUATING,
                         payload={"attempt_id": attempt_id}, next_command=Command.ACCEPT_OUTCOME.value)
                     tx.append_transition(transition)
+                    from .gpu_diagnostics import record_device_fault
+                    record_device_fault(self, tx, attempt, payload)
                 self._crash("after_observation_before_artifact_collection")
                 return True
         return False

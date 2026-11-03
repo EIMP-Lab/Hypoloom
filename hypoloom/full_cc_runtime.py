@@ -389,6 +389,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
            "evidence gaps: use permitted academic search for alternatives and state any changed source/version. "
            "Never request passwords, wait indefinitely for login, infer a source was read, or treat an OA copy as the publisher final version. "
            if request.schema_version >= 20 else "")
+        + ("When the expert configuration includes research_budget, use current_round and remaining_future_rounds; they "
+           "describe full research cycles. Scientific iterations and execution repairs do not create another round. "
+           "Do not promise a later round when none remains. " if request.schema_version >= 30 else "")
         + "Limits are this request's "
         "turn/token/wall/output budgets, not a fixed number or duration of test calls. /workspace "
         "is the Host-owned chain checkout: writable for design and execution, read-only otherwise. "
@@ -459,8 +462,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
                     "Preview resource_estimate and optional positive gpus with get_resources before submitting. "
                     "Read the resolved budget, measured headroom, sharing mode and capacity reason. "
                     "A capacity_requires_revision result needs a change to actual workload demand; lowering "
-                    "the declared number alone cannot override measured bounds. Unknown workloads wait for "
-                    "an exclusive pool device. A prestart capacity failure is technical, not scientific refutation; "
+                    "the declared number alone cannot override measured bounds. "
+                    + ("Workloads share pool capacity when their budgets fit; incomplete measurements retain conservative margins. "
+                       if request.schema_version >= 30 else "Unknown workloads wait for an exclusive pool device. ")
+                    + "A prestart capacity failure is technical, not scientific refutation; "
                     "after evidence linking, use replaces_experiment_id within the existing repair budget. "
                 )
         common += (
@@ -741,6 +746,13 @@ def full_cc_instruction(request: AgentRequest) -> str:
         )
     if request.command.value == "EXPERIMENT_EXECUTION" and request.schema_version >= 22:
         return common + (
+            ("Read execution_budget from list_my_experiments before preparing a replacement. "
+             "Ordinary repairs and confirmed GPU device recoveries have separate finite allowances. "
+             "gpu_device_fault requires operator resource recheck; do not try empty_cache, modify code, "
+             "or repeatedly submit to bypass a device block. Once the applicable allowance is zero, "
+             "finish with the recorded technical failure. research_budget.remaining_future_rounds "
+             "limits whether a suggested next round can actually occur. " if request.schema_version >= 30 else "")
+            +
             "The submit_experiment candidate uses the same ExperimentSpecCandidate shape as DESIGN, "
             "also exposed in its MCP input schema and /runtime/output-schema.json $defs. "
             "Read the accepted EXPERIMENT_DESIGN_IMPLEMENT response's typed_candidate from its supplied input "

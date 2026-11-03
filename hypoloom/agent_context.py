@@ -1165,6 +1165,9 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
         config_ref = f"{run_id}--{component_id}--expert-config"
         if host._batch_enabled(run_id):
             config["inner_loop_limits"] = batch_limits(contract_document, role)
+            if int(host.store.get_run(run_id)["agent_aci_version"]) >= 30:
+                from .execution_budget import research_round_budget
+                config["research_budget"] = research_round_budget(task, config["inner_loop_limits"])
             config["effective_max_forks"] = host._effective_batch_forks(run_id, role)
             if task.key.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL:
                 config["exploration_progress"] = host._batch_history(run_id, component_id, role).exploration_progress(

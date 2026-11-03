@@ -116,7 +116,7 @@ def resource_wait_message(reason: str) -> str:
     return {"capacity_unavailable": "Waiting for GPU memory to become available",
         "capacity_unknown": "Waiting; usable GPU capacity is not fully known",
         "capacity_requires_revision": "GPU request cannot fit; experiment needs resource revision",
-        "exclusive_wait": "Waiting for an exclusive GPU; workload sharing is not yet calibrated",
+        "exclusive_wait": "Waiting for an incompatible exclusive GPU commitment to end",
         "fairness_wait": "Waiting for an earlier GPU request",
         "incompatible_pool": "GPU pool must support this run's resource planning version"}.get(reason, reason)
 
