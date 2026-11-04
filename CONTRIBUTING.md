@@ -57,10 +57,27 @@ research data, and do not attach checks to other users' running Hosts or GPU poo
 
 ## Validation status
 
-The November 4 GPU update lets new workloads share by admitted memory budget,
+The November 4 round-limit follow-up removes
+`goal.yaml.stop_conditions.max_rounds_per_expert` from new runs and both Profile
+templates. Round numbers and reports remain; experiment, time, cost and repair
+budgets still apply. Delete the old field from local Profiles before starting a
+new run. Existing runs keep their admitted policy. See
+[configuration](config/README.md) and [runtime recovery](docs/guides/runtime-recovery.md).
+
+The [corresponding dev record](https://github.com/EIMP-Lab/Hypoloom/blob/6a90cc2e99ef9ed12079d2cca20b87f898539193/docs/qualification.md#research-round-limit-removal-2026-11-04)
+reconciles **8,683 offline passes / 242 skips / zero unresolved failures** from
+one full run and affected rechecks. The 24 original failures and their test-only
+fixes remain documented. Actual Host/CPU cases complete five research rounds and
+stop at a separate experiment budget; native runs close with clean audits and
+no live recorded process groups. Public checks pass **131 tests / one CUDA skip**.
+Five retained roots and 3,072 artifact files are unchanged. Both packages match
+206 runtime files across source, wheel, isolated installation and fresh bundles.
+This follow-up includes no new GPU or paid-model qualification.
+
+The earlier November 4 GPU update lets new workloads share by admitted memory budget,
 preserves confirmed use within that budget during device pressure, and separates
-attributed device recovery from ordinary execution repairs. Expert inputs and
-tools expose remaining repair and research-round allowances. Existing runs keep
+attributed device recovery from ordinary execution repairs. At ACI 30, expert
+inputs and tools exposed remaining repair and research-round allowances. Existing runs keep
 their frozen policy. See [GPU resources](docs/guides/gpu-resource-planning.md)
 and [runtime recovery](docs/guides/runtime-recovery.md).
 

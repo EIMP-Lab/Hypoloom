@@ -6,11 +6,13 @@ description: Diagnose actual local or Host experiment failures and repair within
 Expert: {{ROLE}}
 Focus: {{FOCUS}}
 
-For ACI30, read `execution_budget` from `list_my_experiments` or `wait_experiment`
+For ACI30+, read `execution_budget` from `list_my_experiments` or `wait_experiment`
 before preparing a replacement. Initial submission, ordinary repair and confirmed
 device recovery have distinct counts. If the applicable allowance is exhausted,
-finish with the recorded technical result. `research_budget.remaining_future_rounds`
-counts future full research cycles, not repairs or scientific iterations.
+finish with the recorded technical result. `research_budget.current_round`
+records full research cycles; repairs and scientific iterations have separate
+counts. ACI31+ has no research-round limit. The Host decides further research
+under the remaining run budgets and accepted lineage/goal controls.
 An owned-process `gpu_device_fault` with Xid 38 requires operator device/driver
 inspection and resource recheck. Preserve its diagnostic and hand off; neither
 `empty_cache` nor a speculative code change repairs the device. After recheck,

@@ -35,7 +35,7 @@ def test_language_variants_preserve_scientific_and_operational_controls():
         assert source["safety"]["gpus"] == []
         assert source["notify"]["sinks"]["telegram"]["enabled"] is False
         assert source["notify"]["sinks"]["dashboard"]["port"] == 0
-    assert english["goal"]["stop_conditions"] == chinese["goal"]["stop_conditions"]
+    assert english["goal"].get("stop_conditions", {}) == chinese["goal"].get("stop_conditions", {}) == {}
     assert english["goal"]["metric"] is chinese["goal"]["metric"] is None
     assert english["experts"]["defaults"] == chinese["experts"]["defaults"]
     assert [v["name"] for v in english["experts"]["experts"]] == [

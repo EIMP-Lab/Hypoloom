@@ -50,8 +50,22 @@ Web 的 **Report issue** 和 TUI 的 **b** 提供相同导出入口。
 
 ## 验证状态
 
-11 月 4 日的 GPU 更新让新任务按接纳的显存预算共享设备，保护压力下已确认未超预算的
-任务，并将有归属证据的设备恢复与普通执行修复分开计数。专家输入和工具显示剩余修复
+11 月 4 日的轮次限制后续更新从新运行和双语 Profile 模板中删除
+`goal.yaml.stop_conditions.max_rounds_per_expert`，保留轮次编号及报告；实验数量、
+时间、费用和修复预算继续生效。启动新运行前，请删除旧本地 Profile 中的该字段。
+既有运行保留原规则，详见[配置说明](config/README.zh-CN.md)和
+[运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
+
+[对应 dev 验证记录](https://github.com/EIMP-Lab/Hypoloom/blob/6a90cc2e99ef9ed12079d2cca20b87f898539193/docs/qualification.zh-CN.md#取消专家轮次上限2026-11-04)
+经一次全量执行和相关复验，按标识核对为 **8,683 项离线通过／242 项跳过／零未解决失败**。
+原始 24 项失败及其测试修正保留记录。真实 Host／CPU 场景完成五轮研究，也能按独立
+实验预算结束；原生运行关闭后审计通过，记录的进程组没有存活成员。公开检查
+**131 通过／1 项 CUDA 跳过**。五个研究根和 3,072 个产物文件不变；两个分支各自的
+206 个运行时文件在源码、wheel、独立安装及新冻结包中一致。本次后续更新未新增
+GPU 或付费模型资格验证。
+
+此前 11 月 4 日的 GPU 更新让新任务按接纳的显存预算共享设备，保护压力下已确认未超预算的
+任务，并将有归属证据的设备恢复与普通执行修复分开计数。当时 ACI 30 的专家输入和工具显示剩余修复
 及研究轮次额度；旧运行保留冻结策略。详见 [GPU 资源](docs/guides/gpu-resource-planning.zh-CN.md)
 与[运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
 

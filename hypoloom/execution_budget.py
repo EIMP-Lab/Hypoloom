@@ -51,7 +51,7 @@ def check_replacement_budget(host, request, owned, predecessor):
         raise AgentACIError("device_recovery_budget_exhausted" if kind == "device_recovery" else "repair_budget_exhausted",
             f"execution node exhausted its {'device recovery' if kind == 'device_recovery' else 'repair'} attempts "
             f"(used={used}, limit={limit}); the initial submission is not a repair. "
-            "Finish with the recorded technical result; another research round requires remaining round budget.")
+            "Finish with the recorded technical result; the Host decides further research under the remaining run budgets.")
 
 
 def experiment_execution_feedback(host, spec, observation):
@@ -74,8 +74,8 @@ def experiment_execution_feedback(host, spec, observation):
 
 
 def research_round_budget(task, limits):
-    return {"current_round": task.key.cycle, "max_rounds_per_expert": limits["rounds"],
-        "remaining_future_rounds": max(0, limits["rounds"] - task.key.cycle),
+    return {"current_round": task.key.cycle,
+        **({"max_rounds_per_expert": limits["rounds"], "remaining_future_rounds": max(0, limits["rounds"] - task.key.cycle)} if "rounds" in limits else {}),
         "current_scientific_iteration": task.key.experiment_ordinal,
         "max_iterations_per_hypothesis": limits["iterations"],
         "repair_attempts_per_execution_node": limits["repairs"],

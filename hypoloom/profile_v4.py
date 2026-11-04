@@ -252,9 +252,13 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     title = v.text(goal.get("title"), "goal.yaml.title")
     description = v.text(goal.get("description"), "goal.yaml.description")
     constraints = v.strings(goal.get("constraints", []), "goal.yaml.constraints")
-    stops = v.object(goal.get("stop_conditions", {}), {"max_rounds_per_expert", "max_wall_clock_hours", "target_metric"}, "goal.yaml.stop_conditions")
+    stops = v.object(goal.get("stop_conditions", {}), {"max_wall_clock_hours", "target_metric"}, "goal.yaml.stop_conditions")
+    if "max_rounds_per_expert" in stops:
+        v.error("goal.yaml.stop_conditions.max_rounds_per_expert",
+            "removed; delete this field. Research cycles have no round limit; use methodology.yaml.budget for resource limits")
     for key, value in stops.items():
-        if key != "target_metric": v.number(value, "goal.yaml.stop_conditions." + key, integer=key == "max_rounds_per_expert")
+        if key == "max_rounds_per_expert": continue
+        if key != "target_metric": v.number(value, "goal.yaml.stop_conditions." + key)
         elif value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)):
             v.error("goal.yaml.stop_conditions.target_metric", "target must be finite or null")
     defaults = v.object(experts.get("defaults", {}), _DEFAULTS, "experts.yaml.defaults"); _model(v, defaults, "experts.yaml.defaults")
@@ -316,7 +320,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     if not isinstance(budget, dict): v.error("methodology.yaml.budget", "expected budget object"); budget = {}
     budget.setdefault("agent_invocation", DEFAULT_REAL_AGENT_BUDGET.to_dict())
     budget.setdefault("provider_rpm_limit", 60)
-    budget.setdefault("max_experiments", max(1, len(roles)) * int(stops.get("max_rounds_per_expert", 10) if isinstance(stops.get("max_rounds_per_expert", 10), int) else 10) * 5)
+    budget.setdefault("max_experiments", max(1, len(roles)) * 50)
     budget.setdefault("max_active_hypotheses", max(1, len(roles)))
     fork_settings = [{**defaults, **item} for item in raw_experts if isinstance(item, Mapping)]
     fork_limits = [item.get("max_forks", item.get("max_hypotheses_per_round", 1)) for item in fork_settings]
@@ -458,7 +462,7 @@ def request_literature_tools(request) -> tuple[str, ...]:
     return tuple(name for name in available if name in selected)
 
 
-def validate_product_settings(value: object) -> dict[str, Any]:
+def validate_product_settings(value: object, *, allow_legacy_round_limit: bool = False) -> dict[str, Any]:
     """Validate the admitted product controls even on a direct CREATE_RUN."""
     if not isinstance(value, dict) or set(value) != {"profile_version", "goal", "experts", "methodology", "language", "notify", "safety"} or value["profile_version"] != 4:
         raise ValueError("invalid Profile v4 product settings")
@@ -469,8 +473,13 @@ def validate_product_settings(value: object) -> dict[str, Any]:
         raise ValueError("Grounding evaluation requires shared_goal controls")
     if not isinstance(value["methodology"], dict) or set(value["methodology"]) - (_METHOD - {"schema_version", "runtime", "budget"}):
         raise ValueError("invalid Profile v4 methodology controls")
+    stops = copy.deepcopy(goal["stop_conditions"])
+    if allow_legacy_round_limit and isinstance(stops, dict) and "max_rounds_per_expert" in stops:
+        validator = _Validator()
+        validator.number(stops.pop("max_rounds_per_expert"), "goal.stop_conditions.max_rounds_per_expert", integer=True)
+        if validator.issues: raise ValueError("legacy expert round limit must be a positive integer")
     projected = project_profile_v4(goal={"title": "Admitted product controls", "description": "Validate controls without redefining scientific components.",
-        "constraints": goal["constraints"], "stop_conditions": goal["stop_conditions"],
+        "constraints": goal["constraints"], "stop_conditions": stops,
         **({"evaluation": goal["evaluation"]} if "evaluation" in goal else {})}, experts=value["experts"],
         methodology={"schema_version": 4, **value["methodology"]}, language=value["language"], notify=value["notify"], safety=value["safety"])
     if projected.issues: raise ValueError("invalid Profile v4 controls: " + "; ".join(issue.location + ": " + issue.message for issue in projected.issues))

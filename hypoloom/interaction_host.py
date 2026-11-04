@@ -11,7 +11,7 @@ from dataclasses import asdict
 from typing import Any, Mapping
 
 from .agent_aci import EmbeddedInput, LEADER_GUIDANCE_ACI_SCHEMA_VERSION, canonical_json
-from .expert_batch import batch_limits
+from .expert_batch import research_round_available
 from .expert_interaction import InteractionFacts, admit_observer_proposal, expand_fact_references, observer_from_attempt, select_interaction_facts
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask
 from .expert_memory import ExpertMemory
@@ -83,7 +83,7 @@ class InteractionHost:
             if (len(cycles) == 1 and cycles[0] >= minimum
                     and self._closed(run_id, item.role, item.component_id, cycles[0], reports=reports)
                     and (self.shares_experience(run_id) or (
-                        history.latest.cycle < batch_limits(self.host._research_contract(run_id).document, item.role)["rounds"]
+                        research_round_available(self.host._research_contract(run_id).document, history.latest.cycle + 1, self._version(run_id))
                         and self.host._batch_creation_available(run_id, item.role)))):
                 result.append(item)
         return result
@@ -425,7 +425,7 @@ class InteractionHost:
         if self._version(run_id) >= 21:
             selected = admit_observer_proposal(active["proposal"], facts=self._facts(run_id, self.store.list_facts(run_id)))
             parent = selected.leader.contributions[0].hypothesis_id
-        unavailable = ("round_budget_exhausted" if cycle > batch_limits(self.host._research_contract(run_id).document, leader["role"])["rounds"]
+        unavailable = ("round_budget_exhausted" if not research_round_available(self.host._research_contract(run_id).document, cycle, self._version(run_id))
             else "experiment_budget_exhausted" if not self.host._batch_creation_available(run_id, leader["role"])
             else "no_selected_parent" if parent is None
             else "agent_budget_unavailable" if self._version(run_id) >= 21 and not self.host._agent_budget_available(run_id, leader["role"]) else None)
