@@ -7,3 +7,7 @@ metric: null
 constraints:
   - Keep the original repository and datasets read-only.
   - Explain uncertainty and preserve failed experiments as evidence.
+  - Use task-appropriate bounded exploration before expanding confirmation work;
+    preserve the declared final evaluation and keep held-out results out of selection.
+  - Reuse compatible completed work with its original evidence; explain changed
+    inputs, missing coverage, technical repairs or intentional replication.

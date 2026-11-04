@@ -3189,6 +3189,7 @@ def _audit_execution_integrity(
             )
             if execution is not None and (
                 execution.source_relative_path == ".hypoloom/trial_driver.py" or generic_target
+                or "HYPOLOOM_REUSE_INPUTS" in dict(contract.get("environment", ()))
             ):
                 try:
                     component_mounts = _oracle_component_mounts(
@@ -3221,6 +3222,15 @@ def _audit_execution_integrity(
                     (fact_id,),
                 )
             )
+        reuse_expected = []
+        try:
+            selected_reuse = [] if submitted is None else submitted[1]["arguments"].get("reuse_experiments", [])
+            reuse_expected = _oracle_reuse_inputs(fact, payload, selected_reuse, facts, fact_payloads,
+                                                  artifacts, artifact_root, transition_payloads)
+            if json.loads(dict(contract.get("environment", ())).get("HYPOLOOM_REUSE_INPUTS", "[]")) != reuse_expected:
+                raise ValueError("reuse inputs differ from their submitted publication references")
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            issues.append(OracleIssue("execution_reuse_invalid", str(exc), (fact_id,)))
         environment_matches = (
             component_mounts is not None
             and _oracle_component_environment_matches(
@@ -4470,7 +4480,7 @@ class _OracleComponentMounts:
     bindings: tuple[_OracleMountBinding, ...]
     read_roots: tuple[str, ...]
     required_inputs: tuple[tuple[str, tuple[str, ...]], ...]
-    target_root: str
+    target_root: str | None
     read_root_map: tuple[tuple[str, str], ...] = ()
 
 
@@ -4580,6 +4590,34 @@ def _oracle_implementation_sha256(
     return digest.hexdigest()
 
 
+def _oracle_reuse_inputs(spec_fact, spec, selected, facts, payloads, artifacts, root, transitions):
+    """Independently derive explicit references from raw source/facts, not Host helpers."""
+    if not isinstance(selected, list) or len(selected) > 16 or len(set(selected)) != len(selected):
+        raise ValueError("invalid explicit reuse selection")
+    owner = transitions.get(f"{spec_fact['experiment_id']}@1", {})
+    result = []
+    for index, experiment_id in enumerate(selected, 1):
+        creation = transitions.get(f"{experiment_id}@1", {})
+        matches = [row for row in facts if row["fact_type"] == "CanonicalOutcomeAccepted"
+                   and row["experiment_id"] == experiment_id and row["run_id"] == spec_fact["run_id"]
+                   and int(row["raw_order"]) < int(spec_fact["raw_order"])]
+        if (len(matches) != 1 or creation.get("role") != owner.get("role")
+                or creation.get("component_id") != spec.get("component_id")):
+            raise ValueError("reuse source lacks prior same-owner/component outcome")
+        outcome = matches[0]
+        value = payloads[str(outcome["fact_id"])]
+        if value.get("outcome") == "INTEGRITY_REJECTED":
+            raise ValueError("integrity-rejected work cannot be reused")
+        pubs = [row for row in artifacts if row["artifact_id"] == outcome["artifact_id"]]
+        if len(pubs) != 1 or any(pubs[0][key] != outcome[key] for key in ("run_id", "experiment_id", "execution_id")):
+            raise ValueError("reuse publication ownership mismatch")
+        if _artifact_materialized_root(root, pubs[0]) is None or pubs[0]["digest"] != value.get("artifact_set_digest"):
+            raise ValueError("reuse publication is absent or differs from its outcome")
+        result.append({"experiment_id": experiment_id, "outcome_id": outcome["outcome_id"],
+                       "artifact_id": outcome["artifact_id"], "path": f"/hypoloom-reuse/{index}"})
+    return result
+
+
 def _oracle_component_mounts(
     document: Any,
     component_id: Any,
@@ -4597,7 +4635,7 @@ def _oracle_component_mounts(
     if not isinstance(document, Mapping) or not isinstance(component_id, str):
         return None
     components = document.get("components")
-    if not isinstance(components, list) or execution.target_root is None:
+    if not isinstance(components, list):
         return None
     component = next(
         (
@@ -4609,8 +4647,8 @@ def _oracle_component_mounts(
     )
     if not isinstance(component, Mapping):
         return None
-    target_root = str(Path(execution.target_root).resolve(strict=False))
-    bindings = [
+    target_root = None if execution.target_root is None else str(Path(execution.target_root).resolve(strict=False))
+    bindings = [] if target_root is None else [
         _OracleMountBinding(destination=target_root, attempt_leaf="target")
     ]
     if execution.control_target:
@@ -4649,7 +4687,7 @@ def _oracle_component_mounts(
         isinstance(goal_evaluation, Mapping) and goal_evaluation.get("scope") == "GOAL"
     )
     aliases: dict[str, str] = {}
-    if generic and not execution.data_bindings and not (
+    if generic and target_root is not None and not execution.data_bindings and not (
         isinstance(protocol, Mapping) and protocol.get("production") is True
     ):
         # Derive from admitted roots, not the recorded Process environment or
@@ -4677,7 +4715,7 @@ def _oracle_component_mounts(
                 bindings.append(_OracleMountBinding(source=str(source), destination=destination))
     for root in () if aliases else read_roots:
         source = Path(root)
-        if source == Path(target_root) or any(
+        if target_root is not None and source == Path(target_root) or any(
             source == item or source in item.parents or item in source.parents
             for item in raw_data_sources
         ):
@@ -4787,6 +4825,15 @@ def _oracle_component_mounts(
         required_inputs.append((str(resource), tuple(input_targets)))
     if len({name for name, _ in required_inputs}) != len(required_inputs):
         return None
+    reuse = json.loads(dict(spec_payload.get("execution_contract", {}).get("environment", ())).get("HYPOLOOM_REUSE_INPUTS", "[]"))
+    for item in reuse:
+        publication_rows = [row for row in artifacts if row["artifact_id"] == item["artifact_id"]]
+        if len(publication_rows) != 1:
+            return None
+        publication = _artifact_materialized_root(artifact_root, publication_rows[0])
+        if publication is None:
+            return None
+        bindings.append(_OracleMountBinding(source=str(publication.resolve(strict=True)), destination=item["path"]))
     return _OracleComponentMounts(
         bindings=tuple(bindings),
         read_roots=tuple(read_roots),

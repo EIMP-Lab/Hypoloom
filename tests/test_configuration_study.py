@@ -46,6 +46,30 @@ def selected(plan):
     return {"candidate_id": "alternative", "configs": deepcopy(plan["candidates"][1]["configs"])}
 
 
+def test_progressive_single_seed_then_confirmation_keeps_recipe_and_test_separate(plan):
+    from hypoloom.configuration_study import audit_progression
+    pilot = deepcopy(plan); pilot["seeds"] = [0]
+    confirm = deepcopy(plan); confirm["candidates"] = [confirm["candidates"][1]]
+    stages = [dict(name="pilot", basis="cheap paired screening", plan=pilot, trials=observations(pilot)),
+              dict(name="confirm", basis="confirm the validation-selected alternative", plan=confirm,
+                   trials=observations(confirm), selection=selected(plan))]
+    report = audit_progression(stages)
+    assert report["stages"][0]["planned_trials"] == 4
+    assert report["stages"][1]["planned_trials"] == 4
+    assert report["scientific_acceptance"] == "task_owned"
+    changed = deepcopy(stages)
+    for settings in changed[1]["plan"]["candidates"][0]["configs"].values():
+        settings["training"]["lr"] = 0.9
+    with pytest.raises(StudyError, match="configuration changed"):
+        audit_progression(changed)
+    changed = deepcopy(stages); changed[0]["trials"] = changed[0]["trials"][:2]
+    with pytest.raises(StudyError, match="incomplete or unmeasured"):
+        audit_progression(changed)
+    changed = deepcopy(stages); changed[0]["selection"] = selected(plan); changed[0]["evaluation"] = []
+    with pytest.raises(StudyError, match="final observations"):
+        audit_progression(changed)
+
+
 def test_complete_study_keeps_per_dataset_regression_visible_and_final_separate(plan):
     trials, selection, final = observations(plan), selected(plan), observations(plan, final=True)
     before = deepcopy((plan, trials, selection, final))
