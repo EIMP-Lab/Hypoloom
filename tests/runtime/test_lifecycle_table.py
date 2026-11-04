@@ -76,8 +76,12 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Init's retained-run cancellation launch metadata stays in the sole Host.
     # Transfer 25 unused lines from resource_recovery (102 actual) to the Host
     # (4667 actual); preserve every counted file and the same 27,550 total.
-    allocations = {"domain": 1100, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4675, "institutional_controls": 100,
+    # ACI 32 publication input/source projection is counted as Host authority.
+    # Transfer 150 unused domain lines (891 actual): 125 to execution_reuse,
+    # 25 to workflow_host. Preserve the total and every existing counted file.
+    allocations = {"domain": 950, "lifecycle": 500, "ports": 100,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4700, "institutional_controls": 100,
+        "execution_reuse": 125,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,

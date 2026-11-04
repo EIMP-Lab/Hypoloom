@@ -101,3 +101,14 @@ selection. Configurations must match exactly. The report shows final missing
 cells and counts; final values never enter the ranking. Existing task parsers
 own final metric aggregation and acceptance. This helper does not implement
 adaptive pruning, a search scheduler, provenance attestation or a goal verdict.
+
+## Ordered finite stages
+
+`--stages stages.json` replaces the separate CLI inputs. Supply an array of
+objects with `name`, `basis`, `plan`, `trials`, and optional `selection` and
+`evaluation`, each using the formats above. A later stage can add screening seeds
+and retain a subset of complete prior candidates. Scientific configs, source/data,
+metrics, sharing rules and final protocol must match. Final observations cannot
+be followed by another selection stage. Reused observations still need their
+original evidence references and matching context; this reader does not execute
+or authenticate reuse. See [incremental execution](incremental-execution.md).

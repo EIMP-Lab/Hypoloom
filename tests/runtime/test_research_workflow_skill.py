@@ -35,9 +35,10 @@ def _grounding(manager, *, ordinal=1):
 def test_common_seed_is_identical_for_both_owners_and_includes_stage_files(tmp_path):
     expected = {p.relative_to(WORKFLOW_SKILL_ROOT).as_posix(): p.read_bytes()
         for p in WORKFLOW_SKILL_ROOT.rglob("*") if p.is_file()}
-    assert len(expected) == 11
+    assert len(expected) == 12
     assert len(expected["SKILL.md"]) < 2800
     expected["scripts/configuration_study.py"] = (WORKFLOW_SKILL_ROOT.parents[1] / "configuration_study.py").read_bytes()
+    expected["scripts/work_units.py"] = (WORKFLOW_SKILL_ROOT.parents[1] / "work_units.py").read_bytes()
     for kind, role in (("expert", "numerical"), ("grounding", "grounding")):
         store = ExpertPluginStore(tmp_path, owner_kind=kind)
         bound = store.ensure("run", role, "Different scientific domain")

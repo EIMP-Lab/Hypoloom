@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -39,10 +40,10 @@ def stopped(batch_host, tmp_path, monkeypatch):
     # the in-process constant would incorrectly pair a 29 database with 30 code.
     aci = bundle / "hypoloom/agent_aci.py"
     original = aci.read_text()
-    current = "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION"
-    assert current in original
-    aci.write_text(original.replace(current,
-        "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = BOUNDED_DEBATE_ACI_SCHEMA_VERSION"))
+    legacy, count = re.subn(r"(?m)^CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = \w+$",
+        "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = BOUNDED_DEBATE_ACI_SCHEMA_VERSION", original)
+    assert count == 1
+    aci.write_text(legacy)
     monkeypatch.setattr("hypoloom.workflow_host.__file__", str(bundle / "hypoloom/workflow_host.py"))
     host = WorkflowHost(root, local_agent=batch_host.agent)
     host.initialize()

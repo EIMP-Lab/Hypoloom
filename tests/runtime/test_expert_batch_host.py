@@ -207,7 +207,8 @@ class LeaderRoundAgent(SharedGoalAgent):
 def batch_host(tmp_path, monkeypatch, request):
     # Retain an explicit ACI13 case while exercising ACI14 batch semantics.
     mode = getattr(request, "param", None)
-    version = 31 if str(mode).startswith("five-cycle") else 28 if mode == "dispatch-wait" else 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
+    from hypoloom.agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+    version = CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION if str(mode).startswith("five-cycle") else 28 if mode == "dispatch-wait" else 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
     monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", version)
     with tempfile.TemporaryDirectory(prefix="hypoloom-batch-target-", dir=tmp_path if mode == "dispatch-wait" else "/var/tmp") as directory:
         payload = _pilot_payload(tmp_path, Path(directory), "batch-host")
@@ -919,7 +920,7 @@ def test_real_cpu_leader_round_reopens_only_its_designated_component_and_gets_a_
 def test_current_research_continues_until_goal_or_actual_experiment_budget(batch_host, expected_cycles):
     host = batch_host
     _complete(host, timeout=120)
-    assert host.store.get_run("batch-host")["agent_aci_version"] == "31"
+    assert host.store.get_run("batch-host")["agent_aci_version"] == "32"
     history = host._batch_history("batch-host", "primary.validation_accuracy")
     assert [batch.cycle for batch in history.batches] == list(range(1, expected_cycles + 1))
     attempts = host.store.list_attempts()

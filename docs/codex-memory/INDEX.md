@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Incremental experiment execution, November 4](../design/incremental-experiment-execution.md):
+  ACI 32 staged evidence, explicit read-only publication inputs, completed-unit
+  reuse, partial technical repair and source comparisons through analysis.
+  No monitor/UI work, private Profile rewrite or retained-run migration.
+  [Validation](../qualification.md#incremental-experiment-execution-2026-11-04):
+  full G1 plus affected rechecks, final CPU/native closure, retained cohort and
+  installed package/bundle checks; original failures remain available.
+
 - [Research-round limit removal, November 4](../design/research-round-limit-removal.md):
   ACI 31 removes the fresh-run ceiling, rejects the removed Profile field,
   preserves progress and independent budgets, and retains historical replay.

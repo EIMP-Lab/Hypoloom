@@ -34,6 +34,14 @@ arbitrary significance gate. Leave room in the existing deadline for selection,
 final evaluation and artifact checks. If settings are inherited without tuning,
 say why; do not invent a search or imply they generalize.
 
+## Progressive investment
+
+Where the task permits, use fixed-repetition exploration, then confirm promising
+candidates before frozen final evaluation. Do not replace required task seeds.
+`--stages` checks finite staged studies. [Incremental execution](incremental-execution.md)
+provides explicit completed-work reuse and bounded performance probes through
+actual submitted code, with matching source/input/configuration/protocol context.
+
 ## Execution and selection
 
 Have the actual training entrypoint emit resolved configurations after defaults

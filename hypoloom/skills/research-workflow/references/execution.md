@@ -45,3 +45,10 @@ name those differences and bound the attribution; use controlled follow-up
 comparisons when the scientific question requires isolating one mechanism.
 Raw measurements from incomplete/failed work are observations, not accepted
 scientific outcomes. Missing GOAL acceptance does not imply no raw test data.
+
+For costly multi-unit work, use [incremental execution](incremental-execution.md).
+Review the supplied prior publications, explain new information or replication,
+and explicitly bind applicable `reuse_experiments` on ACI 32+. The standalone
+work-unit helper keeps completed siblings and reruns only incomplete/incompatible
+work. Include its bound source in the submission; the authoring plugin is not an
+execution mount. Per-unit completion does not replace the declared final parser.

@@ -2,6 +2,61 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Incremental experiment execution (2026-11-04)
+
+[Design](design/incremental-experiment-execution.md). The user authorizes
+recommendations 1–5, dev commit/push and corresponding public main publication;
+recommendation 6 (monitor/UI) is excluded. ACI 32 / adapter 90 adds task-defined
+evidence stages, explicit same-owner publication inputs, completed-unit reuse,
+partial technical repair and source comparisons through result analysis.
+Bounded performance probes use the same admitted entrypoint and helper.
+
+Evidence is under `.local/qualification/incremental-execution/`; original
+intermediate failures are retained beside their successful rechecks.
+
+- Focused final checks pass **58 cases in 25.30 s** (`g0-final.xml`). The actual
+  CPU experiment completes A, fails B, publishes both records, then explicitly
+  imports that publication: A is copied, only B executes. Checks cover read-only
+  mounts, source comparison, restart reconstruction, scientific-negative retry
+  rejection, context/configuration changes, deliberate replication, missing and
+  malformed output, ownership, publication corruption and Oracle tampering.
+- Full G1 records **8,668 passed / 30 failed / 11 errors / 239 skipped** in
+  **1,647.68 s** (`g1.xml`). Failures expose optional reuse fields required by
+  older mount-helper fixtures, stale seed/tool/version expectations, a legacy
+  bundle-generation fixture and the counted core allocation. The corrected
+  implementation preserves optional legacy inputs; the new authority helper
+  is counted by reallocating existing space, retaining the **27,550-line total**.
+  One native environment check imported PyYAML outside its declared prefix;
+  corrected qualification import order uses the already installed prefix package.
+  One cancelled native provider connection reported BrokenPipe; its unchanged
+  scenario passes the final recheck, with the original failure retained.
+- Final **157 affected checks pass in 270.18 s** (`g1-recheck.xml`), including all
+  failed/error cases, analysis handoff, seven native G3 scenarios and the new
+  partial-work flow. Per-case reconciliation gives **8,709 passed / 239 skipped /
+  zero unresolved failures** (`reconciled.json`). This is one full suite plus
+  affected rechecks, not an assertion that the initial invocation passed.
+- Independent closure of **ten final native/CPU roots** finds **206 closed
+  Agents / 20 closed Processes**, clean Oracles, no pending effects and no live
+  members of **180 recorded process groups** (`final-native-closure.json`).
+  Expected failure, lost and cancellation reasons remain recorded. Scripted
+  local provider responses exercise real CLI/Host/broker/Process behavior.
+- Final read-only baseline/candidate audits agree for **five retained research
+  roots**; logical databases and **3,072 artifact files** remain unchanged
+  (`final-retained/`). No retained Host is started or state/plugin migrated.
+- **209 runtime files** match source, wheel, isolated installation and fresh
+  bundle (`final-package/`). Installed CLI/MCP, seeded helper/reference and an
+  actual compute-then-reuse check pass. Compilation, undefined-name and whitespace
+  checks pass. Public main receives the corresponding runtime, guides, templates
+  and portable tests, with its own validation at synchronization.
+
+Validation uses Python 3.12.14, SQLite 3.53.4 and Node.js 22.16.0. This change does
+not renew GPU or paid-model qualification and claims no measured training speedup.
+New generic experiment entrypoints opt in to work units; preset drivers and private
+Profile seed requirements remain unchanged. Reuse depends on declared actual
+implementation/data/configuration/protocol and project evaluation, not a claim
+that arbitrary hidden dependencies are detected. New behavior requires a fresh
+ACI 32 run; completed-work reuse does not implement mid-training checkpoint resume.
+
 ## Research-round limit removal (2026-11-04)
 
 [Design](design/research-round-limit-removal.md). The user requests removal of

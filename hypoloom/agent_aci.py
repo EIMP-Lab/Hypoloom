@@ -74,7 +74,8 @@ RESOURCE_RECOVERY_ACI_SCHEMA_VERSION = 28
 BOUNDED_DEBATE_ACI_SCHEMA_VERSION = 29
 GPU_RECOVERY_ACI_SCHEMA_VERSION = 30
 UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION = 31
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION
+INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION = 32
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -102,6 +103,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         BOUNDED_DEBATE_ACI_SCHEMA_VERSION,
         GPU_RECOVERY_ACI_SCHEMA_VERSION,
         UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION,
+        INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -138,6 +140,7 @@ _COMMANDS_BY_SCHEMA = {
     BOUNDED_DEBATE_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     GPU_RECOVERY_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1427,7 +1430,15 @@ def validate_experiment_submission(
     optional = {"command", "gpus", "timeout_min", "description", "replaces_experiment_id"}
     if request.schema_version >= RESOURCE_LEARNING_ACI_SCHEMA_VERSION:
         optional.add("resource_estimate")
+    if request.schema_version >= INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION:
+        optional.add("reuse_experiments")
     _strict_keys(arguments, required | optional, "experiment submission", optional=optional)
+    if "reuse_experiments" in arguments:
+        reuse = arguments["reuse_experiments"]
+        if (not isinstance(reuse, list) or len(reuse) > 16
+                or any(not isinstance(item, str) or not item.strip() for item in reuse)
+                or len(set(reuse)) != len(reuse)):
+            raise AgentACIError("invalid_reuse_inputs", "reuse_experiments must contain at most 16 distinct experiment IDs")
     resource_estimate = None
     if "resource_estimate" in arguments:
         try:

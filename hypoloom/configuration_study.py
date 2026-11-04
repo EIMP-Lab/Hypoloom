@@ -250,6 +250,44 @@ def audit_study(plan: Mapping, trials: list, *, selection: Mapping | None = None
     return report
 
 
+def audit_progression(stages: list) -> dict:
+    """Check task-defined finite stages without scheduling or choosing a budget.
+
+    A later stage may add repetitions and narrow candidates; it cannot quietly
+    change the scientific recipe or promote an unmeasured candidate. Start a new
+    declared study when the implementation, data or configuration changes.
+    """
+    _require(isinstance(stages, list) and bool(stages), "stages: expected a nonempty array")
+    reports = []
+    previous = None
+    names = set()
+    for index, stage in enumerate(stages):
+        _object(stage, {"name", "basis", "plan", "trials"}, {"selection", "evaluation"}, f"stages[{index}]")
+        name = _text(stage["name"], "stage.name")
+        _require(name not in names, "duplicate stage name")
+        names.add(name)
+        _text(stage["basis"], "stage.basis")
+        plan = _plan(stage["plan"])
+        if previous is not None:
+            prior, report = previous
+            _require("evaluation" not in stages[index - 1], "final observations cannot drive another selection stage")
+            for key in ("datasets", "context", "metric", "direction", "dataset_weights",
+                        "shared_architecture", "shared_training", "evaluation"):
+                _require(_equal(plan.get(key), prior.get(key)), f"stage.{key} changed; declare a revised study")
+            _require(set(prior["seeds"]) <= set(plan["seeds"]), "later stage cannot discard earlier screening seeds")
+            prior_candidates = {item["id"]: item for item in prior["candidates"]}
+            for candidate in plan["candidates"]:
+                identity = candidate["id"]
+                _require(identity in report["ranking"], "cannot promote an incomplete or unmeasured candidate")
+                _require(_equal(candidate["configs"], prior_candidates[identity]["configs"]),
+                         "promoted configuration changed; declare a revised study")
+        report = audit_study(plan, stage["trials"], selection=stage.get("selection"),
+                             evaluation=stage.get("evaluation"))
+        reports.append({"name": name, "basis": stage["basis"], **report})
+        previous = (plan, report)
+    return {"schema_version": 1, "stages": reports, "scientific_acceptance": "task_owned"}
+
+
 def _unique_object(pairs: list[tuple]) -> dict:
     value = {}
     for key, item in pairs:
@@ -269,13 +307,19 @@ def read_document(path: str | Path) -> Any:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--plan", required=True, help="the admitted finite comparison plan")
-    parser.add_argument("--trials", required=True, help="training-emitted validation observations, including failed attempts")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--plan", help="the admitted finite comparison plan")
+    group.add_argument("--stages", help="ordered task-defined stages with plans and emitted observations")
+    parser.add_argument("--trials", help="training-emitted validation observations, including failed attempts")
     parser.add_argument("--selection", help="the selected candidate and exact resolved configurations")
     parser.add_argument("--evaluation", help="separate final observations; never used to rank candidates")
     args = parser.parse_args(argv)
+    if args.stages and any((args.trials, args.selection, args.evaluation)):
+        parser.error("--stages contains its own trials/selection/evaluation")
+    if args.plan and not args.trials:
+        parser.error("--plan requires --trials")
     try:
-        report = audit_study(read_document(args.plan), read_document(args.trials),
+        report = audit_progression(read_document(args.stages)) if args.stages else audit_study(read_document(args.plan), read_document(args.trials),
                              selection=read_document(args.selection) if args.selection else None,
                              evaluation=read_document(args.evaluation) if args.evaluation else None)
         print(json.dumps(report, ensure_ascii=False, sort_keys=True, allow_nan=False))

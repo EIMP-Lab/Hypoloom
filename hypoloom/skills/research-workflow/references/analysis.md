@@ -31,3 +31,10 @@ technical completion, passing the declared LOCAL criterion and shared GOAL
 success separate. Save transferable verified lessons through existing reports
 and owner-local skill evolution for future work; frozen criteria and framework
 validators remain authoritative.
+
+Use the supplied prior execution references and source comparisons to explain
+what the next experiment will add. Distinguish a changed hypothesis, additional
+coverage, technical repair and intentional replication. Recommend explicit reuse
+of compatible completed work instead of retraining unchanged baselines/candidates.
+Source equality alone is not scientific equivalence; a changed input/protocol can
+justify the same code, and replication needs its purpose recorded.

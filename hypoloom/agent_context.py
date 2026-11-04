@@ -789,6 +789,12 @@ def result_analysis_inputs(
     if spec["payload"]["execution_contract"].get("source_submit_command_id") is not None:
         source_inputs = _submission_source_inputs(
             f"{task.command_id}--current-", _submitted_source(store, run_id, spec, source_attempt))
+        submit_id = spec["payload"]["execution_contract"]["source_submit_command_id"]
+        command = store.inspect("SELECT request_json FROM workflow_commands WHERE command_id=?", (submit_id,))[0]
+        comparison = json.loads(command["request_json"]).get("source_comparison")
+        if comparison:
+            source_inputs += (EmbeddedInput.from_bytes(f"{task.command_id}--current-source-comparison",
+                "application/json", canonical_json(comparison)),)
     else:
         if (
             source_attempt is None
@@ -1381,6 +1387,14 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             config["required_experiment_spec"].update({"measurement": None if measure is None else measure.to_dict(),
                 "metric": None if measure is None else measure.to_dict()["metric"], "workspace_artifacts": ["implementation.patch", *(() if measure is None else measure.parser_files)],
                 "deferred_measurement": True})
+        if int(host.store.get_run(run_id)["agent_aci_version"]) >= 32:
+            from .execution_reuse import prior_executions
+            config["prior_executions"] = prior_executions(host, run_id, component_id, role)
+            config["continuation_guidance"] = (
+                "Identify the next discriminating change or missing evidence. A completed scientific negative is not a technical retry. "
+                "Use explicit reuse_experiments and the bound work_units.py helper for matching completed work; rerun only missing/incompatible units. "
+                "Intentional replication needs a recorded reason. Stage exploration/confirmation/final evaluation according to the accepted task, "
+                "without changing its final criteria. Include actual performance evidence, a bounded probe or a concrete non-applicability reason.")
         inputs[1] = EmbeddedInput.from_bytes(f"{run_id}--{component_id}--expert-config",
             "application/json", canonical_json(config))
         operational = dict(host._run_config(run_id)); capabilities = (

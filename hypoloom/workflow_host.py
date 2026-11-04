@@ -3370,9 +3370,14 @@ class WorkflowHost:
             raise AgentACIError("resource_estimate_unavailable", "learned estimates require an explicitly configured shared pool")
         candidate, files, source_snapshot = validate_experiment_submission(request, resolved_arguments)
         self._validate_submission_candidate(request, candidate, files, source_snapshot)
+        from .execution_reuse import submission_inputs
+        submission_inputs(self, request, source_snapshot["arguments"])
+        from .execution_reuse import compare_submission
+        comparison = compare_submission(self, request, source_snapshot["arguments"], files)
         submission = {"tool": "submit_experiment", "execution_node_command_id": task.command_id,
             "predecessor_experiment_id": predecessor, "arguments": normalized_arguments,
-            "source_request": request.to_dict(), "source_snapshot": dict(source_snapshot)}
+            "source_request": request.to_dict(), "source_snapshot": dict(source_snapshot),
+            **({"source_comparison": comparison} if comparison else {})}
         self._crash("before_submit_commit")
         experiment_id = self._create_experiment(request.run_id, decision, submission=(command_id, submission))
         if experiment_id is None: raise AgentACIError("experiment_not_eligible", "the experiment budget is unavailable")
@@ -3521,6 +3526,8 @@ class WorkflowHost:
         raw_component = next(item for item in contract.to_dict()["components"] if item["id"] == request.component_id)
         arguments = source["arguments"]
         _, grant, plan, argv, timeout = self._submission_execution_plan(request, candidate, arguments)
+        from .execution_reuse import REUSE_ENV, submission_inputs
+        reuse = submission_inputs(self, request, arguments)
         ordinal = int(identity["experiment_ordinal"])
         ids, component_index, _ = _component_ids(run_id, contract, str(request.component_id), experiment_ordinal=ordinal)
         execution = self._run_config(run_id)["execution"]
@@ -3556,6 +3563,7 @@ class WorkflowHost:
                 generic=candidate.measurement is not None or candidate.evaluation_scope == "GOAL")[1])
             if execution["target"] is not None: environment["HYPOLOOM_TARGET_ROOT"] = execution["target"]["checkout"]
             environment.update(plan["environment"])
+            if reuse: environment[REUSE_ENV] = json.dumps(reuse, sort_keys=True, separators=(",", ":"))
             if candidate.measurement is not None or candidate.evaluation_scope == "GOAL": environment["PATH"] = "/runtime/bin:/usr/bin:/bin"
             fact = ExperimentPreregistered(fact_id=_fact_id(run_id, "experiment", component_index, *((ordinal,) if ordinal > 1 else ())),
                 run_id=RunId(run_id), experiment_id=ExperimentId(experiment_id), hypothesis_id=HypothesisId(str(identity["hypothesis_id"])),
@@ -3706,7 +3714,8 @@ class WorkflowHost:
                 tx.record_command({"command_id": submit_id, "run_id": run_id, "workflow_id": experiment_id,
                     "expected_revision": 0, "command_type": Command.CREATE_EXPERIMENT.value,
                     "request": submission[1], "status": "accepted", "revision": 1,
-                    "result": {"exp_id": experiment_id, "queue_position": sum(row["state"] != ExperimentState.TERMINAL.value for row in self.store.list_workflow_heads(run_id, "EXPERIMENT"))}})
+                    "result": {"exp_id": experiment_id, "queue_position": sum(row["state"] != ExperimentState.TERMINAL.value for row in self.store.list_workflow_heads(run_id, "EXPERIMENT")),
+                        **({"source_comparison": submission[1]["source_comparison"]} if submission[1].get("source_comparison") else {})}})
             transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.CREATE_EXPERIMENT, ExperimentState.DRAFTED,
                 command_id=submit_id, next_command=Command.PREREGISTER.value if submission is not None else Command.REQUEST_SPEC_CANDIDATE.value,
                 payload={"hypothesis_id": hypothesis_id, "role": decision.payload["role"],
@@ -4139,6 +4148,8 @@ class WorkflowHost:
             mounts.extend((source, f"/hypoloom-inputs/{input_index}/{index}") for index, source in enumerate(sources, 1))
         contract = self._research_contract(run_id); component = contract.component(str(payload["component_id"]))
         if component is None: raise OperationalHalt("execution component is absent")
+        from .execution_reuse import execution_mounts
+        mounts.extend(execution_mounts(self, run_id, spec))
         return tuple(mounts), binding, patch
     def _close_prestart_failure(self, run_id: str, experiment_id: str, prepared: PreparedExecution, error: Exception) -> None:
         reason = f"{type(error).__name__}:{error}"[:1024]; request = prepared.process_request
@@ -4238,7 +4249,7 @@ class WorkflowHost:
                 collected = workspace.integrity_diagnostic(prepared, str(integrity_error or "synthetic_terminal_before_spawn"),
                     agent_request=agent_request, agent_response=agent_response)
             else: collected = workspace.collect(prepared, observation, agent_request=agent_request, agent_response=agent_response,
-                preserve_partial_outputs=spec["payload"].get("goal_evaluation") is not None)
+                preserve_partial_outputs=spec["payload"].get("goal_evaluation") is not None or agent_request.get("schema_version", 0) >= 32)
         except (ExecutionWorkspaceError, OSError, ValueError) as exc:
             integrity_error = f"{type(exc).__name__}:{exc}"[:1024]
             collected = workspace.integrity_diagnostic(prepared, integrity_error, agent_request=agent_request, agent_response=agent_response)

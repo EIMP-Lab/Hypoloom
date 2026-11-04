@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- November 4 incremental execution: recommendations 1–5 are implemented;
+  recommendation 6 (monitor/UI) is excluded. ACI 32 / adapter 90 adds explicit
+  same-owner published inputs, a standalone completed-work helper, task-defined
+  study progression, bounded source comparisons delivered through analysis, and
+  reusable performance probes. Existing publication verification and read-only
+  mounts remain authoritative. Partial technical failure preserves complete
+  units; scientific negatives do not authorize technical retry. Generic project
+  entrypoints opt in; preset drivers, private Profile seeds and retained runs
+  stay unchanged. No round ceiling or automatic training-checkpoint resume.
+  Full G1 plus 157 affected rechecks reconciles 8,709 passes/239 skips with zero
+  unresolved cases; original failures remain. Ten final native/CPU roots close
+  206 Agents/20 Processes, clean Oracles and no members of 180 recorded groups.
+  Five retained roots/3,072 artifacts remain unchanged; 209 runtime files match
+  source, wheel, installed package and bundle. No renewed GPU or paid-model lane.
+  Dev commit/push followed by corresponding public main synchronization is
+  authorized. [Design](../design/incremental-experiment-execution.md) /
+  [evidence](../qualification.md#incremental-experiment-execution-2026-11-04).
+
 - November 4 round-limit follow-up: the user requests removing
   goal.yaml.stop_conditions.max_rounds_per_expert, updating templates and
   committing/pushing dev with the corresponding public main change. ACI 31 /

@@ -395,3 +395,26 @@ Grounding retains five minutes. Deliver a small runnable change, reuse retained
 checks and put device smoke at the beginning of the admitted Process. No deadline
 or GPU permission is enlarged. Frozen parser changes still need a revised
 hypothesis/new cycle; accepted runs retain their original bundle.
+
+## Incremental execution (new ACI 32 runs)
+
+Tasks can use bounded exploration, optional confirmation and frozen final
+evaluation without a fixed framework seed count. The study helper accepts
+`--stages` to check progressive finite comparisons. Scientific acceptance remains
+with the task's evaluator. New default templates describe this workflow; existing
+local Profiles and runs retain their original requirements.
+
+For costly independent computations, the bound `work_units.py` helper executes
+only missing or incompatible work. `submit_experiment(reuse_experiments=[...])`
+explicitly imports up to 16 terminal publications from the same run, component
+and owner as read-only inputs. Existing artifact verification and ownership
+checks apply. Technical failures retain completed siblings; a replacement can
+reuse them without treating partial work as an accepted experiment. Intentional
+replication requires a recorded reason in the helper. No new scheduler, monitor
+view or expert-round limit is introduced.
+
+The [API and examples](../../hypoloom/skills/research-workflow/references/incremental-execution.md)
+cover declared contexts, outputs, bounded performance probes, recovery and the
+difference between completed-work reuse and training checkpoint resume. The
+helper must be included in submitted source. Existing preset driver behavior is
+unchanged; this API is an opt-in for admitted project entrypoints.
