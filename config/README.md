@@ -322,7 +322,7 @@ GPU reserves may also be zero.
 | `budget.max_active_processes` | Concurrent experiment Process ceiling. |
 | `budget.max_active_reviews` | Concurrent Review ceiling. |
 | `budget.max_retries` | Additional attempts after eligible model/output failures; `2` permits up to two retries beyond the initial attempt. |
-| `budget.max_infrastructure_retries` | Infrastructure retry allowance. ACI 30 also uses this ceiling for confirmed GPU device replacements after operator recheck, counted per execution node independently of Agent retries. All run and invocation budgets still apply. |
+| `budget.max_infrastructure_retries` | Infrastructure retry allowance. ACI 30+ also uses this ceiling for confirmed GPU device replacements after operator recheck, counted per execution node independently of Agent retries. All run and invocation budgets still apply. |
 | `budget.max_process_lost_retries` | Additional attempts for lost experiment Processes; not permission to rerun every failed scientific result. |
 | `budget.gpu_vram_reserve_mb` | Absolute per-device reserve floor in MiB; template: 512. The field name uses `mb`. |
 | `budget.gpu_vram_reserve_percent` | Integer percentage from 0 to 100; template: 5. A positive value takes the maximum of that workload percentage, the absolute floor and 512 MiB, then rounds up to 64 MiB. Zero uses only the absolute floor. |

@@ -307,7 +307,7 @@ GPU 预留量也允许为零。
 | `budget.max_active_processes` | 并发实验 Process 上限。 |
 | `budget.max_active_reviews` | 并发 Review 上限。 |
 | `budget.max_retries` | 可重试的模型／输出失败后的额外尝试次数；`2` 表示初次尝试之外最多重试两次。 |
-| `budget.max_infrastructure_retries` | 基础设施重试额度；ACI 30 也以此限制经操作员复查后的 GPU 设备故障替代实验，按执行节点计数，与 Agent 重试分别计数。仍受全部运行与调用预算约束。 |
+| `budget.max_infrastructure_retries` | 基础设施重试额度；ACI 30+ 也以此限制经操作员复查后的 GPU 设备故障替代实验，按执行节点计数，与 Agent 重试分别计数。仍受全部运行与调用预算约束。 |
 | `budget.max_process_lost_retries` | 实验 Process 丢失后的额外尝试次数，不代表所有失败的科学结果都可重新运行。 |
 | `budget.gpu_vram_reserve_mb` | 每张 GPU 的绝对显存预留下限，单位为 MiB；模板为 512，字段名使用 `mb`。 |
 | `budget.gpu_vram_reserve_percent` | 0–100 的整数百分比，模板为 5。正值时取工作负载百分比、绝对预留下限和 512 MiB 三者的最大值，再向上取整到 64 MiB；为零时仅使用绝对预留量。 |

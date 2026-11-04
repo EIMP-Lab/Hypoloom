@@ -4,7 +4,7 @@ English · [简体中文](gpu-resource-planning.zh-CN.md)
 
 See [runtime recovery](runtime-recovery.md) for ACI 28 pool preflight, node-scoped GPU recovery and context/progress observations.
 
-New ACI 30 runs share pool capacity according to admitted memory budgets.
+New ACI 30+ runs share pool capacity according to admitted memory budgets.
 Calibration determines memory headroom, not permission to share. Retained
 ACI 27–29 requests keep their original calibration-based exclusivity policy.
 Existing runs retain their accepted runtime and resource intent. Updating the
@@ -66,7 +66,7 @@ largest known attributed per-device sample even when other samples/devices are
 unknown. This diagnostic can reveal that the requested budget was below observed
 use; it does not establish the full-run maximum or workload comparability.
 Unknown coverage keeps `sample_peak_bytes: null` and cannot release the initial
-floor or reduce margins. In ACI 30, a comparable attributed lower bound can raise
+floor or reduce margins. In ACI 30+, a comparable attributed lower bound can raise
 the budget with conservative headroom even when coverage is partial; sharing is
 already allowed according to that budget. Exact `measurement_attempt_ids` still require
 matching workload labels. Explain the next estimate using the actual workload;
@@ -130,7 +130,7 @@ The Web/TUI resource panel distinguishes:
 
 - Capacity/fairness wait: the request waits for free capacity or earlier work.
 - Exclusive wait: an incompatible exclusive commitment exists, including a
-  retained request using the old policy. New ACI 30 requests do not require an
+  retained request using the old policy. New ACI 30+ requests do not require an
   entire device merely because their measurements are incomplete.
 - Capacity unknown: reliable usable-capacity information is incomplete.
 - Revision required: even the authorized devices' known capacity upper bounds
@@ -162,7 +162,7 @@ synthetic-device regressions do not establish CUDA OOM rates or model quality.
 
 The bounded measurement history also exposes `observed_over_budget` (unknown
 when there is no usable owned sample) and `pressure_exceeded`. These are derived
-feedback. Unknown coverage still cannot calibrate smaller margins. For ACI 30
+feedback. Unknown coverage still cannot calibrate smaller margins. For ACI 30+
 pooled execution, complete live ownership within the admitted budget records
 `within_budget` and does not trigger pressure cancellation. Known over-budget use
 records `self`; unknown ownership retains conservative protection. Older runs'

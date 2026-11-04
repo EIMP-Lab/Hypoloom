@@ -2,12 +2,12 @@
 
 English · [简体中文](runtime-recovery.zh-CN.md)
 
-New runs use ACI 30. Existing runs keep their pinned runtime; updating the
+New runs use ACI 31. Existing runs keep their pinned runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
 
 ## Device failure and execution allowances
 
-For a failed GPU Process, ACI 30 captures bounded kernel Xid evidence when it can
+For a failed GPU Process, ACI 30+ captures bounded kernel Xid evidence when it can
 match the granted device, owned process identity and execution time. Missing
 permissions, incomplete logs and unknown ownership remain explicit limitations.
 An attributed Xid 38 pauses that execution node through the existing GPU resource
