@@ -3224,7 +3224,7 @@ def _openalex_type_filter(
                 ScholarlySourceClass.JOURNAL: {"article"},
                 ScholarlySourceClass.CONFERENCE: {
                     "article",
-                    "proceedings-article",
+                    "conference-paper",
                 },
                 ScholarlySourceClass.PREPRINT: {"preprint"},
                 ScholarlySourceClass.SCHOLARLY_DATASET: {"dataset"},
@@ -3459,7 +3459,7 @@ def _openalex_source_class(work: Mapping[str, Any]) -> ScholarlySourceClass:
         return ScholarlySourceClass.SCHOLARLY_DATASET
     if work_type == "report":
         return ScholarlySourceClass.TECHNICAL_REPORT
-    if work_type == "proceedings-article":
+    if work_type in ("conference-paper", "proceedings-article"):
         return ScholarlySourceClass.CONFERENCE
     if work_type == "article":
         primary = work.get("primary_location")

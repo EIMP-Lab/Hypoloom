@@ -1,5 +1,11 @@
 # Development memory index
 
+- [OpenAlex conference types, November 4](../qualification.md#openalex-conference-types-2026-11-04):
+  reproduced provider HTTP 400, canonical outgoing conference type and response
+  normalization, legacy input compatibility and unchanged Crossref vocabulary.
+  Exact original metadata query succeeds. November 5 authorizes dev commit/push
+  and corresponding main publication; retained runs stay unchanged.
+
 - [Incremental experiment execution, November 4](../design/incremental-experiment-execution.md):
   ACI 32 staged evidence, explicit read-only publication inputs, completed-unit
   reuse, partial technical repair and source comparisons through analysis.

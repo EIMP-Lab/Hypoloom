@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- November 4 OpenAlex compatibility repair: a fresh run's Grounding retrieval
+  fails before experiments because the provider rejects the outgoing Crossref
+  label `proceedings-article`. OpenAlex requests now use `conference-paper`;
+  normalization accepts that canonical type and keeps legacy response support.
+  Crossref retains its own vocabulary. The exact original query plan now returns
+  32 papers across all three strata, with all 11 metadata requests HTTP 200.
+  All 275 focused adapter/Host/fallback/bundle checks pass in the project runtime;
+  the initial system-SQLite environment failures remain recorded.
+  November 5: the user authorizes dev commit/push followed by the corresponding
+  main update. The repair and portable regressions match across both worktrees.
+  Retained runs remain unchanged; new runs receive the repaired bundle.
+  [Evidence](../qualification.md#openalex-conference-types-2026-11-04).
+
 - November 4 incremental execution: recommendations 1–5 are implemented;
   recommendation 6 (monitor/UI) is excluded. ACI 32 / adapter 90 adds explicit
   same-owner published inputs, a standalone completed-work helper, task-defined
