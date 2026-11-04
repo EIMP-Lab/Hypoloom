@@ -204,7 +204,6 @@ def test_technical_analysis_exhaustion_preserves_a_budgeted_revision_through_rea
         settings["experts"]["experts"][0]["name"] = contract["roles"][0]["id"]
         settings["experts"]["defaults"].update(max_hypotheses_per_round=2, max_forks=2)
         settings["goal"]["completion_mode"] = "explicit_signals"
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 2
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 1, "repair_attempts": 0}
         settings["methodology"]["graph_evolution"]["enabled"] = False
         settings["methodology"]["interaction"] = {"leader": {"enabled": False}, "debate": {"enabled": False}}

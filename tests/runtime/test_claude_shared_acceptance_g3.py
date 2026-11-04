@@ -349,7 +349,7 @@ def _payload(root: Path, mount: Path, *, roles=(_LOCAL, _GOAL), iterations=1, fi
     source["goal"] = {"title": "One candidate across two validation suites",
         "description": "Exceed 0.5 accuracy strictly on both complete suites with a single candidate; preserve complete evidence. Local diagnostics do not establish the whole goal.",
         "evaluation": "grounding", "constraints": ["Read the supplied fixed labels and prediction candidates; never combine the best suite from different candidates."],
-        "stop_conditions": {"max_rounds_per_expert": 1, "max_wall_clock_hours": 1}}
+        "stop_conditions": {"max_wall_clock_hours": 1}}
     source["experts"] = {"defaults": {"model": _MODEL, "effort": "high", "max_forks": 1, "max_hypotheses_per_round": 1},
         "experts": [{"name": role, "role": "Independent research candidate", "persona": "Measure both suites honestly.", "focus": ["Read and use the common evaluator."]}
                     for role in roles]}

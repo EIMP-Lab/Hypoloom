@@ -72,7 +72,6 @@ def test_native_completion_recovers_after_disconnected_probe_and_changed_text(tm
         settings["experts"]["experts"][0]["name"] = value["research_contract"]["roles"][0]["id"]
         settings["experts"]["defaults"]["max_hypotheses_per_round"] = 1
         settings["goal"]["completion_mode"] = "explicit_signals"
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 1, "repair_attempts": 1}
         settings["methodology"]["interaction"] = {"leader": {"enabled": False}, "debate": {"enabled": False}}
         settings["methodology"]["graph_evolution"]["enabled"] = False

@@ -116,7 +116,6 @@ def test_native_advice_keeps_three_experts_independent_and_records_real_consumer
         payload = _payload(tmp_path, run_id)
         contract = payload["research_contract"]
         settings = contract["methodology"]["controls"]["product"]
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 3
         settings["experts"]["defaults"]["max_hypotheses_per_round"] = 1
         settings["methodology"]["inner_loop"]["max_iterations_per_hypothesis"] = 1
         settings["methodology"]["interaction"] = {"leader": {"enabled": True, "check_after": "cycle_report", "min_rounds_before_leader": 1},

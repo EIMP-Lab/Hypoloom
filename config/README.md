@@ -51,8 +51,6 @@ metric: null
 constraints:
   - Keep the original repository and datasets read-only.
   - Explain uncertainty and preserve failed experiments as evidence.
-stop_conditions:
-  max_rounds_per_expert: 4
 ```
 
 | Field | Meaning and accepted values |
@@ -61,7 +59,14 @@ stop_conditions:
 | `description` | Nonempty research objective. State the baseline, expected improvement, measurement procedure and required evidence. `>-` folds the following lines into one string. |
 | `metric` | `null` lets research establish the metric. To specify one shared metric, use the object described below. |
 | `constraints` | List of research requirements and exclusions. These instructions do not replace sandbox permissions. |
-| `stop_conditions.max_rounds_per_expert` | Positive integer ceiling on completed research cycles per expert; `4` is not an experiment count. |
+
+New runs have no expert research-round limit. Round numbers, reports and
+evolution remain; experiment, time, cost, invocation, iteration and repair
+budgets still apply. Remove `stop_conditions.max_rounds_per_expert` from older
+Profiles before starting a new run; any value, including `null`, is rejected.
+Omit `stop_conditions` when it is empty. Without an explicit
+`budget.max_experiments`, the default is 50 times the number of experts.
+Previously admitted runs keep their original rules.
 
 With the template's default shared-goal policy, an accepted `SUPPORTED` result
 can finish the run. `metric: null` does not itself require a common evaluator.

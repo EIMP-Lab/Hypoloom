@@ -228,8 +228,12 @@ class _Audit:
         expert = product.get("experts", {})
         settings = {**expert.get("defaults", {}), **next((item for item in expert.get("experts", ()) if item.get("name", item.get("id")) == role), {})}
         return (settings.get("max_hypotheses_per_round", inner.get("max_hypotheses_per_round", 1)),
-                inner.get("max_iterations_per_hypothesis", 1),
-                product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract.get("budget", {}).get("max_experiments", 1)))
+                inner.get("max_iterations_per_hypothesis", 1))
+
+    def round_allowed(self, cycle, version):
+        if version >= 31: return True
+        product = self.contract.get("methodology", {}).get("controls", {}).get("product", {})
+        return cycle <= product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract.get("budget", {}).get("max_experiments", 1))
 
     def source(self, identity, kind, *, closed=True):
         row = self.attempts[identity]
@@ -413,7 +417,7 @@ class _Audit:
             _need(analysis_failed or failed_update is not None or failed_report is not None or successor_failures
                   or failed_evolve and selected["selected_tip"] is None and previous[1]["schema_version"] >= 17
                   or update is not None and update.get("update_disposition") == "TERMINATE_LINEAGE"
-                  or identity[2] >= self.limits(identity[1])[2]
+                  or not self.round_allowed(identity[2] + 1, previous[1]["schema_version"])
                   or selected["selected_tip"] is None and self.source(accepted["agent_attempt_id"], "ADJUDICATE")[1]["schema_version"] < 17
                   or self.exhausted(identity[1], before), "completed lineage still requests a budgeted next cycle")
         return ended
@@ -440,7 +444,7 @@ class _Audit:
         if directed is not None:
             _need(self.cycle_close(prior_identity, before=before) <= started
                   and _input(request, "--lineage-context") == {"cycle": identity[2], "parent_hypothesis_id": directed}
-                  and identity[2] <= self.limits(identity[1])[2] and not self.exhausted(identity[1], before),
+                  and self.round_allowed(identity[2], request["schema_version"]) and not self.exhausted(identity[1], before),
                   "directed successor bypasses closure, budget or authorized lineage")
             return
         if selected["selected_tip"] is not None:
@@ -451,7 +455,7 @@ class _Audit:
               "unselected successor began before successful prior cycle controls closed")
         update = self.nodes(prior_identity, "HYPOTHESIS_UPDATE")[0][2]["typed_candidate"]
         _need(update.get("update_disposition") == "REVISE_NEXT_CYCLE"
-              and identity[2] <= self.limits(identity[1])[2] and not self.exhausted(identity[1], before),
+              and self.round_allowed(identity[2], request["schema_version"]) and not self.exhausted(identity[1], before),
               "unselected successor lacks explicit budgeted revision")
         parent = None
         if key.get("chain") is not None:
@@ -694,7 +698,7 @@ class _Audit:
             update = self.nodes((identity[0], identity[1], cycle - 1), "HYPOTHESIS_UPDATE")[0]
             _need((directed is not None or update[2]["typed_candidate"].get("update_disposition") == "REVISE_NEXT_CYCLE"
                    or not unselected and (self.leader_reopen(request, parent, self.rank(row))
-                   or self.debate_reopen(request, parent, self.rank(row)))) and cycle <= self.limits(request["role"])[2]
+                   or self.debate_reopen(request, parent, self.rank(row)))) and self.round_allowed(cycle, request["schema_version"])
                   and not self.exhausted(request["role"], self.rank(row)), "new batch follows a terminated or exhausted lineage")
         _need(cycle == 1 or (identity[0], identity[1], cycle - 1) in self.batches, "accepted batch cycles are not contiguous")
         for record, accepted in accepts:

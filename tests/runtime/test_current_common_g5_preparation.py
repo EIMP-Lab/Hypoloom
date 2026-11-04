@@ -184,13 +184,13 @@ def test_common_g5_profile_accepts_explicit_finite_technical_limits(tmp_path):
     assert budget["max_active_agents"] == budget["max_active_processes"] == 1
 
 
-def test_common_g5_revision_budget_is_explicit_and_default_remains_one_cycle(tmp_path):
+def test_common_g5_experiment_budget_is_explicit_without_a_round_limit(tmp_path):
     default_profile, default = canary._profile(tmp_path / "default", "approved-model", common_acceptance=True)
     profile, payload = canary._profile(tmp_path / "revision", "approved-model", common_acceptance=True,
-        max_rounds_per_expert=2, max_experiments=4)
-    assert yaml.safe_load((default_profile / "goal.yaml").read_text())["stop_conditions"]["max_rounds_per_expert"] == 1
+        max_experiments=4)
+    assert "max_rounds_per_expert" not in yaml.safe_load((default_profile / "goal.yaml").read_text())["stop_conditions"]
     assert default["research_contract"]["budget"]["max_experiments"] == 2
-    assert yaml.safe_load((profile / "goal.yaml").read_text())["stop_conditions"]["max_rounds_per_expert"] == 2
+    assert "max_rounds_per_expert" not in yaml.safe_load((profile / "goal.yaml").read_text())["stop_conditions"]
     assert payload["research_contract"]["budget"]["max_experiments"] == 4
     for key in ("max_active_hypotheses", "max_active_agents", "max_active_processes"):
         assert payload["research_contract"]["budget"][key] == 1
@@ -202,7 +202,6 @@ def test_common_g5_revision_budget_is_explicit_and_default_remains_one_cycle(tmp
     {"run_turns": 0}, {"run_turns": 2.5}, {"run_turns": True},
     {"fresh_allocation_usd": "NaN"}, {"fresh_allocation_usd": "0"},
     {"node_budget": replace(canary._NODE_BUDGET, max_cost="0")},
-    {"max_rounds_per_expert": 0}, {"max_rounds_per_expert": 1.5}, {"max_rounds_per_expert": True},
     {"max_experiments": 0}, {"max_experiments": 2.5}, {"max_experiments": True},
 ])
 def test_common_g5_invalid_technical_limits_do_not_create_a_fixture(tmp_path, changes):
@@ -295,7 +294,7 @@ def test_common_g5_explicit_runner_preserves_pause_evidence_without_another_disp
             assert request.payload["research_contract"]["budget"]["agent_invocation"] == node.to_dict()
             assert request.payload["research_contract"]["budget"]["max_experiments"] == 4
             product = request.payload["research_contract"]["methodology"]["controls"]["product"]
-            assert product["goal"]["stop_conditions"]["max_rounds_per_expert"] == 2
+            assert "max_rounds_per_expert" not in product["goal"]["stop_conditions"]
             calls.append(("create",))
             return SimpleNamespace(status="accepted")
         def tick(self):
@@ -322,7 +321,7 @@ def test_common_g5_explicit_runner_preserves_pause_evidence_without_another_disp
         canary._run_current_host_canary(tmp_path, common_acceptance=True, adapter=adapter,
             model="approved-model", fresh_allocation_usd=Decimal("1000"), node_budget=node,
             run_wall_seconds=86400, run_turns=10000, progress_callback=progress,
-            max_rounds_per_expert=2, max_experiments=4)
+            max_experiments=4)
     assert [item[0] for item in calls] == ["preflight", "initialize", "create", "tick", "progress", "close"]
     evidence = json.loads((tmp_path / "current-g5-evidence.json").read_text())
     assert evidence["budget_scope"] == "fresh_allocation" and evidence["cohort_charged_lower_bound_usd"] is None
@@ -335,7 +334,7 @@ def test_common_g5_explicit_runner_preserves_pause_evidence_without_another_disp
     assert evidence["limits"] == {"cohort_budget_ceiling_usd": None, "prior_charged_usd": None,
         "total_reported_usd": "1000", "per_expert_reported_usd": "1000", "run_turns": 10000,
         "run_wall_seconds": 86400, "node": node.to_dict(),
-        "max_rounds_per_expert": 2, "max_experiments": 4}
+        "max_experiments": 4}
     assert evidence["oracle"]["ok"] is False and evidence["common_acceptance"] is None
 
 
@@ -587,7 +586,7 @@ def test_common_g5_checks_each_actual_cycle_and_chain_session(cycles, schema_ver
     accepted = [query_plan, *[item for cycle in range(1, cycles + 1)
         for item in _cycle_observations(cycle, close=cycle < cycles, schema_version=schema_version)]]
     batches = [{"cycle": cycle, "chains": {"1": f"hypothesis-{cycle}"}} for cycle in range(1, cycles + 1)]
-    canary._assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=cycles)
+    canary._assert_canary_research_cycles(accepted, batches, max_experiments=cycles)
 
 
 @pytest.mark.parametrize("mutation", ["same_node_session", "prior_cycle_session", "parent", "resume", "empty", "mixed_version"])
@@ -606,7 +605,7 @@ def test_common_g5_current_sessions_reject_reuse_or_continuation(mutation):
     else: target["request"]["schema_version"] = 23
     batches = [{"cycle": cycle, "chains": {"1": f"hypothesis-{cycle}"}} for cycle in (1, 2)]
     with pytest.raises(AssertionError):
-        canary._assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=2)
+        canary._assert_canary_research_cycles(accepted, batches, max_experiments=2)
 
 
 @pytest.mark.parametrize("mutation", ["wrong_session", "wrong_resume", "foreign_chain", "missing_analysis", "missing_proposal", "missing_close", "terminate", "extra_cycle", "unaccepted_cycle", "final_controls", "wrong_order", "duplicate_proposal"])
@@ -630,14 +629,14 @@ def test_common_g5_revision_coverage_rejects_missing_or_foreign_cycle_work(mutat
     elif mutation == "duplicate_proposal": accepted.append(copy.deepcopy(accepted[2]))
     else: batches.pop()
     with pytest.raises(AssertionError):
-        canary._assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=2)
+        canary._assert_canary_research_cycles(accepted, batches, max_experiments=2)
 
 
-def test_common_g5_one_cycle_default_rejects_revision_coverage_without_opt_in():
+def test_common_g5_cycle_coverage_still_respects_the_experiment_budget():
     accepted = _cycle_observations(1, close=True) + _cycle_observations(2)
     batches = [{"cycle": cycle, "chains": {"1": f"hypothesis-{cycle}"}} for cycle in (1, 2)]
     with pytest.raises(AssertionError):
-        canary._assert_canary_research_cycles(accepted, batches)
+        canary._assert_canary_research_cycles(accepted, batches, max_experiments=1)
 
 
 def test_seeded_repair_is_observed_once_overall_not_required_again_in_later_design():

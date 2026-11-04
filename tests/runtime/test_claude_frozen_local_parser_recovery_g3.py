@@ -203,7 +203,6 @@ def _recovery_payload(root, mount):
     _payload(root, mount, roles=(_GOAL,), fixture_data=data)
     profile = root / "profile"
     goal = yaml.safe_load((profile / "goal.yaml").read_text())
-    goal["stop_conditions"]["max_rounds_per_expert"] = 2
     goal["description"] += (
         " Preserve each hypothesis's accepted measurement/parser bytes. If the first hypothesis cannot "
         "produce its declared local result envelope, record the factual failure and revise in a new "

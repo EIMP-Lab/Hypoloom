@@ -195,7 +195,6 @@ def _prepare_profile(
             "Keep probe and data unchanged",
         ],
         "stop_conditions": {
-            "max_rounds_per_expert": 1,
             "max_wall_clock_hours": _WALL_SECONDS / 3600,
         },
     }

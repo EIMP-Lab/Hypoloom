@@ -47,8 +47,6 @@ metric: null
 constraints:
   - 保持原始仓库和数据集只读。
   - 说明不确定性，并保留失败实验作为证据。
-stop_conditions:
-  max_rounds_per_expert: 4
 ```
 
 | 字段 | 含义与取值 |
@@ -57,7 +55,12 @@ stop_conditions:
 | `description` | 非空研究目标。应说明基线、期望改进、测量方法和证据要求；`>-` 将后续多行合并为一个字符串。 |
 | `metric` | `null` 表示允许研究过程确定指标。需要指定统一指标时，使用下方对象格式。 |
 | `constraints` | 研究要求与排除事项的列表；这些文字要求不能替代沙箱权限。 |
-| `stop_conditions.max_rounds_per_expert` | 每位专家完成研究周期的上限，正整数；`4` 不代表四次实验。 |
+
+新运行不再限制专家研究轮次，仍保留轮次编号、每轮报告与演化。实验数量、时间、
+费用、单次调用、假设内迭代和修复额度继续生效。使用旧 Profile 创建新运行前，
+请删除 `stop_conditions.max_rounds_per_expert`；任何取值（包括 `null`）都会被拒绝。
+删除后若 `stop_conditions` 为空，可一并省略。未显式设置 `budget.max_experiments`
+时，默认实验总量为专家人数乘以 50。已经创建的运行保留原有规则。
 
 模板默认采用共享目标模式，一个获准的 `SUPPORTED` 结果即可使运行结束。
 `metric: null` 本身不要求所有专家使用共同评估器。需要固定指标时，可仅替换

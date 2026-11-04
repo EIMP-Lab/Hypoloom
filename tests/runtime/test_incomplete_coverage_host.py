@@ -80,7 +80,6 @@ def test_profile_coverage_preserves_outcome_through_analysis_and_closure(
         settings["experts"]["experts"][0]["name"] = contract["roles"][0]["id"]
         settings["experts"]["defaults"].update(max_hypotheses_per_round=1, max_forks=1)
         settings["goal"]["completion_mode"] = "explicit_signals"
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 2, "repair_attempts": 0}
         settings["methodology"]["graph_evolution"]["enabled"] = False
         settings["methodology"]["interaction"] = {"leader": {"enabled": False}, "debate": {"enabled": False}}

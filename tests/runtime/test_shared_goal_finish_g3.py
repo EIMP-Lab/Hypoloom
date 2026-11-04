@@ -105,7 +105,6 @@ def _payload(root):
     contract = payload["research_contract"]
     settings = project_profile_v4(**documents()).settings
     settings["goal"]["completion_mode"] = "shared_goal"
-    settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 2
     settings["experts"]["experts"][0]["name"] = WINNER
     settings["experts"]["defaults"].update(max_forks=1, max_hypotheses_per_round=1)
     settings["methodology"]["inner_loop"] = {

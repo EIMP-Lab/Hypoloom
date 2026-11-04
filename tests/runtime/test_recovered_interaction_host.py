@@ -34,7 +34,6 @@ def test_failed_cpu_experiment_repairs_then_observer_and_publication_close(tmp_p
         settings["experts"]["experts"][0]["name"] = contract["roles"][0]["id"]
         settings["experts"]["defaults"].update(max_hypotheses_per_round=2, max_forks=2)
         settings["goal"]["completion_mode"] = "explicit_signals"
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 1, "repair_attempts": 1}
         settings["methodology"]["graph_evolution"]["enabled"] = False
         settings["methodology"]["interaction"] = {"leader": {

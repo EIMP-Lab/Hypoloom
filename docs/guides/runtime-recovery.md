@@ -26,11 +26,13 @@ Total experiment, wall-clock, cost and invocation limits still apply.
 `list_my_experiments` and `wait_experiment` expose `execution_budget`, including
 used/remaining allowances and whether recheck is required. Web/TUI show device
 recoveries separately. An initial submission plus two ordinary repairs is three
-experiments, not three research rounds. `max_rounds_per_expert` limits full cycles:
-literature, hypotheses, design/execution/analysis, adjudication, update, report
-and evolution. Scientific iterations and repairs remain inside their cycle.
-The expert input includes current round and remaining future rounds; at round
-3 of a limit of 3, no future round remains.
+experiments. A research round comprises literature, hypotheses,
+design/execution/analysis, adjudication, update, report and evolution; scientific
+iterations and repairs remain inside their cycle. For ACI 31 and later, expert
+inputs report the current round without a round ceiling or remaining-round count.
+Continuation still requires an eligible lineage and available run budgets; goal
+acceptance, lineage termination and operator cancellation remain stop conditions.
+Earlier admitted runs retain their original round limits.
 
 ## Web observation freshness
 

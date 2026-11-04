@@ -189,7 +189,6 @@ def test_host_analysis_correction_or_exhaustion_preserves_failed_science(tmp_pat
         settings["experts"]["experts"][0]["name"] = contract["roles"][0]["id"]
         settings["experts"]["defaults"].update(max_hypotheses_per_round=1, max_forks=1)
         settings["goal"]["completion_mode"] = "explicit_signals"
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 1, "repair_attempts": 0}
         settings["methodology"]["graph_evolution"]["enabled"] = False
         settings["methodology"]["interaction"] = {"leader": {"enabled": False}, "debate": {"enabled": False}}

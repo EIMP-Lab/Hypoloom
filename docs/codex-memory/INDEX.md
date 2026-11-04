@@ -1,5 +1,14 @@
 # Development memory index
 
+- [Research-round limit removal, November 4](../design/research-round-limit-removal.md):
+  ACI 31 removes the fresh-run ceiling, rejects the removed Profile field,
+  preserves progress and independent budgets, and retains historical replay.
+  User authorizes dev/main publication; existing research remains read-only.
+  [Validation](../qualification.md#research-round-limit-removal-2026-11-04):
+  8,683 reconciled passes/242 skips, actual five-round CPU continuation and
+  experiment-budget stopping, clean native closure, five unchanged retained
+  roots, 206-file packaging and 131 public passes/one CUDA skip.
+
 - [GPU sharing and execution recovery, November 4](../design/gpu-sharing-and-execution-recovery.md):
   ACI 30 budget-based sharing, partial-peak lower bounds, pressure protection,
   owned Xid diagnosis, existing node recheck and separate finite recovery limits.

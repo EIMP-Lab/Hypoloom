@@ -100,14 +100,21 @@ class RawRecords:
         item.update(EmbeddedInput.from_bytes(item["ref"], "application/json", json.dumps(content).encode()).to_dict())
 
 
-def fixture(tmp_path, *, finished=False, none=False):
-    host = StoredHost(tmp_path / "state")
+def fixture(tmp_path, *, finished=False, none=False, version=14):
+    host = StoredHost(tmp_path / "state", agent_version=version)
     delegate, source, _ = select(host, action="none" if none else "leader")
     if not none:
         delegate.drive("run-1")
+        if version >= 23:
+            if finished:
+                guidance = host.launched[-1][0]
+                host.record(guidance, inputs=delegate.guidance_task_inputs("run-1", guidance))
+                delegate.drive("run-1")
+            first = node("HYPOTHESIS_PROPOSAL", cycle=2, subkind=ResearchNodeSubkind.FORWARD)
+            host.record(first, inputs=delegate.guidance_inputs("run-1", first))
         task = node("HYPOTHESIS_PROPOSAL", cycle=2, subkind=ResearchNodeSubkind.SYNTHESIS)
-        host.record(task, inputs=delegate.leader_inputs("run-1", task))
-        if finished:
+        host.record(task, inputs=delegate.guidance_inputs("run-1", task) if version >= 23 else delegate.leader_inputs("run-1", task))
+        if finished and version < 23:
             host.finish_round(cycle=2)
             delegate.drive("run-1")
     raw = RawRecords(host)
@@ -116,8 +123,9 @@ def fixture(tmp_path, *, finished=False, none=False):
 
 
 @pytest.mark.parametrize("state", ["none", "started", "finished"])
-def test_raw_sqlite_git_interaction_rows_are_independently_readable(tmp_path, state):
-    data = fixture(tmp_path, none=state == "none", finished=state == "finished")
+@pytest.mark.parametrize("version", [14, 31])
+def test_raw_sqlite_git_interaction_rows_are_independently_readable(tmp_path, state, version):
+    data = fixture(tmp_path, none=state == "none", finished=state == "finished", version=version)
     before = copy.deepcopy((data.attempts, data.observations, data.facts, data.transitions))
     assert data.audit() == []
     assert (data.attempts, data.observations, data.facts, data.transitions) == before

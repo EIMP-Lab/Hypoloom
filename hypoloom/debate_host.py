@@ -11,7 +11,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from .agent_aci import EmbeddedInput, canonical_json
-from .expert_batch import batch_limits
+from .expert_batch import research_round_available
 from .expert_interaction import (DebateBinding, DebateFork, DebateParticipant, InteractionFacts,
     bind_debate, debate_judgment_from_attempt, read_debate_rounds, select_interaction_facts, validate_original_debate_scope)
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask, ResearchNodeKind, ResearchNodeSubkind
@@ -299,7 +299,7 @@ class DebateHost:
                 reason = "source_cycle_failed"
             elif not self.interaction._closed(run_id, scope.role, scope.component_id, cycle):
                 continue
-            elif cycle + 1 > batch_limits(self.host._research_contract(run_id).document, scope.role)["rounds"]:
+            elif not research_round_available(self.host._research_contract(run_id).document, cycle + 1, self.interaction._version(run_id)):
                 reason = "round_budget_exhausted"
             elif not self.host._batch_creation_available(run_id, scope.role):
                 reason = "experiment_budget_exhausted"
@@ -340,7 +340,7 @@ class DebateHost:
                 cycle = self.interaction._admitted_cycle(run_id, {"role": scope.role, "component_id": scope.component_id})
                 if history.latest is None or history.latest.cycle != cycle or not self.interaction._closed(run_id, scope.role, scope.component_id, cycle):
                     return
-                if cycle + 1 > batch_limits(self.host._research_contract(run_id).document, scope.role)["rounds"] or not self.host._batch_creation_available(run_id, scope.role) or history.selected_tip is None:
+                if not research_round_available(self.host._research_contract(run_id).document, cycle + 1, self.interaction._version(run_id)) or not self.host._batch_creation_available(run_id, scope.role) or history.selected_tip is None:
                     not_started.append({"role": scope.role, "component_id": scope.component_id, "reason": "budget_or_parent_unavailable"})
                     continue
                 literature = self.literature_source(run_id, scope.role, scope.component_id, cycle)

@@ -400,7 +400,7 @@ class _InteractionAudit:
         _need(plan["cycle"] == parent["adjudication"]["cycle"] + 1
               and plan["parent_hypothesis_id"] == expected_parent, "Leader next cycle changes its actual authorized parent")
         cap = self.product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract["budget"]["max_experiments"])
-        _need(plan["cycle"] <= cap, "Leader overrode the admitted round budget")
+        _need(version >= 31 or plan["cycle"] <= cap, "Leader overrode the admitted round budget")
         peers = plan["peer_memory_commits"]
         _need(set(peers) == self.roles - {plan["role"]}, "Leader memory includes itself or omits/adds a peer owner")
         for role, commit in peers.items():
@@ -757,7 +757,7 @@ class _InteractionAudit:
                     "Debate target drifted past its admitted participant cycle")
             _debate_literature_source(plan, effect, self.transitions, self.attempts, self.observations, self.run_id)
             cap = self.product.get("goal", {}).get("stop_conditions", {}).get("max_rounds_per_expert", self.contract["budget"]["max_experiments"])
-            _need(cycle <= cap, "Debate restart bypassed the admitted round budget")
+            _need(version >= 31 or cycle <= cap, "Debate restart bypassed the admitted round budget")
             for identity, value in self.observations.items():
                 request = value.get("request", {})
                 key = request.get("task_context", {}).get("key", {})

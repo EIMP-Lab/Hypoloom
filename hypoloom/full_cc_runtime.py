@@ -389,7 +389,11 @@ def full_cc_instruction(request: AgentRequest) -> str:
            "evidence gaps: use permitted academic search for alternatives and state any changed source/version. "
            "Never request passwords, wait indefinitely for login, infer a source was read, or treat an OA copy as the publisher final version. "
            if request.schema_version >= 20 else "")
-        + ("When the expert configuration includes research_budget, use current_round and remaining_future_rounds; they "
+        + ("When the expert configuration includes research_budget, current_round records full research cycles. "
+           "There is no research-round limit. Further research requires an eligible lineage and remaining run budgets; "
+           "goal acceptance, lineage termination and operator cancellation still stop work. "
+           "Scientific iterations and execution repairs have their own limits. " if request.schema_version >= 31 else
+           "When the expert configuration includes research_budget, use current_round and remaining_future_rounds; they "
            "describe full research cycles. Scientific iterations and execution repairs do not create another round. "
            "Do not promise a later round when none remains. " if request.schema_version >= 30 else "")
         + "Limits are this request's "
@@ -750,8 +754,8 @@ def full_cc_instruction(request: AgentRequest) -> str:
              "Ordinary repairs and confirmed GPU device recoveries have separate finite allowances. "
              "gpu_device_fault requires operator resource recheck; do not try empty_cache, modify code, "
              "or repeatedly submit to bypass a device block. Once the applicable allowance is zero, "
-             "finish with the recorded technical failure. research_budget.remaining_future_rounds "
-             "limits whether a suggested next round can actually occur. " if request.schema_version >= 30 else "")
+             "finish with the recorded technical failure. The Host decides further research under the remaining run budgets. "
+             if request.schema_version >= 30 else "")
             +
             "The submit_experiment candidate uses the same ExperimentSpecCandidate shape as DESIGN, "
             "also exposed in its MCP input schema and /runtime/output-schema.json $defs. "

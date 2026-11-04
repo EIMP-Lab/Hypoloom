@@ -2,6 +2,67 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Research-round limit removal (2026-11-04)
+
+[Design](design/research-round-limit-removal.md). The user requests removal of
+`goal.yaml.stop_conditions.max_rounds_per_expert`, updated Profile templates,
+dev commit/push and corresponding public main publication. ACI 31 / adapter 89
+removes the expert research-round ceiling for new runs. Round numbers, ancestry,
+reports and progress remain; experiment, time, cost, invocation, scientific
+iteration and execution-repair limits still apply. Fresh admission rejects the
+removed field, including `null`, with a deletion instruction. Historical contracts
+and audits retain their admitted rules through the existing ACI boundary.
+
+Evidence is under `.local/qualification/round-limit-removal/`. Original pre-fix
+and intermediate failure results remain at their original paths.
+
+- Pre-fix checks reproduce **six failures / one pass**. Initial focused checks
+  pass **119** cases. Intermediate failures expose an immutable-mapping validation
+  mistake, a missing ACI 31 command registration, stale current-version fixtures
+  and one source-drift rejection while development was still in progress. These
+  are fixed before candidate freeze; runtime identity checks remain intact.
+  Final affected checks pass **221** cases in **44.71 s**.
+- Current round-policy checks pass **21** cases in **87.46 s**, including actual
+  Host/CPU runs completing five rounds / ten experiments and stopping at the
+  separate four-experiment budget after two rounds. Unit checks exercise a
+  successor beyond the old implicit ceiling, legacy admission/replay, current
+  Leader guidance and Debate restarts. Two actual CLI/Host cases pass in
+  **84.45 s**, covering parser failure followed by a new scientific hypothesis,
+  and completion correction through publication. Independent closure of these
+  four roots finds **163 closed Agents / 18 closed CPU Processes**, clean Oracles
+  and no live members of **56 recorded process groups**. The expected failed
+  Process remains recorded as failed.
+- Full offline G1 records **8,659 passed / 24 failed / 242 skipped**, **1,148.71 s**
+  (`g1.xml`). Twenty-three failures share a test helper that still injects the
+  removed field into current runs; the other expects ACI 30. The helper now
+  includes the field only for historical versions, preserving legacy semantics.
+  Rechecking all 24 failures plus the positive legacy multichain case gives
+  **25 passes**, **254.78 s** (`g1-recheck.xml`). No runtime source change follows
+  G1. Per-case reconciliation gives **8,683 passed / 242 skipped / zero unresolved
+  failures** (`reconciled.json`), from one full invocation plus affected rechecks.
+- The seven native G3 scenarios included in G1 close **169 Agents / 16 CPU
+  Processes**, with clean Oracles and no live members of **154 recorded groups**.
+  Independent inspection of the 24 native recheck roots closes **516 Agents /
+  33 CPU Processes**, with clean Oracles and no live members of **543 groups**.
+  Expected failed, lost and cancelled Agents retain their actual terminal reasons;
+  cancellation and explicit quarantine cleanup are not counted as research success.
+  Provider responses are local scripted fixtures, not paid-model calls.
+- Read-only baseline/candidate audits agree for **five retained research roots**.
+  Logical database contents and **3,072 artifact files** are unchanged, with clean
+  Oracles. No retained Host is started and no research state or plugin is migrated.
+- Dev and public main each match **206 runtime files** across source, wheel,
+  isolated installation and fresh frozen bundles. Installed CLI/MCP, seeded helper
+  and round-policy checks pass. Public main checks pass **131 tests / one explicit
+  CUDA skip**, **5.60 s**. The changed runtime files are identical across branches;
+  their independent layouts and histories remain intact.
+
+The validation environment uses Python 3.12.14, SQLite 3.53.4, Node.js 22.16.0
+and installed Claude CLI 2.1.317. Compilation, undefined-name and whitespace
+checks pass. This change adds no new GPU or paid-model qualification; those lanes
+retain explicit opt-ins. New policy requires a fresh run and removal of the old
+field from local Profiles. The global default experiment budget remains 50 times
+the declared expert count when `max_experiments` is omitted.
+
 ## GPU sharing and execution recovery (2026-11-04)
 
 [Design](design/gpu-sharing-and-execution-recovery.md). The user ended the research

@@ -42,7 +42,7 @@ def _six_yaml_profile_v4_payload(tmp_path: Path, mount: Path, run_id: str, *, co
     """Admit the actual six source documents; never edit the admitted science."""
     _, target, data = _materialize_expert_loop_pilot_v3(mount)
     source = documents()
-    source["goal"]["stop_conditions"] = {"max_rounds_per_expert": 1, "max_wall_clock_hours": 1}
+    source["goal"]["stop_conditions"] = {"max_wall_clock_hours": 1}
     source["experts"] = {"defaults": {"model": _MODEL, "effort": "high", "max_forks": 1,
         "max_hypotheses_per_round": 1}, "experts": [{"name": "ml-researcher",
             "role": "Measurement researcher", "persona": "Inspect and test declared measurements.",

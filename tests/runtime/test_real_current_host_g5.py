@@ -249,7 +249,7 @@ def _profile(
     *, common_acceptance: bool = False,
     fresh_allocation_usd=None, node_budget: AgentBudget = _NODE_BUDGET,
     run_wall_seconds: float = _WALL_SECONDS, run_turns: int = _TURN_LIMIT,
-    max_rounds_per_expert: int = 1, max_experiments: int = 2,
+    max_experiments: int = 2,
     reading_compatibility: bool = False,
 ) -> tuple[Path, dict]:
     """Create only a fresh fixture Git target and six admitted source YAMLs."""
@@ -260,7 +260,7 @@ def _profile(
         raise ValueError("run_wall_seconds must be finite and positive")
     if isinstance(run_turns, bool) or not isinstance(run_turns, int) or run_turns <= 0:
         raise ValueError("run_turns must be a positive integer")
-    for name, value in (("max_rounds_per_expert", max_rounds_per_expert), ("max_experiments", max_experiments)):
+    for name, value in (("max_experiments", max_experiments),):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError(f"{name} must be a positive integer")
     if not isinstance(node_budget, AgentBudget) or Decimal(node_budget.max_cost) <= 0:
@@ -399,7 +399,6 @@ def _profile(
             "Never modify admitted data",
         ],
         "stop_conditions": {
-            "max_rounds_per_expert": max_rounds_per_expert,
             "max_wall_clock_hours": run_wall_seconds / 3600,
         },
     }
@@ -666,9 +665,9 @@ def _assert_canary_outcome_hypotheses(outcomes, preregistrations, batches):
         hypothesis for batch in batches for hypothesis in batch["chains"].values()}
 
 
-def _assert_canary_research_cycles(accepted, batches, *, max_rounds_per_expert=1):
+def _assert_canary_research_cycles(accepted, batches, *, max_experiments=2):
     """Check actual accepted batches against this one-chain sample's node work."""
-    assert 1 <= len(batches) <= max_rounds_per_expert
+    assert 1 <= len(batches) <= max_experiments
     assert [batch["cycle"] for batch in batches] == list(range(1, len(batches) + 1))
     inner_commands = ("EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS")
     controls = {"ADJUDICATE", "HYPOTHESIS_UPDATE", "CYCLE_REPORT", "SELF_EVOLVE"}
@@ -1077,7 +1076,7 @@ def _drive_canary(host, run_id, run_wall_seconds, progress_callback):
 
 def _assert_current_canary_closure(
     host, run_id, *, model, remaining, node_budget, run_turns,
-    max_rounds_per_expert, max_experiments, common_acceptance,
+    max_experiments, common_acceptance,
 ):
     """Use the same read-only outcome checks for live and retained canaries."""
     assert host.store.latest_transition(run_id)["state"] == "COMPLETED"
@@ -1100,7 +1099,7 @@ def _assert_current_canary_closure(
         "SELECT t.payload_json FROM workflow_transitions t JOIN workflow_commands c USING(command_id) "
         "WHERE t.workflow_id=? AND c.command_type='ACCEPT_HYPOTHESIS' ORDER BY t.revision", (run_id,))
         if (transition := json.loads(row["payload_json"])).get("hypothesis_batch") is not None]
-    _assert_canary_research_cycles(accepted, batches, max_rounds_per_expert=max_rounds_per_expert)
+    _assert_canary_research_cycles(accepted, batches, max_experiments=max_experiments)
     stop = host.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND state='STOPPING' AND fact_id IS NOT NULL", (run_id,))
     assert len(stop) == 1 and json.loads(stop[0]["payload_json"])["stop_disposition"] == "COMPLETED"
     assert host.store.list_facts(run_id, "GoalVerdictRecorded")[0]["payload"]["verdict"] == "GOAL_MET"
@@ -1185,7 +1184,7 @@ def _run_current_host_canary(
     tmp_path, *, common_acceptance=False, adapter=None, model=None,
     fresh_allocation_usd=None, node_budget: AgentBudget = _NODE_BUDGET,
     run_wall_seconds: float = _WALL_SECONDS, run_turns: int = _TURN_LIMIT,
-    max_rounds_per_expert: int = 1, max_experiments: int = 2,
+    max_experiments: int = 2,
     progress_callback=None, reading_compatibility=False,
 ):
     """Run only when explicitly called; callbacks may stop dispatch by raising.
@@ -1198,7 +1197,7 @@ def _run_current_host_canary(
     profile, payload = _profile(tmp_path / "qualification", model, prior, common_acceptance=common_acceptance,
         fresh_allocation_usd=remaining, node_budget=node_budget,
         run_wall_seconds=run_wall_seconds, run_turns=run_turns,
-        max_rounds_per_expert=max_rounds_per_expert, max_experiments=max_experiments,
+        max_experiments=max_experiments,
         reading_compatibility=reading_compatibility)
     run_id = payload["run_id"]
     common_evidence = reading_evidence = None
@@ -1225,7 +1224,7 @@ def _run_current_host_canary(
         assert {p.name: p.read_bytes() for p in profile.glob("*.yaml")} == frozen_yaml
         common_evidence = _assert_current_canary_closure(
             host, run_id, model=model, remaining=remaining, node_budget=node_budget,
-            run_turns=run_turns, max_rounds_per_expert=max_rounds_per_expert,
+            run_turns=run_turns,
             max_experiments=max_experiments, common_acceptance=common_acceptance,
         )
         if reading_compatibility:
@@ -1272,7 +1271,6 @@ def _run_current_host_canary(
                             "per_expert_reported_usd": str(remaining),
                             "run_turns": run_turns,
                             "run_wall_seconds": run_wall_seconds,
-                            "max_rounds_per_expert": max_rounds_per_expert,
                             "max_experiments": max_experiments,
                             "node": node_budget.to_dict(),
                         },

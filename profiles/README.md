@@ -68,6 +68,11 @@ existing runs. See [personal configuration](../config/README.md).
 
 ## Budgets and GPU use
 
+Research rounds have no configured ceiling in new runs. Remove
+`stop_conditions.max_rounds_per_expert` from old local Profiles before admission;
+keep the experiment, time and cost limits in `methodology.yaml.budget`. Round
+reports and progress tracking continue. Existing runs retain their original rules.
+
 Configure resource, time and cost limits under `methodology.yaml.budget`:
 
 | Setting | Meaning |
@@ -80,7 +85,7 @@ Configure resource, time and cost limits under `methodology.yaml.budget`:
 | `provider_rpm_limit`, `provider_max_in_flight` | Request rate and concurrency per model |
 
 The templates have three experts, a 45 USD run limit, 15 USD per expert,
-1 USD per invocation, at most four research rounds per expert and a six-hour run
+1 USD per invocation, a 96-experiment run limit and a six-hour run
 limit. These are editable thresholds, not expected costs or permission to start.
 In-flight responses can exceed the remaining allowance. Reserve room for analysis,
 reports and retries. Agent and experiment deadlines are independent.

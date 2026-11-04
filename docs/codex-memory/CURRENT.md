@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- November 4 round-limit follow-up: the user requests removing
+  goal.yaml.stop_conditions.max_rounds_per_expert, updating templates and
+  committing/pushing dev with the corresponding public main change. ACI 31 /
+  adapter 89 removes the new-run research-round ceiling and implicit experiment-
+  count fallback. New admission rejects the field, including null; legacy reads
+  and audits retain their original limits. Progress, lineage and reports remain,
+  with actual experiment/time/cost/invocation/iteration/repair budgets unchanged.
+  Omitted max_experiments still defaults to a global 50 times expert count.
+  Full G1 plus 25 affected rechecks reconciles 8,683 passes/242 skips and no
+  unresolved failures. Four focused native/CPU roots close 163 Agents/18 Processes;
+  seven G1 native roots close 169/16; 24 native recheck roots close 516/33. All
+  independent audits pass with zero live recorded groups. Five retained roots
+  and 3,072 artifacts stay unchanged. Both packages match 206 runtime files;
+  main tests pass 131 cases with one CUDA skip. No new GPU or paid-model lane.
+  Existing user research remains read-only; the new policy requires a fresh run.
+  [Design](../design/research-round-limit-removal.md) /
+  [evidence](../qualification.md#research-round-limit-removal-2026-11-04).
+
 - November 4 GPU sharing and execution recovery: user ended the research run and
   authorizes framework repairs, dev commit/push and corresponding public main
   updates. ACI 30 separates sharing permission from measurement calibration,

@@ -78,7 +78,8 @@ class StoredHost:
         product["methodology"]["interaction"]["debate"]["enabled"] = debate
         for section, values in (interaction_options or {}).items():
             product["methodology"]["interaction"].setdefault(section, {}).update(values)
-        product["goal"]["stop_conditions"]["max_rounds_per_expert"] = rounds
+        if agent_version < 31:
+            product["goal"]["stop_conditions"]["max_rounds_per_expert"] = rounds
         product["goal"]["completion_mode"] = "shared_goal" if shared_goal else "explicit_signals"
         product["experts"]["experts"] = [{**product["experts"]["experts"][0], "name": role} for role in ("researcher", "critic")]
         document = rows[0]["payload"]["research_contract"]
@@ -192,7 +193,10 @@ def host(tmp_path):
 def select(host, *, action="leader"):
     delegate = InteractionHost(host)
     task, _ = delegate._triggers("run-1")[0]
-    row = host.record(task, candidate=_observer(action), inputs=delegate.inputs("run-1", task))
+    candidate = _observer(action)
+    if action == "leader" and delegate._version("run-1") >= 21:
+        candidate["supporting_refs"].insert(0, "hyp-2")
+    row = host.record(task, candidate=candidate, inputs=delegate.inputs("run-1", task))
     delegate.drive("run-1")
     return delegate, row, task
 
@@ -413,6 +417,22 @@ def test_permanent_budget_exhaustion_releases_own_reason_without_new_round(tmp_p
     assert view._active("run-1") is None and not reasons(host)
     assert view._events("run-1")[-1][1]["reason"] == reason
     host.store.close()
+
+
+def test_current_leader_guidance_has_no_round_budget(tmp_path):
+    host = StoredHost(tmp_path / "state", rounds=1, agent_version=31)
+    try:
+        view, _, _ = select(host)
+        view.drive("run-1")
+        task, role, component = host.launched[-1]
+        assert task.kind is AuxiliaryRequestKind.LEADER
+        host.record(task, inputs=view.guidance_task_inputs("run-1", task))
+        view.drive("run-1")
+        first = node("HYPOTHESIS_PROPOSAL", cycle=2, subkind=ResearchNodeSubkind.FORWARD)
+        assert view.guidance_inputs("run-1", first)
+        assert "max_rounds_per_expert" not in host.contract.document["methodology"]["controls"]["product"]["goal"]["stop_conditions"]
+    finally:
+        host.store.close()
 
 
 def test_designated_leader_final_failure_releases_pause_without_fabricated_report(host):

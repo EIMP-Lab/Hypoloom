@@ -93,7 +93,7 @@ def documents():
     return {
         "goal": {"title": "Improve a measured system", "description": "Experts choose the experiment and parser.",
                  "metric": None, "constraints": ["Keep source checkout read-only"],
-                 "stop_conditions": {"max_rounds_per_expert": 4, "max_wall_clock_hours": 2}},
+                 "stop_conditions": {"max_wall_clock_hours": 2}},
         "experts": {"defaults": {"model": "configured-model", "effort": "high", "max_forks": 4,
                                  "max_hypotheses_per_round": 3}, "experts": [
             {"name": "scientist", "role": "System researcher", "persona": "Question assumptions.",

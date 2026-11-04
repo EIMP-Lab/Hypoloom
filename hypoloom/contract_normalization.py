@@ -62,7 +62,7 @@ def normalize_research_contract_language(document: dict[str, Any]) -> None:
         return
     if "product" in controls:
         from .profile_v4 import validate_product_settings
-        controls["product"] = validate_product_settings(controls["product"])
+        controls["product"] = validate_product_settings(controls["product"], allow_legacy_round_limit=True)
     if "language_routes" not in controls:
         return
     try:

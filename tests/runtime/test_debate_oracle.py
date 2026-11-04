@@ -55,7 +55,7 @@ def fixture(tmp_path, *, judged=True, restart=True, version=14):
 
 
 @pytest.mark.parametrize("judged,restart", [(False, False), (True, False), (True, True)])
-@pytest.mark.parametrize("version", [14, 29])
+@pytest.mark.parametrize("version", [14, 29, 31])
 def test_independent_oracle_reads_actual_six_round_records_and_accepted_promotion(tmp_path, judged, restart, version):
     data = fixture(tmp_path, judged=judged, restart=restart, version=version)
     before = copy.deepcopy(vars(data))

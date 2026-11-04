@@ -135,7 +135,7 @@ def shared_host(tmp_path, request):
 
                 product = project_profile_v4(**documents()).settings
                 product["goal"].update(evaluation="grounding",
-                    stop_conditions={"max_rounds_per_expert": 1})
+                    stop_conditions={})
                 product["experts"]["defaults"].update(max_forks=1, max_hypotheses_per_round=1)
                 product["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 1, "repair_attempts": 0}
                 product["methodology"]["graph_evolution"]["enabled"] = False

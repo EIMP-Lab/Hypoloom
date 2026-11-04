@@ -233,7 +233,9 @@ def _payload(tmp_path: Path, run_id: str):
     expert = settings["experts"]["experts"][0]
     expert.update(name=contract["roles"][0]["id"], stage_overrides={})
     settings["goal"]["completion_mode"] = "explicit_signals"
-    settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
+    from hypoloom import workflow_host
+    if workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION < 31:
+        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 1
     settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 2, "repair_attempts": 1}
     settings["methodology"]["interaction"] = {"leader": {"enabled": False}, "debate": {"enabled": False}}
     settings["methodology"]["graph_evolution"] = {"enabled": False}

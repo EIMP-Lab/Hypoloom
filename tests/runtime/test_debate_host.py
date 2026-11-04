@@ -162,9 +162,9 @@ def test_three_rounds_two_participants_are_six_real_attempt_rows_with_one_judge(
     host.store.close()
 
 
-@pytest.mark.parametrize("version", [14, 29])
+@pytest.mark.parametrize("version", [14, 29, 31])
 def test_judge_releases_only_debate_and_restarts_both_at_hypothesis_stage(tmp_path, version):
-    host, view, _, _ = setup(tmp_path, agent_version=version)
+    host, view, _, _ = setup(tmp_path, agent_version=version, rounds=1 if version >= 31 else 4)
     host.control(Command.PAUSE_PARTICIPANT, {"participant_control": {"action": "pause",
         "scope": {"role": "researcher", "component_id": "primary.score", "chain": "chain-a"}, "reason": "operator"}})
     view, active, binding, completed = debate_rounds(host, view)

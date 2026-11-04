@@ -39,7 +39,7 @@ def stopped(batch_host, tmp_path, monkeypatch):
     # the in-process constant would incorrectly pair a 29 database with 30 code.
     aci = bundle / "hypoloom/agent_aci.py"
     original = aci.read_text()
-    current = "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = GPU_RECOVERY_ACI_SCHEMA_VERSION"
+    current = "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION"
     assert current in original
     aci.write_text(original.replace(current,
         "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = BOUNDED_DEBATE_ACI_SCHEMA_VERSION"))

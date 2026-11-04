@@ -108,6 +108,19 @@ class FailedDesignBatchAgent(BatchAgent):
         return response
 
 
+class FiveCycleBatchAgent(BatchAgent):
+    def invoke(self, request):
+        response = super().invoke(request)
+        if isinstance(request.task_context, ResearchNodeTask) and request.task_context.key.cycle < 5:
+            if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+                response = with_output_digest(replace(response, proposed_workspace_artifacts=tuple(
+                    WorkspaceArtifact.from_bytes(item.path, item.content_bytes().replace(b'"accuracy": 0.55', b'"accuracy": 0.50'))
+                    for item in response.proposed_workspace_artifacts)))
+            if request.command is AgentCommand.HYPOTHESIS_UPDATE:
+                response = with_output_digest(replace(response, typed_candidate={**response.typed_candidate, "update_disposition": "REVISE_NEXT_CYCLE"}))
+        return response
+
+
 class ManagedBatchAgent(TwoCycleBatchAgent):
     def invoke(self, request):
         response = super().invoke(request)
@@ -194,7 +207,7 @@ class LeaderRoundAgent(SharedGoalAgent):
 def batch_host(tmp_path, monkeypatch, request):
     # Retain an explicit ACI13 case while exercising ACI14 batch semantics.
     mode = getattr(request, "param", None)
-    version = 28 if mode == "dispatch-wait" else 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
+    version = 31 if str(mode).startswith("five-cycle") else 28 if mode == "dispatch-wait" else 26 if str(mode).startswith("proposal-") else 25 if mode == "serial25" else 13 if mode == "legacy13" else 14
     monkeypatch.setattr("hypoloom.workflow_host.EXPERT_LOOP_ACI_SCHEMA_VERSION", version)
     with tempfile.TemporaryDirectory(prefix="hypoloom-batch-target-", dir=tmp_path if mode == "dispatch-wait" else "/var/tmp") as directory:
         payload = _pilot_payload(tmp_path, Path(directory), "batch-host")
@@ -230,7 +243,8 @@ def batch_host(tmp_path, monkeypatch, request):
                 settings["goal"]["completion_mode"] = "explicit_signals"
         settings["experts"]["defaults"]["max_forks"] = 1 if mode == "max-forks-one" else 4
         if mode in {"parallel", "max-forks-one", "restart"}: payload["execution"]["delay_seconds"] = 0.6
-        settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 3 if mode == "managed-up-down" else 2 if mode in {"two-cycles", "outer-budget-exhausted", "managed", "leader-round", "proposal-two-cycles"} else 1
+        if version < 31:
+            settings["goal"]["stop_conditions"]["max_rounds_per_expert"] = 3 if mode == "managed-up-down" else 2 if mode in {"two-cycles", "outer-budget-exhausted", "managed", "leader-round", "proposal-two-cycles"} else 1
         iterate = mode in {"iterate", "iterate-exhausted"}
         settings["methodology"]["inner_loop"] = {"max_iterations_per_hypothesis": 2 if iterate else 1, "repair_attempts": 1}
         contract["methodology"]["controls"]["product"] = settings
@@ -260,9 +274,12 @@ def batch_host(tmp_path, monkeypatch, request):
                 "target": "2", "display_only": True}
             payload["execution"]["delay_seconds"] = 1.0
         if mode not in {"iterate-exhausted", "outer-budget-exhausted"}: contract["roles"][0]["budget"]["max_experiments"] = 6
+        if str(mode).startswith("five-cycle"):
+            contract["budget"]["max_experiments"] = 4 if mode == "five-cycle-experiment-cap" else 10
+            contract["roles"][0]["budget"]["max_experiments"] = 10
         agent = (LeaderRoundAgent() if mode == "leader-round" else MissingFinalReportAgent() if mode == "final-report-missing" else UpDownManagedAgent() if mode == "managed-up-down" else SharedGoalAgent(all_refuted=mode == "shared-refuted") if shared else ManagedBatchAgent() if mode == "managed" else FailedDesignBatchAgent(mode == "all-designs-fail") if mode in {"one-design-fails", "all-designs-fail"}
             else TwoCycleBatchAgent() if mode in {"two-cycles", "round-exhausted", "outer-budget-exhausted", "proposal-two-cycles"}
-            else IteratingBatchAgent() if iterate else BatchAgent())
+            else FiveCycleBatchAgent() if str(mode).startswith("five-cycle") else IteratingBatchAgent() if iterate else BatchAgent())
         host = WorkflowHost(tmp_path / "state", local_agent=agent)
         host.initialize()
         try:
@@ -896,3 +913,25 @@ def test_real_cpu_leader_round_reopens_only_its_designated_component_and_gets_a_
     assert not host._participant_controls("batch-host").pauses
     report = Oracle(host.store.database_path, host.publisher.root).audit("batch-host")
     assert report.ok, report.to_dict()
+
+
+@pytest.mark.parametrize("batch_host,expected_cycles", [("five-cycles", 5), ("five-cycle-experiment-cap", 2)], indirect=["batch_host"])
+def test_current_research_continues_until_goal_or_actual_experiment_budget(batch_host, expected_cycles):
+    host = batch_host
+    _complete(host, timeout=120)
+    assert host.store.get_run("batch-host")["agent_aci_version"] == "31"
+    history = host._batch_history("batch-host", "primary.validation_accuracy")
+    assert [batch.cycle for batch in history.batches] == list(range(1, expected_cycles + 1))
+    attempts = host.store.list_attempts()
+    assert all(row["state"] == "CLOSED" for row in attempts)
+    assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2 * expected_cycles
+    for row in attempts:
+        request = json.loads(row["observation_json"]).get("request", {})
+        for raw in request.get("input_artifacts", []):
+            if not raw["ref"].endswith("--expert-config"): continue
+            from hypoloom.agent_aci import EmbeddedInput
+            config = json.loads(EmbeddedInput.from_dict(raw).content_bytes())
+            assert "rounds" not in config["inner_loop_limits"]
+            assert "max_rounds_per_expert" not in config["research_budget"]
+            assert "remaining_future_rounds" not in config["research_budget"]
+    assert Oracle(host.store.database_path, host.publisher.root).audit("batch-host").ok

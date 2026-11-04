@@ -132,7 +132,7 @@ print(MARKER, flush=True)
 def _preset_v4_payload(root, target, run_id, *, read_roots=()):
     source = documents()
     source["goal"]["metric"] = {"name": "max_score", "direction": "maximize", "target": 4}
-    source["goal"]["stop_conditions"] = {"max_rounds_per_expert": 1, "max_wall_clock_hours": 1}
+    source["goal"]["stop_conditions"] = {"max_wall_clock_hours": 1}
     source["experts"]["defaults"].update(max_forks=1, max_hypotheses_per_round=1)
     source["methodology"] = {"schema_version": 4,
         "runtime": {"target_repo": str(target), "conda_env": sys.prefix},

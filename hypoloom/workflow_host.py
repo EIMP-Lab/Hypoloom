@@ -42,7 +42,7 @@ from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReas
 from .fake_agent import FakeAgent, FakeAgentMode
 from .execution_workspace import (EXECUTION_WORKSPACE_VERSION, ExecutionWorkspace, ExecutionWorkspaceError, GitTargetBinding, PreparedAgentWorkspace, PreparedExecution, TargetPreparationError, bind_clean_git_target, execution_environment_contract, execution_read_root_projection, verify_downstream_implementation_contracts)
 from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, AuxiliaryTaskView, DerivedWorkState, ExpertLineage, ExpertLineageInput, HypothesisUpdateDisposition, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask, ResearchNodeView, ScientificNodeRefs, _EXPERT_NODE_ORDER, reduce_expert_lineage)
-from .expert_batch import BatchHistory, batch_limits, supports_hypothesis_batches, proposal_siblings, sibling_proposal_failed
+from .expert_batch import BatchHistory, batch_limits, research_round_available, supports_hypothesis_batches, proposal_siblings, sibling_proposal_failed
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
 from .lifecycle import Command, ExperimentState, Machine, RunState, WORKFLOW_DEFINITION_VERSION, validate_transition
 from .literature import (LITERATURE_PACKET_MEDIA_TYPE, FixedLiteratureIO, LiteratureCoverageError, LiteratureError, LiteratureQuery, LiteratureRead, admit_literature_query_plan, bounded_context_refs, expert_literature_query, grounding_literature_query, literature_failure_retryable, literature_read_diagnostics)
@@ -406,6 +406,10 @@ class WorkflowHost:
         raw_contract = payload["research_contract"]; execution = payload["execution"]
         if not isinstance(raw_contract, Mapping): raise ValueError("research_contract must be an object")
         contract = ResearchContract.from_mapping(raw_contract)
+        product = contract.to_dict().get("methodology", {}).get("controls", {}).get("product")
+        if product is not None and int(self.version.agent_aci_version) >= 31:
+            from .profile_v4 import validate_product_settings
+            validate_product_settings(product)
         validate_new_run_budget(contract.document, self.agent_budget)
         if _uses_expert_loop(contract) and self.claude_agent_host is not None and (self.literature_io is None or self.literature_io.configuration.get("adapter") != "openalex"):
             raise ValueError("real ACI-7 expert loop requires a qualified OpenAlex literature adapter")
@@ -1678,7 +1682,7 @@ class WorkflowHost:
         if self._expert_success(evolve) is None and self._expert_task_final_failure(run_id, evolve) is None: return False
         disposition = None if success is None else json.loads(success["observation_json"])["response"]["typed_candidate"].get("update_disposition")
         return (self._batch_science_failed(run_id, component_id, role, batch.cycle) or disposition == "TERMINATE_LINEAGE"
-            or batch.cycle >= batch_limits(self._research_contract(run_id).document, role)["rounds"]
+            or not research_round_available(self._research_contract(run_id).document, batch.cycle + 1, int(self.store.get_run(run_id)["agent_aci_version"]))
             or (batch.selection.get("selected_tip") is None and (int(self.store.get_run(run_id)["agent_aci_version"]) < 17
                 or disposition != "REVISE_NEXT_CYCLE")) or not self._batch_creation_available(run_id, role))
     def _unselected_batch_revision_ready(self, run_id: str, component_id: str, role: str) -> bool:

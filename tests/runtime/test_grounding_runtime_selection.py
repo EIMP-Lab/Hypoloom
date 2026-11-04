@@ -52,7 +52,6 @@ def _payload(root: Path, grounding: dict) -> dict:
         "target": 0.9,
     }
     source["goal"]["stop_conditions"] = {
-        "max_rounds_per_expert": 1,
         "max_wall_clock_hours": 1,
     }
     source["experts"] = {

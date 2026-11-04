@@ -81,7 +81,7 @@ def test_product_inner_loop_and_round_budgets_have_separate_consumers():
         "goal": {"stop_conditions": {"max_rounds_per_expert": 5}},
         "methodology": {"inner_loop": {"max_hypotheses_per_round": 3,
             "max_iterations_per_hypothesis": 2, "repair_attempts": 1}}}}}}
-    assert batch_limits(document, "r") == {"forks": 3, "parallel_chains": 3, "rounds": 5, "iterations": 2, "repairs": 1}
+    assert batch_limits(document, "r", schema_version=30) == {"forks": 3, "parallel_chains": 3, "rounds": 5, "iterations": 2, "repairs": 1}
 
 
 @pytest.mark.parametrize(("version", "supported"), [(13, False), (14, True), (15, True), (None, False)])

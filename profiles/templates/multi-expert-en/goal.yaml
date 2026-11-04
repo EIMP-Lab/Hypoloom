@@ -7,5 +7,3 @@ metric: null
 constraints:
   - Keep the original repository and datasets read-only.
   - Explain uncertainty and preserve failed experiments as evidence.
-stop_conditions:
-  max_rounds_per_expert: 4

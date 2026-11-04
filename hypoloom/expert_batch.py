@@ -11,7 +11,8 @@ from typing import Any, Mapping, Sequence
 from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, DerivedWorkState, ExpertLineage,
     ExpertLineageInput, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask,
     ScientificNodeRefs, reduce_expert_lineage)
-from .agent_aci import PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION
+from .agent_aci import (PARALLEL_PROPOSALS_ACI_SCHEMA_VERSION,
+    CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION)
 
 
 def proposal_siblings(task, other, version):
@@ -74,10 +75,19 @@ def directed_research_plan(transitions, run_id, role, component_id, cycle, *, be
     return matches[0] if matches else None
 
 
-def batch_limits(document: Mapping[str, Any], role: str) -> dict[str, int]:
+def legacy_round_limit(document: Mapping[str, Any]) -> int:
+    """Read an already admitted pre-31 limit, including its historical fallback."""
+    stop = document.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {}).get("stop_conditions", {})
+    return stop.get("max_rounds_per_expert", document.get("budget", {}).get("max_experiments", 1))
+
+
+def research_round_available(document: Mapping[str, Any], cycle: int, schema_version: int) -> bool:
+    return schema_version >= UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION or cycle <= legacy_round_limit(document)
+
+
+def batch_limits(document: Mapping[str, Any], role: str, *, schema_version: int = CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION) -> dict[str, int]:
     product = document.get("methodology", {}).get("controls", {}).get("product", {})
     inner = product.get("methodology", {}).get("inner_loop", {})
-    stop = product.get("goal", {}).get("stop_conditions", {})
     budget = document.get("budget", {})
     experts = product.get("experts", {})
     settings = dict(experts.get("defaults", {}))
@@ -85,9 +95,11 @@ def batch_limits(document: Mapping[str, Any], role: str) -> dict[str, int]:
     if isinstance(declared, list):
         settings.update(next((item for item in declared if item.get("name", item.get("id")) == role), {}))
     forks = settings.get("max_hypotheses_per_round", inner.get("max_hypotheses_per_round", 1))
-    values = {"forks": forks, "parallel_chains": settings.get("max_forks", forks), "rounds": stop.get("max_rounds_per_expert", budget.get("max_experiments", 1)),
+    values = {"forks": forks, "parallel_chains": settings.get("max_forks", forks),
               "iterations": inner.get("max_iterations_per_hypothesis", 1),
               "repairs": inner.get("repair_attempts", budget.get("repair_attempts", budget.get("max_retries", 3)))}
+    if schema_version < UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION:
+        values["rounds"] = legacy_round_limit(document)
     if any(isinstance(value, bool) or not isinstance(value, int) or value < (0 if key == "repairs" else 1)
            for key, value in values.items()):
         raise ValueError("expert batch budgets must be finite admitted integer bounds")
