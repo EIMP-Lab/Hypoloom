@@ -2,6 +2,67 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Runtime preparation and observation (2026-11-05)
+
+[Design](design/runtime-observation-recovery.md). The user authorizes general
+framework repairs, dev commit/push and corresponding public main publication.
+Retry allowances were already scoped to each logical task. The observed final
+failure followed repeated Git preparation timeouts within one task; successful
+prior tasks did not consume its allowance. Workspace preparation now fetches
+only pinned reachable history, and final-failure presentation distinguishes
+exhaustion from nonretryable failure. Web history reads retain bounded parsing
+progress; notification plotting has explicit capability checks and safe failure
+reasons. Existing run state, frozen bundles and retry policy are unchanged.
+
+Evidence is in `.local/qualification/runtime-observation-20261105/`.
+
+- Initial affected checks record **259 passes / four failures / two skips**.
+  Fetching into an initialized bare repository exposed an unborn private HEAD
+  for empty-seed session recovery. Setting its HEAD to the verified commit
+  resolves that regression; **all 71 affected rechecks pass in 32.96 s**.
+  The first new cache test also exposed unfinished same-size metadata reuse;
+  unfinished exchanges are now read again. Original failures remain recorded.
+- Browser/trend checks pass **24 cases in 76.43 s**, including actual Chrome
+  interaction, retained selection, bilingual failure labels and rendered PNGs.
+  The dedicated continuation check passes separately in **5.72 s**, verifying
+  automatic continuation, return to minute refresh and stopping polling on close.
+- A disposable 4,000-file fixture progresses in 500-file steps to the complete
+  projection. Warm reads inspect zero JSON files and match a fresh projection:
+  **0.125 s cold / 0.0032 s warm** in this local sample. A separate Git fixture
+  with 32 MiB of unreachable objects copies **209 bytes** of reachable objects
+  instead of **33,564,866 bytes**. Both Git operations take about 0.05 s on this
+  filesystem; this demonstrates reduced copying, not a universal speedup.
+- The dev package matches **209 runtime files** across source, wheel, isolated
+  installation and a fresh frozen bundle. Installed CLI/MCP and private Git
+  preparation work; real English and Chinese PNG generation succeeds. No message
+  is sent. The disposable build environment initially lacked setuptools; the
+  successful build follows installation into that qualification environment.
+
+- Full offline G1 records **8,810 passed / eight failed / 161 skipped** in
+  **1,435.97 s**. Seven failures report Unix socket paths exceeding the OS limit;
+  the eighth is the native pool fixture's cleanup after the same startup failure.
+  The qualification base directory was too long. A short disposable base fixes
+  all eight cases without changing product code or weakening assertions. Original
+  results remain in `g1.xml`. **All 28 rechecks pass in 210.84 s**, including
+  seven native G3 scenarios and thirteen portable regressions. Per-case
+  reconciliation gives **8,818 passed / 161 skipped / zero unresolved failures**
+  (`reconciled.json`), from one full invocation plus affected rechecks.
+- Independent final closure of the seven native roots counts **169 closed Agents
+  / 16 closed CPU Processes**, clean Oracles, no pending effects and no live
+  members of **154 recorded process groups**. Local scripted provider responses
+  exercise actual CLI/Host/broker/Process behavior; expected failure and
+  cancellation outcomes retain their real terminal reasons.
+- Read-only baseline/candidate audits agree for **five retained research roots**:
+  logical databases and **3,072 artifact files** are unchanged, with clean Oracles.
+  These are historical cohort checks, not a restart of the currently running topic.
+
+The original browser session has no retained HTTP payload proving its exact
+inspection cutoff. A shortened deadline reproduces the partial historical
+prefix; there is no SVG line-drawing animation. This repair addresses repeated
+bounded scans and exposes remaining unknown coverage. Qualification does not
+include new GPU or paid-model lanes. Existing frozen runs require their own
+explicit operating decision; a checkout update does not migrate or resume them.
+
 ## OpenAlex conference types (2026-11-04)
 
 A newly reported run failed in Grounding literature retrieval before creating

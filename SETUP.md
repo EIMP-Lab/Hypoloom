@@ -62,6 +62,9 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,no
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
+The supplied environment includes matplotlib for briefing charts. Minimal package
+installs can add the `notify` extra; launch preflight reports unavailable charts.
+
 `monitor` installs Textual; `notify` adds notification charts; `dev` installs
 test and packaging tools. CPU/GPU
 experiments may use a separate research environment; do not automatically

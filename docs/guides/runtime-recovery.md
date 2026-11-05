@@ -2,8 +2,28 @@
 
 English · [简体中文](runtime-recovery.zh-CN.md)
 
-New runs use ACI 31. Existing runs keep their pinned runtime; updating the
+New runs use ACI 32. Existing runs keep their pinned runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
+
+## Task retries and source preparation
+
+Agent retry allowances belong to one logical task (`command_id`), not an expert's
+entire run. `max_retries: 2` permits the initial model attempt plus two retries;
+`max_infrastructure_retries` independently bounds infrastructure failures for that
+task. A task that completes within its allowance does not reduce the next task's
+allowance. Historical failure counts and costs remain available for accounting.
+An HTTP/tool response or an execution handoff is not completion of the whole
+logical task; query-plan corrections still have their existing finite allowance.
+
+Web/TUI distinguish **Retry limit reached for this task** from **Failure is not
+automatically retryable**. A final failure does not imply the whole run stopped.
+API recovery does not reopen a finalized task. Inspect its exact failure stage:
+workspace preparation can fail before any model request has started.
+
+New workspaces fetch only the pinned Git commit and its reachable history into
+an independent private repository. Unrelated branches and unreachable objects
+are not copied. Source working trees remain untouched; finite Git timeouts still
+apply. Fix the preparation cause before considering another research attempt.
 
 ## Device failure and execution allowances
 
@@ -35,6 +55,14 @@ acceptance, lineage termination and operator cancellation remain stop conditions
 Earlier admitted runs retain their original round limits.
 
 ## Web observation freshness
+
+The **Run trends** dialog has its own bounded history read. It prioritizes recent
+activity and retains parsed metadata in a bounded observer memory cache. When
+history is still loading, the dialog says so and continues after one second;
+completed reads refresh every minute. Opening the dialog again does not discard
+that progress. Missing capture remains unknown, not zero traffic. Closed captures
+are revalidated at least once a minute; active captures are checked on each read.
+Restarting the observer discards only this disposable cache, not the source logs.
 
 The Web observer reads its last complete observation while the next one is
 prepared in the background. **Preparing snapshot** means the first read is still

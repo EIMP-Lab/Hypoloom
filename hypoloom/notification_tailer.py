@@ -37,7 +37,7 @@ from .observation_api import PRODUCT_EVENT_TYPES, build_product_observation
 from .state_store import StateStore
 from .notification_templates import briefing_text, due_briefing, event_text
 from .observer_trends import _time
-from .notification_plot import briefing_photo
+from .notification_plot import BriefingPlotError, briefing_photo, chart_capability
 
 
 _EVENT_TYPES = PRODUCT_EVENT_TYPES | {"run_briefing"}
@@ -318,7 +318,8 @@ def notification_output_root(state_root: Path, output_root: str | Path) -> Path:
 
 
 def notification_preflight(config: Mapping[str, Any], *, state_root: Path,
-                           output_root: Path | None = None, environ=None, proxy_env: str | None = None) -> dict:
+                           output_root: Path | None = None, environ=None, proxy_env: str | None = None,
+                           report_language="en", control_python=None) -> dict:
     """Use runtime validators without sending, listening or creating delivery progress."""
     environment = notification_environment(environ=environ)
     output = notification_output_root(state_root,
@@ -340,7 +341,10 @@ def notification_preflight(config: Mapping[str, Any], *, state_root: Path,
         # paths remain in their private files, never in interactive transcripts.
         details[name].update({key: sink[key] for key in
             ("credentials_file", "bot_token_env", "chat_id_env", "url_env", "token_env", "host", "port", "path", "level") if key in sink})
+    chart = (chart_capability(report_language, **({"python_executable": control_python} if control_python else {})) if "telegram" in enabled
+             and "run_briefing" in details["telegram"]["events"] else {"state": "not_requested", "reason": None})
     return {"enabled_sinks": enabled, "sinks": details, "proxy": "configured" if proxy else "direct",
+            "briefing_chart": chart,
             "output_root": str(output), "network_probe_performed": False,
             "delivery_status": "unverified", "message": "Configuration valid; remote delivery has not been verified. Use notify --test to check access, --send-test to send one message."}
 
@@ -385,6 +389,8 @@ class NotificationTailer:
         self.clock = clock
         self._health_lock = threading.Lock()
         self._health = {}
+        from .observer_trends import TrendCaptureCache
+        self.trend_capture_cache = TrendCaptureCache()
         config = load_notification_config(self.state_root, run_id)
         self.proxy_url = notification_proxy(config, self.environ, proxy_env)
         self.sinks = config.get("sinks", {})
@@ -447,19 +453,27 @@ class NotificationTailer:
         url, headers, chat_id = remote
         document = event
         photo = None
+        chart_reason = None
         if sink == "telegram":
             if event["type"] == "run_briefing":
                 try:
                     photo = briefing_photo(self.state_root, self.run_id,
-                        observed_at=_time(event["created_at"]), language=event["payload"]["run"]["report_language"])
-                except (OSError, ValueError, ImportError, sqlite3.Error, subprocess.SubprocessError):
+                        observed_at=_time(event["created_at"]), language=event["payload"]["run"]["report_language"],
+                        capture_cache=self.trend_capture_cache)
+                except (OSError, ValueError, ImportError, sqlite3.Error, subprocess.SubprocessError) as exc:
                     # No remote request has started. A plotting failure must not
                     # prevent the status summary; transport failures still retry.
                     photo = None
-                text = briefing_text(event, chart_available=photo is not None)
+                    chart_reason = (exc.code if isinstance(exc, BriefingPlotError) else "plot_timeout"
+                                    if isinstance(exc, subprocess.TimeoutExpired) else "plot_dependencies_missing"
+                                    if isinstance(exc, ImportError) else "plot_render_failed")
+                text = briefing_text(event, chart_available=photo is not None, chart_reason=chart_reason)
                 if len(text.encode("utf-16-le")) // 2 > 1024:
                     photo = None
-                    text = briefing_text(event, chart_available=False)
+                    chart_reason = chart_reason or "caption_too_long"
+                    text = briefing_text(event, chart_available=False, chart_reason=chart_reason)
+                self._update_health(sink, briefing_chart={"state": "available" if photo is not None else "unavailable",
+                    "reason": chart_reason, "event_id": event["event_id"], "observed_at": self.clock()})
             else:
                 text = event_text(event, observation or {})
             if len(text.encode("utf-16-le")) // 2 > 4096:
@@ -473,6 +487,7 @@ class NotificationTailer:
         if photo is not None: options["photo"] = photo
         response = self.transport(url, document, headers=headers, timeout=10.0, **options)
         check_delivery_response(response, sink, now=self.clock())
+        return chart_reason
 
     def poll_once(self) -> DeliveryReport:
         report = DeliveryReport()
@@ -539,7 +554,9 @@ class NotificationTailer:
                             "payload": {"counts": dict(sorted(Counter(e["type"] for e in batch).items()))}}
                     phase = "log_write" if sink == "log" else "transport"
                     self._update_health(sink, last_attempt_at=self.clock())
-                    self._deliver(sink, event, remote, observation)
+                    chart_reason = self._deliver(sink, event, remote, observation)
+                    if chart_reason:
+                        report.warnings.append(f"{sink}: briefing chart unavailable ({chart_reason}); text delivered")
                     next_cursor = dict(cursor)
                     for source in batch:
                         key = f"{source['source']}:{source['source_id']}"

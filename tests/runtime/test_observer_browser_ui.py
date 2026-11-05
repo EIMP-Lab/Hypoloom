@@ -762,6 +762,7 @@ def test_browser_final_node_failure_is_separate_from_live_state(browser):
     page.evaluate("""fixture.snapshot.status.run_state='ACTIVE';
       fixture.snapshot.overview.host_observation={availability:'responded'};
       Object.assign(fixture.snapshot.attempts[0], {operational_status:'recovery_exhausted',
+        recovery_summary:'Retry limit reached for this task',
         operational_reason:'timed_out', phase:'EXPERIMENT_DESIGN_IMPLEMENT',
         chain:'<script>window.injected=true</script>', ended_at:1791612501});""")
     page.wait("!document.querySelector('#node-failures').hidden")
@@ -772,6 +773,7 @@ def test_browser_final_node_failure_is_separate_from_live_state(browser):
     assert 'expert-a' in page.text('#node-failure-list')
     assert 'EXPERIMENT_DESIGN_IMPLEMENT' in page.text('#node-failure-list')
     assert 'timed_out' in page.text('#node-failure-list')
+    assert 'Retry limit reached for this task' in page.text('#node-failure-list')
     assert not page.evaluate('Boolean(window.injected)')
     page.click('#node-failure-list button')
     page.wait("fixtureRequests.some(r=>r[1].includes('kind=attempt') && r[1].includes('attempt_id=attempt-a'))")
@@ -779,6 +781,8 @@ def test_browser_final_node_failure_is_separate_from_live_state(browser):
     page.click('#language-toggle')
     page.wait("document.querySelector('#node-failure-summary').textContent==='已记录的节点最终失败：1'")
     assert '不代表整项运行已停止' in page.text('#node-failures')
+    page.evaluate("fixture.snapshot.attempts[0].recovery_summary='Failure is not automatically retryable'")
+    page.wait("document.querySelector('#node-failure-list').textContent.includes('此失败不支持自动重试')")
     page.evaluate("fixture.snapshot.status.dispatch_error={exception_type:'ValueError'}")
     page.wait("document.querySelector('#run-state').classList.contains('blocked')")
     page.evaluate("fixture.snapshot.status.run_state='COMPLETED'")
@@ -2215,6 +2219,45 @@ def _install_trends(page, data=None):
 
 def _trend_point_count(page):
     return page.evaluate("(document.querySelector('#trends-concurrency path').getAttribute('d').match(/[ML]/g) || []).length")
+
+
+def test_browser_incomplete_history_continues_then_stops_fast_polling(browser):
+    page = browser
+    data = _trends_fixture()
+    data['coverage'].update(loading=True, pending_attempts=2)
+    _install_trends(page, data)
+    page.click('#open-trends')
+    page.wait("document.querySelector('#trends-status').textContent.includes('Completed reads are retained')")
+    assert 'Unread intervals are not confirmed missing data' in page.text('#trends-coverage')
+    page.click('#trends-rpm-legend button')
+    page.evaluate("document.querySelector('#trends-range').value='3600'; document.querySelector('#trends-range').dispatchEvent(new Event('change'))")
+    page.evaluate("trendFixture.coverage.loading=false; trendFixture.coverage.pending_attempts=0; trendFixture.coverage.request_count=999")
+    page.wait("document.querySelector('#trends-coverage').textContent.includes('999 recorded requests')")
+    assert page.evaluate('trendCalls') == 2
+    assert 'Refreshes every minute' in page.text('#trends-status')
+    assert page.evaluate("document.querySelector('#trends-rpm-legend button').getAttribute('aria-pressed')") == 'false'
+    assert _trend_point_count(page) < 120
+    time.sleep(1.2)
+    assert page.evaluate('trendCalls') == 2
+    page.click('#close-trends')
+    page.evaluate('trendFixture.coverage.loading=true')
+    page.click('#open-trends')
+    page.wait('trendCalls === 3 && !document.querySelector("#refresh-trends").disabled')
+    page.click('#close-trends')
+    time.sleep(1.2)
+    assert page.evaluate('trendCalls') == 3
+    assert not page.errors
+
+
+def test_browser_briefing_chart_failure_has_actionable_bilingual_reason(browser):
+    page = browser
+    page.evaluate("fixture.snapshot.status.notifications={sinks:{telegram:{state:'ready',briefing_chart:{state:'unavailable',reason:'plot_dependencies_missing'}}}}")
+    page.wait("document.querySelector('#notification-status').textContent.includes('Install the notify extra')")
+    page.click('#language-toggle')
+    page.wait("document.querySelector('#notification-status').textContent.includes('notify') && document.querySelector('#notification-status').textContent.includes('简报附图')")
+    page.evaluate("fixture.snapshot.status.notifications.sinks.telegram.briefing_chart={state:'available',reason:null}")
+    page.wait("!document.querySelector('#notification-status').textContent.includes('notify')")
+    assert not page.errors
 
 
 def _inspect_trend_point(page, index):

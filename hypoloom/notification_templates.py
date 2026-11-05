@@ -206,7 +206,7 @@ def due_briefing(observation):
             "accounting": summary.get("accounting", {})})
 
 
-def briefing_text(event, *, chart_available):
+def briefing_text(event, *, chart_available, chart_reason=None):
     payload = event["payload"]
     run = payload["run"]
     zh = chinese({"run": run})
@@ -233,4 +233,13 @@ def briefing_text(event, *, chart_available):
             tr("📈 本次趋势图不可用；已发送文字简报。", "📈 Chart unavailable for this briefing; text summary only."),
         "⏱ " + tr("已运行：", "Elapsed: ") + duration(payload["elapsed_seconds"], zh),
         tr("观测：", "Observed: ") + _when(_time(event["created_at"]), zh)]
+    if not chart_available and chart_reason:
+        reasons = {
+            "plot_dependencies_missing": ("控制环境缺少绘图依赖，请安装 Hypoloom 的 notify 可选依赖。", "The control environment needs Hypoloom's notify extra for charts."),
+            "plot_font_missing": ("控制环境缺少中文字体，请安装 Noto Sans CJK。", "The control environment needs a Chinese font such as Noto Sans CJK."),
+            "plot_timeout": ("绘图超过时间限制。", "Chart rendering exceeded its time limit."),
+            "plot_render_failed": ("图片生成失败，详见本地通知诊断。", "Image generation failed; inspect local notification diagnostics."),
+            "caption_too_long": ("简报正文超过图片说明长度限制。", "The briefing exceeds the photo caption length limit."),
+        }
+        items.append(tr(*reasons.get(chart_reason, reasons["plot_render_failed"])))
     return "\n\n".join(items)

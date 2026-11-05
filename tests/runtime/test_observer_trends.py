@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from hypoloom.observer_trends import build_run_trends, trends_csv
+from hypoloom.observer_trends import TrendCaptureCache, build_run_trends, trends_csv
 from hypoloom.provider_traffic import ProviderTraffic
 from hypoloom.runtime_diagnostics import RuntimeDiagnostics
 from hypoloom.state_store import HostWriterCapability, StateStore
@@ -110,6 +110,24 @@ def test_long_run_coarsens_without_dropping_short_experiments(tmp_path):
     assert data["interval_seconds"] == 180
     assert data["points"][0]["experiments_peak"] == 2
     assert data["points"][0]["experiments"] == 0
+
+
+def test_incremental_reader_matches_full_projection_and_keeps_closed_history(tmp_path):
+    _seed(tmp_path)
+    for name, when in [("a", 1010), ("b", 1065), ("r", 1060), ("g", 1001)]:
+        _exchange(tmp_path, name, 1, upstream_started_at=when)
+    expected = build_run_trends(tmp_path, "trends", now=1180)
+    cache = TrendCaptureCache()
+    progress = []
+    for _ in range(6):
+        value = build_run_trends(tmp_path, "trends", now=1180, max_files=1, capture_cache=cache)
+        progress.append(value["coverage"]["request_count"])
+    assert progress == sorted(progress) and progress[-1] == 4
+    assert not value["coverage"]["loading"]
+    assert value["points"] == expected["points"] and value["experts"] == expected["experts"]
+    warm = build_run_trends(tmp_path, "trends", now=1180, max_files=0, inspection_seconds=0, capture_cache=cache)
+    assert warm["points"] == expected["points"]
+    assert warm["coverage"]["inspected_files"] == 0 and warm["coverage"]["cached_files"] == 4
 
 
 def test_open_attempt_and_partial_last_minute_remain_visible(tmp_path):

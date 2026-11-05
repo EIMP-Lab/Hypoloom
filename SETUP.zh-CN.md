@@ -51,6 +51,9 @@ conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,no
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
+提供的环境已包含简报绘图所需的 matplotlib。精简安装可补装 `notify` 可选依赖；
+启动预检会明确提示图表不可用及其原因。
+
 `monitor` 安装 Textual，`notify` 提供通知图表，`dev` 安装测试和打包工具。
 CPU/GPU 实验可以使用独立的研究
 环境，不能把控制 Python 自动当作项目的 CUDA 环境。公开模板中的运行路径需要替换。

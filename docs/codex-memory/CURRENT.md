@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- November 5 runtime preparation and observation repair: the user requests a
+  general framework fix for task retry exhaustion, slow Web trend loading and
+  missing twelve-hour Telegram charts, followed by dev/main publication.
+  Existing retry policy is task-scoped and remains unchanged; recovered tasks
+  do not spend another task's allowance. Private workspaces now fetch only pinned
+  history, final-failure messages separate nonretryable failures from exhaustion,
+  bounded trend reads retain parsing progress, and chart preflight/fallbacks expose
+  actionable reasons. Default environment installation includes plotting.
+  Full G1 plus 28 affected rechecks reconciles 8,818 passes/161 skips, with
+  original path-length failures retained and no unresolved cases. Seven final
+  native roots close 169 Agents/16 CPU Processes, clean Oracles and 154 groups
+  without residue. Five retained roots/3,072 artifacts are unchanged; 209 runtime
+  files match source, wheel, installation and fresh bundle, with bilingual PNGs.
+  Existing research roots and their frozen bundles remain read-only.
+  [Design](../design/runtime-observation-recovery.md) /
+  [validation](../qualification.md#runtime-preparation-and-observation-2026-11-05).
+
 - November 4 OpenAlex compatibility repair: a fresh run's Grounding retrieval
   fails before experiments because the provider rejects the outgoing Crossref
   label `proceedings-article`. OpenAlex requests now use `conference-paper`;

@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Runtime preparation and observation, November 5](../design/runtime-observation-recovery.md):
+  per-task retry semantics, pinned reachable Git history, explicit final-failure
+  labels, resumable bounded trend inspection and actionable briefing chart health.
+  User authorizes dev commit/push and corresponding public main synchronization;
+  retained runs remain read-only.
+  [Validation](../qualification.md#runtime-preparation-and-observation-2026-11-05).
+
 - [OpenAlex conference types, November 4](../qualification.md#openalex-conference-types-2026-11-04):
   reproduced provider HTTP 400, canonical outgoing conference type and response
   normalization, legacy input compatibility and unchanged Crossref vocabulary.

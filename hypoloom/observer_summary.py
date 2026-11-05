@@ -18,6 +18,7 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from .diagnostics import recovery_summary
 
 _TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
 
@@ -252,6 +253,7 @@ def _logical_stages(agents, observed_at, state_root, run_id, final_failure_ids=(
             "context_recovery": context_cost,
             "failure_code": reason, "failure_stage": observation.get("failure_stage"),
             "operational_status": "rebuilding_context" if rebuilding else "recovery_exhausted" if final_failure else None,
+            "recovery_summary": recovery_summary(observation) if final_failure else None,
             "recovery_note": ("Initial request exceeds the local working allowance at minimum inline load. Change input/runtime limits for a new run; unchanged retries cannot help."
                 if (diagnostics.get("provider_failure") or {}).get("recovery_action") == "input_reconfiguration_required"
                 else "Automatic recovery ended for this node. API retry does not reopen it; required scientific acceptance still applies.") if final_failure else None,

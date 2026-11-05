@@ -254,6 +254,44 @@ def test_managed_service_forwards_media_and_respects_shutdown_timeout(tmp_path, 
     assert calls[0]["photo"] == PNG and calls[0]["timeout"] == 1 and calls[0]["proxy_url"].endswith(":1234")
 
 
+@pytest.mark.parametrize("reason", ["plot_dependencies_missing", "plot_font_missing", "plot_timeout", "plot_render_failed"])
+@pytest.mark.parametrize("language", ["zh-CN", "en"])
+def test_briefing_fallback_explains_reason_and_preserves_delivery_ack(tmp_path, monkeypatch, reason, language):
+    from hypoloom.notification_plot import BriefingPlotError
+    view = observation(language=language)
+    _, calls, transport = setup(monkeypatch, view)
+    def failed(*args, **kwargs): raise BriefingPlotError(reason)
+    monkeypatch.setattr(notifier, "briefing_photo", failed)
+    tailer = _tailer(tmp_path, environ=ENV, transport=transport)
+    report = tailer.poll_once()
+    assert report.delivered["telegram"] == 1 and not report.errors
+    assert calls[0][0].endswith("/sendMessage") and "photo" not in calls[0][2]
+    assert report.health["telegram"]["briefing_chart"]["reason"] == reason
+    assert any(reason in warning for warning in report.warnings)
+    if reason == "plot_dependencies_missing": assert "notify" in calls[0][1]["text"]
+    if reason == "plot_font_missing": assert "Noto Sans CJK" in calls[0][1]["text"]
+    assert tailer.poll_once().delivered["telegram"] == 0
+    assert len(calls) == 1
+
+
+def test_preflight_reports_chart_capability_for_requested_language(tmp_path, monkeypatch):
+    config = _notify(telegram=True)
+    config["events"]["telegram"] = ["run_briefing"]
+    languages = []
+    def unavailable(language, **options):
+        languages.append((language, options))
+        return {"state": "unavailable", "reason": "plot_font_missing"}
+    monkeypatch.setattr(notifier, "chart_capability", unavailable)
+    result = notifier.notification_preflight(config, state_root=tmp_path / "state", environ=ENV,
+        report_language="zh-CN", control_python="/control/python")
+    assert languages == [("zh-CN", {"python_executable": "/control/python"})]
+    assert result["briefing_chart"]["reason"] == "plot_font_missing"
+    assert not result["network_probe_performed"]
+    config["events"]["telegram"] = ["error"]
+    assert notifier.notification_preflight(config, state_root=tmp_path / "state", environ=ENV)["briefing_chart"]["state"] == "not_requested"
+    assert languages == [("zh-CN", {"python_executable": "/control/python"})]
+
+
 @pytest.mark.parametrize("language", ["zh-CN", "en"])
 def test_real_png_renderer_reads_existing_trends_without_state_writes(tmp_path, language):
     pytest.importorskip("matplotlib")

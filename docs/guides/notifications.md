@@ -115,11 +115,25 @@ liveness check. UTC timestamps and bucket width are printed on the chart. Summar
 and trend reads use the same cutoff time but separate read-only transactions;
 ongoing activity can settle between those reads.
 
-Install chart dependencies in the control environment:
+The supplied `environment.yml` includes matplotlib. For an existing or minimal
+installation, install chart dependencies in the **Host's control interpreter**:
 
 ```bash
 python -m pip install -e '.[monitor,notify]'
 ```
+
+When Telegram subscribes to `run_briefing`, launch preflight checks the selected
+control interpreter and report-language font without sending a message. An
+unavailable chart does not prevent text notifications. Fallback messages identify
+missing dependencies, missing Chinese fonts, rendering timeout/failure or an
+oversize caption; notification status and local service diagnostics retain the
+safe reason separately from delivery health. A successfully delivered text
+briefing advances its cursor and is not automatically resent after a repair.
+
+Trend reads reuse disposable parsing progress, prioritizing recent activity.
+If the bounded read is incomplete, the image labels that limitation and keeps
+unknown RPM intervals as gaps with known lower bounds. This differs from failure
+to generate the PNG itself. No research-state write or new sampler is involved.
 
 Transports themselves use the standard library. For Chinese images, install a system CJK font such as
 Noto Sans CJK (`fonts-noto-cjk` on Debian/Ubuntu). Plotting runs in a disposable
