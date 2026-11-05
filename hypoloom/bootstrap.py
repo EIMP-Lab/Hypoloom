@@ -410,7 +410,9 @@ def _launch_commands(args, repository, report, review, python, state, request_id
     try:
         review["notifications"] = notification_preflight(product.get("notify", {}), state_root=state,
             output_root=None if args.notification_output_root is None else Path(args.notification_output_root),
-            environ=notification_env, proxy_env=args.notification_proxy_env)
+            environ=notification_env, proxy_env=args.notification_proxy_env,
+            report_language=product.get("language", {}).get("report_language", contract.get("goal", {}).get("language", "en")),
+            control_python=str(python))
     except ValueError as exc:
         raise ValueError(str(exc) + "; fill notification credentials in the private notify.yaml; "
                          "legacy file sources remain supported, but managed init does not inherit the interactive environment") from None

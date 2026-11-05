@@ -8,40 +8,79 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import importlib.util
 
 
-def briefing_photo(state_root, run_id, *, observed_at, language):
-    """Bound diagnostic inspection and rendering; callers can always send text."""
-    from .observer_trends import build_run_trends
-    trends = build_run_trends(state_root, run_id, now=observed_at, inspection_seconds=3.0)
-    with tempfile.TemporaryDirectory(prefix="hypoloom-plot-") as cache:
-        result = subprocess.run([sys.executable, str(Path(__file__).resolve())],
-            input=json.dumps({"trends": trends, "language": language}).encode("utf-8"),
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=True,
-            env={**os.environ, "MPLCONFIGDIR": cache, "MPLBACKEND": "Agg"})
-    if not result.stdout.startswith(b"\x89PNG\r\n\x1a\n") or len(result.stdout) > 4 * 1024 * 1024:
-        raise ValueError("briefing image unavailable")
+class BriefingPlotError(ValueError):
+    """Safe reason code; never expose raw renderer output or private paths."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _plot_process(request, *, python_executable=None):
+    if python_executable is None and importlib.util.find_spec("matplotlib") is None:
+        raise BriefingPlotError("plot_dependencies_missing")
+    try:
+        with tempfile.TemporaryDirectory(prefix="hypoloom-plot-") as cache:
+            result = subprocess.run([python_executable or sys.executable, str(Path(__file__).resolve())],
+                input=json.dumps(request).encode("utf-8"),
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=False,
+                env={**os.environ, "MPLCONFIGDIR": cache, "MPLBACKEND": "Agg"})
+    except subprocess.TimeoutExpired as exc:
+        raise BriefingPlotError("plot_timeout") from exc
+    if result.returncode:
+        try: code = json.loads(result.stdout).get("error")
+        except (ValueError, TypeError, AttributeError): code = None
+        if code not in {"plot_dependencies_missing", "plot_font_missing"}: code = "plot_render_failed"
+        raise BriefingPlotError(code)
     return result.stdout
 
 
-def render(trends, language):
+def chart_capability(language="en", *, python_executable=None):
+    """Exercise the same isolated interpreter and fonts without sending anything."""
+    try:
+        _plot_process({"check": True, "language": language}, python_executable=python_executable)
+        return {"state": "available", "reason": None}
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return {"state": "unavailable", "reason": getattr(exc, "code", "plot_render_failed")}
+
+
+def briefing_photo(state_root, run_id, *, observed_at, language, capture_cache=None):
+    """Bound diagnostic inspection and rendering; callers can always send text."""
+    from .observer_trends import build_run_trends
+    trends = build_run_trends(state_root, run_id, now=observed_at, inspection_seconds=3.0,
+                              capture_cache=capture_cache)
+    photo = _plot_process({"trends": trends, "language": language})
+    if not photo.startswith(b"\x89PNG\r\n\x1a\n") or len(photo) > 4 * 1024 * 1024:
+        raise BriefingPlotError("plot_render_failed")
+    return photo
+
+
+def _configure_plot(language):
     import matplotlib
     matplotlib.use("Agg")
-    from matplotlib import dates, font_manager
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-    from matplotlib.ticker import MaxNLocator
-    from datetime import datetime, timezone
-
+    from matplotlib import font_manager
     zh = str(language).lower().split("-")[0] == "zh"
-    def tr(cn, en): return cn if zh else en
     if zh:
         candidates = ("Noto Sans CJK SC", "Noto Sans CJK JP", "WenQuanYi Zen Hei", "Droid Sans Fallback", "Microsoft YaHei", "SimHei")
         available = {font.name for font in font_manager.fontManager.ttflist}
         chosen = next((name for name in candidates if name in available), None)
-        if chosen is None: raise ValueError("Chinese chart font unavailable")
+        if chosen is None: raise BriefingPlotError("plot_font_missing")
         matplotlib.rcParams["font.family"] = [chosen]
     matplotlib.rcParams.update({"axes.unicode_minus": False, "font.size": 11})
+    return zh
+
+
+def render(trends, language):
+    zh = _configure_plot(language)
+    from matplotlib import dates
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    from matplotlib.ticker import MaxNLocator
+    from datetime import datetime, timezone
+    def tr(cn, en): return cn if zh else en
     indices = [i for i, point in enumerate(trends["points"]) if point["until"] > trends["ended_at"] - 43200]
     if not indices: raise ValueError("chart has no observations")
     points = [trends["points"][i] for i in indices]
@@ -90,6 +129,8 @@ def render(trends, language):
               f"RPM: {minutes:g}-minute bucket averages, including retries; missing capture leaves gaps. Bound Attempts, not process liveness.")
     if len(experts) > 8:
         note += tr("\n仅展示请求最多的 8 位专家；总 RPM 包含所有专家。", "\nOnly the 8 busiest experts are shown; total RPM includes all experts.")
+    if trends.get("coverage", {}).get("loading"):
+        note += tr("\n历史读取达到本次时限；未读区间尚不能确认是否缺失。", "\nHistory inspection reached its limit; unread intervals are not confirmed missing capture.")
     figure.text(.08, .045, note, fontsize=9, color="#475569")
     output = io.BytesIO()
     figure.savefig(output, format="png", facecolor=figure.get_facecolor())
@@ -97,5 +138,15 @@ def render(trends, language):
 
 
 if __name__ == "__main__":
-    request = json.load(sys.stdin)
-    sys.stdout.buffer.write(render(request["trends"], request["language"]))
+    try:
+        request = json.load(sys.stdin)
+        if request.get("check"):
+            _configure_plot(request["language"])
+            sys.stdout.buffer.write(b'{"state":"available"}')
+        else:
+            sys.stdout.buffer.write(render(request["trends"], request["language"]))
+    except Exception as exc:
+        code = (exc.code if isinstance(exc, BriefingPlotError) else "plot_dependencies_missing"
+                if isinstance(exc, ImportError) else "plot_render_failed")
+        sys.stdout.buffer.write(json.dumps({"error": code}).encode())
+        raise SystemExit(1)

@@ -273,29 +273,23 @@ class GitAuthoringWorkspace:
                     raise GitAuthoringPreparationError("session source is not its private bare repository")
             else:
                 _verify_checkout_root(self.git_executable, checkout, self.timeout_seconds)
-            _run_git(
-                self.git_executable,
-                (
-                    "clone",
-                    "--bare",
-                    "--no-hardlinks",
-                    "--",
-                    str(checkout),
-                    str(repository_root),
-                ),
-                timeout_seconds=self.timeout_seconds,
-            )
+            # Local clone copies the entire object directory, including large
+            # unreachable objects unrelated to the pinned source. Fetch through
+            # Git's transport into an independent repository instead; retain the
+            # exact commit's ancestry for later authoring and session transfers.
+            object_format = ("--object-format=sha256",) if len(commit) == 64 else ()
+            _run_git(self.git_executable, ("init", "--bare", *object_format, str(repository_root)),
+                     timeout_seconds=self.timeout_seconds)
+            _run_git(self.git_executable,
+                ("-C", str(repository_root), "-c", "gc.auto=0", "fetch", "--no-tags",
+                 "--no-recurse-submodules", "--", str(checkout), commit),
+                timeout_seconds=self.timeout_seconds)
             _real_directory(repository_root, "private bare repository")
             alternates = repository_root / "objects" / "info" / "alternates"
             if alternates.exists() or alternates.is_symlink():
                 raise GitAuthoringPreparationError(
                     "private clone uses an alternate object store"
                 )
-            _run_git(
-                self.git_executable,
-                ("-C", str(repository_root), "remote", "remove", "origin"),
-                timeout_seconds=self.timeout_seconds,
-            )
             if _run_git(
                 self.git_executable,
                 ("-C", str(repository_root), "remote"),
@@ -322,6 +316,11 @@ class GitAuthoringWorkspace:
                 raise GitAuthoringPreparationError(
                     "bound commit did not resolve exactly"
                 )
+            # Empty-seed sessions recover their base through the private HEAD.
+            # Fetch does not populate the unborn HEAD created by git init.
+            _run_git(self.git_executable,
+                ("--git-dir", str(repository_root), "update-ref", "--no-deref", "HEAD", commit),
+                timeout_seconds=self.timeout_seconds)
             _run_git(
                 self.git_executable,
                 (

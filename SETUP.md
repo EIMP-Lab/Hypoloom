@@ -16,7 +16,7 @@ runtime requirement of 3.51.3 or later.
 git clone --branch main https://github.com/EIMP-Lab/Hypoloom.git
 cd Hypoloom
 conda env create --prefix ./.conda/envs/hypoloom --file environment.yml
-conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor]'
+conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,notify]'
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
@@ -27,8 +27,10 @@ conda activate ./.conda/envs/hypoloom
 python -c 'import sqlite3; print(sqlite3.sqlite_version); assert sqlite3.sqlite_version_info >= (3, 51, 3)'
 ```
 
-The `monitor` extra installs the terminal interface. Add `notify` for notification
-charts or `institutional` for browser integration when needed. PDF extraction
+The `monitor` extra installs the terminal interface; `notify` provides notification
+charts. The supplied environment includes matplotlib, and launch preflight reports
+missing chart dependencies or report-language fonts. Minimal package installations
+can add `notify` later. Add `institutional` for browser integration when needed. PDF extraction
 requires Poppler's `pdfinfo` and `pdftotext`; see [institutional access](docs/guides/institutional-access.md)
 for browser requirements.
 

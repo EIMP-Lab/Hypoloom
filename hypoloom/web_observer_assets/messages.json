@@ -1524,5 +1524,15 @@
   "Drag either edge to resize; drag the selected window to move it. Arrow keys move one bucket; Shift moves ten.": "拖动两端调整范围，拖动选框平移窗口。方向键移动一个时间段，按住 Shift 移动十个。",
   "Hover or touch a chart to inspect a point. When the chart is focused, use the arrow keys.": "在曲线上悬停或触摸可查看单点数值；聚焦曲线后也可用方向键查看。",
   "GPU device recoveries: {0}": "GPU 设备恢复次数：{0}",
-  "GPU device failure requires resource recheck": "GPU 设备故障，需要处理后复查资源"
+  "GPU device failure requires resource recheck": "GPU 设备故障，需要处理后复查资源",
+  "History is still loading for {0} Attempts. Unread intervals are not confirmed missing data.": "仍在读取 {0} 次调用的历史记录。未读区间尚不能确认是否缺失。",
+  "Loading recorded history… Completed reads are retained; continuing shortly.": "正在读取历史记录… 已保留读取进度，稍后继续。",
+  "Retry limit reached for this task": "此任务的失败重试次数已用尽",
+  "Failure is not automatically retryable": "此失败不支持自动重试",
+  " · Briefing chart: {0}": " · 简报附图：{0}",
+  "Install the notify extra in the control environment": "请在控制环境安装 notify 绘图依赖",
+  "Install a Chinese chart font such as Noto Sans CJK": "请安装 Noto Sans CJK 等中文绘图字体",
+  "Chart rendering timed out": "绘图超时",
+  "Briefing exceeds the photo caption limit": "简报正文超过图片说明长度限制",
+  "Image generation failed; inspect local notification diagnostics": "图片生成失败，请查看本地通知诊断"
 }

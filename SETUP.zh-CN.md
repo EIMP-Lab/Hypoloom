@@ -15,7 +15,7 @@ Claude Code CLI。托管后台运行还需要 user-systemd。项目环境提供 
 git clone --branch main https://github.com/EIMP-Lab/Hypoloom.git
 cd Hypoloom
 conda env create --prefix ./.conda/envs/hypoloom --file environment.yml
-conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor]'
+conda run --prefix ./.conda/envs/hypoloom python -m pip install -e '.[monitor,notify]'
 ./.conda/envs/hypoloom/bin/hypoloom --help
 ```
 
@@ -26,8 +26,9 @@ conda activate ./.conda/envs/hypoloom
 python -c 'import sqlite3; print(sqlite3.sqlite_version); assert sqlite3.sqlite_version_info >= (3, 51, 3)'
 ```
 
-`monitor` 安装终端界面；需要通知图表时添加 `notify`，需要浏览器集成时添加
-`institutional`。PDF 提取还需 Poppler 的 `pdfinfo` 和 `pdftotext`；浏览器依赖见
+`monitor` 安装终端界面，`notify` 提供通知图表。提供的环境已包含 matplotlib，启动预检
+会明确提示缺少的绘图依赖或报告语言字体；精简安装可后续补装 `notify`。
+需要浏览器集成时添加 `institutional`。PDF 提取还需 Poppler 的 `pdfinfo` 和 `pdftotext`；浏览器依赖见
 [机构全文访问](docs/guides/institutional-access.zh-CN.md)。
 
 实验可使用独立的 CPU/CUDA 环境。解释器的实际路径必须位于所选运行环境内；

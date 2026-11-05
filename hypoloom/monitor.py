@@ -35,7 +35,7 @@ from .collaboration import derive_rendezvous_records
 from .contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
 from .control_protocol import ControlRequest, request_over_socket
 from .domain import HypothesisAssessment, ResearchContract, ScientificOutcome
-from .diagnostics import diagnostic_summary
+from .diagnostics import diagnostic_summary, recovery_summary
 from .expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -100,6 +100,7 @@ class AttemptView:
     cumulative_tokens: int | None = None
     operational_reason: str | None = None
     operational_status: str | None = None
+    recovery_summary: str | None = None
     context: Mapping[str, Any] | None = None
     session_scope: str | None = None
     context_observation: Mapping[str, Any] | None = None
@@ -956,6 +957,7 @@ def _attempt_views(
             cumulative_tokens=_attempt_reported_tokens(observation),
             operational_reason=_operational_failure_reason(observation, final_failures.get(attempt_id)),
             operational_status="recovery_exhausted" if attempt_id in final_failures else None,
+            recovery_summary=recovery_summary(observation) if attempt_id in final_failures else None,
             context=context or None,
             context_observation=(observation.get("diagnostics") or {}).get("context_observation"),
             input_material=(observation.get("diagnostics") or {}).get("input_material"),

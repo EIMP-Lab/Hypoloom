@@ -518,7 +518,13 @@
       : notifications.error ? t("Notification service: {0}", notifications.error)
       : !sinks.length ? t("No remote notification delivery has been observed.")
       : sinks.map(([name, h]) => t("{0}: {1} · pending {2} · last success {3}{4}{5}", name, (h.state || "unverified").replaceAll("_", " "), h.pending ?? "unknown", formatTimestamp(h.last_success_at), h.failure ? ` · ${h.failure.code} (${h.failure.phase}${h.failure.errno == null ? "" : `, errno ${h.failure.errno}`})` : "", h.next_retry_at ? t(" · next retry {0}", formatTimestamp(h.next_retry_at)) : "")
-        + (name === "telegram" ? t(" · route: {0}", ({direct: t("Direct"), http_proxy: t("HTTP proxy")})[h.route] || t("Unknown route")) : "")).join(" | "));
+        + (name === "telegram" ? t(" · route: {0}", ({direct: t("Direct"), http_proxy: t("HTTP proxy")})[h.route] || t("Unknown route")) : "")
+        + (h.briefing_chart?.state === "unavailable" ? t(" · Briefing chart: {0}", t(({
+          plot_dependencies_missing: "Install the notify extra in the control environment",
+          plot_font_missing: "Install a Chinese chart font such as Noto Sans CJK",
+          plot_timeout: "Chart rendering timed out",
+          caption_too_long: "Briefing exceeds the photo caption limit",
+        })[h.briefing_chart.reason] || "Image generation failed; inspect local notification diagnostics")) : "")).join(" | "));
     for (const kind of ["literature", "notification"]) {
       const button = byId(`${kind}-retry`);
       button.hidden = !providerToken || terminal || (kind === "notification" ? !notifications?.sinks?.telegram : !literature);
@@ -715,6 +721,7 @@
       const label = reason === "error_max_budget_usd" ? `${t("BUDGET LIMIT")} · ${reason}` : reason;
       row.append(element("strong", "", `${taskScopeLabel(attempt)} · ${attempt.phase || attempt.command || "—"}`));
       row.append(element("span", "", `${attempt.chain || "—"} · ${formatTimestamp(attempt.ended_at)} · ${label}`));
+      row.append(element("span", "", t(attempt.recovery_summary || "Automatic recovery ended for this node.")));
       row.append(actionButton(attempt.attempt_id, () => openRemoteDetail("attempt", {attempt_id: attempt.attempt_id}), "detail-link"));
       failureList.append(row);
     });
@@ -1345,7 +1352,8 @@
       const status = stage.terminal_reason || stage.state || "UNKNOWN";
       const row = element("p", `expert-stage-detail stage-${stageState(stage, host)}`);
       row.append(element("strong", "", phase), document.createTextNode(` · ${scope ? `${scope} · ` : ""}${status} · ${stage.elapsed_seconds == null ? "elapsed ?" : formatDuration(0, stage.elapsed_seconds)}`));
-      if (stage.operational_status === "recovery_exhausted") row.append(document.createTextNode(t(" · {0} attempts · automatic recovery ended", stage.attempts ?? "?")));
+      if (stage.operational_status === "recovery_exhausted") row.append(document.createTextNode(t(" · {0} attempts · automatic recovery ended", stage.attempts ?? "?")
+        + " · " + t(stage.recovery_summary || "Automatic recovery ended for this node.")));
       if (stage.failure_code) row.append(document.createTextNode(` · ${stage.failure_code}`));
       else if (stage.operational_status && stage.operational_status !== "recovery_exhausted") row.append(document.createTextNode(` · ${stage.operational_status}`));
       if (stage.recovery_note) row.title = stage.recovery_note;
@@ -4948,6 +4956,7 @@
     const coverage = object(trendsData.coverage);
     byId("trends-coverage").textContent = t("{0} s buckets · {1} recorded requests · {2} Attempts with incomplete capture. Gaps are unknown; known lower bounds remain available below. Data is included in Report issue.",
       trendsData.interval_seconds, coverage.request_count ?? 0, coverage.incomplete_attempts ?? 0);
+    if (coverage.loading) byId("trends-coverage").textContent += " " + t("History is still loading for {0} Attempts. Unread intervals are not confirmed missing data.", coverage.pending_attempts ?? 0);
     renderTrendNavigator(since, until);
     if (!trendIndices.length) return;
     const concurrency = [
@@ -5004,13 +5013,15 @@
       finishTrendDrag();
       trendsData = data;
       renderTrends();
-      byId("trends-status").textContent = t("Observed {0}. Refreshes every minute while open.", trendTime(data.observed_at));
+      byId("trends-status").textContent = object(data.coverage).loading
+        ? t("Loading recorded history… Completed reads are retained; continuing shortly.")
+        : t("Observed {0}. Refreshes every minute while open.", trendTime(data.observed_at));
     } catch (_error) {
       if (trendsDialog.open) byId("trends-status").textContent = t("Trends unavailable. Any previous chart is retained; use Refresh trends to retry.");
     } finally {
       clearTimeout(timeout); trendsController = null;
       byId("refresh-trends").disabled = false;
-      if (trendsDialog.open) trendsTimer = setTimeout(loadTrends, 60000);
+      if (trendsDialog.open) trendsTimer = setTimeout(loadTrends, object(trendsData?.coverage).loading ? 1000 : 60000);
     }
   }
   byId("open-trends").addEventListener("click", () => { trendsDialog.showModal(); loadTrends(); });

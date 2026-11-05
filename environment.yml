@@ -12,3 +12,4 @@ dependencies:
       - wsproto==1.3.2
       - h11==0.16.0
       - jsonschema==4.26.0
+      - matplotlib>=3.9,<4

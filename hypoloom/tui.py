@@ -924,6 +924,7 @@ class ExpertsPanel(CockpitPanel):
                         "  {0} attempts · automatic recovery ended · d details",
                         _count(stage.get('attempts')),
                     ))
+                    card.append("  " + tr(stage.get("recovery_summary") or "Automatic recovery ended for this node."))
                 if stage.get("failure_code"):
                     card.append(f"  {_value(stage['failure_code'])}")
             card.extend(("", *_reliability_lines(expert.get("reliability"))))

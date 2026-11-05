@@ -28,6 +28,15 @@ _CREDENTIAL_JSON_KEY = re.compile(
 )
 
 
+def recovery_summary(observation):
+    """Describe a recorded final failure without guessing legacy retry policy."""
+    if observation.get("retry_class") in {"MODEL", "INFRASTRUCTURE"}:
+        return "Retry limit reached for this task"
+    if "retry_class" in observation and observation["retry_class"] is None:
+        return "Failure is not automatically retryable"
+    return "Automatic recovery ended for this node."
+
+
 def credential_shaped_text(value: object) -> bool:
     if not isinstance(value, str):
         return False

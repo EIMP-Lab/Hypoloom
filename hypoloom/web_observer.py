@@ -130,6 +130,8 @@ class WebObserverServer(ThreadingHTTPServer):
         self._active_requests: set[socket.socket] = set()
         self._support_lock = threading.Lock()
         self._trends_lock = threading.Lock()
+        from .observer_trends import TrendCaptureCache
+        self.trend_capture_cache = TrendCaptureCache()
         self._answer_token: str | None = None
         self._provider_token: str | None = None
         self._literature_token: str | None = None
@@ -432,7 +434,8 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             from .observer_trends import build_run_trends
-            result = build_run_trends(self.observer.state_root, self.observer.run_id)
+            result = build_run_trends(self.observer.state_root, self.observer.run_id,
+                                      capture_cache=self.observer.trend_capture_cache)
             self._send(HTTPStatus.OK, json.dumps(result, separators=(',', ':')).encode(),
                        'application/json; charset=utf-8', compress=True)
         except (ValueError, OSError, sqlite3.Error, StateStoreError):
