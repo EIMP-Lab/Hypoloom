@@ -1,5 +1,24 @@
 # Current Hypoloom development state
 
+- November 6 measurement/adjudication repair: the user authorizes a framework
+  fix, dev commit/push and corresponding main publication. ACI 33 / adapter 91
+  requires explicit GT/GE/LT/LE in new local measurement declarations; omitted
+  legacy operators retain inclusive semantics and identical serialized fields.
+  Schema, native Stop and postflight use the Host's exact terminal-tip reference
+  domain and adjudication validator. Errors name the chain, accepted outcome and
+  expected/actual status; no verdict rewriting or retry-budget increase occurs.
+  Strict equality followed by a revised CPU hypothesis closes successfully, and
+  real CLI semantic correction succeeds within one Host Attempt. Full G1 plus
+  74 affected rechecks reconciles 8,849 passes/161 skips with no unresolved
+  failures; initial fixture/timeout/connection failures remain recorded. Five
+  retained roots/3,072 artifacts are unchanged, and 209 runtime files match
+  source, wheel, installation and fresh bundle. Nine final native roots close
+  213 Agents/19 CPU Processes with clean Oracles and 172 groups without residue.
+  Retained runs
+  and their frozen bundles remain read-only; ordinary resume cannot reopen a
+  final-failed task. [Design](../design/measurement-adjudication-consistency.md) /
+  [validation](../qualification.md#measurement-and-adjudication-consistency-2026-11-06).
+
 - November 5 runtime preparation and observation repair: the user requests a
   general framework fix for task retry exhaustion, slow Web trend loading and
   missing twelve-hour Telegram charts, followed by dev/main publication.

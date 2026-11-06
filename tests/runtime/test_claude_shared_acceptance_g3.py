@@ -53,13 +53,14 @@ _DECLARATION = {
 }
 
 
-def _local_measurement():
+def _local_measurement(schema_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION):
     return ScientificMeasurement(
         metric=MetricSpec(name="diagnostic_accuracy", direction=MetricDirection.MAXIMIZE, target="0.9"),
         comparison=MeasurementComparison.VALUE,
         parse_rule="Calculate accuracy on the separately declared local diagnostic pairs.",
         parser_argv=("python", "/input/parse_local.py"), parser_files=("parse_local.py",),
         raw_artifacts=("predictions.json",),
+        success_operator="GE" if schema_version >= 33 else None,
     )
 
 
@@ -135,10 +136,10 @@ class _AcceptanceChoices(DeclaredMeasurementAgent):
                 and isinstance(request.task_context, ResearchNodeTask)
                 and request.task_context.key.subkind is ResearchNodeSubkind.SYNTHESIS):
             for body in _candidate_bodies(request, candidate):
-                body["measurement"] = _local_measurement().to_dict()
+                body["measurement"] = _local_measurement(request.schema_version).to_dict()
                 body["method_family_id"] = "candidate-" + request.role
         elif request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
-            declaration = _local_measurement().to_dict()
+            declaration = _local_measurement(request.schema_version).to_dict()
             candidate.update(method="Measure both suites from one candidate, plus a separate local diagnostic.",
                 metrics=[declaration["metric"]], measurement=declaration,
                 execution_argv=["python", "/input/experiment.py"], evaluation_scope="GOAL",

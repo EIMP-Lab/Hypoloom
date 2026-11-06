@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/90"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/91"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2268,9 +2268,10 @@ def _declared_measurement_request(request: AgentRequest) -> bool:
     return declared_measurement_request(request)
 
 
-def _measurement_schema() -> dict[str, Any]:
+def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
+    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION
     strings = {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
-    return {"type": "object", "additionalProperties": False,
+    schema = {"type": "object", "additionalProperties": False,
         "properties": {
             "metric": {"type": "object", "additionalProperties": False,
                 "properties": {"name": {"type": "string", "minLength": 1},
@@ -2282,6 +2283,14 @@ def _measurement_schema() -> dict[str, Any]:
             "parser_argv": strings, "parser_files": {**strings, "uniqueItems": True},
             "raw_artifacts": {**strings, "uniqueItems": True}},
         "required": ["metric", "comparison", "parse_rule", "parser_argv", "parser_files", "raw_artifacts"]}
+    if schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
+        schema["properties"]["success_operator"] = {"enum": ["GT", "GE", "LT", "LE"],
+            "description": "Compare the transformed measurement to metric.target. MAXIMIZE uses GT (>) or GE (>=); MINIMIZE uses LT (<) or LE (<=). Strict positive improvement requires GT with target 0; GE accepts zero. Match the scientific claim and parse_rule; this operator freezes with the measurement."}
+        schema["required"].append("success_operator")
+        schema["allOf"] = [{"if": {"properties": {"metric": {"properties": {"direction": {"const": direction}}}}},
+            "then": {"properties": {"success_operator": {"enum": operators}}}}
+            for direction, operators in (("MAXIMIZE", ["GT", "GE"]), ("MINIMIZE", ["LT", "LE"]))]
+    return schema
 
 
 def _shared_acceptance_schema() -> dict[str, Any]:
@@ -2340,6 +2349,9 @@ def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorks
 
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
     from .domain import AgentCommand
+    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, validate_adjudication_candidate
+    if request.command is AgentCommand.ADJUDICATE and request.schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
+        return lambda output: validate_adjudication_candidate(request, output["typed_candidate"])
     if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
         return lambda output: _native_design_output_check(request, workspace, output)
     observer = _observer_output_check(request)
@@ -2421,7 +2433,7 @@ def _experiment_candidate_schema(request: AgentRequest) -> Mapping[str, object]:
     }
     if request.command.value != "DRAFT_EXPERIMENT_SPEC" and _declared_measurement_request(request):
         shared = grounding_acceptance_request(request)
-        declared = _measurement_schema()
+        declared = _measurement_schema(request.schema_version)
         additions = {
             "measurement": {"anyOf": [declared, {"type": "null"}]} if shared else declared,
             "execution_argv": {"type": "array", "minItems": 1,
@@ -2596,7 +2608,8 @@ def _output_schema(
                     "type": "object", "additionalProperties": False,
                     "properties": {"chain_id": verdict_chain,
                         "node_id": {"enum": sorted(chains.values())} if chains else reference_schema,
-                        "status": {"enum": ["verified", "refuted", "inconclusive"]},
+                        "status": {"enum": ["verified", "refuted", "inconclusive"],
+                            "description": "Mirror the exact terminal tip outcome: SUCCESS -> verified, CLEAN_REFUTATION -> refuted, otherwise inconclusive. This is the accepted local criterion, not overall goal attainment. Explain scientific limits in summary."},
                         "evidence": ({"type": "array", "uniqueItems": True,
                             "description": "Exact admitted reference IDs, not explanatory prose; put explanations in summary.",
                             "items": reference_schema} if evidence_refs else {"const": []})},
@@ -2800,7 +2813,7 @@ def _output_schema(
             "required": candidate_required,
         }
     if _declared_measurement_request(request) and synthesis:
-        declared = _measurement_schema()
+        declared = _measurement_schema(request.schema_version)
         measurement = ({"anyOf": [declared, {"type": "null"}]}
                        if grounding_acceptance_request(request) else declared)
         candidate = {**candidate, "properties": {**candidate["properties"], "measurement": measurement},

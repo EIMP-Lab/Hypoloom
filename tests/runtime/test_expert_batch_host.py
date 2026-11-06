@@ -920,7 +920,7 @@ def test_real_cpu_leader_round_reopens_only_its_designated_component_and_gets_a_
 def test_current_research_continues_until_goal_or_actual_experiment_budget(batch_host, expected_cycles):
     host = batch_host
     _complete(host, timeout=120)
-    assert host.store.get_run("batch-host")["agent_aci_version"] == "32"
+    assert host.store.get_run("batch-host")["agent_aci_version"] == "33"
     history = host._batch_history("batch-host", "primary.validation_accuracy")
     assert [batch.cycle for batch in history.batches] == list(range(1, expected_cycles + 1))
     attempts = host.store.list_attempts()

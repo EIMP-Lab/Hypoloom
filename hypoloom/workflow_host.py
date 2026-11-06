@@ -1333,7 +1333,10 @@ class WorkflowHost:
             busy_gpu = bool(set(gpus).intersection(self._busy_gpu_uuids(experiment_id)))
             criterion = None
             if outcome is not None and ScientificOutcome(outcome["payload"]["outcome"]) in {ScientificOutcome.SUCCESS, ScientificOutcome.CLEAN_REFUTATION}:
-                criterion = ScientificOutcome(outcome["payload"]["outcome"]) is ScientificOutcome.SUCCESS if component.metric is None else component.metric.accepts(outcome["payload"]["metric_value"])
+                measurement = None if spec is None else spec["payload"].get("measurement")
+                criterion = (ScientificMeasurement.from_dict(measurement).accepts(outcome["payload"]["metric_value"])
+                    if measurement is not None else ScientificOutcome(outcome["payload"]["outcome"]) is ScientificOutcome.SUCCESS
+                    if component.metric is None else component.metric.accepts(outcome["payload"]["metric_value"]))
             proposals = tuple(ProposalSnapshot(role=role, hypothesis_id=None if (candidate := hypotheses.get((component_id, role))) is None else str(candidate["hypothesis_id"]), final_failure=candidate is None and (grounding_failed or (component_id, role) in failed_proposals), effect_in_flight=any(kind == "AGENT" and payload.get("component_id") == component_id and payload.get("role") == role for _, kind, payload in open_effects)) for role in component.proposer_roles)
             if batch_mode and selected_fact is not None:
                 proposals = tuple(replace(item, hypothesis_id=str(selected), final_failure=False) if item.role == component.owner_role else item for item in proposals)

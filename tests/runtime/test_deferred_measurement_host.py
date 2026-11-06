@@ -2,6 +2,7 @@ import json
 import shutil
 import sqlite3
 import tempfile
+import time
 from dataclasses import replace
 from pathlib import Path
 import pytest
@@ -26,6 +27,10 @@ def _candidate_bodies(request, candidate):
 
 
 class DeclaredMeasurementAgent(FakeAgent):
+    def measurement(self, request):
+        return (replace(declaration(), success_operator="LE")
+                if request.schema_version >= 33 else declaration())
+
     def invoke(self, request):
         if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
             response = super().invoke(request)
@@ -34,14 +39,14 @@ class DeclaredMeasurementAgent(FakeAgent):
                     and request.task_context.key.subkind is ResearchNodeSubkind.SYNTHESIS):
                 candidate = json.loads(json.dumps(response.typed_candidate))
                 for body in _candidate_bodies(request, candidate):
-                    body["measurement"] = declaration().to_dict()
+                    body["measurement"] = self.measurement(request).to_dict()
                 return with_output_digest(replace(response, typed_candidate=candidate))
             return response
         response = super().invoke(default_request(AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT))
         assert isinstance(response, AgentResponse)
         candidate = {"component_id": request.component_id, "owner_role": request.role,
                      "method_family_id": request.method_family_id, "method": "Shell timings and custom CSV median",
-                     "metrics": [declaration().to_dict()["metric"]], "measurement": declaration().to_dict(),
+                     "metrics": [self.measurement(request).to_dict()["metric"]], "measurement": self.measurement(request).to_dict(),
                      "execution_argv": ["/bin/sh", "/input/experiment.sh"],
                      "acceptance_criteria": ["relative median latency delta <= -0.10"],
                      "evaluator_version": OUTCOME_ADAPTER_VERSION,
@@ -76,6 +81,57 @@ class DecimalSpellingAgent(DeclaredMeasurementAgent):
                 if "metrics" in body: body["metrics"][0]["target"] = "-0.100"
             response = with_output_digest(replace(response, typed_candidate=candidate))
         return response
+
+
+class StrictBoundaryAgent(DeclaredMeasurementAgent):
+    """A real CPU equality result fails; a revised hypothesis then improves."""
+    def measurement(self, request):
+        return replace(declaration(), success_operator="LT")
+
+    def invoke(self, request):
+        response = super().invoke(request)
+        if not isinstance(request.task_context, ResearchNodeTask): return response
+        cycle = request.task_context.key.cycle
+        if request.command is AgentCommand.HYPOTHESIS_UPDATE and cycle == 1:
+            response = replace(response, typed_candidate={**response.typed_candidate,
+                "update_disposition": "REVISE_NEXT_CYCLE"})
+        if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+            response = replace(response, typed_candidate={**response.typed_candidate,
+                "acceptance_criteria": ["relative median latency delta strictly below -0.10"]})
+            if cycle > 1:
+                response = replace(response, proposed_workspace_artifacts=tuple(
+                    WorkspaceArtifact.from_bytes(item.path,
+                        b"printf '10,6\\n10,7\\n10,8\\n' > timings.csv\necho revised-experiment-complete\n"
+                        if item.path == "experiment.sh" else item.content_bytes())
+                    for item in response.proposed_workspace_artifacts))
+        return with_output_digest(response)
+
+
+def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path):
+    with tempfile.TemporaryDirectory(prefix="hypoloom-strict-target-", dir="/var/tmp") as directory:
+        host = WorkflowHost(tmp_path / "state", local_agent=StrictBoundaryAgent())
+        try:
+            host.initialize()
+            created = host.handle(ControlRequest(schema_version=1, request_id="strict-create", expected_revision=0,
+                command="CREATE_RUN", payload=deferred_payload(tmp_path, Path(directory))))
+            assert created.status == "accepted", created
+            assert host.store.get_run("c5-host")["agent_aci_version"] == "33"
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                host.tick()
+                if host.store.latest_transition("c5-host")["state"] == "COMPLETED": break
+                time.sleep(0.005)
+            assert host.store.latest_transition("c5-host")["state"] == "COMPLETED"
+            outcomes = host.store.list_facts("c5-host", "CanonicalOutcomeAccepted")
+            assert [(r["payload"]["metric_value"], r["payload"]["outcome"]) for r in outcomes] == [
+                ("-0.1", "CLEAN_REFUTATION"), ("-0.3", "SUCCESS")]
+            attempts = host.store.list_attempts()
+            assert len([r for r in attempts if r["kind"] == "PROCESS"]) == 2
+            assert all(r["state"] == "CLOSED" and r["terminal_reason"] == "SUCCEEDED" for r in attempts)
+            audit = Oracle(host.store.database_path, host.publisher.root).audit("c5-host")
+            assert audit.ok, audit.to_dict()
+        finally:
+            host.close()
 
 
 @pytest.mark.parametrize("schema_version", [13, 14])

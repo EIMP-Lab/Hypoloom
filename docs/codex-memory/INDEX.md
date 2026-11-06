@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Measurement and adjudication consistency, November 6](../design/measurement-adjudication-consistency.md):
+  ACI 33 explicit strict/inclusive local measurement operators, legacy wire
+  compatibility, exact terminal-tip references and same-invocation semantic
+  correction using existing Host admission. No verdict rewriting, retry-policy
+  increase or retained-run migration. Dev/main publication is authorized.
+  [Validation](../qualification.md#measurement-and-adjudication-consistency-2026-11-06).
+
 - [Runtime preparation and observation, November 5](../design/runtime-observation-recovery.md):
   per-task retry semantics, pinned reachable Git history, explicit final-failure
   labels, resumable bounded trend inspection and actionable briefing chart health.

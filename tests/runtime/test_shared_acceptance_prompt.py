@@ -26,7 +26,7 @@ def _request(command, *, local=True):
             value = json.loads(item.content_bytes())
             value["goal"] = {"evaluation": {"mode": "grounding"}}
             if "required_experiment_spec" in value:
-                measure = _local_measurement().to_dict() if local else None
+                measure = _local_measurement(16).to_dict() if local else None
                 value["required_experiment_spec"].update(measurement=measure,
                     metric=None if measure is None else measure["metric"])
             item = EmbeddedInput.from_bytes(item.ref, item.media_type, json.dumps(value).encode())
@@ -74,8 +74,8 @@ def test_shared_design_prompt_uses_existing_schema_without_changing_selected_mea
     assert "method" in candidate["required"] and "supporting_refs" not in candidate["properties"]
     assert "declared_effects" in schema["required"] and "declared_effects" not in candidate["properties"]
     if local:
-        assert candidate["properties"]["measurement"] == {"const": _local_measurement().to_dict()}
-        assert candidate["properties"]["metrics"] == {"const": [_local_measurement().to_dict()["metric"]]}
+        assert candidate["properties"]["measurement"] == {"const": _local_measurement(16).to_dict()}
+        assert candidate["properties"]["metrics"] == {"const": [_local_measurement(16).to_dict()["metric"]]}
     else:
         assert {"type": "null"} in candidate["properties"]["measurement"]["anyOf"]
         assert candidate["properties"]["metrics"]["minItems"] == 0

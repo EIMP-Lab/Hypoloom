@@ -57,7 +57,11 @@ def interpret_measurement(declaration: Mapping[str, Any], result: Mapping[str, A
         target = _decimal(metric["target"])
         direction = metric["direction"]
         if direction not in {"MINIMIZE", "MAXIMIZE"}: raise ValueError("invalid metric direction")
-        criterion = measured <= target if direction == "MINIMIZE" else measured >= target
+        operator = declaration.get("success_operator", "LE" if direction == "MINIMIZE" else "GE")
+        allowed = ("LT", "LE") if direction == "MINIMIZE" else ("GT", "GE")
+        if operator not in allowed: raise ValueError(f"invalid success_operator for {direction}")
+        criterion = {"LT": measured < target, "LE": measured <= target,
+                     "GT": measured > target, "GE": measured >= target}[operator]
         return MeasurementOracleResult(text, criterion, dict(result))
     except (KeyError, TypeError, DecimalException) as exc:
         raise ValueError(f"invalid parsed measurement: {exc}") from exc

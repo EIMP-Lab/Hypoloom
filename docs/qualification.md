@@ -2,6 +2,75 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Measurement and adjudication consistency (2026-11-06)
+
+[Design](design/measurement-adjudication-consistency.md). ACI 33 / adapter 91
+adds explicit strict/inclusive local success operators and uses the existing Host
+adjudication validator during native Stop and postflight. Schema and admission
+share the exact terminal-tip reference domain. Legacy declarations retain their
+inclusive semantics and serialized fields. No retained research state, frozen
+bundle, retry allowance or verdict is rewritten. The user authorizes dev push,
+then corresponding selective public main synchronization.
+
+Evidence is under `.local/qualification/measurement-adjudication-20261106/`.
+
+- The initial 28-case portable regression against pristine dev HEAD records
+  **26 failures / two passes**; the legacy controls already pass. Final portable
+  coverage passes **29 cases**, including transformed zero/equality boundaries,
+  invalid operators, frozen comparison, legacy fact serialization, historical
+  canonical versus immutable references, and postflight without a native hook.
+- Initial focused checks record **327 passes / six failures**. Three expose
+  generic fact serialization adding a null operator to legacy declarations;
+  serialization now uses the measurement type's existing representation. Two
+  assert the prior current version and are updated explicitly. One CPU fixture
+  reports fewer successful Processes under concurrent qualification; its unchanged
+  assertions pass on recheck. Original reports are retained.
+- A real CPU/Host sequence records equality at `-0.1` as CLEAN_REFUTATION under
+  LT, revises the hypothesis, and records `-0.3` as SUCCESS. Both Processes and
+  all 29 Agent Attempts close successfully; the independent Oracle passes.
+- Actual installed Claude CLI, Host, broker, parser and CPU publication with a
+  local scripted provider recover a contradictory adjudication within **one
+  Attempt**, with one rejected and one accepted native Stop round. All 15 Agents
+  and one Process succeed, with a clean Oracle. The first test setup used an
+  unsupported public Profile field; the corrected fixture uses the existing
+  explicit-signals CREATE_RUN path. It does not extend Profile configuration.
+- Read-only replay of the incident's three rejected candidates confirms all are
+  rejected by the new in-invocation validator; both status disagreements include
+  actionable expected/actual status feedback. No private research content is
+  published and no response is edited or written back.
+- **209 runtime files** match dev source, wheel, isolated installation and a fresh
+  frozen bundle. Installed CLI/MCP, private Git preparation and bilingual PNG
+  generation pass; no notification is sent.
+- Baseline/candidate read-only audits agree for **five retained research roots**.
+  Logical databases and all **3,072 artifact files** remain unchanged and all
+  Oracles pass. Independent closure of the two new CPU/native flows confirms
+  **44 closed Agents / three closed Processes**, no pending effects and no live
+  members of **18 recorded process groups**.
+- Full offline G1 records **8,820 passed / 29 failed / 161 skipped** in
+  **1,422.63 s**. Durable observations trace 27 failures to one scripted shared
+  measurement fixture still omitting the now-required operator. That fixture now
+  supplies GE for new requests and omits it for retained versions; the ACI 16
+  prompt fixture explicitly keeps its legacy declaration. The other two failures
+  are a ten-second Node subprocess timeout and a cancelled local provider's
+  BrokenPipe. Original failures and per-case causes remain in `g1.xml` and
+  `g1-causes.json`; no product comparison, limit or assertion is relaxed.
+- All **74 affected rechecks pass in 521.16 s**, including every failed case,
+  the seven standard native G3 scenarios, new threshold/adjudication regressions
+  and the retained ACI 16 prompt. Per-test reconciliation gives **8,849 passed /
+  161 skipped / zero unresolved failures** across 9,010 cases (`reconciled.json`).
+  This is one complete invocation plus affected rechecks, not an assertion that
+  the original full invocation passed. Compilation, undefined-name and whitespace
+  checks pass; final runtime bytes still match the qualified installed package.
+- Final independent closure of **nine recheck roots** counts **213 closed Agents
+  / 19 closed CPU Processes**, clean Oracles, no pending effects and no live
+  members of **172 recorded process groups** (`native-closure.json`). Expected
+  failure/cancellation reasons are preserved; scripted provider responses do not
+  substitute for the actual CLI, Host, broker and Process paths.
+
+This scoped change does not renew GPU or paid-model qualification. New runs use
+the repaired bundle; updating the checkout does not reopen exhausted tasks or
+migrate existing research.
+
 ## Runtime preparation and observation (2026-11-05)
 
 [Design](design/runtime-observation-recovery.md). The user authorizes general
