@@ -955,6 +955,18 @@ def pruning_relation(*, loser_chain: str | None, loser_hypothesis_id: str, winne
             "score_refs": list(_unique(score_refs, "pruning score references"))}
 
 
+def adjudication_references(batch: Mapping[str, str], terminal_tips: Mapping[str, ComparedTip | None],
+                            accepted_reference_ids: Iterable[str] = ()) -> set[str]:
+    """The single reference domain for schema, native correction and Host admission."""
+    references = set(_unique(accepted_reference_ids, "accepted references")) | set(batch.values())
+    for tip in terminal_tips.values():
+        if tip is not None:
+            if not isinstance(tip, ComparedTip):
+                raise ValueError("compared tip is outside the exact batch hypothesis binding")
+            references.update((tip.node_id, tip.experiment_id, tip.outcome_id, tip.outcome_fact_id, tip.artifact_id))
+    return references
+
+
 def admit_adjudication(value: Mapping[str, Any], *, lineage: ExpertLineage, batch: Mapping[str, str],
                        terminal_chains: Iterable[str], terminal_tips: Mapping[str, ComparedTip | None],
                        source_attempt_id: str, accepted_reference_ids: Iterable[str] = (),
@@ -969,7 +981,7 @@ def admit_adjudication(value: Mapping[str, Any], *, lineage: ExpertLineage, batc
     _text(source_attempt_id, "source_attempt_id")
     if debate_id is not None:
         _text(debate_id, "debate_id")
-    references = set(_unique(accepted_reference_ids, "accepted references")) | set(batch.values())
+    references = adjudication_references(batch, terminal_tips, accepted_reference_ids)
     for chain, tip in terminal_tips.items():
         if tip is None:
             continue
@@ -979,7 +991,6 @@ def admit_adjudication(value: Mapping[str, Any], *, lineage: ExpertLineage, batc
             raise ValueError("compared tip belongs to another participant")
         if tip.comparable and required_method_family_id is not None and tip.method_family_id != required_method_family_id:
             raise ValueError("required-input producer method family differs")
-        references.update((tip.node_id, tip.experiment_id, tip.outcome_id, tip.outcome_fact_id, tip.artifact_id))
     raw_verdicts = value["verdicts"]
     if not isinstance(raw_verdicts, list):
         raise ValueError("verdicts must be an array")
@@ -992,7 +1003,10 @@ def admit_adjudication(value: Mapping[str, Any], *, lineage: ExpertLineage, batc
         tip = terminal_tips[chain]
         expected = {"SUCCESS": "verified", "CLEAN_REFUTATION": "refuted"}.get(None if tip is None else tip.outcome, "inconclusive")
         if verdict["status"] != expected:
-            raise ValueError("verdict contradicts accepted outcome; failure is not refutation")
+            raise ValueError("verdict contradicts accepted outcome; failure is not refutation; "
+                f"chain_id={json.dumps(chain)}; outcome={json.dumps(None if tip is None else tip.outcome)}; "
+                f"expected_status={json.dumps(expected)}; actual_status={json.dumps(verdict['status'])}. "
+                "Mirror the accepted local outcome in status; explain scientific limits and unmet overall goals in summary.")
         if not isinstance(verdict["evidence"], list):
             raise ValueError("verdict evidence must be an array")
         evidence = set(_unique(verdict["evidence"], "verdict evidence"))

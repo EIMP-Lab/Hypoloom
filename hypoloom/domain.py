@@ -875,10 +875,11 @@ def _validate_fact(fact: _FactBase) -> None:
 FactCandidate: TypeAlias = GoalDefined | HypothesisProposed | ExperimentPreregistered | CanonicalOutcomeAccepted | EvidenceLinked | HypothesisAssessed | GoalVerdictRecorded
 def fact_to_dict(fact: FactCandidate) -> dict[str, Any]:
     """Return the canonical JSON-compatible representation of a fact candidate."""
+    from .measurement_contract import ScientificMeasurement
     if not isinstance(fact, _FactBase): raise TypeError("fact must be one of the seven Research fact dataclasses")
     def encode(value: Any) -> Any:
         if isinstance(value, Enum): return value.value
-        if isinstance(value, ResearchContract): return value.to_dict()
+        if isinstance(value, (ResearchContract, ScientificMeasurement)): return value.to_dict()
         if isinstance(value, (ResourceGrant, ResourceIntent)): return value.to_dict()
         if isinstance(value, ExecutionContract): return {item.name: encode(getattr(value, item.name)) for item in fields(value)
             if item.name not in {"resource_grant", "resource_intent"} or getattr(value, item.name) is not None}

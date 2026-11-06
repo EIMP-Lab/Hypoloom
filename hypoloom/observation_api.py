@@ -100,8 +100,16 @@ def _best_results(run_id, facts, commands):
             previous_metric_value=None if previous is None else previous[1]["metric_value"],
             evaluation_scope=(spec.get("goal_evaluation") or {}).get("scope"),
             measurement_comparison=(spec.get("measurement") or {}).get("comparison", "VALUE"),
-            metric_target_met=MetricSpec(name=metric["name"], direction=MetricDirection(metric["direction"]), target=metric["target"]).accepts(value)))
+            metric_target_met=_metric_target_met(spec, value)))
     return events
+
+
+def _metric_target_met(spec, value):
+    if spec.get("measurement") is not None:
+        from .measurement_contract import ScientificMeasurement
+        return ScientificMeasurement.from_dict(spec["measurement"]).accepts(value)
+    metric = spec["metric"]
+    return MetricSpec(name=metric["name"], direction=MetricDirection(metric["direction"]), target=metric["target"]).accepts(value)
 
 
 def _provider_auth_events(run_id, facts, transitions, attempts):

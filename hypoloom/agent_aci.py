@@ -75,7 +75,8 @@ BOUNDED_DEBATE_ACI_SCHEMA_VERSION = 29
 GPU_RECOVERY_ACI_SCHEMA_VERSION = 30
 UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION = 31
 INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION = 32
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION
+EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION = 33
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -104,6 +105,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         GPU_RECOVERY_ACI_SCHEMA_VERSION,
         UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION,
         INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION,
+        EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -141,6 +143,7 @@ _COMMANDS_BY_SCHEMA = {
     GPU_RECOVERY_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1207,8 +1210,7 @@ def validate_postflight(
         )
     candidate = _candidate(request, parsed.typed_candidate)
     if isinstance(candidate, ExperimentSpecCandidate): _validate_evaluation_scope(request, candidate)
-    if getattr(candidate, "measurement", None) is not None and request.schema_version < 12:
-        raise AgentACIError("wrong_schema_version", "expert measurement requires ACI12")
+    _validate_measurement_version(request, getattr(candidate, "measurement", None))
     synthesis = _is_hypothesis_synthesis(request)
     query_plan = _is_literature_query_plan(request.task_context)
     literature_main = (
@@ -1262,6 +1264,8 @@ def validate_postflight(
             )
     elif request.command is AgentCommand.ADJUDICATE:
         assert isinstance(candidate, AdjudicationCandidate)
+        if request.schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
+            validate_adjudication_candidate(request, candidate.to_dict())
         refs = {ref for verdict in candidate.verdicts for ref in (*verdict["evidence"], verdict["node_id"])}
         if not refs <= adjudication_reference_ids(request):
             raise AgentACIError("invalid_candidate", "adjudication cites outside the admitted input domain")
@@ -1447,8 +1451,7 @@ def validate_experiment_submission(
             raise AgentACIError("invalid_resource_estimate", str(exc)) from exc
     candidate = _experiment_candidate(_mapping(arguments["candidate"], "candidate"))
     _validate_evaluation_scope(request, candidate)
-    if candidate.measurement is not None and request.schema_version < 12:
-        raise AgentACIError("wrong_schema_version", "expert measurement requires ACI12")
+    _validate_measurement_version(request, candidate.measurement)
     if (candidate.component_id, candidate.owner_role, candidate.method_family_id) != (
         request.component_id, request.role, request.method_family_id
     ):
@@ -1564,13 +1567,23 @@ def canonical_json(value: Any) -> bytes:
         raise AgentACIError("noncanonical_json", str(exc)) from exc
 
 
+def _validate_measurement_version(request: AgentRequest, measurement: ScientificMeasurement | None) -> None:
+    if measurement is None: return
+    if request.schema_version < 12:
+        raise AgentACIError("wrong_schema_version", "expert measurement requires ACI12")
+    if request.schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
+        if measurement.success_operator is None:
+            raise AgentACIError("invalid_candidate", "measurement.success_operator is required: choose GT/GE for MAXIMIZE or LT/LE for MINIMIZE; strict improvement over zero requires GT")
+    elif measurement.success_operator is not None:
+        raise AgentACIError("wrong_schema_version", "explicit measurement success_operator requires ACI33")
+
+
 def _validate_hypothesis_owner(request: AgentRequest, candidate: HypothesisCandidate, *, synthesis: bool) -> None:
     if candidate.component_id != request.component_id:
         raise AgentACIError("component_id_mismatch", f"{candidate.component_id!r} != {request.component_id!r}")
     if candidate.proposer_role != request.role:
         raise AgentACIError("proposer_role_mismatch", f"{candidate.proposer_role!r} != {request.role!r}")
-    if candidate.measurement is not None and request.schema_version < 12:
-        raise AgentACIError("wrong_schema_version", "expert measurement requires ACI12")
+    _validate_measurement_version(request, candidate.measurement)
     if synthesis:
         parents = _synthesis_parent_hypothesis_ids(request)
         if candidate.parent_hypothesis_id not in parents or (candidate.relation is None) != (parents == (None,)):
@@ -1608,6 +1621,10 @@ def _validate_iteration_input(request: AgentRequest, candidate: ExpertLoopCandid
 
 def adjudication_reference_ids(request: AgentRequest) -> frozenset[str]:
     """The existing admitted domain shared by postflight and its rendered schema."""
+    if request.schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
+        from .expert_loop import adjudication_references
+        context, tips, _ = _adjudication_inputs(request)
+        return frozenset(adjudication_references(context["chains"], tips, request.immutable_context_refs))
     allowed = set(request.immutable_context_refs)
     for kind, fields in (("HypothesisProposed", ("hypothesis_id",)),
                          ("CanonicalOutcomeAccepted", ("outcome_id", "experiment_id", "artifact_id"))):
@@ -1616,6 +1633,43 @@ def adjudication_reference_ids(request: AgentRequest) -> frozenset[str]:
                 continue
             allowed.update(payload[field] for field in fields if isinstance(payload.get(field), str))
     return frozenset(allowed)
+
+
+def _adjudication_inputs(request: AgentRequest):
+    """Read only the Host-built immutable request; safe on the native socket worker."""
+    from .expert_loop import ComparedTip, ExpertLineage
+    sources = [item for item in request.input_artifacts if item.ref.endswith("--batch-context")]
+    try:
+        if (len(sources) != 1 or sources[0].ref != request.command_id + "--batch-context"
+                or sources[0].ref not in request.immutable_context_refs
+                or not isinstance(request.task_context, ResearchNodeTask)):
+            raise ValueError("adjudication requires its exact supplied batch context")
+        context = json.loads(sources[0].content_bytes())
+        chains = context["chains"]
+        if (not isinstance(chains, dict) or not chains or context["cycle"] != request.task_context.key.cycle
+                or set(context["terminal_tips"]) != set(chains)):
+            raise ValueError("adjudication context differs from its exact batch")
+        tips = {chain: None if raw is None else ComparedTip(**raw)
+                for chain, raw in context["terminal_tips"].items()}
+        first = next(iter(chains.values()))
+        parent = next((value.get("parent_hypothesis_id") for value in _embedded_fact_payloads(request, "HypothesisProposed")
+                       if value.get("hypothesis_id") == first), None)
+        lineage = ExpertLineage(run_id=request.run_id, component_id=request.component_id,
+            expert_slot=request.role, cycle=context["cycle"], parent_hypothesis_id=parent)
+        return context, tips, lineage
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AgentACIError("invalid_candidate", str(exc)) from exc
+
+
+def validate_adjudication_candidate(request: AgentRequest, value: Mapping[str, Any]):
+    from .expert_loop import admit_adjudication
+    context, tips, lineage = _adjudication_inputs(request)
+    try:
+        return admit_adjudication(value, lineage=lineage, batch=context["chains"],
+            terminal_chains=tuple(context["chains"]), terminal_tips=tips,
+            source_attempt_id=request.attempt_id, accepted_reference_ids=request.immutable_context_refs)
+    except ValueError as exc:
+        raise AgentACIError("invalid_candidate", str(exc)) from exc
 
 
 def debate_reference_ids(request: AgentRequest) -> frozenset[str]:

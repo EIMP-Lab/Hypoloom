@@ -47,10 +47,14 @@ class ScientificMeasurement:
     parser_argv: tuple[str, ...]
     parser_files: tuple[str, ...]
     raw_artifacts: tuple[str, ...]
+    success_operator: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.metric, MetricSpec) or not isinstance(self.comparison, MeasurementComparison):
             raise MeasurementContractError("invalid_measurement", "typed metric and comparison are required")
+        operators = ("GT", "GE") if self.metric.direction is MetricDirection.MAXIMIZE else ("LT", "LE")
+        if self.success_operator is not None and self.success_operator not in operators:
+            raise MeasurementContractError("invalid_measurement", f"success_operator must be one of {operators} for {self.metric.direction.value}")
         if not isinstance(self.parse_rule, str) or not self.parse_rule.strip():
             raise MeasurementContractError("invalid_measurement", "parse_rule must explain scientific interpretation")
         if (not isinstance(self.parser_argv, tuple) or not self.parser_argv
@@ -63,14 +67,24 @@ class ScientificMeasurement:
         return {"metric": {"name": self.metric.name, "direction": self.metric.direction.value,
                            "target": self.metric.target}, "comparison": self.comparison.value,
                 "parse_rule": self.parse_rule, "parser_argv": list(self.parser_argv),
-                "parser_files": list(self.parser_files), "raw_artifacts": list(self.raw_artifacts)}
+                "parser_files": list(self.parser_files), "raw_artifacts": list(self.raw_artifacts),
+                **({"success_operator": self.success_operator} if self.success_operator is not None else {})}
+
+    def accepts(self, value: Decimal | int | float | str) -> bool:
+        """Compare the transformed measurement; omitted operators retain legacy equality."""
+        actual, target = Decimal(normalize_metric_value(value)), Decimal(self.metric.target)
+        if self.success_operator == "GT": return actual > target
+        if self.success_operator == "LT": return actual < target
+        return self.metric.accepts(actual)
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> ScientificMeasurement:
         fields = {"metric", "comparison", "parse_rule", "parser_argv", "parser_files", "raw_artifacts"}
         try:
-            if not isinstance(raw, Mapping) or set(raw) != fields:
+            if not isinstance(raw, Mapping) or not fields <= set(raw) or set(raw) - fields - {"success_operator"}:
                 raise ValueError("declaration must have exact measurement fields")
+            if "success_operator" in raw and raw["success_operator"] is None:
+                raise ValueError("success_operator cannot be null; omit only for legacy declarations")
             metric = raw["metric"]
             if not isinstance(metric, Mapping) or set(metric) != {"name", "direction", "target"}:
                 raise ValueError("metric must have exact name/direction/target fields")
@@ -80,7 +94,8 @@ class ScientificMeasurement:
             return cls(metric=MetricSpec(name=metric["name"], direction=MetricDirection(metric["direction"]),
                                         target=metric["target"]), comparison=MeasurementComparison(raw["comparison"]),
                        parse_rule=raw["parse_rule"], parser_argv=tuple(raw["parser_argv"]),
-                       parser_files=tuple(raw["parser_files"]), raw_artifacts=tuple(raw["raw_artifacts"]))
+                       parser_files=tuple(raw["parser_files"]), raw_artifacts=tuple(raw["raw_artifacts"]),
+                       success_operator=raw.get("success_operator"))
         except (KeyError, TypeError, ValueError) as exc:
             if isinstance(exc, MeasurementContractError):
                 raise
@@ -150,7 +165,7 @@ def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping
                     measured /= abs(Decimal(baseline))
             metric_value = normalize_metric_value(measured)
         return MeasurementEvaluation(value=value, baseline=baseline, metric_value=metric_value,
-                                     criterion_met=declaration.metric.accepts(metric_value))
+                                     criterion_met=declaration.accepts(metric_value))
     except (ValueError, TypeError, DecimalException) as exc:
         raise MeasurementContractError("invalid_parsed_measurement", str(exc)) from exc
 

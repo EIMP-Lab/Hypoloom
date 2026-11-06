@@ -58,3 +58,12 @@ an average must not conceal regressions where the goal requires separate targets
 Use existing VALUE/delta/relative-delta declarations when appropriate. No local
 measurement (GOAL-only) remains valid. Change a frozen measurement through a new
 or revised hypothesis, never by silently editing an accepted one.
+
+When the supplied schema requires success_operator, choose it explicitly:
+MAXIMIZE uses GT (strictly greater) or GE (greater or equal); MINIMIZE uses LT
+(strictly smaller) or LE (smaller or equal). Strict improvement over zero means
+GT with target 0; GE also accepts a tie. Keep the claim, parse_rule and operator
+consistent. The operator applies after VALUE/delta/relative-delta transformation.
+It freezes with the measurement; do not add epsilon thresholds or change raw
+values to simulate a strict comparison. Legacy declarations without this field
+retain their original inclusive semantics.

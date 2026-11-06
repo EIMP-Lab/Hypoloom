@@ -169,6 +169,15 @@ integration. Record unchecked device paths for the Host-granted Process in the
 existing handoff notes. The project implements its own commands and algorithms.
 This is task-specific agent guidance, not an extra universal admission gate.
 
+For new ACI 33 local measurements, declare `success_operator`: `GT`/`GE` for
+MAXIMIZE or `LT`/`LE` for MINIMIZE. Strict improvement over zero uses `GT` with
+target `0`; `GE` also accepts equality. The operator applies after the declared
+VALUE/delta/relative-delta transformation and freezes with the measurement.
+The claim, parser description and structured operator must agree. Legacy
+declarations without this field keep inclusive comparisons. Local success does
+not establish the overall goal: adjudication mirrors the accepted local outcome,
+while its summary explains limitations and outstanding formal acceptance.
+
 A LOCAL criterion should answer the hypothesis's screening question. Improvement
 claims need an appropriate comparison or an explained absolute target; a zero
 target is valid for many gains/errors. A positive raw score alone does not prove

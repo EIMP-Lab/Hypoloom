@@ -2,10 +2,19 @@
 
 English · [简体中文](runtime-recovery.zh-CN.md)
 
-New runs use ACI 32. Existing runs keep their original runtime; updating the
+New runs use ACI 33. Existing runs keep their original runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
 
 ## Task retries and source preparation
+
+New measurement declarations explicitly select strict or inclusive success
+comparisons. Adjudication checks the exact terminal outcomes and permitted
+references during native Stop, while the invocation can still correct its output.
+The same Host validator remains authoritative at final admission. Error feedback
+names the chain, accepted outcome, expected status and submitted status. Existing
+correction and task retry limits still apply; no verdict is rewritten automatically.
+An exhausted adjudication task remains final-failed. Updating the checkout, API
+recovery or ordinary resume does not reopen it or migrate a retained run.
 
 Agent retry allowances belong to one logical task (`command_id`), not an expert's
 entire run. `max_retries: 2` permits the initial model attempt plus two retries;
