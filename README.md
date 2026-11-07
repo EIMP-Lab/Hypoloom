@@ -50,6 +50,18 @@ A **Profile** is a set of six YAML files describing your topic: its goal, expert
 runtime, budgets and permissions. Start with an English or Chinese
 [Profile template](profiles/README.md) and configure it for your code and data.
 
+## 🆕 Feature updates
+
+### 2026-11-08 · GPU pool setup and live selection
+
+- **Automatic pool setup.** GPU-enabled init manages all accessible GPUs without
+  per-card prompts. Your Profile determines the run's initial GPU selection.
+- **Change GPUs while running.** Add, remove or replace GPUs within the pool using
+  the TUI (**uppercase G**), Web interface or CLI. Active jobs finish on their
+  assigned cards; subsequent work uses the updated selection.
+
+See [GPU resources](docs/guides/gpu-resource-planning.md) for usage and compatibility.
+
 ## 🚀 Quick start
 
 You need Linux, Conda, Git, bubblewrap, working user namespaces and Claude Code.

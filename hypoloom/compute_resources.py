@@ -545,6 +545,26 @@ class LocalComputeResources:
         allowed = set(self.allowed_gpu_uuids)
         return ComputeCapabilities(gpus=tuple(gpu for gpu in observed.gpus if gpu.uuid in allowed))
 
+    def for_devices(self, gpu_uuids: Sequence[str]) -> LocalComputeResources:
+        """Use an explicitly authorized selection without changing launch identity.
+
+        The Host supplies either an operator control or retained execution authority.
+        Discovery alone must never call this to expand a run's authorization.
+        """
+        import copy
+        if isinstance(gpu_uuids, (str, bytes)):
+            raise ValueError("GPU selection must be a sequence of UUIDs")
+        selected = tuple(gpu_uuids)
+        for uuid in selected:
+            _gpu_uuid(uuid)
+        if len(set(selected)) != len(selected):
+            raise ValueError("GPU selection contains duplicate UUIDs")
+        if selected and self.gpu_runtime_prefix is None:
+            raise ValueError("live GPU selection requires the configured GPU runtime")
+        resources = copy.copy(self)
+        resources.allowed_gpu_uuids = tuple(sorted(selected))
+        return resources
+
     def observe_runtime(self, gpu_uuid: str) -> GpuRuntimeObservation:
         """Read one allowed GPU without changing workflow or process state."""
 

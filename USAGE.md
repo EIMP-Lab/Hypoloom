@@ -60,6 +60,7 @@ the observer automatically.
 | **h** | Read and answer pending Grounding questions. |
 | **p / API recovery** | Inspect provider waits, retry or select a compatible connection. |
 | **g / GPU resource recheck** | Recheck resource blocks after repairing the bound GPU pool. |
+| **G / Select GPUs** | Add, remove or replace GPUs during a run; active jobs finish on their original devices. |
 | **l / Literature retry** | Retry OpenAlex after resolving its access problem. |
 | **n / Telegram retry** | Retry notification delivery with the current settings. |
 | **b / Report Issue** | Preview and export a support bundle. |
@@ -82,7 +83,7 @@ Reopen the monitor for the same run to obtain a new URL. Ordinary share links ar
 read-only. Keep bearer tokens private.
 
 `WAITING_HUMAN` requires a real user answer. `web --allow-human-answers` creates an
-operator link for those answers; do not publish it. API recovery and GPU recheck
+operator link for those answers; do not publish it. API recovery, GPU recheck and GPU selection
 need a separate operator grant: TUI **p → Browser**, or `web --allow-provider-control`.
 Human-answer permission alone does not authorize provider changes.
 

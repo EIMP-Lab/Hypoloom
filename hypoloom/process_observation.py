@@ -11,7 +11,7 @@ def sample_gpu_pressure(host, attempt, attempt_id, handle, pressure):
     devices = {}
     for tracker in pressure[0]:
         try:
-            device = host.compute_resources.observe_runtime(tracker.summary.gpu_uuid)
+            device = host.resource_controls.compute(attempt["run_id"]).observe_runtime(tracker.summary.gpu_uuid)
             devices[device.uuid] = device
             tracker.sample(device)
         except ResourceUnavailable:

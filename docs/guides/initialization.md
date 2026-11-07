@@ -23,9 +23,17 @@ PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
   .conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap inspect my-topic --cpu-only
 ```
 
-Omit the Profile or execution mode to discover choices. For shared GPU scheduling,
-replace `--cpu-only` with `--allow-gpu --managed-pool` and repeat
-`--gpu-device-uuid` for the explicitly approved UUIDs. `--nonpooled` is an explicit
+Omit the Profile or execution mode to discover choices. Replace `--cpu-only` with
+`--allow-gpu` for GPU mode. Init defaults to the managed shared pool and plans
+membership for every GPU passing NVML inventory and device-node access checks,
+without a per-device or default scheduling questionnaire. Membership allocates
+no GPU memory; busy devices remain eligible and wait for capacity.
+The initial run selection follows `safety.gpus`: `auto` (or an omitted selector)
+uses all candidates, a list preserves that subset, and `[]` retains CPU-only
+semantics. Explicit `--gpu-device-uuid` flags narrow the initial run, independently
+of full pool membership. After launch use **uppercase G / Select GPUs** in the
+TUI; see [live GPU selection](gpu-resource-planning.md). Explicit external pools
+retain their existing membership and authorization. `--nonpooled` is an explicit
 alternative, subject to the existing Profile budget rules. Authentication and the
 candidate model come from the selected CC source. Without an explicit
 `--claude-model`, a fixed question offers that model or a freely entered exact
@@ -45,11 +53,23 @@ reviewed pool preparation before creating the research run. Prepare only never
 starts, upgrades or stops a pool. New Profiles still use the reviewed
 `bootstrap prepare --write`, followed by inspection of the written Profile.
 
-After selecting devices, a differing shared-pool reserve prompts **Keep current
+After automatic device resolution, a differing shared-pool reserve prompts **Keep current
 pool** or **Review reconfiguration**. Matching configuration adds no question.
 Reconfiguration defaults to the full existing pool membership, independently of
 this run's subset. Final review shows the pool-wide change and before/after floor;
 the database and request history stay intact.
+
+An old pool containing only some GPUs requires maintenance before expanding.
+Inspection reports added UUIDs and blocking dependencies; the automatic policy
+does not interrupt existing runs. Startup stays blocked until dependencies are
+cleared. Final review lists full pool membership separately from the initial run
+selection. Generated launch arguments pin those UUIDs; newly appearing devices
+are not silently added after review.
+
+Init also requires the pool's `resource_selection/1` capability for TUI control.
+A managed service lacking it requires a reviewed upgrade, even when membership
+already covers all devices; active dependencies still block replacement. An
+incompatible external pool must be updated by its administrator.
 
 Missing-state owners are listed with UID, namespace, run ID, released/unreleased
 request counts and process status. Only this account's absent runs with nonempty,
@@ -302,7 +322,7 @@ metadata falls back to labeled CC assumptions. See [context management](context-
 for limits, sources and the `memory.context_metadata: false` opt-out.
 
 GPU launch requires the Host runtime to match the admitted Profile runtime.
-The selected UUIDs must exist in the read-only inventory; Profile GPU selectors
+The selected UUIDs must pass inventory and device-access checks; Profile GPU selectors
 must resolve inside that authorized set. A GPU launch with `safety.gpus: []` is
 rejected. Shared-pool budget rules use the Host's existing validator. These
 checks neither allocate GPUs nor infer permission from free capacity. Temporary

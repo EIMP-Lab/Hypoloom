@@ -1525,6 +1525,7 @@ class HypoloomVNextMonitor(App):
         Binding("h", "human_decision", "Human decision"),
         Binding("p", "provider_resume", "Provider resume"),
         Binding("g", "resource_recheck", "GPU recheck"),
+        Binding("G", "resource_select", "Select GPUs"),
         Binding("l", "literature_retry", "Literature retry", show=False),
         Binding("n", "notification_retry", "Telegram retry", show=False),
         Binding("i", "literature_access", "Institutional access"),
@@ -2155,6 +2156,16 @@ class HypoloomVNextMonitor(App):
         if not isinstance(self.screen, ResourceRecheckScreen):
             self.push_screen(ResourceRecheckScreen(self._last_snapshot.status, self._resource_recheck_draft))
 
+    def action_resource_select(self) -> None:
+        from .resource_selection_tui import ResourceSelectionScreen
+        if (self._last_snapshot is None or self._last_snapshot.status.get("run_state") not in {"CREATED", "ACTIVE", "WAITING_HUMAN"}
+                or self._last_snapshot.status.get("resource_selection") is None):
+            self.notify(tr("Live GPU selection is unavailable for this run."))
+            return
+        if not hasattr(self, "_resource_selection_draft"): self._resource_selection_draft = {}
+        if not isinstance(self.screen, ResourceSelectionScreen):
+            self.push_screen(ResourceSelectionScreen(self._resource_selection_draft))
+
     def action_literature_access(self) -> None:
         from .literature_access_tui import LiteratureAccessScreen
         if self._last_snapshot is None:
@@ -2199,7 +2210,7 @@ class HypoloomVNextMonitor(App):
         url = server.provider_control_url()
         content = (tr(
             "[b #ffb86b]OPERATOR API LINK[/]\n"
-            "This link permits API retry, connection switching, GPU recheck, literature and "
+            "This link permits API retry, connection switching, GPU selection and recheck, literature and "
             "notification retry. Keep it private.\n\n"
         )
             + self._web_access_content().replace(escape(server.startup_url()), escape(url)))

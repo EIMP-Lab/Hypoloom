@@ -65,7 +65,7 @@ def questions(args, result):
     if "execution_mode" in missing:
         add("execution_mode", "Which compute resources may this run use?", "本次运行允许使用哪些计算资源？", "Compute", [
             ("CPU only", "仅 CPU", False, "Do not allocate GPUs", "不分配 GPU"),
-            ("GPU", "GPU", True, "Select GPU devices next", "随后明确选择 GPU 设备")])
+            ("GPU", "GPU", True, "Manage all usable GPUs; adjust the run selection in TUI", "自动管理全部可用 GPU；运行选卡在 TUI 中调整")])
     if "institutional_browser_mode" in missing:
         add("institutional_browser_mode", "Where should institutional access run? Enter existing only for an explicit external CDP endpoint.",
             "在哪里进行机构访问？仅已有外部 CDP 端点时自由输入 existing。", "Browser", [
@@ -73,17 +73,6 @@ def questions(args, result):
             ("Linux desktop", "Linux 桌面", "local", "Visible browser on this Linux desktop", "使用本机可见浏览器"),
             ("Server browser", "服务器浏览器", "server", "Private GUI for the server container", "通过私有图形界面使用容器浏览器"),
             ("Off", "关闭", "off", "Use public/OA retrieval", "使用公开及开放获取文献")])
-    if "gpu_device_uuid" in missing:
-        devices = result["checks"].get("gpu_inventory", {}).get("devices", [])
-        uuids = [d["uuid"] for d in devices]
-        add("gpu_device_uuid", f"Which GPUs are authorized? Observed UUIDs: {', '.join(uuids) or 'unavailable'}. For a subset, enter comma-separated UUIDs.",
-            f"授权哪些 GPU？观察到的 UUID：{', '.join(uuids) or '不可用'}。选择部分设备时请输入逗号分隔的 UUID。", "GPU devices", [
-            ("All observed GPUs", "所有已观察 GPU", uuids, "Authorize exactly the displayed UUIDs", "仅授权以上明确列出的设备"),
-            ("CPU only", "仅 CPU", False, "Use no GPUs", "不使用 GPU")])
-    if "gpu_scheduling_mode" in missing:
-        add("gpu_scheduling_mode", "How should the authorized GPUs be scheduled?", "如何调度已授权的 GPU？", "Scheduling", [
-            ("Managed shared pool", "托管共享池", "managed", "Review this project's shared pool", "检查本项目共享池"),
-            ("Nonpooled", "不使用共享池", "nonpooled", "Explicit nonpooled allocation", "明确使用非池化分配")])
     if "pool_configuration" in missing:
         choice = result["choices"]["pool_configuration"]
         current, proposed = choice["current_reserve_mib"], choice["proposed_reserve_mib"]
@@ -171,17 +160,6 @@ def apply_answers(args, result, response):
             from .institutional_connection import BROWSER_MODES
             if value not in BROWSER_MODES: raise ValueError("choose a supported browser mode")
             changes[field] = value
-        elif field == "gpu_device_uuid":
-            if value is False:
-                changes.update(allow_gpu=False, gpu_device_uuid=None)
-            else:
-                values = value if isinstance(value, list) else [s.strip() for s in raw.split(",")]
-                if not values or any(not s.startswith("GPU-") for s in values):
-                    raise ValueError("GPU authorization requires explicit device UUIDs")
-                changes[field] = list(dict.fromkeys(values))
-        elif field == "gpu_scheduling_mode":
-            if value not in {"managed", "nonpooled"}: raise ValueError("choose a displayed scheduling mode")
-            changes.update(managed_pool=value == "managed", nonpooled=value == "nonpooled")
         elif field == "pool_configuration":
             if value not in {"reuse", "reconfigure"}: raise ValueError("choose a displayed pool action")
             choice = result["choices"][field]

@@ -119,7 +119,6 @@ class SharedGpuHost:
         return {**assess_capacity(snapshot["devices"], intent.to_dict()), "observed_at": snapshot["sampled_at"]}
 
     def resources(self, request: Any, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        from .profile_v4 import restrict_profile_capabilities
         document = self.host._research_contract(request.run_id).document
         execution = self.host._run_config(request.run_id)["execution"]
         history = self.measurements(request.run_id, request.role, request.component_id, request.method_family_id)
@@ -133,6 +132,9 @@ class SharedGpuHost:
                 estimate_policy="initial_until_measured_success_then_max_profile_submitted_measured_headroom",
                 omitted_estimate_behavior="unestimated_profile_initial_only")
         if not execution["allow_gpu"]: return {**response, "status": "cpu_only"}
+        selection = self.host.resource_controls.status(request.run_id)
+        if selection is not None:
+            response["resource_selection"] = {key: selection[key] for key in ("gpu_uuids", "revision", "mode", "draining_gpu_uuids")}
         if request.schema_version >= 27:
             arguments = self.resolve_arguments(request, arguments or {})
             response["budget_preview"] = self.budget_plan(request, arguments, document["budget"]["min_vram_per_experiment"])
@@ -140,7 +142,7 @@ class SharedGpuHost:
             response["profile_reserve_percent"] = document["budget"].get("gpu_vram_reserve_percent", 0)
             response["budget_preview"]["reserve_memory_mib"] = gpu_memory_reserve_mib(
                 document["budget"], response["budget_preview"]["resolved_workload_memory_mib"])
-        allowed = {gpu.uuid for gpu in restrict_profile_capabilities(document, self.host.compute_resources.snapshot()).gpus}
+        allowed = {gpu.uuid for gpu in self.host.resource_controls.capabilities(request.run_id).gpus}
         try: snapshot = self.snapshot()
         except PoolError as error: return {**response, "status": "unavailable", "reason": error.code}
         fields = {"gpu_uuid", "total_memory_mib", "free_memory_mib", "used_memory_mib", "reserve_memory_mib",
@@ -154,12 +156,16 @@ class SharedGpuHost:
                 return {**response, "status": error.code, "reason": str(error)}
             fields |= {"pool_reserve_memory_mib", "system_reserved_memory_mib", "exclusive_commitments"}
             allowed = sorted(allowed)
-            if allowed:
-                intent = ResourceIntent(allowed_gpu_uuids=tuple(allowed), gpu_count=(arguments or {}).get("gpus", 1),
+            count = (arguments or {}).get("gpus", 1)
+            if 0 < count <= len(allowed):
+                intent = ResourceIntent(allowed_gpu_uuids=tuple(allowed), gpu_count=count,
                     workload_memory_mib=response["budget_preview"]["resolved_workload_memory_mib"],
                     reserve_memory_mib=response["budget_preview"]["reserve_memory_mib"],
                     sharing=response["budget_preview"]["sharing"])
                 response["capacity_preview"] = assess_capacity(devices, intent.to_dict())
+            elif count > len(allowed):
+                response["capacity_preview"] = {"reason": "operator_gpu_selection", "gpu_count": count,
+                    "selected_gpu_count": len(allowed), "devices": []}
         return {**response, "status": "ok", "sampling_started_at": snapshot["sampling_started_at"],
             "observed_at": snapshot["sampled_at"], "devices": [{name: item[name] for name in fields}
                 for item in devices if item["gpu_uuid"] in allowed]}
@@ -311,6 +317,9 @@ class SharedGpuHost:
         except PoolError as error:
             self._wait(key, f"{error.code}: {error}")
             raise
+
+    def reselect(self, key: Mapping[str, Any], gpu_uuids) -> None:
+        self._request("reselect", key, allowed_gpu_uuids=list(gpu_uuids))
 
     def release(self, key: Mapping[str, Any]) -> bool:
         try:

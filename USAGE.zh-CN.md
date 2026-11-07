@@ -53,6 +53,7 @@ hypoloom web --state-root /absolute/state/run --run-id RUN_ID
 | **h** | 查看并回答待处理的 Grounding 问题。 |
 | **p / API recovery** | 检查供应商等待、重试或选择兼容连接。 |
 | **g / GPU resource recheck** | 修复绑定的 GPU 池后，重新检查资源阻塞。 |
+| **G / Select GPUs** | 运行中增加、移除或替换 GPU；已启动任务在原卡完成后释放。 |
 | **l / Literature retry** | 解决访问问题后重试 OpenAlex。 |
 | **n / Telegram retry** | 使用当前配置重试通知投递。 |
 | **b / Report Issue** | 预览并导出支持包。 |
@@ -72,7 +73,7 @@ Profile 看板的 `port`；端口占用会报告冲突。
 重新打开同一运行的监控可获取新 URL。普通分享链接只读，访问令牌应妥善保管。
 
 `WAITING_HUMAN` 需要真实用户答复。`web --allow-human-answers` 生成可提交答复的
-操作员链接，不应公开。API 恢复和 GPU 重查需要独立授权：使用 TUI **p → Browser**，
+操作员链接，不应公开。API 恢复、GPU 重查和 GPU 选择需要独立授权：使用 TUI **p → Browser**，
 或 `web --allow-provider-control`。人工答复权限不包含切换供应商的权限。
 
 ## 解读研究进展

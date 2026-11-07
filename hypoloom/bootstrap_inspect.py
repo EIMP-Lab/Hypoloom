@@ -214,11 +214,12 @@ def inspect(args, repository: Path) -> dict:
                 if default.get("claude_model"):
                     result.setdefault("choices", {})["claude_model"] = default["claude_model"]
             args.literature_adapter = "openalex"
-    if args.allow_gpu and not args.gpu_device_uuid: missing.append("gpu_device_uuid")
-    if args.allow_gpu and not (args.managed_pool or args.gpu_pool_socket):
-        # No implicit authorization to drop the pool. Explicit nonpooled choice
-        # is represented by --nonpooled; budget admission still validates it.
-        if not args.nonpooled: missing.append("gpu_scheduling_mode")
+    from .bootstrap_gpu import default_scheduling
+    default_scheduling(args)
+    if args.allow_gpu and checks.get("gpu_inventory", {}).get("status") != "observed":
+        blockers.append({"code": "gpu_inventory_unavailable", "message": "GPU discovery failed; repair access or select CPU-only"})
+    elif args.allow_gpu and not checks["gpu_inventory"].get("devices"):
+        blockers.append({"code": "no_usable_gpus", "message": "No GPU passed inventory and device-node access checks"})
     if args.nonpooled and args.gpu_pool_socket: blockers.append({"code": "conflicting_gpu_modes"})
     if checks["supervisor"]["status"] != "ready": blockers.append({"code": checks["supervisor"]["reason"]})
     if args.profile:

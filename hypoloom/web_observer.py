@@ -245,7 +245,7 @@ class WebObserverServer(ThreadingHTTPServer):
             return self.startup_url() + "&answer_token=" + quote(self._answer_token, safe="") + "&human=1"
 
     def provider_control_url(self) -> str:
-        """Separate operator grant; read and answer links cannot rotate APIs."""
+        """Separate operator grant for API recovery and GPU resource controls."""
         with self._active_request_lock:
             if self._provider_token is None:
                 self._provider_token = secrets.token_urlsafe(24)
@@ -654,6 +654,8 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             "/api/human-answer": ("answer", "X-Hypoloom-Answer-Token"),
             "/api/provider-retry": ("provider", "X-Hypoloom-Provider-Token"),
             "/api/resource-recheck": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/resource-options": ("provider", "X-Hypoloom-Provider-Token"),
+            "/api/resource-select": ("provider", "X-Hypoloom-Provider-Token"),
             "/api/literature-retry": ("provider", "X-Hypoloom-Provider-Token"),
             "/api/notification-retry": ("provider", "X-Hypoloom-Provider-Token"),
             "/api/literature-access": ("literature", "X-Hypoloom-Literature-Token"),
@@ -697,7 +699,18 @@ class WebObserverRequestHandler(BaseHTTPRequestHandler):
             if len(raw) != length:
                 raise ValueError("incomplete answer body")
             values = json.loads(raw)
-            if scope_name == "provider":
+            if self.path in {"/api/resource-options", "/api/resource-select"}:
+                from .control_protocol import ControlRequest, SCHEMA_VERSION
+                selecting = self.path == "/api/resource-select"
+                expected = {"request_id", "mode", "gpu_uuids"} if selecting else {"request_id"}
+                if not isinstance(values, dict) or set(values) != expected:
+                    raise ValueError("invalid GPU selection request fields")
+                request = ControlRequest.from_mapping({"schema_version": SCHEMA_VERSION,
+                    "request_id": values["request_id"], "expected_revision": None,
+                    "command": "RESOURCE_SELECT" if selecting else "RESOURCE_OPTIONS",
+                    "payload": {"run_id": self.observer.run_id,
+                        **({"mode": values["mode"], "gpu_uuids": values["gpu_uuids"]} if selecting else {})}})
+            elif scope_name == "provider":
                 from .control_protocol import ControlRequest, SCHEMA_VERSION
                 if not isinstance(values, dict) or set(values) not in ({"request_id"}, {"request_id", "settings_path"}):
                     raise ValueError("provider recovery requires request_id and optional settings_path")
@@ -854,7 +867,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     parser.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
-    parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
+    parser.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API connection selection, GPU selection and resource recheck")
     parser.add_argument("--allow-literature-control", action="store_true", help="grant an operator link for institutional full-text actions")
     parser.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     parser.add_argument("--gpu-pool-server-uid", type=int)

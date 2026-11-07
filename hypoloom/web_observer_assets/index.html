@@ -106,6 +106,14 @@
       <p id="resource-blocked" aria-live="polite"></p>
       <button id="resource-recheck" type="button" hidden data-i18n>Recheck GPU resources</button>
       <p id="resource-operation" role="status"></p>
+      <p id="gpu-selection-status" aria-live="polite"></p>
+      <div id="gpu-selection-controls" hidden>
+        <p data-i18n>New jobs use the selected GPUs. Active jobs finish on their original GPUs. An empty selection pauses new GPU jobs.</p>
+        <button id="gpu-selection-load" type="button" data-i18n>Select GPUs</button>
+        <fieldset id="gpu-selection-choices" hidden><legend data-i18n>Eligible GPUs</legend></fieldset>
+        <button id="gpu-selection-apply" type="button" hidden data-i18n>Apply GPU selection</button>
+        <p id="gpu-selection-result" role="status"></p>
+      </div>
       <p id="provider-operation" role="status"></p>
       <p id="literature-status" aria-live="polite" data-i18n>Literature service status unknown.</p>
       <button id="literature-retry" type="button" hidden data-i18n>Retry literature service</button>

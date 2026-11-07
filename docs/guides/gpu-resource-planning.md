@@ -15,6 +15,53 @@ Start now action. Creation, restoration and upgrades are separate from the
 advisory repository version reminder; they preserve existing pool history and
 require no unresolved dependencies. See [initialization](initialization.md).
 
+## Change GPU selection while a run is active
+
+GPU init now defaults to managing every usable device in the shared pool without
+a per-card questionnaire. Initial run selection follows the Profile independently
+of membership and can later change in the TUI. Membership allocates no memory.
+Expanding an old subset pool still requires maintenance; see [initialization](initialization.md).
+
+New shared-pool GPU runs created with this version support **G / Select GPUs**
+(uppercase G) in the TUI. Select the devices for future work and apply. The Web
+observer offers the same control through an operator link with
+`--allow-provider-control`; read-only links display the selection and draining devices.
+
+You can shrink, expand, replace or clear a run's GPU set. Choices are physical
+GPU UUIDs visible on this host and authorized for the current user by the bound
+pool. An explicit operator selection overrides the initial GPU subset, while
+per-experiment GPU counts, memory budgets, execution commands and scientific
+acceptance criteria remain fixed. Pool endpoints, user permissions and global
+membership remain managed by the pool lifecycle workflow.
+
+Running Processes finish on their original grants. Unlaunched reservations move
+to the new selection; subsequent dispatches and retries use it. A multi-GPU
+experiment waits if too few devices are selected. Clearing the set suspends new
+GPU dispatch and returns unlaunched reservations; running training and CPU work
+can continue. No CUDA process migration or forced cancellation is involved.
+The selection survives Host restart and each dispatch retains its authorization
+revision for independent audit.
+
+Set `STATE_ROOT` and `RUN_ID` to the target run, then substitute UUIDs returned by
+`resource-options`:
+
+```bash
+python -m hypoloom resource-options --state-root "$STATE_ROOT" --run-id "$RUN_ID"
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --remove-gpu GPU-UUID-A
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --add-gpu GPU-UUID-B
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --gpu GPU-UUID-B --gpu GPU-UUID-C
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --all-gpus
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --no-gpus
+```
+
+Automation can supply `--expected-revision` and `--request-id`. After an uncertain
+reply, retry with the same ID and arguments. Acceptance means the selection is
+durable; `status.resource_selection.pending_cleanup` reports pool updates still
+awaiting retry, and `draining_gpu_uuids` lists removed devices with active jobs.
+The Host must use this runtime and the pool must advertise `resource_selection/1`.
+Retained frozen runtimes cannot acquire the feature by editing their Profile or
+the checkout; this control does not upgrade or restart a pool.
+
 ## CUDA availability inside an experiment
 
 GPU sandbox profile version 2 exposes only the granted NVIDIA device nodes and
@@ -152,6 +199,8 @@ polling event store is introduced.
 New pooled runs require a pool advertising `resource_replanning/1`. An older
 pool is reported incompatible; exclusivity is never silently omitted. Arrange
 pool deployment separately from ongoing research. Do not migrate accepted runs.
+Init also checks `resource_selection/1` before promising TUI GPU control; older
+managed services follow the existing reviewed upgrade and dependency checks.
 Exclusive means exclusive among pool commitments; external GPU users remain
 outside that scheduler, with the existing live-pressure protections retained.
 
