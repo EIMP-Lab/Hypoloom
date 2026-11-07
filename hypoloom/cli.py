@@ -335,6 +335,22 @@ def build_parser() -> argparse.ArgumentParser:
     resources.add_argument("--run-id", required=True)
     resources.add_argument("--expected-revision", type=int)
 
+    selection = subparsers.add_parser("resource-select", help="change a live run's GPU selection; active jobs drain on their original GPUs")
+    _add_client_arguments(selection)
+    selection.add_argument("--run-id", required=True)
+    selection.add_argument("--expected-revision", type=int)
+    choices = selection.add_mutually_exclusive_group(required=True)
+    choices.add_argument("--gpu", action="append", help="replace selection with these GPU UUIDs (repeatable)")
+    choices.add_argument("--add-gpu", action="append", help="add GPU UUIDs (repeatable)")
+    choices.add_argument("--remove-gpu", action="append", help="remove GPU UUIDs (repeatable)")
+    choices.add_argument("--all-gpus", action="store_true", help="select all locally visible GPUs authorized by the bound pool")
+    choices.add_argument("--no-gpus", action="store_true", help="pause future GPU dispatch and drain active jobs")
+
+    options = subparsers.add_parser("resource-options", help="show eligible GPUs and the live run's current selection")
+    _add_client_arguments(options)
+    options.add_argument("--run-id", required=True)
+    options.set_defaults(expected_revision=None)
+
     provider_clear = subparsers.add_parser("provider-retry-clear",
         help="allow one recovery attempt with the current or an explicitly selected API connection")
     _add_client_arguments(provider_clear)
@@ -411,7 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=DEFAULT_PORT,
         help="loopback Web port (default: 0, OS-selected free port)")
     web.add_argument("--allow-human-answers", action="store_true", help="grant an operator link for reviewed Grounding answers")
-    web.add_argument("--allow-provider-control", action="store_true", help="grant an operator recovery link for API connection selection and GPU resource recheck")
+    web.add_argument("--allow-provider-control", action="store_true", help="grant an operator link for API connection selection, GPU selection and resource recheck")
     web.add_argument("--allow-literature-control", action="store_true", help="grant an operator link for institutional full-text actions")
     web.add_argument("--gpu-pool-socket", help="explicit authorized aggregate capacity socket; no discovery")
     web.add_argument("--gpu-pool-server-uid", type=int)
@@ -821,6 +837,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _submit(args, args.subcommand.upper(), payload)
         if args.subcommand == "resource-recheck":
             return _submit(args, "RESOURCE_RECHECK", {"run_id": args.run_id, "reason": "operator"})
+        if args.subcommand == "resource-options":
+            return _submit(args, "RESOURCE_OPTIONS", {"run_id": args.run_id})
+        if args.subcommand == "resource-select":
+            mode = "set" if args.gpu else "add" if args.add_gpu else "remove" if args.remove_gpu else "all" if args.all_gpus else "none"
+            return _submit(args, "RESOURCE_SELECT", {"run_id": args.run_id, "mode": mode,
+                "gpu_uuids": args.gpu or args.add_gpu or args.remove_gpu or []})
         if args.subcommand == "provider-retry-clear":
             if args.service == "openalex" and args.settings is not None: raise ValueError("OpenAlex uses its Profile credential; --settings only applies to the model API")
             return _submit(args, "PROVIDER_RETRY_CLEAR", {"run_id": args.run_id, "reason": "operator",

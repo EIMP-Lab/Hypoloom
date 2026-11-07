@@ -359,7 +359,7 @@ def _endpoint_entry(socket_path: Path, pool_root: Path | None) -> dict[str, obje
         if probe == "live" and snapshot is not None:
             served = _snapshot_uuids(snapshot)
             try:
-                validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI)
+                validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, require_resource_selection=True)
             except PoolError as exc:
                 entry["compatibility"] = {"status": exc.code, "reason": str(exc)}
             else:
@@ -703,7 +703,8 @@ def _observe(plan: PoolPlan, tools: Tools, environment: Mapping[str, str], *,
     failure = None
     if snapshot is not None:
         try:
-            validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended)
+            validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended,
+                                   require_resource_selection=True)
             compatible = True
         except PoolError as exc:
             failure = exc.code
@@ -842,7 +843,8 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
                     served = None if snapshot is None else _snapshot_uuids(snapshot)
                     if served is None or not set(intended).issubset(served):
                         raise ManagedPoolError("pool_conflict")
-                    validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended)
+                    validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI, allowed_gpu_uuids=intended,
+                                           require_resource_selection=True)
                     return plan, "reused", served
             if (plan.pool_root / "pool.sqlite3").exists():
                 raise ManagedPoolError("pool_recovery_required")
@@ -913,7 +915,7 @@ def ensure(args: argparse.Namespace) -> tuple[PoolPlan, str, tuple[str, ...]]:
                 _launch_pool(plan, tools, environment)
                 snapshot = _wait_until_ready(plan, tools, environment, _remaining(timeout))
                 devices = validate_pool_snapshot(snapshot, aci_version=CURRENT_ACI,
-                    allowed_gpu_uuids=[d for _, ds in plan.members for d in ds])
+                    allowed_gpu_uuids=[d for _, ds in plan.members for d in ds], require_resource_selection=True)
                 if set(devices) != {d for _, ds in plan.members for d in ds}:
                     raise ManagedPoolError("pool_verification_failed")
             except BaseException:

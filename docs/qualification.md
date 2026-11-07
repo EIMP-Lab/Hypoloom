@@ -2,6 +2,63 @@
 
 English · [简体中文](qualification.zh-CN.md)
 
+## Live GPU selection and automatic initialization (2026-11-08)
+
+[Design](design/live-gpu-selection.md). The user authorizes dev commit/push and
+selective public main synchronization, with a new bilingual README feature-update
+section. GPU init defaults to all accessible devices in the managed pool;
+Profile selection remains the initial run subset. Lifecycle v12 uses existing
+commands/transitions for live selection, pending-request reselection and active
+job drain. Pool membership changes still require reviewed maintenance.
+
+Evidence is in `.local/qualification/gpu-selection-20261108/` on each worktree.
+
+- Public checks pass **240 tests / one explicit CUDA skip**. The new portable
+  coverage includes read-only discovery, pinned review arguments, external-pool
+  authorization, command replay, reservation recovery, dispatch audits and
+  TUI/Web/CLI control. Final documentation checks pass separately.
+- Initial dev-focused checks record **275 passes / 81 failures**. They expose an
+  actual Oracle compatibility error: raw SQLite rows do not implement `get`.
+  Converting the command row to its ordinary mapping fixes offline monitoring;
+  two regressions cover real SQLite rows with and without selection history.
+  Remaining failures require current capability/discovery fixtures and explicit
+  lifecycle/UI expectations. Final focused checks pass **358 tests**. The core
+  size check now counts resource_controls by reallocating unused pool capacity;
+  its total 27,550-line budget and every previously counted file are retained.
+- Full offline G1 records **8,777 passes / 38 failures / 241 skips in 1,253.29 s**.
+  Thirty failures are changed test contracts: selection-history reads, current
+  Host controls, automatic discovery, init prose/length and the synthetic ACI 29
+  bundle. That legacy fixture now explicitly pins lifecycle v11; production
+  offline-closure support is not broadened. Five native cases exceed the Unix
+  socket path limit under the initial long temporary root, two renderer cases
+  use an obsolete system Node, and one local scripted provider sees a connection
+  reset. Original logs and JUnit reports remain available.
+- The affected recheck uses a short temporary root and the existing Node 22
+  executable: **137 pass / one fails**. The remaining obsolete prose assertion
+  is updated to require device and external-pool authorization; the full skill
+  selection then passes **37 tests**. Per-test reconciliation covers all **9,056
+  identities: 8,815 passes / 241 skips / zero unresolved failures**. This is one
+  full invocation plus affected rechecks, not an uninterrupted green full run.
+  Eighty skips explicitly require a locally installed Chrome/Chromium; other
+  optional-platform and opt-in resource/provider boundaries remain disclosed.
+- Independent inspection of nine completed native/CPU roots finds **213 closed
+  Agents / 19 closed Processes**, clean Oracles, no pending effects and no live
+  members of **172 recorded groups**. The native pool-init recheck also closes
+  11 Agents and one CPU Process with one outcome, preserving pool request history.
+- Baseline/candidate read-only audits agree for **five retained runs**; logical
+  databases and all **3,072 artifact files** are unchanged.
+- Both branches package all **212 runtime files**, byte-equal across source,
+  wheel, isolated installation and fresh runtime bundles. Installed CLI parsing
+  and MCP imports pass outside the checkout. Main's in-place build stalled while
+  querying build requirements; an export of tracked source plus the new runtime/tests
+  builds successfully. Runtime parity retains only the two prior documentation
+  string differences. Both READMEs contain identical feature-update sections in
+  the matching language; dev development history remains separate from main.
+
+No existing research, private Profile, production pool or frozen bundle is
+modified. These checks do not renew real-GPU, paid-model or hardware-health
+qualification. Updating the checkout does not migrate a retained run.
+
 ## Measurement and adjudication consistency (2026-11-06)
 
 [Design](design/measurement-adjudication-consistency.md). ACI 33 / adapter 91

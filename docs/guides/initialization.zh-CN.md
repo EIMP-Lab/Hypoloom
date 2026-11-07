@@ -21,8 +21,13 @@ PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
   .conda/envs/hypoloom/bin/python -B -m hypoloom.bootstrap inspect my-topic --cpu-only
 ```
 
-省略 Profile 或执行模式可以先发现选项。共享 GPU 将 `--cpu-only` 换为
-`--allow-gpu --managed-pool`，并为每个明确授权的 UUID 添加 `--gpu-device-uuid`。
+省略 Profile 或执行模式可以先发现选项。GPU 模式将 `--cpu-only` 换为 `--allow-gpu`：
+默认使用托管共享池，自动将 NVML 清单和设备节点访问检查通过的全部 GPU 纳入池计划，
+不再逐张询问选卡或默认调度方式。入池不会预占显存，忙卡仍可入池并等待调度。
+项目初始选卡遵循 `safety.gpus`：`auto`（或未配置）使用全部候选卡，显式列表保留其子集，
+`[]` 保留 CPU-only 语义。`--gpu-device-uuid` 可显式指定项目初始子集，不缩小默认池成员。
+运行后在 TUI 按 **大写 G / Select GPUs** 调整项目使用的卡，详见[运行中选卡](gpu-resource-planning.zh-CN.md)。
+显式外部池只使用它已授权的设备，不扩展或接管外部池。
 `--nonpooled` 表示明确选择非池 GPU，仍须通过 Profile 的预算规则。
 认证来源和候选模型来自选中的 CC 配置。未显式传入 `--claude-model` 时，固定问题
 会显示当前模型，允许沿用或自由输入当前供应商支持的准确模型 ID；不会自动替用户
@@ -38,9 +43,17 @@ JSON，也不将密钥填入参数。只有获得 Start now 确认后，才给�
 Prepare only 不创建、升级或停止池。新 Profile 仍先执行审阅过的
 `bootstrap prepare --write`，随后检查实际写入的 Profile。
 
-选卡之后，若兼容共享池的显存下限与本次建议不同，init 会询问“保留当前池”或
+设备自动解析后，若兼容共享池的显存下限与本次建议不同，init 会询问“保留当前池”或
 “审阅重配置”。默认复用；配置相同不增加问答。重配置的默认成员是完整现有池，
 不是本次选卡子集。最终审阅列出全池影响及下限前后值，保留池数据库和请求历史。
+
+如果旧池只包含部分 GPU，检查会展示需要新增的 UUID 和维护依赖；不会因为默认全卡
+策略而自动中断旧运行。依赖未清理时，新运行的启动保持阻塞。最终审阅分别列出池成员
+和项目初始选卡；生成的启动参数固定这些 UUID，审阅后出现的新卡不会静默加入本次计划。
+
+init 还会检查池的 `resource_selection/1` 能力，以支持 TUI 选卡。缺少该能力的托管
+服务即使已包含全卡，也需要审阅升级；存在活跃依赖时仍禁止替换。外部池不兼容时，
+需由其管理员升级。
 
 缺失运行状态的池登记会列出 UID、namespace、run ID、释放数、未释放数及进程状态。
 仅本账户、无本地运行记录、历史请求全部释放且无关联存活进程时，才提供退役确认。
@@ -225,7 +238,7 @@ settings 中非敏感的 CC 窗口/压缩参数；Profile 未显式限制工作�
 参数、来源及 `memory.context_metadata: false` 关闭方式见
 [上下文管理](context-management.zh-CN.md)。
 
-GPU 启动要求 Host 运行环境与 Profile 一致；授权 UUID 必须出现在只读设备清单中，
+GPU 启动要求 Host 运行环境与 Profile 一致；授权 UUID 必须通过设备清单和访问检查，
 Profile 的 GPU 选择须位于该集合内。`safety.gpus: []` 与 GPU 启动冲突时直接报错。
 共享池预算复用 Host 的既有检查。预览不分配 GPU，也不把空闲显存视为授权。
 配置合法但设备暂时忙碌仍属于运行时等待，不自动换卡或降低显存要求。

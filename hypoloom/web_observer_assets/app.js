@@ -452,6 +452,14 @@
 
   let resourcePending = null;
   let resourceBusy = false;
+  let gpuSelectionPending = null;
+  let gpuSelectionBusy = false;
+  function gpuSelectionWritable() {
+    return Boolean(providerToken && state.snapshot?.status?.resource_selection
+      && connection.dataset.state === "live"
+      && ["CREATED", "ACTIVE", "WAITING_HUMAN"].includes(state.snapshot.status.run_state)
+      && Date.now() - state.lastSuccessAt < STALE_AFTER_MS);
+  }
   let providerPending = null;
   let providerBusy = false;
   const dependencyPending = {};
@@ -501,7 +509,7 @@
       : retry.state === "recovering" ? t("One pending task may try the API. Access is not yet confirmed.")
       : t("{0}. New Agent dispatch paused; submitted experiments continue. {1}", reasons[retry.reason] || t("API unavailable"), retry.requires_operator ? t("Operator action required.") : t("Next attempt: {0}.", formatTimestamp(retry.next_retry_at))));
     setText("provider-access", providerToken
-      ? t("Operator recovery access includes GPU recheck, literature and notification retry. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here.")
+      ? t("Operator recovery access includes GPU selection and recheck, literature and notification retry. API switch uses a Host-side 0600 JSON connection file; the model stays fixed. Never enter a key here.")
       : t("Read-only. Use TUI p for API recovery or obtain an operator API link with --allow-provider-control."));
     const blocks = snapshot.status?.resource_blocked || [];
     setText("resource-blocked", blocks.length ? t("GPU infrastructure blocked: {0}. Submitted experiments continue; affected nodes await repair and recheck.", blocks.map(b => `${b.role}: ${b.code}`).join(" · ")) : "");
@@ -510,6 +518,15 @@
     recheck.hidden = terminal || !providerToken || (!blocks.length && !resourcePending);
     recheck.disabled = resourceBusy || !providerWritable();
     recheck.textContent = resourcePending ? t("Retry same resource recheck") : t("Recheck GPU resources");
+    const selection = snapshot.status?.resource_selection;
+    setText("gpu-selection-status", selection ? t("Selected GPUs: {0}", selection.gpu_uuids.join(", ") || t("None"))
+      + (selection.draining_gpu_uuids.length ? ` · ${t("Draining GPUs: {0}", selection.draining_gpu_uuids.join(", "))}` : "")
+      + (selection.pending_cleanup ? ` · ${t("GPU reservation cleanup pending: {0}", selection.pending_cleanup.code)}` : "") : "");
+    byId("gpu-selection-controls").hidden = terminal || !providerToken || !selection;
+    byId("gpu-selection-load").disabled = gpuSelectionBusy || !!gpuSelectionPending || !gpuSelectionWritable();
+    byId("gpu-selection-apply").disabled = gpuSelectionBusy || !gpuSelectionWritable();
+    byId("gpu-selection-apply").textContent = gpuSelectionPending ? t("Retry same request") : t("Apply GPU selection");
+    for (const checkbox of byId("gpu-selection-choices").querySelectorAll("input")) checkbox.disabled = gpuSelectionBusy || !!gpuSelectionPending;
     const literature = snapshot.status?.literature_retry;
     setText("literature-status", literatureStatusText(literature, terminal));
     const notifications = snapshot.status?.notifications;
@@ -570,6 +587,43 @@
     finally { clearTimeout(timer); resourceBusy = false; renderProvider(state.snapshot); }
   }
   byId("resource-recheck").addEventListener("click", requestResources);
+  async function gpuSelectionRequest(apply) {
+    if (gpuSelectionBusy || !gpuSelectionWritable()) return;
+    let payload;
+    if (apply) {
+      const selected = [...byId("gpu-selection-choices").querySelectorAll("input:checked")].map(input => input.value).sort();
+      gpuSelectionPending ||= {request_id: `web-gpu-select-${crypto.randomUUID()}`, mode: selected.length ? "set" : "none", gpu_uuids: selected};
+      payload = gpuSelectionPending;
+    } else payload = {request_id: `web-gpu-options-${crypto.randomUUID()}`};
+    gpuSelectionBusy = true; renderProvider(state.snapshot);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(apply ? "/api/resource-select" : "/api/resource-options", {
+        method: "POST", cache: "no-store", signal: controller.signal,
+        headers: {Authorization: `Bearer ${accessToken}`, "X-Hypoloom-Provider-Token": providerToken, "Content-Type": "application/json"}, body: JSON.stringify(payload)});
+      const result = await response.json();
+      if (["accepted", "rejected", "conflict"].includes(result.status) && apply) gpuSelectionPending = null;
+      if (result.status !== "accepted") throw new Error(result.error?.message || result.message || t("Host reply not confirmed. Retry sends the same request."));
+      if (apply) setText("gpu-selection-result", t("GPU selection saved. Active jobs continue; pending reservations are reconciled by the Host."));
+      else {
+        const choices = byId("gpu-selection-choices");
+        choices.replaceChildren(element("legend", "", t("Eligible GPUs")));
+        for (const gpu of result.result.devices) {
+          const label = element("label", "", "");
+          const input = document.createElement("input"); input.type = "checkbox"; input.value = gpu.uuid;
+          input.checked = result.result.selection.gpu_uuids.includes(gpu.uuid);
+          label.append(input, document.createTextNode(` ${gpu.index} · ${gpu.uuid} · ${gpu.name}`));
+          choices.append(label, document.createElement("br"));
+        }
+        choices.hidden = false; byId("gpu-selection-apply").hidden = false;
+        setText("gpu-selection-result", "");
+      }
+    } catch (error) { setText("gpu-selection-result", gpuSelectionPending ? t("Host reply not confirmed. Retry sends the same request.") : error.message); }
+    finally { clearTimeout(timer); gpuSelectionBusy = false; renderProvider(state.snapshot); }
+  }
+  byId("gpu-selection-load").addEventListener("click", () => gpuSelectionRequest(false));
+  byId("gpu-selection-apply").addEventListener("click", () => gpuSelectionRequest(true));
   async function requestProvider(switchConnection) {
     if (providerBusy || !providerWritable()) return;
     if (!providerPending) {

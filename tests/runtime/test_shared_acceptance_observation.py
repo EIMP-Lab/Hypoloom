@@ -101,6 +101,8 @@ def status(tmp_path, attempts, facts):
             assert parameters == ("run", "run")
         elif query.startswith("SELECT c.command_type,t.payload_json"):
             assert parameters == ("run", "RESOURCE_BLOCKED", "RESOURCE_RECHECK")
+        elif query.startswith("SELECT t.revision,t.payload_json"):
+            assert "RESOURCE_SELECT" in query and parameters == ("run",)
         else:
             assert query.startswith("SELECT * FROM workflow_human_decisions")
         return []
@@ -116,7 +118,7 @@ def status(tmp_path, attempts, facts):
         heads=[{"workflow_kind": "RUN", "state": "ACTIVE", "revision": 7}],
     )
     # Dialogue, stored pool binding and resource controls; common evidence reuses inputs.
-    assert len(reads) == 3
+    assert len(reads) == 4
     assert result["gpu_pool"] is None
     return result
 

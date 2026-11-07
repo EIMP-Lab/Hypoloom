@@ -3,6 +3,31 @@ import json
 from pathlib import Path
 
 
+def gpu_selection_summary(gpu, language="en"):
+    if not gpu:
+        return []
+    zh = language == "zh-CN"
+    selected = ", ".join(gpu["profile_effective_uuids"])
+    pool = gpu.get("pool") or {}
+    members = pool.get("members")
+    lines = []
+    if members:
+        rendered = json.dumps(members, sort_keys=True)
+        lines.append((f"托管池成员：{rendered}。入池不预占显存，也不等于项目同时使用全部卡。" if zh else
+            f"Managed pool members: {rendered}. Membership does not allocate memory or make this run use every GPU."))
+    lines.append((f"项目初始选卡：{selected}。" if zh else f"Initial run GPU selection: {selected}."))
+    if gpu.get("pooled"):
+        lines.append(("启动后按 TUI 大写 G 调整项目选卡；已启动任务在原卡上完成。" if zh else
+            "After startup, use uppercase G in the TUI to change the run selection; active jobs finish on their original GPUs."))
+    if change := pool.get("membership_change"):
+        lines.append((f"旧池需要维护：新增 {change['added']}，移除 {change['removed']}。相关依赖完成清理前不会重配置或启动新运行。" if zh else
+            f"Existing pool maintenance required: add {change['added']}, remove {change['removed']}. Reconfiguration and the new run wait for dependency cleanup."))
+    if excluded := gpu.get("discovery", {}).get("excluded_devices"):
+        lines.append((f"设备访问检查未通过，未自动纳入：{excluded}。" if zh else
+            f"Devices excluded from automatic discovery by access checks: {excluded}."))
+    return lines
+
+
 def gpu_reserve_summary(gpu, language="en"):
     """Explain the existing launch preview; never change a Profile or pool."""
     if not gpu or not (memory := gpu.get("memory_budget")):
@@ -107,6 +132,7 @@ def render(args, result, summary):
         value("Model authentication", {"transport": args.auth_transport, "settings_path": args.claude_settings}),
         value("Budgets (null means no cap)", effective["budget"]),
         value("GPU/pool (CPU-only if absent)", effective.get("gpu")),
+        *gpu_selection_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
         *gpu_reserve_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
         *gpu_concurrency_summary(effective.get("gpu"), getattr(args, "ui_language", "en")),
         value("Notifications", notifications),

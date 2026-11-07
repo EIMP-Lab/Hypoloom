@@ -13,6 +13,7 @@ import base64
 import binascii
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
@@ -474,6 +475,10 @@ class Oracle:
                 attempts, attempt_payloads, issues, roles=_goal_roles_by_run(facts, parsed_payloads).get(run_id, ()), success_stop=success_stop)
 
             _audit_resource_recovery(commands, transitions, attempts, attempt_payloads, issues)
+            try:
+                _raw_resource_selections({"commands": commands, "transitions": transitions}, run_id)
+            except (KeyError, TypeError, ValueError, AssertionError) as exc:
+                issues.append(OracleIssue("resource_selection_invalid", str(exc), (run_id,)))
 
             outcomes = [row for row in facts if row["fact_type"] == "CanonicalOutcomeAccepted"]
             canonical_outcome_count = len(outcomes)
@@ -693,7 +698,9 @@ def audit_gpu_pool(pool_root: str | os.PathLike[str]) -> dict[str, Any]:
                     or ("sharing" in intent and intent["sharing"] not in ("exclusive", "shared"))
                     or not devices(intent["allowed_gpu_uuids"])
                     or not integer(intent["gpu_count"], 1)
-                    or intent["gpu_count"] > len(intent["allowed_gpu_uuids"])
+                    or (intent["gpu_count"] > len(intent["allowed_gpu_uuids"])
+                        and not (state in {"QUEUED", "RELEASED"} and pgid is None
+                            and row["grant_json"] == "[]" and row["decision_json"] is None))
                     or not integer(intent["workload_memory_mib"], 1)
                     or not integer(intent["reserve_memory_mib"])):
                 raise ValueError("invalid intent")
@@ -956,6 +963,61 @@ def _audit_unique_outcomes(outcomes: Sequence[sqlite3.Row], issues: list[OracleI
                     tuple(fact_ids),
                 )
             )
+
+
+def _raw_resource_selections(context, run_id):
+    """Independently check operator history; never use the Host's selection fold."""
+    if context is None: return {}
+    commands = {row["command_id"]: dict(row) for row in context["commands"]}
+    rows = sorted((row for row in context["transitions"] if row["workflow_id"] == run_id), key=lambda row: row["revision"])
+    initial = json.loads(rows[0]["payload_json"]).get("gpu_selection") if rows else None
+    previous, selected, selections = 0, initial, {}
+    for row in rows:
+        command = commands.get(row["command_id"], {})
+        if command.get("command_type") != "RESOURCE_SELECT": continue
+        request = json.loads(command["request_json"])
+        value = json.loads(row["payload_json"])["resource_selection"]
+        assert row["run_id"] == run_id and row["state"] == row["previous_state"]
+        assert row["state"] in {"CREATED", "ACTIVE", "WAITING_HUMAN"}
+        assert command["response_status"] == "accepted" and command["accepted_revision"] == row["revision"]
+        assert request["command"] == "RESOURCE_SELECT" and request["request_id"] == row["command_id"]
+        assert set(request["payload"]) == {"run_id", "mode", "gpu_uuids"} and request["payload"]["run_id"] == run_id
+        assert set(value) == {"gpu_uuids", "capabilities", "pool_members", "previous_revision", "changed_at", "mode"}
+        assert type(value["previous_revision"]) is int and value["previous_revision"] == previous and value["mode"] == "drain"
+        assert type(value["changed_at"]) in {int, float} and math.isfinite(value["changed_at"])
+        assert abs(datetime.fromisoformat(row["created_at"].replace("Z", "+00:00")).timestamp() - value["changed_at"]) < 1
+        members = value["pool_members"]
+        assert isinstance(members, list) and members == sorted(set(members)) and all(_physical_gpu_uuid(x) for x in members)
+        supplied, mode = request["payload"]["gpu_uuids"], request["payload"]["mode"]
+        assert isinstance(supplied, list) and len(supplied) == len(set(supplied)) and all(_physical_gpu_uuid(x) for x in supplied)
+        assert (mode in {"all", "none"}) == (not supplied)
+        assert selected is not None
+        if mode == "set": expected = set(supplied)
+        elif mode == "add": expected = set(selected) | set(supplied)
+        elif mode == "remove":
+            assert set(supplied) <= set(selected)
+            expected = set(selected) - set(supplied)
+        elif mode == "all": expected = set(members)
+        elif mode == "none": expected = set()
+        else: raise ValueError("unknown GPU selection mode")
+        assert expected <= set(members) and value["gpu_uuids"] == sorted(expected)
+        encoded = base64.b64encode(json.dumps(value["capabilities"], ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode()).decode()
+        gpus, busy, error = _decode_compute_capabilities({"input_artifacts": [{"ref": "operator--compute-capabilities",
+            "media_type": "application/json", "content_base64": encoded}]}, expected_schemas=(3,))
+        assert error is None and not busy and [gpu["uuid"] for gpu in gpus] == value["gpu_uuids"]
+        previous, selected = row["revision"], value["gpu_uuids"]
+        selections[previous] = {**value, "gpus": gpus}
+    return selections
+
+
+def _raw_dispatch_selection(selections, dispatch, attempt):
+    before = [revision for revision, value in selections.items() if value["changed_at"] <= attempt["started_at"]]
+    expected = max(before, default=0)
+    revision = dispatch.get("resource_selection_revision", 0)
+    if type(revision) is not int or revision != expected:
+        raise ValueError("dispatch does not bind the effective operator GPU selection")
+    return selections.get(revision)
 
 
 def _audit_resource_recovery(commands, transitions, attempts, payloads, issues):
@@ -5202,8 +5264,10 @@ def _raw_learned_workload_budget(contract: Mapping[str, Any], request: Mapping[s
                       and "resource_grant" in json.loads(row["payload_json"])]
         if len(dispatches) != 1: raise ValueError("measurement lacks one exact Attempt GPU allocation")
         dispatch = dispatches[0]; kind, devices = _raw_grant_devices(dispatch["resource_grant"])
+        selection = _raw_dispatch_selection(_raw_resource_selections(context, request["run_id"]), dispatch, source)
+        allowed = intent["allowed_gpu_uuids"] if selection is None else selection["gpu_uuids"]
         if (kind != "GPU" or intent.get("kind") != "GPU" or len(devices) != intent.get("gpu_count")
-                or not set(devices) <= set(intent["allowed_gpu_uuids"])
+                or not set(devices) <= set(allowed)
                 or dispatch.get("gpu_pool_key") != {"namespace": pool["namespace"], "run_id": request["run_id"],
                     "execution_id": source["execution_id"], "attempt_id": identity}):
             raise ValueError("measurement GPU grant or pool key differs from its source Attempt")
@@ -5255,6 +5319,16 @@ def _audit_resource_contract(
     learning_context: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any] | None:
     initial_issue_count = len(issues)
+    selections = {}
+    source_selection = None
+    try:
+        selections = _raw_resource_selections(learning_context, request.get("run_id"))
+        if selections:
+            source = next(row for row in learning_context["attempts"] if row["attempt_id"] == request["attempt_id"])
+            prior = [revision for revision, value in selections.items() if value["changed_at"] <= source["started_at"]]
+            source_selection = selections[max(prior)] if prior else None
+    except (AssertionError, KeyError, TypeError, ValueError, StopIteration) as exc:
+        issues.append(OracleIssue("resource_selection_invalid", str(exc), (fact_id,)))
     shared_version = research_contract_version in {"hypoloom-research-v11", "hypoloom-research-v12"}
     if research_contract_version != "hypoloom-research-v12" and "resource_estimate" in response.get("arguments", {}):
         issues.append(OracleIssue("resource_learning_source_invalid", "retained resource contracts cannot acquire learned estimate semantics", (fact_id,)))
@@ -5296,7 +5370,13 @@ def _audit_resource_contract(
             (fact_id,),
         ))
         gpus = ()
-    if isinstance(document, Mapping):
+    if source_selection is not None:
+        authorized = {gpu["uuid"]: gpu for gpu in source_selection["gpus"]}
+        if any(gpu["uuid"] not in authorized or any(gpu[key] != authorized[gpu["uuid"]][key]
+                for key in ("index", "name", "total_memory_mib", "driver_version")) for gpu in gpus):
+            issues.append(OracleIssue("compute_capability_selection_mismatch",
+                "source inventory differs from its operator-authorized GPU selection", (fact_id,)))
+    elif isinstance(document, Mapping):
         selected_devices = document.get("methodology", {}).get("controls", {}).get("product", {}).get("safety", {}).get("gpus", "auto")
         if selected_devices != "auto" and (not isinstance(selected_devices, list) or any(
                 not any((type(item) is int and item == gpu["index"]) or (isinstance(item, str) and item == gpu["uuid"])
@@ -5341,7 +5421,7 @@ def _audit_resource_contract(
             and environment.get("CUDA_DEVICE_ORDER") == "PCI_BUS_ID")
         if not valid:
             issues.append(OracleIssue("resource_intent_mismatch", "shared GPU intent differs from its version, source count, authorized inventory or Profile floor", (fact_id,)))
-        return {"shared": True, "intent": raw, "pool_binding": pool_binding,
+        return {"shared": True, "intent": raw, "pool_binding": pool_binding, "resource_selections": selections,
                 "budget_pressure": request.get("schema_version", 0) >= 30,
                 "cuda_preflight_required": str(contract.get("sandbox_profile", "")).endswith("/2"),
                 "attributable": research_contract_version == "hypoloom-research-v12",
@@ -5499,6 +5579,13 @@ def _audit_shared_process_resource(resource: Mapping[str, Any], intent: Mapping[
     try:
         kind, devices = _raw_grant_devices(intent.get("resource_grant"))
         declared = resource["intent"]
+        selection = _raw_dispatch_selection(resource.get("resource_selections", {}), intent, attempt)
+        gpu_by_uuid = resource["gpu_by_uuid"]
+        if selection is not None:
+            declared = {**declared, "allowed_gpu_uuids": selection["gpu_uuids"]}
+            gpu_by_uuid = {gpu["uuid"]: gpu for gpu in selection["gpus"]}
+            result["intent"] = declared
+            result["gpu_by_uuid"] = gpu_by_uuid
         pool = resource["pool_binding"]
         expected_key = {"namespace": pool["namespace"], **{name: attempt[name] for name in ("run_id", "execution_id", "attempt_id")}}
         expected_identity = {name: value for name, value in intent["resource_grant"].items() if name != "kind"}
@@ -5508,7 +5595,7 @@ def _audit_shared_process_resource(resource: Mapping[str, Any], intent: Mapping[
             and intent.get("gpu_pool_key") == expected_key and actual_identity == expected_identity)
         if not valid:
             raise ValueError("dispatch grant, device identity or pool key differs from its source and Attempt")
-        indices = tuple(resource["gpu_by_uuid"][uuid]["index"] for uuid in devices)
+        indices = tuple(gpu_by_uuid[uuid]["index"] for uuid in devices)
     except (KeyError, TypeError, ValueError) as exc:
         issues.append(OracleIssue("shared_gpu_grant_mismatch", str(exc), (identity,)))
         return result

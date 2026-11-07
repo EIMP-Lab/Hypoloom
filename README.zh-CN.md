@@ -46,6 +46,17 @@ Hypoloom 是一个开源的自主研究框架，支持文献调研、假设提�
 当前为 **dev** 分支，包含开发指南、资格检验记录和维护上下文。
 公开版本见 [main 分支](https://github.com/EIMP-Lab/Hypoloom/tree/main)。
 
+## 🆕 特性更新
+
+### 2026-11-08 · GPU 资源池初始化与运行中选卡
+
+- **自动管理全部 GPU**：启用 GPU 模式后，init 默认将全部可访问 GPU 纳入托管池，
+  不再逐张询问；项目初始选卡由 Profile 决定。
+- **运行中调整选卡**：通过 TUI（**大写 G**）、Web 或 CLI，在池内增减或替换项目使用的
+  GPU。已启动任务在原卡完成，后续任务使用更新后的选择。
+
+使用方式与兼容性说明见 [GPU 资源指南](docs/guides/gpu-resource-planning.zh-CN.md)。
+
 ## 🚀 快速开始
 
 需要 Linux、Conda、Git、bubblewrap、可用的用户命名空间和 Claude Code。

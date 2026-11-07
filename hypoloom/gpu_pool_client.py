@@ -74,7 +74,7 @@ def _peer_uid(connection: socket.socket) -> int:
 
 
 def validate_pool_snapshot(snapshot: dict[str, Any], *, aci_version: int,
-                           allowed_gpu_uuids=()) -> tuple[str, ...]:
+                           allowed_gpu_uuids=(), require_resource_selection: bool = False) -> tuple[str, ...]:
     """Share running-service compatibility and membership checks across callers.
 
     Free memory is not an authorization or readiness condition. Detailed
@@ -95,10 +95,13 @@ def validate_pool_snapshot(snapshot: dict[str, Any], *, aci_version: int,
         uuids.append(uuid)
     if len(set(uuids)) != len(uuids):
         raise PoolError("invalid_response", "GPU pool snapshot repeats a device")
+    capabilities = snapshot.get("capabilities")
     if aci_version >= 27:
-        capabilities = snapshot.get("capabilities")
         if not isinstance(capabilities, list) or "resource_replanning/1" not in capabilities:
             raise PoolError("incompatible_pool", "GPU pool lacks resource_replanning/1; update the pool before starting GPU research")
+    if require_resource_selection:
+        if not isinstance(capabilities, list) or "resource_selection/1" not in capabilities:
+            raise PoolError("incompatible_pool", "GPU pool lacks resource_selection/1; update the pool before starting a run with TUI GPU selection")
     if not set(allowed_gpu_uuids).issubset(uuids):
         raise PoolError("unauthorized", "Selected GPUs are outside this pool membership; review the GPU selection or pool configuration")
     return tuple(sorted(uuids))

@@ -285,6 +285,7 @@ def build_status_projection(
                              "AND workflow_id=? AND workflow_kind='RUN' AND revision=1", (run_id, run_id))
     configuration = _json_object(creation[0]["payload_json"]) if creation else {}
     from .resource_recovery import read_resource_blocks
+    from .resource_controls import selection_status
     return {
         "run_id": run_id,
         "run_state": run_head["state"],
@@ -304,6 +305,7 @@ def build_status_projection(
         "process_activity": None,
         "resource_blocked": list(read_resource_blocks(store, run_id).values()),
         "gpu_pool": configuration.get("gpu_pool"),
+        "resource_selection": selection_status(store, run_id, configuration),
         "grounding_dialogue": dialogue,
         "shared_acceptance": _shared_acceptance_projection(run_id, selected_attempts, selected_facts),
     }
@@ -1555,6 +1557,7 @@ _HOST_STATUS_FIELDS = (
     "agent_scheduling",
     "resource_waits",
     "resource_blocked",
+    "resource_selection",
     "process_activity",
     "provider_retry",
     "provider_traffic",

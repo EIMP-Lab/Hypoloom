@@ -44,6 +44,14 @@ def stopped(batch_host, tmp_path, monkeypatch):
         "CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = BOUNDED_DEBATE_ACI_SCHEMA_VERSION", original)
     assert count == 1
     aci.write_text(legacy)
+    # This is an actual ACI 29 / lifecycle v11 compatibility fixture, not the
+    # current lifecycle with only its ACI number relabeled.
+    lifecycle = bundle / "hypoloom/lifecycle.py"
+    legacy, count = re.subn(r'(?m)^WORKFLOW_DEFINITION_VERSION = "[^"]+"$',
+        'WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v11"', lifecycle.read_text())
+    assert count == 1
+    lifecycle.write_text(legacy)
+    monkeypatch.setattr("hypoloom.workflow_host.WORKFLOW_DEFINITION_VERSION", "hypoloom-lifecycle-v11")
     monkeypatch.setattr("hypoloom.workflow_host.__file__", str(bundle / "hypoloom/workflow_host.py"))
     host = WorkflowHost(root, local_agent=batch_host.agent)
     host.initialize()

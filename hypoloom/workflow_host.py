@@ -156,6 +156,8 @@ class WorkflowHost:
         from .shared_gpu_host import SharedGpuHost
         from .resource_recovery import ResourceRecovery
         self.resource_recovery = ResourceRecovery(self)
+        from .resource_controls import ResourceControls
+        self.resource_controls = ResourceControls(self)
         self.shared_gpu = None if gpu_pool_socket is None else SharedGpuHost(self, gpu_pool_socket, gpu_pool_namespace, gpu_pool_server_uid)
         if literature_io is not None and not isinstance(literature_io, FixedLiteratureIO): raise TypeError("literature_io must be FixedLiteratureIO")
         self.literature_io = literature_io
@@ -370,6 +372,11 @@ class WorkflowHost:
             if request.command == "ANSWER": return self.grounding_dialogue.answer(request)
             if request.command in {"PAUSE", "RESUME", "INJECT"}: return self._control_participant(request)
             if request.command == "RESOURCE_RECHECK": return self.resource_recovery.recheck(request)
+            if request.command == "RESOURCE_SELECT": return self.resource_controls.select(request)
+            if request.command == "RESOURCE_OPTIONS":
+                if set(request.payload) != {"run_id"}: raise ValueError("RESOURCE_OPTIONS requires run_id")
+                result = self.resource_controls.options(request.payload["run_id"])
+                return ControlResponse.accepted(request.request_id, result["run_revision"], result)
             if request.command == "PROVIDER_RETRY_CLEAR": return self._provider_retry_clear(request)
             if request.command == "NOTIFICATION_RETRY":
                 if set(request.payload) != {"run_id", "sink"} or self.observer_services is None:
@@ -424,7 +431,6 @@ class WorkflowHost:
             from .profile_v4 import validate_gpu_pool_budget
             validate_gpu_pool_budget(contract.document, pooled=self.shared_gpu is not None)
             if self.shared_gpu is not None and int(self.version.agent_aci_version) >= 28:
-                from .profile_v4 import restrict_profile_capabilities
                 from .gpu_pool_client import validate_pool_snapshot
                 capabilities = restrict_profile_capabilities(contract.document, self.compute_resources.snapshot())
                 if not capabilities.gpus:
@@ -469,6 +475,9 @@ class WorkflowHost:
         config = {"execution": {"allow_gpu": allow_gpu, "delay_seconds": delay, "target": target_record,
             "runtime_prefix": runtime_prefix, "read_roots": resolved_roots}}
         if self.shared_gpu is not None: config["gpu_pool"] = self.shared_gpu.configuration
+        if self.shared_gpu is not None and allow_gpu:
+            config["gpu_selection"] = [gpu.uuid for gpu in restrict_profile_capabilities(
+                contract.document, self.compute_resources.snapshot()).gpus]
         if self.host_launch is not None: config["host_launch"] = dict(self.host_launch)
         def operation(tx: StateTransaction) -> Mapping[str, Any]:
             tx.create_run(run_id, self.version); ids = _ids(run_id)
@@ -719,6 +728,7 @@ class WorkflowHost:
         result["process_activity"] = [process_activity(self, row) for row in
             self.store.list_attempts(run_id=run_id, kind="PROCESS", state="OPEN", include_observation=False)]
         result["resource_blocked"] = list(self.resource_recovery.blocked(run_id).values())
+        result["resource_selection"] = self.resource_controls.status(run_id)
         result["resource_waits"] = [{"experiment_id": workflow, "reason": reason,
             "message": resource_wait_message(reason),
             **({"resource_planning": self.shared_gpu.experiment_view(run_id, workflow)} if self.shared_gpu else {})}
@@ -837,6 +847,10 @@ class WorkflowHost:
         # Do not require a stopped pool to acknowledge those releases again.
         if self.shared_gpu is not None and self.stop_request is None: self.shared_gpu.reconcile()
         self._diagnostic_context = {"phase": "poll_local_execution_agents"}
+        if self.shared_gpu is not None and self.stop_request is None:
+            for run_id in active_at_start:
+                if self.store.latest_transition(run_id)["state"] in {"CREATED", "ACTIVE", "WAITING_HUMAN"}:
+                    self.resource_controls.reconcile(run_id)
         if self._poll_local_execution_agents(): progressed = True
         self._diagnostic_context = {"phase": "dispatch"}
         self._tick_deadline = time.monotonic() + 0.25
@@ -2119,6 +2133,7 @@ class WorkflowHost:
         if command is AgentCommand.LEADER and self._participant_paused(run_id, role, component_id, command.value): return note("participant_paused")
         contract = self._research_contract(run_id); attempts = self._expert_attempts(task)
         if any(row["state"] == "OPEN" for row in attempts): return note("active")
+        if self.resource_controls.pauses_planning(run_id, component_id, command.value): return note("operator_gpu_selection")
         if self._agent_attempts_exhausted(contract, list(attempts)): return note("attempts_exhausted")
         if command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
             previous = AgentRequest.from_dict(json.loads(attempts[-1]["observation_json"])["request"])
@@ -2375,6 +2390,7 @@ class WorkflowHost:
                     component_id: str, method_family_id: str | None = None,
                     rendezvous: RendezvousRequest | None = None) -> None:
         if self._provider_retry_pending(run_id): return
+        if self.resource_controls.pauses_planning(run_id, component_id, command.value): return
         lifecycle_command = {AgentCommand.PROPOSE_HYPOTHESIS: Command.REQUEST_HYPOTHESIS_CANDIDATE, AgentCommand.DRAFT_EXPERIMENT_SPEC: Command.REQUEST_SPEC_CANDIDATE, AgentCommand.ANSWER_RENDEZVOUS: Command.REQUEST_RENDEZVOUS}[command]
         if (command is AgentCommand.ANSWER_RENDEZVOUS) != (rendezvous is not None): raise OperationalHalt("rendezvous request/command mismatch")
         contract = self._research_contract(run_id); operational = dict(self._run_config(run_id))
@@ -2426,8 +2442,7 @@ class WorkflowHost:
             else:
                 inputs = tuple(EmbeddedInput.from_bytes(row["fact_id"], "application/json", _canonical({"fact_id": row["fact_id"], "fact_type": row["fact_type"], "payload": row["payload"]})) for row in context_facts) + (EmbeddedInput.from_bytes(f"{run_id}--component-{component_index}-config", "application/json", _canonical(config)),)
             if command is AgentCommand.DRAFT_EXPERIMENT_SPEC:
-                capabilities = self.compute_resources.snapshot() if operational["execution"]["allow_gpu"] else ComputeCapabilities(gpus=()); busy = set(self._busy_gpu_uuids(owner_id)); capabilities = ComputeCapabilities(gpus=capabilities.gpus, busy_gpu_uuids=tuple(gpu.uuid for gpu in capabilities.gpus if gpu.uuid in busy))
-                capabilities = restrict_profile_capabilities(contract.document, capabilities) if operational["execution"]["allow_gpu"] else capabilities
+                capabilities = self.resource_controls.capabilities(run_id); busy = set(self._busy_gpu_uuids(owner_id)); capabilities = ComputeCapabilities(gpus=capabilities.gpus, busy_gpu_uuids=tuple(gpu.uuid for gpu in capabilities.gpus if gpu.uuid in busy))
                 inputs += (EmbeddedInput.from_bytes(f"{run_id}--component-{component_index}--compute-capabilities", "application/json", capabilities.to_bytes()), EmbeddedInput.from_bytes(f"{run_id}--component-{component_index}--resource-planning-skill", "text/markdown", self.resource_skill), EmbeddedInput.from_bytes(f"{run_id}--component-{component_index}--resource-experience", "application/json", _canonical(self._resource_experience(run_id, role, component_id, str(method_family_id)))))
                 origins, _, replies = self._rendezvous_records(run_id)
                 try: repair_inputs = draft_repair_inputs(self.store, self.publisher, run_id, owner_id, origins=origins, replies=replies)
@@ -2965,7 +2980,8 @@ class WorkflowHost:
             budget = contract.document["budget"]
             minimum = int(budget.get("min_vram_per_experiment", 0))
             if self.shared_gpu is not None: minimum = self.shared_gpu.workload_budget(request, {}, minimum)
-            try: grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only_artifact else (self.compute_resources.plan_intent if self.shared_gpu else self.compute_resources.select)(candidate.resource_preference, capabilities, min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
+            compute = self.resource_controls.compute(request.run_id)
+            try: grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only_artifact else (compute.plan_intent if self.shared_gpu else compute.select)(candidate.resource_preference, capabilities, min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
             except (ResourceUnavailable, ValueError) as exc: raise AgentACIError("resource_unsatisfied", str(exc)) from exc
             if isinstance(grant, ResourceIntent): grant = self.shared_gpu.plan_intent(request, {}, grant)
             creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (request.owner_workflow_id,))
@@ -3451,6 +3467,9 @@ class WorkflowHost:
         self._validate_required_input_family(request, candidate, retryable=True)
         _, resource, _, _, _ = self._submission_execution_plan(request, candidate, source_snapshot["arguments"])
         if isinstance(resource, ResourceIntent) and resource.sharing is not None:
+            try: resource, _, _ = self.resource_controls.effective(request.run_id, resource)
+            except ResourceUnavailable:
+                return  # Keep the valid submission queued under the operator's selection.
             try: assessment = self.shared_gpu.assess_intent(resource)
             except PoolError as exc:
                 if exc.code != "unavailable" or request.schema_version >= 28:
@@ -3501,7 +3520,8 @@ class WorkflowHost:
         try:
             minimum = int(budget.get("min_vram_per_experiment", 0))
             if self.shared_gpu is not None: minimum = self.shared_gpu.workload_budget(request, arguments, minimum)
-            grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only else (self.compute_resources.plan_intent if self.shared_gpu else self.compute_resources.select)(candidate.resource_preference, capabilities,
+            compute = self.resource_controls.compute(request.run_id)
+            grant = ResourceGrant(kind=ResourceKind.CPU) if cpu_only else (compute.plan_intent if self.shared_gpu else compute.select)(candidate.resource_preference, capabilities,
                 gpu_count=arguments.get("gpus"), max_gpus_per_experiment=safety.get("max_gpus_per_experiment", 1),
                 min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
         except (ResourceUnavailable, ValueError) as exc: raise AgentACIError("resource_unsatisfied", str(exc)) from exc
@@ -3833,15 +3853,22 @@ class WorkflowHost:
         if spec is None: raise OperationalHalt(f"experiment {experiment_id} lacks preregistration")
         execution_id = spec["execution_id"]; attempts = self.store.list_attempts(execution_id=execution_id)
         ordinal = len(attempts) + 1; attempt_id = f"{experiment_id}--process-{ordinal}"
-        intent = spec["payload"]["execution_contract"].get("resource_intent"); pool_key = None; selected = None
+        intent = spec["payload"]["execution_contract"].get("resource_intent"); pool_key = None; selected = None; resource_revision = 0
+        compute = self.resource_controls.compute(run_id)
         if intent is not None:
             if self.shared_gpu is None: raise OperationalHalt("GPU resource intent requires its configured pool")
             if not self.shared_gpu.reconcile(): return
+            if not self.resource_controls.reconcile(run_id): return
+            try:
+                effective_intent, _, resource_revision = self.resource_controls.effective(run_id, ResourceIntent.from_dict(intent))
+            except ResourceUnavailable as exc:
+                self.resource_waits[experiment_id] = (run_id, str(exc))
+                return
             pool_key = self.shared_gpu.key(run_id, execution_id, attempt_id)
-            try: selected = self.shared_gpu.reserve(ResourceIntent.from_dict(intent), pool_key)
+            try: selected = self.shared_gpu.reserve(effective_intent, pool_key)
             except PoolError as exc:
                 if exc.code != "capacity_requires_revision": raise
-                try: assessment = self.shared_gpu.assess_intent(ResourceIntent.from_dict(intent))
+                try: assessment = self.shared_gpu.assess_intent(effective_intent)
                 except PoolError as unavailable:
                     if unavailable.code == "unavailable":
                         self.resource_waits[experiment_id] = (run_id, "unavailable")
@@ -3858,15 +3885,15 @@ class WorkflowHost:
                 self.shared_gpu.finish_resource_revision(run_id, experiment_id, diagnostic)
                 return
             if selected is None: return
-        spec, contract, agent_request, agent_response, source_path, result_path, workspace, capabilities, grant = self._execution_inputs(run_id, experiment_id, actual_grant=selected)
+        spec, contract, agent_request, agent_response, source_path, result_path, workspace, capabilities, grant = self._execution_inputs(run_id, experiment_id, actual_grant=selected, resource_revision=resource_revision)
         if pool_key is None and set(grant.device_uuids).intersection(self._busy_gpu_uuids(experiment_id)): self.resource_waits[experiment_id] = (run_id, "frozen GPU is busy in this state root"); return
         bundle_current = self._runtime_version() == self.version; budget = self._research_contract(run_id).document["budget"]
         reserve = (contract["resource_intent"]["reserve_memory_mib"] if pool_key is not None
                    else gpu_memory_reserve_mib(budget, int(budget.get("min_vram_per_experiment", 0))))
         if bundle_current:
             try:
-                if pool_key is not None: self.compute_resources.validate_identity(grant, capabilities)
-                else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
+                if pool_key is not None: compute.validate_identity(grant, capabilities)
+                else: compute.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
             except ResourceUnavailable as exc: self.resource_waits[experiment_id] = (run_id, str(exc)[:512]); return
         self.resource_waits.pop(experiment_id, None)
         self._crash("before_process_intent_commit")
@@ -3895,6 +3922,7 @@ class WorkflowHost:
             if identity.get("source_submit_command_id"):
                 transition["payload"]["source_submit_command_id"] = identity["source_submit_command_id"]
             if pool_key is not None: transition["payload"].update(resource_grant=grant.to_dict(), gpu_pool_key=pool_key)
+            if resource_revision: transition["payload"]["resource_selection_revision"] = resource_revision
             if retry:
                 transition["payload"].update({"retry_of_attempt_id": str(attempts[-1]["attempt_id"]), "retry_reason": "process_lost"})
             tx.append_transition(transition)
@@ -3913,9 +3941,9 @@ class WorkflowHost:
                 control_root = (workspace.materialize_target_overlay(target_binding, attempt_id=attempt_id, patch=None, target_directory="control-target") if plan.get("control_target") is True else None)
                 workspace.assert_component_preflight(plan=plan, target_root=target_root, control_root=control_root)
             workspace.assert_prestart_clean(prepared, agent_request=agent_request, agent_response=agent_response)
-            if pool_key is not None: self.compute_resources.validate_identity(grant, capabilities)
-            else: self.compute_resources.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
-            trackers = tuple(GpuPressureTracker(initial_observation=self.compute_resources.observe_runtime(uuid), reserve_memory_mib=reserve, grace_seconds=self.gpu_pressure_grace_seconds) for uuid in grant.device_uuids)
+            if pool_key is not None: compute.validate_identity(grant, capabilities)
+            else: compute.validate_live(grant, capabilities, busy_gpu_uuids=self._busy_gpu_uuids(experiment_id), min_vram_per_experiment=int(budget.get("min_vram_per_experiment", 0)), gpu_vram_reserve_mb=reserve)
+            trackers = tuple(GpuPressureTracker(initial_observation=compute.observe_runtime(uuid), reserve_memory_mib=reserve, grace_seconds=self.gpu_pressure_grace_seconds) for uuid in grant.device_uuids)
             if self._runtime_version() != self.version: raise ResourceUnavailable("pinned Agent/compute configuration or runtime drifted")
             handle = self._start_registered_process(prepared.process_request, pool_key=pool_key)
         except PoolError as exc:
@@ -3931,7 +3959,8 @@ class WorkflowHost:
         if trackers: self.gpu_pressure[attempt_id] = (trackers, reserve, {})
         self._crash("after_spawn_before_observation")
     def _execution_inputs(self, run_id: str, experiment_id: str, *, actual_grant: ResourceGrant | None = None,
-                          attempt_id: str | None = None, synthetic: bool = False) -> tuple[Any, ...]:
+                          attempt_id: str | None = None, synthetic: bool = False,
+                          resource_revision: int = 0) -> tuple[Any, ...]:
         spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         if spec is None: raise OperationalHalt(f"experiment {experiment_id} lacks preregistration")
         payload = spec["payload"]; contract = payload.get("execution_contract"); research = self._research_contract(run_id)
@@ -3960,6 +3989,7 @@ class WorkflowHost:
                 else ResourceGrant.from_dict(contract.get("resource_grant")))
             item = next(value for value in typed_request.input_artifacts if value.ref.endswith("--compute-capabilities"))
             capabilities = ComputeCapabilities.from_bytes(item.content_bytes())
+            source_capabilities = capabilities
             if isinstance(resource, ResourceIntent):
                 if self.shared_gpu is None or self._run_config(run_id).get("gpu_pool") != self.shared_gpu.configuration:
                     raise ValueError("GPU intent lacks its run-bound pool")
@@ -3974,9 +4004,12 @@ class WorkflowHost:
                         if binding.get("gpu_pool_key") != self.shared_gpu.key(run_id, str(spec["execution_id"]), attempt_id):
                             raise ValueError("process lacks its one allocation dispatch and matching owner")
                         actual_grant = ResourceGrant.from_dict(binding.get("resource_grant")); synthetic = False
+                        resource_revision = binding.get("resource_selection_revision", 0)
+                effective_resource, capabilities, _ = self.resource_controls.effective(
+                    run_id, resource, capabilities, revision=0 if synthetic else resource_revision)
                 grant = ResourceGrant(kind=ResourceKind.CPU) if synthetic else actual_grant
                 if not synthetic and (grant is None or grant.kind is not ResourceKind.GPU
-                        or len(grant.device_uuids) != resource.gpu_count or not set(grant.device_uuids) <= set(resource.allowed_gpu_uuids)):
+                        or len(grant.device_uuids) != effective_resource.gpu_count or not set(grant.device_uuids) <= set(effective_resource.allowed_gpu_uuids)):
                     raise ValueError("actual GPU allocation differs from its intent")
             else: grant = resource
             if grant.kind is ResourceKind.GPU:
@@ -3995,7 +4028,7 @@ class WorkflowHost:
         elif isinstance(resource, ResourceIntent):
             budget = research.document["budget"]
             minimum = self.shared_gpu.workload_budget(typed_request, {}, int(budget.get("min_vram_per_experiment", 0)))
-            expected_intent = self.compute_resources.plan_intent(preference, capabilities,
+            expected_intent = self.resource_controls.compute(run_id).plan_intent(preference, source_capabilities,
                 min_vram_per_experiment=minimum, gpu_vram_reserve_mb=gpu_memory_reserve_mib(budget, minimum))
             expected_intent = self.shared_gpu.plan_intent(typed_request, {}, expected_intent)
             if resource != expected_intent: raise OperationalHalt("resource intent differs from its source and reviewed Profile")
@@ -4012,7 +4045,7 @@ class WorkflowHost:
                 or candidate.get("method_family_id") != payload.get("method_family_id")):
             raise OperationalHalt("preregistered execution inputs do not match their committed authorities")
         if self.publisher is None: raise OperationalHalt("Workflow Host is not initialized")
-        kwargs = self.compute_resources.workspace_kwargs(grant, capabilities)
+        kwargs = self.resource_controls.compute(run_id).workspace_kwargs(grant, capabilities)
         if payload.get("measurement") is not None or payload.get("goal_evaluation") is not None:
             kwargs["system_runtime_paths"] = ("/lib", "/lib64", "/usr/lib", "/etc/ld.so.cache", "/usr/bin", "/bin")
         runtime_prefix = self._run_config(run_id)["execution"]["runtime_prefix"]

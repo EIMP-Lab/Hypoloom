@@ -79,8 +79,12 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # ACI 32 publication input/source projection is counted as Host authority.
     # Transfer 150 unused domain lines (891 actual): 125 to execution_reuse,
     # 25 to workflow_host. Preserve the total and every existing counted file.
+    # Live selection uses the existing journal: transfer 250 unused GPU-pool
+    # lines to the counted resource_controls helper (225) and Host (25).
+    # Keep every existing counted file and the total 27,550-line authority budget.
     allocations = {"domain": 950, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4700, "institutional_controls": 100,
+        "state_store": 400, "research_kernel": 750, "workflow_host": 4725, "institutional_controls": 100,
+        "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
@@ -90,7 +94,7 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 850, "shared_acceptance_host": 700,
-        "compute_resources": 1200, "gpu_pool": 1100, "shared_gpu_host": 500, "resource_recovery": 125,
+        "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,
         "gpu_attribution": 800, "resource_experience": 700, "host_settings": 350, "provider_recovery": 150}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations
         if name not in {"expert_batch", "expert_plugin", "expert_memory", "measurement_contract", "expert_interaction", "interaction_host", "debate_host", "profile_permissions"}
@@ -201,7 +205,7 @@ def test_drafted_candidate_validation_is_a_persisted_process_self_loop() -> None
         ExperimentState.DRAFTED,
     )
 
-    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v11"
+    assert WORKFLOW_DEFINITION_VERSION == "hypoloom-lifecycle-v12"
     assert validate.external_effect is EffectKind.PROCESS
     assert validate.effect_required
     assert observe.external_effect is None

@@ -715,12 +715,12 @@ def test_public_skill_init_prefers_inherited_environment_auth_without_exposing_k
         assert option in text
     assert "--agent-token-enforcement-mode" not in text
     assert "There is no token-mode CLI flag" in text
-    assert "GPU UUID allowlist" in text
+    assert "Automatic GPU membership and initial selection" in text
     assert "LocalComputeResources" in text
     assert "--gpu-device-uuid" in text
     assert "--gpu-runtime-prefix" in text
     assert "--allow-gpu" in text
-    assert "no automatic" in normalized and "permission" in normalized
+    assert "Device-node permissions and external-pool authorization remain mandatory" in normalized
 
 
 def test_public_skill_reuses_qualified_user_settings_before_other_compatibility_paths() -> None:

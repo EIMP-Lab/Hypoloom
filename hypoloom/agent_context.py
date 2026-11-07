@@ -1133,7 +1133,6 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
     from .literature import LITERATURE_PACKET_MEDIA_TYPE, bounded_context_refs, expert_literature_query, grounding_literature_query
     from .outcome_adapter import OUTCOME_ADAPTER_VERSION
     from .profile_language import apply_profile_language
-    from .profile_v4 import restrict_profile_capabilities
     from .workflow_host import OperationalHalt, _CPU_SANDBOX_PROFILE, _GPU_SANDBOX_PROFILE
 
     if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.PAPER_READ: return host.paper_reading.inputs(task)
@@ -1397,9 +1396,7 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
                 "without changing its final criteria. Include actual performance evidence, a bounded probe or a concrete non-applicability reason.")
         inputs[1] = EmbeddedInput.from_bytes(f"{run_id}--{component_id}--expert-config",
             "application/json", canonical_json(config))
-        operational = dict(host._run_config(run_id)); capabilities = (
-            host.compute_resources.snapshot() if operational["execution"]["allow_gpu"] else ComputeCapabilities(gpus=()))
-        capabilities = restrict_profile_capabilities(contract.document, capabilities) if operational["execution"]["allow_gpu"] else capabilities
+        capabilities = host.resource_controls.capabilities(run_id)
         busy = set(capabilities.busy_gpu_uuids) | set(host._busy_gpu_uuids())
         capabilities = ComputeCapabilities(gpus=capabilities.gpus,
             busy_gpu_uuids=tuple(sorted(gpu.uuid for gpu in capabilities.gpus if gpu.uuid in busy)))

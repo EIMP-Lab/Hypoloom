@@ -11,7 +11,7 @@ from hypoloom import bootstrap, bootstrap_inspect, bootstrap_questions
 from hypoloom import managed_gpu_pool as manager
 from hypoloom.gpu_pool_lifecycle import inspect_dependencies, retired_owner_keys
 from test_managed_pool_lifecycle import managed, binding, GPU, GPU2  # noqa: F401
-from test_bootstrap import checkout, arguments  # noqa: F401
+from test_bootstrap import checkout, arguments, mock_gpu_discovery  # noqa: F401
 
 
 def retired_history(root, run="retired", *, uid=None, state="RELEASED", pgid=None):
@@ -226,7 +226,9 @@ def test_inspect_answers_and_launch_preview_form_one_effect_free_flow(checkout, 
     assert bootstrap.main([*prepare, "--write"]) == 0
     capsys.readouterr()
     monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
-    monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda *_: {"status": "observed", "devices": [{"uuid": GPU}, {"uuid": GPU2}]})
+    mock_gpu_discovery(monkeypatch, ComputeCapabilities(gpus=tuple(
+        GpuCapability(index=i, uuid=uuid, name="synthetic", total_memory_mib=16000,
+            free_memory_mib=16000, driver_version="test") for i, uuid in enumerate((GPU, GPU2)))))
     monkeypatch.setattr(bootstrap_inspect, "_pools", lambda *_: {})
     monkeypatch.setattr(LocalComputeResources, "snapshot", lambda *_: ComputeCapabilities(gpus=(
         GpuCapability(index=0, uuid=GPU, name="synthetic", total_memory_mib=16000, free_memory_mib=16000, driver_version="test"),)))

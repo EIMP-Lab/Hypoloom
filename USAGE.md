@@ -106,6 +106,8 @@ and are not consumption counters.
   select another compatible API using a private connection file.
 - **g / GPU resource recheck**: after repairing the bound pool, recheck
   Host-observed resource blocks. See [runtime recovery](docs/guides/runtime-recovery.md).
+- **G / Select GPUs**: add, remove or replace GPUs during a run; active jobs
+  finish on their original devices. See [GPU resources](docs/guides/gpu-resource-planning.md).
 
 - **l / Literature retry**: retry OpenAlex after repair; this is separate from model API recovery.
 - **n / Telegram retry**: inspect and retry managed delivery using its current proxy;
@@ -144,7 +146,7 @@ automatically.
 API recovery uses a separate operator grant: TUI **p → Browser**, or standalone
 Web with `--allow-provider-control`. Human-answer permission alone does not
 permit API switching. See [API recovery](docs/guides/provider-recovery.md).
-The same operator recovery grant permits GPU resource recheck. API retry and
+The same operator recovery grant permits GPU resource recheck and GPU selection. API retry and
 GPU recheck are separate actions and do not clear each other's wait.
 
 

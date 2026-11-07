@@ -645,7 +645,8 @@ def test_frontend_assets_expose_read_only_operations_map_and_evidence_ux() -> No
     assert "innerHTML" not in script
     # Human answers, scoped provider recovery and institutional full-text actions change state;
     # support export carries the reviewed issue description in a POST body but remains read-only.
-    assert script.count('method: "POST"') == 6
+    assert script.count('method: "POST"') == 7
+    assert '/api/resource-select' in script and '/api/resource-options' in script
     assert 'fetch("/api/resource-recheck"' in script
     assert 'fetch("/api/human-answer"' in script
     assert 'fetch("/api/literature-access"' in script

@@ -29,7 +29,7 @@ from hypoloom.compute_resources import GpuRuntimeObservation
 from test_managed_pool_lifecycle import managed as _managed, binding, GPU
 from test_gpu_host_integration import _payload
 from test_stopped_final_report_host import batch_host as _batch_host, _drive, _reports
-from test_bootstrap import checkout as _checkout, arguments
+from test_bootstrap import checkout as _checkout, arguments, mock_gpu_discovery
 
 managed, batch_host, checkout = _managed, _batch_host, _checkout
 
@@ -234,10 +234,10 @@ def test_bootstrap_carries_recovery_plan_and_never_starts_new_host_while_pending
         "methodology.budget.min_vram_per_experiment=1024"]), "--write"]) == 0
     capsys.readouterr()
     monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
-    monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda *a: {"status": "observed", "devices": []})
     monkeypatch.setattr(bootstrap_inspect, "_pools", lambda *a: {"state": "stopped"})
     monkeypatch.setattr(LocalComputeResources, "snapshot", lambda self: ComputeCapabilities(gpus=(
         GpuCapability(index=0, uuid=GPU, name="synthetic", total_memory_mib=24000, free_memory_mib=20000, driver_version="synthetic"),)))
+    mock_gpu_discovery(monkeypatch, LocalComputeResources.snapshot(None))
     def proposal(args):
         assert getattr(args, selection) == ["old:2"]
         return {"status": "ok", "action": "restore", "prepare_available": False, "start_ready": False,

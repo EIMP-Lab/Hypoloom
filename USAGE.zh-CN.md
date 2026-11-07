@@ -81,6 +81,8 @@ TUI 将已报告与未结算已观测 token 分开显示，两者相加后可与
 - **p / API recovery**：查看 API 等待状态、重试当前连接，或通过私有连接文件选择兼容 API。
 - **g / GPU resource recheck**：修复绑定的池后，复查 Host 已确认的资源阻断；详见
   [运行恢复](docs/guides/runtime-recovery.zh-CN.md)。
+- **G / Select GPUs**：运行中增加、移除或替换 GPU，已启动任务在原卡完成后释放；
+  详见 [GPU 资源指南](docs/guides/gpu-resource-planning.zh-CN.md)。
 
 - **l / Literature retry**：修复后重试 OpenAlex，与模型 API 恢复分开。
 - **n / Telegram retry**：按当前代理重试托管通知，不重载代理配置；代理设置、认证检查
@@ -112,7 +114,7 @@ TUI 打开的 Web 服务与该 TUI 属于同一进程。TUI 退出或崩溃会�
 API 恢复使用独立操作权限：TUI **p → Browser**，或启动独立 Web 时添加
 `--allow-provider-control`。仅有人工回答权限不能切换 API，具体步骤见
 [API 状态与恢复](docs/guides/provider-recovery.zh-CN.md)。
-同一操作者恢复权限也允许 GPU 资源复查；API 重试与 GPU 复查是两个独立操作，
+同一操作者恢复权限也允许 GPU 资源复查和 GPU 选择；API 重试与 GPU 复查是两个独立操作，
 不会互相解除对方的等待。
 
 

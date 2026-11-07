@@ -88,18 +88,18 @@ def test_new_profile_option_is_actionable_without_a_model_chosen_name(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-def test_gpu_answer_authorizes_only_displayed_devices_and_detects_changed_inventory():
-    args = bootstrap.build_parser().parse_args(["inspect", "--allow-gpu"])
-    result = {"missing": ["gpu_device_uuid", "gpu_scheduling_mode"],
+def test_gpu_mode_answer_uses_managed_defaults_without_per_card_questions():
+    from hypoloom.bootstrap_gpu import default_scheduling
+    args = bootstrap.build_parser().parse_args(["inspect"])
+    result = {"missing": ["execution_mode"],
               "checks": {"gpu_inventory": {"devices": [{"uuid": "GPU-a"}, {"uuid": "GPU-b"}]}}}
-    answer = {q["question"]: q["options"][0]["label"] for _, q, _ in bootstrap_questions.questions(args, result)}
+    answer = {q["question"]: q["options"][1]["label"] for _, q, _ in bootstrap_questions.questions(args, result)}
     result["checks"]["gpu_inventory"]["devices"].append({"uuid": "GPU-c"})
-    with pytest.raises(ValueError, match="stale"):
-        bootstrap_questions.apply_answers(args, result, answer)
-    assert args.gpu_device_uuid is None
-    result["checks"]["gpu_inventory"]["devices"].pop()
     bootstrap_questions.apply_answers(args, result, answer)
-    assert args.gpu_device_uuid == ["GPU-a", "GPU-b"] and args.managed_pool
+    default_scheduling(args)
+    assert args.allow_gpu and args.managed_pool and args.gpu_device_uuid is None
+    result["missing"] = []
+    assert bootstrap_questions.questions(args, result) == []
 
 
 @pytest.mark.parametrize("selected", ["configured-model", "replacement-model"])

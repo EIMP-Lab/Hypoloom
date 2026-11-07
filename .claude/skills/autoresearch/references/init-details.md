@@ -13,7 +13,7 @@ not permission to omit checks or necessary user decisions.
 
 ## Pool dependency handling
 
-After device selection, inspect asks about a differing pool reserve: keep the
+After automatic device resolution, inspect asks about a differing pool reserve: keep the
 current pool or review reconfiguration. Preserve the returned full pool membership;
 this run's device subset does not shrink the pool. Follow the generated questions
 and answer argv, rather than inventing a rebuild command. If missing-state owners
@@ -540,14 +540,17 @@ scratch.
    the tracked `<repo>/.claude/settings.example.json`. If it exists, report
    that it will be left byte-for-byte and mode-for-mode untouched; never offer
    to overwrite, chmod, or merge it automatically.
-5. **GPU UUID allowlist.** Ask whether the prospective run is CPU-only or may
+5. **Automatic GPU membership and initial selection.** Ask whether the prospective run is CPU-only or may
    use GPU. CPU-only means no Host GPU flags and explicit `--cpu-only` on both
    admission checks and `start`. GPU authorization requires `--allow-gpu` on
    those same three client invocations. These choices are mutually exclusive
-   and required; omission is an error. For GPU, run
-   `nvidia-smi` read-only and show, for every detected card, its index, stable
-   UUID, model, total and free memory, utilization, and current compute
-   occupancy. Alongside the inventory show the admitted profile's exact
+   and required; omission is an error. In GPU mode bootstrap automatically plans
+   the managed pool with all NVML-observed devices passing device-node access
+   checks. Do not ask for an individual UUID subset or default scheduling mode.
+   The initial run subset comes from Profile `safety.gpus` or explicit CLI flags;
+   `auto`/omitted means all candidates, while `[]` remains CPU-only. Show pool
+   membership and initial run selection separately in final review. TUI uppercase
+   G changes the run subset after launch. Alongside the inventory show the admitted profile's exact
    `min_vram_per_experiment`, `gpu_vram_reserve_mb` and optional
    `gpu_vram_reserve_percent`. New templates use 512 MiB and 5%; adopting an
    existing Profile preserves its values. A missing/zero percentage means the
@@ -563,15 +566,12 @@ scratch.
    operator may configure a lower hard floor and a separate initial estimate;
    reuse existing in-scope approval, otherwise include the proposed values and
    their measurement basis in the existing final launch review. Never lower a
-   floor or reserve automatically because a card is occupied. Require the
-   operator to approve the exact UUID subset and whether occupied UUIDs may be
-   shared. Reuse an already explicit in-scope sharing decision; otherwise ask.
-   A shared and occupied
-   card may be allow-listed only by that explicit answer; do not reject all
-   occupied cards automatically. Conversely, free memory, utilization, an
-   empty process list, and compute occupancy are capacity/risk observations,
-   never authorization; there is no automatic inference of GPU permission
-   from any of them. Never kill, signal, reset, suspend, or otherwise
+   floor or reserve automatically because a card is occupied. Busy devices remain
+   in the default pool membership; actual dispatch follows pool capacity and the
+   existing sharing policy. Pool membership does not allocate memory. Device-node
+   permissions and external-pool authorization remain mandatory; free memory and
+   occupancy never bypass them. Do not add another per-device/sharing questionnaire
+   to the generated flow. Never kill, signal, reset, suspend, or otherwise
    control an external process to obtain capacity. Require the admitted
    profile's absolute runtime prefix with a real executable `bin/python`.
    Agents choose CPU/AUTO/GPU_REQUIRED and may submit an exact GPU count under
@@ -595,8 +595,9 @@ scratch.
    the exact GPU allowlist/runtime or per-run `--allow-gpu` decision. Sharing
    an occupied card is not the same choice as joining a shared pool.
 
-   Refresh the device snapshot and confirm this init's UUID subset every time.
-   A prior run's selection is only a suggested default; never silently inherit it.
+   Refresh the snapshot and use bootstrap's generated, concrete UUID arguments.
+   A prior run's TUI selection does not rewrite the Profile or become a new init
+   default. Do not silently add newly appearing cards to an already reviewed plan.
 
    **Detection.** The aggregate inspection already observes the project pool.
    For a specific historical-binding diagnostic, use this read-only helper;
@@ -659,6 +660,10 @@ scratch.
    Record exit status and the authorized capacity response; require the approved
    UUID subset to be present and the live capability `resource_replanning/1`.
    The current Host repeats these checks before creating a GPU run.
+   Bootstrap additionally requires `resource_selection/1` for TUI GPU selection.
+   A managed service lacking it follows the reviewed upgrade path, even if it
+   already contains all devices; active dependencies still block replacement.
+   An external service must be updated by its administrator.
    An unavailable or incompatible external pool blocks direct launch. A project
    pool with a safe reviewed preparation plan permits Start now; a reachable pool with insufficient headroom is a disclosed
    capacity wait. Never substitute a private allocator or silently remove the
@@ -669,7 +674,7 @@ scratch.
    pool plan in the final launch review: pool root
    `$REPOSITORY/.local/gpu-pools/shared`, socket `control.sock` inside it, the
    derived `hypoloom-gpu-pool@<escaped-pool-root>.service` unit, the single
-   `--member <this-uid>=<approved UUID subset>` line, and `--reserve-mib`
+   `--member <this-uid>=<reviewed full usable GPU set>` line, and `--reserve-mib`
    equal to the computed absolute reserve floor (at least 512 MiB and rounded up
    to 64 MiB with a positive percentage; otherwise `gpu_vram_reserve_mb`, zero
    when absent). Use the returned plan when reusing/restoring a pool; do not

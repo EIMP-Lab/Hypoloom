@@ -12,6 +12,48 @@ ACI 28 的启动预检、节点级 GPU 故障恢复及上下文/进度观测见[
 提醒是独立流程；它们保留已有池历史，并要求不存在未结束依赖。
 用法见[初始化指南](initialization.zh-CN.md)。
 
+## 运行中调整 GPU 资源集合
+
+新 init 的 GPU 模式默认将全部可用设备纳入托管池，无需逐张选择。
+池成员与项目初始选卡分开：后者遵循 Profile，之后可在 TUI 调整。
+入池不预占显存；旧的部分设备池首次扩为全卡池仍需维护，见[初始化指南](initialization.zh-CN.md)。
+
+使用本版本新建的共享池 GPU 运行可以在 TUI 按 **G / Select GPUs**（大写 G），
+勾选下一批任务可用的 GPU 后应用。Web 监控的 **Select GPUs** 提供相同操作，
+需要操作员链接（`--allow-provider-control`）。普通只读链接显示当前选择和待释放的卡。
+
+支持缩减、增加、替换 GPU 集合，以及清空选择后再恢复。范围是当前绑定的共享池
+授予当前用户、且本机可见的物理 GPU，使用 UUID 固定身份。显式操作员选择可覆盖
+启动时的 GPU 子集，但不改变每个实验的卡数上限、显存预算、训练命令或研究验收条件。
+这项控制调整当前项目的 GPU 集合；共享池的服务地址、用户权限和全局设备成员仍由池管理流程维护。
+
+默认采用等待完成后释放的方式：
+
+- 已启动的训练保留原有 GPU、进程和资源授权，完成后释放；不迁移 CUDA 进程，也不中止训练。
+- 尚未启动的预约随新选择调整，后续派发和重试使用新集合。
+- 如果选中的卡不足以满足某个多卡实验，该实验等待补足卡数，不自动降为单卡或 CPU。
+- 清空选择暂停新的 GPU 派发，并释放未启动预约；已启动训练和 CPU 工作可以继续。
+- 更改记录写入运行历史。Host 重启后重放同一选择，旧实验的资源来源和实际派发设备仍可审计。
+
+先将 `STATE_ROOT` 和 `RUN_ID` 设置为目标运行，UUID 用查询结果替换：
+
+```bash
+python -m hypoloom resource-options --state-root "$STATE_ROOT" --run-id "$RUN_ID"
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --remove-gpu GPU-UUID-A
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --add-gpu GPU-UUID-B
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --gpu GPU-UUID-B --gpu GPU-UUID-C
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --all-gpus
+python -m hypoloom resource-select --state-root "$STATE_ROOT" --run-id "$RUN_ID" --no-gpus
+```
+
+自动化调用可附加 `--expected-revision` 做乐观并发检查，并指定 `--request-id`。
+回复超时后，使用**同一请求 ID 和相同参数**重试。接受回复代表选择已持久化；
+`status.resource_selection.pending_cleanup` 表示池端预约调整仍需重试，
+`draining_gpu_uuids` 列出仍被已启动任务占用的已移除卡。
+
+Host 需要本版本的运行时，池需要通告 `resource_selection/1` 能力。
+旧的冻结运行时不会通过修改源码或 Profile 获得此功能；此命令也不重启或升级资源池。
+
 ## 实验沙箱中的 CUDA 可用性
 
 GPU 沙箱配置第 2 版只绑定获准的 NVIDIA 设备节点，并只读挂载
@@ -121,6 +163,8 @@ Agent。证据关联完成后，Agent 可在原有预算内通过 `replaces_expe
 
 新建池化运行要求共享池声明 `resource_replanning/1` 能力。旧池会明确报告
 不兼容，不会静默忽略独占约束。池部署需要独立于既有研究运行安排，不迁移已接纳运行。
+init 还会检查支持 TUI 选卡的 `resource_selection/1`；旧托管服务沿用已有的升级审阅
+和依赖检查。
 独占仅约束池内承诺，其他外部 GPU 用户仍由原有实时容量及压力保护处理。
 
 本功能不改变既有 reserve、不扩大设备授权、不迁移在途进程、不自动修改科研

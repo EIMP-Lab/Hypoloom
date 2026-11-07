@@ -29,6 +29,7 @@ def test_submission_plan_honors_exact_count_and_profile_cap(tmp_path, monkeypatc
         component=lambda component: SimpleNamespace(result_kind=ComponentResultKind.METRIC))
     host = SimpleNamespace(compute_resources=resources, shared_gpu=None, _research_contract=lambda run: research,
                            _implementation_patch=lambda *args: None)
+    host.resource_controls = SimpleNamespace(compute=lambda run: resources)
     monkeypatch.setattr(module, "_component_plan", lambda *args: {"argv": ("python", "experiment.py")})
     monkeypatch.setattr(module, "component_is_production", lambda *args: False)
     if count > cap:
@@ -52,6 +53,7 @@ def test_submission_plan_rejects_authoring_workspace_path(tmp_path, monkeypatch)
         component=lambda component: SimpleNamespace(result_kind=ComponentResultKind.METRIC))
     host = SimpleNamespace(compute_resources=resources, shared_gpu=None,
         _research_contract=lambda run: research, _implementation_patch=lambda *args: None)
+    host.resource_controls = SimpleNamespace(compute=lambda run: resources)
     monkeypatch.setattr(module, "_component_plan", lambda *args: {"argv": ("python", "experiment.py")})
     monkeypatch.setattr(module, "component_is_production", lambda *args: False)
 
@@ -106,6 +108,7 @@ def test_pressure_on_second_uuid_cancels_once_and_records_both_devices():
         compute_resources=SimpleNamespace(observe_runtime=lambda uuid: (requested.append(uuid), samples[uuid])[1]),
         runner=SimpleNamespace(cancel=cancel, wait=lambda handle: observed),
         _transition_record=lambda *args, **kwargs: {}, _crash=lambda point: None)
+    host.resource_controls = SimpleNamespace(compute=lambda run: host.compute_resources)
     assert WorkflowHost._poll_processes(host)
     assert requested == [GPU_A.uuid, GPU_B.uuid] and cancelled == [process] and graces == [30.0]
     payload = closed[0]["payload"]
@@ -154,6 +157,7 @@ def test_pressure_preserves_within_budget_and_legacy_counterfactual(owned, budge
         runner=SimpleNamespace(cancel=cancel,
             wait=lambda handle: observed),
         _transition_record=lambda *args, **kwargs: {}, _crash=lambda point: None)
+    host.resource_controls = SimpleNamespace(compute=lambda run: host.compute_resources)
     assert WorkflowHost._poll_processes(host) is (not spared)
     if spared:
         assert cancelled == []

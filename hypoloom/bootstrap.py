@@ -212,6 +212,8 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     payload = report.create_run_payload
     contract = payload["research_contract"]
     review["budget"] = contract["budget"]
+    from .bootstrap_gpu import default_scheduling
+    default_scheduling(args)
     if getattr(args, "nonpooled", False) and (not args.allow_gpu or args.gpu_pool_socket):
         raise ValueError("--nonpooled requires GPU authorization and cannot include a pool endpoint")
     if not getattr(args, "managed_pool", False) and any(getattr(args, name, None) is not None
@@ -264,8 +266,10 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         if owner is not None and state.parent != owner.resolve() / "state":
             raise ValueError("canonical managed pool requires state roots under its repository/state; select an external service for external roots")
     if args.allow_gpu:
-        if not args.gpu_device_uuid or not args.gpu_runtime_prefix:
-            raise ValueError("GPU launch needs the exact approved UUIDs and runtime prefix")
+        if not args.gpu_runtime_prefix:
+            raise ValueError("GPU launch needs the admitted runtime prefix")
+        from .bootstrap_gpu import resolve
+        discovery = resolve(args, contract)
         from .compute_resources import LocalComputeResources, ComputeResourceError, gpu_memory_reserve_mib
         from .profile_v4 import restrict_profile_capabilities, validate_gpu_pool_budget
         prefix = Path(args.gpu_runtime_prefix)
@@ -284,7 +288,8 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
             raise ValueError("GPU launch conflicts with Profile safety.gpus=[]; select CPU-only or review the prospective Profile")
         review["gpu"] = {"host_authorized_uuids": list(resources.allowed_gpu_uuids),
                          "profile_effective_uuids": [gpu.uuid for gpu in selected.gpus],
-                         "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None}
+                         "runtime_prefix": str(prefix.resolve()), "pooled": args.gpu_pool_socket is not None,
+                         "discovery": discovery}
         budget = contract["budget"]
         review["gpu"]["concurrency"] = {"max_active_processes": budget["max_active_processes"],
             "authorized_device_count": len(selected.gpus), "scope": "whole_run",
@@ -306,9 +311,17 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
                 proposal = managed_gpu_pool.review(pool_args)
                 review["gpu"]["pool"] = {**proposal, "namespace": args.gpu_pool_namespace,
                     "start_available": proposal["prepare_available"] or proposal.get("cancellation", {}).get("prepare_after_cleanup", False)}
+                previous = proposal.get("previous_configuration")
+                before = set((previous or {}).get("members", {}).get(str(os.geteuid()), ()))
+                after = set(proposal.get("members", {}).get(str(os.geteuid()), ()))
+                if previous is not None and before != after:
+                    review["gpu"]["pool"]["membership_change"] = {"added": sorted(after - before),
+                        "removed": sorted(before - after), "requires_maintenance": True}
             else:
                 _external_pool_review(args, selected, review)
-        from .bootstrap_review import gpu_reserve_summary
+        from .bootstrap_review import gpu_reserve_summary, gpu_selection_summary
+        review["gpu"]["selection_explanation"] = gpu_selection_summary(
+            review["gpu"], getattr(args, "ui_language", "en"))
         review["gpu"]["reserve_explanation"] = gpu_reserve_summary(
             review["gpu"], getattr(args, "ui_language", "en"))
     elif args.gpu_device_uuid or args.gpu_runtime_prefix or args.gpu_pool_socket:
@@ -386,7 +399,7 @@ def _external_pool_review(args, selected, review):
     try:
         snapshot = PoolClient(args.gpu_pool_socket, expected_server_uid=args.gpu_pool_server_uid).request("snapshot", {})
         validate_pool_snapshot(snapshot, aci_version=CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION,
-                               allowed_gpu_uuids=[gpu.uuid for gpu in selected.gpus])
+                               allowed_gpu_uuids=[gpu.uuid for gpu in selected.gpus], require_resource_selection=True)
     except PoolError as exc:
         review["gpu"]["pool"] = {"socket_path": args.gpu_pool_socket, "namespace": args.gpu_pool_namespace,
             "status": "blocked", "code": exc.code, "reason": str(exc), "start_ready": False}
@@ -621,7 +634,7 @@ def build_parser() -> argparse.ArgumentParser:
                          "notification-credentials-file"):
                 command.add_argument("--" + name)
             command.add_argument("--claude-bwrap", default="/usr/bin/bwrap")
-            command.add_argument("--gpu-device-uuid", action="append")
+            command.add_argument("--gpu-device-uuid", action="append", help="explicit initial run subset; otherwise derive from the Profile and usable GPU inventory")
             command.add_argument("--gpu-pool-server-uid", type=int)
             command.add_argument("--web-search-fallback", choices=("openalex",))
             from .institutional_options import add_arguments as add_institutional_arguments
@@ -629,7 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
             from .institutional_options import add_preparation_argument
             add_preparation_argument(command)
             scheduling = command.add_mutually_exclusive_group()
-            scheduling.add_argument("--managed-pool", action="store_true", help="plan management of this project's canonical shared pool")
+            scheduling.add_argument("--managed-pool", action="store_true", help="default GPU mode: manage all usable local GPUs in this project's shared pool")
             scheduling.add_argument("--nonpooled", action="store_true", help="explicitly select GPU scheduling without a pool")
             command.add_argument("--pool-action", choices=("create", "reuse", "restore", "upgrade", "reconfigure"))
             command.add_argument("--pool-device-uuid", action="append", help="reviewed full pool membership, independent of this run's subset")
@@ -663,8 +676,8 @@ def main(argv=None) -> int:
         if args.action == "session" and (args.start or args.template or args.overrides):
             raise ValueError("session requires an existing Profile; Start now is a separate live reply")
         if args.action == "inventory":
-            from .compute_resources import _nvml_inventory
-            print(json.dumps({"devices": [gpu.to_dict() for gpu in _nvml_inventory().gpus]}))
+            from .bootstrap_gpu import inventory
+            print(json.dumps(inventory()))
             return 0
         elif args.action == "inspect":
             if args.start:

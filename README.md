@@ -54,6 +54,18 @@ This is the **dev** branch. It includes the development guides, qualification
 records and maintainer context. For the public version, see
 [main](https://github.com/EIMP-Lab/Hypoloom/tree/main).
 
+## 🆕 Feature updates
+
+### 2026-11-08 · GPU pool setup and live selection
+
+- **Automatic pool setup.** GPU-enabled init manages all accessible GPUs without
+  per-card prompts. Your Profile determines the run's initial GPU selection.
+- **Change GPUs while running.** Add, remove or replace GPUs within the pool using
+  the TUI (**uppercase G**), Web interface or CLI. Active jobs finish on their
+  assigned cards; subsequent work uses the updated selection.
+
+See [GPU resources](docs/guides/gpu-resource-planning.md) for usage and compatibility.
+
 ## 🚀 Quick start
 
 You need Linux, Conda, Git, bubblewrap, working user namespaces and Claude Code.

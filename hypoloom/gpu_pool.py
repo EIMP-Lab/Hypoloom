@@ -113,7 +113,8 @@ _ACTIVE = ("RESERVED", "LAUNCHING", "BOUND")
 
 
 def resource_wait_message(reason: str) -> str:
-    return {"capacity_unavailable": "Waiting for GPU memory to become available",
+    return {"operator_gpu_selection": "Waiting for the operator to select enough GPUs for this experiment",
+        "capacity_unavailable": "Waiting for GPU memory to become available",
         "capacity_unknown": "Waiting; usable GPU capacity is not fully known",
         "capacity_requires_revision": "GPU request cannot fit; experiment needs resource revision",
         "exclusive_wait": "Waiting for an incompatible exclusive GPU commitment to end",
@@ -226,7 +227,7 @@ class GpuPool:
         if uid not in self.members:
             raise PoolError("unauthorized", "UID is not a pool member")
         if not isinstance(operation, str) or operation not in {
-            "snapshot", "reserve", "status", "arm", "activate", "bind_process", "release",
+            "snapshot", "reserve", "status", "arm", "activate", "bind_process", "release", "reselect",
         }:
             raise PoolError("invalid_argument", "unknown pool operation")
         expected = set() if operation == "snapshot" else {"key"}
@@ -235,6 +236,8 @@ class GpuPool:
             if "sharing" in arguments: expected.add("sharing")
         elif operation in {"activate", "bind_process"}:
             expected.add("process_group_id")
+        elif operation == "reselect":
+            expected.add("allowed_gpu_uuids")
         _fields(arguments, expected, "operation arguments")
         key = None
         intent = None
@@ -243,6 +246,11 @@ class GpuPool:
             key = RequestKey(uid=uid, **arguments["key"])
         if operation == "reserve":
             intent = self._intent(uid, arguments)
+        if operation == "reselect":
+            supplied = arguments["allowed_gpu_uuids"]
+            allowed = () if supplied == [] else _uuids(supplied)
+            if not set(allowed).issubset(self.members[uid]):
+                raise PoolError("unauthorized", "selection includes a GPU outside this UID's membership")
         if operation in {"activate", "bind_process"}:
             _integer(arguments["process_group_id"], "process_group_id", 2)
         with closing(self._connect()) as db, db:
@@ -264,6 +272,19 @@ class GpuPool:
                     raise PoolError("intent_conflict", "request key already has different resource intent")
             if row is None:
                 raise PoolError("not_found", "request key does not exist for this owner")
+            if operation == "reselect":
+                # Never change the device authority of a launched Process. A
+                # suspended request retains its queue position and original budget.
+                if row["state"] not in {"QUEUED", "RESERVED"}:
+                    raise PoolError("invalid_state", "only an unlaunched reservation can change GPUs")
+                intent = json.loads(row["intent_json"])
+                if intent["allowed_gpu_uuids"] != list(allowed):
+                    intent["allowed_gpu_uuids"] = list(allowed)
+                    db.execute("UPDATE requests SET state='QUEUED',intent_json=?,grant_json='[]',"
+                               "decision_json=NULL,reason='operator_gpu_selection' WHERE request_seq=?",
+                               (_json(intent), row["request_seq"]))
+                # Do not schedule here: the owner will reserve/activate when ready.
+                return self._response(self._find(db, key))
             if operation in {"reserve", "status", "arm", "activate"} and row["state"] == "QUEUED":
                 self._schedule(db)
                 row = self._find(db, key)
@@ -423,6 +444,10 @@ class GpuPool:
             for row in ordered:
                 intent = json.loads(row["intent_json"])
                 allowed = intent["allowed_gpu_uuids"]
+                if len(allowed) < intent["gpu_count"]:
+                    db.execute("UPDATE requests SET reason='operator_gpu_selection' WHERE request_seq=?", (row["request_seq"],))
+                    admitted.add(row["request_seq"])
+                    continue
                 if set(allowed) & blocked:
                     # A multi-device head may still use disjoint eligible devices.
                     eligible = [uuid for uuid in allowed if uuid not in blocked]
@@ -541,7 +566,7 @@ class GpuPool:
             capacity = self._capacity(sample, active, uuid)
             result.append(self._public_capacity(capacity, sample))
         return {"sampling_started_at": sampling_started_at, "sampled_at": sampled_at,
-                "devices": result, "capabilities": ["resource_replanning/1"]}
+                "devices": result, "capabilities": ["resource_replanning/1", "resource_selection/1"]}
 
 
 __all__ = ["CapacitySample", "GpuPool", "PoolError", "RequestKey"]

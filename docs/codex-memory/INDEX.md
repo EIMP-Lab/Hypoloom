@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Live GPU selection and automatic initialization, November 8](../design/live-gpu-selection.md):
+  all-accessible-device managed defaults, independent initial run selection,
+  lifecycle v12 selection replay and dispatch audits, pending-request changes,
+  active-job drain and TUI/Web/CLI controls. Dev/main publication and bilingual
+  README feature updates are authorized; production pools and retained runs are
+  unchanged. [Validation](../qualification.md#live-gpu-selection-and-automatic-initialization-2026-11-08).
+
 - [Measurement and adjudication consistency, November 6](../design/measurement-adjudication-consistency.md):
   ACI 33 explicit strict/inclusive local measurement operators, legacy wire
   compatibility, exact terminal-tip references and same-invocation semantic

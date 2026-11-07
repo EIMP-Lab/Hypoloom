@@ -74,12 +74,11 @@ PYTHONDONTWRITEBYTECODE=1 HYPOLOOM_RUNTIME_FAMILY=hypoloom \
   --repository "$REPOSITORY"
 ```
 
-Supply an already selected Profile and choices instead of asking again. For
-example, append the Profile name, `--allow-gpu --managed-pool`, each approved
-`--gpu-device-uuid`, and a previously selected `--claude-model`. Use `--cpu-only`
-for an explicit CPU choice; `--nonpooled` selects nonpooled GPU scheduling.
-Explicit external endpoints use the existing `--gpu-pool-socket`, namespace
-and server-UID options. None of these modes is a silent fallback.
+Pass the selected Profile and choices, including `--allow-gpu` and an explicitly selected
+`--claude-model`, without asking again. GPU mode manages all usable GPUs by default;
+do not ask per-card or scheduling questions. The Profile determines initial selection;
+`--gpu-device-uuid` overrides it. `--cpu-only` and `--nonpooled` are explicit modes.
+External endpoints use `--gpu-pool-socket`, namespace and server-UID options; no silent fallback.
 
 Do not copy a settings-file model into `--claude-model` as if the user selected it.
 When no model has been explicitly chosen, inspect emits the fixed base-model
@@ -151,10 +150,10 @@ before relaying setup instructions. Preserve program-generated identities and au
 Ask only about returned missing fields or requested changes; group related choices. Show proposed model/auth as defaults,
 not inherited from interactive `/model`; explain actual Profile model/effort overrides in `effective_configuration`.
 
-Capture the proposed run ID/state root/request ID once from `identity`; pass
-those same values on subsequent inspection. Never recapture a timestamp to
-bypass a conflict. A previous GPU selection is only a suggestion; the current
-review must explicitly authorize the UUID subset. An inventory grants no access.
+Preserve the run ID/state root/request ID from `identity` on every inspection; never
+recapture a timestamp to bypass conflicts. Final review shows full pool membership
+and the Profile's initial subset; generated argv pins both. TUI G adjusts the run subset.
+Discovery never operates a pool, starts a run or bypasses device/pool permissions.
 
 Adoption keeps the existing local Profile untouched. For a new Profile use
 `bootstrap prepare --template ... --set ... --summary` and the existing six-file
@@ -162,10 +161,11 @@ format. Public templates contain no secrets. The user fills credentials locally.
 Never put them in `--set`, arguments or chat. Read the detailed authoring
 reference for this branch; do not migrate a retained Profile or run.
 
-**Shared pool.** `--managed-pool` selects the project's canonical
+**Shared pool.** GPU init defaults to `--managed-pool`, selecting the project's canonical
 `.local/gpu-pools/shared/control.sock`. A compatible pool is reused even when
 its members exceed this run's subset. Busy devices are a capacity wait.
-A missing or outdated pool can be prepared in this init. Review the exact
+A missing/outdated pool can be prepared in init; a subset pool needs maintenance.
+Report added devices and dependency blocks without cancelling work. Review the exact
 `--pool-action` (create/reuse/restore/upgrade/reconfigure), full
 `--pool-device-uuid` membership and `--pool-reserve-mib` returned by inspection.
 Upgrades preserve existing configuration; membership changes require explicit

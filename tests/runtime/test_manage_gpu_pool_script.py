@@ -264,7 +264,7 @@ def fake_systemd(tmp_path: Path) -> Iterator[FakeSystemd]:
                             raise SystemExit(4)
                         raw += part
                     result = {{"devices": [{{"gpu_uuid": device}} for device in devices],
-                               "capabilities": [] if (pool_root / "legacy-fixture").exists() else ["resource_replanning/1"]}}
+                               "capabilities": [] if (pool_root / "legacy-fixture").exists() else ["resource_replanning/1", "resource_selection/1"]}}
                     peer.sendall(json.dumps({{"ok": True, "result": result}}).encode() + b"\\n")
                 except OSError:
                     pass

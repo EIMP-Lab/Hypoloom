@@ -35,7 +35,7 @@ def managed(tmp_path, monkeypatch):
     def snapshot(*unused):
         if not state["active"]: return "absent", None
         return "live", {"devices": [{"gpu_uuid": g} for g in state["pool"].members[os.geteuid()]],
-            "capabilities": [] if state["legacy"] else ["resource_replanning/1"]}
+            "capabilities": [] if state["legacy"] else ["resource_replanning/1", "resource_selection/1"]}
     monkeypatch.setattr(manager, "_probe_snapshot", snapshot)
     def config(p, *a):
         pool = state["pool"]

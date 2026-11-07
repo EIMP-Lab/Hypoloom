@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- November 8 live GPU selection and automatic initialization: the user selects
+  option 1 and authorizes dev commit/push plus selective main synchronization.
+  GPU init defaults to all accessible devices in the managed pool; the Profile
+  determines the initial run subset. Lifecycle v12 records selection commands in
+  existing workflow transitions, reselects pending reservations and drains active
+  grants. TUI uppercase G, Web and CLI use the same operation. Pool membership
+  remains fixed; old subset/services use reviewed maintenance and dependency
+  checks. README gains a dated bilingual feature-update section on both branches.
+  Existing research, Profiles and production pools remain unchanged.
+  Public checks pass 240/one CUDA skip; 358 focused dev checks pass. Full G1 plus
+  affected rechecks reconciles 8,815 passes/241 skips with no unresolved failures,
+  retaining original reports. Nine native roots close 213 Agents/19 Processes
+  with clean audits and 172 groups without residue; five retained roots and
+  3,072 artifacts are unchanged. Both packages match 212 runtime files. No new
+  real-GPU or paid-model qualification is claimed.
+  [Design](../design/live-gpu-selection.md) /
+  [validation](../qualification.md#live-gpu-selection-and-automatic-initialization-2026-11-08).
+
 - November 6 measurement/adjudication repair: the user authorizes a framework
   fix, dev commit/push and corresponding main publication. ACI 33 / adapter 91
   requires explicit GT/GE/LT/LE in new local measurement declarations; omitted
