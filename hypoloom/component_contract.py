@@ -426,8 +426,8 @@ class _Compiler:
     ) -> tuple[list[str], list[dict[str, object]], dict[str, object], Mapping[str, Any]]:
         enabled = self.text_list(experts.get("enabled"), "experts.yaml.enabled", empty=False)
         roles = enabled or []
-        if not 1 <= len(roles) <= 3:
-            self.block("contract_invalid_roster", "experts.yaml.enabled", "one to three roles are required")
+        if not roles:
+            self.block("contract_invalid_roster", "experts.yaml.enabled", "one or more roles are required")
         focus = self.mapping(experts.get("focus", {}), "experts.yaml.focus") or {}
         autonomy = self.mapping(experts.get("autonomy", {}), "experts.yaml.autonomy") or {}
         bindings = self.mapping(

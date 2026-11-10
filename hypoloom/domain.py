@@ -222,8 +222,8 @@ def _validate_research_contract(document: dict[str, Any]) -> tuple[tuple[str, ..
         role_id = role.get("id")
         _require_text(role_id, f"research_contract.roles[{index}].id")
         role_ids.append(role_id)
-    if not 1 <= len(role_ids) <= 3 or len(set(role_ids)) != len(role_ids):
-        raise ValueError("research_contract.roles must contain 1..3 unique role ids")
+    if not role_ids or len(set(role_ids)) != len(role_ids):
+        raise ValueError("research_contract.roles must contain one or more unique role ids")
     raw_components = _contract_list(document["components"], "research_contract.components")
     if not raw_components:
         raise ValueError("research_contract.components must not be empty")

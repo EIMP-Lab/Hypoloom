@@ -96,6 +96,14 @@ limits in `methodology.yaml.budget`.
 
 Define a roster and the defaults inherited by its members.
 
+Declare one or more experts with unique IDs. There is no fixed upper limit on
+the roster size. Experts share the run's finite Agent, Process, review and
+provider capacities; adding an expert does not require an additional concurrent
+slot. When expanding the roster, set those capacities explicitly if you want
+to keep resource use fixed. If omitted, Agent/Process/review capacities default
+to the sum of the experts' effective `max_forks` values, and provider concurrency
+defaults to Agent capacity. The template's three experts are an example.
+
 ```yaml
 defaults:
   # Omit model to use the Host model selected during initialization.

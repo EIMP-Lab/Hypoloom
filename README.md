@@ -52,6 +52,12 @@ runtime, budgets and permissions. Start with an English or Chinese
 
 ## 🆕 Feature updates
 
+### 2026-11-10 · Flexible expert rosters
+
+Configure any number of experts, starting with one. Admission, scheduling and
+independent audit accept the same roster, while concurrency and resource budgets
+remain separately configurable. See [expert configuration](config/README.md#expertsyaml).
+
 ### 2026-11-08 · GPU pool setup and live selection
 
 - **Automatic pool setup.** GPU-enabled init manages all accessible GPUs without

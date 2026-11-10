@@ -8520,13 +8520,13 @@ def _read_goal_component_contract(
             for item in raw_roles
         )
         if (
-            not 1 <= len(parsed_roles) <= 3
+            not parsed_roles
             or any(not _trimmed_text(item) for item in parsed_roles)
             or len(set(parsed_roles)) != len(parsed_roles)
         ):
             bad(
                 "component_contract_invalid",
-                "research_contract.roles must contain one to three unique role identities",
+                "research_contract.roles must contain one or more unique role identities",
             )
         else:
             roles = tuple(str(item) for item in parsed_roles)
