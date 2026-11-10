@@ -334,8 +334,8 @@ class _Projector:
     ) -> tuple[dict[str, object], list[str]]:
         self.unknown(experts, _EXPERT_FIELDS, "experts.yaml")
         raw_roles = experts.get("roles")
-        if not isinstance(raw_roles, list) or not 1 <= len(raw_roles) <= 3:
-            self.issue("profile_v3_invalid_roster", "experts.yaml.roles", "roles must contain one to three entries")
+        if not isinstance(raw_roles, list) or not raw_roles:
+            self.issue("profile_v3_invalid_roster", "experts.yaml.roles", "roles must contain one or more entries")
             raw_roles = []
         role_ids: list[str] = []
         focus: dict[str, str] = {}

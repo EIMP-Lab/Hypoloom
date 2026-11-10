@@ -144,8 +144,6 @@ class PolicySnapshot:
         if isinstance(self.run_revision, bool) or not isinstance(self.run_revision, int) or self.run_revision < 0:
             raise ValueError("run_revision must be nonnegative")
         _texts(self.roster, "roster")
-        if not 1 <= len(self.roster) <= 3:
-            raise ValueError("roster must contain one to three roles")
         _texts(self.busy_roles, "busy_roles", empty=True)
         if not set(self.busy_roles) <= set(self.roster):
             raise ValueError("busy_roles must belong to roster")

@@ -84,6 +84,10 @@ Configure resource, time and cost limits under `methodology.yaml.budget`:
 | `max_active_agents`, `max_active_processes`, `max_active_reviews` | Independent concurrency ceilings |
 | `provider_rpm_limit`, `provider_max_in_flight` | Request rate and concurrency per model |
 
+Expert rosters require at least one member with a unique ID and have no fixed
+upper size limit. Concurrency and budgets remain independent limits; see
+[expert configuration](../config/README.md#expertsyaml) for capacity defaults.
+
 The templates have three experts, a 45 USD run limit, 15 USD per expert,
 1 USD per invocation, a 96-experiment run limit and a six-hour run
 limit. These are editable thresholds, not expected costs or permission to start.

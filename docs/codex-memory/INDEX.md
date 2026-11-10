@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Expert roster limit removal, November 10](../design/expert-roster-limit-removal.md):
+  nonempty unique rosters without a fixed ceiling, independent capacity/budgets,
+  recent-repair compatibility, larger-roster CPU/native closure and dev/main publication.
+  [Validation](../qualification.md#expert-roster-limit-removal-2026-11-10).
+
 - [Status query responsiveness, November 10](../design/status-query-responsiveness.md):
   bounded read-only transport, explicit snapshot freshness, sole-writer command
   queue, transaction-invalidated derived history and lightweight phase labels.

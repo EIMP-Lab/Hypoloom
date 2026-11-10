@@ -1,5 +1,61 @@
 # Qualification: G0–G5
 
+## Expert roster limit removal (2026-11-10)
+
+The user authorizes the framework correction, recent-repair compatibility
+checks, dev commit/push and corresponding selective main publication.
+[Design](design/expert-roster-limit-removal.md). The baseline is dev bce08b8 /
+main 2bdb082; evidence is in `.local/qualification/expert-roster-20261110/`.
+Only five existing roster validators change. Nonempty unique identities,
+ownership, independent capacities and all existing budget defaults remain.
+There is no new schema, ACI version, migration or change to retained bundles.
+
+The original-HEAD reader reproduces **seven failures / eleven passes** in the
+portable roster selection. Final portable coverage passes **18 cases**, including
+both public languages, 1/3/4/16/64 experts, single-slot capacities, malformed
+rosters and independent contract audit. The five new Host cases pass in
+**79.29 s**: 1/4/8 experts finish real CPU work, four alternatives share one goal,
+and four actual native CLI experts complete with two Agent slots and one Process
+slot. Every OPEN admission is counted; Process intervals independently exclude
+overlap. Agent `started_at` includes asynchronous literature retrieval before
+admission, so it is not used as an execution-slot counter. Initial new harness
+drafts had incomplete fact metadata and incorrect assumptions about current
+verdict/Attempt fields and nullable Process observations; original reports remain.
+No production capacity threshold or pre-existing assertion was relaxed.
+
+Recent status responsiveness, GPU selection, strict measurement/adjudication,
+workspace/trend/retry recovery, OpenAlex types and incremental execution/round
+semantics pass **103 focused checks**. Full G1 records **8,849 passed / one failed
+/ 241 skipped in 1,246.30 s**. The existing native parallel-proposal `exhausted`
+fixture reports a local scripted-provider `ConnectionResetError` during injected
+termination. Its unchanged five-case complete/retry/exhausted/stop/restart group
+passes the isolated recheck in **119.90 s**. Per-test JUnit reconciliation covers
+all **9,091 identities: 8,850 passed / 241 skipped / zero failed or missing**.
+This is full G1 plus affected rechecks, not one uninterrupted green invocation.
+The project Python 3.12.14 / SQLite 3.53.4, existing local dev dependencies and
+Node 22.16.0 are used; optional browser/platform/resource/provider skips remain.
+
+Independent final census covers the seven standard native G3 roots and five
+new roster roots from G1, plus the five parallel-proposal recheck roots:
+**494 closed Agents / 40 closed Processes / 290 recorded groups across 17 roots**,
+clean Oracles, no pending effects, OPEN Attempts or live group residue. The
+earlier failed root remains diagnostic evidence, not part of that final cohort.
+An initial census preceded creation of the last parallel-proposal fixture; the
+final census uses the completed cohort. No real-GPU or paid-model renewal is
+claimed; native CLI calls use local scripted providers and actual CPU processes.
+
+Read-only original-HEAD/candidate audits agree for all **ten retained research
+roots and 8,055 artifact files**; logical databases and artifact bytes remain
+unchanged. Four interaction-source findings and one process-residue finding
+across three roots remain exactly accounted for, including issue identities and
+messages. Complete issue objects are sorted only for order-independent comparison.
+
+All **213 runtime files** match source, wheel, isolated installation and a fresh
+bundle; installed CLI and MCP work outside the checkout. The runtime identity
+begins `f159d75d05d18b46`. Compilation, undefined-name, whitespace and public
+documentation checks pass. Main receives the runtime change, portable roster
+regressions and bilingual user guidance; dev retains engineering evidence.
+
 ## Status query responsiveness (2026-11-10)
 
 The user authorizes the repair, dev commit/push and corresponding main publication

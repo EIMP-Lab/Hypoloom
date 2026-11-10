@@ -75,6 +75,9 @@ Host 读取原私有文件，凭据明文不会进入 Agent 输入。不要通�
 | `max_active_agents`、`max_active_processes`、`max_active_reviews` | 各类任务的独立并发上限 |
 | `provider_rpm_limit`、`provider_max_in_flight` | 按模型分配的请求速率与并发上限 |
 
+专家名单至少包含一位且 ID 唯一，总人数没有固定上限。并发和预算仍独立限制
+资源用量；默认并发规则见[专家配置](../config/README.zh-CN.md#expertsyaml)。
+
 模板包含三位专家，运行费用限额为 45 美元、每位专家 15 美元、每次调用 1 美元，
 全局最多 96 次实验、运行时限六小时。这些是可修改的阈值，不是费用预测或启动授权；
 在途响应可能超过剩余额度。请为分析、报告和重试留出预算。Agent 与实验时限相互独立。

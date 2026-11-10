@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- November 10 expert roster limit removal: the user authorizes design,
+  implementation, regression review and dev/main publication. Five validators
+  now accept any nonempty unique roster; ownership, capacities and budget
+  defaults remain unchanged. New checks cover 1/3/4/16/64 experts and actual
+  four-expert native CPU closure with two Agent slots and one Process slot.
+  Full G1 plus an unchanged five-case native recheck reconciles 8,850 passes /
+  241 skips, with no unresolved identities; the original local provider reset
+  remains recorded. Seventeen final roots close 494 Agents/40 Processes with
+  clean Oracles and no residue across 290 groups. Ten retained roots/8,055
+  artifacts and five baseline findings are unchanged. Source/wheel/install/new
+  bundle match 213 files. No retained-run migration or GPU/paid-model renewal.
+  [Design](../design/expert-roster-limit-removal.md) /
+  [validation](../qualification.md#expert-roster-limit-removal-2026-11-10).
+
 - November 10 status responsiveness: the user stopped the scientific task and
   authorizes implementation, dev commit/push and corresponding main publication.
   One bounded socket thread serves serialized Host STATUS observations; the
