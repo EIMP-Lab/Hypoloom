@@ -82,15 +82,17 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Live selection uses the existing journal: transfer 250 unused GPU-pool
     # lines to the counted resource_controls helper (225) and Host (25).
     # Keep every existing counted file and the total 27,550-line authority budget.
+    # Status transport/publication is counted too: transfer 250 unused lines
+    # from participant_controls to control_server, preserving the same total.
     allocations = {"domain": 950, "lifecycle": 500, "ports": 100,
         "state_store": 400, "research_kernel": 750, "workflow_host": 4725, "institutional_controls": 100,
         "resource_controls": 225,
         "execution_reuse": 125,
-        "control_protocol": 300, "recovery": 100, "policy": 650,
+        "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
         "expert_plugin": 700, "expert_memory": 700, "measurement_contract": 600, "profile_v4": 650,
-        "agent_budget": 650, "participant_controls": 500, "expert_interaction": 650,
+        "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 850, "shared_acceptance_host": 700,

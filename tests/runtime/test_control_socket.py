@@ -195,3 +195,57 @@ raise SystemExit(workflow_host.serve(Path(sys.argv[1])))
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+
+
+def test_resident_status_remains_responsive_during_blocked_tick(tmp_path):
+    root = tmp_path / "blocked-tick"
+    root.mkdir()
+    admission = admit_profile(_REPOSITORY / "tests/fixtures/profiles/component-demo",
+        run_id="blocked-tick", delay_seconds=0.0)
+    assert admission.admitted
+    script = """
+import sys, time
+from pathlib import Path
+import hypoloom.workflow_host as workflow_host
+root = Path(sys.argv[1])
+original = workflow_host.WorkflowHost.tick
+def blocked_tick(self):
+    if self.store.get_run('blocked-tick') is not None and not (root / 'release').exists():
+        (root / 'entered').touch()
+        deadline = time.monotonic() + 15
+        while not (root / 'release').exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+    return original(self)
+workflow_host.WorkflowHost.tick = blocked_tick
+raise SystemExit(workflow_host.serve(root))
+"""
+    process = subprocess.Popen([sys.executable, "-B", "-c", script, str(root)],
+        cwd=_REPOSITORY, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 8
+        while not (root / "control.sock").is_socket() and time.monotonic() < deadline:
+            assert process.poll() is None
+            time.sleep(.02)
+        created = request_over_socket(root / "control.sock", ControlRequest(
+            1, "create-blocked", 0, "CREATE_RUN", admission.create_run_payload), timeout=5)
+        assert created.status == "accepted"
+        deadline = time.monotonic() + 5
+        while not (root / "entered").exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert (root / "entered").exists()
+        for index in range(10):
+            observed = request_over_socket(root / "control.sock", ControlRequest(
+                1, f"status-{index}", None, "STATUS", {"run_id": "blocked-tick"}), timeout=.5)
+            assert observed.status == "accepted" and observed.revision == 1
+            assert observed.result["run_state"] == "CREATED"
+            assert "status_snapshot" in observed.result
+    finally:
+        (root / "release").touch()
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate(timeout=5)
+    assert process.returncode == 0, (stdout, stderr)

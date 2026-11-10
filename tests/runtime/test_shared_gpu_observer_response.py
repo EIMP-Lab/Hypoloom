@@ -42,7 +42,7 @@ def test_status_remains_responsive_with_retired_history_and_slow_queued_sampling
 
     tick_entered = threading.Event()
     responses, errors, elapsed = [], [], []
-    sample, tick, handle = pool.sampler, host.tick, host.handle
+    sample, tick = pool.sampler, host.tick
     sample_calls = 0
 
     def slow_sample():
@@ -55,12 +55,6 @@ def test_status_remains_responsive_with_retired_history_and_slow_queued_sampling
         tick_entered.set()
         return tick()
 
-    def observed_handle(request):
-        response = handle(request)
-        if request.request_id == "queued-observer":
-            host.stop_requested = True
-        return response
-
     def observe():
         try:
             assert tick_entered.wait(5), "Host did not enter its scheduling tick"
@@ -71,13 +65,13 @@ def test_status_remains_responsive_with_retired_history_and_slow_queued_sampling
             elapsed.append(time.monotonic() - started)
         except BaseException as error:
             errors.append(error)
+        finally:
             host.stop_requested = True
 
     observer = threading.Thread(target=observe, name="queued-gpu-observer")
     with monkeypatch.context() as patch:
         patch.setattr(pool, "sampler", slow_sample)
         patch.setattr(host, "tick", observed_tick)
-        patch.setattr(host, "handle", observed_handle)
         # The fixture has already initialized this real Host and generated its
         # completed runs. Enter the production serve loop on the same thread;
         # the fixture owns its final close after the queued run also completes.

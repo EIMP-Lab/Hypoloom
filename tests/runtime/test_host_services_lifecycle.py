@@ -1,4 +1,5 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,7 +15,8 @@ def test_queued_control_clients_share_one_scheduler_tick(tmp_path, monkeypatch):
         stop_requested = False
         operational_halt = None
         institutional_access = None
-        def __init__(self, *args, **kwargs): pass
+        def __init__(self, *args, **kwargs):
+            self.store = SimpleNamespace(cache_reads=nullcontext, inspect=lambda sql: ())
         def initialize(self): pass
         def close(self): pass
         def handle(self, request):
@@ -31,8 +33,8 @@ def test_queued_control_clients_share_one_scheduler_tick(tmp_path, monkeypatch):
                 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 client.settimeout(2)
                 client.connect(str(tmp_path / "control.sock"))
-                send_message(client, ControlRequest(schema_version=1, request_id=f"status-{index}",
-                    expected_revision=None, command="STATUS", payload={}).to_mapping())
+                send_message(client, ControlRequest(schema_version=1, request_id=f"control-{index}",
+                    expected_revision=None, command="CANCEL", payload={}).to_mapping())
                 clients.append(client)
             yield
         finally:
@@ -42,7 +44,7 @@ def test_queued_control_clients_share_one_scheduler_tick(tmp_path, monkeypatch):
     monkeypatch.setattr(module.signal, "signal", lambda *args: None)
     assert module.serve(tmp_path, services_factory=services) == 0
     assert ticks == [12]
-    assert handled == [f"status-{index}" for index in range(12)]
+    assert handled == [f"control-{index}" for index in range(12)]
 
 
 @pytest.mark.parametrize("exit_error", [False, True])

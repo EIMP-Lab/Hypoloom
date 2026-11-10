@@ -42,6 +42,7 @@ from .expert_loop import (
     HypothesisUpdateDisposition,
     ResearchNodeKind,
     ResearchNodeTask,
+    task_context_from_dict,
 )
 from .oracle import Oracle
 from .observer_revisions import activity_warning, revision_activities
@@ -593,24 +594,28 @@ def _attempt_phase(
     request: Mapping[str, Any] | None = None,
 ) -> str:
     if kind == "AGENT" and request:
+        version = request.get("schema_version")
         try:
-            parsed_request = AgentRequest.from_dict(request)
-        except AgentACIError:
-            parsed_request = None
+            # A display label needs only the typed task identity. Full request
+            # and embedded-input validation belongs to acceptance/the Oracle.
+            context = request.get("task_context")
+            task = task_context_from_dict(context) if isinstance(context, Mapping) else None
+        except (KeyError, TypeError, ValueError):
+            task = None
         if (
-            parsed_request is not None
-            and parsed_request.schema_version in {8, 9, EXPERT_LOOP_ACI_SCHEMA_VERSION}
-            and isinstance(parsed_request.task_context, ResearchNodeTask)
+            type(version) is int and version in {8, 9, EXPERT_LOOP_ACI_SCHEMA_VERSION}
+            and isinstance(task, ResearchNodeTask)
+            and task.key.node_kind.value == command
         ):
             return (
-                f"{parsed_request.command.value.lower()}/"
-                f"{parsed_request.task_context.key.subkind.value.lower()}"
+                f"{command.lower()}/"
+                f"{task.key.subkind.value.lower()}"
             )
         if (
-            parsed_request is not None
-            and parsed_request.schema_version == EXPERT_LOOP_ACI_SCHEMA_VERSION
-            and isinstance(parsed_request.task_context, AuxiliaryTask)
-            and parsed_request.task_context.kind
+            type(version) is int and version == EXPERT_LOOP_ACI_SCHEMA_VERSION
+            and command == "GROUNDING"
+            and isinstance(task, AuxiliaryTask)
+            and task.kind
             is AuxiliaryRequestKind.GROUNDING_QUERY_PLAN
         ):
             return "grounding/query_plan"
@@ -1552,6 +1557,7 @@ _STATUS_COHERENCE_FIELDS = (
     "required_assessment_count",
 )
 _HOST_STATUS_FIELDS = (
+    "status_snapshot",
     "quiescent_for_backup",
     "agent_usage",
     "agent_scheduling",
@@ -1566,10 +1572,7 @@ _HOST_STATUS_FIELDS = (
     "literature_access",
 )
 
-# The Host serializes control requests between workflow ticks. A tick that
-# refreshes the research projection can exceed the former 0.25-second probe
-# window even while the Host is healthy. Keep observation bounded, but allow
-# one ordinary busy tick to complete.
+# Keep compatibility with frozen Hosts that still serialize STATUS with ticks.
 _HOST_STATUS_TIMEOUT_SECONDS = 3.0
 
 
@@ -1699,6 +1702,15 @@ def build_observer_snapshot(
         _host_backoff.record_success()
     if response.status != "accepted" or response.result is None:
         return snapshot
+    freshness = response.result.get("status_snapshot")
+    if freshness is not None:
+        from .control_server import STATUS_MAX_AGE_SECONDS
+        age = freshness.get("age_seconds") if isinstance(freshness, Mapping) else None
+        if (type(age) not in (int, float) or not math.isfinite(age) or age < 0
+                or age > STATUS_MAX_AGE_SECONDS or freshness.get("stale") is not False):
+            return replace(snapshot, overview={**snapshot.overview, "host_observation": {
+                **snapshot.overview.get("host_observation", {}), "availability": "stale",
+                "status_snapshot": freshness}})
     if not _compatible_host_status(snapshot.status, response.result, run_id):
         return snapshot
     enriched_status = dict(snapshot.status)
@@ -1718,6 +1730,7 @@ def build_observer_snapshot(
         status=enriched_status,
         overview={**snapshot.overview, "host_observation": {
             **snapshot.overview.get("host_observation", {}), "availability": "responded", "orphaned": False,
+            **({"status_snapshot": freshness} if freshness is not None else {}),
             "dispatch_error": response.result.get("dispatch_error")}},
     )
 

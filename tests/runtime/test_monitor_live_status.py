@@ -280,6 +280,29 @@ def test_observer_snapshot_uses_exact_read_only_host_status_when_available(
     assert _row_census(state_root / "state.sqlite") == before
 
 
+@pytest.mark.parametrize("age", [0.1, 10.0])
+def test_published_host_snapshot_freshness_controls_live_enrichment(short_status_parent, age):
+    root = short_status_parent / "freshness"
+    _create_run(root, "freshness")
+    offline = build_monitor_snapshot(root, "freshness")
+    live = {**offline.status, "quiescent_for_backup": True, "agent_usage": {}, "resource_waits": [],
+        "status_snapshot": {"source": "resident-host", "observed_at": time.time() - age,
+                            "age_seconds": age, "stale": age > 5}}
+    thread, _, errors = _one_status_response(root / "control.sock", live)
+    try:
+        snapshot = build_observer_snapshot(root, "freshness", _snapshot=offline)
+    finally:
+        thread.join(timeout=2)
+    assert not thread.is_alive() and not errors
+    if age > 5:
+        assert snapshot.status == offline.status
+        assert snapshot.status_source == "offline-state-store"
+        assert snapshot.overview["host_observation"]["availability"] == "stale"
+    else:
+        assert snapshot.status["status_snapshot"] == live["status_snapshot"]
+        assert snapshot.status_source.endswith("+resident-host-status")
+
+
 def test_observer_snapshot_rejects_mismatched_host_status_and_falls_back(
     short_status_parent: Path,
 ) -> None:

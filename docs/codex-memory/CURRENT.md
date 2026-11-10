@@ -1,5 +1,22 @@
 # Current Hypoloom development state
 
+- November 10 status responsiveness: the user stopped the scientific task and
+  authorizes implementation, dev commit/push and corresponding main publication.
+  One bounded socket thread serves serialized Host STATUS observations; the
+  owner thread retains all commands and writes. Revision/time/age remain explicit,
+  and observers decline live enrichment from snapshots older than five seconds.
+  Derived batch/control/interaction reads reuse the existing transactional cache;
+  phase display no longer decodes embedded Agent inputs. Existing roots, bundles,
+  Profiles and pools remain unchanged by development. Final reconciliation covers
+  8,827 passes/241 skips with no unresolved test identities. Twelve native roots
+  close 231 Agents/19 Processes with clean audits and 219 groups without residue.
+  Ten retained roots/8,055 artifacts are unchanged; five existing audit findings
+  across three roots remain. Source/wheel/install/fresh bundle match 213 files.
+  The stopped research Host independently finished CANCELLED and exited.
+  No new real-GPU or paid-model qualification is claimed.
+  [Design](../design/status-query-responsiveness.md) /
+  [validation](../qualification.md#status-query-responsiveness-2026-11-10).
+
 - November 8 live GPU selection and automatic initialization: the user selects
   option 1 and authorizes dev commit/push plus selective main synchronization.
   GPU init defaults to all accessible devices in the managed pool; the Profile

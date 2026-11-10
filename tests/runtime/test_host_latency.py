@@ -213,10 +213,6 @@ def test_real_host_socket_status_interleaves_with_ticks(tmp_path, monkeypatch):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             hosts.append(self)
-        def handle(self, request):
-            response = super().handle(request)
-            if request.request_id == 'status-5': self.stop_requested = True
-            return response
         def tick(self):
             assert self._runtime_version() == self.version
             super().tick()
@@ -231,6 +227,7 @@ def test_real_host_socket_status_interleaves_with_ticks(tmp_path, monkeypatch):
                 if index < 5: assert tick_done.wait(5)
         except BaseException as exc:
             errors.append(exc)
+        finally:
             hosts[0].stop_requested = True
     @contextmanager
     def services():

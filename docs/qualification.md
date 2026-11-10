@@ -1,5 +1,83 @@
 # Qualification: G0–G5
 
+## Status query responsiveness (2026-11-10)
+
+The user authorizes the repair, dev commit/push and corresponding main publication
+after stopping the scientific task. [Design](design/status-query-responsiveness.md).
+Evidence is retained under `.local/qualification/status-query/`. Existing research
+roots, frozen bundles, Profiles and pools are not changed by development. No live
+GPU or paid model calls are added. The stopped Host independently reaches
+CANCELLED with zero OPEN Attempts and exits; no recovery or migration is applied.
+
+G0 first records **81 passes** (39.02 s). The expanded selection records **85
+passes / 21 failures** (136.16 s): a borrowed Host method in the interaction
+fixture did not own the newly extracted helper. Keeping the reader local to its
+existing method preserves that interface; all **22 interaction tests pass**
+(5.39 s) without changing their assertions. The initial missing pytest module
+and misspelled selection collected no tests and are not counted as passes.
+Qualification uses the project Python 3.12.14 / SQLite 3.53.4 plus existing
+`.local/dev-tools` through PYTHONPATH; no shared environment is modified.
+
+The large retained sample (revision 713) is read-only: no Host initialization,
+writer capability or state transaction. Four batches of identical history reads
+have baseline times 0.378/0.148/0.139/0.150 s and candidate times
+0.271/0.017/0.017/0.016 s. Complete derived-content comparisons agree. Pure research
+projection takes 7.212 s before and 3.749 s after, both rendering 2,145 public and
+role files (about 234 MB). Clock-derived bytes vary. These are local single-process
+samples; they do not establish a worst-case tick deadline. Real socket regressions
+use a blocked resident tick and require ten requests each within a 0.5 s allowance.
+
+A separate 100-request transport sample with an unresolved owner command and a
+143,000-byte payload records median **5.63 ms**, P95 **7.92 ms**, max **9.94 ms**.
+Review also reproduces ten lost completed replies in ten immediate-shutdown
+trials of the initial prototype. Final transport drains completed replies for at
+most one second; its shutdown regression passes. Terminal idle publication stays
+rate-limited, unrelated I/O failures reach the owner, and partial frames/slow
+readers/queue saturation remain bounded. No hard deadline for every Host tick
+or mutating command is claimed.
+
+Full G1 records **8,810 passes / 10 failures / 241 skips**, interrupted at
+**1,706.53 s** after identifying two old harnesses whose stop trigger depended on
+STATUS reaching `Host.handle`. Three tests use obsolete system Node, four need
+the current status-publication/command-queue seam, one exceeds the existing Host
+line allocation, one FD census falls by one during the shared run, and an injected
+native restart sees a local provider connection reset. Original reports remain.
+The stop action now belongs to the client finally block; original latency,
+result and cleanup assertions remain. The new transport is counted in the same
+27,550-line core budget by moving unused participant-controls allocation.
+
+Final transport/latency/lifecycle checks pass **68 tests** (24.13 s). Environment
+and boundary checks use existing Node **22.16.0** and pass **64 tests** (9.79 s),
+including unchanged FD-census assertions. G3 plus native proposal recovery,
+control sockets, bundle restart and live observation passes **36 tests**
+(258.00 s). The unfinished process-registration selection passes **16 tests**
+(6.57 s). Per-test JUnit reconciliation against final collection accounts for
+all **9,068 identities: 8,827 passed / 241 skipped / zero failed or missing**.
+This is full G1 plus affected rechecks, not one uninterrupted green full run.
+Final compilation, F821/F822/F823 and diff whitespace checks pass.
+
+Independent checks of all twelve final native roots count **231 closed Agents,
+19 closed Processes and 219 recorded groups**, with zero live group residue and
+clean Oracles (no pending effects or OPEN Attempts). Local scripted providers and
+actual CPU processes exercise recovery, collection, publication and next actions;
+no real-GPU or paid-model extension is claimed.
+
+Read-only baseline/candidate audits compare ten stopped research roots and
+**8,055 artifact files**. Logical SQLite contents and artifact bytes remain
+unchanged. Three roots retain five baseline findings: four interaction-source
+findings and one process-residue finding. One report differs only in issue order;
+sorting complete issue objects preserves every identity, message and duplicate
+before comparison. Raw reports and the initial order-sensitive failure remain
+alongside the successful comparison. This is compatibility evidence, not a claim
+that all historical runs have clean audits.
+
+The final wheel is installed into a separate local target; CLI and MCP are
+invoked outside the checkout, and a fresh private bundle is created from that
+installation. All **213 runtime files** match source/wheel/install/bundle bytes.
+The frozen final runtime identity begins `63824348bbd642a6`; retained bundles are
+not updated. Dev retains engineering evidence; main receives the corresponding
+runtime changes, portable regressions and public bilingual guidance.
+
 English · [简体中文](qualification.zh-CN.md)
 
 ## Live GPU selection and automatic initialization (2026-11-08)

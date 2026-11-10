@@ -5,6 +5,22 @@ English · [简体中文](runtime-recovery.zh-CN.md)
 New runs use ACI 33. Existing runs keep their pinned runtime; updating the
 checkout does not migrate a retained run or restart its GPU service.
 
+## Status during slow scheduling
+
+New Hosts answer `STATUS` from the latest published Host observation through a
+separate socket I/O thread. The response keeps its original `run_revision` and
+adds `status_snapshot` with observation time, age in seconds and a `stale` flag.
+A responsive socket alone does not prove that scheduling is progressing.
+Web/TUI use observations older than five seconds only as freshness information;
+their state display falls back to the read-only database view. Existing frozen
+Hosts keep their earlier transport behavior.
+
+Cancel, pause and other control operations still run serially on the Host owner
+thread and validate the supplied revision. They may wait for a slow operation.
+A full command queue returns `host_busy`; retry with the same request identity.
+If a response is lost, use the existing replay behavior rather than creating a
+second operation. Updating source does not update a retained runtime bundle.
+
 ## Task retries and source preparation
 
 New measurement declarations explicitly select strict or inclusive success

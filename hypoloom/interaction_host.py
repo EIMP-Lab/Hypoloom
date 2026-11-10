@@ -44,8 +44,9 @@ class InteractionHost:
             "ON c.command_id=t.command_id WHERE t.run_id=? AND t.workflow_kind='RUN' ORDER BY t.revision", (run_id,))
 
     def _events(self, run_id):
-        return [(row, value) for row in self._rows(run_id) if isinstance(
-            value := json.loads(row["payload_json"]).get("expert_interaction"), Mapping)]
+        return self.store.cached_read(("interaction-events", run_id), lambda: [
+            (row, value) for row in self._rows(run_id) if isinstance(
+                value := json.loads(row["payload_json"]).get("expert_interaction"), Mapping)])
 
     def _settings(self, run_id):
         return self.host._research_contract(run_id).document.get("methodology", {}).get("controls", {}).get("product", {}).get("methodology", {}).get("interaction", {})
@@ -89,6 +90,9 @@ class InteractionHost:
         return result
 
     def _reports(self, run_id):
+        return self.store.cached_read(("interaction-reports", run_id), lambda: self._read_reports(run_id))
+
+    def _read_reports(self, run_id):
         result = []
         commands = [row["command_id"] for row in self._rows(run_id)
             if row["command_type"] == "REQUEST_RESEARCH_NODE" and

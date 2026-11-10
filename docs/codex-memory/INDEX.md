@@ -1,5 +1,10 @@
 # Development memory index
 
+- [Status query responsiveness, November 10](../design/status-query-responsiveness.md):
+  bounded read-only transport, explicit snapshot freshness, sole-writer command
+  queue, transaction-invalidated derived history and lightweight phase labels.
+  [Validation](../qualification.md#status-query-responsiveness-2026-11-10).
+
 - [Live GPU selection and automatic initialization, November 8](../design/live-gpu-selection.md):
   all-accessible-device managed defaults, independent initial run selection,
   lifecycle v12 selection replay and dispatch audits, pending-request changes,
