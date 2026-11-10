@@ -28,7 +28,7 @@ from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError
 from .backup_restore import create_quiesced_backup
 from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, runtime_environment_id, provider_retry_status, provider_connection
 from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
-from .control_protocol import ControlRequest, ControlResponse, ProtocolError, receive_message, send_message, socket_address
+from .control_protocol import ControlRequest, ControlResponse, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
 from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable, gpu_memory_reserve_mib, gpu_pressure_attribution, gpu_pressure_payload
 from .gpu_pool import PoolError, resource_wait_message
@@ -523,9 +523,9 @@ class WorkflowHost:
         return ControlResponse.accepted(request.request_id, stored.revision, stored.result or {})
     def _participant_controls(self, run_id: str) -> Any:
         from .participant_controls import fold_participant_controls
-        return fold_participant_controls(self.store.inspect(
+        return self.store.cached_read(("participant-controls", run_id), lambda: fold_participant_controls(self.store.inspect(
             "SELECT * FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN' ORDER BY revision", (run_id,)),
-            self._research_contract(run_id).role_ids)
+            self._research_contract(run_id).role_ids))
     def _control_participant(self, request: ControlRequest) -> ControlResponse:
         from .participant_controls import ParticipantScope, supports_participant_controls
         payload = request.payload
@@ -978,7 +978,10 @@ class WorkflowHost:
         with self.store.transaction() as tx:
             tx.append_transition(self._transition_record(tx, run_id, run_id, "RUN", Command.ACTIVATE, RunState.ACTIVE, next_command=Command.REQUEST_HYPOTHESIS_CANDIDATE.value))
     def _rendezvous_records(self, run_id: str) -> tuple[Any, ...]:
-        rows = self.store.inspect("SELECT c.command_type,t.payload_json FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? ORDER BY t.rowid", (run_id,)); return derive_rendezvous_records((row["command_type"], json.loads(row["payload_json"])) for row in rows)
+        def read():
+            rows = self.store.inspect("SELECT c.command_type,t.payload_json FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? ORDER BY t.rowid", (run_id,))
+            return derive_rendezvous_records((row["command_type"], json.loads(row["payload_json"])) for row in rows)
+        return self.store.cached_read(("rendezvous-records", run_id), read)
     def _research_contract(self, run_id: str) -> ResearchContract:
         return self.store.cached_read(("research-contract", run_id), lambda: self._read_research_contract(run_id))
     def _read_research_contract(self, run_id: str) -> ResearchContract:
@@ -1023,12 +1026,14 @@ class WorkflowHost:
         record = self.store.get_run(run_id)
         return record is not None and supports_hypothesis_batches(int(record["agent_aci_version"])) and _uses_expert_loop(self._research_contract(run_id))
     def _batch_history(self, run_id: str, component_id: str, role: str | None = None) -> BatchHistory:
-        component = self._research_contract(run_id).component(component_id)
-        if component is None: raise OperationalHalt("unknown batch component")
-        try: return BatchHistory.from_rows(run_id, component_id, role or component.owner_role,
-            self.store.inspect("SELECT t.*,c.command_type FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? ORDER BY t.rowid", (run_id,)),
-            self.store.list_facts(run_id, "HypothesisProposed"), agent_aci_version=int(self.store.get_run(run_id)["agent_aci_version"]))
-        except (KeyError, TypeError, ValueError) as exc: raise OperationalHalt(str(exc)) from exc
+        def read():
+            component = self._research_contract(run_id).component(component_id)
+            if component is None: raise OperationalHalt("unknown batch component")
+            try: return BatchHistory.from_rows(run_id, component_id, role or component.owner_role,
+                self.store.inspect("SELECT t.*,c.command_type FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id WHERE t.run_id=? ORDER BY t.rowid", (run_id,)),
+                self.store.list_facts(run_id, "HypothesisProposed"), agent_aci_version=int(self.store.get_run(run_id)["agent_aci_version"]))
+            except (KeyError, TypeError, ValueError) as exc: raise OperationalHalt(str(exc)) from exc
+        return self.store.cached_read(("batch-history", run_id, component_id, role), read)
     def _agent_budget_available(self, run_id: str, role: str) -> bool:
         return not self._run_wallclock_expired(run_id) and remaining_agent_budget(
             self._research_contract(run_id).document, role,
@@ -4650,6 +4655,7 @@ def serve(
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     socket_path = state_root / "control.sock"
     services = ExitStack()
+    control = None
     try:
         host.initialize()
         socket_path.unlink(missing_ok=True)
@@ -4661,7 +4667,6 @@ def serve(
                 os.close(directory_fd)
         os.chmod(socket_path, 0o600)
         server.listen(16)
-        server.settimeout(0.02)
         if services_factory is not None:
             observers = host.observer_services = services.enter_context(services_factory())
             if host.institutional_access is not None:
@@ -4670,6 +4675,11 @@ def serve(
             host.stop_requested = True
         signal.signal(signal.SIGTERM, request_stop)
         signal.signal(signal.SIGINT, request_stop)
+        from .control_server import ControlServer, StatusSnapshots
+        snapshots = StatusSnapshots()
+        if not host.stop_requested: snapshots.refresh(host, force=True)
+        control = ControlServer(server, snapshots)
+        control.start()
         while not host.stop_requested:
             # Share one scheduling tick across a bounded burst of waiting
             # clients. Neither a busy control queue nor the scheduler owns the
@@ -4677,24 +4687,18 @@ def serve(
             backup_request = False
             control_deadline = time.monotonic() + 0.25
             for _ in range(16):
-                try:
-                    peer, _ = server.accept()
-                except TimeoutError:
+                pending = control.next_request(timeout=0.02)
+                if pending is None:
                     break
-                with peer:
-                    peer.settimeout(1.0)
-                    try:
-                        request = ControlRequest.from_mapping(receive_message(peer))
-                        backup_request = backup_request or request.command == "BACKUP"
-                        response = host.handle(request)
-                    except (ProtocolError, TimeoutError) as exc:
-                        response = ControlResponse.failure(
-                            "invalid-request", "rejected", "protocol_error", str(exc)
-                        )
-                    _send_control_response(peer, response)
+                request, future = pending
+                backup_request = backup_request or request.command == "BACKUP"
+                response = host.handle(request)
+                snapshots.refresh(host, force=True)
+                future.set_result(response)
                 if host.stop_requested or time.monotonic() >= control_deadline:
                     break
             if not host.stop_requested and not backup_request: host.tick()
+            if not host.stop_requested: snapshots.refresh(host, force=exit_when_terminal and host.terminal_exit_ready)
             if exit_when_terminal and not host.stop_requested and host.terminal_exit_ready: return 0
         return 2 if host.operational_halt is not None else 0
     except Exception as exc:
@@ -4707,8 +4711,12 @@ def serve(
                 record_host_exception(state_root, exc, phase="services_close",
                     secrets=tuple(value for key, value in (provider_environment or {}).items() if key in {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"})); raise
         finally:
-            server.close()
-            socket_path.unlink(missing_ok=True)
-            host.close()
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-            lock.close()
+            try:
+                if control is not None: control.close()
+            finally:
+                server.close()
+                socket_path.unlink(missing_ok=True)
+                try: host.close()
+                finally:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                    lock.close()

@@ -137,8 +137,10 @@ def receive_message(peer: socket.socket) -> dict[str, Any]:
     length = _HEADER.unpack(_recv_exact(peer, _HEADER.size))[0]
     if length == 0 or length > MAX_FRAME_BYTES:
         raise ProtocolError(f"invalid frame length: {length}")
+    return _decode_message(_recv_exact(peer, length))
+def _decode_message(payload: bytes | bytearray) -> dict[str, Any]:
     try:
-        value = json.loads(_recv_exact(peer, length))
+        value = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ProtocolError("frame is not valid UTF-8 JSON") from exc
     if not isinstance(value, dict):

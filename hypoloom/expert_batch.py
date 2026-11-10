@@ -5,6 +5,7 @@ This module does not choose a scientific outcome. WorkflowHost owns transactions
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
@@ -135,6 +136,13 @@ class BatchHistory:
     role: str
     batches: tuple[AcceptedBatch, ...]
     hypotheses: Mapping[str, Mapping[str, Any]]
+
+    def __deepcopy__(self, memo):
+        # Members are immutable strings behind a proxy. Selections and fact
+        # payloads remain caller-owned, including their nested lists/dicts.
+        return type(self)(self.run_id, self.component_id, self.role,
+            tuple(replace(batch, selection=deepcopy(batch.selection, memo)) for batch in self.batches),
+            MappingProxyType(deepcopy(dict(self.hypotheses), memo)))
 
     @property
     def latest(self) -> AcceptedBatch | None:
