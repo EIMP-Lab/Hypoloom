@@ -67,6 +67,7 @@ class SharedAcceptanceHost:
 
     def plan(self, spec, prepared, workspace, response):
         from .shared_acceptance_execution import plan_evaluation
+        from .execution_checks import contract_checks
         binding = spec["payload"]["goal_evaluation"]
         expected = self.binding(spec["run_id"], binding["scope"])
         if binding != expected: raise AgentACIError("shared_acceptance_source", "preregistered evaluator differs from accepted Grounding")
@@ -76,6 +77,8 @@ class SharedAcceptanceHost:
         evaluation = plan_evaluation(prepared, local_measurement=None if local is None else ScientificMeasurement.from_dict(local),
             local_files=files, goal_acceptance=acceptance if binding["scope"] == "GOAL" else None, goal_files=goal_files,
             execution_id=spec["execution_id"], timeout_seconds=spec["payload"]["execution_contract"]["timeout_seconds"],
+            execution_checks=contract_checks(self.host._research_contract(spec["run_id"]).document),
+            workload_argv=spec["payload"]["execution_contract"]["argv"],
             python_executable=str(workspace.python_executable), runtime_prefix=str(workspace.runtime_prefix))
         return evaluation.execution, evaluation
 

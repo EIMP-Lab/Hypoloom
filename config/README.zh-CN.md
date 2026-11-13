@@ -79,6 +79,7 @@ metric:
 | `metric.direction` | `maximize` 表示越大越好，`minimize` 表示越小越好。 |
 | `metric.target` | 有限数值阈值，单位须与指标一致。 |
 | `evaluation` | 设置为 `grounding`，要求专家共用在 Grounding 阶段建立的验收流程；在 `description` 中说明完整要求。 |
+| `execution_checks` | 可选的任务级工程检查器，在每次正式执行前运行，包含 LOCAL 实验。详见[执行前检查](../docs/guides/execution-checks.zh-CN.md)。 |
 
 设置 `evaluation: grounding` 时，保留 `metric: null`，不填写 `completion` 或
 `stop_conditions.target_metric`。必须由一个完整的 `GOAL` 候选满足全部已确认要求，
