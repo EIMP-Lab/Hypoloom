@@ -4,9 +4,12 @@
   execution-check feature, then reviewing a dynamic verification design before
   any implementation. Dev `d91fdd3` and main `90f4c19` are published exact-tree
   reverts of `2739d2c` and `3073dfb`. Public checks pass 283 / one skip; 39
-  affected Host/lifecycle checks pass. The new proposal uses candidate-specific
-  Agent plans, bounded execution and evidence review before costly expansion;
-  it is documentation only and requires user confirmation. Do not implement,
+  affected Host/lifecycle checks pass. Following the user's context-bias concern,
+  the proposal adds an independent verification-review session with Host-selected
+  inputs, read-only candidate access, plan/evidence review and bounded costs.
+  Candidate-specific checks remain dynamic; fresh task sessions alone do not
+  establish independent judgment. This is documentation only and requires user
+  confirmation. Do not implement,
   alter Profiles or operate retained research under the earlier authorization.
   [Proposal](../design/dynamic-experiment-verification.md) /
   [rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).

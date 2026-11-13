@@ -2,8 +2,9 @@
 
 - [Dynamic experiment verification proposal, November 14](../design/dynamic-experiment-verification.md):
   the static execution-check feature is reverted on dev/main. Candidate-specific
-  Agent verification and execution-stage evidence review are proposed only;
-  user confirmation is required before implementation. Existing research and
+  Agent verification and independent plan/evidence review sessions are proposed
+  only; context isolation, source access, bounded authority and cost are explicit.
+  User confirmation is required before implementation. Existing research and
   Profiles stay unchanged. [Rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
 
 - [Long-running Host, November 13](../design/long-running-host.md):
