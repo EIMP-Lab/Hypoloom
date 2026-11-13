@@ -32,9 +32,9 @@ def validate_parser_inputs(request: Any) -> None:
 def sequence_request(raw_request: Any, parser_request: Any, *, attempt_id: str,
                      attempt_ordinal: int, execution_id: str, cwd: str | Path,
                      timeout_seconds: float, python_executable: str = sys.executable,
-                     goal_parser_request: Any = None, execution_checks: Any = None) -> Any:
+                     goal_parser_request: Any = None) -> Any:
     from .runner import ProcessRequest
-    if parser_request is None and goal_parser_request is None and execution_checks is None:
+    if parser_request is None and goal_parser_request is None:
         raise ValueError("measurement sequence requires at least one parser")
     if any(request is not None and request.execution_id != execution_id
            for request in (raw_request, parser_request, goal_parser_request)):
@@ -43,8 +43,6 @@ def sequence_request(raw_request: Any, parser_request: Any, *, attempt_id: str,
                "parser_request": None if parser_request is None else parser_request.to_dict()}
     if goal_parser_request is not None:
         payload["goal_parser_request"] = goal_parser_request.to_dict()
-    if execution_checks is not None:
-        payload["execution_checks"] = execution_checks.driver_plan()
     return ProcessRequest(attempt_id=attempt_id, attempt_ordinal=attempt_ordinal,
                           execution_id=execution_id,
                           argv=(python_executable, "-m", "hypoloom.measurement_driver",
@@ -78,7 +76,7 @@ def _run_phase(phase: str, request: Any) -> bool:
     from .domain import AttemptTerminalReason
     from .runner import LocalRunner
     try:
-        if phase in {"parser", "goal_parser"}:
+        if phase != "raw":
             validate_parser_inputs(request)
         stop = threading.Event()
         relays = []
@@ -105,30 +103,15 @@ def _run_phase(phase: str, request: Any) -> bool:
 def run_sequence(plan: Mapping[str, Any]) -> int:
     from .runner import ProcessRequest
     old_fields = {"raw_request", "parser_request"}
-    if not isinstance(plan, Mapping) or set(plan) - {"goal_parser_request", "execution_checks"} != old_fields:
+    if not isinstance(plan, Mapping) or set(plan) not in (old_fields, old_fields | {"goal_parser_request"}):
         raise ValueError("driver requires exact raw/local/optional goal request fields")
     raw = ProcessRequest.from_dict(plan["raw_request"])
     parser = None if plan["parser_request"] is None else ProcessRequest.from_dict(plan["parser_request"])
     goal = None if "goal_parser_request" not in plan else ProcessRequest.from_dict(plan["goal_parser_request"])
-    checks = plan.get("execution_checks")
-    if parser is None and goal is None and checks is None:
+    if parser is None and goal is None:
         raise ValueError("measurement sequence requires a local or goal parser")
     if any(item is not None and raw.execution_id != item.execution_id for item in (parser, goal)):
         raise ValueError("internal commands differ in execution ownership")
-    if checks is not None:
-        from .execution_checks import CHECKS_FAILED, read_checks
-        try:
-            if not isinstance(checks, dict) or set(checks) != {"request", "requirements", "output_dir"}:
-                raise ValueError("invalid execution_checks plan")
-            check = ProcessRequest.from_dict(checks["request"])
-            if check.execution_id != raw.execution_id:
-                raise ValueError("execution_checks differs in execution ownership")
-            if not _run_phase("execution_checks", check):
-                return CHECKS_FAILED
-            read_checks(Path(checks["output_dir"]), checks["requirements"])
-        except (OSError, ValueError, TypeError, KeyError) as exc:
-            print(f"measurement_driver execution_checks: {exc}", file=sys.stderr)
-            return CHECKS_FAILED
     if not _run_phase("raw", raw):
         return RAW_EXECUTION_FAILED
     local_ok = parser is None or _run_phase("parser", parser)
@@ -169,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"measurement_driver: {exc}", file=sys.stderr)
         # An invalid new plan cannot claim either internal phase completed.
-        return RAW_EXECUTION_FAILED if arguments and any(name in arguments[-1] for name in ('"goal_parser_request"', '"execution_checks"')) else PARSER_EXECUTION_FAILED
+        return RAW_EXECUTION_FAILED if arguments and '"goal_parser_request"' in arguments[-1] else PARSER_EXECUTION_FAILED
 
 
 if __name__ == "__main__":

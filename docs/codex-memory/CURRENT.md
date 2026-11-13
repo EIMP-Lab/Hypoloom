@@ -1,24 +1,5 @@
 # Current Hypoloom development state
 
-- November 14 execution requirement checks: optional Profile v4 task-owned
-  sources run before every workload, including static, LOCAL and GOAL cases.
-  They reuse the existing Process grant, sandbox, publication and finite repair
-  path; failure is technical, with no scientific refutation or metric sentinel.
-  Frozen-source prompt projection and an independent Oracle cover command,
-  resource visibility, source, context and result evidence. Exact Host sidecar
-  paths remain separate from scientific artifacts. No new ledger, cache or
-  migration; existing research and Profiles stay unchanged. G1 passes 8,916 /
-  241 explicit skips across all 9,157 identities. Thirty-two final roots close
-  725 Agents / 58 Processes with clean audits and no residue across 350 groups.
-  Ten retained roots / 8,055 files and their five prior findings are unchanged.
-  Both packages match 217 runtime files; main passes 320 / one CUDA skip. A
-  separate A100 probe rejects an equivalent but nonvectorized override before
-  training and accepts correct dispatch/full gradients on the same grant.
-  Project checker coverage remains task-owned; no MERC training speedup or
-  week-long soak is claimed. Dev/main publication follows the user's standing
-  instruction. [Design](../design/execution-requirement-checks.md) /
-  [validation](../qualification.md#execution-requirement-checks-2026-11-14).
-
 - November 13 long-running Host work: the user authorizes design, implementation,
   dev commit/push and corresponding selective main publication. Completed
   execution history is selected through schema-4 indexes before request decoding;

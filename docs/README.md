@@ -17,7 +17,6 @@ for daily operation. The dev branch also retains development instructions and va
 | [Reading and proposals](guides/reading-and-proposals.md) | Paper discovery, reading and hypothesis proposals |
 | [Institutional full text](guides/institutional-access.md) | Browser connections, institution login and PDF access |
 | [GPU resources](guides/gpu-resource-planning.md) | Memory estimates, sharing and resource waits |
-| [Execution checks](guides/execution-checks.md) | Task-owned prerequisites before expensive workloads |
 | [Context and memory](guides/context-management.md) | Working limits, sessions and evidence retrieval |
 | [API recovery](guides/provider-recovery.md) | Provider limits, connection changes and scheduled retries |
 | [Runtime recovery](guides/runtime-recovery.md) | Blocked work, observation and recovery boundaries |

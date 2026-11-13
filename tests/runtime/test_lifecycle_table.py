@@ -88,11 +88,8 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Transfer 100 unused lifecycle lines (374 actual) to the Host (4803), and
     # 50 domain lines (892 actual) to StateStore (421). Count the new migration
     # with all existing SQL and preserve the same 27,550-line authority budget.
-    # Task checks reuse Process authority: transfer 290 unused common-acceptance
-    # lines to the counted prerequisite helper (250) and Host (40), same total.
     allocations = {"domain": 900, "lifecycle": 400, "ports": 100,
-        "state_store": 450, "research_kernel": 750, "workflow_host": 4865, "institutional_controls": 100,
-        "execution_checks": 250,
+        "state_store": 450, "research_kernel": 750, "workflow_host": 4825, "institutional_controls": 100,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
@@ -102,7 +99,7 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
         "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
-        "shared_acceptance": 560, "shared_acceptance_host": 700,
+        "shared_acceptance": 850, "shared_acceptance_host": 700,
         "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,
         "gpu_attribution": 800, "resource_experience": 700, "host_settings": 350, "provider_recovery": 150}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations

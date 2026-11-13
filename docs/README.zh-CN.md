@@ -17,7 +17,6 @@ dev 分支同时保留开发约定与验证历史。
 | [阅读与提案](guides/reading-and-proposals.zh-CN.md) | 文献发现、精读和假设提出 |
 | [机构全文访问](guides/institutional-access.zh-CN.md) | 浏览器连接、机构登录与 PDF 获取 |
 | [GPU 资源](guides/gpu-resource-planning.zh-CN.md) | 显存估算、共享与资源等待 |
-| [执行前检查](guides/execution-checks.zh-CN.md) | 在耗时执行前验证任务要求的工程条件 |
 | [上下文与记忆](guides/context-management.zh-CN.md) | 工作容量、会话与证据检索 |
 | [API 恢复](guides/provider-recovery.zh-CN.md) | 服务限流、连接切换与定时重试 |
 | [运行恢复](guides/runtime-recovery.zh-CN.md) | 阻塞任务、观察与恢复边界 |
