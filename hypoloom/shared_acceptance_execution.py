@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .execution_workspace import CollectedExecution, PreparedExecution, _stage_candidate
 from .measurement_driver import RAW_EXECUTION_FAILED, sequence_request
 from .measurement_execution import ParserDeclaration, PreparedParser, materialize_parser, plan_parser, read_parser_result
+from .execution_checks import CHECKS_FAILED, PreparedChecks, collect_checks, materialize_checks, plan_checks
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,15 +22,19 @@ class PreparedEvaluation:
     execution: PreparedExecution
     local_parser: PreparedParser | None
     goal_parser: PreparedParser | None
+    execution_checks: PreparedChecks | None = None
 
 
 def plan_evaluation(prepared: PreparedExecution, *, local_measurement: ParserDeclaration | None,
         local_files: Mapping[str, bytes], goal_acceptance: ParserDeclaration | None,
         goal_files: Mapping[str, bytes], execution_id: str, timeout_seconds: float,
-        python_executable: str = sys.executable, runtime_prefix: str = sys.prefix) -> PreparedEvaluation:
-    if local_measurement is None and goal_acceptance is None:
+        python_executable: str = sys.executable, runtime_prefix: str = sys.prefix,
+        execution_checks: Mapping[str, Any] | None = None, workload_argv=()) -> PreparedEvaluation:
+    if local_measurement is None and goal_acceptance is None and execution_checks is None:
         return PreparedEvaluation(prepared, None, None)
     raw = replace(prepared.process_request, stdout_path="raw-stdout.log", stderr_path="raw-stderr.log")
+    checks = None if execution_checks is None else plan_checks(execution_checks, prepared,
+        workload_argv=workload_argv, python_executable=python_executable, runtime_prefix=runtime_prefix)
     arguments = dict(raw_dir=prepared.output_dir, execution_id=execution_id,
         timeout_seconds=min(30.0, float(raw.timeout_seconds)), python_executable=python_executable,
         runtime_prefix=runtime_prefix, raw_log_paths={name + ".log": prepared.log_dir / ("raw-" + name + ".log")
@@ -41,12 +46,14 @@ def plan_evaluation(prepared: PreparedExecution, *, local_measurement: ParserDec
     outer = sequence_request(raw, None if local is None else local.process_request,
         goal_parser_request=None if goal is None else goal.process_request, attempt_id=prepared.attempt_id,
         attempt_ordinal=raw.attempt_ordinal, execution_id=execution_id, cwd=prepared.log_dir,
-        timeout_seconds=timeout_seconds)
-    return PreparedEvaluation(replace(prepared, process_request=outer), local, goal)
+        timeout_seconds=timeout_seconds, execution_checks=checks)
+    return PreparedEvaluation(replace(prepared, process_request=outer), local, goal, checks)
 
 
 def materialize_evaluation(prepared: PreparedEvaluation) -> None:
     """Called after the ordinary Process intent, alongside raw materialization."""
+    if prepared.execution_checks is not None:
+        materialize_checks(prepared.execution_checks)
     for parser in (prepared.local_parser, prepared.goal_parser):
         if parser is not None:
             materialize_parser(parser)
@@ -55,7 +62,7 @@ def materialize_evaluation(prepared: PreparedEvaluation) -> None:
 def _completion_code(observation: Mapping[str, Any], *, has_goal: bool) -> int | None:
     code, reason = observation.get("returncode"), observation.get("terminal_reason")
     expected = "SUCCEEDED" if code == 0 else "FAILED"
-    completed = (type(code) is int and code in ({0, 70, 71, 72, 73} if has_goal else {0, 70, 71})
+    completed = (type(code) is int and code in ({0, 70, 71, 72, 73, CHECKS_FAILED} if has_goal else {0, 70, 71, CHECKS_FAILED})
                  and reason == expected and not observation.get("synthetic_before_spawn")
                  and not observation.get("integrity_error"))
     return code if completed else None
@@ -70,7 +77,7 @@ def evaluation_phase_success(observation: Mapping[str, Any], *, has_local: bool,
         has_goal: bool) -> tuple[bool, bool | None, bool | None]:
     """Decode actual process completion only, never scientific eligibility."""
     code = _completion_code(observation, has_goal=has_goal)
-    raw = code is not None and code != RAW_EXECUTION_FAILED
+    raw = code is not None and code not in {RAW_EXECUTION_FAILED, CHECKS_FAILED}
     return raw, (raw and code in {0, 72}) if has_local else None, (raw and code in {0, 71}) if has_goal else None
 
 
@@ -90,10 +97,13 @@ def collect_evaluation(prepared: PreparedEvaluation, collected: CollectedExecuti
     Availability is determined separately from the actual process observation;
     mere presence of goal/result.json never establishes parser success.
     """
-    if prepared.local_parser is None and prepared.goal_parser is None:
+    if prepared.local_parser is None and prepared.goal_parser is None and prepared.execution_checks is None:
         return collected
     execution = prepared.execution
-    files = {"raw/" + path: (collected.staging_dir / path).read_bytes() for path in collected.relative_paths}
+    has_parser = prepared.local_parser is not None or prepared.goal_parser is not None
+    files = {("raw/" if has_parser else "") + path: (collected.staging_dir / path).read_bytes() for path in collected.relative_paths}
+    if prepared.execution_checks is not None:
+        files.update(collect_checks(prepared.execution_checks))
     for name in ("stdout", "stderr"):
         path = execution.log_dir / ("raw-" + name + ".log")
         if path.is_file() and not path.is_symlink():

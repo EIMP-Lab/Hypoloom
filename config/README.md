@@ -85,6 +85,7 @@ metric:
 | `metric.direction` | `maximize` or `minimize`. |
 | `metric.target` | Finite numeric threshold, expressed in the metric's units. |
 | `evaluation` | Set to `grounding` when experts must share an acceptance procedure established during Grounding. Describe the complete requirements in `description`. |
+| `execution_checks` | Optional task-owned code that checks engineering prerequisites before every workload, including LOCAL experiments. See [execution checks](../docs/guides/execution-checks.md). |
 
 For `evaluation: grounding`, keep `metric: null` and omit `completion` and
 `stop_conditions.target_metric`. One complete `GOAL` candidate must satisfy all

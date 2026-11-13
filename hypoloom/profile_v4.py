@@ -60,7 +60,7 @@ class _Validator:
         return value
 
 
-_GOAL = {"title", "description", "metric", "constraints", "stop_conditions", "completion", "evaluation"}
+_GOAL = {"title", "description", "metric", "constraints", "stop_conditions", "completion", "evaluation", "execution_checks"}
 _EXPERT = {"name", "role", "persona", "focus", "model", "effort", "max_forks", "max_hypotheses_per_round", "stage_overrides"}
 _DEFAULTS = {"model", "effort", "max_forks", "max_hypotheses_per_round"}
 _METHOD = {"schema_version", "runtime", "budget", "literature", "inner_loop", "interaction", "graph_evolution", "memory", "output_correction"}
@@ -252,6 +252,10 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     title = v.text(goal.get("title"), "goal.yaml.title")
     description = v.text(goal.get("description"), "goal.yaml.description")
     constraints = v.strings(goal.get("constraints", []), "goal.yaml.constraints")
+    if "execution_checks" in goal:
+        from .execution_checks import validate_declaration
+        try: goal["execution_checks"] = validate_declaration(goal["execution_checks"])
+        except (ValueError, TypeError) as exc: v.error("goal.yaml.execution_checks", str(exc))
     stops = v.object(goal.get("stop_conditions", {}), {"max_wall_clock_hours", "target_metric"}, "goal.yaml.stop_conditions")
     if "max_rounds_per_expert" in stops:
         v.error("goal.yaml.stop_conditions.max_rounds_per_expert",
@@ -357,7 +361,8 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
         language={"default": prompt_language, "overrides": {"cycle_report": report_language}})
     settings = {"profile_version": 4, "goal": {"constraints": constraints, "stop_conditions": {key: value for key, value in stops.items() if key != "target_metric"},
         "completion_mode": "explicit_signals" if "completion" in goal else "shared_goal",
-        **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {})}, "experts": experts,
+        **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {}),
+        **({"execution_checks": goal["execution_checks"]} if "execution_checks" in goal else {})}, "experts": experts,
         "methodology": {key: value for key, value in methodology.items() if key not in {"schema_version", "runtime", "budget"}},
         "language": language, "notify": notify, "safety": {key: value for key, value in safety.items() if key not in {"allow_read_paths", "sandbox_os", "experiment_timeout_minutes"}}}
     warnings = (*budget_warnings, *_inactive_warnings(settings)) if not v.issues else ()
@@ -467,7 +472,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
     if not isinstance(value, dict) or set(value) != {"profile_version", "goal", "experts", "methodology", "language", "notify", "safety"} or value["profile_version"] != 4:
         raise ValueError("invalid Profile v4 product settings")
     goal = value["goal"]
-    if not isinstance(goal, dict) or set(goal) != {"constraints", "stop_conditions", "completion_mode"} | ({"evaluation"} if "evaluation" in goal else set()) or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
+    if not isinstance(goal, dict) or set(goal) != {"constraints", "stop_conditions", "completion_mode"} | (set(goal) & {"evaluation", "execution_checks"}) or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
         raise ValueError("invalid Profile v4 goal controls")
     if "evaluation" in goal and (goal["evaluation"] != "grounding" or goal["completion_mode"] != "shared_goal"):
         raise ValueError("Grounding evaluation requires shared_goal controls")
@@ -480,6 +485,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
         if validator.issues: raise ValueError("legacy expert round limit must be a positive integer")
     projected = project_profile_v4(goal={"title": "Admitted product controls", "description": "Validate controls without redefining scientific components.",
         "constraints": goal["constraints"], "stop_conditions": stops,
+        **({"execution_checks": goal["execution_checks"]} if "execution_checks" in goal else {}),
         **({"evaluation": goal["evaluation"]} if "evaluation" in goal else {})}, experts=value["experts"],
         methodology={"schema_version": 4, **value["methodology"]}, language=value["language"], notify=value["notify"], safety=value["safety"])
     if projected.issues: raise ValueError("invalid Profile v4 controls: " + "; ".join(issue.location + ": " + issue.message for issue in projected.issues))

@@ -3089,6 +3089,8 @@ def _measurement_process_requests(request: Any, context: Mapping[str, Any], atte
     """Audit the one-attempt two-phase ABI independently of its driver producer."""
     raw = None
     try:
+        from .execution_checks_oracle import audit_request
+        request = audit_request(request, context.get("execution_checks"))
         from .shared_acceptance_oracle import _parser_command
         adapter_version = context.get("request", {}).get("required_adapter_version")
         if context["payload"].get("goal_evaluation") is not None:
@@ -3101,6 +3103,10 @@ def _measurement_process_requests(request: Any, context: Mapping[str, Any], atte
         if len(outer) != 4 or outer[1:3] != ["-m", "hypoloom.measurement_driver"]:
             raise ValueError("measurement Process lacks the two-phase driver")
         plan = json.loads(outer[3]); raw, parser = plan["raw_request"], plan["parser_request"]
+        if context.get("execution_checks") is not None and context["payload"].get("measurement") is None:
+            if set(plan) != {"raw_request", "parser_request"} or parser is not None or not _valid_process_request(raw):
+                raise ValueError("invalid check-only execution plan")
+            return raw
         if set(plan) != {"raw_request", "parser_request"} or not _valid_process_request(raw) or not _valid_process_request(parser):
             raise ValueError("measurement driver requests are malformed")
         source_root = request["env"].get("PYTHONPATH")
@@ -3328,6 +3334,7 @@ def _audit_execution_integrity(
             "component_mounts": component_mounts,
             "host_owned_source": host_owned,
             "workspace": {},
+            "execution_checks": (document or {}).get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {}).get("execution_checks"),
         }
         contexts[(str(fact["experiment_id"]), str(fact["execution_id"]))] = context
         source = attempts_by_id.get(str(source_id))
@@ -3686,7 +3693,7 @@ def _audit_execution_integrity(
                     )
                 )
             resource_request = request
-            if context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None:
+            if context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None or context.get("execution_checks") is not None:
                 resource_request = _measurement_process_requests(request, context, attempt_id, issues)
             _audit_process_resource(
                 resource_request,
@@ -3807,6 +3814,15 @@ def _audit_execution_integrity(
         context = contexts.get((str(attempt["experiment_id"]), str(attempt["execution_id"])))
         if context is None or context.get("source_path") is None:
             continue
+        if context.get("execution_checks") is not None:
+            try:
+                from .execution_checks_oracle import audit_publication
+                stable = _artifact_stable_relative_path(artifact)
+                if stable is None: raise ValueError("execution checks publication path is absent")
+                audit_publication(artifact_root.resolve(strict=False) / stable, context["execution_checks"],
+                    context["contract"]["argv"], attempt_payloads.get(str(attempt["attempt_id"]), {}))
+            except (OSError, KeyError, TypeError, ValueError) as exc:
+                issues.append(OracleIssue("execution_checks_evidence_mismatch", str(exc), (str(artifact["artifact_id"]),)))
         if context.get("component_v4") is True:
             continue
         source_path = context["source_path"]
@@ -3945,7 +3961,7 @@ def _audit_pre_spawn_cancel(attempt, observation, commands, transitions, payload
         issues.append(OracleIssue("process_cancel_source_invalid", "Queued Process cancellation lacks its actual unspawned terminal/cancel source: " + str(exc), (identity,)))
         return
     resource_request = request
-    if context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None:
+    if context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None or context.get("execution_checks") is not None:
         resource_request = _measurement_process_requests(request, context, identity, issues)
     _audit_process_resource(resource_request, context.get("resource"), identity, context.get("source_path"),
         context.get("execution_argv"), context.get("component_mounts"), issues,
@@ -6739,6 +6755,7 @@ class _ComponentContract:
     inconclusive_if: Mapping[str, Any] | None = None
     target_overlay_policy: str | None = None
     deferred_measurement: bool = False
+    execution_auxiliary_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -8512,6 +8529,11 @@ def _read_goal_component_contract(
             "GoalDefined lacks a component research_contract schema version 1",
         )
         return None
+    check_declaration = raw.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {}).get("execution_checks")
+    execution_auxiliary_paths = () if not isinstance(check_declaration, Mapping) or not isinstance(check_declaration.get("files"), Mapping) or any(not isinstance(name, str) for name in check_declaration["files"]) else (
+        "raw/stdout.log", "raw/stderr.log", "raw/execution-checks/result.json",
+        "raw/execution-checks/stdout.log", "raw/execution-checks/stderr.log", "raw/execution-checks/source/context.json",
+        *("raw/execution-checks/source/" + name for name in check_declaration["files"]))
     goal_record = raw.get("goal")
     if raw.get("schema_version") == 3 and (not isinstance(goal_record, Mapping) or goal_record.get("evaluation") != {"mode": "grounding"}):
         bad("component_contract_invalid", "research schema 3 requires its explicit Grounding evaluation mode")
@@ -8846,6 +8868,7 @@ def _read_goal_component_contract(
                 artifact_validators=artifact_validators,
                 inconclusive_if=inconclusive_if,
                 deferred_measurement=deferred,
+                execution_auxiliary_paths=execution_auxiliary_paths,
                 target_overlay_policy=(
                     result.get("target_overlay_policy")
                     if isinstance(result, Mapping)
@@ -9914,6 +9937,7 @@ def _repairable_extra_file_inventory_diagnostic(
         "result.json",
         *(relative for paths in logical.values() for relative in paths),
     }
+    actual -= set(component.execution_auxiliary_paths)
     undeclared = sorted(actual - declared)
     missing = sorted(declared - actual)
     if (
@@ -10826,6 +10850,9 @@ def _component_artifact_map(
     except (OSError, ValueError) as exc:
         issues.append(OracleIssue("invalid_artifact_tree", str(exc), (fact_id,)))
         actual = set()
+    if seen_paths.intersection(component.execution_auxiliary_paths):
+        issues.append(OracleIssue("component_artifact_inventory_mismatch", "Host execution evidence cannot be a scientific artifact", (fact_id,)))
+    actual -= set(component.execution_auxiliary_paths)
     expected_files = {"result.json", *seen_paths}
     if actual != expected_files:
         issues.append(

@@ -439,13 +439,13 @@ def phase_success(observation, *, local, goal):
     code = observation.get("returncode")
     complete = (
         type(code) is int
-        and code in ({0, 70, 71, 72, 73} if goal else {0, 70, 71})
+        and code in ({0, 70, 71, 72, 73, 74} if goal else {0, 70, 71, 74})
         and observation.get("terminal_reason")
         == ("SUCCEEDED" if code == 0 else "FAILED")
         and not observation.get("synthetic_before_spawn")
         and not observation.get("integrity_error")
     )
-    raw = complete and code != 70
+    raw = complete and code not in {70, 74}
     return (
         raw,
         (raw and code in {0, 72}) if local else None,

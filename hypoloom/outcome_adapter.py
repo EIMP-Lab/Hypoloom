@@ -31,10 +31,10 @@ def component_result_contract_parts(component: Mapping[str, Any], protocol: Mapp
     required, counts = _requirements(component, requirements)
     mode = _metric_mode(_text(spec.get("metric"), "component.result.metric"), _texts(requirements.get("required_metrics", []), "protocol.requirements.required_metrics")) if kind == "metric" else None
     return {"component": component, "protocol": protocol, "spec": spec, "kind": kind, "requirements": requirements, "metric_mode": mode, "required_artifacts": required, "artifact_min_counts": counts, "required_top_level_keys": _RESULT_REQUIRED_FIELDS[str(kind)], "optional_top_level_keys": _RESULT_OPTIONAL_FIELDS, "trial_required_keys": _TRIAL_REQUIRED_FIELDS, "trial_optional_keys": _TRIAL_OPTIONAL_FIELDS, "identity_keys": _IDENTITY_FIELDS, "identity_fields": {"method_family_id": {"type": "string", "pattern": f"^{_ID_PATTERN}$", "must_equal": "required_experiment_spec.method_family_id"}, "implementation_sha256": {"type": "string", "pattern": f"^{_SHA256_PATTERN}$"}, "core_config_sha256": {"type": "string", "pattern": f"^{_SHA256_PATTERN}$"}}}
-def repairable_component_result_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None = None, git_apply_check: GitApplyCheck | None = None, implementation_bytes: bytes | bytearray | memoryview | None = None, implementation_digest_check: ImplementationDigestCheck | None = None) -> bool:
+def repairable_component_result_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None = None, git_apply_check: GitApplyCheck | None = None, implementation_bytes: bytes | bytearray | memoryview | None = None, implementation_digest_check: ImplementationDigestCheck | None = None, auxiliary_paths: tuple[str, ...] = ()) -> bool:
     if error.code in {"missing_result", "invalid_result_json", "invalid_result"}: return True
-    if error.code in {"text_contract_failed", "invalid_unified_diff"}: return _repairable_artifact_contract_error(component, protocol, artifact_dir, error, expected_method_family_id=expected_method_family_id, git_apply_check=git_apply_check, implementation_bytes=implementation_bytes, implementation_digest_check=implementation_digest_check)
-    if error.code in {"invalid_identity", "artifact_inventory_mismatch", "implementation_digest_mismatch"}: return _repairable_artifact_error(component, protocol, artifact_dir, error, expected_method_family_id=expected_method_family_id, git_apply_check=git_apply_check, implementation_bytes=implementation_bytes, implementation_digest_check=implementation_digest_check)
+    if error.code in {"text_contract_failed", "invalid_unified_diff"}: return _repairable_artifact_contract_error(component, protocol, artifact_dir, error, expected_method_family_id=expected_method_family_id, git_apply_check=git_apply_check, implementation_bytes=implementation_bytes, implementation_digest_check=implementation_digest_check, auxiliary_paths=auxiliary_paths)
+    if error.code in {"invalid_identity", "artifact_inventory_mismatch", "implementation_digest_mismatch"}: return _repairable_artifact_error(component, protocol, artifact_dir, error, expected_method_family_id=expected_method_family_id, git_apply_check=git_apply_check, implementation_bytes=implementation_bytes, implementation_digest_check=implementation_digest_check, auxiliary_paths=auxiliary_paths)
     if error.code not in {"invalid_result_shape", "invalid_artifact_map"}: return False
     path = Path(artifact_dir) / "result.json"
     if Path(artifact_dir).is_symlink() or path.is_symlink(): return False
@@ -48,12 +48,12 @@ def repairable_component_result_error(component: Mapping[str, Any], protocol: Ma
     if any(isinstance(value, str) or isinstance(value, list) and bool(value) for value in declarations) or isinstance(artifacts, Mapping) and set(artifacts) != set(parts["required_artifacts"]): return False
     map_error = artifacts is not _MISSING and (not isinstance(artifacts, Mapping) or any(not isinstance(value, list) or not value for value in declarations))
     return error.code == "invalid_result_shape" and shape or error.code == "invalid_artifact_map" and not shape and map_error
-def _repairable_artifact_contract_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None, git_apply_check: GitApplyCheck | None, implementation_bytes: bytes | bytearray | memoryview | None, implementation_digest_check: ImplementationDigestCheck | None) -> bool:
+def _repairable_artifact_contract_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None, git_apply_check: GitApplyCheck | None, implementation_bytes: bytes | bytearray | memoryview | None, implementation_digest_check: ImplementationDigestCheck | None, auxiliary_paths: tuple[str, ...] = ()) -> bool:
     if error.code == "invalid_unified_diff" and (error.message != _UNIFIED_DIFF_SYNTAX_ERROR or implementation_bytes is not None or implementation_digest_check is not None): return False
     try:
         parts = component_result_contract_parts(component, protocol); root, result = _component_json(artifact_dir, "artifact")
         if parts["kind"] != "artifact": return False
-        _, paths = _artifact_map(result["artifacts"], root, parts["required_artifacts"], parts["artifact_min_counts"]); family, _, _ = _validated_identity(result, paths, implementation_bytes, implementation_digest_check)
+        _, paths = _artifact_map(result["artifacts"], root, parts["required_artifacts"], parts["artifact_min_counts"], auxiliary_paths=auxiliary_paths); family, _, _ = _validated_identity(result, paths, implementation_bytes, implementation_digest_check)
         if family is not None and (expected_method_family_id is None or family != expected_method_family_id): return False
         validators = parts["requirements"].get("artifact_validators", [])
         if not isinstance(validators, (list, tuple)): return False
@@ -62,9 +62,9 @@ def _repairable_artifact_contract_error(component: Mapping[str, Any], protocol: 
             except ComponentResultValidationError as actual: validator = validators[index]; artifact = validator.get("artifact") if isinstance(validator, Mapping) else None; selected = paths.get(artifact, ()); required = validator.get("apply_check", True) if isinstance(validator, Mapping) else None; exact = (actual.code, actual.location, actual.message) == (error.code, error.location, error.message); return exact and ((isinstance(validator, Mapping) and validator.get("type") == "unified_diff" and len(selected) == 1 and selected[0].name == error.location and isinstance(required, bool) and (not required or callable(git_apply_check)) and _repairable_collapsed_diff(selected[0]) and _artifact_contracts(validators[index + 1:], paths, git_apply_check)) if error.code == "invalid_unified_diff" else (not any(not isinstance(item, Mapping) or item.get("type") != "text_contract" for item in validators[index + 1:]) and _artifact_contracts(validators[index + 1:], paths, git_apply_check, tolerate_text_failures=True)))
         return False
     except (ArtifactIntegrityError, ComponentResultValidationError, OSError, StopIteration, TypeError, ValueError): return False
-def _repairable_artifact_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None, git_apply_check: GitApplyCheck | None, implementation_bytes: bytes | bytearray | memoryview | None, implementation_digest_check: ImplementationDigestCheck | None) -> bool:
+def _repairable_artifact_error(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, error: ComponentResultValidationError, *, expected_method_family_id: str | None, git_apply_check: GitApplyCheck | None, implementation_bytes: bytes | bytearray | memoryview | None, implementation_digest_check: ImplementationDigestCheck | None, auxiliary_paths: tuple[str, ...] = ()) -> bool:
     try:
-        parts = component_result_contract_parts(component, protocol); root, result = _component_json(artifact_dir, "artifact"); extra = error.code == "artifact_inventory_mismatch"; logical, paths = _artifact_map(result["artifacts"], root, parts["required_artifacts"], parts["artifact_min_counts"], allow_extra=extra)
+        parts = component_result_contract_parts(component, protocol); root, result = _component_json(artifact_dir, "artifact"); extra = error.code == "artifact_inventory_mismatch"; logical, paths = _artifact_map(result["artifacts"], root, parts["required_artifacts"], parts["artifact_min_counts"], allow_extra=extra, auxiliary_paths=auxiliary_paths)
         if error.code == "invalid_identity":
             validators = parts["requirements"].get("artifact_validators", []); identity = result.get("identity"); expected = ("invalid_identity", "result.json.identity", "digests must be 64 lowercase hex")
             if (error.code, error.location, error.message) != expected or expected_method_family_id is None or implementation_bytes is not None or implementation_digest_check is not None or parts["kind"] != "artifact" or parts["component"].get("dependencies") not in (None, [], ()) or parts["component"].get("required_inputs") not in (None, [], ()) or "implementation_patch" in parts["required_artifacts"] or not isinstance(validators, (list, tuple)) or any(not isinstance(item, Mapping) or item.get("type") == "unified_diff" for item in validators): return False
@@ -72,7 +72,7 @@ def _repairable_artifact_error(component: Mapping[str, Any], protocol: Mapping[s
             except ComponentResultValidationError as actual: return isinstance(identity, Mapping) and identity.get("method_family_id") == expected_method_family_id and (actual.code, actual.location, actual.message) == expected
         if parts["kind"] != "artifact": return False
         if extra:
-            actual = set(inventory_relative_paths(root)); declared = {path for values in logical.values() for path in values} | {"result.json"}; expected = ("artifact_inventory_mismatch", "artifact_dir", f"undeclared={sorted(actual - declared)!r}, missing=[]"); metadata = [root.joinpath(*PurePosixPath(path).parts).stat() for path in actual]
+            actual = set(inventory_relative_paths(root)) - set(auxiliary_paths); declared = {path for values in logical.values() for path in values} | {"result.json"}; expected = ("artifact_inventory_mismatch", "artifact_dir", f"undeclared={sorted(actual - declared)!r}, missing=[]"); metadata = [root.joinpath(*PurePosixPath(path).parts).stat() for path in actual]
             if not actual > declared or (error.code, error.location, error.message) != expected or len({(item.st_dev, item.st_ino) for item in metadata}) != len(metadata): return False
             return implementation_bytes is None and implementation_digest_check is None and _repairable_identity(result, paths, expected_method_family_id, None, None)[0]
         validators = parts["requirements"].get("artifact_validators", [])
@@ -88,13 +88,13 @@ def _repairable_identity(result: Mapping[str, Any], paths: Mapping[str, tuple[Pa
         family, declared, _ = _identity(result.get("identity")); patch = paths.get("implementation_patch", ())
         if declared is None or len(patch) != 1 or hashlib.sha256(patch[0].read_bytes()).hexdigest() == declared: return False, False
     return family is None or expected_method_family_id is not None and family == expected_method_family_id, mismatch
-def validate_component_result(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, *, git_apply_check: GitApplyCheck | None = None, implementation_bytes: bytes | bytearray | memoryview | None = None, implementation_digest_check: ImplementationDigestCheck | None = None) -> ValidatedComponentResult:
+def validate_component_result(component: Mapping[str, Any], protocol: Mapping[str, Any], artifact_dir: str | Path, *, git_apply_check: GitApplyCheck | None = None, implementation_bytes: bytes | bytearray | memoryview | None = None, implementation_digest_check: ImplementationDigestCheck | None = None, auxiliary_paths: tuple[str, ...] = ()) -> ValidatedComponentResult:
     """Validate raw component trials and logical artifacts without writing state."""
     parts = component_result_contract_parts(component, protocol); component = parts["component"]; protocol = parts["protocol"]
     component_id = _text(component.get("id", component.get("name")), "component.id")
     spec = parts["spec"]; kind = parts["kind"]; requirements = parts["requirements"]; required = parts["required_artifacts"]; counts = parts["artifact_min_counts"]
     root, result = _component_json(artifact_dir, kind)
-    logical, paths = _artifact_map(result["artifacts"], root, required, counts)
+    logical, paths = _artifact_map(result["artifacts"], root, required, counts, auxiliary_paths=auxiliary_paths)
     _artifact_contracts(requirements.get("artifact_validators", []), paths, git_apply_check)
     family, implementation, config = _validated_identity(result, paths, implementation_bytes, implementation_digest_check)
     metric_name = metric_value = None; criterion = True
@@ -194,14 +194,14 @@ def _requirement_set(raw: Any, location: str) -> tuple[tuple[str, ...], dict[str
         ordered.append(artifact_id)
         counts[artifact_id] = raw_count
     return tuple(ordered), counts
-def _artifact_map(raw: Any, root: Path, required: tuple[str, ...], counts: Mapping[str, int], *, allow_extra: bool = False) -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[Path, ...]]]:
+def _artifact_map(raw: Any, root: Path, required: tuple[str, ...], counts: Mapping[str, int], *, allow_extra: bool = False, auxiliary_paths: tuple[str, ...] = ()) -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[Path, ...]]]:
     if not isinstance(raw, Mapping) or any(not isinstance(key, str) for key in raw): _bad("invalid_artifact_map", "result.json.artifacts", "must be an object")
     keys = {_text(key, "result.json.artifacts", pattern=_ID) for key in raw}
     if keys != set(required) or len(keys) != len(raw): _bad("artifact_inventory_mismatch", "result.json.artifacts", f"expected {sorted(required)!r}, got {sorted(keys)!r}")
     logical: dict[str, tuple[str, ...]] = {}; paths: dict[str, tuple[Path, ...]] = {}; seen_refs: set[str] = set()
     result_stat = (root / "result.json").stat(); seen_files: dict[tuple[int, int], str] = {(result_stat.st_dev, result_stat.st_ino): "result.json"}
     try:
-        actual = set(inventory_relative_paths(root))
+        actual = set(inventory_relative_paths(root)) - set(auxiliary_paths)
     except ArtifactIntegrityError as exc:
         _bad("unsafe_artifact_path", "artifact_dir", str(exc))
     for raw_id, declaration in raw.items():
@@ -214,6 +214,7 @@ def _artifact_map(raw: Any, root: Path, required: tuple[str, ...], counts: Mappi
             where = f"result.json.artifacts.{artifact_id}[{index}]"
             try:
                 relative = normalize_relative_paths([reference])[0]
+                if relative in auxiliary_paths: raise ArtifactIntegrityError("Host execution evidence is not a logical scientific artifact")
             except ArtifactIntegrityError as exc:
                 _bad("unsafe_artifact_path", where, str(exc))
             if relative == "result.json" or relative in seen_refs:

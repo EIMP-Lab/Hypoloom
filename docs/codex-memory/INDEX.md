@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Execution requirement checks, November 14](../design/execution-requirement-checks.md):
+  task-owned checks before training, actual dispatch and gradient probes, bounded
+  source/result evidence, static/LOCAL/GOAL integration, technical repair,
+  publication recovery and independent audit. Explicit project declarations are
+  required; old runs remain unchanged.
+  [Validation](../qualification.md#execution-requirement-checks-2026-11-14).
+
 - [Long-running Host, November 13](../design/long-running-host.md):
   indexed pending execution recovery, phase slices and tool fairness, bounded
   read-cache retention, disposable audit/view workers and canonical provider
