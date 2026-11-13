@@ -3090,19 +3090,16 @@ def _prompt(
     policy = context_policy(request)
     guidance_budget = (min(MAX_GUIDANCE_BYTES, policy["max_inline_input_bytes"])
                        if policy is not None else MAX_GUIDANCE_BYTES)
-    from .execution_checks import prompt_checks
-    checks = prompt_checks(request, max_bytes=guidance_budget)
-    checks_bytes = len(canonical_json(checks)) if checks is not None else 0
     guidance = performance_guidance(request, plugin_root if tool_workspace else None,
-        max_bytes=guidance_budget - checks_bytes)
+        max_bytes=guidance_budget)
     guidance_bytes = len(canonical_json(guidance)) if guidance is not None else 0
     configuration = configuration_guidance(request, plugin_root if tool_workspace else None,
-        max_bytes=guidance_budget - checks_bytes - guidance_bytes)
+        max_bytes=guidance_budget - guidance_bytes)
     configuration_bytes = len(canonical_json(configuration)) if configuration is not None else 0
     inline_indices = set(range(len(request.input_artifacts)))
     if policy is not None and tool_workspace:
         inline_indices = set()
-        remaining = policy["max_inline_input_bytes"] - checks_bytes - guidance_bytes - configuration_bytes
+        remaining = policy["max_inline_input_bytes"] - guidance_bytes - configuration_bytes
         seen_content = set()
         def priority(pair):
             ref = pair[1].ref
@@ -3137,7 +3134,6 @@ def _prompt(
         if manifest is not None:
             rendered_input_bytes[item.ref] = len(canonical_json(rendered))
     if manifest is not None:
-        manifest["execution_checks_bytes"] = checks_bytes
         manifest["workflow_guidance_bytes"] = guidance_bytes
         manifest["workflow_guidance_status"] = guidance["status"] if guidance else "not_inlined"
         manifest["configuration_guidance_bytes"] = configuration_bytes
@@ -3155,7 +3151,6 @@ def _prompt(
                 "instruction": instruction,
                 "agent_request_metadata": request_metadata,
                 "rendered_inputs": rendered_inputs,
-                **({"execution_checks": checks} if checks is not None else {}),
                 **({"workflow_guidance": guidance} if guidance is not None else {}),
                 **({"configuration_guidance": configuration} if configuration is not None else {}),
                 **({"continuation_observation": continuation} if continuation is not None else {}),

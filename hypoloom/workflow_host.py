@@ -3991,8 +3991,7 @@ class WorkflowHost:
             trusted_workspace_files=_trusted_execution_files(plan), read_only_bindings=mounts,
             allow_generic_argv=spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None)
         parser = None
-        from .execution_checks import contract_checks
-        if spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None or contract_checks(research.document) is not None:
+        if spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None:
             prepared, parser = self._measurement_execution(spec, prepared, workspace, agent_response)
         with self.store.transaction() as tx:
             if len(tx.list_attempts(execution_id=execution_id)) + 1 != ordinal: raise OperationalHalt("process attempt ordinal changed")
@@ -4019,8 +4018,8 @@ class WorkflowHost:
             workspace.materialize(prepared, agent_request=agent_request, agent_response=agent_response)
             if parser is not None:
                 from .measurement_execution import materialize_parser
-                from .shared_acceptance_execution import PreparedEvaluation, materialize_evaluation
-                if isinstance(parser, PreparedEvaluation):
+                if spec["payload"].get("goal_evaluation") is not None:
+                    from .shared_acceptance_execution import materialize_evaluation
                     materialize_evaluation(parser)
                 else: materialize_parser(parser)
             if target_binding is not None:
@@ -4157,19 +4156,6 @@ class WorkflowHost:
                                workspace: ExecutionWorkspace, response: Mapping[str, Any]) -> tuple[Any, Any]:
         if spec["payload"].get("goal_evaluation") is not None:
             return self.shared_acceptance.plan(spec, prepared, workspace, response)
-        from .execution_checks import contract_checks
-        checks = contract_checks(self._research_contract(spec["run_id"]).document)
-        if checks is not None:
-            from .shared_acceptance_execution import plan_evaluation
-            from .agent_aci import WorkspaceArtifact
-            measure = spec["payload"].get("measurement")
-            files = {item.path: item.content_bytes() for raw in response["arguments"]["workspace_files"] if (item := WorkspaceArtifact.from_dict(raw))}
-            evaluation = plan_evaluation(prepared, local_measurement=None if measure is None else ScientificMeasurement.from_dict(measure),
-                local_files=files, goal_acceptance=None, goal_files={}, execution_id=str(spec["execution_id"]),
-                timeout_seconds=spec["payload"]["execution_contract"]["timeout_seconds"], execution_checks=checks,
-                workload_argv=spec["payload"]["execution_contract"]["argv"],
-                python_executable=str(workspace.python_executable), runtime_prefix=str(workspace.runtime_prefix))
-            return evaluation.execution, evaluation
         if spec["payload"].get("measurement") is None: return prepared, None
         from .measurement_driver import sequence_request
         from .measurement_execution import plan_parser
@@ -4372,9 +4358,7 @@ class WorkflowHost:
             source_relative_path=source_path, result_relative_path=result_path, execution_argv=tuple(contract["argv"]),
             trusted_workspace_files=_trusted_execution_files(plan), read_only_bindings=mounts)
         parser = None
-        from .execution_checks import CHECKS_FAILED, contract_checks
-        from .shared_acceptance_execution import PreparedEvaluation
-        if spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None or contract_checks(self._research_contract(run_id).document) is not None:
+        if spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None:
             expected = workspace.plan(**planning, attempt_id=str(attempt["attempt_id"]),
                 attempt_ordinal=int(attempt["attempt_ordinal"]), execution_id=str(execution_id), allow_generic_argv=True)
             prepared, parser = self._measurement_execution(spec, expected, workspace, agent_response)
@@ -4383,11 +4367,6 @@ class WorkflowHost:
         else: prepared = workspace.recover(process_request, **planning)
         integrity_error = observation.get("integrity_error")
         try:
-            if isinstance(parser, PreparedEvaluation) and parser.execution_checks is not None and not observation.get("synthetic_before_spawn"):
-                from .execution_checks import read_checks, verify_check_sources
-                verify_check_sources(parser.execution_checks)
-                if observation.get("returncode") in {0, 70, 71, 72, 73}:
-                    read_checks(parser.execution_checks.parser.output_dir, parser.execution_checks.requirements)
             if integrity_error is not None or observation.get("synthetic_before_spawn"):
                 collected = workspace.integrity_diagnostic(prepared, str(integrity_error or "synthetic_terminal_before_spawn"),
                     agent_request=agent_request, agent_response=agent_response)
@@ -4396,7 +4375,7 @@ class WorkflowHost:
         except (ExecutionWorkspaceError, OSError, ValueError) as exc:
             integrity_error = f"{type(exc).__name__}:{exc}"[:1024]
             collected = workspace.integrity_diagnostic(prepared, integrity_error, agent_request=agent_request, agent_response=agent_response)
-        if isinstance(parser, PreparedEvaluation):
+        if parser is not None and spec["payload"].get("goal_evaluation") is not None:
             from .shared_acceptance_execution import collect_evaluation
             collected = collect_evaluation(parser, collected, observation)
         elif parser is not None:
@@ -4431,8 +4410,6 @@ class WorkflowHost:
         evaluation_observation = dict(observation)
         if integrity_error is not None: evaluation_observation["integrity_error"] = integrity_error
         payload = spec["payload"]; research = self._research_contract(run_id); component_id = str(payload["component_id"])
-        from .execution_checks import publication_paths
-        auxiliary_paths = publication_paths(contract_checks(research.document))
         component = research.component(component_id)
         if component is None: raise OperationalHalt(f"preregistered component {component_id!r} is absent")
         raw_component = next(item for item in research.to_dict()["components"] if item["id"] == component_id)
@@ -4441,13 +4418,7 @@ class WorkflowHost:
         reason = AttemptTerminalReason(evaluation_observation["terminal_reason"])
         validated_result = None; validation_error = None; validation_code = None; repairable_result_envelope = False
         goal_result = None; goal_validation_error = None
-        if integrity_error is None and isinstance(parser, PreparedEvaluation) and parser.execution_checks is not None and evaluation_observation.get("returncode") == CHECKS_FAILED:
-            validation_error = "execution requirements failed before workload launch; see raw/execution-checks and stderr.log"
-            validation_code = "execution_requirements_failed"
-            repairable_result_envelope = True
-            if payload.get("goal_evaluation") is not None:
-                goal_validation_error = "local/goal parsers not run: " + validation_error
-        elif integrity_error is None and payload.get("goal_evaluation") is not None:
+        if integrity_error is None and payload.get("goal_evaluation") is not None:
             validated_result, goal_result, validation_error = self.shared_acceptance.evaluate(spec, Path(publication.path), evaluation_observation, parser)
             goal_validation_error = validation_error
             if validated_result is not None:
@@ -4474,10 +4445,10 @@ class WorkflowHost:
                         attempt_id=attempt["attempt_id"], patch=value)
                 validated_result = (validate_measurement_result(raw_component, ScientificMeasurement.from_dict(payload["measurement"]), publication.path)
                     if payload.get("measurement") is not None else validate_component_result(raw_component, protocol, publication.path,
-                    git_apply_check=apply_check, implementation_bytes=implementation_bytes, auxiliary_paths=auxiliary_paths))
+                    git_apply_check=apply_check, implementation_bytes=implementation_bytes))
                 if validated_result["method_family_id"] is not None and validated_result["method_family_id"] != payload["method_family_id"]: raise ComponentResultValidationError("method_family_mismatch", "result.json.identity.method_family_id", "result lineage differs from preregistration")
                 if target_binding is not None: verify_downstream_implementation_contracts(self._research_contract(run_id).to_dict(), str(payload["component_id"]), str(payload["method_family_id"]), validated_result, Path(publication.path), workspace=workspace, binding=target_binding, attempt_id=str(attempt["attempt_id"]))
-            except ComponentResultValidationError as exc: validated_result, validation_error, validation_code, repairable_result_envelope = None, str(exc), exc.code, payload.get("measurement") is not None or repairable_component_result_error(raw_component, protocol, publication.path, exc, expected_method_family_id=str(payload["method_family_id"]), git_apply_check=apply_check, implementation_bytes=implementation_bytes, auxiliary_paths=auxiliary_paths)
+            except ComponentResultValidationError as exc: validated_result, validation_error, validation_code, repairable_result_envelope = None, str(exc), exc.code, payload.get("measurement") is not None or repairable_component_result_error(raw_component, protocol, publication.path, exc, expected_method_family_id=str(payload["method_family_id"]), git_apply_check=apply_check, implementation_bytes=implementation_bytes)
         if integrity_error is not None or (validation_error is not None and not repairable_result_envelope):
             scientific = ScientificOutcome.INTEGRITY_REJECTED
         elif validation_error is not None: scientific = ScientificOutcome.EXECUTION_FAILURE
