@@ -847,8 +847,17 @@ class ClaudeAgentHost:
     def service_tools(self) -> bool:
         """Called only by the Host event-loop thread; no worker writes state."""
         serviced = False
-        for endpoint in tuple(self._tool_servers.values()):
-            serviced = endpoint.service() or serviced
+        endpoints = tuple(self._tool_servers.values())
+        if not endpoints:
+            return False
+        cursor = getattr(self, "_tool_service_cursor", 0) % len(endpoints)
+        deadline = time.monotonic() + 0.05
+        for index in range(len(endpoints)):
+            endpoint = endpoints[(cursor + index) % len(endpoints)]
+            serviced = endpoint.service(max_calls=4, deadline_at=deadline) or serviced
+            self._tool_service_cursor = (cursor + index + 1) % len(endpoints)
+            if time.monotonic() >= deadline:
+                break
         return serviced
 
     def poll(

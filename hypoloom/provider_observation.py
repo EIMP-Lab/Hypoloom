@@ -336,6 +336,27 @@ def provider_retry_gate(entries, *, cooldown_seconds, cleared_at, now, attempt_l
         cleared_at=cleared_at, attempt_limit=attempt_limit), now=now)
 
 
+def _retry_started(row):
+    value = row.get("started_at", row.get("ended_at"))
+    return float(value) if type(value) in (int, float) and math.isfinite(value) else 0.0
+
+
+def compact_retry_history(entries, *, cleared_at):
+    """Discard inputs the existing reducer permanently excludes after recovery.
+
+    Used only while rendering an ordered historical event stream. Keep OPEN
+    rows for the reducer's independent in-flight calculation; never cache a
+    clock-dependent gate or invent a provider outcome.
+    """
+    eligible = [row for row in entries if cleared_at is None or _retry_started(row) >= cleared_at]
+    recovery = max((row for row in eligible if type(row.get("ended_at")) in (int, float)
+        and math.isfinite(row["ended_at"]) and row.get("provider_success")),
+        key=lambda row: (_retry_started(row), row["ended_at"]), default=None)
+    if recovery is None:
+        return eligible
+    return [row for row in eligible if row.get("state") == "OPEN" or _retry_started(row) >= _retry_started(recovery)]
+
+
 def provider_retry_history(entries, *, cooldown_seconds, cleared_at, attempt_limit=3):
     """Prepare committed history without freezing cooldown or recovery time.
 
@@ -343,9 +364,7 @@ def provider_retry_history(entries, *, cooldown_seconds, cleared_at, attempt_lim
     re-engage the gate. Earlier in-flight work is not a recovery invocation.
     """
     entries = list(entries)
-    def started(row):
-        value = row.get("started_at", row.get("ended_at"))
-        return float(value) if type(value) in (int, float) and math.isfinite(value) else 0.0
+    started = _retry_started
     # A clear applies to subsequent invocations, including after a connection
     # switch. Late responses from an older invocation cannot undo it.
     eligible = [row for row in entries if cleared_at is None or started(row) >= cleared_at]

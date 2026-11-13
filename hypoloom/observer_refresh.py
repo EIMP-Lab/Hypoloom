@@ -11,7 +11,7 @@ from .monitor import (HostStatusBackoff, MonitorError, build_observer_snapshot,
                       build_monitor_snapshot, _with_live_attempt_context)
 from .observation_api import build_product_observation
 from .observer_evidence import evidence_read_budget, read_attempt_evidence
-from .oracle import Oracle
+from .observer_worker import read_in_worker
 from .state_store import StateStore
 
 
@@ -29,6 +29,7 @@ class ObserverRefresh:
         self._cached, self._cached_at = None, 0.0
         self._audit_result, self._audited_at, self._audit_done = None, None, None
         self._audit_error, self._closed = False, False
+        self._audit_cancel = threading.Event()
         self._thread = None
         self._version_lock = threading.Lock()
         self._version_connection = self._version_context = None
@@ -59,7 +60,7 @@ class ObserverRefresh:
         return thread is not None and thread.is_alive()
 
     def _audit(self):
-        return Oracle(self.root / 'state.sqlite', self.root / 'artifacts').audit(self.run_id).to_dict()
+        return read_in_worker('audit', self.root, self.run_id, cancel_event=self._audit_cancel)
 
     def _run_audit(self):
         if self._closed: return
@@ -238,6 +239,7 @@ class ObserverRefresh:
         # may finish after the UI closes. It cannot write or schedule more work.
         # Never wait on a slow projection lock or full audit on the UI thread.
         self._closed = True
+        self._audit_cancel.set()
         with self._version_lock:
             if self._version_connection is not None:
                 self._version_context.__exit__(None, None, None)

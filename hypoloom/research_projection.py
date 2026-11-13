@@ -43,10 +43,13 @@ def finish_host_projections(host) -> None:
             # Schedule its current replacement while the executor is still open.
             wait((future,))
             host._refresh_research_projection(run_id)
-    host._projection_executor.shutdown(wait=True)
+    wait([job[0] for job in host._projection_jobs.values()] +
+         [job[1] for job in host._role_view_jobs.values()])
     host._collect_role_views()
     for run_id in tuple(host._projection_jobs):
         host._collect_research_projection(run_id)
+    host._projection_executor.shutdown(wait=True)
+    host._collect_projection_cleanups()
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,7 +400,7 @@ def read_role_view(
 
 def freeze_role_view(
     state_root: str | Path, run_id: str, role: str, view_id: str, *,
-    projection: ResearchProjection | None = None,
+    projection: ResearchProjection | None = None, _staged: Path | None = None,
 ) -> Path:
     """Create one logical node's immutable file selection, or reuse it on retry.
 
@@ -417,7 +420,7 @@ def freeze_role_view(
         files = role_view_files(projection, role)
         _validate_role_files(files, role)
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        staged = Path(tempfile.mkdtemp(prefix=".view-", dir=destination.parent))
+        staged = _staged if _staged is not None else Path(tempfile.mkdtemp(prefix=".view-", dir=destination.parent))
         _write_files(staged, files)
         try:
             renameat2_noreplace(staged, destination)
@@ -488,6 +491,7 @@ def _validate_old_tree(path: Path, projection: ResearchProjection) -> None:
 
 def prepare_research_projection(
     state_root: str | Path, run_id: str, *, projection: ResearchProjection | None = None,
+    _staged: Path | None = None,
 ) -> tuple[Path, Path, int, bool]:
     """Read/render/write in a worker; leave the atomic publication to Host."""
     staged: Path | None = None
@@ -504,7 +508,7 @@ def prepare_research_projection(
         replacing = output.exists() or output.is_symlink()
         if replacing:
             _validate_old_tree(output, projection)
-        staged = Path(tempfile.mkdtemp(prefix=".projection-", dir=parent))
+        staged = _staged if _staged is not None else Path(tempfile.mkdtemp(prefix=".projection-", dir=parent))
         _write_files(staged, projection.files)
         return staged, output, len(projection.files), replacing
     except BaseException as exc:
@@ -522,6 +526,38 @@ def publish_research_projection(prepared: tuple[Path, Path, int, bool]) -> tuple
     else:
         renameat2_noreplace(staged, output)
     return output, count
+
+
+def prepare_research_projection_in_worker(state_root: str | Path, run_id: str):
+    """Keep large JSON/rendering allocations out of the resident interpreter."""
+    from .observer_worker import read_in_worker
+    root = Path(state_root).resolve()
+    parent = root / _safe_id(run_id)
+    if parent.is_symlink():
+        raise ResearchProjectionError("run projection parent must not be a symlink")
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The owner knows this exact temporary path even if its worker is killed.
+    staged = Path(tempfile.mkdtemp(prefix=".projection-", dir=parent))
+    try:
+        result = read_in_worker("projection", root, run_id, staged=str(staged))
+        return staged, Path(result["output"]), result["count"], result["replacing"]
+    except BaseException:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
+
+
+def freeze_role_view_in_worker(state_root: str | Path, run_id: str, role: str, view_id: str):
+    from .observer_worker import read_in_worker
+    root = Path(state_root).resolve()
+    destination = _private_view_path(root, run_id, role, view_id)
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=".view-", dir=destination.parent))
+    try:
+        result = read_in_worker("role_view", root, run_id, role=role, view_id=view_id, staged=str(staged))
+        return Path(result["path"])
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
 
 
 def update_research_projection(

@@ -203,7 +203,12 @@ def _parent_lifetime() -> None:
         while os.read(sys.stdin.fileno(), 4096):
             pass
     finally:
-        os._exit(125)
+        # The same transport also serves historical readers, whose Git helpers
+        # belong to this private session. Parent death must reap that whole job.
+        try:
+            os.killpg(os.getpid(), signal.SIGKILL)
+        finally:
+            os._exit(125)
 
 
 def _worker_main() -> None:

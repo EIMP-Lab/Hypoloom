@@ -114,7 +114,7 @@ def _metric_target_met(spec, value):
 
 def _provider_auth_events(run_id, facts, transitions, attempts):
     """Provider events use the Host's reducer and existing durable rows."""
-    from .provider_observation import PROVIDER_UNAVAILABLE, provider_retry_gate
+    from .provider_observation import PROVIDER_UNAVAILABLE, compact_retry_history, provider_retry_gate
     from .agent_budget import agent_attempt_limits
     goal = next((row for row in facts if row["fact_type"] == "GoalDefined"), None)
     if goal is None: return []
@@ -148,6 +148,7 @@ def _provider_auth_events(run_id, facts, transitions, attempts):
             signature = ("recovering", None)
             continue
         entries.append(row)
+        entries = compact_retry_history(entries, cleared_at=cleared)
         status = provider_retry_gate(entries, cooldown_seconds=cooldown, cleared_at=cleared, now=at, attempt_limit=limit)
         current = (status["state"], status["reason"])
         if current == signature: continue

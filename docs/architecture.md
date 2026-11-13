@@ -81,3 +81,14 @@ Each run keeps its original runtime bundle and admitted configuration. Updating
 the checkout does not upgrade an existing run, and cross-version run migration
 is not supported. Do not edit SQLite to repair a run. Use the documented
 [runtime recovery](guides/runtime-recovery.md) and backup procedures.
+
+For long-running work, the Host services tools between completed phases and
+rotates pending nodes. Its 250 ms scheduling slice is a yield target; individual
+validations and transactions can take longer. Indexed recovery avoids decoding
+completed execution history. A bounded read cache limits retained derived data,
+while periodic audits and view preparation use short-lived processes to release
+large temporary allocations. The Host still validates and publishes accepted state.
+Audit and view results can lag, so check the observation timestamp as well as
+connection status. The new read indexes apply to fresh roots; existing runs keep
+their original schema and bundle. These mechanisms have bounded regression
+coverage, not a completed week-long soak guarantee.

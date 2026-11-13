@@ -294,6 +294,9 @@ class Oracle:
         connection.row_factory = sqlite3.Row
         try:
             connection.execute("PRAGMA query_only=ON")
+            # Every historical check, including reused learning inputs, belongs
+            # to this one SQLite snapshot. No cache survives the audit.
+            connection.execute("BEGIN")
             tables = {
                 row["name"]
                 for row in connection.execute("SELECT name FROM sqlite_schema WHERE type='table'")
@@ -6480,6 +6483,7 @@ def _audit_gpu_attempt_overlaps(
         "AND f.fact_type='ExperimentPreregistered' AND f.execution_id=a.execution_id "
         "WHERE a.kind='PROCESS' ORDER BY a.started_at,a.attempt_id"
     )
+    learning_contexts: dict[str, dict[str, Any]] = {}
     by_gpu: dict[str, list[tuple[float, float, str, str, tuple[str, int | None] | None]]] = {}
     seen: set[tuple[str, str]] = set()
     for row in rows:
@@ -6489,7 +6493,7 @@ def _audit_gpu_attempt_overlaps(
             payload = json.loads(row["spec_payload"])
             contract = payload["execution_contract"]
             if "resource_intent" in contract and "resource_grant" not in contract:
-                grant, shared = _shared_overlap_grant(connection, row, payload)
+                grant, shared = _shared_overlap_grant(connection, row, payload, learning_contexts)
             else:
                 grant = contract.get("resource_grant")
             if not isinstance(grant, Mapping): continue
@@ -6528,7 +6532,9 @@ def _audit_gpu_attempt_overlaps(
 
 
 def _shared_overlap_grant(connection: sqlite3.Connection, attempt: sqlite3.Row,
-                          payload: Mapping[str, Any]) -> tuple[Any, tuple[str, int | None] | None]:
+                          payload: Mapping[str, Any],
+                          learning_contexts: dict[str, dict[str, Any]] | None = None,
+                          ) -> tuple[Any, tuple[str, int | None] | None]:
     """Read each owner's existing sources; cross-root capacity needs the pool audit."""
     grant = None
     try:
@@ -6564,11 +6570,19 @@ def _shared_overlap_grant(connection: sqlite3.Connection, attempt: sqlite3.Row,
             request, response = source_observation["request"], source_observation["response"]
         document = json.loads(goal["payload_json"])["research_contract"]
         errors: list[OracleIssue] = []
+        learning_context = None
+        if run["research_contract_version"] == "hypoloom-research-v12":
+            if learning_contexts is None:
+                learning_contexts = {}
+            run_id = str(attempt["run_id"])
+            if run_id not in learning_contexts:
+                learning_contexts[run_id] = _raw_learning_context(connection, run_id)
+            learning_context = learning_contexts[run_id]
         resource = _audit_resource_contract(str(attempt["attempt_id"]), payload, contract, request, response,
             document.get("budget", {}), errors, document=document,
             cpu_only_artifact=_oracle_cpu_only_artifact(document, payload),
             research_contract_version=run["research_contract_version"], pool_binding=json.loads(creation["payload_json"]).get("gpu_pool"),
-            learning_context=_raw_learning_context(connection, attempt["run_id"]) if run["research_contract_version"] == "hypoloom-research-v12" else None)
+            learning_context=learning_context)
         if not isinstance(resource, Mapping) or not resource.get("shared"):
             return grant, None
         _audit_shared_process_resource(resource, dispatch, attempt, json.loads(attempt["observation_json"] or "{}"), errors)
