@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
+from collections import OrderedDict
 from copy import deepcopy
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -22,6 +24,56 @@ class SQLiteRuntimeError(StateStoreError): pass
 class MigrationError(StateStoreError): pass
 class IdentityConflict(StateStoreError): pass
 class RevisionConflict(StateStoreError): pass
+
+
+class _ReadCache:
+    """Disposable LRU with bounded retained entries and estimated object bytes."""
+    def __init__(self, max_bytes: int = 64 * 1024 * 1024, max_entries: int = 512):
+        self.max_bytes, self.max_entries = max_bytes, max_entries
+        self.values: OrderedDict[object, tuple[Any, int]] = OrderedDict()
+        self.bytes = 0
+
+    def clear(self):
+        self.values.clear()
+        self.bytes = 0
+
+    def __len__(self):
+        return len(self.values)
+
+    def __contains__(self, key):
+        return key in self.values
+
+    def __getitem__(self, key):
+        value, _ = self.values[key]
+        self.values.move_to_end(key)
+        return value
+
+    def retain(self, key, value):
+        # Count shared objects once per entry, conservatively counting sharing
+        # between entries again. Stop walking an oversized result immediately.
+        pending, seen, size = [key, value], set(), 0
+        while pending:
+            item = pending.pop()
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
+            size += sys.getsizeof(item)
+            if size > self.max_bytes:
+                return False
+            if isinstance(item, Mapping):
+                pending.extend(item.keys()); pending.extend(item.values())
+            elif isinstance(item, (list, tuple, set, frozenset)):
+                pending.extend(item)
+            elif is_dataclass(item) and not isinstance(item, type):
+                pending.extend(getattr(item, field.name) for field in fields(item))
+        while self.values and (len(self.values) >= self.max_entries or self.bytes + size > self.max_bytes):
+            _, (_, removed) = self.values.popitem(last=False)
+            self.bytes -= removed
+        self.values[key] = (value, size)
+        self.bytes += size
+        return True
+
+
 class HostWriterCapability:
     """Nominal token that makes writable construction explicit at the Host."""
     __slots__ = ("_marker",)
@@ -234,7 +286,7 @@ class StateStore:
     """One state.sqlite; construction without the Host token is read-only."""
     def __init__(self, state_root: str | os.PathLike[str], writer_capability: HostWriterCapability | None = None, *, busy_timeout_ms: int = 5_000) -> None:
         self.state_root = Path(state_root); self.database_path = self.state_root / "state.sqlite"; self._capability = writer_capability; self._timeout = int(busy_timeout_ms); self._db: sqlite3.Connection | None = None
-        self._read_cache: dict[object, Any] = {}
+        self._read_cache = _ReadCache()
         self._read_cache_active = False
         self._read_cache_changes = None
         if self._timeout <= 0: raise ValueError("busy_timeout_ms must be positive")
@@ -313,8 +365,11 @@ class StateStore:
         if self._read_cache_changes != self.total_changes:
             self._read_cache.clear()
             self._read_cache_changes = self.total_changes
-        if key not in self._read_cache: self._read_cache[key] = read()
-        return deepcopy(self._read_cache[key])
+        if key in self._read_cache:
+            return deepcopy(self._read_cache[key])
+        value = read()
+        self._read_cache.retain(key, value)
+        return deepcopy(value)
     @contextmanager
     def readonly_connection(self, *, check_same_thread: bool = True) -> Iterator[sqlite3.Connection]:
         db = self._connect(True, check_same_thread=check_same_thread)

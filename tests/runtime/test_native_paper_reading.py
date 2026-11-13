@@ -644,13 +644,17 @@ def test_native_quarantine_ends_calls_preserves_work_and_allows_explicit_cleanup
                 ready = bool(host.running) and any(h.request.command is AgentCommand.EXPERIMENT_EXECUTION
                     and scenario.steps[h.request.attempt_id] >= 2 for h in host.running_agents.values())
             if ready and not paused:
-                if stage == "readers":
-                    scenario.readers_ready.set()
                 def fail_dispatch(run):
                     raise ValueError("isolated native dispatch fault")
                 monkeypatch.setattr(host, "_drive_active", fail_dispatch)
-                host.tick()
+                # A tick may resume another completed phase before dispatch.
+                # Keep reader responses held until the injected fault is reached.
+                fault_deadline = time.monotonic() + 5
+                while run_id not in host.dispatch_errors and time.monotonic() < fault_deadline:
+                    host.tick()
                 assert run_id in host.dispatch_errors
+                if stage == "readers":
+                    scenario.readers_ready.set()
                 # Polling precedes dispatch: readers accepted earlier in this tick
                 # remain successful. Only calls live at the fault are interrupted.
                 affected = {aid: h.process_group_id for aid, h in host.running_agents.items()}

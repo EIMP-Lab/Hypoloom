@@ -456,6 +456,49 @@ def test_two_valid_shared_grants_may_overlap_across_runs():
         assert issues == []
 
 
+def test_overlap_learning_context_is_built_once_per_run_and_never_reused_across_audits(monkeypatch):
+    connection = _overlap_database()
+    connection.execute("UPDATE workflow_runs SET research_contract_version='hypoloom-research-v12'")
+    connection.execute("ALTER TABLE research_facts ADD COLUMN fact_id")
+    connection.execute("UPDATE research_facts SET fact_id='fact-'||rowid")
+    connection.execute("ALTER TABLE workflow_commands ADD COLUMN run_id")
+    connection.execute("UPDATE workflow_commands SET run_id=substr(command_id,1,instr(command_id,'--')-1)")
+    for run in ("alpha", "beta"):
+        row = dict(connection.execute("SELECT * FROM execution_attempts WHERE run_id=? AND kind='PROCESS'", (run,)).fetchone())
+        row['attempt_id'] += '-second'
+        connection.execute("INSERT INTO execution_attempts VALUES(" + ','.join('?' for _ in row) + ")", tuple(row.values()))
+        intent = dict(connection.execute("SELECT * FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT'", (run,)).fetchone())
+        intent['command_id'] += '-second'
+        payload = json.loads(intent['payload_json'])
+        payload['attempt_id'] = row['attempt_id']
+        payload['gpu_pool_key']['attempt_id'] = row['attempt_id']
+        intent['payload_json'] = json.dumps(payload)
+        connection.execute("INSERT INTO workflow_transitions VALUES(?,?,?,?,?,?)", tuple(intent.values()))
+        connection.execute("INSERT INTO workflow_commands VALUES(?,?,?)", (intent['command_id'], 'EXECUTE', run))
+    original = oracle._raw_learning_context
+    reads = []
+    def context(db, run):
+        reads.append(run)
+        return original(db, run)
+    monkeypatch.setattr(oracle, '_raw_learning_context', context)
+    try:
+        actual = []
+        oracle._audit_gpu_attempt_overlaps(connection, 'alpha', actual)
+        assert sorted(reads) == ['alpha', 'beta']
+        # Re-run the previous, uncached algorithm against the same raw evidence.
+        shared = oracle._shared_overlap_grant
+        monkeypatch.setattr(oracle, '_shared_overlap_grant', lambda db, row, payload, cache: shared(db, row, payload))
+        expected = []
+        oracle._audit_gpu_attempt_overlaps(connection, 'alpha', expected)
+        assert actual == expected
+        assert len(reads) == 6
+        monkeypatch.setattr(oracle, '_shared_overlap_grant', shared)
+        oracle._audit_gpu_attempt_overlaps(connection, 'alpha', [])
+        assert len(reads) == 8
+    finally:
+        connection.close()
+
+
 @pytest.mark.parametrize(
     "change", ["version", "pool_key", "profile_floor", "legacy_peer"]
 )

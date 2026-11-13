@@ -166,8 +166,8 @@ private session promotion. Both keep the existing owner and source restrictions.
 scientific outcome labels retain their meaning. Older pinned runs keep their
 original semantics; cross-version migration is unsupported.
 
-Human research projections and exact-node private views are prepared by one
-bounded background worker. The Host publishes human views atomically, discards
+Human research projections and exact-node private views are prepared through one
+background queue in short-lived child processes. The Host publishes human views atomically, discards
 an obsolete active view after terminal closure, and rechecks task admission
 before dispatching a prepared private view. Derived views may lag the durable
 revision; control and research admission still read the original records.
@@ -178,6 +178,22 @@ read cache, invalidated on writes and transaction completion. Live traffic,
 cooldown time, process activity, scheduler waits and backup quiescence are evaluated
 for each request. The provider retry reducer prepares durable history separately
 from its current-clock evaluation; both paths use the same reducer.
+
+Long-running Hosts yield between completed phases, service bounded tool bursts
+and rotate pending execution nodes and expert components. The 250 ms scheduling
+slice is a yield target: a single validation or transaction remains atomic and
+may take longer. Historical execution recovery selects unfinished nodes through
+SQLite indexes before decoding their requests. StateStore's disposable LRU holds
+at most 512 entries and 64 MiB of estimated object bytes; this is not a whole-process
+memory limit. Provider event rendering drops history already excluded by the
+existing retry reducer after recovery.
+
+Periodic Oracle audits also use short-lived processes, with a deadline and
+process-group cleanup on cancellation or parent exit. Each audit reads one
+SQLite snapshot and reuses learning inputs within that audit; validation results
+are not reused across audits. Audit and view preparation may lag current state,
+so observation freshness remains explicit. Schema 4 adds read indexes for new
+roots only. Existing nonempty roots retain their original schema and frozen bundle.
 
 Within one Host, unchanged runtime files reuse their last verified runtime identity.
 The complete file inventory and device/inode/size/mode/mtime/ctime must still agree;

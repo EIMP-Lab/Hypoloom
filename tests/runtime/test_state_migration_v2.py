@@ -57,12 +57,8 @@ def _v1_database(root: Path, *, with_data: bool) -> Path:
 
 def test_fresh_and_empty_v1_databases_upgrade_and_reopen_at_current_schema(tmp_path: Path) -> None:
     fresh = StateStore(tmp_path / "fresh", HostWriterCapability.issue()).initialize()
-    assert fresh.inspect("PRAGMA user_version") == ({"user_version": 3},)
-    assert fresh.inspect("SELECT version FROM schema_migrations ORDER BY version") == (
-        {"version": 1},
-        {"version": 2},
-        {"version": 3},
-    )
+    assert fresh.inspect("PRAGMA user_version") == ({"user_version": state_store_module.SCHEMA_VERSION},)
+    assert fresh.inspect("SELECT version FROM schema_migrations ORDER BY version") == tuple({"version": version} for version in range(1, state_store_module.SCHEMA_VERSION + 1))
     fresh.close()
     reopened = StateStore(tmp_path / "fresh", HostWriterCapability.issue()).initialize()
     reopened.close()
@@ -70,7 +66,7 @@ def test_fresh_and_empty_v1_databases_upgrade_and_reopen_at_current_schema(tmp_p
     empty_root = tmp_path / "empty-v1"
     _v1_database(empty_root, with_data=False)
     upgraded = StateStore(empty_root, HostWriterCapability.issue()).initialize()
-    assert upgraded.inspect("PRAGMA user_version") == ({"user_version": 3},)
+    assert upgraded.inspect("PRAGMA user_version") == ({"user_version": state_store_module.SCHEMA_VERSION},)
     upgraded.close()
 
 
@@ -147,7 +143,7 @@ def test_interrupted_0002_rolls_back_then_clean_retry_succeeds(
 
     monkeypatch.setattr(state_store_module, "_MIGRATIONS", original)
     store = StateStore(root, HostWriterCapability.issue()).initialize()
-    assert store.inspect("PRAGMA user_version") == ({"user_version": 3},)
+    assert store.inspect("PRAGMA user_version") == ({"user_version": state_store_module.SCHEMA_VERSION},)
     store.close()
 
 

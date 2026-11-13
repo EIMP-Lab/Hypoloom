@@ -375,17 +375,21 @@ class AgentToolServer:
                 tool=tool, stage=stage, exception_type=type(exc).__name__,
                 message=str(exc), traceback="".join(traceback.format_exception(exc)))
 
-    def service(self) -> bool:
-        """Drain ready calls on the owning Host thread without waiting for I/O."""
+    def service(self, *, max_calls: int = 16, deadline_at: float | None = None) -> bool:
+        """Service a bounded burst on the owner thread without waiting for I/O."""
         if threading.get_ident() != self._owner_thread:
             raise RuntimeError("Host tools must be serviced on their owning thread")
         serviced = False
-        while not self._closed.is_set():
+        count = 0
+        while not self._closed.is_set() and count < max_calls:
+            if count and deadline_at is not None and time.monotonic() >= deadline_at:
+                break
             try:
                 call = self._calls.get_nowait()
             except queue.Empty:
                 break
             serviced = True
+            count += 1
             stage = "workspace_capture"
             try:
                 # Retain an already completed read through the ordinary finish

@@ -84,8 +84,12 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Keep every existing counted file and the total 27,550-line authority budget.
     # Status transport/publication is counted too: transfer 250 unused lines
     # from participant_controls to control_server, preserving the same total.
-    allocations = {"domain": 950, "lifecycle": 500, "ports": 100,
-        "state_store": 400, "research_kernel": 750, "workflow_host": 4725, "institutional_controls": 100,
+    # Phase slicing remains in the Host; bounded caching remains in StateStore.
+    # Transfer 100 unused lifecycle lines (374 actual) to the Host (4803), and
+    # 50 domain lines (892 actual) to StateStore (421). Count the new migration
+    # with all existing SQL and preserve the same 27,550-line authority budget.
+    allocations = {"domain": 900, "lifecycle": 400, "ports": 100,
+        "state_store": 450, "research_kernel": 750, "workflow_host": 4825, "institutional_controls": 100,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,

@@ -772,8 +772,20 @@ def test_manager_acceptance_changes_only_next_frozen_hypothesis_batch(batch_host
 
 
 @pytest.mark.parametrize("batch_host", ["shared-success", "shared-refuted"], indirect=True)
-def test_three_expert_shared_goal_uses_actual_alternative_cpu_results(batch_host):
+def test_three_expert_shared_goal_uses_actual_alternative_cpu_results(batch_host, monkeypatch):
     host = batch_host
+    # Shared-goal success correctly stops unfinished peers. This three-result
+    # fixture must admit the winning design after both losing alternatives have
+    # published, independent of dispatch timing; retain all three CPU assertions.
+    step = host._expert_agent_step
+    def losing_alternatives_first(*args, **kwargs):
+        task, role = args[2:4]
+        if (role == "ml-researcher" and isinstance(task, ResearchNodeTask)
+                and task.key.node_kind is ResearchNodeKind.EXPERIMENT_DESIGN_IMPLEMENT
+                and len(host.store.list_facts("batch-host", "CanonicalOutcomeAccepted")) < 2):
+            return
+        return step(*args, **kwargs)
+    monkeypatch.setattr(host, "_expert_agent_step", losing_alternatives_first)
     # The /45 run reached 38 successful Agents, three CPU results and its goal
     # verdict at the old 60s bound. Include bounded final-report closure.
     _complete(host, timeout=120)

@@ -1,5 +1,25 @@
 # Current Hypoloom development state
 
+- November 13 long-running Host work: the user authorizes design, implementation,
+  dev commit/push and corresponding selective main publication. Completed
+  execution history is selected through schema-4 indexes before request decoding;
+  original retry/handoff/admission validators remain authoritative. Phase slices,
+  bounded tool bursts and rotating pending work give controls service opportunities.
+  The 250 ms target does not preempt atomic operations. Historical audits and view
+  preparation use the existing bounded child-process transport; audit inputs are
+  shared only within one read transaction. The read cache is capped at 512 entries
+  / 64 MiB estimated bytes, and provider event rendering compacts inputs already
+  excluded by the original reducer. Existing roots and frozen bundles are not
+  upgraded. Cold policy reads remain about 2.3 s; no week-long soak is claimed.
+  G1 plus 77 affected rechecks reconciles 8,868 passes / 241 skips with no
+  unresolved identities; original environment/harness failures remain recorded.
+  Twenty-one final native/CPU roots close 571 Agents / 44 Processes with clean
+  audits and no residue across 313 groups. Ten retained roots / 8,055 artifacts
+  and their five baseline findings are unchanged. Both packages match 215 runtime
+  files; main's public suite passes 283 with one explicit CUDA skip.
+  [Design](../design/long-running-host.md) /
+  [validation](../qualification.md#long-running-host-2026-11-13).
+
 - November 10 expert roster limit removal: the user authorizes design,
   implementation, regression review and dev/main publication. Five validators
   now accept any nonempty unique roster; ownership, capacities and budget

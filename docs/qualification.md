@@ -1,5 +1,90 @@
 # Qualification: G0–G5
 
+## Long-running Host (2026-11-13)
+
+The user authorizes diagnosis, design, implementation, dev commit/push and
+selective main publication for week-scale operation. Baselines are dev `6e1845f`
+and main `1b845f9`. [Design](design/long-running-host.md); private evidence is under
+`.local/qualification/long-running-host/` in each worktree. Existing research
+roots, frozen bundles, Profiles and production pools are not changed.
+
+Schema 4 adds read indexes for fresh roots. Execution recovery selects pending
+nodes before decoding requests, retaining the original retry/handoff/admission
+checks. Host phase slices and rotating bounded tool bursts provide control
+opportunities; atomic operations can exceed the 250 ms yield target. StateStore
+retains at most 512 cached entries / 64 MiB estimated object bytes. Historical
+audits and view preparation use the existing cancellable child-process transport;
+audit learning inputs are shared only within one SQLite read transaction.
+Provider events compact inputs already excluded by the canonical retry reducer.
+No node-state mirror, audit-result ledger or second provider reducer is added.
+
+Focused G0 selections pass **167 cases** for history, GPU audit, transactions,
+migrations, worker deadlines and tool ownership, and **70 cases** for provider
+history, recovery and sliced cancellation; these overlap. Earlier harness failures
+from fresh-schema expectations, noncanonical synthetic JSON and the initial SQL
+query plan are preserved. Fresh-schema assertions now use the actual current
+version, synthetic observations use the existing canonical serializer, and the
+pending-first join avoids the measured outer history scan. No production
+validation or existing scientific assertion is relaxed.
+
+Full G1 records **8,861 passed / seven failed / 241 skipped in 1,810.22 s**.
+Three unchanged Web-renderer cases used system Node 10 and could not parse modern
+JavaScript; the recheck explicitly uses the existing Node 22.16.0. The notifier
+mock now intercepts the audit worker boundary, and native quarantine waits for
+the next dispatch phase while holding its test provider responses. The shared-goal
+fixture previously depended on all peers publishing before an early winning
+candidate: the failed root correctly reached GOAL_MET with two accepted CPU
+results. The fixture now admits the potential winner after both losing alternatives
+publish, preserving all three-result assertions and the production early-stop rule.
+Core allocations transfer 100 unused lifecycle lines to Host and 50 domain lines
+to StateStore; every prior module and SQL file remains counted under the unchanged
+27,550-line total. These are harness/environment/budget-accounting corrections;
+runtime code remains identical to the full G1 candidate. The complete affected
+selection passes **77 cases in 103.01 s**. JUnit reconciliation covers all **9,109
+identities: 8,868 passed / 241 skipped / zero failed or missing**. This is full G1
+plus affected rechecks, not one uninterrupted green invocation. Original reports
+remain. Compilation, undefined-name and whitespace checks pass.
+
+Independent G3 census covers the 17 standard native/CPU, parallel-proposal and
+roster roots from G1 plus four shared-goal/quarantine recheck roots: **21 roots,
+571 closed Agents / 44 closed Processes / 313 recorded groups**. All Oracles are
+clean, with no pending effects, OPEN Attempts or live group residue. Original
+quarantine roots are retained separately, and their recorded groups also have no
+live residue. Native CLI work uses local scripted providers; CPU execution,
+recovery, collection and publication are real.
+
+G2 compares baseline, source candidate and isolated installed readers on **ten
+retained terminal roots / 8,055 artifact files**. Logical database and artifact
+contents are unchanged. One raw report differs only in issue order; sorting just
+the top-level issue array makes every complete report equal, preserving all
+fields and nested ordering. The original comparison failure and the normalized
+reconciliation both remain. Four existing `interaction_source_invalid` findings
+and one `terminal_run_process_residue` finding remain. The live ACTIVE root is
+excluded from this stable comparison and is never resumed or settled.
+
+For each branch, source/wheel/installation/fresh bundle match **215 runtime files**.
+Installed CLI/MCP work outside the checkout. Installed and frozen audit workers
+load their own package, match the direct report, leave the database unchanged and
+are reaped. main's portable suite passes **283 / one explicit CUDA skip**. The only
+pre-existing runtime differences between branches remain two documentation strings.
+
+On one disposable copy of the active database, the same recovery check takes
+**5.646 s cold / 1.855 s warm** at baseline versus **0.00116 s / 0.000038 s** with
+the candidate and its indexes. Both produce an empty dispatch-candidate set.
+Replay-process peak RSS through recovery falls from **1.04 GiB to 0.12 GiB**;
+candidate peak after policy reading is 0.16 GiB. This does not measure the resident
+Host's overall RSS or end-to-end control latency. Cold policy reading still costs
+**2.36 s** (baseline 2.27 s). The 1/100/1000-completed-plus-one-pending regression
+decodes only the pending request; 500 interleaved provider history points match
+the uncompressed reducer, and 2,000 successive successes each render from one
+remaining input. Historical artifacts and scientific records still grow with work.
+
+This is bounded regression and native CPU qualification, not a completed week-long
+soak. No new real-GPU or paid-model qualification is claimed. Existing nonempty
+roots retain their schema and frozen runtime; new roots receive the optimization.
+main receives runtime changes, portable regression and bilingual user guidance;
+development design and qualification records remain on dev.
+
 ## Expert roster limit removal (2026-11-10)
 
 The user authorizes the framework correction, recent-repair compatibility

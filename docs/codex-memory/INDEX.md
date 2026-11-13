@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Long-running Host, November 13](../design/long-running-host.md):
+  indexed pending execution recovery, phase slices and tool fairness, bounded
+  read-cache retention, disposable audit/view workers and canonical provider
+  history compaction. Fresh roots only; existing research remains unchanged.
+  [Validation](../qualification.md#long-running-host-2026-11-13).
+
 - [Expert roster limit removal, November 10](../design/expert-roster-limit-removal.md):
   nonempty unique rosters without a fixed ceiling, independent capacity/budgets,
   recent-repair compatibility, larger-roster CPU/native closure and dev/main publication.

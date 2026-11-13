@@ -59,18 +59,18 @@ def test_live_literature_transitions_reuse_local_log_without_research_writes_or_
 
 
 def test_notifier_reuses_background_audit_without_blocking_delivery(tmp_path, monkeypatch):
-    from hypoloom.oracle import Oracle
+    from hypoloom.observer_refresh import ObserverRefresh
     root = configured(tmp_path, dashboard=False)
     entered, release = threading.Event(), threading.Event()
     callers = []
 
-    def audit(self, run_id):
+    def audit(self):
         callers.append(threading.get_ident())
         entered.set()
         release.wait(2)
-        return {"ok": True, "issues": [], "run_id": run_id}
+        return {"ok": True, "issues": [], "run_id": self.run_id}
 
-    monkeypatch.setattr(Oracle, "audit", audit)
+    monkeypatch.setattr(ObserverRefresh, "_audit", audit)
     services = ObserverServices(root, output=io.StringIO(), errors=io.StringIO())
     try:
         services.poll_once()

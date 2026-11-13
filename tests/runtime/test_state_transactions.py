@@ -139,8 +139,8 @@ def test_production_migration_failure_rolls_back_and_clean_retry_succeeds(
     monkeypatch.setattr(state_store_module, "_MIGRATIONS", original)
     store = StateStore(root, HostWriterCapability.issue()).initialize()
     try:
-        assert store.inspect("PRAGMA user_version") == ({"user_version": 3},)
-        assert store.inspect("SELECT version FROM schema_migrations") == ({"version": 1}, {"version": 2}, {"version": 3})
+        assert store.inspect("PRAGMA user_version") == ({"user_version": state_store_module.SCHEMA_VERSION},)
+        assert store.inspect("SELECT version FROM schema_migrations") == tuple({"version": version} for version in range(1, state_store_module.SCHEMA_VERSION + 1))
     finally:
         store.close()
 

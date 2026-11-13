@@ -142,7 +142,7 @@ def test_slow_projection_does_not_block_cancel_or_publish_active_over_terminal(t
         published_states.append(json.loads((prepared[0] / "run.json").read_text())["status"]["run_state"])
         return original_publish(prepared)
 
-    monkeypatch.setattr(research_projection, "prepare_research_projection", prepare)
+    monkeypatch.setattr(research_projection, "prepare_research_projection_in_worker", prepare)
     monkeypatch.setattr(research_projection, "publish_research_projection", publish)
     monkeypatch.setattr(workflow_host.WorkflowHost, "_drive_active", lambda *_: None)
     host = workflow_host.WorkflowHost(root)
@@ -197,7 +197,7 @@ def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tm
     def publish(*args):
         published.append(args)
 
-    monkeypatch.setattr(research_projection, "prepare_research_projection", lambda *args: None)
+    monkeypatch.setattr(research_projection, "prepare_research_projection_in_worker", lambda *args: None)
     monkeypatch.setattr(research_projection, "publish_research_projection", publish)
     def refresh(host):
         from concurrent.futures import wait
@@ -237,10 +237,10 @@ def test_idle_host_skips_unchanged_projection_but_tracks_attempts_and_retries(tm
         def unavailable(*args):
             raise research_projection.ResearchProjectionError("temporary publication failure")
 
-        monkeypatch.setattr(research_projection, "prepare_research_projection", unavailable)
+        monkeypatch.setattr(research_projection, "prepare_research_projection_in_worker", unavailable)
         refresh(host)
         assert run_id in host.projection_errors
-        monkeypatch.setattr(research_projection, "prepare_research_projection", lambda *args: None)
+        monkeypatch.setattr(research_projection, "prepare_research_projection_in_worker", lambda *args: None)
         clock[0] += 2
         refresh(host)
         assert len(published) == 3 and run_id not in host.projection_errors
