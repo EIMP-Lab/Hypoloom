@@ -1,5 +1,16 @@
 # Current Hypoloom development state
 
+- November 14 correction: the user explicitly requests reverting the static
+  execution-check feature, then reviewing a dynamic verification design before
+  any implementation. Dev `d91fdd3` and main `90f4c19` are published exact-tree
+  reverts of `2739d2c` and `3073dfb`. Public checks pass 283 / one skip; 39
+  affected Host/lifecycle checks pass. The new proposal uses candidate-specific
+  Agent plans, bounded execution and evidence review before costly expansion;
+  it is documentation only and requires user confirmation. Do not implement,
+  alter Profiles or operate retained research under the earlier authorization.
+  [Proposal](../design/dynamic-experiment-verification.md) /
+  [rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
+
 - November 13 long-running Host work: the user authorizes design, implementation,
   dev commit/push and corresponding selective main publication. Completed
   execution history is selected through schema-4 indexes before request decoding;

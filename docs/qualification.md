@@ -1,5 +1,34 @@
 # Qualification: G0–G5
 
+## Execution checks rollback (2026-11-14)
+
+The user requests reverting the static task-owned execution-check feature and
+reviewing a dynamic verification proposal before implementation. Dev `d91fdd3`
+reverts `2739d2c`; main `90f4c19` reverts `3073dfb`. Each revert commit has exactly
+the same tree as the reverted commit's parent (`4025fc0` / `9b28432`). Both were
+pushed atomically and their remote heads verified. No history was rewritten.
+
+Main's complete portable suite passes **283 / one conditional CUDA skip**.
+Focused dev checks pass **39**, covering real shared-acceptance Host execution,
+measurement execution, publication recovery and lifecycle/core invariants.
+JUnit counts reconcile with no failures or errors. Runtime/source references
+to the removed feature are absent. These are rollback checks of an exactly
+restored, previously qualified tree; full G1, paid/GPU campaigns and retained-run
+audits were not repeated.
+
+Private evidence remains under `.local/qualification/execution-checks-revert/`.
+The prior feature's evidence under `.local/qualification/execution-checks/` and
+its original Git history remain available. Existing research, frozen bundles,
+private Profiles and production resources were not changed. The remote reported
+that main's ordinary Git push used the account's PR-rule bypass permission;
+branch-protection settings were not modified.
+
+Subsequent changes are limited to this record, development memory and the
+[dynamic verification proposal](design/dynamic-experiment-verification.md).
+Its four documentation-structure checks pass. The proposal is not implemented
+or qualified. User confirmation is required before runtime, protocol or Profile
+implementation.
+
 ## Long-running Host (2026-11-13)
 
 The user authorizes diagnosis, design, implementation, dev commit/push and

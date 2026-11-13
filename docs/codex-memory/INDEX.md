@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Dynamic experiment verification proposal, November 14](../design/dynamic-experiment-verification.md):
+  the static execution-check feature is reverted on dev/main. Candidate-specific
+  Agent verification and execution-stage evidence review are proposed only;
+  user confirmation is required before implementation. Existing research and
+  Profiles stay unchanged. [Rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
+
 - [Long-running Host, November 13](../design/long-running-host.md):
   indexed pending execution recovery, phase slices and tool fairness, bounded
   read-cache retention, disposable audit/view workers and canonical provider
