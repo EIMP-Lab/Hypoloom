@@ -1,9 +1,10 @@
 # Development memory index
 
-- [Dynamic experiment verification proposal, November 14](../design/dynamic-experiment-verification.md):
-  the static execution-check feature is reverted on dev/main. Candidate-specific
-  Agent verification and independent plan/evidence review sessions are proposed
-  only; context isolation, source access, bounded authority and cost are explicit.
+- [Code implementation verifier proposal, November 14](../design/dynamic-experiment-verification.md):
+  the static execution-check feature is reverted on dev/main. The independent
+  verifier checks code, not hypotheses; the draft adds explicit init model choice,
+  Grounding-style TUI/Web cards, per-expert findings and delivery, scoped sessions,
+  source/authority boundaries, shared observer projections and bounded cost.
   User confirmation is required before implementation. Existing research and
   Profiles stay unchanged. [Rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
 

@@ -5,10 +5,14 @@
   any implementation. Dev `d91fdd3` and main `90f4c19` are published exact-tree
   reverts of `2739d2c` and `3073dfb`. Public checks pass 283 / one skip; 39
   affected Host/lifecycle checks pass. Following the user's context-bias concern,
-  the proposal adds an independent verification-review session with Host-selected
-  inputs, read-only candidate access, plan/evidence review and bounded costs.
-  Candidate-specific checks remain dynamic; fresh task sessions alone do not
-  establish independent judgment. This is documentation only and requires user
+  the proposal adds an independent code-implementation verifier with Host-selected
+  inputs and read-only candidate access. It does not judge hypotheses or research
+  value. The user now requests init selection by exact model name and dedicated
+  TUI/Web cards beside Grounding, with per-expert triggers, findings and delivery
+  follow-through. The draft maps these to existing model resolution, auxiliary
+  tasks, publication and shared observer projections; existing max_active_reviews
+  belongs to rendezvous, not this role. Dynamic checks, reuse and bounded costs
+  remain part of the design. This is documentation only and requires user
   confirmation. Do not implement,
   alter Profiles or operate retained research under the earlier authorization.
   [Proposal](../design/dynamic-experiment-verification.md) /
