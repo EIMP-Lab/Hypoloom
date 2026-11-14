@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Verified engineering recall and probe recovery, November 15](../design/verified-engineering-memory.md):
+  ACI 37 / adapter 94 short guidance, bounded paired measurements, same-owner
+  evidence inputs, native deadline propagation, compact verification and CC
+  window compatibility. Dev/main publication authorized; existing research stays
+  unchanged. [Checks and limits](../qualification.md#verified-engineering-recall-and-probe-recovery-2026-11-15).
+
 - [Verifier reliability and efficiency optimization, November 14](../design/implementation-verifier-optimization.md):
   user-approved P0/P1 implementation after Flash/Pro sampling. Native prompt and
   reference consistency,

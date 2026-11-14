@@ -73,8 +73,8 @@ def test_reader_inherits_capacity_controls_without_parent_scientific_context(tmp
     ("claude-opus-4-8", {}, 1000000, "cc_builtin"),
     ("claude-haiku-4-5-20251001", {}, 200000, "cc_builtin"),
     ("claude-fable-5-1", {}, 1000000, "cc_builtin"),
-    ("new-provider-model", {}, 200000, "cc_default"),
-    ("claude-unknown", {MAX: "1000000"}, 200000, "cc_default"),
+    ("new-provider-model", {}, 1000000, "cc_default"),
+    ("claude-unknown", {MAX: "1000000"}, 1000000, "cc_config"),
     ("claude-sonnet-4-6", {MAX: "1000000", "DISABLE_COMPACT": "1"}, 1000000, "cc_config"),
 ])
 def test_cc_rules_are_per_exact_model(model, env, tokens, source):
@@ -198,7 +198,7 @@ def test_metadata_failure_does_not_block_or_retry(metadata_server, status):
     env = {"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{metadata_server.server_port}", "ANTHROPIC_API_KEY": "local-only"}
     result = resolver.resolve("custom", {}, env, {})
     assert result["metadata_status"] == "unavailable"
-    assert result["cc_context_tokens"] == 200000
+    assert result["cc_context_tokens"] == 1000000
     assert resolver.resolve("custom", {}, env, {}) == result
     assert len(metadata_server.calls) == 1
 

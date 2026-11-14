@@ -767,7 +767,7 @@ def _assert_performance_guidance_delivery(scenario, evidence_root: Path) -> None
 
     stages = {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}
     received = {}
-    expected = (WORKFLOW_SKILL_ROOT / "references/performance.md").read_text()
+    expected = (WORKFLOW_SKILL_ROOT / "references/engineering-performance.md").read_text()
     configuration_text = (WORKFLOW_SKILL_ROOT / "references/configuration-studies.md").read_text()
     for document in scenario.requests:
         prompt = native_prompt(document)

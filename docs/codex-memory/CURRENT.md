@@ -1,5 +1,18 @@
 # Current Hypoloom development state
 
+- November 15 engineering recall: implementation and dev/main publication are
+  authorized. ACI 37 / adapter 94 adds bound short guidance, actual paired probe
+  timings, partial observations, same-owner evidence recall and bounded native
+  Bash checks; includes ACI 36 probe recovery and compact verifier views. Native
+  CC 2.1.325 window drift is corrected without changing frozen requests. Full G1
+  plus the 31-case Skill recheck reconciles 8,983 passes / 245 explicit skips /
+  zero unresolved; main passes 368 / one skip. Eight G3 roots close 188 Agents /
+  20 Processes with clean Oracles and no residue. Ten retained roots / 8,055
+  artifacts and five historical issues are unchanged; two active roots excluded.
+  Both packages match 223 runtime files. No new GPU or paid-model qualification;
+  prior unknown costs remain reserved. [Design](../design/verified-engineering-memory.md)
+  / [evidence](../qualification.md#verified-engineering-recall-and-probe-recovery-2026-11-15).
+
 - November 14 verifier optimization: the user has now approved implementing P0
   and P1, continuing the verifier's dev/main delivery scope. Implementation uses
   ACI 35 / adapter 93 / lifecycle 13; engineering checks are complete. Paid

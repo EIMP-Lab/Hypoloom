@@ -93,7 +93,9 @@ def batch_limits(document: Mapping[str, Any], role: str, *, schema_version: int 
     experts = product.get("experts", {})
     settings = dict(experts.get("defaults", {}))
     declared = experts.get("experts", [])
-    if isinstance(declared, list):
+    # ResearchContract freezes admitted JSON arrays into tuples. Per-expert
+    # overrides must survive that representation change inside the Host.
+    if isinstance(declared, (list, tuple)):
         settings.update(next((item for item in declared if item.get("name", item.get("id")) == role), {}))
     forks = settings.get("max_hypotheses_per_round", inner.get("max_hypotheses_per_round", 1))
     values = {"forks": forks, "parallel_chains": settings.get("max_forks", forks),

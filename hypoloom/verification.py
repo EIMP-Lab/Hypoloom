@@ -16,7 +16,7 @@ from .domain import AttemptTerminalReason
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask
 from .lifecycle import Command, ExperimentState, RunState
 from .profile_v4 import resolve_node_runtime
-from .verification_contract import MAX_PROBE_SECONDS
+from .verification_contract import MAX_PROBE_SECONDS, MAX_PROBE_REPAIRS
 
 
 def review_rows(store, run_id, *, experiment_id=None, subject=None, component=None, phase=None, limit=None):
@@ -66,11 +66,20 @@ class ImplementationVerification:
         command, request, snapshot, validated = self.host._submission_source(source_id)
         return spec, execution, request, snapshot, validated
 
-    def _task(self, run_id, experiment_id, phase, source):
+    def _repair_limit(self, run_id):
+        from .agent_aci import PROBE_RECOVERY_ACI_SCHEMA_VERSION
+        run = self.host.store.get_run(run_id)
+        if int(run["agent_aci_version"]) < PROBE_RECOVERY_ACI_SCHEMA_VERSION: return None
+        model_attempts, _ = self.host._agent_attempt_limits(self.host._research_contract(run_id))
+        return min(MAX_PROBE_REPAIRS, max(0, model_attempts - 1))
+
+    def _task(self, run_id, experiment_id, phase, source, *, probe_attempt=None, plan=None, probe_revision=0):
         store = self.host.store
         rows = review_rows(store, run_id, experiment_id=experiment_id, phase=phase)
         found = next((row for row in rows if row["request"]["implementation_verification"]["experiment_id"] == experiment_id
-                      and row["request"]["implementation_verification"]["phase"] == phase), None)
+                      and row["request"]["implementation_verification"]["phase"] == phase
+                      and row["request"]["implementation_verification"].get("probe_attempt_id") ==
+                          (probe_attempt["attempt_id"] if probe_attempt else None)), None)
         if found is not None: return found
         spec, execution, request, snapshot, validated = source
         count = store.inspect("SELECT count(*) AS n FROM workflow_commands WHERE run_id=? AND command_type=? "
@@ -80,6 +89,11 @@ class ImplementationVerification:
                  "component_id": request.component_id, "delivery_id": request.command_id,
                  "source_submit_command_id": execution["source_submit_command_id"],
                  "source_output_digest": validated.output_digest}
+        repair_limit = self._repair_limit(run_id)
+        if repair_limit is not None:
+            value.update(probe_revision=probe_revision, probe_repair_limit=repair_limit)
+        if probe_attempt is not None:
+            value.update(probe_attempt_id=probe_attempt["attempt_id"], probe_report_ref=plan["report_ref"])
         if phase == "inspect":
             recent = review_rows(store, run_id, subject=request.role, component=request.component_id, limit=32)
             for old in reversed(recent):
@@ -136,11 +150,17 @@ class ImplementationVerification:
         prior = self._prior(task.run_id, value["subject_expert"], value["component_id"], task.command_id)
         probes = self.host.store.list_attempts(execution_id=value["experiment_id"] + "--implementation-probe")
         evidence = None
-        inspection = next((accepted_review(self.host.store, r) for r in review_rows(self.host.store, task.run_id,
-            experiment_id=value["experiment_id"], phase="inspect")), None)
+        if value.get("probe_report_ref"):
+            row = self.host.store.get_attempt(value["probe_report_ref"])
+            observation = json.loads(row["observation_json"])
+            inspection = {"report_ref": row["attempt_id"], "report": observation["response"]["typed_candidate"]}
+        else:
+            inspection = next((accepted_review(self.host.store, r) for r in review_rows(self.host.store, task.run_id,
+                experiment_id=value["experiment_id"], phase="inspect")), None)
         plan = (inspection or {}).get("report", {}).get("probe")
         if value["phase"] == "review":
-            last = probes[-1]
+            last = (next(p for p in probes if p["attempt_id"] == value["probe_attempt_id"])
+                    if value.get("probe_attempt_id") else probes[-1])
             observation = json.loads(last["observation_json"] or "{}")
             evidence = {"attempt_id": last["attempt_id"], "terminal_reason": last["terminal_reason"],
                 "usable": last["state"] == "CLOSED" and last["terminal_reason"] == "SUCCEEDED"
@@ -164,6 +184,8 @@ class ImplementationVerification:
                "max_probe_seconds": MAX_PROBE_SECONDS, "probe_evidence": evidence,
                "target": config.get("target"), "bindings": config.get("read_only_bindings", []),
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
+        if "probe_repair_limit" in value:
+            ctx["probe_repairs_remaining"] = max(0, value["probe_repair_limit"] - value["probe_revision"])
         if plan and "checks" in plan:
             ctx.update(probe_plan=plan, probe_report_ref=inspection["report_ref"])
         resolved = {ref for r in prior if r["report"]["verdict"] == "passed" for ref in r["report"]["resolved_refs"]}
@@ -186,9 +208,45 @@ class ImplementationVerification:
         if not self.enabled(run_id): return ()
         reports = self._prior(run_id, role, component_id)
         if not reports: return ()
+        # Source and probe files remain in the verifier's own immutable inputs.
+        # Authors need the verdict and actions, not another copy of every probe.
+        reports = [{**row, "report": {k: v for k, v in row["report"].items() if k != "probe"}} for row in reports]
+        current = [row for row in reports if row["delivery_id"] == task_id]
+        actions = [{"experiment_id": row["experiment_id"], "report_ref": row["report_ref"],
+            "verdict": row["report"]["verdict"], "summary": row["report"]["summary"],
+            "findings": row["report"]["findings"]} for row in current[-2:]]
         return (EmbeddedInput.from_bytes(task_id + "--implementation-reviews", "application/json",
-            json.dumps({"reports": reports, "scope": "engineering only; repair findings and submit captured changes for independent re-review"},
-                       ensure_ascii=False, sort_keys=True).encode()),)
+            json.dumps({"current_actions": actions, "reports": reports,
+                "scope": "Engineering only. Read current_actions first. implementation_not_verified means formal training never started; "
+                    "an empty training log is expected. Use these reports, not searches for inaccessible Host files. "
+                    "Repair demonstrated candidate blockers and submit captured changes for independent re-review. "
+                    "Probe defects belong to verifier recovery, not author code repairs."},
+                       ensure_ascii=False, sort_keys=True).encode()),) + self.memory(run_id, role, component_id, task_id)
+
+    def memory(self, run_id, role, component_id, task_id):
+        from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, canonical_json
+        from .engineering_memory import SUFFIX, memory_document, verified_entry
+        if int(self.host.store.get_run(run_id)["agent_aci_version"]) < ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
+            return ()
+        entries = []
+        for row in reversed(review_rows(self.host.store, run_id, subject=role, component=component_id, phase="review", limit=16)):
+            commission = row["request"]["implementation_verification"]
+            accepted = accepted_review(self.host.store, row)
+            if accepted is None or accepted["report"].get("verdict") != "passed": continue
+            probe = self.host.store.get_attempt(commission.get("probe_attempt_id"))
+            plan = self.host.store.get_attempt(commission.get("probe_report_ref"))
+            if probe is None or plan is None: continue
+            plan_rows = self.host.store.inspect("SELECT request_json FROM workflow_commands WHERE run_id=? AND command_id=?",
+                (run_id, plan["command_id"]))
+            fact = self.host.store.find_fact(run_id, "ExperimentPreregistered", commission["experiment_id"])
+            if not plan_rows or fact is None: continue
+            entry = verified_entry(run_id=run_id, role=role, component_id=component_id,
+                commission=commission, review=self.host.store.get_attempt(accepted["report_ref"]),
+                plan_commission=json.loads(plan_rows[0]["request_json"]).get("implementation_verification", {}),
+                plan_attempt=plan, probe=probe, execution=fact["payload"]["execution_contract"])
+            if entry is not None: entries.append(entry)
+        document = memory_document(run_id, role, component_id, entries)
+        return () if document is None else (EmbeddedInput.from_bytes(task_id + SUFFIX, "application/json", canonical_json(document)),)
 
     def status(self, run_id, experiment_id):
         reports = []
@@ -210,6 +268,8 @@ class ImplementationVerification:
         if inspection is None:
             self._exhausted(run_id, experiment_id, row)
             return False, None
+        if self._repair_limit(run_id) is not None:
+            return self._recoverable_gate(run_id, experiment_id, source, row, inspection)
         verdict = inspection["report"]["verdict"]
         if verdict != "probe_required":
             self._reject(run_id, experiment_id, inspection)
@@ -225,6 +285,37 @@ class ImplementationVerification:
             return False, None
         if final["report"]["verdict"] == "passed": return True, None
         self._reject(run_id, experiment_id, final)
+        return False, None
+
+    def _recoverable_gate(self, run_id, experiment_id, source, row, report):
+        """Replay a bounded sequence of plans, Processes and independent reviews.
+
+        Each review names its exact closed probe and plan. Repeated ticks and
+        restarts reuse those commands; no candidate replacement is needed.
+        """
+        probes = self.host.store.list_attempts(execution_id=experiment_id + "--implementation-probe")
+        revision, lost = 0, 0
+        for probe in probes:
+            if report["report"]["verdict"] != "probe_required": break
+            if probe["state"] == "OPEN": return False, None
+            if probe["terminal_reason"] == "LOST":
+                lost += 1
+                if lost < self.host._effect_attempt_cap(self.host._research_contract(run_id), "process"):
+                    continue
+            row = self._task(run_id, experiment_id, "review", source,
+                probe_attempt=probe, plan=report, probe_revision=revision)
+            report = self._run_review(row)
+            if report is None:
+                self._exhausted(run_id, experiment_id, row)
+                return False, None
+            if report["report"]["verdict"] == "probe_required":
+                revision += 1
+                lost = 0
+        verdict = report["report"]["verdict"]
+        if verdict == "passed": return True, None
+        if verdict == "probe_required":
+            return True, {**report["report"]["probe"], "review_command_id": row["command_id"], "report_ref": report["report_ref"]}
+        self._reject(run_id, experiment_id, report)
         return False, None
 
     def _exhausted(self, run_id, experiment_id, row):

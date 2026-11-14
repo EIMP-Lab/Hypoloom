@@ -534,6 +534,27 @@ class HelpLegend(CockpitPanel):
     """Scrollable window guide and execution reliability legend."""
 
 
+def _verification_summary_lines(verifier, *, host_available=True):
+    """A bounded overview; verbose evidence belongs to the paginated history."""
+    state = verifier.get("state", "unsupported")
+    if state in {"active", "probing"} and not host_available: state = "OPEN?"
+    labels = {"active": "Active", "probing": "Probe running", "queued": "Queued", "idle": "Idle",
+        "unsupported": "Not enabled", "inspect": "Inspection", "review": "Evidence review",
+        "awaiting_probe": "Awaiting probe", "passed": "Passed", "reused": "Reused",
+        "changes_required": "Changes required", "inconclusive": "Unverified"}
+    lines = [f"{tr(labels.get(state, state))} · {_value(verifier.get('model'))} · {_value(verifier.get('effort'))}"]
+    for subject in verifier.get("experts", []):
+        counts = subject.get("state_counts", {})
+        states = " · ".join(f"{tr(labels.get(key, key))} {value}" for key, value in counts.items() if value) or "—"
+        lines.append(tr("{0}: {1} · blockers {2} · advisories {3}", subject["expert"], states,
+            subject.get("current_blockers", subject.get("blockers", 0)),
+            subject.get("current_advisories", subject.get("advisories", 0))))
+    if verifier.get("delivery_evidence") == "partial":
+        lines.append(tr("Delivery history is partial; unconfirmed does not mean undelivered"))
+    lines.append(tr("v · Reports, findings and invocation details"))
+    return lines
+
+
 class VerificationScreen(ModalScreen[None]):
     """Read-only paginated engineering evidence."""
     BINDINGS = (Binding("escape", "close", "Close"),)
@@ -562,11 +583,27 @@ class VerificationScreen(ModalScreen[None]):
         lines = [f"{data.get('model') or '—'} · {data.get('state')} · {self.offset + 1}"]
         for subject in data["experts"]:
             lines.append(f"{subject['expert']} · {subject['deliveries']} deliveries · {subject['blockers']} blockers")
+            lines.append(tr("Unverified {0} · invocation failures {1} · output rejections {2}",
+                subject.get("verification_failures", 0), subject.get("invocation_failures", 0), subject.get("protocol_rejections", 0)))
+            times = subject.get("stage_seconds", {})
+            lines.append(tr("Inspection {0} · evidence review {1}", _duration(times.get("inspect")), _duration(times.get("review"))))
+            samples = (subject.get("model_runtime") or {}).get("exchanges", [])
+            sent = (samples[-1].get("sent") or {}) if samples else {}
+            if sent:
+                lines.append(tr("Wire: {0} · effort {1} · max tokens {2} · thinking parameter {3}",
+                    _value(sent.get("model")), _value(sent.get("effort")), _value(sent.get("max_tokens")),
+                    tr("sent") if sent.get("thinking_sent") else tr("not sent")))
+                lines.append(tr("Response models {0} · stop {1}",
+                    ", ".join(samples[-1].get("served_models", [])) or "—", _value(samples[-1].get("stop_reason"))))
             for delivery in subject["recent"]:
                 for revision in delivery["revisions"]:
                     lines.append(f"  {revision['experiment_id']} · {revision['state']}")
+                    for check in ((revision.get("probe") or {}).get("results") or {}).get("checks", []):
+                        lines.append(f"    {check['id']} · {check['status']}")
                     for report in revision["reports"]:
                         lines.append(f"    {report['report_ref']} · {report['verdict']} · {report['delivery_state']}\n    {report['summary']}")
+                        for gap in (report.get("coverage") or {}).get("uncovered", []):
+                            lines.append(tr("Untested: {0} · {1}", gap["condition"], gap["reason"]))
                         for finding in report["findings"]:
                             lines.append(f"      {finding['finding_ref']} · {finding['severity']}: {finding['message']}\n      {finding['resolution_condition']}")
         self.query_one("#verification-history", Static).update(Text("\n".join(lines)))
@@ -1000,44 +1037,8 @@ class ExpertsPanel(CockpitPanel):
             lines.append(tr("[dim]No experts match this filter[/dim]"))
         grounding_text = "\n".join(grounding_lines)
         verifier = overview.get("verifier", {})
-        verifier_state = verifier.get("state", "unsupported")
-        if verifier_state == "active" and overview.get("host_observation", {}).get("availability") != "responded": verifier_state = "OPEN?"
-        verification_lines = [tr("Implementation Verifier") + " · " + verifier_state,
-            f"{_value(verifier.get('model'))} · {_value(verifier.get('effort'))}",
-            tr("Verifier RPM {0} · ≥{1} tokens · probe {2}", _count(traffic.get("verifier", {}).get("rpm")),
-               _compact(verifier.get("accounting", {}).get("reported_tokens")), _duration(verifier.get("probe_seconds")))]
-        if verifier.get("delivery_evidence") == "partial":
-            verification_lines.append(tr("Delivery history is partial; unconfirmed does not mean undelivered"))
-        for subject in verifier.get("experts", []):
-            rate = subject["first_pass"]
-            verification_lines.append(tr("{0}: deliveries {1} · checks {2} · reuse {3} · first pass {4}/{5} · blockers {6} · advisories {7}",
-                subject["expert"], subject["deliveries"], subject["triggers"], subject["reuse"], rate["passed"], rate["completed"], subject["blockers"], subject["advisories"]))
-            verification_lines.append(tr("Unverified {0} · invocation failures {1} · output rejections {2}",
-                subject.get("verification_failures", 0), subject.get("invocation_failures", 0), subject.get("protocol_rejections", 0)))
-            times = subject.get("stage_seconds", {})
-            verification_lines.append(tr("Inspection {0} · evidence review {1}", _duration(times.get("inspect")), _duration(times.get("review"))))
-            runtime = subject.get("model_runtime") or {}
-            samples = runtime.get("exchanges", [])
-            sent = (samples[-1].get("sent") or {}) if samples else {}
-            if sent:
-                verification_lines.append(tr("Wire: {0} · effort {1} · max tokens {2} · thinking parameter {3}",
-                    _value(sent.get("model")), _value(sent.get("effort")), _value(sent.get("max_tokens")),
-                    tr("sent") if sent.get("thinking_sent") else tr("not sent")))
-                verification_lines.append(tr("Response models {0} · stop {1}",
-                    ", ".join(samples[-1].get("served_models", [])) or "—", _value(samples[-1].get("stop_reason"))))
-            for delivery in subject.get("recent", [])[:1]:
-                for revision in delivery.get("revisions", [])[-1:]:
-                    verification_lines.append(f"  {revision['experiment_id']} · {revision['state']}")
-                    probe = revision.get("probe") or {}
-                    for item in (probe.get("results") or {}).get("checks", [])[:3]:
-                        verification_lines.append(f"  {item['id']} · {item['status']}")
-                    for report in revision.get("reports", [])[-1:]:
-                        for gap in (report.get("coverage") or {}).get("uncovered", [])[:3]:
-                            verification_lines.append(tr("Untested: {0} · {1}", gap["condition"], gap["reason"]))
-            for finding in subject.get("findings", [])[-3:]:
-                verification_lines.append(f"  {finding['severity']} · {finding['state']} · {finding['delivery_state']}: {finding['message']}")
-                verification_lines.append(f"  {finding['finding_ref']}")
-        verifier_text = "\n".join(verification_lines)
+        verifier_text = "\n".join(_verification_summary_lines(verifier,
+            host_available=overview.get("host_observation", {}).get("availability") == "responded"))
         rendered = [Panel(Text.from_markup(grounding_text), title=tr("Grounding Agent"), border_style="#24566a", padding=(0, 1)),
             Panel(Text(verifier_text), title=tr("Implementation Verifier"), border_style="#24566a", padding=(0, 1)),
             Text.from_markup("\n".join(lines))]

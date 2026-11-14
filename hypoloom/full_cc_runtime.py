@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 from typing import Mapping
 
 from . import host_tools_server, native_output, provider_bridge
-from .agent_aci import AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request
+from .agent_aci import AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
 
 FULL_CC_PROFILE = "agent-full-cc/1"
@@ -232,6 +232,13 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         argv.extend(("--ro-bind", str(Path(profile_permissions.__file__).resolve()), "/runtime/profile_permissions.py"))
         settings = {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command",
             "command": shlex.join(("/usr/bin/python3", "/runtime/profile_permissions.py", json.dumps(patterns))), "timeout": 10}]}]}}
+    if (request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+            and request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}):
+        from . import engineering_budget
+        argv.extend(("--ro-bind", str(Path(engineering_budget.__file__).resolve()), "/runtime/engineering_budget.py"))
+        settings.setdefault("hooks", {}).setdefault("PreToolUse", []).append({"matcher": "Bash", "hooks": [{
+            "type": "command", "command": shlex.join(("/usr/bin/python3", "/runtime/engineering_budget.py",
+                "--deadline", request.deadline, "--wall-seconds", str(request.budget.wall_seconds))), "timeout": 3}]})
     if output_socket is not None:
         if output_schema_path is not None:
             argv.extend(("--ro-bind", str(output_schema_path), "/runtime/output-schema.json"))
@@ -436,6 +443,18 @@ def full_cc_instruction(request: AgentRequest) -> str:
     )
     from .profile_v4 import request_node_runtime
     common += _workflow_instruction(request)
+    if (request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+            and request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}):
+        common += (
+            "Read the supplied --verified-engineering-memory input before choosing an optimization, if present. "
+            "Use inline contents or its exact advertised /inputs path; do not search Host storage. "
+            "It records verified conditions and timings, not permission to skip checks on changed code. "
+            "Local Bash checks have a Host deadline guard, at most 60 seconds per call and shorter near handoff. "
+            "Use importable scripts/main guards for spawn and bounded join/queue waits. "
+            "After a relevant check passes, submit/handoff promptly instead of repeatedly rebuilding tests. "
+            "Captured submissions continue through Host verification independently of your final report or Stop hook; "
+            "unsubmitted drafts remain drafts, and a timed-out Agent is not relabelled successful. "
+        )
     comments = request_node_runtime(request.input_artifacts).get("code_comment_language")
     if comments is not None:
         common += f"Write code comments in the configured language {comments!r}; report prose follows its separate output_language. "

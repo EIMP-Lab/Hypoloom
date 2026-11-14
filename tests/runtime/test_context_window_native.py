@@ -24,7 +24,12 @@ from test_context_window import MAX, DISABLE, COMPACT
     ("claude-opus-4-8", {}, 1000000),
     ("claude-opus-4-8", {DISABLE: "1"}, 200000),
     ("k3[1m]", {MAX: "262144", "DISABLE_COMPACT": "1"}, 262144),
-    ("claude-private@20250101", {MAX: "1000000"}, 200000),
+    ("claude-private@20250101", {MAX: "1000000"}, 1000000),
+    ("claude-private@20250101", {}, 1000000),
+    ("mimo-v2.6-flash", {}, 1000000),
+    ("claude-private@20250101", {DISABLE: "1"}, 200000),
+    ("mimo-v2.6-flash", {DISABLE: "1"}, 200000),
+    ("claude-unknown", {MAX: "262144"}, 262144),
     ("claude-fable-5", {}, 1000000),
 ])
 def test_actual_cc_window_matches_resolved_controls(tmp_path, model, environment, expected):

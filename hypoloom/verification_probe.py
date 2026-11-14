@@ -23,7 +23,7 @@ RESERVED_PATHS = frozenset({RUNNER_PATH, PLAN_PATH})
 _active = None
 
 
-def validate_checks(checks):
+def validate_checks(checks, *, comparisons=True):
     if not isinstance(checks, list) or not 1 <= len(checks) <= MAX_CHECKS:
         raise ValueError("probe.checks must contain 1..32 dynamic checks")
     seen = set()
@@ -37,8 +37,9 @@ def validate_checks(checks):
         seen.add(key)
         if any(not isinstance(item[k], str) or not item[k].strip() or len(item[k]) > 2048 for k in ("purpose", "basis")):
             raise ValueError("each check needs a bounded purpose and expected-value basis")
-        if item["kind"] not in {"assertion", "measurement"} or type(item["required"]) is not bool:
-            raise ValueError("check kind is assertion or measurement; required is boolean")
+        kinds = {"assertion", "measurement", "comparison"} if comparisons else {"assertion", "measurement"}
+        if item["kind"] not in kinds or type(item["required"]) is not bool:
+            raise ValueError("unsupported check kind or nonboolean required flag")
     if not any(c["kind"] == "assertion" and c["required"] for c in checks):
         raise ValueError("probe requires at least one required implementation assertion")
     return checks
@@ -95,7 +96,9 @@ def validate_result(result, checks, *, attempt_id, report_ref):
         if row["failures"] and row["status"] not in {"FAIL", "ERROR"}:
             raise ValueError("failed assertion cannot be overwritten by success")
         measurement = row["measurement"]
-        if row["status"] == "MEASURED":
+        if row["status"] == "MEASURED" and row["kind"] == "comparison":
+            _validate_comparison(measurement)
+        elif row["status"] == "MEASURED":
             if row["kind"] != "measurement" or not isinstance(measurement, dict) or set(measurement) != {"warmup", "repeats", "median_seconds", "min_seconds", "max_seconds", "workload", "synchronized"}:
                 raise ValueError("MEASURED requires actual timing observations")
             if (type(measurement["warmup"]) is not int or not 0 <= measurement["warmup"] <= 10000
@@ -111,6 +114,34 @@ def validate_result(result, checks, *, attempt_id, report_ref):
     passed = not errors and all(r["status"] in {"PASS", "MEASURED"}
         or r["status"] == "NOT_RUN" and not expected[r["id"]]["required"] for r in rows)
     return {"complete": True, "passed": passed, "checks": rows, "errors": errors}
+
+
+def _validate_comparison(value):
+    fields = {"warmup", "repeats", "workload", "device", "synchronized", "reference", "candidate", "speedup"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("comparison requires paired timing observations and conditions")
+    if (type(value["warmup"]) is not int or not 0 <= value["warmup"] <= 100
+            or type(value["repeats"]) is not int or not 3 <= value["repeats"] <= 100
+            or not isinstance(value["device"], str) or value["device"] not in {"cpu", "cuda"}
+            or type(value["synchronized"]) is not bool
+            or value["device"] == "cuda" and not value["synchronized"]
+            or not isinstance(value["workload"], str) or not value["workload"].strip() or len(value["workload"]) > 1024):
+        raise ValueError("comparison needs bounded repetitions, workload and synchronized CUDA")
+    for name in ("reference", "candidate"):
+        stats = value[name]
+        if not isinstance(stats, dict) or set(stats) != {"samples_seconds", "min_seconds", "median_seconds", "max_seconds"}:
+            raise ValueError("comparison requires actual samples and derived statistics")
+        samples = stats["samples_seconds"]
+        if (not isinstance(samples, list) or len(samples) != value["repeats"]
+                or any(type(t) not in {int, float} or not math.isfinite(t) or t <= 0 for t in samples)):
+            raise ValueError("comparison samples must be finite positive durations")
+        for key, expected in (("min_seconds", min(samples)), ("median_seconds", statistics.median(samples)),
+                              ("max_seconds", max(samples))):
+            if type(stats[key]) not in {int, float} or stats[key] != expected:
+                raise ValueError("comparison statistics do not match observed samples")
+    expected = value["reference"]["median_seconds"] / value["candidate"]["median_seconds"]
+    if type(value["speedup"]) not in {int, float} or not math.isfinite(expected) or value["speedup"] != expected:
+        raise ValueError("comparison speedup does not match observed medians")
 
 
 def execution_files(probe, *, attempt_id, report_ref):
@@ -130,6 +161,11 @@ class _Check:
             raise ValueError("invalid check registration")
         self.owner.started.add(self.key)
         self.row, self.start = row, time.monotonic()
+        # A killed/hung probe leaves an explicit unfinished check, never an old
+        # successful file. Only the enclosing Process can establish completion.
+        self.row.update(status="ERROR", details=["check did not finish"])
+        self.owner.persist()
+        self.row["details"] = []
         return self
 
     def _record(self, ok, message):
@@ -164,6 +200,7 @@ class _Check:
         elif self.kind == "assertion":
             self.row["status"] = "FAIL" if self.row["failures"] else "PASS" if self.row["assertions"] else "ERROR"
             if not self.row["assertions"]: self.row["details"].append("no assertions executed")
+        self.owner.persist()
         return typ is not None and issubclass(typ, Exception)
 
 
@@ -180,6 +217,14 @@ class _Run:
     def result(self):
         return {"attempt_id": self.plan["attempt_id"], "report_ref": self.plan["report_ref"],
                 "checks": list(self.rows.values()), "errors": self.errors}
+
+    def persist(self):
+        data = json.dumps(self.result(), allow_nan=False, ensure_ascii=True).encode()
+        if len(data) > MAX_RESULT_BYTES: raise ValueError("probe result exceeds bounded output")
+        target = Path(RESULT_PATH)
+        pending = target.with_suffix(".tmp")
+        pending.write_bytes(data)
+        pending.replace(target)
 
 
 def check(key):
@@ -206,10 +251,45 @@ def measure(key, function, *, workload, warmup=1, repeats=5, synchronize=None):
             "workload": workload, "synchronized": synchronize is not None})
 
 
+def compare(key, reference, candidate, *, workload, device="cpu", warmup=2, repeats=5, synchronize=None):
+    """Measure both implementations with warmup and alternating execution order.
+
+    Callables must perform the same work and reset mutable state themselves.
+    Correctness belongs to separately declared assertions, never this ratio.
+    """
+    if _active is None: raise RuntimeError("comparisons must run through the Host probe runner")
+    with _Check(_active, key, "comparison") as item:
+        if (not callable(reference) or not callable(candidate)
+                or type(warmup) is not int or not 0 <= warmup <= 100
+                or type(repeats) is not int or not 3 <= repeats <= 100
+                or device not in {"cpu", "cuda"} or device == "cuda" and not callable(synchronize)
+                or synchronize is not None and not callable(synchronize)
+                or not isinstance(workload, str) or not workload.strip() or len(workload) > 1024):
+            raise ValueError("comparison needs callables, bounded warmups/repeats, workload and CUDA synchronization")
+        work = {"reference": reference, "candidate": candidate}
+        samples = {name: [] for name in work}
+        for i in range(warmup + repeats):
+            for name in (("reference", "candidate") if i % 2 == 0 else ("candidate", "reference")):
+                if synchronize is not None: synchronize()
+                start = time.monotonic()
+                work[name]()
+                if synchronize is not None: synchronize()
+                elapsed = time.monotonic() - start
+                if i >= warmup: samples[name].append(elapsed)
+        stats = {name: {"samples_seconds": values, "min_seconds": min(values),
+            "median_seconds": statistics.median(values), "max_seconds": max(values)} for name, values in samples.items()}
+        measurement = {"warmup": warmup, "repeats": repeats, "workload": workload,
+            "device": device, "synchronized": synchronize is not None, **stats,
+            "speedup": stats["reference"]["median_seconds"] / stats["candidate"]["median_seconds"]}
+        _validate_comparison(measurement)
+        item.row.update(status="MEASURED", measurement=measurement)
+
+
 def main():
     global _active
     plan = json.loads((Path(__file__).parent / Path(PLAN_PATH).name).read_text())
     _active = _Run(plan)
+    _active.persist()
     sys.modules["hypoloom_probe"] = sys.modules[__name__]
     source = Path(__file__).parent.parent / plan["argv"][1]
     sys.argv = [str(source), *plan["argv"][2:]]
@@ -220,12 +300,7 @@ def main():
         traceback.print_exc()
     result = _active.result()
     assessment = validate_result(result, plan["checks"], attempt_id=plan["attempt_id"], report_ref=plan["report_ref"])
-    data = json.dumps(result, allow_nan=False, ensure_ascii=True).encode()
-    if len(data) > MAX_RESULT_BYTES: raise ValueError("probe result exceeds bounded output")
-    target = Path(RESULT_PATH)
-    pending = target.with_suffix(".tmp")
-    pending.write_bytes(data)
-    pending.replace(target)
+    _active.persist()
     print("Implementation checks: " + ", ".join(r["id"] + "=" + r["status"] for r in result["checks"]))
     return 0 if assessment["passed"] else 1
 

@@ -1,5 +1,61 @@
 # Qualification: G0–G5
 
+## Verified engineering recall and probe recovery (2026-11-15)
+
+The user authorized implementation and dev publication followed by selective
+main synchronization. Baselines are dev `b479745` and main `cdb63af`.
+[Design](design/verified-engineering-memory.md); private publication evidence is
+under `.local/qualification/engineering-memory-20261115/`. Earlier actual MiMo
+trials remain under the main checkout's `.local/cc-learning-eval/20261114/`.
+
+New ACI 37 / adapter 94 adds bound short guidance, paired probe measurements,
+atomic per-check observations, same-owner verified evidence recall and native
+Bash deadline propagation. ACI 36 probe repairs remain limited to two and the
+existing retry allowance. Expert overrides survive frozen tuples; the verifier
+card counts explicit current follow-ups without discarding history. New native
+window observations also correct CC 2.1.325's custom-alias numeric overrides and
+1M default, retaining the 200K disable behavior and existing frozen requests.
+
+- Public main: **368 passed / one CUDA skip**. A real CC 2.1.325 session against
+  a local deterministic provider confirms the Bash hook changes a 15-second
+  background request into a foreground command that times out after 7 seconds.
+- Full offline selection: **8,982 passed / 245 skipped / one failed** in
+  1,463.86 seconds. The only failure expected 12 workflow seed files; the new
+  engineering reference makes 13. The corrected test still checks exact bytes
+  for both owners and explicitly requires that file. All **31 affected Skill
+  checks pass**. Per-identity reconciliation is **8,983 passed / 245 skipped /
+  zero unresolved**, not one uninterrupted green full run. Runtime code is
+  unchanged by that final test correction. Compilation, undefined-name and
+  whitespace checks pass. The counted authority budget stays at 27,550 lines,
+  including both new helpers; only unused allocations were reassigned.
+- The first offline attempt used an overlong temporary path and was interrupted:
+  1,825 passed, 67 skipped, 48 failed and 63 errored. Of the 111 failed/error
+  cases, 106 exceeded Unix socket path limits; the others exposed a hook fixture
+  incorrectly placed inside writable `.local`, two stale guidance expectations,
+  one stale ACI expectation and native window drift. The rerun uses a short
+  `/tmp` root and Node 22.16.0. Original reports, focused LOC/window failures and
+  corrections remain recorded; no production rule was relaxed.
+- G2: an isolated installed reader and the baseline reader agree on **10
+  terminal roots / 8,055 artifacts**, with unchanged logical databases and
+  bytes. All **five original issues** remain; two active roots are excluded.
+  An initial ordered issue-list comparison differed only in ordering; the final
+  comparison normalizes order while retaining every issue field and raw report.
+- The eight G3 cases included in the full selection close **188 Agents / 20
+  Processes**, including two implementation probes and four independent reviewer
+  sessions. All eight Oracles are clean, with no open/pending effects or live
+  members of their **177 recorded groups**. The full-suite residue census reads
+  14,499 Attempts from 1,391 databases and finds no live members of 2,827 recorded
+  groups; 155 OPEN fixture rows remain test data, not live processes.
+- Both branches' **223 runtime files / 186 Python files** match source, wheel,
+  isolated installation and fresh bundle. Installed CLI/MCP work outside the
+  checkout. Branch runtime bytes match except the two inherited docstrings.
+
+GPU, paid-model and unavailable browser cases are explicit skips, not renewed
+qualification. This publication makes no new GPU, paid MiMo, model-weight
+learning or whole-training speedup claim. Existing research, frozen bundles,
+private Profiles and production pools remain unchanged. Prior unknown charges
+remain reserved; this release validation makes no new paid-provider calls.
+
 ## Implementation verifier reliability and efficiency (2026-11-14)
 
 The user approved implementing P0/P1 of the

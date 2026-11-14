@@ -95,19 +95,23 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # runner/result validation. Transfer 375 unused shared_acceptance_host lines
     # (118 actual): contract +125 and the newly counted probe module +250.
     # Keep every existing file and the same 27,550-line authority budget.
+    # ACI 37 keeps probe recovery and evidence recall in existing authority.
+    # Count both new memory/budget helpers. Transfer 200 unused lines from
+    # shared_acceptance_host and 175 from expert_memory; preserve the total.
     allocations = {"domain": 900, "lifecycle": 400, "ports": 100,
         "state_store": 450, "research_kernel": 750, "workflow_host": 4875, "institutional_controls": 100,
-        "verification": 300, "verification_contract": 300, "verification_probe": 250,
+        "verification": 375, "verification_contract": 350, "verification_probe": 325,
+        "engineering_memory": 100, "engineering_budget": 75,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
-        "expert_plugin": 700, "expert_memory": 700, "measurement_contract": 600, "profile_v4": 650,
+        "expert_plugin": 700, "expert_memory": 525, "measurement_contract": 600, "profile_v4": 650,
         "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
-        "shared_acceptance": 325, "shared_acceptance_host": 325,
+        "shared_acceptance": 325, "shared_acceptance_host": 125,
         "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,
         "gpu_attribution": 800, "resource_experience": 700, "host_settings": 350, "provider_recovery": 150}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations
