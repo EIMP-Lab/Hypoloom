@@ -476,6 +476,16 @@ class ProviderRelay:
                         raise _RelayRejected(400)
                     stage = "request_context"
                     capture.data["requested_model"] = document["model"]
+                    if parsed.path == "/v1/messages":
+                        thinking = document.get("thinking")
+                        output_config = document.get("output_config")
+                        capture.data["request_parameters"] = {
+                            "model": document["model"],
+                            "effort": output_config.get("effort") if isinstance(output_config, dict) and output_config.get("effort") in {"low", "medium", "high", "xhigh", "max"} else None,
+                            "max_tokens": document.get("max_tokens") if type(document.get("max_tokens")) is int else None,
+                            "thinking_sent": "thinking" in document,
+                            "thinking_type": thinking.get("type") if isinstance(thinking, dict) and thinking.get("type") in {"adaptive", "enabled", "disabled"} else None,
+                            "thinking_budget_tokens": thinking.get("budget_tokens") if isinstance(thinking, dict) and type(thinking.get("budget_tokens")) is int else None}
                     if relay._context_1m and (relay.context_policy or {}).get("cc_1m_requested", True) and parsed.path == "/v1/messages" and _CONTEXT_1M_BETA not in {
                         token.strip()
                         for token in self.headers.get("anthropic-beta", "").split(",")

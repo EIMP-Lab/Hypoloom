@@ -1,5 +1,33 @@
 # Development memory index
 
+- [Verifier reliability and efficiency optimization, November 14](../design/implementation-verifier-optimization.md):
+  user-approved P0/P1 implementation after Flash/Pro sampling. Native prompt and
+  reference consistency,
+  real Profile-driven correction tests, requested versus actual model parameters,
+  dynamic probe assertions and coverage, and shared per-expert failure attribution.
+  ACI 35 / adapter 93 retain lifecycle 13 and legacy report reading. Engineering
+  checks pass after seven original G1 failures and 67 affected rechecks, with
+  8,997 passes / 163 skips reconciled. Native CPU/CUDA closure, retained-run
+  parity, bounded history and 220-file packaging pass; no additional paid calls.
+  Preserve the 8 USD unknown-cost reservation. Retained research and private
+  Profiles remain read-only.
+  [Evidence](../qualification.md#implementation-verifier-reliability-and-efficiency-2026-11-14).
+
+- [Flash author / Pro verifier samples, November 14](../qualification.md#flash-author-and-pro-verifier-samples-2026-11-14):
+  eight user-authorized calls; compact Flash code passes independent CPU checks,
+  native Pro recognizes an injected defect but fails report admission. Native
+  fixture omitted template correction opportunities; do not blame production
+  correction. A compact-input experiment closes actual probe/evidence review.
+  Native model configuration and probe/report limitations remain; preserve the
+  combined 8 USD unknown-cost reservation and original failed samples.
+
+- [Direct CC verifier samples, November 14](../qualification.md#direct-cc-verifier-capability-samples-2026-11-14):
+  user-authorized follow-up finds two seeded defects without false blockers on
+  two controls, but all four first reports fail semantic admission. Generated
+  probes expose additional quality gaps. Direct CC sampling does not qualify
+  production correction/evidence review. The 4 USD cohort is fully reserved;
+  retain both the previous 504 and new unknown-cost allocations.
+
 - [Code implementation verifier, November 14](../design/dynamic-experiment-verification.md):
   the static execution-check feature is reverted on dev/main. The independent
   verifier checks code, not hypotheses; the draft adds explicit init model choice,

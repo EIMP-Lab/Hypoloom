@@ -248,7 +248,8 @@ def default_request(command: AgentCommand = AgentCommand.PROPOSE_HYPOTHESIS) -> 
     if command in {AgentCommand.ADJUDICATE, AgentCommand.SELF_EVOLVE, AgentCommand.GRAPH_EVOLVE, AgentCommand.FINAL_REPORT, AgentCommand.DEBATE_JUDGE}: schema_version = 14
     if command is AgentCommand.PAPER_READ: schema_version = 20
     if command is AgentCommand.VERIFY_IMPLEMENTATION:
-        schema_version = 34
+        from .agent_aci import CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
+        schema_version = CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION
         inputs = (EmbeddedInput.from_bytes("fixture--verification-context", "application/json", canonical_json({
             "phase": "inspect", "workspace_paths": ["experiment.py"], "max_probe_seconds": 120, "finding_refs": []})),)
     if command is AgentCommand.FINAL_REPORT:
@@ -558,6 +559,19 @@ def _valid_response(request: AgentRequest) -> AgentResponse:
         if ctx["phase"] == "inspect":
             candidate["probe"] = {"files": {"verification/probe.py": "import pathlib\nfor p in pathlib.Path('/input').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')\nprint('fixture compilation completed; no semantic quality claim')\n"},
                 "argv": ["python", "verification/probe.py"], "timeout_seconds": 10}
+        if request.schema_version >= 35:
+            candidate["coverage"] = {"covered": [], "uncovered": []}
+            if ctx["phase"] == "inspect":
+                candidate["probe"]["checks"] = [{"id": "fixture", "purpose": "Compile captured fixture sources",
+                    "basis": "Fixture syntax only; no model-quality claim", "kind": "assertion", "required": True}]
+                candidate["probe"]["files"]["verification/probe.py"] = (
+                    "from hypoloom_probe import check\nimport pathlib\nwith check('fixture') as c:\n"
+                    " paths=list(pathlib.Path('/input').rglob('*.py'))\n"
+                    " for p in paths: compile(p.read_text(),str(p),'exec')\n"
+                    " c.true(bool(paths),'captured fixture sources compile; no semantic quality claim')\n")
+            elif ctx["probe_evidence"]["usable"]:
+                candidate["coverage"]["covered"] = [{"condition": "Fixture probe executed; no semantic quality claim",
+                    "check_ids": [c["id"] for c in ctx["probe_plan"]["checks"] if c["required"]]}]
     effect = DeclaredEffect(
         effect=required_effect(request.command),
         command_id=request.command_id,

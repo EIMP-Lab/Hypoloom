@@ -1,6 +1,6 @@
 # 代码实现检验机制设计与实现
 
-状态：用户于 2026 年 11 月 14 日批准实施及 dev/main 发布。实现与工程验证已完成；真实模型质量抽样因上游 504 超时未完成，不能宣称已证明检错能力。详见[资格记录](../qualification.md#independent-implementation-verifier-2026-11-14)。
+状态：用户于 2026 年 11 月 14 日批准实施及 dev/main 发布，实现与工程验证已完成。最初真实模型抽样遇到 504 超时；后续直接 CC 与 Flash/Pro 抽样显示局部检错能力，也暴露调用、报告及探针问题，完整原生 Host 的真实模型资格仍未完成。详见[实现资格记录](../qualification.md#independent-implementation-verifier-2026-11-14)、[后续实测](../qualification.md#flash-author-and-pro-verifier-samples-2026-11-14)及[后续优化方案](implementation-verifier-optimization.md)。后续方案已另行获批并完成 P0/P1 实现与工程验证；真实模型对照仍待单独安排。
 
 专家 Agent 交付实现代码及工程说明，由独立的代码实现检验者检查正确性、工程合理性和计算效率。Host 自动发起检验，管理实际测试及证据，再按检验结果允许正式执行或退回修复。检验者不承担假设生成、假设成立性、创新性或研究价值判断。
 

@@ -733,6 +733,13 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         db.execute("BEGIN")
         if db.execute("SELECT 1 FROM workflow_runs WHERE run_id=?", (run_id,)).fetchone() is None:
             raise MonitorError("run is unavailable")
+        if kind == "verification":
+            from .verification_observation import read_verification_view
+            goal = db.execute("SELECT payload_json FROM research_facts WHERE run_id=? AND fact_type='GoalDefined' ORDER BY rowid LIMIT 1", (run_id,)).fetchone()
+            contract = json.loads(goal[0]).get("research_contract", {}) if goal else {}
+            result = read_verification_view(db, run_id, contract, limit=selectors.get("limit", 20),
+                offset=selectors.get("offset", 0), expert=selectors.get("role"))
+            return _clean({"run_id": run_id, "kind": kind, **result})
         # An explicitly selected Attempt needs no historical run-wide JSON scan.
         # Scope remains the conjunction of the configured run and primary ID.
         if kind == "attempt":

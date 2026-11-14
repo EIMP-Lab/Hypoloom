@@ -299,6 +299,9 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         *(("--max-budget-usd", request.budget.max_cost) if request.budget.max_cost is not None else ()),
         "--model", model, "--prompt-suggestions", "false", *workspace.session_arguments))
     if plugin_root is not None: argv.extend(("--plugin-dir", "/expert-plugin"))
+    if request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= 35:
+        from .verification_contract import SYSTEM_INSTRUCTIONS
+        argv.extend(("--system-prompt", SYSTEM_INSTRUCTIONS))
     effort = runtime.get("effort")
     if effort is not None:
         if effort not in {"low", "medium", "high", "xhigh", "max"}:
@@ -345,8 +348,8 @@ def _workflow_instruction(request: AgentRequest) -> str:
 
 def full_cc_instruction(request: AgentRequest) -> str:
     if request.command.value == "VERIFY_IMPLEMENTATION":
-        from .verification_contract import INSTRUCTIONS
-        return INSTRUCTIONS
+        from .verification_contract import instructions
+        return instructions(request)
     if request.command.value == "PAPER_READ":
         return ("Answer only the supplied paper question using native Read/Glob/Grep on /papers and /inputs. "
             "The question is your compact commission: use its research context, discipline, constraints and reading purpose; "

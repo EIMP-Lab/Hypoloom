@@ -17,12 +17,13 @@ def test_native_verifier_probes_real_cuda_before_formal_iteration(tmp_path, monk
             candidate = copy.deepcopy(response.typed_candidate)
             candidate["probe"]["timeout_seconds"] = 30
             candidate["probe"]["files"]["verification/probe.py"] = (
-                "import torch,json\nassert torch.cuda.is_available()\n"
-                "for i in range(torch.cuda.device_count()):\n"
-                " x=torch.randn(3,4,device=f'cuda:{i}',dtype=torch.float64,requires_grad=True)\n"
-                " f=lambda a: (a.square().sum(dim=1)+1).sqrt().mean()\n"
-                " assert torch.autograd.gradcheck(f,(x,))\n"
-                " torch.cuda.synchronize(i)\n"
+                "import torch,json\nfrom hypoloom_probe import check\nwith check('fixture') as c:\n"
+                " c.true(torch.cuda.is_available(),'CUDA available')\n"
+                " for i in range(torch.cuda.device_count()):\n"
+                "  x=torch.randn(3,4,device=f'cuda:{i}',dtype=torch.float64,requires_grad=True)\n"
+                "  f=lambda a: (a.square().sum(dim=1)+1).sqrt().mean()\n"
+                "  c.true(torch.autograd.gradcheck(f,(x,)),'actual CUDA gradients')\n"
+                "  torch.cuda.synchronize(i)\n"
                 "print(json.dumps({'independent_cuda_probe':True,'devices':torch.cuda.device_count()}))\n")
             response = with_output_digest(replace(response, typed_candidate=candidate))
         return response

@@ -1,5 +1,55 @@
 # Current Hypoloom development state
 
+- November 14 verifier optimization: the user has now approved implementing P0
+  and P1, continuing the verifier's dev/main delivery scope. Implementation uses
+  ACI 35 / adapter 93 / lifecycle 13; engineering checks are complete. Paid
+  qualification remains a separate budgeted step. P0 preserves the native CC
+  envelope and Stop hook while simplifying verifier input, reconciling reference-alias
+  instructions and using Profile-resolved qualification fixtures. P1 implements
+  dynamic per-check probe observations, scoped evidence review and shared TUI/Web
+  failure attribution with bounded history reads. No static execution_checks,
+  automatic model upgrade or probe revision loop. Private Profiles and retained
+  runs remain unchanged; keep the combined 8 USD unknown-cost reserve.
+  G1 plus 67 affected rechecks reconciles 8,997 passes / 163 skips with no
+  unresolved cases. Original stale-version, Node and LOC-allocation failures
+  remain recorded; the 27,550 total is unchanged and counts the new runner.
+  Native CPU/CUDA closure, bounded 2,000-delivery projection and real-browser
+  checks pass. Ten retained roots / 8,055 artifacts and five original issues
+  remain unchanged. Both packages match 220 runtime files; public checks pass
+  305 / one explicit CUDA skip. No new paid-model or week-soak claim.
+  [Design](../design/implementation-verifier-optimization.md) /
+  [evidence](../qualification.md#implementation-verifier-reliability-and-efficiency-2026-11-14).
+
+- November 14 Flash/Pro follow-up: the user explicitly requests additional tests
+  with Flash authoring and Pro verifying. Eight real CC invocations use a newly
+  announced 4 USD round while retaining the earlier 4 USD. Two complex Flash
+  deliveries time out; one compact vectorized delivery passes seven CPU oracle
+  cases and gradcheck. Native Pro identifies an evaluator-injected detach defect
+  but its first report fails admission; the fixture omitted the template's
+  output_correction=3 and used default cap 1, so configured correction was not
+  tested. Two native inspection variants time out. A separately labelled compact
+  prompt/protocol experiment closes inspect -> actual sandbox probe -> fresh
+  evidence review with an accepted pass. This does not qualify the unchanged
+  native/full-Host workflow. Runtime model-parameter compatibility, ambiguous
+  reviewer/probe paths, report references and probe-quality gaps remain.
+  Evidence: `.local/qualification/implementation-verifier/paired-20261114/`.
+  All 13 owned groups are absent. Preserve **8 USD combined unknown-cost
+  reservations**; no automatic paid retry or budget reset.
+  [Results and limitations](../qualification.md#flash-author-and-pro-verifier-samples-2026-11-14).
+
+- November 14 direct CC follow-up: the user explicitly requested real-model
+  defect-detection tests after publication. Four fresh `mimo-v2.6-pro` calls
+  identify both seeded correctness defects, avoid blockers on two correct
+  controls, and flag the per-row loop as an efficiency advisory. However, 0/4
+  first reports pass the production semantic validator. Direct StructuredOutput
+  omitted the production Stop-hook correction; full Host review remains
+  unqualified. Diagnostic probe runs expose useful checks plus missing backward
+  timing, invalid input ranges and zero-exit failed checks. Evidence is under
+  `.local/qualification/implementation-verifier/cc-direct-20261114/`. Retain
+  **2 USD new unknown-cost reservation plus the earlier 2 USD**: the 4 USD cohort
+  is fully reserved, with no automatic paid retry. All 15 owned groups are absent.
+  [Results and limits](../qualification.md#direct-cc-verifier-capability-samples-2026-11-14).
+
 - November 14 implementation authorization: the user approved implementing the
   independent code implementation verifier, committing/pushing dev and selectively
   updating main. This supersedes the proposal-only restriction below. Existing

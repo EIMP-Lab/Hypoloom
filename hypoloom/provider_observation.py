@@ -23,6 +23,20 @@ PROVIDER_DEFERRED = PROVIDER_UNAVAILABLE | {"local_request_queue"}
 PROVIDER_RETRY_DELAYS = (60, 120, 240, 480, 900)
 
 
+def model_runtime_observation(request, exchanges):
+    """Requested, wire and observed values; absence never means thinking is off."""
+    from .profile_v4 import request_node_runtime
+    runtime = request_node_runtime(request.input_artifacts)
+    generations = [e for e in exchanges or () if e.get("request_path") == "/v1/messages"]
+    samples = [{"exchange": e.get("exchange"), "sent": e.get("request_parameters"),
+        "served_models": e.get("served_models", []), "stop_reason": e.get("stop_reason"),
+        "seconds": max(0, e["ended_at"] - e["started_at"]) if type(e.get("ended_at")) in {int, float} and type(e.get("started_at")) in {int, float} else None}
+        for e in generations[-8:]]
+    return {"requested": {"model": request.required_model_identity, "effort": runtime.get("effort")},
+        "exchanges": samples, "generation_count": len(generations), "omitted_exchanges": max(0, len(generations) - len(samples)),
+        "status": "observed" if any(s["sent"] is not None for s in samples) else "unknown"}
+
+
 def provider_retry_delay(rounds):
     return PROVIDER_RETRY_DELAYS[min(max(rounds - 1, 0), len(PROVIDER_RETRY_DELAYS) - 1)]
 

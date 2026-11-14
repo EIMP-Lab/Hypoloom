@@ -1437,6 +1437,8 @@ def build_monitor_snapshot(
             goal_rows = facts_by_type.get("GoalDefined", ())
             goal = dict(goal_rows[0]["payload"]) if goal_rows else {}
             contract = _research_contract(goal)
+            from .verification_observation import read_verification_view
+            verification = read_verification_view(connection, run_id, goal.get("research_contract", {})) if _include_overview else None
             transition_rows = _transition_rows(reader, run_id)
             (
                 workflow_components,
@@ -1521,7 +1523,7 @@ def build_monitor_snapshot(
         transitions=transition_rows, attempts=raw_attempts, reading_commands=reading_commands,
         experts=[asdict(item) for item in experts],
         graph=product_graph([asdict(item) for item in hypotheses], transition_rows),
-        observed_at=observed_at, created_at=run["created_at"], agent_aci_version=run["agent_aci_version"]) if _include_overview else {}
+        observed_at=observed_at, created_at=run["created_at"], agent_aci_version=run["agent_aci_version"], verification=verification) if _include_overview else {}
     oracle = (Oracle(root / "state.sqlite", root / "artifacts").audit(run_id).to_dict()
         if _oracle is None else dict(_oracle))
     return MonitorSnapshot(

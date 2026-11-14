@@ -7,7 +7,7 @@ import stat
 
 import pytest
 
-from hypoloom.agent_aci import AgentBudget, EmbeddedInput, validate_postflight
+from hypoloom.agent_aci import EmbeddedInput, validate_postflight
 from hypoloom.agent_sessions import AgentSessions
 from hypoloom.artifacts import ArtifactPublisher
 from hypoloom.claude_agent_host import ClaudeAgentHost, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE
@@ -23,9 +23,13 @@ def test_real_reviewer_detects_dispatch_defect_and_accepts_novel_probe(tmp_path)
     settings = _configured_path("HYPOLOOM_CLAUDE_SETTINGS")
     assert stat.S_IMODE(settings.stat().st_mode) == 0o600
     model = os.environ["HYPOLOOM_CLAUDE_MODEL"]
+    from verifier_qualification import verifier_runtime
+    runtime, budget = verifier_runtime(model, effort=os.environ.get("HYPOLOOM_VERIFIER_EFFORT", "low"),
+        invocation={"max_turns": 8, "max_tokens": 100_000, "max_output_bytes": 131_072,
+                    "wall_seconds": 180, "max_cost": "2", "token_enforcement_mode": "observe"})
     limit = Decimal(os.environ["HYPOLOOM_G5_CUMULATIVE_LIMIT_USD"])
     charged = Decimal(os.environ["HYPOLOOM_G5_PRIOR_CHARGED_USD"])
-    assert 0 < limit <= 4 and 0 <= charged < limit
+    assert 0 <= charged < limit and limit - charged <= 4
     adapter = ClaudeAgentHost(claude_executable=executable, settings_path=settings)
     adapter.preflight(model=model)
     source = """import math
@@ -46,7 +50,7 @@ def train_step(batch): return NewLoss()(batch)
             prefix = f"verifier-sample-{index}"
             def embedded(suffix, value):
                 return EmbeddedInput.from_bytes(prefix + suffix, "application/json", json.dumps(value).encode())
-            inputs = (embedded("--expert-config", {"node_runtime": {"model": model}}),
+            inputs = (embedded("--expert-config", {"node_runtime": runtime}),
                 embedded("--verification-context", {"phase": "inspect", "workspace_paths": ["candidate.py"],
                     "max_probe_seconds": 120, "finding_refs": [], "open_blocker_refs": [],
                     "argv": ["python", "candidate.py"], "implementation_description": description,
@@ -57,8 +61,7 @@ def train_step(batch): return NewLoss()(batch)
                 input_artifacts=inputs, immutable_context_refs=tuple(i.ref for i in inputs),
                 required_model_identity=model, required_adapter_version=CLAUDE_AGENT_HOST_VERSION,
                 tool_permission_profile=CLAUDE_AGENT_TOOL_PERMISSION_PROFILE,
-                budget=AgentBudget(max_turns=8, max_tokens=100_000, max_output_bytes=131_072,
-                    wall_seconds=180, max_cost="2", token_enforcement_mode="observe"))
+                budget=budget)
             workspace = sessions.prepare(request, None)
             assert workspace.binding["parent_session_id"] is None
             handle = adapter.start(request, model=model, provider_environment={}, tool_workspace=workspace,

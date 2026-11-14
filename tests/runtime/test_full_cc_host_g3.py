@@ -182,7 +182,7 @@ def _request_from_provider(document: Mapping[str, Any]) -> AgentRequest:
                 continue
             prompt, _ = decoder.raw_decode(text[start:])
             rendered = prompt["rendered_inputs"]
-            if any("path" in item for item in rendered):
+            if any("path" in item or "source_view" in item for item in rendered):
                 metadata = prompt["agent_request_metadata"]
                 request = _file_backed_request(metadata)
                 assert metadata == {

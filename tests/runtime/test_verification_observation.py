@@ -98,3 +98,18 @@ def test_grounding_and_verifier_tiles_survive_same_refresh(browser):
     page.wait("document.querySelector('#verifier-agent-card').textContent.includes('max')")
     assert page.evaluate("window.savedVerifierTile === document.querySelector('#verifier-agent-card [data-attempt=code-review]')")
     assert page.evaluate("document.querySelector('#grounding-agent-card [data-attempt=ground-review]') !== null")
+
+
+def test_verifier_card_shows_probe_coverage_and_failure_attribution(browser):
+    page = browser
+    page.evaluate("""fixture.snapshot.overview.verifier={state:'idle',model:'mimo-v2.6-pro',effort:'low',experts:[{
+      expert:'author-flash',deliveries:2,triggers:2,reuse:0,first_pass:{passed:1,completed:1},blockers:0,advisories:0,
+      verification_failures:1,invocation_failures:2,protocol_rejections:3,stage_seconds:{inspect:10,review:4},findings:[],
+      model_runtime:{exchanges:[{sent:{model:'mimo-v2.6-pro',effort:'low',max_tokens:8000,thinking_sent:false},served_models:['mimo-v2.6-pro'],stop_reason:'end_turn'}]},
+      recent:[{revisions:[{experiment_id:'checked-source',state:'inconclusive',stages:[],probe:{results:{checks:[{id:'actual-gradient',status:'ERROR'}]}},
+        reports:[{report_ref:'review-1',verdict:'inconclusive',summary:'Missing CUDA evidence',coverage:{covered:[],uncovered:[{condition:'CUDA gradient',reason:'CPU only',blocking:true}]}}]}]}]
+    }]};fixture.snapshot.status.run_revision+=1;""")
+    page.click('#refresh-workbench')
+    page.wait("document.querySelector('#verifier-agent-card').textContent.includes('actual-gradient')")
+    text = page.evaluate("document.querySelector('#verifier-agent-card').textContent")
+    assert all(value in text for value in ('author-flash', 'ERROR', 'CPU only', '8000', 'end_turn'))

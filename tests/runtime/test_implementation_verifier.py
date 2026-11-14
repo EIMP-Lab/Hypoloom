@@ -62,9 +62,11 @@ def test_host_probe_then_independent_review_before_training(execution, monkeypat
             candidate = copy.deepcopy(response.typed_candidate)
             if candidate["probe"]:
                 candidate["probe"]["files"]["verification/probe.py"] = (
-                    "from pathlib import Path\nassert Path('/input/experiment.py').is_file()\n"
-                    "try:\n Path('/input/experiment.py').write_text('changed')\n raise AssertionError('candidate writable')\n"
-                    "except OSError:\n pass\nprint('candidate is read-only')\n" + ("raise AssertionError('independent negative probe')\n" if probe_fails else ""))
+                    "from pathlib import Path\nfrom hypoloom_probe import check\nwith check('fixture') as c:\n"
+                    " c.true(Path('/input/experiment.py').is_file(),'captured candidate exists')\n"
+                    " try:\n  Path('/input/experiment.py').write_text('changed')\n  c.true(False,'candidate writable')\n"
+                    " except OSError:\n  c.true(True,'candidate is read-only')\n"
+                    " print('candidate is read-only')\n" + (" c.true(False,'independent negative probe')\n" if probe_fails else ""))
             response = with_output_digest(replace(response, typed_candidate=candidate))
         return response
     monkeypatch.setattr(host.agent, "invoke", review)

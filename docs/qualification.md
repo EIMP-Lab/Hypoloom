@@ -1,5 +1,255 @@
 # Qualification: G0–G5
 
+## Implementation verifier reliability and efficiency (2026-11-14)
+
+The user approved implementing P0/P1 of the
+[optimization design](design/implementation-verifier-optimization.md), continuing
+the independent verifier's dev/main delivery scope. Baseline dev is `c12c310`
+and public main is `d7dca99`. Evidence is under
+`.local/qualification/verifier-optimization-20261114/`; the earlier real-model
+samples remain at their original locations. This is engineering qualification,
+not renewed paid-model qualification.
+
+ACI **35** / native adapter **93** retain lifecycle **13** and ACI 34 report
+reading. The compact native verifier keeps its AgentResponse envelope, read-only
+tools and Stop hook. Phase-specific instructions, reference domains and report
+admission share the existing validator. Qualification resolves the actual public
+Profile, including its three-failed-validation limit. Diagnostics distinguish
+configured model/effort, parameters actually sent and observable served models;
+omitted thinking parameters do not establish disabled reasoning.
+
+Dynamic probes declare checks and expected-value bases for the captured code.
+The Host injects a read-only stdlib runner through the existing workspace and
+collects bounded per-check observations through the existing Process. Empty,
+missing, failed, duplicate and erroneous checks, early exit, malformed results
+and mismatched Attempt/report references cannot authorize formal execution.
+Measurements record actual warmup/repetitions/timing separately from assertions.
+Fresh evidence review receives the probe source and structured results, and
+must account for required checks and blocking coverage gaps. No static Profile
+checklist, automatic model escalation or extra probe revision loop was added.
+
+TUI/Web share per-expert stage timing, correction/invocation failures, check
+results and coverage. Inconclusive verification and provider/protocol failures
+do not become author code defects or enter the first-pass denominator. History
+counting selects lightweight fields before decoding current report details.
+The synthetic 2,000-delivery check decodes 11 detailed Attempts, returns 4,175
+JSON bytes and preserves all cumulative counts, including an older finding.
+One local read with tracemalloc takes 0.502 s and peaks at 12,753,514 Python bytes
+(`history-projection.json`); this is neither a constant-time whole-monitor claim
+nor week-long endurance evidence. Delivery evidence uses the latest 200 relevant
+author inputs and explicitly marks older unconfirmed observations as partial.
+
+- Initial complete G1 collects **9,160** cases: **8,990 pass / 163 skip / seven
+  failures**, **1,540.98 s** (`g1.xml`). Three cases retain an obsolete ACI 34
+  expectation. Three JavaScript checks encounter the old `/usr/bin/node` parser;
+  the recheck uses the existing local Node **22.16.0**. The contract exceeds its
+  old per-module LOC allocation: transfer 375 unused `shared_acceptance_host`
+  lines to the contract (+125) and newly counted runner (+250), preserving all
+  previously counted files and the **27,550** total. No runtime source changes
+  after this full selection; original failures remain in `g1-causes.json` and
+  their XML/logs. All **67 affected rechecks pass in 172.60 s** (`g1-recheck.xml`).
+  Reconciliation by collected test identity gives **8,997 pass / 163 skip / zero
+  unresolved or missing cases** (`reconciled.json`), not one uninterrupted green
+  full run.
+- Focused implementation checks include actual runner subprocesses, a correct
+  reduction and wrong-denominator mutant, failed assertions followed by success,
+  print-only/exception/early-exit probes, timing call counts, result binding,
+  coverage gating, legacy reading and Profile-driven native correction. The
+  native runtime/Stop/Host group passes **55** cases. The earlier 339-pass UI/
+  provider group had one stale CLI ACI expectation, corrected before G1.
+- The independent G1 native/CPU census closes **233 Agents / 26 Processes**
+  across **11 roots**, with clean Oracles and **213** absent recorded groups
+  (`g1-native-closure.json`). The dedicated native verifier closes **19 Agents /
+  four Processes**, including two probes and four independent reviewer sessions,
+  with a clean Oracle and no members of its **23** groups. These use actual CC,
+  Host, broker and sandboxes with a local scripted provider, not real-model
+  defect-detection evidence. The three affected CPU recheck roots close another
+  **154 Agents / 16 Processes**, with clean Oracles and no members of their
+  **16** groups (`g1-recheck-closure.json`).
+- The real CUDA verifier case passes in **68.06 s** (`g4-idle.xml`), using the
+  two selected idle A100 devices and PyTorch **2.7.1+cu128** in a disposable root.
+  Independent census closes **22 Agents / four Processes**, two CUDA probes,
+  four reviewer sessions and **26** absent groups with a clean Oracle. The first
+  invocation used an incorrect runtime environment-variable name; the second
+  stopped at the idle-device prerequisite when another workload occupied a
+  selected device. Both original failures are retained. The successful retry
+  changed neither resource checks nor production pools. The third occupied
+  GPU was not used.
+- Full G1 residue census reads **14,327 Attempts** from **1,334 databases**.
+  All **2,823** recorded groups are absent and no sockets under that temporary
+  root remain bound. Its **137 OPEN fixture rows** are not live processes.
+  Another 96 deliberately minimal/invalid fixture files are separately listed
+  for missing tables/columns or non-SQLite contents (`g1-residue.json`).
+- G2 compares all **10 terminal retained roots / 8,055 artifacts** with the
+  accepted baseline. Logical databases and artifact bytes remain unchanged,
+  reports match and the **five historical issues** remain. One additional root
+  has durable STOPPING state and is excluded from this stable comparison;
+  process liveness is not inferred from that state (`retained/retained.json`).
+- Source, wheel, isolated installation and fresh bundle each match **220 runtime
+  files** on both branches, with installed CLI/MCP checks from outside the
+  checkout (`package-final.json`, `main-package.json`). Public main passes
+  **305 checks / one explicit CUDA skip** (`main-public.xml`). Runtime code
+  matches dev apart from the two inherited documentation-string differences.
+
+Earlier development failures remain recorded: a missing fake fixture import,
+old print-only success fixtures, correction test-envelope mistakes and a call
+to a nonexistent StateStore accessor were corrected before candidate freeze.
+The superseded native test invocation was interrupted and is not a passing
+qualification result. The corrected Host/projection group passes 15 cases;
+native, browser and full G1 checks cover the final implementation. No assertion,
+budget, retry policy or resource eligibility check was relaxed to obtain a pass.
+
+No new paid provider calls were made. Preserve the combined **8 USD unknown-cost
+reservation** from earlier samples. Improved MiMo report admission, latency and
+defect-detection rates require a separate bounded real-model comparison. New
+runs receive this version; private Profiles, retained research and existing
+frozen runtimes are not migrated. No week-long soak is claimed.
+
+
+## Flash author and Pro verifier samples (2026-11-14)
+
+The user explicitly requested further tests with `mimo-v2.6-flash` authoring
+implementations and `mimo-v2.6-pro` independently verifying them. This authorized
+a separately announced additional 4 USD round; the previous 4 USD reservation
+remains. Eight genuine CC invocations ran against the unchanged dev `c12c310`
+runtime. Evidence and executable harnesses are retained under
+`.local/qualification/implementation-verifier/paired-20261114/`; `assessment.json`
+contains the combined observations. Author summaries, private reasoning and
+hidden CPU oracles were not supplied to the verifier.
+
+| Sample/stage | Configuration and outcome | Seconds |
+| --- | --- | ---: |
+| Group-balanced masked loss author | Flash/high; no delivery before timeout | 180.04 |
+| Batch-neighbor loss author | Flash/high; no delivery before timeout | 180.04 |
+| Smaller masked weighted loss author | Flash/medium; compact vectorized delivery | 194.74 |
+| Original native inspection of small loss | Pro/adaptive/high; no report before deadline | 300.98 |
+| Native output-cap experiment | Wire output cap 8,000; adaptive thinking remained; truncation/continuation then timeout | 300.90 |
+| Native controlled-defect inspection | Pro/low; identified injected detach defect; first report rejected | 291.54 |
+| Compact inspection | Pro/low, explicit generic protocol rules; valid `probe_required` | 129.66 |
+| Fresh compact evidence review | Pro/low; valid `passed` after actual probe execution | 26.34 |
+
+The smaller Flash delivery passes seven independent CPU cases, analytic-gradient
+comparisons and gradcheck, including inactive NaN, all-empty NaN, zero-weight NaN,
+empty-row exclusion, float32 and non-contiguous inputs. This is evidence for this
+delivery; the two incomplete complex deliveries do not establish their accuracy.
+An evaluator-added wrapper severed the saved implementation's gradients without
+changing its forward values. Pro correctly identified that defect in its native
+response. **This was a controlled mutation, not a Flash-authored error.** Its
+report nevertheless supplied input aliases as `resolved_refs`, carried a probe
+with `changes_required`, and used an incompatible probe entrypoint.
+
+**Correction-test limitation:** the native fixture omitted
+`node_runtime.output_correction`. The observed failure cap was therefore 1:
+one rejected report, no subsequent correction. The supplied Profile templates
+set `max_failed_validations: 3`. Although the original test plan intended to
+exercise correction, this fixture exercised rejection only. This is a harness
+omission, not evidence that configured production correction fails. Original
+requests and the limitation record remain; that full native cycle is unqualified.
+
+The compact experiment used the same verifier instructions, review schema and
+semantic validator, adding generic explanations of references, verdict/probe
+relationships, paths and the distinction between reviewer and probe filesystems.
+It replaced the default coding-agent prompt and response wrapper with a direct
+typed review; it did not use the native Stop hook. Its generated probe ran
+unchanged through LocalRunner/ExecutionWorkspace, with read-only candidate code
+and no network/GPU. Execution took 1.85 seconds; all ten reported checks passed.
+Actual forward/backward timing was 2.45 ms per iteration over 50 CPU repetitions
+at 512-by-256. A fresh Pro session then read the captured code, original inspection
+and complete execution observations and produced an accepted `passed` report.
+This closes one manually orchestrated real-model loop, not a full research Host
+workflow or unchanged native-runtime qualification. Several prompt/configuration
+factors changed together, so a single cause or general accuracy cannot be inferred.
+
+Remaining observations:
+
+- Long generation dominated these samples. The default native request carried
+  `max_tokens=32000` and adaptive/high thinking. The native environment does not
+  forward experimental token hints passed as `provider_environment`. In a scoped
+  environment-only experiment, `max_tokens=8000` reached the provider, but the
+  adaptive-disable flag did not switch this custom model to a fixed budget.
+  Its first response exhausted 8,000 tokens before a report and CC continued it.
+  A low-effort variant omitted the thinking parameter, yet the provider still
+  emitted thinking. Effective requests, not variable names, establish behavior;
+  these limits are model-dependent in the [CC reference](https://code.claude.com/docs/en/env-vars).
+- The native reviewer searched `/workspace` and missing `/input`, then reread the
+  output schema and searched `/runtime`, despite all candidate bytes being inline.
+  `/input` exists in the later probe sandbox. Explaining that distinction avoids
+  an unnecessary ambiguity; the experiment does not quantify its isolated cost.
+- The generated probe exposes a wrong row denominator through four failed checks
+  while returning exit 0. A detached-gradient mutation raises a TypeError instead
+  of a clear missing-gradient diagnostic. Fresh review must inspect actual logs.
+  The positive review also overstates full coverage and cites inaccurate source
+  line numbers. CUDA and every combination of edge cases were not tested by
+  that probe, although the separate hidden oracle covered additional NaN cases.
+
+All 13 recorded model/probe process groups are independently absent. No retained
+research, Profile or production pool was changed. Five CLI results contain cost
+estimates totaling about 0.782 USD, including an incomplete/error result at
+deadline closure; three have no final cost. Every custom-model price is unknown,
+so this subtotal is neither complete nor a settled bill. Retain **4 USD for this
+round, 8 USD combined with previous reservations**. No automatic transport retry
+or further paid invocation is authorized by unused apparent estimated cost.
+
+## Direct CC verifier capability samples (2026-11-14)
+
+After publication, the user explicitly requested real-model defect-detection
+tests through Claude Code. Four fresh CC 2.1.322 sessions requested and reported
+`mimo-v2.6-pro` against dev `c12c310`. Each received complete synthetic code and
+its implementation contract, without the author's context or the expected
+answer. CPU oracles established the defects and correct controls independently.
+Private evidence, raw reports, prompts and executable harnesses are under
+`.local/qualification/implementation-verifier/cc-direct-20261114/`;
+`assessment.json` records the combined result.
+
+| Case | Independently established behavior | Actual model judgment |
+| --- | --- | --- |
+| A | `forwards` fails to override the invoked `forward` | Identifies the dispatch blocker |
+| B | Forward value is correct but `detach` severs gradients | Identifies the gradient blocker |
+| C | Intentional new square-root loss has correct values/gradients | No blocker; requests a probe |
+| D | Per-row loop has correct values/gradients | Identifies overhead as an advisory, requests a probe |
+
+Both seeded correctness defects were identified, neither correct control received
+a blocker, and the loop advisory respected the absence of a latency threshold.
+These four constructed samples do not estimate general model accuracy. The
+independent single-thread CPU oracle measured approximately 79.3 times slower
+forward/backward for the loop at N=512, D=64; this is a local measurement, not a
+universal vectorization rule or a GPU result.
+
+**Report delivery remains unqualified:** all four CLI calls returned successful
+structured output, but **0/4 first reports pass the production semantic
+validator**. Every report supplied input IDs as `resolved_refs` despite having
+no prior findings, placed probe files outside `verification/`, and used an
+unsupported entrypoint. A/B also referenced a current finding as a prior one
+and supplied a probe with `changes_required`. The model-facing schema/instructions
+do not express several of these enforced semantics explicitly. This diagnostic
+reuses the production instructions, schema and validator, but uses direct CLI
+StructuredOutput instead of the production response wrapper and Stop-hook
+correction. It does not establish failure or success after production correction.
+
+For probe-quality diagnosis only, the generated Python source was run unchanged
+using the existing LocalRunner and ExecutionWorkspace sandbox. The harness
+normalized the interpreter and entrypoint placement; the rejected reports were
+preserved and were never admitted. A/B probes distinguish original and repaired
+code. C/D probes accept the correct source and expose feature-reduction and
+gradient-detach mutations. C emits six failed checks for its value mutant while
+still exiting zero; both gradient mutants cause a probe TypeError. C also samples
+outside its stated input range and invents a timing threshold. D's timing labelled
+`grad` uses inputs without `requires_grad`, performs no backward, and has no
+executed vectorized comparator. Reviewing stdout/stderr remains necessary.
+
+Calls took 42.48, 41.35, 72.97 and 96.00 seconds, with 150-second/3-turn/0.50-USD
+per-call limits and no automatic paid retry. CC estimates 0.4090912 USD total,
+but every model-usage record has `costBasis=unknown`; this is not a settled
+provider bill. Retain the full **2 USD new reservation plus the earlier 2 USD**:
+the existing **4 USD cohort allowance is fully reserved**. Do not reset it or
+automatically start further paid calls. All 15 recorded process groups are
+independently absent. The earlier provider-504 evidence remains unchanged.
+
+The next validation need is explicit generic report-contract guidance and a
+real production correction/probe/evidence-review cycle. This follow-up does not
+qualify that full cycle, a stronger model, long project context, or week-scale
+operation. No research-method-specific checklist is inferred from these fixtures.
+
 ## Independent implementation verifier (2026-11-14)
 
 The user authorized implementation, validation, dev publication and the

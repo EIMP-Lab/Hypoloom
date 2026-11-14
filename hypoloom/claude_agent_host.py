@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/92"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/93"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -979,6 +979,8 @@ class ClaudeAgentHost:
                 wire_input_floor = observed_input_floor(exchanges)
             except (OSError, ValueError, TypeError):
                 exchanges = None
+        from .provider_observation import model_runtime_observation
+        diagnostics["model_runtime"] = model_runtime_observation(handle.request, exchanges)
         output_limit = _transport_output_limit(handle.request)
         stdout_size = _stream_size(handle._stdout_file)
         stderr_size = _stream_size(handle._stderr_file)
@@ -3073,7 +3075,7 @@ def _prompt(
         from .reference_aliases import reference_aliases
         aliases = reference_aliases(request, _output_schema(request, tool_workspace=tool_workspace, reference_aliases=False))
         instruction += (
-            "\nIn supporting_refs only, use the short R1, R2, ... names in ref_aliases. "
+            "\nIn supporting_refs and evidence_refs, use the short R1, R2, ... names in ref_aliases. "
             "Select only aliases allowed by that field's output schema. The Host restores the full "
             "reference before acceptance. Do not reconstruct or retype encoded reference IDs. "
             "All other identity fields retain their exact supplied values.\n")
@@ -3136,6 +3138,14 @@ def _prompt(
             offloaded_refs.append(item.ref)
         else:
             rendered = dict(_render_input(item))
+            if request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= 35 and item.ref.endswith("--implementation-source"):
+                # A display-only view; immutable input bytes and their references
+                # remain authoritative. Large source containers stay offloaded.
+                files = json.loads(item.content_bytes())
+                rendered["content_utf8"] = json.dumps({path: {"numbered_source": "".join(
+                    f"{number}: {line}" for number, line in enumerate(source.splitlines(keepends=True), 1))}
+                    if isinstance(source, str) else source for path, source in files.items()}, ensure_ascii=False)
+                rendered["source_view"] = "Line numbers are display only; original source is in the immutable input."
         rendered_inputs.append(rendered)
         if item.ref in aliases.values():
             rendered["ref_alias"] = next(alias for alias, ref in aliases.items() if ref == item.ref)
