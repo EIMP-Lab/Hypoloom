@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import base64
+import os
+import stat
 from pathlib import Path
 
 from .agent_aci import EmbeddedInput
@@ -17,11 +19,20 @@ from .profile_v4 import resolve_node_runtime
 from .verification_contract import MAX_PROBE_SECONDS
 
 
-def review_rows(store, run_id):
-    return [{**row, "request": json.loads(row["request_json"])} for row in store.inspect(
+def review_rows(store, run_id, *, experiment_id=None, subject=None, component=None, phase=None, limit=None):
+    clauses, arguments = [], [run_id, Command.REQUEST_AUXILIARY.value]
+    for key, value in (("experiment_id", experiment_id), ("subject_expert", subject), ("component_id", component), ("phase", phase)):
+        if value is not None:
+            clauses.append(f" AND json_extract(request_json,'$.implementation_verification.{key}')=?")
+            arguments.append(value)
+    tail = " ORDER BY rowid"
+    if limit is not None:
+        tail += " DESC LIMIT ?"
+        arguments.append(limit)
+    rows = [{**row, "request": json.loads(row["request_json"])} for row in store.inspect(
         "SELECT * FROM workflow_commands WHERE run_id=? AND command_type=? "
-        "AND json_type(request_json,'$.implementation_verification')='object' ORDER BY rowid",
-        (run_id, Command.REQUEST_AUXILIARY.value))]
+        "AND json_type(request_json,'$.implementation_verification')='object'" + "".join(clauses) + tail, arguments)]
+    return list(reversed(rows)) if limit is not None else rows
 
 
 def accepted_review(store, row):
@@ -57,19 +68,20 @@ class ImplementationVerification:
 
     def _task(self, run_id, experiment_id, phase, source):
         store = self.host.store
-        rows = review_rows(store, run_id)
+        rows = review_rows(store, run_id, experiment_id=experiment_id, phase=phase)
         found = next((row for row in rows if row["request"]["implementation_verification"]["experiment_id"] == experiment_id
                       and row["request"]["implementation_verification"]["phase"] == phase), None)
         if found is not None: return found
         spec, execution, request, snapshot, validated = source
-        task = AuxiliaryTask(kind=AuxiliaryRequestKind.VERIFY_IMPLEMENTATION, run_id=run_id, ordinal=len(rows) + 1)
+        count = store.inspect("SELECT count(*) AS n FROM workflow_commands WHERE run_id=? AND command_type=? "
+            "AND json_type(request_json,'$.implementation_verification')='object'", (run_id, Command.REQUEST_AUXILIARY.value))[0]["n"]
+        task = AuxiliaryTask(kind=AuxiliaryRequestKind.VERIFY_IMPLEMENTATION, run_id=run_id, ordinal=count + 1)
         value = {"experiment_id": experiment_id, "phase": phase, "subject_expert": request.role,
                  "component_id": request.component_id, "delivery_id": request.command_id,
                  "source_submit_command_id": execution["source_submit_command_id"],
                  "source_output_digest": validated.output_digest}
         if phase == "inspect":
-            recent = [r for r in rows if r["request"]["implementation_verification"]["subject_expert"] == request.role
-                      and r["request"]["implementation_verification"]["component_id"] == request.component_id][-32:]
+            recent = review_rows(store, run_id, subject=request.role, component=request.component_id, limit=32)
             for old in reversed(recent):
                 previous = old["request"]["implementation_verification"]
                 if previous["phase"] != "review" or previous["subject_expert"] != request.role or previous["component_id"] != request.component_id: continue
@@ -92,7 +104,8 @@ class ImplementationVerification:
                 RunState(head["state"]), command_id=task.command_id,
                 payload={"task_context": task.to_dict(), "role": "verifier", "component_id": "verifier",
                          "implementation_verification": value}))
-        return next(row for row in review_rows(store, run_id) if row["command_id"] == task.command_id)
+        row = store.inspect("SELECT * FROM workflow_commands WHERE command_id=?", (task.command_id,))[0]
+        return {**row, "request": json.loads(row["request_json"])}
 
     def _run_review(self, row):
         from .expert_loop import task_context_from_dict
@@ -105,9 +118,7 @@ class ImplementationVerification:
 
     def _prior(self, run_id, subject, component, exclude=None):
         result = []
-        selected = [row for row in review_rows(self.host.store, run_id)
-            if row["request"]["implementation_verification"]["subject_expert"] == subject
-            and row["request"]["implementation_verification"]["component_id"] == component][-16:]
+        selected = review_rows(self.host.store, run_id, subject=subject, component=component, limit=16)
         for row in selected:
             value = row["request"]["implementation_verification"]
             if value["subject_expert"] == subject and value["component_id"] == component and row["command_id"] != exclude:
@@ -115,7 +126,8 @@ class ImplementationVerification:
         return result[-16:]
 
     def inputs(self, task):
-        row = next(row for row in review_rows(self.host.store, task.run_id) if row["command_id"] == task.command_id)
+        row = self.host.store.inspect("SELECT * FROM workflow_commands WHERE command_id=?", (task.command_id,))[0]
+        row = {**row, "request": json.loads(row["request_json"])}
         value = row["request"]["implementation_verification"]
         source = self.source(task.run_id, value["experiment_id"])
         spec, execution, author, snapshot, validated = source
@@ -124,6 +136,9 @@ class ImplementationVerification:
         prior = self._prior(task.run_id, value["subject_expert"], value["component_id"], task.command_id)
         probes = self.host.store.list_attempts(execution_id=value["experiment_id"] + "--implementation-probe")
         evidence = None
+        inspection = next((accepted_review(self.host.store, r) for r in review_rows(self.host.store, task.run_id,
+            experiment_id=value["experiment_id"], phase="inspect")), None)
+        plan = (inspection or {}).get("report", {}).get("probe")
         if value["phase"] == "review":
             last = probes[-1]
             observation = json.loads(last["observation_json"] or "{}")
@@ -132,6 +147,16 @@ class ImplementationVerification:
                     and "implementation_probe" in observation and bool(observation.get("stdout", "").strip())
                     and not observation.get("synthetic_before_spawn"),
                 "observation": observation}
+            if plan and "checks" in plan:
+                from .verification_probe import validate_result
+                try:
+                    assessment = validate_result(observation.get("check_results"), plan["checks"],
+                        attempt_id=last["attempt_id"], report_ref=inspection["report_ref"])
+                    evidence["usable"] = (last["state"] == "CLOSED" and last["terminal_reason"] == "SUCCEEDED"
+                        and observation.get("implementation_probe") is True and not observation.get("synthetic_before_spawn")
+                        and assessment["passed"] and not observation.get("check_results_error"))
+                except (ValueError, TypeError):
+                    evidence["usable"] = False
         config = self.host._run_config(task.run_id)["execution"]
         ctx = {**value, "workspace_paths": sorted(validated.workspace_files), "argv": execution["argv"],
                "implementation_description": snapshot["arguments"].get("description"),
@@ -139,6 +164,8 @@ class ImplementationVerification:
                "max_probe_seconds": MAX_PROBE_SECONDS, "probe_evidence": evidence,
                "target": config.get("target"), "bindings": config.get("read_only_bindings", []),
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
+        if plan and "checks" in plan:
+            ctx.update(probe_plan=plan, probe_report_ref=inspection["report_ref"])
         resolved = {ref for r in prior if r["report"]["verdict"] == "passed" for ref in r["report"]["resolved_refs"]}
         ctx["open_blocker_refs"] = [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]
             if r["delivery_id"] == value["delivery_id"] and f["severity"] == "blocker" and r["report_ref"] + "#" + f["id"] not in resolved]
@@ -165,7 +192,7 @@ class ImplementationVerification:
 
     def status(self, run_id, experiment_id):
         reports = []
-        for row in review_rows(self.host.store, run_id):
+        for row in review_rows(self.host.store, run_id, experiment_id=experiment_id):
             value = row["request"]["implementation_verification"]
             if value["experiment_id"] == experiment_id:
                 if report := accepted_review(self.host.store, row): reports.append({**value, **report})
@@ -227,6 +254,15 @@ class ImplementationVerification:
                 result[name] = data[:64 * 1024].decode("utf-8", "replace")
                 result[name + "_truncated"] = len(data) > 64 * 1024
             except OSError: result[name] = None
+        from .verification_probe import MAX_RESULT_BYTES, RESULT_PATH, decode_result
+        path = root.parent / "output" / RESULT_PATH
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode): raise ValueError("probe result must be a regular file")
+                result["check_results"] = decode_result(stream.read(MAX_RESULT_BYTES + 1))
+        except (OSError, ValueError, UnicodeError) as exc:
+            result["check_results_error"] = "missing_probe_result" if isinstance(exc, OSError) else "invalid_probe_result"
         return result
 
     def recover_probe(self, attempt):

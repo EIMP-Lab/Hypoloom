@@ -23,6 +23,15 @@ observations before formal execution. Probe records and retry ordinals are separ
 from scientific executions. Failed checks and insufficient evidence return through
 engineering repair. The author releases Agent capacity using execution handoff while waiting.
 
+New probes declare their own checks and use the Host's assertion/timing helper.
+The Host records executed assertions, failures, exceptions and missing checks;
+printing PASS or returning exit 0 is insufficient. Evidence review includes the
+probe source and specifies tested conditions, untested conditions and blocking
+gaps. A measurement records a workload's timing, not a universal speed guarantee.
+Protocol mistakes are corrected within the same invocation and its original
+budget, using `methodology.yaml.output_correction` (the template allows three
+failed validations). No extra probe revision loop is started automatically.
+
 Unchanged captures may reuse recent evidence within the same run. Code, entrypoint,
 environment or resource changes require another inspection. There is no universal
 vectorization threshold, mandatory baseline equivalence or cross-run pass cache.
@@ -36,5 +45,13 @@ or understanding. Finding resolution requires an explicit prior report/finding r
 Verifier accounting is global; subject attribution does not bill the work twice.
 Press **v** in TUI or **Verification history** in Web for paginated evidence.
 Stale Host observations remain unconfirmed; retained runs show unsupported status.
+
+The card also separates inconclusive verification and invocation failures from
+author code defects, and shows phase time, output corrections, check results,
+coverage and available wire/response model observations. An omitted thinking
+parameter does not establish disabled reasoning. Delivery evidence reads a
+bounded recent window; older unconfirmed deliveries are labelled partial rather
+than counted as proven undelivered. Aggregate delivery and first-pass counts
+still use the complete verification history.
 
 This applies to new runs. Existing frozen runs are not hot-upgraded or migrated.

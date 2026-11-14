@@ -4011,13 +4011,20 @@ class WorkflowHost:
         self._crash("before_process_intent_commit")
         mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt_id)
         plan = _component_plan(self._research_contract(run_id).document, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]), self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"])), grant.kind is ResourceKind.GPU)
+        probe_files = {}
         if probe:
             contract = {**contract, "argv": probe["argv"], "timeout_seconds": min(contract["timeout_seconds"], probe["timeout_seconds"])}
             source_path = probe["argv"][1]
+            probe_files = {k: v.encode() for k, v in probe["files"].items()}
+            if "checks" in probe:
+                from .verification_probe import RUNNER_PATH, execution_files
+                probe_files.update(execution_files(probe, attempt_id=attempt_id, report_ref=probe["report_ref"]))
+                source_path = RUNNER_PATH
+                contract = {**contract, "argv": ["python", RUNNER_PATH]}
         prepared = workspace.plan(agent_request=agent_request, agent_response=agent_response, attempt_id=attempt_id, attempt_ordinal=ordinal,
             execution_id=execution_id, target_env=dict(contract["environment"]), timeout_seconds=contract["timeout_seconds"], source_relative_path=source_path,
             result_relative_path=result_path, execution_argv=tuple(contract["argv"]),
-            trusted_workspace_files={**_trusted_execution_files(plan), **({k: v.encode() for k, v in probe["files"].items()} if probe else {})}, read_only_bindings=mounts,
+            trusted_workspace_files={**_trusted_execution_files(plan), **probe_files}, read_only_bindings=mounts,
             allow_generic_argv=bool(probe) or spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None)
         parser = None
         if not probe and (spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None):

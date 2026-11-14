@@ -1630,6 +1630,7 @@
     const card = element('article', 'entity-card');
     card.append(element('h3', '', t('Implementation Verifier') + ' · ' + (group.state === 'active' && !confirmed ? 'OPEN?' : (group.state || 'unsupported'))));
     card.append(element('p', 'panel-copy', `${group.model || '—'} · ${group.effort || '—'}`));
+    if (group.delivery_evidence === 'partial') card.append(element('p', 'panel-copy', t('Delivery history is partial; unconfirmed does not mean undelivered')));
     const rpm = element('p', 'panel-copy', t('Verifier RPM') + ' ');
     const rpmValue = element('strong', '', '—'); rpmValue.id = 'verifier-rpm'; rpm.append(rpmValue);
     card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · probe {1}', compactNumber(object(group.accounting).reported_tokens), compactDuration(group.probe_seconds))));
@@ -1649,6 +1650,16 @@
       const first = object(subject.first_pass);
       details.append(element('summary', '', t('{0}: deliveries {1} · checks {2} · reuse {3} · first pass {4}/{5} · blockers {6} · advisories {7}',
         subject.expert, subject.deliveries, subject.triggers, subject.reuse, first.passed, first.completed, subject.blockers, subject.advisories)));
+      details.append(element('p', 'panel-copy', t('Unverified {0} · invocation failures {1} · output rejections {2}',
+        subject.verification_failures || 0, subject.invocation_failures || 0, subject.protocol_rejections || 0)));
+      const times = object(subject.stage_seconds);
+      details.append(element('p', 'panel-copy', t('Inspection {0} · evidence review {1}', compactDuration(times.inspect), compactDuration(times.review))));
+      const runtime = object(subject.model_runtime), samples = list(runtime.exchanges);
+      const sent = object(samples.at(-1)?.sent);
+      if (sent.model) details.append(element('p', 'panel-copy', t('Wire: {0} · effort {1} · max tokens {2} · thinking parameter {3}',
+        sent.model, sent.effort || '—', sent.max_tokens ?? '—', t(sent.thinking_sent ? 'sent' : 'not sent'))));
+      if (samples.length) details.append(element('p', 'panel-copy', t('Response models {0} · stop {1}',
+        list(samples.at(-1).served_models).join(', ') || '—', samples.at(-1).stop_reason || '—')));
       for (const finding of list(subject.findings)) {
         details.append(element('p', 'panel-copy', `${finding.severity} · ${finding.state} · ${finding.delivery_state}: ${finding.message}`));
         details.append(element('p', 'panel-copy', finding.resolution_condition));
@@ -1656,8 +1667,19 @@
       }
       for (const delivery of list(subject.recent)) for (const revision of list(delivery.revisions)) {
         details.append(element('p', 'panel-copy', `${revision.experiment_id} · ${revision.state}`));
-        for (const report of list(revision.reports)) details.append(actionButton(`${report.verdict} · ${report.summary}`,
-          () => openRemoteDetail('attempt', {attempt_id: report.report_ref}), 'detail-link'));
+        for (const stage of list(revision.stages)) details.append(element('p', 'panel-copy',
+          `${stage.phase} · ${compactDuration(stage.seconds)}${stage.failure ? ' · ' + stage.failure : ''}`));
+        const probe = object(revision.probe);
+        for (const result of list(object(probe.results).checks)) details.append(element('p', 'panel-copy', `${result.id} · ${result.status}`));
+        if (probe.error) details.append(element('p', 'panel-copy', probe.error));
+        for (const report of list(revision.reports)) {
+          details.append(actionButton(`${report.verdict} · ${report.summary}`,
+            () => openRemoteDetail('attempt', {attempt_id: report.report_ref}), 'detail-link'));
+          for (const condition of list(object(report.coverage).covered)) details.append(element('p', 'panel-copy',
+            t('Tested: {0} · checks {1}', condition.condition, list(condition.check_ids).join(', '))));
+          for (const gap of list(object(report.coverage).uncovered)) details.append(element('p', 'panel-copy',
+            t('Untested: {0} · {1}', gap.condition, gap.reason)));
+        }
       }
       card.append(details);
     }

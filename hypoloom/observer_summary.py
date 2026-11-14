@@ -610,7 +610,7 @@ def refresh_summary_clock(summary, run_state, observed_at):
 
 def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions,
                       attempts, experts, graph, observed_at, created_at=None, reading_commands=(),
-                      agent_aci_version=None) -> dict[str, Any]:
+                      agent_aci_version=None, verification=None) -> dict[str, Any]:
     """Build all-run counts from complete transaction rows, never event pages."""
     from .observer_details import skill_catalog
     from .observer_reliability import build_reliability, reliability_context, summarize_reliability
@@ -777,7 +777,8 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             "failed" if any(row["attempt_id"] in final_failure_ids for row in owned) else
             "preparing" if owned else "not_started")
     from .verification_observation import verification_view
-    verifier = {**auxiliary_group("run", "verifier"), **verification_view(goal.get("research_contract", {}), reading_commands, attempts)}
+    verifier = {**auxiliary_group("run", "verifier"), **(verification if verification is not None else
+        verification_view(goal.get("research_contract", {}), reading_commands, attempts, now=observed))}
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
         "concurrency": {key: value for key, value in concurrency.items() if key != "experts"},
         "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),

@@ -52,6 +52,21 @@ def request_binding(request, command, commands, attempts, observations):
         assert probe["execution_id"] == value["experiment_id"] + "--implementation-probe"
         assert probe["state"] == "CLOSED" and evidence["terminal_reason"] == probe["terminal_reason"]
         assert evidence["observation"] == observations[probe["attempt_id"]]
+        if request.schema_version >= 35:
+            from .verification_probe import validate_result
+            inspection = observations[ctx["probe_report_ref"]]
+            assert inspection["request"]["command"] == "VERIFY_IMPLEMENTATION"
+            commissioned = json.loads(commands[inspection["request"]["command_id"]]["request_json"])["implementation_verification"]
+            assert commissioned["phase"] == "inspect" and commissioned["experiment_id"] == value["experiment_id"]
+            assert ctx["probe_plan"] == inspection["response"]["typed_candidate"]["probe"]
+            actual = evidence["observation"]
+            try:
+                checks = validate_result(actual.get("check_results"), ctx["probe_plan"]["checks"],
+                    attempt_id=probe["attempt_id"], report_ref=ctx["probe_report_ref"])
+                usable = (probe["terminal_reason"] == "SUCCEEDED" and actual.get("implementation_probe") is True
+                    and not actual.get("synthetic_before_spawn") and not actual.get("check_results_error") and checks["passed"])
+            except (ValueError, TypeError): usable = False
+            assert evidence["usable"] is usable
 
 
 def probe_context(attempt, intent, contexts, commands, attempts, observations, transitions, payloads):
@@ -77,6 +92,10 @@ def probe_context(attempt, intent, contexts, commands, attempts, observations, t
                    and json.loads(row["payload_json"]).get("attempt_id") == attempt["attempt_id"]]
         assert len(matches) == 1 and matches[0]["state"] == "READY"
         assert matches[0]["workflow_id"] == attempt["workflow_id"] and matches[0]["run_id"] == attempt["run_id"]
-    return {**context, "source_path": probe["argv"][1], "execution_argv": tuple(probe["argv"]),
-            "contract": {**context["contract"], "argv": probe["argv"],
+    argv = probe["argv"]
+    if report["request"]["schema_version"] >= 35:
+        from .verification_probe import RUNNER_PATH
+        argv = ["python", RUNNER_PATH]
+    return {**context, "source_path": argv[1], "execution_argv": tuple(argv),
+            "contract": {**context["contract"], "argv": argv,
                          "timeout_seconds": min(probe["timeout_seconds"], context["contract"]["timeout_seconds"])}}
