@@ -138,6 +138,7 @@ experts:
 | --- | --- |
 | `defaults.model` | Profile 默认模型，填写供应商支持的确切模型标识。 |
 | `grounding.model`、`grounding.effort` | 共享 Grounding 的模型与推理强度；未填写的字段先继承 `defaults`，再使用 Host 选择。该阶段发生在各专家研究周期之前。 |
+| `verifier.model`、`verifier.effort` | 独立代码实现检验者；init 明确选择模型，启动参数在内存覆盖，不继承专家/defaults 的模型覆盖。见[代码检验](../docs/guides/implementation-verification.zh-CN.md)。 |
 | `experts[].model`、`experts[].effort` | 覆盖某一专家的默认模型或推理强度。 |
 | `experts[].max_forks`、`experts[].max_hypotheses_per_round` | 覆盖某一专家的对应数量上限。 |
 | `experts[].stage_overrides` | 以阶段名称为键、以 `model` 和／或 `effort` 为值的映射；阶段设置优先于专家设置。 |

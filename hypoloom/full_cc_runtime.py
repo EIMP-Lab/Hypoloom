@@ -249,7 +249,7 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
             settings["hooks"].setdefault("PreToolUse", []).append({"matcher": "*", "hooks": [{
                 "type": "command", "command": notice_command, "timeout": 3}]})
     settings["autoMemoryEnabled"] = False
-    native_tools = ("Read", "Glob", "Grep") if request.command.value == "PAPER_READ" else FULL_CC_TOOLS
+    native_tools = ("Read", "Glob", "Grep") if request.command.value in {"PAPER_READ", "VERIFY_IMPLEMENTATION"} else FULL_CC_TOOLS
     allowed = list(native_tools)
     plugin_root = getattr(workspace, "plugin_root", None)
     memory_root = getattr(workspace, "memory_root", None)
@@ -344,6 +344,9 @@ def _workflow_instruction(request: AgentRequest) -> str:
 
 
 def full_cc_instruction(request: AgentRequest) -> str:
+    if request.command.value == "VERIFY_IMPLEMENTATION":
+        from .verification_contract import INSTRUCTIONS
+        return INSTRUCTIONS
     if request.command.value == "PAPER_READ":
         return ("Answer only the supplied paper question using native Read/Glob/Grep on /papers and /inputs. "
             "The question is your compact commission: use its research context, discipline, constraints and reading purpose; "
@@ -768,6 +771,7 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "submit_experiment; Host captures actual workspace bytes and owns execution. "
             "After a new submission, normally return the typed summary with waiting_for_experiment_id "
             "equal to that latest experiment ID, handing waiting to Host and ending this invocation. "
+            "Do this immediately when implementation verification is pending: the independent verifier needs ordinary Agent capacity. "
             "This is not experiment completion or a scientific result. Host collects the Process "
             "and invokes this same node/session again when terminal, under ordinary invocation "
             "and cumulative budgets. Only one handoff per submitted experiment is permitted; "

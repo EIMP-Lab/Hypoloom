@@ -1136,6 +1136,7 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
     from .workflow_host import OperationalHalt, _CPU_SANDBOX_PROFILE, _GPU_SANDBOX_PROFILE
 
     if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.PAPER_READ: return host.paper_reading.inputs(task)
+    if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.VERIFY_IMPLEMENTATION: return host.verification.inputs(task)
     if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GRAPH_EVOLVE: return host._manager_inputs(run_id, task)
     if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT: return host._final_report_inputs(run_id, task)
     if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.OBSERVER: return host.interaction.inputs(run_id, task)

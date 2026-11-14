@@ -57,6 +57,8 @@ def _add_profile_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profiles-root")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--process-delay", type=float, default=0.0)
+    parser.add_argument("--verifier-model", help="exact independent implementation verifier model ID; overrides the Profile in memory")
+    parser.add_argument("--verifier-effort", choices=("low", "medium", "high", "xhigh", "max"))
     resources = parser.add_mutually_exclusive_group(required=True)
     resources.add_argument("--allow-gpu", action="store_true", help="explicitly authorize GPU use for this run")
     resources.add_argument("--cpu-only", dest="allow_gpu", action="store_false", help="explicitly run without GPU access")
@@ -727,6 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run_id=args.run_id,
                 allow_gpu=args.allow_gpu,
                 delay_seconds=args.process_delay,
+                verifier_model=args.verifier_model, verifier_effort=args.verifier_effort,
             )
             try:
                 _profile_literature_source(args, report)
@@ -763,6 +766,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0 if report.admitted else 2
             if report.create_run_payload is None:
                 raise AssertionError("admitted profile lacks CREATE_RUN payload")
+            roster = report.create_run_payload["research_contract"].get("methodology", {}).get("controls", {}).get("product", {}).get("experts", {})
+            if roster and not roster.get("verifier", {}).get("model"):
+                raise ValueError("Choose --verifier-model or experts.yaml.verifier.model explicitly before start")
             return _submit(args, "CREATE_RUN", report.create_run_payload)
         if args.subcommand == "status":
             return _submit(args, "STATUS", {"run_id": args.run_id})

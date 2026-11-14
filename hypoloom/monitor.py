@@ -1418,7 +1418,7 @@ def build_monitor_snapshot(
             research_facts = reader.list_facts(run_id)
             reading_commands = tuple(dict(row) for row in reader.execute(
                 "SELECT command_id,request_json FROM workflow_commands WHERE run_id=? AND response_status='accepted' "
-                "AND (json_type(request_json,'$.paper_reading')='object' OR json_type(request_json,'$.cancel_paper_reading')='text') ORDER BY rowid",
+                "AND (json_type(request_json,'$.paper_reading')='object' OR json_type(request_json,'$.implementation_verification')='object' OR json_type(request_json,'$.cancel_paper_reading')='text') ORDER BY rowid",
                 (run_id,)).fetchall()) if _include_overview else ()
             heads = reader.list_workflow_heads(run_id)
             status = build_status_projection(

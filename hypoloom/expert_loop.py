@@ -54,6 +54,7 @@ class AuxiliaryRequestKind(str, Enum):
     FINAL_REPORT = "FINAL_REPORT"
     DEBATE_JUDGE = "DEBATE_JUDGE"
     PAPER_READ = "PAPER_READ"
+    VERIFY_IMPLEMENTATION = "VERIFY_IMPLEMENTATION"
 
 
 class HypothesisUpdateDisposition(str, Enum):
@@ -228,7 +229,7 @@ class AuxiliaryTask:
             if (value is not None and
                     (isinstance(value, bool) or not isinstance(value, int) or value < 1)):
                 raise ValueError(f"{name} must be a positive integer or None")
-        if self.kind in {AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.FINAL_REPORT} and any(
+        if self.kind in {AuxiliaryRequestKind.VERIFY_IMPLEMENTATION, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.FINAL_REPORT} and any(
                 value is not None for value in (self.component_id, self.expert_slot, self.cycle)):
             raise ValueError("Grounding planning and Grounding must be role-neutral and run-scoped")
         if self.kind is AuxiliaryRequestKind.GRAPH_EVOLVE and (

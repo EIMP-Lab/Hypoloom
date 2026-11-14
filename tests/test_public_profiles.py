@@ -64,7 +64,8 @@ def test_public_template_admits_bound_paths_without_starting_research(tmp_path, 
     product = contract["methodology"]["controls"]["product"]
     review = model_review(contract, "selected-host-model")
     assert review["routes"]
-    assert all(route["model"] == "selected-host-model" for route in review["routes"])
+    assert all(route["model"] == (None if route["route"] == "verifier" else "selected-host-model") for route in review["routes"])
+    assert next(route for route in review["routes"] if route["route"] == "verifier")["sources"]["model"] == "requires explicit init selection"
     assert not review["profile_models_overriding_host_default"]
     assert product["language"] == source["language"]
     assert len(product["experts"]["experts"]) == 3

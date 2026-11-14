@@ -2,6 +2,10 @@
 
 English · [简体中文](initialization.zh-CN.md)
 
+New runs also select an independent [implementation verifier](implementation-verification.md)
+by exact model ID. `--verifier-model` and optional `--verifier-effort` override
+`experts.yaml.verifier` in memory; the reviewed selection is preserved through launch.
+
 See [runtime recovery](runtime-recovery.md) for GPU pool readiness, node-scoped GPU recovery and context/progress observations.
 
 `/autoresearch init` reviews a fresh run. `bootstrap prepare` fills and admits a

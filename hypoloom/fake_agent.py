@@ -214,10 +214,11 @@ def _default_task_context(command: AgentCommand) -> ResearchNodeTask | Auxiliary
         AgentCommand.FINAL_REPORT: AuxiliaryRequestKind.FINAL_REPORT,
         AgentCommand.DEBATE_JUDGE: AuxiliaryRequestKind.DEBATE_JUDGE,
         AgentCommand.PAPER_READ: AuxiliaryRequestKind.PAPER_READ,
+        AgentCommand.VERIFY_IMPLEMENTATION: AuxiliaryRequestKind.VERIFY_IMPLEMENTATION,
     }.get(command)
     if auxiliary is None:
         return None
-    scoped = auxiliary not in {AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GRAPH_EVOLVE, AuxiliaryRequestKind.FINAL_REPORT, AuxiliaryRequestKind.DEBATE_JUDGE}
+    scoped = auxiliary not in {AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GRAPH_EVOLVE, AuxiliaryRequestKind.FINAL_REPORT, AuxiliaryRequestKind.DEBATE_JUDGE, AuxiliaryRequestKind.VERIFY_IMPLEMENTATION}
     return AuxiliaryTask(
         kind=auxiliary, run_id="run-fake",
         component_id="primary.score" if scoped else None,
@@ -246,6 +247,10 @@ def default_request(command: AgentCommand = AgentCommand.PROPOSE_HYPOTHESIS) -> 
     )
     if command in {AgentCommand.ADJUDICATE, AgentCommand.SELF_EVOLVE, AgentCommand.GRAPH_EVOLVE, AgentCommand.FINAL_REPORT, AgentCommand.DEBATE_JUDGE}: schema_version = 14
     if command is AgentCommand.PAPER_READ: schema_version = 20
+    if command is AgentCommand.VERIFY_IMPLEMENTATION:
+        schema_version = 34
+        inputs = (EmbeddedInput.from_bytes("fixture--verification-context", "application/json", canonical_json({
+            "phase": "inspect", "workspace_paths": ["experiment.py"], "max_probe_seconds": 120, "finding_refs": []})),)
     if command is AgentCommand.FINAL_REPORT:
         inputs = (EmbeddedInput.from_bytes("final--final-report-context", "application/json",
             canonical_json({"facts": [], "stop_reason": "Deterministic fixture without an accepted verdict."})),)
@@ -545,6 +550,14 @@ def _valid_response(request: AgentRequest) -> AgentResponse:
             relative = report_path(supplied["cycle"], request_report_component(request))
             artifacts = (WorkspaceArtifact.from_bytes("MEMORY.md", f"# Expert memory\n\nSee {relative}.\n".encode()),
                 WorkspaceArtifact.from_bytes(relative, report.encode()))
+    if request.command is AgentCommand.VERIFY_IMPLEMENTATION:
+        from .verification_contract import context
+        ctx = context(request)
+        candidate.update(verdict="probe_required" if ctx["phase"] == "inspect" else "passed" if ctx["probe_evidence"]["usable"] else "inconclusive",
+            findings=[], resolved_refs=[], probe=None)
+        if ctx["phase"] == "inspect":
+            candidate["probe"] = {"files": {"verification/probe.py": "import pathlib\nfor p in pathlib.Path('/input').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')\nprint('fixture compilation completed; no semantic quality claim')\n"},
+                "argv": ["python", "verification/probe.py"], "timeout_seconds": 10}
     effect = DeclaredEffect(
         effect=required_effect(request.command),
         command_id=request.command_id,

@@ -187,10 +187,10 @@ def model_review(contract: dict, host_model: str) -> dict:
         sources = {}
         runtime = resolve_node_runtime(contract, role, route, sources=sources, **options)
         rows.append({"role": role, "route": route, **options,
-            "model": runtime.get("model", host_model), "effort": runtime.get("effort"),
-            "sources": {"model": sources.get("model", "Host --claude-model"),
+            "model": runtime.get("model", None if route == "verifier" else host_model), "effort": runtime.get("effort"),
+            "sources": {"model": sources.get("model", "requires explicit init selection" if route == "verifier" else "Host --claude-model"),
                         "effort": sources.get("effort", "native CLI default (not inherited from interactive session)")}})
-    for route in ("grounding", "graph_evolve", "observer", "debate_judge", "final_report"):
+    for route in ("grounding", "verifier", "graph_evolve", "observer", "debate_judge", "final_report"):
         add(None, route)
     for expert in roster.get("experts", ()):
         role = expert["name"]
@@ -198,7 +198,7 @@ def model_review(contract: dict, host_model: str) -> dict:
             add(role, route)
         add(None, "observer", observer_source_role=role)
         add(role, "hypothesis_proposal.synthesis", designated_leader=True)
-    different = sorted({row["model"] for row in rows if row["model"] != host_model})
+    different = sorted({row["model"] for row in rows if row["model"] is not None and row["model"] != host_model})
     return {"host_default_model": host_model, "routes": rows,
         "profile_models_overriding_host_default": different,
         "note": "All possible routes, including conditional roles. Profile overrides take precedence; interactive session model is not inherited."}
@@ -211,6 +211,9 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
     review = {} if review is None else review
     payload = report.create_run_payload
     contract = payload["research_contract"]
+    roster = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("experts", {})
+    if roster and not roster.get("verifier", {}).get("model"):
+        raise ValueError("Choose --verifier-model or experts.yaml.verifier.model explicitly before launch")
     review["budget"] = contract["budget"]
     from .bootstrap_gpu import default_scheduling
     default_scheduling(args)
@@ -360,6 +363,10 @@ def launch_arguments(args, repository: Path, report, *, review: dict | None = No
         except ResolverError as exc:
             raise ValueError("selected model authentication source is not qualified: " + exc.code) from None
         review["models"] = model_review(contract, args.claude_model)
+        for row in review["models"]["routes"]:
+            if row["route"] == "verifier":
+                for key in ("model", "effort"):
+                    if getattr(args, "verifier_" + key, None) is not None: row["sources"][key] = "launch --verifier-" + key
         review["models"]["selected_auth_source_default"] = auth.get("configured_default")
         from .claude_agent_host import ClaudeAgentHost, AgentHostError
         from .context_window import context_environment, window_policy
@@ -454,6 +461,8 @@ def _launch_commands(args, repository, report, review, python, state, request_id
         serve += ["--gpu-device-uuid", uuid]
     common = [args.profile, "--profiles-root", str(repository / "profiles/local"), "--run-id", args.run_id,
               "--process-delay", str(args.process_delay), "--allow-gpu" if args.allow_gpu else "--cpu-only", *literature]
+    for field in ("verifier_model", "verifier_effort"):
+        if getattr(args, field, None) is not None: common += ["--" + field.replace("_", "-"), getattr(args, field)]
     helper = [str(python), "-B", str(repository / ".claude/skills/autoresearch/scripts/manage_host.py")]
     commands = {"working_directory": str(repository),
             "environment": {"PYTHONDONTWRITEBYTECODE": "1", "HYPOLOOM_RUNTIME_FAMILY": "hypoloom"},
@@ -584,7 +593,7 @@ def compact_result(result: dict) -> dict:
         "execution": payload.get("execution"),
         "models": {"host_default_model": models.get("host_default_model"),
             "profile_models_overriding_host_default": models.get("profile_models_overriding_host_default", []),
-            "overrides": [r for r in routes if r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
+            "overrides": [r for r in routes if r.get("route") == "verifier" or r.get("model") != models.get("host_default_model") or r.get("effort") is not None]},
         **{key: review[key] for key in ("gpu", "notifications", "context_windows", "provider_metadata_queries", "institutional_access",
                                       "institutional_preparation", "institutional_preparation_argv", "institutional_connection",
                                       "institutional_connection_argv", "institutional_client_entry") if key in review},
@@ -702,7 +711,8 @@ def main(argv=None) -> int:
                 raise ValueError("bootstrap profiles root must be repository/profiles/local")
             destination, texts = candidate(repository, args.profile, args.template, args.overrides)
             report = admit_profile(destination, run_id=args.run_id, allow_gpu=args.allow_gpu,
-                                   delay_seconds=args.process_delay, source_texts=texts)
+                                   delay_seconds=args.process_delay, source_texts=texts,
+                                   verifier_model=args.verifier_model, verifier_effort=args.verifier_effort)
             result = {"admission": report.to_dict(), "profile_written": False,
                       "provider_probe_performed": False, "paths": locations(repository)}
             try:

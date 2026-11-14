@@ -166,6 +166,8 @@ class WorkflowHost:
             max_workers=1, thread_name_prefix="hypoloom-literature")
         from .paper_reading import PaperReadingHost
         self.paper_reading = PaperReadingHost(self)
+        from .verification import ImplementationVerification
+        self.verification = ImplementationVerification(self)
         self._literature_jobs: dict[tuple[str, str], LiteratureRead] = {}
         self._literature_responses: dict[str, tuple[AgentRequest, AgentResponse, Mapping[str, Any] | None]] = {}
         if any(path.is_symlink() or not path.is_file() for path in (_RESOURCE_SKILL, _QUERY_SKILL)): raise ValueError("packaged Agent skill is unavailable")
@@ -334,13 +336,14 @@ class WorkflowHost:
                     command = tx.execute("SELECT command_type FROM workflow_commands WHERE command_id=?", (attempt["command_id"],)).fetchone()
                     if command is not None and command[0] == Command.VALIDATE_SPEC_CANDIDATE.value: tx.append_transition(self._transition_record(tx, attempt["run_id"], attempt["workflow_id"], "EXPERIMENT", Command.OBSERVE_SPEC_VALIDATION, ExperimentState.DRAFTED, payload={"attempt_id": attempt["attempt_id"], "validation_succeeded": False}))
             self._remove_attempt_residue(attempt)
+            self.verification.recover_probe(attempt)
     def _reconcile_terminal_attempt_residue(self, run_id: str | None = None) -> None:
         if self.publisher is None: raise OperationalHalt("Workflow Host is not initialized")
-        rows = self.store.inspect("SELECT a.*,c.command_type FROM execution_attempts a JOIN workflow_commands c ON c.command_id=a.command_id WHERE a.state='CLOSED' AND (? IS NULL OR a.run_id=?) AND ((a.kind='AGENT' AND c.command_type IN(?,?)) OR (a.kind='PROCESS' AND (c.command_type=? OR EXISTS(SELECT 1 FROM workflow_transitions t JOIN workflow_commands tc ON tc.command_id=t.command_id WHERE t.workflow_id=a.workflow_id AND tc.command_type=? AND json_extract(t.payload_json,'$.attempt_id')=a.attempt_id)))) ORDER BY a.run_id,a.workflow_id,a.attempt_id", (run_id, run_id, Command.REQUEST_SPEC_CANDIDATE.value, Command.REQUEST_RESEARCH_NODE.value, Command.VALIDATE_SPEC_CANDIDATE.value, Command.ACCEPT_OUTCOME.value))
+        rows = self.store.inspect("SELECT a.*,c.command_type FROM execution_attempts a JOIN workflow_commands c ON c.command_id=a.command_id WHERE a.state='CLOSED' AND (? IS NULL OR a.run_id=?) AND ((a.kind='AGENT' AND c.command_type IN(?,?)) OR (a.kind='PROCESS' AND (c.command_type IN(?,?) OR EXISTS(SELECT 1 FROM workflow_transitions t JOIN workflow_commands tc ON tc.command_id=t.command_id WHERE t.workflow_id=a.workflow_id AND tc.command_type=? AND json_extract(t.payload_json,'$.attempt_id')=a.attempt_id)))) ORDER BY a.run_id,a.workflow_id,a.attempt_id", (run_id, run_id, Command.REQUEST_SPEC_CANDIDATE.value, Command.REQUEST_RESEARCH_NODE.value, Command.VALIDATE_SPEC_CANDIDATE.value, Command.VERIFY_PROCESS.value, Command.ACCEPT_OUTCOME.value))
         workspace = ExecutionWorkspace(self.publisher.root, state_root=self.state_root)
         git_workspace = GitAuthoringWorkspace(self.state_root)
         for attempt in rows:
-            workspace.cleanup_attempt(str(attempt["attempt_id"]), preserve_logs=attempt["kind"] == "PROCESS" and attempt["command_type"] != Command.VALIDATE_SPEC_CANDIDATE.value)
+            workspace.cleanup_attempt(str(attempt["attempt_id"]), preserve_logs=attempt["kind"] == "PROCESS" and attempt["command_type"] not in {Command.VALIDATE_SPEC_CANDIDATE.value, Command.VERIFY_PROCESS.value})
             if attempt["kind"] == "AGENT": git_workspace.cleanup_attempt(str(attempt["attempt_id"]))
     def _remove_attempt_residue(self, attempt: Mapping[str, Any]) -> None:
         for category in ("work", "result-staging"): self._safe_remove(self.state_root / "artifacts" / category / attempt["attempt_id"])
@@ -2177,6 +2180,7 @@ class WorkflowHost:
         if run_state == RunState.STOPPING.value and not (self._batch_enabled(run_id) and isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT): return note("run_stopped")
         command = (AgentCommand.PAPER_READ if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.PAPER_READ
             else AgentCommand.GRAPH_EVOLVE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.GRAPH_EVOLVE
+            else AgentCommand.VERIFY_IMPLEMENTATION if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.VERIFY_IMPLEMENTATION
             else AgentCommand.FINAL_REPORT if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.FINAL_REPORT
             else AgentCommand.DEBATE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.DEBATE
             else AgentCommand.DEBATE_JUDGE if isinstance(task, AuxiliaryTask) and task.kind is AuxiliaryRequestKind.DEBATE_JUDGE
@@ -2203,7 +2207,7 @@ class WorkflowHost:
                 # need not be relaunched just to wait for the same owned work.
                 return note("experiment_wait")
         if self._at_capacity(run_id): return note("agent_capacity")
-        if command is not AgentCommand.PAPER_READ:
+        if command not in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}:
             reason = self._participant_wait_reason(run_id, role,
                 execution_node_command_id=task.command_id if command is AgentCommand.EXPERIMENT_EXECUTION else None,
                 component_id=component_id, chain=chain, proposal_task=task)
@@ -2218,6 +2222,8 @@ class WorkflowHost:
             inputs = replay_request.input_artifacts; immutable_context_refs = replay_request.immutable_context_refs
         else:
             inputs = self._expert_inputs(run_id, task, component_id, role, method_family_id)
+            if isinstance(task, ResearchNodeTask) and command in {AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, AgentCommand.EXPERIMENT_EXECUTION, AgentCommand.RESULT_ANALYSIS}:
+                inputs += self.verification.feedback(run_id, role, component_id, task.command_id)
             if self.claude_agent_host is not None:
                 from .context_window import bind_inputs
                 inputs = bind_inputs(self.claude_agent_host, inputs, self.claude_model, self._provider_environment_for(run_id))
@@ -2225,7 +2231,7 @@ class WorkflowHost:
                 from .paper_sources import history_input
                 inputs += history_input(self, run_id, role, component_id, task.command_id)
             if (self.shared_acceptance.enabled(run_id) and isinstance(task, AuxiliaryTask)
-                    and task.kind not in {AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.PAPER_READ}
+                    and task.kind not in {AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.PAPER_READ, AuxiliaryRequestKind.VERIFY_IMPLEMENTATION}
                     and (task.kind is not AuxiliaryRequestKind.FINAL_REPORT
                          or not attempts and self.shared_acceptance.source(run_id) is not None)):
                 # Report retries already restore their first immutable inputs.
@@ -2241,6 +2247,13 @@ class WorkflowHost:
                 inputs += repair_inputs
             correction_inputs = agent_retry_inputs(self.store, owner_id, task.command_id); inputs += correction_inputs; correction_refs = frozenset(item.ref for item in (*repair_inputs, *correction_inputs)); immutable_context_refs = tuple(item.ref for item in inputs if item.ref not in correction_refs)
         retrieval = None
+        if replay_request is not None and command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
+            from .agent_aci import execution_handoff
+            if execution_handoff(json.loads(attempts[-1]["observation_json"] or "{}")):
+                feedback = self.verification.feedback(run_id, role, component_id, task.command_id)
+                if feedback:
+                    inputs = tuple(i for i in inputs if not i.ref.endswith("--implementation-reviews")) + feedback
+                    immutable_context_refs = tuple(i for i in immutable_context_refs if not i.endswith("--implementation-reviews")) + tuple(i.ref for i in feedback)
         lifecycle_command = Command.REQUEST_AUXILIARY if isinstance(task, AuxiliaryTask) else Command.REQUEST_RESEARCH_NODE
         literature_failure: tuple[str, dict[str, object], bool] | None = None; coverage_failure = False; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
         retrieve = command is AgentCommand.GROUNDING or (command is AgentCommand.LITERATURE_REVIEW and isinstance(task, ResearchNodeTask) and task.key.subkind is ResearchNodeSubkind.MAIN)
@@ -2324,7 +2337,7 @@ class WorkflowHost:
             base_budget = profile_agent_budget(contract.document, self.agent_budget)
             charges = self._agent_charges.read(tx, run_id)
             run_scoped = self._batch_enabled(run_id) and isinstance(task, AuxiliaryTask) and task.kind in {
-                AuxiliaryRequestKind.GRAPH_EVOLVE, AuxiliaryRequestKind.OBSERVER,
+                AuxiliaryRequestKind.VERIFY_IMPLEMENTATION, AuxiliaryRequestKind.GRAPH_EVOLVE, AuxiliaryRequestKind.OBSERVER,
                 AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.FINAL_REPORT, AuxiliaryRequestKind.DEBATE_JUDGE}
             request_budget = remaining_agent_budget(contract.document, role, charges, self.agent_budget, run_scoped=run_scoped)
             run_record = tx.get_run(run_id); remaining_wall = None if run_record is None else wallclock_remaining_seconds(contract.document, run_record["created_at"])
@@ -2892,7 +2905,7 @@ class WorkflowHost:
         return progressed
     def _agent_failure(self, request: AgentRequest, reason: AttemptTerminalReason, code: str, *, retryable: bool, details: Mapping[str, Any] | None = None, owner_transition: bool = True) -> None:
         if self.paper_reading.defer_failure(request, reason, code, retryable=retryable, details=details, owner_transition=owner_transition): return
-        if request.command is AgentCommand.PAPER_READ: owner_transition = False
+        if request.command in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}: owner_transition = False
         rendezvous = None if request.command is not AgentCommand.ANSWER_RENDEZVOUS else RendezvousRequest.from_dict(json.loads(next(item for item in request.input_artifacts if item.ref.endswith("--rendezvous")).content_bytes()))
         retry_class = _agent_retry_class(code, details, retryable=retryable,
             bounded_context=request.schema_version >= 24 and (request.command is not AgentCommand.DEBATE or request.schema_version >= 29))
@@ -2981,6 +2994,7 @@ class WorkflowHost:
         if request.command in {
             AgentCommand.GROUNDING,
             AgentCommand.PAPER_READ,
+            AgentCommand.VERIFY_IMPLEMENTATION,
             AgentCommand.LITERATURE_REVIEW,
             AgentCommand.HYPOTHESIS_PROPOSAL,
             AgentCommand.ADJUDICATE,
@@ -3301,6 +3315,7 @@ class WorkflowHost:
         result: dict[str, Any] = {"exp_id": experiment_id, "status": status, "state": head["state"],
             "terminal": terminal, "elapsed": elapsed, "outcome": None if outcome is None else outcome["payload"],
             **({"tail_log": self._experiment_tool_log(experiment_id)} if include_log else {})}
+        if self.verification.enabled(run_id): result["implementation_verification"] = self.verification.status(run_id, experiment_id)
         wait = self.resource_waits.get(experiment_id)
         if not terminal and wait is not None and wait[0] == run_id:
             result["resource_wait"] = wait[1]
@@ -3904,6 +3919,10 @@ class WorkflowHost:
                     Command.CANCEL, ExperimentState.TERMINAL, payload={"discarded_before_preregistration": True, **rejection})
                 tx.append_transition(transition)
         elif command is None and state == ExperimentState.EXECUTING.value:
+            probes = self.store.list_attempts(execution_id=str(head["workflow_id"]) + "--implementation-probe")
+            if probes and (any(a["state"] == "OPEN" for a in probes) or json.loads(head["payload_json"]).get("implementation_probe")):
+                if not any(a["state"] == "OPEN" for a in probes): self.verification.recover_probe(probes[-1])
+                return
             spec = self.store.find_fact(run_id, "ExperimentPreregistered", head["workflow_id"])
             if spec is None: raise OperationalHalt(f"executing experiment {head['workflow_id']} lacks preregistration")
             attempts = self.store.list_attempts(execution_id=spec["execution_id"])
@@ -3924,6 +3943,12 @@ class WorkflowHost:
                 self._crash("after_pool_activation_before_exec")
         return self.runner.start(request, before_exec=register)
     def _start_process(self, run_id: str, experiment_id: str, *, retry: bool) -> None:
+        probe = None
+        if self._tool_command(f"{experiment_id}--agent-cancel") is not None:
+            self._synthetic_terminal(run_id, experiment_id, AttemptTerminalReason.CANCELLED); return
+        if not retry:
+            allowed, probe = self.verification.gate(run_id, experiment_id)
+            if not allowed: return
         pending = self._tool_command(f"{experiment_id}--resource-revision")
         if pending is not None:
             return self.shared_gpu.finish_resource_revision(run_id, experiment_id, json.loads(pending["request_json"]))
@@ -3937,8 +3962,9 @@ class WorkflowHost:
         if wallclock_expired(research.document, run_record["created_at"]): self._synthetic_terminal(run_id, experiment_id, AttemptTerminalReason.TIMED_OUT); return
         spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         if spec is None: raise OperationalHalt(f"experiment {experiment_id} lacks preregistration")
-        execution_id = spec["execution_id"]; attempts = self.store.list_attempts(execution_id=execution_id)
-        ordinal = len(attempts) + 1; attempt_id = f"{experiment_id}--process-{ordinal}"
+        execution_id = experiment_id + "--implementation-probe" if probe else spec["execution_id"]
+        attempts = self.store.list_attempts(execution_id=execution_id)
+        ordinal = len(attempts) + 1; attempt_id = f"{experiment_id}--{'probe' if probe else 'process'}-{ordinal}"
         intent = spec["payload"]["execution_contract"].get("resource_intent"); pool_key = None; selected = None; resource_revision = 0
         compute = self.resource_controls.compute(run_id)
         if intent is not None:
@@ -3985,20 +4011,25 @@ class WorkflowHost:
         self._crash("before_process_intent_commit")
         mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt_id)
         plan = _component_plan(self._research_contract(run_id).document, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]), self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"])), grant.kind is ResourceKind.GPU)
+        if probe:
+            contract = {**contract, "argv": probe["argv"], "timeout_seconds": min(contract["timeout_seconds"], probe["timeout_seconds"])}
+            source_path = probe["argv"][1]
         prepared = workspace.plan(agent_request=agent_request, agent_response=agent_response, attempt_id=attempt_id, attempt_ordinal=ordinal,
             execution_id=execution_id, target_env=dict(contract["environment"]), timeout_seconds=contract["timeout_seconds"], source_relative_path=source_path,
             result_relative_path=result_path, execution_argv=tuple(contract["argv"]),
-            trusted_workspace_files=_trusted_execution_files(plan), read_only_bindings=mounts,
-            allow_generic_argv=spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None)
+            trusted_workspace_files={**_trusted_execution_files(plan), **({k: v.encode() for k, v in probe["files"].items()} if probe else {})}, read_only_bindings=mounts,
+            allow_generic_argv=bool(probe) or spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None)
         parser = None
-        if spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None:
+        if not probe and (spec["payload"].get("measurement") is not None or spec["payload"].get("goal_evaluation") is not None):
             prepared, parser = self._measurement_execution(spec, prepared, workspace, agent_response)
         with self.store.transaction() as tx:
             if len(tx.list_attempts(execution_id=execution_id)) + 1 != ordinal: raise OperationalHalt("process attempt ordinal changed")
-            if retry:
+            if probe and attempts:
+                owner = attempts[0]["command_id"]; transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.VERIFY_PROCESS, ExperimentState.EXECUTING)
+            elif retry:
                 owner = attempts[0]["command_id"]; transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.OPEN_RETRY_ATTEMPT, ExperimentState.EXECUTING)
             else:
-                transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.EXECUTE, ExperimentState.EXECUTING); owner = transition["command_id"]
+                transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.VERIFY_PROCESS if probe else Command.EXECUTE, ExperimentState.EXECUTING); owner = transition["command_id"]
             tx.open_attempt({"attempt_id": attempt_id, "run_id": run_id, "workflow_id": experiment_id, "command_id": owner, "kind": "PROCESS", "experiment_id": experiment_id,
                 "execution_id": execution_id, "attempt_ordinal": ordinal,
                 "host_generation": self.generation, "started_at": time.time()})
@@ -4007,6 +4038,7 @@ class WorkflowHost:
                 "role": role, "component_id": identity["component_id"], **_grant_identity(grant)}
             if identity.get("source_submit_command_id"):
                 transition["payload"]["source_submit_command_id"] = identity["source_submit_command_id"]
+            if probe: transition["payload"]["implementation_probe"] = {"review_command_id": probe["review_command_id"], "report_ref": probe["report_ref"]}
             if pool_key is not None: transition["payload"].update(resource_grant=grant.to_dict(), gpu_pool_key=pool_key)
             if resource_revision: transition["payload"]["resource_selection_revision"] = resource_revision
             if retry:
@@ -4279,6 +4311,14 @@ class WorkflowHost:
             "execution_id": request.execution_id, "terminal_reason": AttemptTerminalReason.FAILED.value, "process_request": request.to_dict(), "synthetic_before_spawn": True}
         if isinstance(error, ResourceUnavailable): observation["resource_diagnostic"] = bounded_diagnostic_text(reason) or type(error).__name__
         else: observation["integrity_error"] = reason
+        from .verification import is_probe
+        attempt = self.store.get_attempt(prepared.attempt_id)
+        if is_probe(attempt):
+            with self.store.transaction() as tx:
+                tx.close_attempt(prepared.attempt_id, terminal_reason=AttemptTerminalReason.FAILED, ended_at=time.time(), payload={**observation, "implementation_probe": True})
+                self.verification.observe(tx, attempt, observation)
+            self._remove_attempt_residue(attempt)
+            return
         with self.store.transaction() as tx:
             tx.close_attempt(request.attempt_id, terminal_reason=AttemptTerminalReason.FAILED, ended_at=time.time(), payload=observation)
             transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.OBSERVE_ATTEMPT_TERMINAL,
@@ -4319,6 +4359,14 @@ class WorkflowHost:
                 if self.shared_gpu is not None and pressure_summaries:
                     from .process_observation import observe_gpu_failure
                     observe_gpu_failure(self, attempt, payload, Path(handle.request.cwd) / handle.request.stderr_path)
+                from .verification import is_probe
+                if is_probe(attempt):
+                    payload = self.verification.logs(attempt, payload)
+                    with self.store.transaction() as tx:
+                        tx.close_attempt(attempt_id, terminal_reason=reason, ended_at=time.time(), process_group_id=observation.process_group_id, payload=payload)
+                        self.verification.observe(tx, attempt, payload)
+                    self._remove_attempt_residue(attempt)
+                    return True
                 with self.store.transaction() as tx:
                     tx.close_attempt(attempt_id, terminal_reason=reason, ended_at=time.time(), process_group_id=observation.process_group_id, payload=payload)
                     transition = self._transition_record(tx, attempt["run_id"], attempt["workflow_id"],
@@ -4545,7 +4593,8 @@ class WorkflowHost:
         prepared, _ = self._measurement_execution(spec, prepared, workspace, agent_response)
         with self.store.transaction() as tx:
             attempts = tx.list_attempts(execution_id=execution_id)
-            owner = attempts[0]["command_id"] if attempts else f"{experiment_id}--resource-revision" if diagnostic else f"{experiment_id}--cancel-effect"
+            verification_rejection = diagnostic is not None and "implementation_verification" in diagnostic
+            owner = attempts[0]["command_id"] if attempts else f"{experiment_id}--implementation-rejection" if verification_rejection else f"{experiment_id}--resource-revision" if diagnostic else f"{experiment_id}--cancel-effect"
             head = tx.latest_transition(experiment_id)
             if attempts and head is not None and head["state"] == ExperimentState.EXECUTING.value:
                 retry_reason = (diagnostic["resource_failure"] if diagnostic else
@@ -4553,8 +4602,8 @@ class WorkflowHost:
                 retry_payload = {"attempt_id": attempt_id, "process_request": prepared.process_request.to_dict(), "spec_fact_id": spec["fact_id"], "agent_attempt_id": prepared.agent_attempt_id, "agent_output_digest": prepared.agent_output_digest, "source_relative_path": source_path, "result_relative_path": result_path, "role": str(agent_request["role"]), "component_id": spec["payload"]["component_id"], **_grant_identity(grant), "retry_of_attempt_id": str(attempts[-1]["attempt_id"]), "retry_reason": retry_reason, "synthetic_before_spawn": True}
                 if contract.get("source_submit_command_id") is not None: retry_payload["source_submit_command_id"] = contract["source_submit_command_id"]
                 tx.append_transition(self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.OPEN_RETRY_ATTEMPT, ExperimentState.EXECUTING, payload=retry_payload))
-            if not attempts and not diagnostic:
-                tx.record_command({"command_id": owner, "run_id": run_id, "workflow_id": experiment_id, "command_type": Command.CANCEL.value, "request": {"synthetic_cancel": True}, "status": "accepted", "result": {"attempt_id": attempt_id}, "revision": tx.latest_transition(experiment_id)["revision"]})
+            if not attempts and (not diagnostic or verification_rejection):
+                tx.record_command({"command_id": owner, "run_id": run_id, "workflow_id": experiment_id, "command_type": Command.CANCEL.value, "request": dict(diagnostic) if verification_rejection else {"synthetic_cancel": True}, "status": "accepted", "result": {"attempt_id": attempt_id}, "revision": tx.latest_transition(experiment_id)["revision"]})
             tx.open_attempt({"attempt_id": attempt_id, "run_id": run_id, "workflow_id": experiment_id, "command_id": owner, "kind": "PROCESS", "experiment_id": experiment_id, "execution_id": execution_id, "attempt_ordinal": ordinal, "host_generation": self.generation, "started_at": time.time()})
             tx.close_attempt(attempt_id, terminal_reason=reason, ended_at=time.time(), payload={"attempt_id": attempt_id, "attempt_ordinal": ordinal, "execution_id": execution_id, "terminal_reason": reason.value, "synthetic_before_spawn": True, "process_request": prepared.process_request.to_dict(), **dict(diagnostic or {})})
             head = tx.latest_transition(experiment_id)

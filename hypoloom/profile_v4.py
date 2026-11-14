@@ -243,7 +243,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     for location, message in (*method_issues, *notify_issues):
         v.error(location, message)
     goal = v.object(goal, _GOAL, "goal.yaml")
-    experts = v.object(experts, {"defaults", "grounding", "experts"}, "experts.yaml")
+    experts = v.object(experts, {"defaults", "grounding", "verifier", "experts"}, "experts.yaml")
     methodology = v.object(methodology, _METHOD, "methodology.yaml")
     language = v.object(language, {"prompt_language", "report_language", "code_comment_language"}, "language.yaml")
     notify = v.object(notify, {"sinks", "events", "credentials_file"}, "notify.yaml")
@@ -264,6 +264,10 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     defaults = v.object(experts.get("defaults", {}), _DEFAULTS, "experts.yaml.defaults"); _model(v, defaults, "experts.yaml.defaults")
     if "grounding" in experts:
         _model(v, v.object(experts["grounding"], {"model", "effort"}, "experts.yaml.grounding"), "experts.yaml.grounding")
+    if "verifier" in experts:
+        selected = v.object(experts["verifier"], {"model", "effort"}, "experts.yaml.verifier")
+        _model(v, selected, "experts.yaml.verifier")
+        if "model" not in selected: v.error("experts.yaml.verifier.model", "an exact model ID is required")
     raw_experts = experts.get("experts")
     if not isinstance(raw_experts, list) or not raw_experts:
         v.error("experts.yaml.experts", "expected one or more experts"); raw_experts = []
@@ -399,14 +403,14 @@ def resolve_node_runtime(contract: Mapping[str, Any], role: str | None, route: s
     product = contract.get("methodology", {}).get("controls", {}).get("product")
     if not isinstance(product, Mapping): return {}
     roster = product["experts"]
-    expert = next((item for item in roster.get("experts", ()) if item["name"] == role and route != "grounding"), {})
+    expert = next((item for item in roster.get("experts", ()) if item["name"] == role and route not in {"grounding", "verifier"}), {})
     selected = {}
     def apply(values, location):
         for key in ("model", "effort"):
             if key in values:
                 selected[key] = values[key]
                 if sources is not None: sources[key] = location + "." + key
-    apply(roster.get("defaults", {}), "experts.yaml.defaults")
+    if route != "verifier": apply(roster.get("defaults", {}), "experts.yaml.defaults")
     expert_location = f"experts.yaml.experts[{role}]"
     apply(expert, expert_location)
     stage = {"experiment_design_implement": "inner_loop.code", "experiment_execution": "inner_loop.run",
@@ -415,6 +419,7 @@ def resolve_node_runtime(contract: Mapping[str, Any], role: str | None, route: s
     overrides = expert.get("stage_overrides", {})
     for key in (stage.split(".")[0], stage): apply(overrides.get(key, {}), expert_location + ".stage_overrides." + key)
     if route == "grounding": apply(roster.get("grounding", {}), "experts.yaml.grounding")
+    if route == "verifier": apply(roster.get("verifier", {}), "experts.yaml.verifier")
     if designated_leader: apply(overrides.get("leader", {}), expert_location + ".stage_overrides.leader")
     if observer_source_role is not None:
         source = next((item for item in roster.get("experts", ()) if item["name"] == observer_source_role), {})

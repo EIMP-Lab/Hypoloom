@@ -1543,5 +1543,11 @@
   "Install a Chinese chart font such as Noto Sans CJK": "请安装 Noto Sans CJK 等中文绘图字体",
   "Chart rendering timed out": "绘图超时",
   "Briefing exceeds the photo caption limit": "简报正文超过图片说明长度限制",
-  "Image generation failed; inspect local notification diagnostics": "图片生成失败，请查看本地通知诊断"
+  "Image generation failed; inspect local notification diagnostics": "图片生成失败，请查看本地通知诊断",
+  "Implementation Verifier": "代码实现检验者",
+  "Verification history": "检验历史",
+  "Verifier RPM": "检验 RPM",
+  "≥{0} tokens · probe {1}": "≥{0} tokens · 探针 {1}",
+  "Verifier RPM {0} · ≥{1} tokens · probe {2}": "检验 RPM {0} · ≥{1} tokens · 探针 {2}",
+  "{0}: deliveries {1} · checks {2} · reuse {3} · first pass {4}/{5} · blockers {6} · advisories {7}": "{0}：交付 {1} · 检验 {2} · 复用 {3} · 首次通过 {4}/{5} · 阻断 {6} · 建议 {7}"
 }

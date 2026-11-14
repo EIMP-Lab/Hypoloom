@@ -52,6 +52,13 @@ runtime, budgets and permissions. Start with an English or Chinese
 
 ## 🆕 Feature updates
 
+### 2026-11-14 · Independent implementation verification
+
+Select a verifier model during init. The Host requests independent code checks,
+runs bounded probes and requires evidence review before formal computation.
+TUI and Web show per-expert findings and delivery progress beside Grounding.
+See [implementation verification](docs/guides/implementation-verification.md).
+
 ### 2026-11-10 · Flexible expert rosters
 
 Configure any number of experts, starting with one. Admission, scheduling and

@@ -81,7 +81,7 @@ def _launch_argv(args, repository: Path, *, action="launch") -> list[str]:
         "--repository", str(repository), "--run-id", args.run_id,
         "--allow-gpu" if args.allow_gpu else "--cpu-only", "--summary"]
     for name in ("state_root", "request_id", "control_python", "ready_timeout", "process_delay", "auth_transport",
-        "claude_executable", "claude_model", "claude_settings", "claude_bwrap", "gpu_runtime_prefix",
+        "claude_executable", "claude_model", "verifier_model", "verifier_effort", "claude_settings", "claude_bwrap", "gpu_runtime_prefix",
         "gpu_pool_socket", "gpu_pool_namespace", "gpu_pool_server_uid", "web_search_fallback",
         "notification_output_root", "notification_proxy_env", "notification_credentials_file",
         "pool_action", "pool_reserve_mib"):
@@ -230,10 +230,16 @@ def inspect(args, repository: Path) -> dict:
         start = time.monotonic()
         destination, texts = bootstrap.candidate(repository, args.profile, args.template, args.overrides)
         report = bootstrap.admit_profile(destination, run_id=args.run_id, allow_gpu=bool(args.allow_gpu),
-            delay_seconds=args.process_delay, source_texts=texts)
+            delay_seconds=args.process_delay, source_texts=texts,
+            verifier_model=args.verifier_model, verifier_effort=args.verifier_effort)
         raw = {"admission": report.to_dict()}
         result.update(bootstrap.compact_result(raw))
         if report.admitted:
+            roster = report.create_run_payload["research_contract"]["methodology"]["controls"].get("product", {}).get("experts", {})
+            if roster and not roster.get("verifier", {}).get("model"):
+                missing.append("verifier_model")
+                if model := args.claude_model or roster.get("defaults", {}).get("model"):
+                    result.setdefault("choices", {})["verifier_model"] = model
             try:
                 from .cli import _profile_literature_source
                 _profile_literature_source(args, report)

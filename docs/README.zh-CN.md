@@ -8,6 +8,7 @@
 | 指南 | 内容 |
 | --- | --- |
 | [初始化](guides/initialization.zh-CN.md) | 模型选择、预算和启动检查 |
+| [代码实现检验](guides/implementation-verification.zh-CN.md) | 独立代码检查、探针及逐专家交付证据 |
 | [个人配置](../config/README.zh-CN.md) | 六个 YAML 文件、字段说明与中文模板示例 |
 | [Profile 模板](../profiles/README.zh-CN.md) | 起始模板、配置流程与运行限制 |
 | [操作员指南](operator-guide.zh-CN.md) | 日常操作与结果解读 |

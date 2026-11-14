@@ -62,6 +62,12 @@ def questions(args, result):
             f"本次运行使用哪个基模？当前配置为 {model}。可沿用，或直接输入当前供应商支持的其他准确模型 ID；Profile 中的角色覆盖仍然生效。", "Base model", [
             (model, model, model, "Use the displayed configured model", "沿用当前配置的模型"),
             ("Cancel", "取消", None, "Stop initialization", "停止初始化")])
+    if "verifier_model" in missing:
+        model = result.get("choices", {}).get("verifier_model")
+        options = ([(model, model, model, "Explicitly use the base model in an independent session", "明确选择基模，但使用独立检验会话")] if model else [])
+        add("verifier_model", "Choose the independent implementation verifier model, or enter an exact provider model ID. It checks code, not research hypotheses.",
+            "选择独立代码实现检验模型，或输入供应商支持的准确模型 ID；其只检查代码实现，不评判研究假设。", "Verifier", options + [
+                ("Cancel", "取消", None, "Stop initialization", "停止初始化")])
     if "execution_mode" in missing:
         add("execution_mode", "Which compute resources may this run use?", "本次运行允许使用哪些计算资源？", "Compute", [
             ("CPU only", "仅 CPU", False, "Do not allocate GPUs", "不分配 GPU"),
@@ -148,7 +154,7 @@ def apply_answers(args, result, response):
                 if not separator or template not in result["paths"]["profile_templates"]:
                     raise ValueError("select an existing Profile or enter: new-name from template-name")
                 changes.update(profile=name, template=template)
-        elif field == "claude_model":
+        elif field in {"claude_model", "verifier_model"}:
             if value is None: raise ValueError("initialization cancelled; no run was created")
             if not isinstance(value, str) or len(value) > 256 or any(c.isspace() or ord(c) < 33 for c in value):
                 raise ValueError("enter one exact model ID supported by the configured provider")

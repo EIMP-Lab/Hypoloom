@@ -1,5 +1,13 @@
 # Initialization reference
 
+New v4 runs require an explicit implementation verifier model. Use inspect's
+`verifier_model` question and preserve `--verifier-model` / `--verifier-effort`
+in the returned preview/start arguments. `experts.yaml.verifier` is a global role,
+not an expert roster member. Never silently choose the author's model, disable
+verification or write launch overrides into an existing private Profile. The
+verifier checks code correctness and efficiency, not hypotheses. Its actual probes
+run under Host ownership. Review the effective verifier model with the other models.
+
 Consult this reference for new Profile authoring, compatibility or a specific
 blocker. The main SKILL uses aggregate inspection; do not execute every example
 or repeat checks already reported by bootstrap. Code validators own admission.

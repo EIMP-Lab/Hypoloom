@@ -31,11 +31,12 @@ def aliased_schema(schema: dict, aliases: dict[str, str]) -> dict:
 
     def visit(node):
         if isinstance(node, dict):
-            supporting = node.get("properties", {}).get("supporting_refs")
-            if isinstance(supporting, dict) and "items" in supporting:
-                items = supporting["items"]
-                allowed = items.get("enum", list(inverse))
-                supporting["items"] = {**items, "enum": [inverse[ref] for ref in allowed]}
+            for field in ("supporting_refs", "evidence_refs"):
+                supporting = node.get("properties", {}).get(field)
+                if isinstance(supporting, dict) and "items" in supporting:
+                    items = supporting["items"]
+                    allowed = items.get("enum", list(inverse))
+                    supporting["items"] = {**items, "enum": [inverse[ref] for ref in allowed]}
             for value in node.values():
                 visit(value)
         elif isinstance(node, list):
@@ -52,9 +53,9 @@ def canonical_output(output: dict, aliases: dict[str, str]) -> dict:
     def visit(node):
         if isinstance(node, dict):
             for key, value in node.items():
-                if key == "supporting_refs":
+                if key in {"supporting_refs", "evidence_refs"}:
                     if not isinstance(value, list) or any(not isinstance(ref, str) or ref not in aliases for ref in value):
-                        raise ValueError("supporting_refs must use this request's exact reference aliases")
+                        raise ValueError(f"{key} must use this request's exact reference aliases")
                     node[key] = [aliases[ref] for ref in value]
                 else:
                     visit(value)

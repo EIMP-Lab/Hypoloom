@@ -2,6 +2,10 @@
 
 [English](initialization.md) · 简体中文
 
+新建运行还需按准确模型 ID 选择独立[代码实现检验者](implementation-verification.zh-CN.md)。
+`--verifier-model` 和可选 `--verifier-effort` 在内存覆盖 `experts.yaml.verifier`，
+审阅后的选择会传递到实际启动，不改写私有 Profile。
+
 启动预检、节点级 GPU 故障恢复及上下文/进度观测见[运行恢复指南](runtime-recovery.zh-CN.md)。
 
 `/autoresearch init` 用于审阅新运行。`bootstrap prepare` 在内存中填写并校验

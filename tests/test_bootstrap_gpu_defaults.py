@@ -177,7 +177,7 @@ def prepared(tmp_path, devices, monkeypatch):
             document["budget"]["min_vram_per_experiment"] = 1024
         (profile / path.name).write_text(yaml.safe_dump(document, allow_unicode=True))
     args = bootstrap.build_parser().parse_args(["inspect", "topic", "--repository", str(repository),
-        "--allow-gpu", "--auth-transport", "none", "--institutional-browser-mode", "off", "--run-id", "run", "--offline"])
+        "--allow-gpu", "--auth-transport", "none", "--institutional-browser-mode", "off", "--run-id", "run", "--offline", "--verifier-model", "exact-review-model"])
     monkeypatch.setattr(bootstrap_inspect, "_gpu_inventory", lambda repository: bootstrap_gpu.inventory())
     monkeypatch.setattr(bootstrap_inspect, "_pools", lambda repository: {"status": "absent"})
     monkeypatch.setattr(bootstrap_inspect, "supervisor_check", lambda: {"status": "ready"})
@@ -208,7 +208,7 @@ def test_inspect_resolves_full_membership_without_device_questions_or_effects(pr
     argv = result["launch_argv"]
     resolved = bootstrap.build_parser().parse_args(argv[argv.index("launch"):])
     assert resolved.pool_device_uuid == [A, B, C] and resolved.gpu_device_uuid == [A]
-    report = admit_profile(profile, run_id="run", allow_gpu=True)
+    report = admit_profile(profile, run_id="run", allow_gpu=True, verifier_model=resolved.verifier_model)
     commands = bootstrap.launch_arguments(resolved, repository, report)
     assert commands["pool_action_reviewed"]
     assert f"{os.geteuid()}={A},{B},{C}" in commands["pool_prepare"]
@@ -262,8 +262,8 @@ def test_cpu_inspect_never_discovers_or_operates_gpu_resources(prepared, monkeyp
 def test_direct_launch_preview_gets_same_automatic_defaults(prepared):
     repository, profile, _, reports = prepared
     args = bootstrap.build_parser().parse_args(["launch", "topic", "--repository", str(repository),
-        "--allow-gpu", "--auth-transport", "none", "--institutional-browser-mode", "off", "--run-id", "run"])
-    report = admit_profile(profile, run_id="run", allow_gpu=True)
+        "--allow-gpu", "--auth-transport", "none", "--institutional-browser-mode", "off", "--run-id", "run", "--verifier-model", "exact-review-model"])
+    report = admit_profile(profile, run_id="run", allow_gpu=True, verifier_model=args.verifier_model)
     commands = bootstrap.launch_arguments(args, repository, report)
     assert args.pool_device_uuid == [A, B, C] and args.gpu_device_uuid == [A]
     assert reports[-1].member == [f"{os.geteuid()}={A},{B},{C}"]

@@ -76,7 +76,8 @@ GPU_RECOVERY_ACI_SCHEMA_VERSION = 30
 UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION = 31
 INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION = 32
 EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION = 33
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION
+IMPLEMENTATION_VERIFIER_ACI_SCHEMA_VERSION = 34
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = IMPLEMENTATION_VERIFIER_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -106,6 +107,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION,
         INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION,
         EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION,
+        IMPLEMENTATION_VERIFIER_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -144,9 +146,11 @@ _COMMANDS_BY_SCHEMA = {
     UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    IMPLEMENTATION_VERIFIER_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
-    if version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
+    if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
+    and (version >= IMPLEMENTATION_VERIFIER_ACI_SCHEMA_VERSION or command is not AgentCommand.VERIFY_IMPLEMENTATION))
     for version, commands in _COMMANDS_BY_SCHEMA.items()}
 
 
@@ -366,6 +370,8 @@ def required_output_schema(
     schema_version: int | None = None,
 ) -> str:
     version = EXPERT_LOOP_ACI_SCHEMA_VERSION if schema_version is None else schema_version
+    if command is AgentCommand.VERIFY_IMPLEMENTATION:
+        return "ImplementationReview/v1"
     if command is AgentCommand.ADJUDICATE:
         if version < MULTICHAIN_ACI_SCHEMA_VERSION:
             raise AgentACIError("invalid_schema", "ADJUDICATE requires ACI14")
@@ -426,6 +432,7 @@ _NODE_COMMANDS = {
     AgentCommand.SELF_EVOLVE: ResearchNodeKind.SELF_EVOLVE,
 }
 _AUXILIARY_COMMANDS = {
+    AgentCommand.VERIFY_IMPLEMENTATION: "VERIFY_IMPLEMENTATION",
     AgentCommand.PAPER_READ: "PAPER_READ",
     AgentCommand.GROUNDING: "GROUNDING",
     AgentCommand.OBSERVER: "OBSERVER",
@@ -1745,6 +1752,11 @@ def validate_observer_candidate(request: AgentRequest, raw: Mapping[str, Any]) -
 
 def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
     command = request.command
+    if command is AgentCommand.VERIFY_IMPLEMENTATION:
+        from .verification_contract import validate_review
+        try: validate_review(request, raw)
+        except (ValueError, KeyError, TypeError) as exc: raise AgentACIError("invalid_candidate", str(exc)) from exc
+        return ExpertLoopCandidate(task_kind=raw["task_kind"], summary=raw["summary"], supporting_refs=tuple(raw["supporting_refs"]))
     synthesis = _is_hypothesis_synthesis(request)
     if synthesis and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION:
         try:
