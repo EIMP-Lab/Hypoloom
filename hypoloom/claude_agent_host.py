@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/91"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/92"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2359,6 +2359,11 @@ def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorks
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
     from .domain import AgentCommand
     from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, validate_adjudication_candidate
+    if request.command is AgentCommand.VERIFY_IMPLEMENTATION:
+        from .verification_contract import validate_review
+        from .reference_aliases import canonical_output, reference_aliases
+        aliases = reference_aliases(request, _output_schema(request, tool_workspace=True, reference_aliases=False))
+        return lambda output: validate_review(request, canonical_output(output, aliases)["typed_candidate"])
     if request.command is AgentCommand.ADJUDICATE and request.schema_version >= EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION:
         return lambda output: validate_adjudication_candidate(request, output["typed_candidate"])
     if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
@@ -2837,6 +2842,9 @@ def _output_schema(
                         "required": ["chain_id", "candidate"]}}},
             "required": ["schema_version", "hypotheses"]}
     effect = request.effect_requirements[0]
+    if request.command.value == "VERIFY_IMPLEMENTATION":
+        from .verification_contract import review_schema
+        candidate = review_schema(request)
     properties: dict[str, object] = {"typed_candidate": candidate}
     required = ["typed_candidate"]
     if request.command.value == "DRAFT_EXPERIMENT_SPEC" and not tool_workspace:
@@ -3236,7 +3244,7 @@ def _instruction(
         from .agent_aci import grounding_acceptance_request
         if grounding_acceptance_request(request) and request.command.value in {"GROUNDING", "HYPOTHESIS_UPDATE", "EXPERIMENT_DESIGN_IMPLEMENT"}:
             return common
-        if request.command.value in {"EXPERIMENT_EXECUTION", "ADJUDICATE", "PAPER_READ"}:
+        if request.command.value in {"EXPERIMENT_EXECUTION", "ADJUDICATE", "PAPER_READ", "VERIFY_IMPLEMENTATION"}:
             return common
         if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request):
             return common

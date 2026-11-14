@@ -534,6 +534,54 @@ class HelpLegend(CockpitPanel):
     """Scrollable window guide and execution reliability legend."""
 
 
+class VerificationScreen(ModalScreen[None]):
+    """Read-only paginated engineering evidence."""
+    BINDINGS = (Binding("escape", "close", "Close"),)
+
+    def __init__(self, root, run_id):
+        super().__init__()
+        self.root, self.run_id, self.offset = root, run_id, 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(tr("Verification history"))
+            with VerticalScroll():
+                yield Static("", id="verification-history")
+            with Horizontal():
+                yield Button(tr("Previous"), id="verification-previous")
+                yield Button(tr("Next"), id="verification-next")
+                yield Button(tr("Close"), id="verification-close")
+
+    async def on_mount(self):
+        await self.load_page()
+
+    async def load_page(self):
+        import asyncio
+        from .observer_details import read_observer_detail
+        data = await asyncio.to_thread(read_observer_detail, self.root, self.run_id, "verification", offset=self.offset, limit=20)
+        lines = [f"{data.get('model') or '—'} · {data.get('state')} · {self.offset + 1}"]
+        for subject in data["experts"]:
+            lines.append(f"{subject['expert']} · {subject['deliveries']} deliveries · {subject['blockers']} blockers")
+            for delivery in subject["recent"]:
+                for revision in delivery["revisions"]:
+                    lines.append(f"  {revision['experiment_id']} · {revision['state']}")
+                    for report in revision["reports"]:
+                        lines.append(f"    {report['report_ref']} · {report['verdict']} · {report['delivery_state']}\n    {report['summary']}")
+                        for finding in report["findings"]:
+                            lines.append(f"      {finding['finding_ref']} · {finding['severity']}: {finding['message']}\n      {finding['resolution_condition']}")
+        self.query_one("#verification-history", Static).update(Text("\n".join(lines)))
+        self.query_one("#verification-previous", Button).disabled = self.offset == 0
+        self.query_one("#verification-next", Button).disabled = not any(len(s["recent"]) == 20 for s in data["experts"])
+
+    async def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "verification-close": self.dismiss(); return
+        self.offset = max(0, self.offset + (20 if event.button.id == "verification-next" else -20))
+        await self.load_page()
+
+    def action_close(self):
+        self.dismiss()
+
+
 def _send_terminal_clipboard_request(
     app: App[object], text: str, *, inside_tmux: bool,
 ) -> str | None:
@@ -951,13 +999,29 @@ class ExpertsPanel(CockpitPanel):
         if role_filter and not cards:
             lines.append(tr("[dim]No experts match this filter[/dim]"))
         grounding_text = "\n".join(grounding_lines)
+        verifier = overview.get("verifier", {})
+        verifier_state = verifier.get("state", "unsupported")
+        if verifier_state == "active" and overview.get("host_observation", {}).get("availability") != "responded": verifier_state = "OPEN?"
+        verification_lines = [tr("Implementation Verifier") + " · " + verifier_state,
+            f"{_value(verifier.get('model'))} · {_value(verifier.get('effort'))}",
+            tr("Verifier RPM {0} · ≥{1} tokens · probe {2}", _count(traffic.get("verifier", {}).get("rpm")),
+               _compact(verifier.get("accounting", {}).get("reported_tokens")), _duration(verifier.get("probe_seconds")))]
+        for subject in verifier.get("experts", []):
+            rate = subject["first_pass"]
+            verification_lines.append(tr("{0}: deliveries {1} · checks {2} · reuse {3} · first pass {4}/{5} · blockers {6} · advisories {7}",
+                subject["expert"], subject["deliveries"], subject["triggers"], subject["reuse"], rate["passed"], rate["completed"], subject["blockers"], subject["advisories"]))
+            for finding in subject.get("findings", [])[-3:]:
+                verification_lines.append(f"  {finding['severity']} · {finding['state']} · {finding['delivery_state']}: {finding['message']}")
+                verification_lines.append(f"  {finding['finding_ref']}")
+        verifier_text = "\n".join(verification_lines)
         rendered = [Panel(Text.from_markup(grounding_text), title=tr("Grounding Agent"), border_style="#24566a", padding=(0, 1)),
+            Panel(Text(verifier_text), title=tr("Implementation Verifier"), border_style="#24566a", padding=(0, 1)),
             Text.from_markup("\n".join(lines))]
         for card in cards:
             rendered.extend((Text(""), Panel(Text.from_markup(card), border_style="#24566a", padding=(0, 1))))
         # Reuse the ordinary content equality check so polling retains scroll
         # and avoids rebuilding unchanged visuals. Rich sizes cards on resize.
-        self.update("\n\n".join((grounding_text, *lines, *cards)), renderable=Group(*rendered))
+        self.update("\n\n".join((grounding_text, verifier_text, *lines, *cards)), renderable=Group(*rendered))
 
 
 class ComponentsPanel(CockpitPanel):
@@ -1530,6 +1594,7 @@ class HypoloomVNextMonitor(App):
         Binding("n", "notification_retry", "Telegram retry", show=False),
         Binding("i", "literature_access", "Institutional access"),
         Binding("d", "toggle_diagnostics", "Diagnostics"),
+        Binding("v", "verification", "Verifier"),
         Binding("question_mark", "toggle_help", "Help", show=False),
     )
     CSS = """
@@ -1825,6 +1890,9 @@ class HypoloomVNextMonitor(App):
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "expert-filter" and self._last_snapshot is not None:
             self._render(self._last_snapshot)
+
+    def action_verification(self) -> None:
+        self.push_screen(VerificationScreen(self.state_root, self.run_id))
 
     def action_toggle_diagnostics(self) -> None:
         self.screen.toggle_class("diagnostics")

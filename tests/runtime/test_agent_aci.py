@@ -382,6 +382,7 @@ def test_wire_has_exactly_the_accepted_agent_commands() -> None:
         "FINAL_REPORT",
         "DEBATE_JUDGE",
         "PAPER_READ",
+        "VERIFY_IMPLEMENTATION",
     )
     assert AGENT_COMMANDS == tuple(AgentCommand)
 

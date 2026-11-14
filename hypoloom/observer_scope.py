@@ -6,7 +6,7 @@ import json
 
 from .expert_loop import ResearchNodeKind
 
-_RUN_TASKS = {"GROUNDING_QUERY_PLAN", "GROUNDING", "OBSERVER", "GRAPH_EVOLVE",
+_RUN_TASKS = {"VERIFY_IMPLEMENTATION", "GROUNDING_QUERY_PLAN", "GROUNDING", "OBSERVER", "GRAPH_EVOLVE",
               "FINAL_REPORT", "DEBATE_JUDGE"}
 _EXPERT_TASKS = {item.value for item in ResearchNodeKind} | {"LEADER", "DEBATE",
     "PROPOSE_HYPOTHESIS", "DRAFT_EXPERIMENT_SPEC", "ANSWER_RENDEZVOUS"}
@@ -63,7 +63,7 @@ def attempt_scopes(attempts, commands=(), *, include_run_group=False):
                     group = inherited.get("run_group")
             elif kind in _RUN_TASKS:
                 scope = "run"
-                group = "grounding" if kind in {"GROUNDING", "GROUNDING_QUERY_PLAN"} else "other"
+                group = "grounding" if kind in {"GROUNDING", "GROUNDING_QUERY_PLAN"} else "verifier" if kind == "VERIFY_IMPLEMENTATION" else "other"
             elif kind in _EXPERT_TASKS:
                 owner = key.get("expert_slot") or task.get("expert_slot") or request.get("role")
                 if isinstance(owner, str) and owner:

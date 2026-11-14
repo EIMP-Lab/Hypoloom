@@ -48,6 +48,7 @@ class AgentCommand(str, Enum):
     FINAL_REPORT = "FINAL_REPORT"
     DEBATE_JUDGE = "DEBATE_JUDGE"
     PAPER_READ = "PAPER_READ"
+    VERIFY_IMPLEMENTATION = "VERIFY_IMPLEMENTATION"
 class MetricDirection(str, Enum):
     MAXIMIZE = "MAXIMIZE"; MINIMIZE = "MINIMIZE"
 class ComponentResultKind(str, Enum): METRIC = "metric"; ARTIFACT = "artifact"

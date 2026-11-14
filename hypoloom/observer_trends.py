@@ -185,7 +185,7 @@ def build_run_trends(state_root, run_id, *, now=None, max_points=1440,
                "rpm_lower_bound": [0] * count, "incomplete_attempts": [0] * count} for role in roles]
     groups = {item["role"]: item for item in series}
     run_groups = {}
-    for key in ("grounding", "other"):
+    for key in ("grounding", "verifier", "other"):
         run_groups[key] = {"requests": [0] * count, "rpm": [0] * count,
                        "rpm_lower_bound": [0] * count, "incomplete_attempts": [0] * count}
     def indices(start, finish):
@@ -227,7 +227,7 @@ def build_run_trends(state_root, run_id, *, now=None, max_points=1440,
             continue
         scope = scopes[row["attempt_id"]]
         group = (groups[scope["owner_role"]] if scope["task_scope"] == "expert" else
-                 run_groups["grounding"] if scope["run_group"] == "grounding" else run_groups["other"])
+                 run_groups.get(scope["run_group"], run_groups["other"]))
         timestamps, reasons = cache.scan(root, run_id, row, budget)
         for when in timestamps:
             if not started <= when <= ended: continue
@@ -258,7 +258,7 @@ def build_run_trends(state_root, run_id, *, now=None, max_points=1440,
         coverage["availability"] = "partial" if coverage["request_count"] else "unavailable"
     return dict(run_id=run_id, observed_at=observed, started_at=started, ended_at=ended,
                 terminal=terminal is not None, interval_seconds=step, points=points,
-                experts=series, grounding=run_groups["grounding"], other=run_groups["other"],
+                experts=series, **run_groups,
                 coverage=coverage, non_authoritative=True,
                 occupancy_semantics="recorded_bound_attempts_at_bucket_end_and_peak_not_host_liveness",
                 rpm_semantics="recorded_outbound_requests_per_bucket_minute_including_retries_not_account_usage")
@@ -273,7 +273,7 @@ def trends_csv(trends):
     for i, point in enumerate(trends.get("points", [])):
         writer.writerow([point["at"], point["until"], "run", "", *[point[key] for key in
             ("experiments", "experiments_peak", "agents", "agents_peak", "requests", "rpm", "rpm_lower_bound", "incomplete_attempts")]])
-        for scope, group in [("expert", g) for g in trends["experts"]] + [(key, trends[key]) for key in ("grounding", "other")]:
+        for scope, group in [("expert", g) for g in trends["experts"]] + [(key, trends[key]) for key in ("grounding", "verifier", "other") if key in trends]:
             role = group.get("role", "")
             # CSV readers must not interpret private role labels as formulae.
             if role.startswith(("=", "+", "-", "@", "\t", "\r", "\n")):

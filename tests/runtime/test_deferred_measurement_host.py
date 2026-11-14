@@ -115,7 +115,7 @@ def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path)
             created = host.handle(ControlRequest(schema_version=1, request_id="strict-create", expected_revision=0,
                 command="CREATE_RUN", payload=deferred_payload(tmp_path, Path(directory))))
             assert created.status == "accepted", created
-            assert host.store.get_run("c5-host")["agent_aci_version"] == "33"
+            assert host.store.get_run("c5-host")["agent_aci_version"] == "34"
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 host.tick()

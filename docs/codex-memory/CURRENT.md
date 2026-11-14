@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- November 14 implementation authorization: the user approved implementing the
+  independent code implementation verifier, committing/pushing dev and selectively
+  updating main. This supersedes the proposal-only restriction below. Existing
+  research runs, private Profiles and production pools remain read-only. Work uses
+  ordinary auxiliary Agent tasks and Host-owned Process probes, explicit init
+  model selection, and a shared TUI/Web per-expert delivery projection. ACI 34 /
+  adapter 92 / lifecycle 13 are implemented. G1 plus affected rechecks reconciles
+  8,976 passes / 163 skips with no unresolved cases. Final native CPU/GPU cohorts
+  close 282 Agents / 32 Processes across 13 roots, with clean Oracles and no owned
+  residue. Ten retained roots / 8,055 artifacts remain unchanged; five baseline
+  findings remain. Source/wheel/install/fresh bundle match 219 runtime files.
+  The real-model sample hit provider 504 and timed out; preserve its 2 USD unknown
+  reservation and do not automatically retry or claim model-quality qualification.
+  [Implementation](../design/dynamic-experiment-verification.md) /
+  [evidence](../qualification.md#independent-implementation-verifier-2026-11-14).
+
 - November 14 correction: the user explicitly requests reverting the static
   execution-check feature, then reviewing a dynamic verification design before
   any implementation. Dev `d91fdd3` and main `90f4c19` are published exact-tree

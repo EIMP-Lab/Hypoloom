@@ -205,12 +205,18 @@ def _archived_cuda_stdout(artifact_root, attempt_id):
     return path, records[0]
 
 
-def _assert_closure(host, run_id, scenario, uuids, chains, queue, root, host_key):
+def _assert_closure(host, run_id, scenario, uuids, chains, queue, root, host_key, implementation_probes=0):
     expected = {(chain, 1) for chain in chains} | {(chains[0], 2)}
     assert scenario.local_tests == set(scenario.execution_results) == expected
     attempts = host.store.list_attempts()
     assert all(row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED" for row in attempts)
     processes = [row for row in attempts if row["kind"] == "PROCESS"]
+    probes = [row for row in processes if row["execution_id"].endswith("--implementation-probe")]
+    assert len(probes) == implementation_probes
+    processes = [row for row in processes if row not in probes]
+    for probe in probes:
+        observation = json.loads(probe["observation_json"])
+        assert observation["implementation_probe"] and "independent_cuda_probe" in observation["stdout"]
     assert len(processes) == len(expected)
     observations = [json.loads(row["observation_json"]) for row in attempts if row["kind"] == "AGENT"]
     assert all(row["request"]["schema_version"] == CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION and "session" in row for row in observations)
@@ -325,11 +331,11 @@ def _assert_closure(host, run_id, scenario, uuids, chains, queue, root, host_key
     (root / "closure.json").write_text(json.dumps({
         "run_id": run_id, "schema_version": CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION, "allowed_gpu_uuids": uuids,
         "chain_sessions": sessions, "agent_count": len(observations),
-        "process_count": len(processes), "cuda": cuda_records,
+        "process_count": len(processes), "implementation_probe_count": len(probes), "cuda": cuda_records,
         "native_provider": "local-scripted-only", "oracle_ok": audit.ok}, indent=2))
 
 
-def _run_native_gpu(root: Path, *, plural: bool):
+def _run_native_gpu(root: Path, *, plural: bool, implementation_probes=0):
     first, runtime = _configured_gpu()
     uuids = (first,)
     if plural:
@@ -354,6 +360,8 @@ def _run_native_gpu(root: Path, *, plural: bool):
     try:
         host = _gpu_host(root, executable, f"http://127.0.0.1:{provider.server_port}", key, resources)
         payload = _gpu_payload(root, run_id, uuids, runtime, chains)
+        if implementation_probes:
+            payload["research_contract"]["methodology"]["controls"]["product"]["experts"]["verifier"] = {"model": _MODEL}
         host.initialize()
         created = host.handle(ControlRequest(schema_version=1, request_id="create-" + run_id,
             expected_revision=0, command="CREATE_RUN", payload=payload))
@@ -362,6 +370,7 @@ def _run_native_gpu(root: Path, *, plural: bool):
         deadline = time.monotonic() + 540
         while time.monotonic() < deadline:
             host.tick()
+            assert not host.dispatch_errors, host.dispatch_errors
             sample = _snapshot_queue(host, run_id)
             # Save only changes, retaining actual observation time and identities.
             if not queue or any(sample[key] != queue[-1][key] for key in ("ready", "open", "waiting")):
@@ -371,7 +380,7 @@ def _run_native_gpu(root: Path, *, plural: bool):
                 break
             time.sleep(0.02)
         assert host.store.latest_transition(run_id)["state"] == "COMPLETED", host.store.list_attempts()
-        _assert_closure(host, run_id, scenario, uuids, chains, queue, root, key)
+        _assert_closure(host, run_id, scenario, uuids, chains, queue, root, key, implementation_probes)
     finally:
         (root / "queue-observations.json").write_text(json.dumps(queue, indent=2))
         (root / "provider-requests.json").write_text(json.dumps(scenario.requests, indent=2))

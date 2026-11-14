@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, TypeAlias
 from .domain import EffectKind, FactId, ResearchFactType
-WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v12"
+WORKFLOW_DEFINITION_VERSION = "hypoloom-lifecycle-v13"
 class Machine(str, Enum):
     RUN_WORKFLOW, EXPERIMENT_WORKFLOW, HUMAN_DECISION, EFFECT_ATTEMPT = (
         "RunWorkflow", "ExperimentWorkflow", "HumanDecision", "EffectAttempt",
@@ -20,6 +20,8 @@ class HumanDecisionState(str, Enum):
 class EffectAttemptState(str, Enum):
     OPEN, CLOSED = "OPEN", "CLOSED"
 class Command(str, Enum):
+    VERIFY_PROCESS = "VERIFY_PROCESS"
+    OBSERVE_IMPLEMENTATION = "OBSERVE_IMPLEMENTATION"
     LITERATURE_ACCESS = "LITERATURE_ACCESS"
     SELECT_PLUGIN = "SELECT_PLUGIN"
     PAUSE_PARTICIPANT = "PAUSE_PARTICIPANT"
@@ -155,6 +157,8 @@ TRANSITIONS: tuple[Transition, ...] = (
         for state in (ExperimentState.PREREGISTERED, ExperimentState.READY, ExperimentState.EVALUATING)
     ),
     _t(X, ExperimentState.READY, Command.EXECUTE, ExperimentState.EXECUTING, "process_dispatch_allowed", "append_process_command_and_open_attempt", external=EffectKind.PROCESS),
+    _t(X, ExperimentState.READY, Command.VERIFY_PROCESS, ExperimentState.EXECUTING, "captured_submission_and_independent_probe_admitted", "append_bounded_probe_and_open_attempt", external=EffectKind.PROCESS),
+    _t(X, ExperimentState.EXECUTING, Command.OBSERVE_IMPLEMENTATION, ExperimentState.READY, "owned_probe_terminal_and_process_absent", "persist_engineering_evidence_without_scientific_outcome"),
     _t(X, ExperimentState.EXECUTING, Command.OPEN_RETRY_ATTEMPT, ExperimentState.EXECUTING, "next_process_ordinal_allowed", "append_next_open_process_attempt", external=EffectKind.PROCESS),
     _t(X, ExperimentState.EXECUTING, Command.REQUEST_CANCEL, ExperimentState.EXECUTING, "authorized_cancel", "persist_cancel_suppress_retry_and_request_group_cancel"),
     _t(X, ExperimentState.EXECUTING, Command.OBSERVE_ATTEMPT_TERMINAL, ExperimentState.EVALUATING, "first_terminal_candidate_selected_and_process_absent", "close_attempt_persist_candidate_and_transition"),

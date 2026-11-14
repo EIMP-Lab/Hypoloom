@@ -132,6 +132,7 @@ _RETAINED_CAPABILITY_MATRIX: Mapping[AgentCommand, AgentCapabilities] = (
             AgentCommand.LEADER: _TOOLLESS,
             AgentCommand.COMPACT_CONTEXT: _TOOLLESS,
             AgentCommand.PAPER_READ: _TOOLLESS,
+            AgentCommand.VERIFY_IMPLEMENTATION: _TOOLLESS,
         }
     )
 )
@@ -140,8 +141,8 @@ _RETAINED_CAPABILITY_MATRIX: Mapping[AgentCommand, AgentCapabilities] = (
 # every node. Mounts and Host service exposure specialize ownership, not tools.
 AGENT_CAPABILITY_MATRIX: Mapping[AgentCommand, AgentCapabilities] = MappingProxyType({
     command: replace(old, profile=FULL_CC_PROFILE, workspace="chain-session/1",
-        built_in_tools=("Read", "Glob", "Grep") if command is AgentCommand.PAPER_READ else FULL_CC_TOOLS,
-        bash=command is not AgentCommand.PAPER_READ, session_persistence=True,
+        built_in_tools=("Read", "Glob", "Grep") if command in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION} else FULL_CC_TOOLS,
+        bash=command not in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}, session_persistence=True,
         mcp_servers=("host-tools",) if command is AgentCommand.EXPERIMENT_EXECUTION else ())
     for command, old in _RETAINED_CAPABILITY_MATRIX.items()
 })

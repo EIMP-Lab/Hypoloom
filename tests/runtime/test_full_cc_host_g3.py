@@ -627,7 +627,7 @@ def _profile_environment_payload(
 
 def _exercise_full_cc_host(
     tmp_path: Path, *, profile_environment: bool = False, timeout_seconds: float = 180,
-    execution_handoffs: int = 0, execution_retries: int = 0
+    execution_handoffs: int = 0, execution_retries: int = 0, implementation_probes: int = 0
 ) -> None:
     # Fifteen native invocations plus tools exceeded the old 90s test-only
     # deadline on a shared server. Agent/run production budgets are unchanged.
@@ -695,7 +695,7 @@ def _exercise_full_cc_host(
             ]
             assert len(executions) == 1 + execution_handoffs + execution_retries
             assert all(row["state"] == "CLOSED" for row in attempts)
-            assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2
+            assert len([row for row in attempts if row["kind"] == "PROCESS"]) == 2 + implementation_probes
             contracts = [
                 row["payload"]["execution_contract"]
                 for row in host.store.list_facts(run_id, "ExperimentPreregistered")

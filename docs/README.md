@@ -10,6 +10,7 @@ for daily operation. The dev branch also retains development instructions and va
 | Guide | What it covers |
 | --- | --- |
 | [Initialization](guides/initialization.md) | Model selection, budgets and startup checks |
+| [Implementation verification](guides/implementation-verification.md) | Independent code checks, probes and per-expert delivery evidence |
 | [Personal configuration](../config/README.md) | Six YAML files, field descriptions and English template examples |
 | [Profile templates](../profiles/README.md) | Starting templates, configuration workflow and operating limits |
 | [Operator guide](operator-guide.md) | Daily operation and result interpretation |

@@ -238,9 +238,11 @@ def batch_host(tmp_path, monkeypatch, request):
                 contract["components"].append(new_component)
                 settings["experts"]["experts"].append({**copy.deepcopy(settings["experts"]["experts"][0]), "name": role})
             contract["goal"]["summary_metric"] = {"name": "required_component_completion", "direction": "MAXIMIZE", "target": "3", "display_only": True}
-            if mode == "leader-round":
+            if mode in {"leader-round", "proposal-peers"}:
                 # Interaction development continues only while required work remains;
                 # shared-goal success now stops before selecting another Leader.
+                # The peer-dispatch fixture likewise requires all three owners;
+                # shared-goal mode can correctly stop after the first success.
                 settings["goal"]["completion_mode"] = "explicit_signals"
         settings["experts"]["defaults"]["max_forks"] = 1 if mode == "max-forks-one" else 4
         if mode in {"parallel", "max-forks-one", "restart"}: payload["execution"]["delay_seconds"] = 0.6
@@ -932,7 +934,7 @@ def test_real_cpu_leader_round_reopens_only_its_designated_component_and_gets_a_
 def test_current_research_continues_until_goal_or_actual_experiment_budget(batch_host, expected_cycles):
     host = batch_host
     _complete(host, timeout=120)
-    assert host.store.get_run("batch-host")["agent_aci_version"] == "33"
+    assert host.store.get_run("batch-host")["agent_aci_version"] == "34"
     history = host._batch_history("batch-host", "primary.validation_accuracy")
     assert [batch.cycle for batch in history.batches] == list(range(1, expected_cycles + 1))
     attempts = host.store.list_attempts()

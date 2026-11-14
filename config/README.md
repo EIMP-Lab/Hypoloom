@@ -148,6 +148,7 @@ Use overrides only when you want a different model or effort:
 | --- | --- |
 | `defaults.model` | Exact provider-supported model ID for the Profile's default model. |
 | `grounding.model`, `grounding.effort` | Shared Grounding model/effort; omitted fields inherit `defaults`, then the Host selection. This applies before individual expert rounds. |
+| `verifier.model`, `verifier.effort` | Independent implementation verifier. Exact model selection is required at init; launch flags override in memory. Does not inherit expert/default model overrides. See [verification](../docs/guides/implementation-verification.md). |
 | `experts[].model`, `experts[].effort` | Override the corresponding default for one expert. |
 | `experts[].max_forks`, `experts[].max_hypotheses_per_round` | Override the corresponding default ceiling for one expert. |
 | `experts[].stage_overrides` | Map from a stage name to `model` and/or `effort`. A stage override takes precedence over expert settings. |

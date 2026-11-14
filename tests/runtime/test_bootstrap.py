@@ -56,7 +56,7 @@ def checkout(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
     overrides = [f"methodology.runtime.target_repo={target}", f"methodology.runtime.conda_env={sys.prefix}",
-                 f"safety.allow_read_paths=[{data}]", "experts.defaults.model=exact-fixture-model"]
+                 f"safety.allow_read_paths=[{data}]", "experts.defaults.model=exact-fixture-model", "experts.verifier.model=exact-verifier-model"]
     return repo, overrides
 
 
@@ -927,9 +927,9 @@ def test_real_preview_exposes_profile_model_override_without_inheriting_session(
     output = capsys.readouterr().out
     review = json.loads(output)['effective_configuration']['models']
     assert review['host_default_model'] == 'selected-host-model'
-    assert review['profile_models_overriding_host_default'] == ['exact-fixture-model']
-    assert all(row['model'] == 'exact-fixture-model' for row in review['routes'])
-    assert all(row['sources']['model'] == 'experts.yaml.defaults.model' for row in review['routes'])
+    assert review['profile_models_overriding_host_default'] == ['exact-fixture-model', 'exact-verifier-model']
+    assert all(row['model'] == ('exact-verifier-model' if row['route'] == 'verifier' else 'exact-fixture-model') for row in review['routes'])
+    assert all(row['sources']['model'] == ('experts.yaml.verifier.model' if row['route'] == 'verifier' else 'experts.yaml.defaults.model') for row in review['routes'])
     assert 'synthetic-private-key' not in output
     assert not (checkout[0] / 'state').exists()
 

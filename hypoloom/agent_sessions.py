@@ -53,7 +53,7 @@ _WRITABLE = frozenset(
 )
 # Judges reconstruct their context on every Attempt, including retries, so a
 # retry of these commands is a brand-new session with byte-identical input.
-STATELESS_SESSION_COMMANDS = frozenset({AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE, AgentCommand.LEADER})
+STATELESS_SESSION_COMMANDS = frozenset({AgentCommand.OBSERVER, AgentCommand.DEBATE_JUDGE, AgentCommand.LEADER, AgentCommand.VERIFY_IMPLEMENTATION})
 _MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 
 
@@ -974,7 +974,7 @@ class AgentSessions:
         if request.command is AgentCommand.FINAL_REPORT:
             workspace.final_report_root = _directory(root / "report" / _component(request.attempt_id))
         from .agent_aci import grounding_acceptance_request
-        if grounding_acceptance_request(request) and request.command is not AgentCommand.PAPER_READ:
+        if grounding_acceptance_request(request) and request.command not in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}:
             if request.command is AgentCommand.GROUNDING:
                 workspace.acceptance_root = _directory(root / "acceptance-authoring")
             else:

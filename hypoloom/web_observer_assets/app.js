@@ -695,6 +695,7 @@
     };
     fill(byId("run-rpm"), traffic);
     fill(byId("grounding-rpm"), object(traffic.grounding));
+    fill(byId("verifier-rpm"), object(traffic.verifier));
     const pulse = (light, counts, aggregate) => {
       if (!light) return;
       const active = fresh && valid(counts.rpm) && counts.rpm > 0 && light.classList.contains("host-confirmed");
@@ -1533,6 +1534,7 @@
 
   function renderGlobalTasks(snapshot) {
     renderGrounding(snapshot);
+    renderVerifier(snapshot);
     const container = byId("global-task-list");
     container.replaceChildren();
     const overview = object(snapshot.overview);
@@ -1594,12 +1596,13 @@
     const tiles = element('div', 'agent-tile-list');
     for (const attempt of working) {
       const entry = workingTile(attempt, null);
+      entry.runGroup = 'grounding';
       updateWorkingTile(entry, attempt, attempt.task_kind || attempt.command || 'Grounding',
         object(snapshot.overview).host_observation?.availability === 'responded', Number(snapshot.observed_at));
       tiles.append(entry.tile);
     }
     for (const [id, entry] of state.workingTiles) {
-      if (entry.role === null && !working.some(a => a.attempt_id === id)) state.workingTiles.delete(id);
+      if (entry.runGroup === 'grounding' && !working.some(a => a.attempt_id === id)) state.workingTiles.delete(id);
     }
     details.append(tiles);
     for (const stage of list(group.activity)) {
@@ -1615,6 +1618,53 @@
       {task_scope:'run', name:t('Global tasks')}), 'detail-link grounding-history'));
     card.append(details); container.append(card);
     restorePulses();
+  }
+
+  function renderVerifier(snapshot) {
+    const container = byId('verifier-agent-card');
+    if (!container) return;
+    const expanded = new Set([...container.querySelectorAll('details[open]')].map(node => node.dataset.expert));
+    const focusKey = container.contains(document.activeElement) ? document.activeElement.dataset.verifierFocus : null;
+    const group = object(snapshot.overview?.verifier);
+    const confirmed = snapshot.overview?.host_observation?.availability === 'responded';
+    const card = element('article', 'entity-card');
+    card.append(element('h3', '', t('Implementation Verifier') + ' · ' + (group.state === 'active' && !confirmed ? 'OPEN?' : (group.state || 'unsupported'))));
+    card.append(element('p', 'panel-copy', `${group.model || '—'} · ${group.effort || '—'}`));
+    const rpm = element('p', 'panel-copy', t('Verifier RPM') + ' ');
+    const rpmValue = element('strong', '', '—'); rpmValue.id = 'verifier-rpm'; rpm.append(rpmValue);
+    card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · probe {1}', compactNumber(object(group.accounting).reported_tokens), compactDuration(group.probe_seconds))));
+    const ids = new Set(list(group.attempt_ids));
+    const active = list(snapshot.attempts).filter(a => ids.has(a.attempt_id) && a.state === 'OPEN');
+    for (const attempt of active) {
+      const entry = workingTile(attempt, null); entry.runGroup = 'verifier';
+      updateWorkingTile(entry, attempt, 'VERIFY_IMPLEMENTATION', confirmed, Number(snapshot.observed_at));
+      card.append(entry.tile);
+    }
+    for (const [id, entry] of state.workingTiles) {
+      if (entry.runGroup === 'verifier' && !active.some(a => a.attempt_id === id)) state.workingTiles.delete(id);
+    }
+    for (const subject of list(group.experts)) {
+      const details = document.createElement('details'); details.dataset.expert = subject.expert;
+      details.open = expanded.has(subject.expert);
+      const first = object(subject.first_pass);
+      details.append(element('summary', '', t('{0}: deliveries {1} · checks {2} · reuse {3} · first pass {4}/{5} · blockers {6} · advisories {7}',
+        subject.expert, subject.deliveries, subject.triggers, subject.reuse, first.passed, first.completed, subject.blockers, subject.advisories)));
+      for (const finding of list(subject.findings)) {
+        details.append(element('p', 'panel-copy', `${finding.severity} · ${finding.state} · ${finding.delivery_state}: ${finding.message}`));
+        details.append(element('p', 'panel-copy', finding.resolution_condition));
+        details.append(actionButton(finding.finding_ref, () => openRemoteDetail('attempt', {attempt_id: finding.report_ref}), 'detail-link'));
+      }
+      for (const delivery of list(subject.recent)) for (const revision of list(delivery.revisions)) {
+        details.append(element('p', 'panel-copy', `${revision.experiment_id} · ${revision.state}`));
+        for (const report of list(revision.reports)) details.append(actionButton(`${report.verdict} · ${report.summary}`,
+          () => openRemoteDetail('attempt', {attempt_id: report.report_ref}), 'detail-link'));
+      }
+      card.append(details);
+    }
+    card.append(actionButton(t('Verification history'), () => openRemoteDetail('verification', {offset: 0, limit: 20}), 'detail-link'));
+    for (const node of card.querySelectorAll('summary, button')) node.dataset.verifierFocus = `${node.closest('details')?.dataset.expert || ''}:${node.textContent}`;
+    container.replaceChildren(card);
+    if (focusKey) [...card.querySelectorAll('[data-verifier-focus]')].find(node => node.dataset.verifierFocus === focusKey)?.focus({preventScroll:true});
   }
 
   function renderGlobalDetails(parent, scope) {
@@ -2798,7 +2848,7 @@
         snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing], renderResearchDetail);
     }
     if (state.activeView === "operations") {
-      renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing, snapshot.overview?.grounding, snapshot.overview?.host_observation?.availability, snapshot.attempts], () => renderGlobalTasks(snapshot));
+      renderChanged("global-tasks", [snapshot.overview?.global_tasks, snapshot.overview?.unknown_tasks, snapshot.overview?.grounding_sharing, snapshot.overview?.grounding, snapshot.overview?.verifier, snapshot.overview?.host_observation?.availability, snapshot.attempts], () => renderGlobalTasks(snapshot));
       renderChanged("mission", [snapshot.goal, snapshot.status_source, snapshot.status?.grounding_dialogue, snapshot.status?.shared_acceptance, snapshot.status?.goal_verdict, snapshot.hypotheses], () => renderMission(snapshot));
       renderChanged("runtime", [snapshot.status_source, snapshot.status], () => renderRuntime(snapshot));
       renderChanged("experts", [snapshot.experts, snapshot.components, product.experts, snapshot.overview?.experts, snapshot.overview?.host_observation?.availability, snapshot.status_source, snapshot.status?.dispatch_error, product.summary?.experts, snapshot.attempts, filters, sharedGoal(snapshot)], () => {
@@ -4240,7 +4290,14 @@
     const top = content.scrollTop;
     content.replaceChildren();
     if (!selected.data) return;
-    if (kind === "expert") {
+    if (kind === "verification") {
+      structuredDetail(content, data);
+      const offset = data.offset || 0;
+      const controls = element('div', 'pagination');
+      if (offset > 0) controls.append(actionButton(t('Previous'), () => openRemoteDetail('verification', {...state.detail.parameters, offset: Math.max(0, offset - 20)}, true)));
+      if (list(data.experts).some(s => list(s.recent).length === 20)) controls.append(actionButton(t('Next'), () => openRemoteDetail('verification', {...state.detail.parameters, offset: offset + 20}, true)));
+      content.append(controls);
+    } else if (kind === "expert") {
       renderExpertDetails(content, data.role);
     } else if (kind === "stage_accounting") {
       renderStageTokens(content, object(state.snapshot?.overview || state.product?.summary).stage_accounting);
@@ -5026,7 +5083,7 @@
     trendSeries = [{key:"run", label:t("Total RPM"), color:trendColors[0],
       values:trendsData.points.map(p => p.rpm), lower:trendsData.points.map(p => p.rpm_lower_bound)},
       ...trendsData.experts.map((s, i) => ({key:`expert:${s.role}`, label:s.role, color:trendColors[(i+1)%trendColors.length], values:s.rpm, lower:s.rpm_lower_bound})),
-      ...["grounding", "other"].map((key, i) => ({key, label:key === "grounding" ? "Grounding" : t("Other run tasks"), color:["#8cabbc", "#df9b9b"][i], values:trendsData[key].rpm, lower:trendsData[key].rpm_lower_bound}))];
+      ...["grounding", "verifier", "other"].filter(key => trendsData[key]).map(key => ({key, label:key === "grounding" ? "Grounding" : key === "verifier" ? t("Implementation Verifier") : t("Other run tasks"), color:{grounding:"#8cabbc",verifier:"#b695da",other:"#df9b9b"}[key], values:trendsData[key].rpm, lower:trendsData[key].rpm_lower_bound}))];
     const rpmLegend = byId("trends-rpm-legend"); rpmLegend.replaceChildren();
     trendSeries.forEach(s => {
       const button = element("button", "", s.label); button.type="button"; button.style.color=s.color;

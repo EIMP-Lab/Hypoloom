@@ -145,7 +145,7 @@ class ProviderTraffic:
         with self.condition:
             now = self.clock()
             def empty(): return dict(rpm=0, in_flight=0, queued=0)
-            total, grounding, other, experts, models, attempts = empty(), empty(), empty(), {}, {}, {}
+            total, grounding, verifier, other, experts, models, attempts = empty(), empty(), empty(), empty(), {}, {}, {}
             for model, bucket in self.buckets.items():
                 self._prune(bucket, now)
                 model_counts = models.setdefault(model, empty())
@@ -155,6 +155,7 @@ class ProviderTraffic:
                     ('queued', [(owner, attempt) for _, owner, attempt in bucket['queue']])):
                     for owner, attempt in requests:
                         group = (grounding if owner == ('run', 'grounding') else
+                            verifier if owner == ('run', 'verifier') else
                             experts.setdefault(owner[1], empty()) if owner[0] == 'expert' else other)
                         total[key] += 1
                         model_counts[key] += 1
@@ -165,7 +166,7 @@ class ProviderTraffic:
                 'observed_at': self.wall_clock(), 'warming_up': now < self.warm_until,
                 'limits': {'rpm': self.rpm_limit, 'in_flight': self.max_in_flight},
                 'by_model': models, 'by_expert': experts, 'by_attempt': attempts,
-                'grounding': grounding, 'other': other}
+                'grounding': grounding, 'verifier': verifier, 'other': other}
 
 
 def for_run(host, run_id):
@@ -196,7 +197,7 @@ def for_request(host, request):
     scopes = attempt_scopes(rows, include_run_group=True)
     scope = scopes[request.attempt_id]
     owner = (('expert', scope['owner_role']) if scope['task_scope'] == 'expert' else
-        ('run', 'grounding') if scope['run_group'] == 'grounding' else ('run', 'other'))
+        ('run', scope['run_group']) if scope['run_group'] in {'grounding', 'verifier'} else ('run', 'other'))
     cleared = host.store.inspect("SELECT MAX(json_extract(payload_json,'$.provider_retry_clear.cleared_at')) AS v "
         "FROM workflow_transitions WHERE run_id=? AND workflow_kind='RUN'", (request.run_id,))[0]['v']
     traffic = for_run(host, request.run_id)

@@ -1,5 +1,87 @@
 # Qualification: G0–G5
 
+## Independent implementation verifier (2026-11-14)
+
+The user authorized implementation, validation, dev publication and the
+corresponding selective main update. The candidate starts at dev `f4687f8`;
+static `execution_checks` remains reverted. ACI 34 / native adapter 92 /
+lifecycle 13 commission independent implementation-only Agent tasks and bounded
+Host Process probes before formal computation. Init selects the exact model;
+TUI/Web share per-author delivery, finding and repair projections. Existing
+research, frozen bundles, private Profiles and production pools stay unchanged.
+
+Evidence is retained under `.local/qualification/implementation-verifier/` and
+the disposable `/tmp/iv-*-1114` roots. Runtime: Python 3.12.14, SQLite 3.53.4,
+Claude Code 2.1.322, Node 22.16.0 and disposable Chrome for Testing 142.0.7444.175.
+
+- G0 covers source binding, independent sessions, read-only candidates, invalid
+  reports/probes, single-Agent handoff, negative evidence, blocker delivery,
+  exact-content reuse/invalidation, cancellation and restart before probe spawn.
+  The interrupted probe retries under its original command and does not consume
+  the formal execution retry ordinal. Actual browser checks caught and fixed a
+  missing verifier dependency in refresh suppression; Grounding and verifier
+  tiles now coexist. Native schema bounds remain enforced by Host validation
+  without the CLI-incompatible `maxItems` provider-schema keyword.
+- G1 initially recorded **8,946 passes / 22 failures / 163 skips** in 1,515.56 s.
+  All original reports remain. Corrections cover new-version/read-only-card/init
+  fixture expectations, partial observer records, and the schema issue above.
+  The proposal-peer fixture now explicitly requires all owners instead of
+  permitting shared-goal success to stop correctly after the first result.
+  The affected selection recorded 499 passes / four failures; final targeted
+  checks pass 36. Reconciliation includes eight added portable/history cases:
+  **8,976 passes / 163 conditional skips, zero unresolved identities**. Static,
+  import, documentation and public-package checks accompany publication.
+- G2 compares all ten retained roots and **8,055 artifacts** without mutation.
+  The same five historical findings remain. The original ordered comparison
+  failed for one run because identical issues arrived in another order; the
+  preserved follow-up compares every field and full issue content after sorting
+  only that list. Logical databases and artifacts are unchanged in every root.
+- Final G3 passes **8/8** through resident/native Host, broker, publication,
+  recovery and CPU evolution. Independent read-only census finds eight roots,
+  **188 closed Agents / 20 closed Processes**, including two verification probes
+  and four reviewer invocations; every Oracle is clean and none of 177 recorded
+  process groups has surviving members.
+- Final G4 passes **19/19**, including both native shared-GPU cases and the
+  verifier's two-GPU CUDA probe/iteration case. Only fresh private pools and
+  `GPU-3ecfad62-035b-2626-e769-79c785e7665d` /
+  `GPU-a53fa601-8471-d782-2971-46e5a8e5d328` with
+  `/home/gray/.conda/envs/erc-cu128` are used. The first verifier G4 attempt
+  exposed frozen-configuration copying, before any probe; its failed root is
+  preserved. The final case uses an actual configured verifier model and the
+  ordinary resolver. Five final roots close **94 Agents / 12 Processes**, with
+  two probes/four reviewers, clean Oracles and no members of 106 recorded groups.
+  CUDA inventory is idle afterward. Scripted local providers qualify engineering
+  ownership and CUDA execution, not model judgment.
+- Source, wheel, isolated installation and fresh bundle match **219 runtime
+  files / 183 Python files**; CLI/MCP work outside the checkout. Final dev runtime
+  identity is `sha256:1651ef914763101d1419cf3a7f2ef4e0cfc69225bd1f50dddc069c5f7ca8f6b0`.
+  A 10,000-delivery/four-author in-memory projection returns 80 recent deliveries,
+  with median 0.129 s over five uninstrumented samples. This measures projection
+  cost, not full Host latency or week-long stability. Historical RPM/CSV retain
+  a distinct verifier group; attribution does not bill authors again.
+
+**Real-model limitation:** the G5 cohort selected `mimo-v2.6-pro`, at most two
+calls, 8 turns / 180 s / 2 USD per call and a 4 USD cohort threshold. A preliminary
+harness preflight failed before spawning and was corrected to use AgentSessions.
+The first actual invocation read its independent inputs but hit upstream 504 and
+timed out without an accepted report. No automatic paid retry occurred; the
+second sample was not started. Its CLI recorded 0.4917312 USD with unknown model
+cost, so accounting retains the **2 USD reservation**, not a zero or final bill.
+The owned process group is absent. Model defect-detection quality and the intended
+novel-algorithm comparison remain **unqualified**; neither scripted tests nor this
+incomplete sample establish them. No 24/72-hour or week-long soak is claimed.
+
+[Design and boundaries](design/dynamic-experiment-verification.md) /
+[user guide](guides/implementation-verification.md).
+
+Public main preserves its user-facing documentation and excludes development
+design/memory/history and private runtime fixtures. Its complete portable suite
+passes **290 / one conditional CUDA skip**; its own source/wheel/install/new
+bundle also match 219 runtime files with working installed CLI/MCP. The public
+runtime identity is `sha256:8acc950b0f7c4905395363b4007ab18a4082887b02e507bd6136d66980a1c6a1`.
+The two inherited public-only docstring differences remain intentional; every
+runtime file changed by this feature is identical across the two worktrees.
+
 ## Execution checks rollback (2026-11-14)
 
 The user requests reverting the static task-owned execution-check feature and

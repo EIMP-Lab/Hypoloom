@@ -156,6 +156,8 @@ def admit_profile(
     allow_gpu: bool = False,
     delay_seconds: float = 0.0,
     source_texts: Mapping[str, str] | None = None,
+    verifier_model: str | None = None,
+    verifier_effort: str | None = None,
 ) -> ProfileAdmissionReport:
     """Admit files or prospective file texts through the same compiler.
 
@@ -233,6 +235,16 @@ def admit_profile(
             continue
         documents[name] = value
 
+    if verifier_model is not None or verifier_effort is not None:
+        if documents.get("methodology.yaml", {}).get("schema_version") != 4:
+            block("verifier_profile_version", "experts.yaml.verifier", "implementation verification requires a v4 Profile")
+        else:
+            experts = dict(documents.get("experts.yaml", {}))
+            selected = dict(experts.get("verifier", {}))
+            if verifier_model is not None: selected["model"] = verifier_model
+            if verifier_effort is not None: selected["effort"] = verifier_effort
+            experts["verifier"] = selected
+            documents["experts.yaml"] = experts
     compilation = None
     v3_projection: ProfileV3Projection | None = None
     v4_projection: ProfileV4Projection | None = None

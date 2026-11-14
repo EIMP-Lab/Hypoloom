@@ -776,10 +776,13 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
             "cancelled" if terminal and terminal["state"] == "CANCELLED" and owned else
             "failed" if any(row["attempt_id"] in final_failure_ids for row in owned) else
             "preparing" if owned else "not_started")
+    from .verification_observation import verification_view
+    verifier = {**auxiliary_group("run", "verifier"), **verification_view(goal.get("research_contract", {}), reading_commands, attempts)}
     return {"run_id": run_id, "observed_at": observed_at, "elapsed_seconds": elapsed,
         "concurrency": {key: value for key, value in concurrency.items() if key != "experts"},
         "global_tasks": auxiliary_group("run"), "unknown_tasks": auxiliary_group("unknown"),
         "grounding": grounding, "other_global_tasks": auxiliary_group("run", "other"),
+        "verifier": verifier,
         "grounding_sharing": sharing,
         "reliability": reliability, "accounting": _token_accounting(stages),
         "stage_accounting": _stage_accounting(stages),

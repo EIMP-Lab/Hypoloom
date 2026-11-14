@@ -35,6 +35,7 @@ _SELECTORS = {
     "literature": {"role"}, "sessions": {"role", "component_id", "session_id", "task_scope", "execution_role"},
     "attempt": {"attempt_id"}, "interactions": {"role"},
     "resources": {"role", "component_id", "experiment_id"},
+    "verification": {"role"},
 }
 
 
@@ -479,6 +480,8 @@ def _attempt_detail(root, run_id, attempts, selectors):
     result["literature_search"] = (_object(observation.get("preflight_diagnostics")).get("literature_search")
         or _object(observation.get("diagnostics")).get("literature_search"))
     result["literature_network_routes"] = observation.get("literature_network_routes")
+    if _object(observation.get("request")).get("command") == "VERIFY_IMPLEMENTATION":
+        result["implementation_review"] = {"report_ref": identity, "report": _object(observation.get("response")).get("typed_candidate")}
     return result
 
 
@@ -741,12 +744,12 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
                 attempts.extend(dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? AND attempt_id=?", (run_id, parent)))
         else:
             attempts = [dict(row) for row in db.execute("SELECT * FROM execution_attempts WHERE run_id=? ORDER BY started_at,attempt_id", (run_id,))]
-        facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions"} else []
+        facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"resources", "interactions", "verification"} else []
         if kind in {"skills", "skill"}:
             facts = [dict(row) for row in db.execute("SELECT * FROM research_facts WHERE run_id=? "
                 "AND fact_type IN ('GoalVerdictRecorded','CanonicalOutcomeAccepted','ExperimentPreregistered') ORDER BY rowid", (run_id,))]
         transitions = [dict(row) for row in db.execute("SELECT * FROM workflow_transitions WHERE run_id=? ORDER BY rowid", (run_id,))] if kind in {"interactions", "resources", "skills", "skill"} else []
-        commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind == "resources" else []
+        commands = [dict(row) for row in db.execute("SELECT * FROM workflow_commands WHERE run_id=?", (run_id,))] if kind in {"resources", "verification"} else []
     if kind == "skills":
         from .observer_skills import skill_activity
         catalog = skill_catalog(root, run_id, attempts)
@@ -771,6 +774,11 @@ def read_observer_detail(state_root, run_id, kind, **selectors):
         result = _attempt_detail(root, run_id, attempts, selectors)
     elif kind == "interactions":
         result = _interactions(transitions, selectors, attempts, facts)
+    elif kind == "verification":
+        from .verification_observation import verification_view
+        goal = next((_payload(row) for row in facts if row["fact_type"] == "GoalDefined"), {})
+        result = verification_view(goal.get("research_contract", {}), commands, attempts,
+            limit=selectors.get("limit", 20), offset=selectors.get("offset", 0), expert=selectors.get("role"))
     else:
         result = _resources(facts, transitions, attempts, commands, selectors)
     return _clean({"run_id": run_id, "kind": kind, **result})

@@ -69,12 +69,12 @@ def test_legacy_toolless_commands_remain_toolless() -> None:
 def test_full_cc_every_node_has_tests_tools_and_persistent_context() -> None:
     for command, capabilities in AGENT_CAPABILITY_MATRIX.items():
         assert capabilities.profile == "agent-full-cc/1"
-        assert capabilities.built_in_tools == (("Read", "Glob", "Grep") if command is AgentCommand.PAPER_READ
+        assert capabilities.built_in_tools == (("Read", "Glob", "Grep") if command in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}
             else ("Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill"))
         assert capabilities.workspace == "chain-session/1"
         # Tests run through local Bash, not the obsolete two-call test broker.
         assert capabilities.test_broker is False
-        assert capabilities.bash is (command is not AgentCommand.PAPER_READ)
+        assert capabilities.bash is (command not in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION})
         assert capabilities.web is False
         assert capabilities.nested_agents is False
         assert capabilities.mcp_servers == (("host-tools",) if command is AgentCommand.EXPERIMENT_EXECUTION else ())

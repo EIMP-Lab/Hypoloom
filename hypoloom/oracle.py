@@ -112,6 +112,7 @@ _AGENT_COMMAND_TYPES = {
     "LEADER": "REQUEST_AUXILIARY",
     "COMPACT_CONTEXT": "REQUEST_AUXILIARY",
     "PAPER_READ": "REQUEST_AUXILIARY",
+    "VERIFY_IMPLEMENTATION": "REQUEST_AUXILIARY",
 }
 
 
@@ -154,6 +155,7 @@ _PACKET_ONLY_AGENT_COMMANDS = {
 def _packet_only_agent_request(request: AgentRequest) -> bool:
     """Identify v7 Agent effects whose validated packet is their terminal effect."""
 
+    if request.schema_version >= 34 and request.command.value == "VERIFY_IMPLEMENTATION": return True
     if request.schema_version >= 11 and request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}:
         return True
     if request.command.value in _PACKET_ONLY_AGENT_COMMANDS:
@@ -1481,6 +1483,11 @@ def _audit_agent_attempts(
                 )
             )
 
+        if raw_request.get("command") == "VERIFY_IMPLEMENTATION" and request is not None:
+            from .verification_audit import request_binding
+            try: request_binding(request, command, commands_by_id, {str(r["attempt_id"]): r for r in attempts}, attempt_payloads)
+            except (AssertionError, ValueError, KeyError, TypeError):
+                issues.append(OracleIssue("implementation_review_binding_invalid", "verifier inputs differ from their captured source or Host probe evidence", (attempt_id,)))
         if raw_request.get("command") == "PAPER_READ" and request is not None:
             try:
                 from .profile_v4 import request_literature_tools
@@ -3550,8 +3557,10 @@ def _audit_execution_integrity(
         command = commands_by_id.get(str(_row_get(transition, "command_id")))
         command_type = None if command is None else _row_get(command, "command_type")
         validation = command_type == "VALIDATE_SPEC_CANDIDATE"
+        implementation_probe = command_type == "VERIFY_PROCESS"
         if command_type not in {
             "EXECUTE",
+            "VERIFY_PROCESS",
             "OPEN_RETRY_ATTEMPT",
             "VALIDATE_SPEC_CANDIDATE",
         }:
@@ -3573,6 +3582,13 @@ def _audit_execution_integrity(
                 )
             )
         context = contexts.get((str(attempt["experiment_id"]), str(attempt["execution_id"])))
+        if implementation_probe:
+            from .verification_audit import probe_context
+            try:
+                context = probe_context(attempt, intent, contexts, commands_by_id, attempts_by_id,
+                    attempt_payloads, transitions, transition_payloads)
+            except (AssertionError, KeyError, ValueError, TypeError, StopIteration):
+                issues.append(OracleIssue("implementation_probe_binding_invalid", "probe differs from its captured source or independent review", (attempt_id,)))
         if context is not None and isinstance(context.get("resource"), Mapping) and context["resource"].get("shared"):
             context = {**context, "resource": _audit_shared_process_resource(
                 context["resource"], intent, attempt, attempt_payloads.get(attempt_id, {}), issues)}
@@ -3610,6 +3626,11 @@ def _audit_execution_integrity(
                 )
             )
         if not validation:
+            if not implementation_probe and (goal_documents.get(attempt["run_id"]) or {}).get("methodology", {}).get("controls", {}).get("product", {}).get("experts", {}).get("verifier", {}).get("model"):
+                from .verification_audit import formal_gate
+                try: formal_gate(attempt, context, commands_by_id, attempts_by_id, attempt_payloads)
+                except (AssertionError, KeyError, ValueError, TypeError, StopIteration):
+                    issues.append(OracleIssue("formal_execution_not_verified", "formal Process lacks compatible accepted implementation evidence", (attempt_id,)))
             if (
                 context is None
                 or intent.get("spec_fact_id") != context["fact"]["fact_id"]
@@ -3686,7 +3707,7 @@ def _audit_execution_integrity(
                     )
                 )
             resource_request = request
-            if context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None:
+            if not implementation_probe and (context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None):
                 resource_request = _measurement_process_requests(request, context, attempt_id, issues)
             _audit_process_resource(
                 resource_request,
@@ -3696,7 +3717,7 @@ def _audit_execution_integrity(
                 context.get("execution_argv"),
                 context.get("component_mounts"),
                 issues,
-                allow_generic=context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None,
+                allow_generic=implementation_probe or context["payload"].get("measurement") is not None or context["payload"].get("goal_evaluation") is not None,
             )
         if validation and attempt["state"] == "CLOSED":
             observations = validation_observation_rows.get(attempt_id, [])
@@ -3904,13 +3925,20 @@ def _audit_pre_spawn_cancel(attempt, observation, commands, transitions, payload
     commands = {key: dict(row) for key, row in commands.items()}
     try:
         revision = observation.get("resource_failure") == "capacity_requires_revision"
-        assert attempt["state"] == "CLOSED" and attempt["terminal_reason"] == ("FAILED" if revision else "CANCELLED")
+        verification = observation.get("failure_class") == "implementation_not_verified"
+        assert attempt["state"] == "CLOSED" and attempt["terminal_reason"] == ("FAILED" if revision or verification else "CANCELLED")
         assert attempt["attempt_ordinal"] == 1 and attempt["process_group_id"] is None
         assert observation.get("synthetic_before_spawn") is True and context is not None
         command = commands[str(attempt["command_id"])]
         assert command["command_type"] == "CANCEL" and command["response_status"] == "accepted"
         assert (command["run_id"], command["workflow_id"]) == (attempt["run_id"], attempt["workflow_id"])
-        if revision:
+        if verification:
+            assert command["command_id"] == f"{attempt['workflow_id']}--implementation-rejection"
+            diagnostic = {k: observation[k] for k in ("implementation_verification", "failure_class")}
+            assert json.loads(command["request_json"]) == diagnostic
+            assert diagnostic["implementation_verification"]["report"]["verdict"] in {"changes_required", "inconclusive"}
+            assert json.loads(command["result_json"]) == {"attempt_id": identity}
+        elif revision:
             from .gpu_pool import assess_capacity
             diagnostic = {k: observation[k] for k in ("resource_failure", "capacity")}
             assert command["command_id"] == f"{attempt['workflow_id']}--resource-revision"
@@ -3935,7 +3963,7 @@ def _audit_pre_spawn_cancel(attempt, observation, commands, transitions, payload
             and commands.get(str(row["command_id"]), {}).get("command_type") == "CANCEL"]
         closed = [row for row, value in cancelled if value.get("attempt_id") == identity and value.get("synthetic") is True]
         assert len(closed) == 1
-        if revision:
+        if revision or verification:
             assert closed[0]["previous_state"] in {"PREREGISTERED", "READY"}
         else:
             assert closed[0]["previous_state"] == "EVALUATING"

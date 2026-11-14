@@ -1,5 +1,13 @@
 # Execution and repair
 
+When implementation verification is enabled, submit the actual code and a concise
+engineering description, then hand off immediately while verification is pending.
+The independent verifier needs ordinary Agent capacity. Read the Host's
+`implementation_verification` reports before repairing; findings concern code and
+efficiency, not hypothesis validity. Submit changed bytes through the usual repair
+path. A generated, delivered or answered report is not a verified fix. Do not mark
+checks passed yourself or replace missing probe evidence with self-reported success.
+
 Check the design's [performance review](performance.md) before costly submission.
 Use the supplied bound text when inlined. Verify its reusable evidence or pending
 probe against the actual entrypoint; address missing preparation or explain a

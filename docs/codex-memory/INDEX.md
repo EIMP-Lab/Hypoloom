@@ -1,12 +1,16 @@
 # Development memory index
 
-- [Code implementation verifier proposal, November 14](../design/dynamic-experiment-verification.md):
+- [Code implementation verifier, November 14](../design/dynamic-experiment-verification.md):
   the static execution-check feature is reverted on dev/main. The independent
   verifier checks code, not hypotheses; the draft adds explicit init model choice,
   Grounding-style TUI/Web cards, per-expert findings and delivery, scoped sessions,
   source/authority boundaries, shared observer projections and bounded cost.
-  User confirmation is required before implementation. Existing research and
-  Profiles stay unchanged. [Rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
+  The user subsequently approved implementation and dev/main publication. Existing research and
+  Profiles stay unchanged. ACI 34 / adapter 92 / lifecycle 13 are implemented;
+  engineering qualification passes, while the provider-504 real-model sample
+  remains unqualified with its cost reservation retained.
+  [Implementation checks](../qualification.md#independent-implementation-verifier-2026-11-14) /
+  [rollback checks](../qualification.md#execution-checks-rollback-2026-11-14).
 
 - [Long-running Host, November 13](../design/long-running-host.md):
   indexed pending execution recovery, phase slices and tool fairness, bounded
