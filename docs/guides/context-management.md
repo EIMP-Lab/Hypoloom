@@ -60,8 +60,9 @@ its exported settings file, without a database integration.
 
 CC explicit numeric overrides, case-insensitive `[1m]` suffixes and disable flags
 follow the supported CLI rules. Built-in/default CC windows are labeled
-assumptions, not provider confirmations; an unrecognized ID normally assumes
-200,000 unless configured. Completed
+assumptions, not provider confirmations; an unrecognized ID assumes 1,000,000
+with CC 2.1.325, or 200,000 when its 1M context is explicitly disabled. Native checks include
+numeric overrides for unrecognized aliases beginning with `claude-`. Completed
 CLI results expose the reported window separately and the observers flag any
 disagreement with the resolved launch window. They do not silently rewrite it.
 

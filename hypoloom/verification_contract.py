@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 
 MAX_PROBE_SECONDS = 120
 MAX_PROBE_BYTES = 256 * 1024
+MAX_PROBE_REPAIRS = 2
 
 
 def structured_probe(request):
@@ -17,6 +18,13 @@ def structured_probe(request):
 def context(request):
     return json.loads(next(item for item in request.input_artifacts
                           if item.ref.endswith("--verification-context")).content_bytes())
+
+
+def can_repair_probe(request, ctx):
+    from .agent_aci import PROBE_RECOVERY_ACI_SCHEMA_VERSION
+    remaining = ctx.get("probe_repairs_remaining", 0)
+    return (request.schema_version >= PROBE_RECOVERY_ACI_SCHEMA_VERSION
+            and ctx["phase"] == "review" and type(remaining) is int and remaining > 0)
 
 
 def validate_review(request, raw):
@@ -79,7 +87,17 @@ def validate_review(request, raw):
     if ctx["phase"] == "inspect" and verdict == "passed":
         raise ValueError("initial inspection cannot pass without Host Process evidence")
     if ctx["phase"] == "review" and verdict == "probe_required":
-        raise ValueError("bounded review must decide from evidence or report inconclusive")
+        if not can_repair_probe(request, ctx):
+            raise ValueError("probe repair allowance exhausted or unsupported; decide from evidence or report inconclusive")
+        if blockers:
+            raise ValueError("candidate blockers require changes_required, not a probe repair")
+        if not ctx.get("probe_evidence") or ctx["probe_evidence"].get("usable"):
+            raise ValueError("probe repair requires unsuccessful current Host probe evidence")
+        prior = ctx.get("probe_plan") or {}
+        if not isinstance(probe, dict) or probe.get("checks") != prior.get("checks"):
+            raise ValueError("probe repair must preserve every declared check, purpose, basis and required flag")
+        if probe.get("files") == prior.get("files"):
+            raise ValueError("probe repair must change the defective probe source")
     if verdict == "passed" and not (ctx.get("probe_evidence") or {}).get("usable"):
         raise ValueError("a pass requires successful current Host Process evidence")
     if verdict == "passed" and not set(ctx.get("open_blocker_refs", ())) <= set(raw["resolved_refs"]):
@@ -101,6 +119,10 @@ def validate_review(request, raw):
                 from .verification_probe import RESERVED_PATHS
                 if any(path == p or path.startswith(p + "/") or p.startswith(path + "/") for p in RESERVED_PATHS):
                     raise ValueError("probe source overlaps the Host runner")
+                if request.schema_version >= 36 and path.endswith(".py"):
+                    try: compile(source, path, "exec")
+                    except (SyntaxError, ValueError) as exc:
+                        raise ValueError(f"probe source does not compile: {path}: {exc}") from exc
         if sum(len(s.encode()) for s in files.values()) > MAX_PROBE_BYTES:
             raise ValueError("probe source exceeds bounded output size")
         argv = probe["argv"]
@@ -110,7 +132,8 @@ def validate_review(request, raw):
             raise ValueError("probe timeout exceeds Host allowance")
         if structured_probe(request):
             from .verification_probe import RESERVED_PATHS, validate_checks
-            validate_checks(probe["checks"])
+            from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+            validate_checks(probe["checks"], comparisons=request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION)
             if any(p == w or p.startswith(w + "/") or w.startswith(p + "/") for p in RESERVED_PATHS for w in ctx["workspace_paths"]):
                 raise ValueError("candidate overlaps reserved Host probe paths; report inconclusive without a probe")
     if structured_probe(request): _validate_coverage(raw, ctx)
@@ -183,13 +206,17 @@ def review_schema(request):
         finding["properties"]["followup_of"] = {"enum": [None, *prior]}
         # An empty enum is invalid JSON Schema; false items admits only [].
         result["properties"]["resolved_refs"]["items"] = {"type": "string", "enum": prior} if prior else False
-        result["properties"]["verdict"] = {"enum": ["probe_required", "changes_required", "inconclusive"]
-            if ctx["phase"] == "inspect" else ["passed", "changes_required", "inconclusive"]}
+        verdicts = ["probe_required", "changes_required", "inconclusive"] if ctx["phase"] == "inspect" else ["passed", "changes_required", "inconclusive"]
+        if can_repair_probe(request, ctx): verdicts.append("probe_required")
+        result["properties"]["verdict"] = {"enum": verdicts}
         probe["properties"]["timeout_seconds"]["maximum"] = ctx["max_probe_seconds"]
         def obj(properties):
             return {"type": "object", "additionalProperties": False, "properties": properties, "required": list(properties)}
+        from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+        kinds = ["assertion", "measurement"]
+        if request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION: kinds.append("comparison")
         probe["properties"]["checks"] = {"type": "array", "items": obj({"id": text, "purpose": text, "basis": text,
-            "kind": {"enum": ["assertion", "measurement"]}, "required": {"type": "boolean"}})}
+            "kind": {"enum": kinds}, "required": {"type": "boolean"}})}
         probe["required"].append("checks")
         result["properties"]["coverage"] = obj({
             "covered": {"type": "array", "items": obj({"condition": text, "check_ids": {"type": "array", "items": text}})},
@@ -203,7 +230,15 @@ def instructions(request):
     phase = ctx["phase"]
     result = INSTRUCTIONS + "\n" + (
         "INSPECT: read the captured code and propose checks, or report demonstrated blockers/inconclusive. You cannot pass yet.\n"
-        if phase == "inspect" else "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n")
+        if phase == "inspect" else (
+            "REVIEW: independently read the candidate, probe source and actual observations. "
+            "If the probe itself is defective and no candidate blocker is demonstrated, return probe_required with corrected probe files. "
+            "Explain the observed probe error and its correction in summary. Preserve the complete checks array exactly: "
+            "do not drop, rename or weaken required checks. The Host reruns the corrected probe on the same captured candidate "
+            "and commissions another independent review. Remaining probe repairs: " + str(ctx["probe_repairs_remaining"]) + ". "
+            "Otherwise decide passed/changes_required/inconclusive.\n"
+            if can_repair_probe(request, ctx) else
+            "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n"))
     result += (
         "Your current filesystem is the review session. Source JSON is inline or at its exact advertised /inputs/NNNN.txt path. "
         "These JSON containers are not Python modules. /input exists ONLY in the later Process sandbox; do not search for it here. "
@@ -211,8 +246,15 @@ def instructions(request):
         "only supplied prior report_ref#finding_id values, never input R aliases or current finding ids. "
         + ("No prior findings exist: resolved_refs=[] and followup_of=null. " if not ctx.get("finding_refs") else "See verification-context.finding_refs for prior findings. ")
         + "changes_required requires a sourced blocker and probe=null. Only probe_required supplies probe files and argv=['python','verification/probe.py',...].\n")
+    result += ("Keep summaries and findings concise. Cite source locations without repeating source code or prior reports. "
+        "Use short, self-contained probes with explicit imports and public training initialization APIs. "
+        "Before returning JSON, check quoting/escaping of embedded Python source. Do not spend the invocation "
+        "searching for files whose contents are already supplied in the captured source.\n")
     if structured_probe(request):
         result += PROBE_INSTRUCTIONS
+    from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+    if request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
+        result += COMPARISON_INSTRUCTIONS
     return result
 
 
@@ -246,7 +288,8 @@ coverage={covered:[{condition,check_ids}],uncovered:[{condition,reason,blocking}
 During inspect, covered=[] because nothing has executed. During review, cite actual
 successful check ids, account for every required check before passed, and list material
 untested conditions. Failed/missing required checks or blocking gaps prevent passed.
-Probe defects and inadequate evidence are inconclusive, not automatic author defects.
+Probe defects are not automatic author defects. Use the current phase's bounded repair
+allowance when offered; otherwise report inconclusive for inadequate evidence.
 Check the probe itself: correct references, meaningful assertions and actual timed work.
 Do not generalize small CPU evidence to untested CUDA, scale or combinations of cases.
 """
@@ -271,4 +314,25 @@ use; preferences and justified slower tradeoffs are advisories. If evidence is i
 return inconclusive. Report observable resolution conditions and explicit prior finding
 references. A prior report delivered to its author is not proof that it was understood
 or fixed. Never resolve a finding without evidence from the changed implementation.
+"""
+
+
+COMPARISON_INSTRUCTIONS = """
+For an applicable implementation optimization, declare kind='comparison' and use:
+    from hypoloom_probe import compare
+    compare('timing_id', reference_work, candidate_work,
+            workload='same shape/dtype/device, forward/backward and state reset conditions',
+            device='cpu', warmup=2, repeats=5)
+For CUDA set device='cuda' and supply synchronize=torch.cuda.synchronize. The Host
+records paired samples, alternating order, medians and their ratio. Both callables
+must perform equivalent work and reset mutable state/RNG as required; separately
+assert the relevant output, gradient, data-order or state equivalence. Do not invent
+a reference for a genuinely different method or impose universal speed thresholds.
+Only a successful Process plus accepted review contributes bounded, source-bound
+engineering memory to later author sessions. Unsupported speed claims, CPU-to-CUDA
+extrapolations and author self-reports never become verified performance evidence.
+Keep probes bounded: use importable files and a main guard for spawn; bound child
+join/queue waits, inspect exit codes and stop children on failure. Avoid repeated
+benchmark loops once the declared checks have completed. The Host checkpoints each
+check so a timeout retains diagnostics, but incomplete/failed Processes cannot pass.
 """

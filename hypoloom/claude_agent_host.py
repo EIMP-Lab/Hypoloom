@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/93"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/94"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -3113,7 +3113,7 @@ def _prompt(
         seen_content = set()
         def priority(pair):
             ref = pair[1].ref
-            return (0 if ref.endswith(("--fact-goal", "--expert-config", "--context-recovery"))
+            return (0 if ref.endswith(("--fact-goal", "--expert-config", "--context-recovery", "--verified-engineering-memory"))
                 else 1 if any(word in ref for word in ("spec", "outcome", "analysis", "hypothesis")) else 2, pair[0])
         for index, item in sorted(enumerate(request.input_artifacts), key=priority):
             content = item.content_bytes()

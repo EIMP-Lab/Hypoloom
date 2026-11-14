@@ -117,9 +117,21 @@ def verification_view(contract, commands, attempts, *, limit=20, offset=0, exper
     pending = any(d["state"] in {"queued", "inspect", "review", "awaiting_probe"}
         for s in by_expert.values() for d in s["recent"])
     for subject in by_expert.values():
+        subject["state_counts"] = {}
+        for delivery in subject["recent"]:
+            state = delivery["state"]
+            subject["state_counts"][state] = subject["state_counts"].get(state, 0) + 1
+        # Follow-up findings describe the same issue again. Keep all reports in
+        # history, but count only the latest finding on each current candidate.
+        roots, current = {}, {}
         for finding in subject["findings"]:
             if finding["experiment_id"] in repairs: finding["delivery_state"] = "repair_submitted"
             finding["state"] = "verified_resolved" if finding["finding_ref"] in resolved else "open"
+            root = roots.get(finding.get("followup_of"), finding.get("followup_of") or finding["finding_ref"])
+            roots[finding["finding_ref"]] = root
+            if finding["experiment_id"] not in repairs: current[root] = finding
+        subject["current_blockers"] = sum(f["severity"] == "blocker" and f["state"] == "open" for f in current.values())
+        subject["current_advisories"] = sum(f["severity"] == "advisory" and f["state"] == "open" for f in current.values())
         subject["blockers"] = sum(f["severity"] == "blocker" and f["state"] == "open" for f in subject["findings"])
         subject["advisories"] = sum(f["severity"] == "advisory" and f["state"] == "open" for f in subject["findings"])
         subject["finding_count"] = len(subject["findings"])
@@ -173,7 +185,8 @@ def read_verification_view(db, run_id, contract, *, limit=20, offset=0, expert=N
           'response',json_object('typed_candidate',json_object(
             'verdict',json_extract(a.observation_json,'$.response.typed_candidate.verdict'),
             'summary','', 'resolved_refs',json(COALESCE(json_extract(a.observation_json,'$.response.typed_candidate.resolved_refs'),'[]')),
-            'findings',json((SELECT json_group_array(json_object('id',json_extract(f.value,'$.id'),'severity',json_extract(f.value,'$.severity')))
+            'findings',json((SELECT json_group_array(json_object('id',json_extract(f.value,'$.id'),'severity',json_extract(f.value,'$.severity'),
+                'followup_of',json_extract(f.value,'$.followup_of')))
                 FROM json_each(a.observation_json,'$.response.typed_candidate.findings') f)))),
           'failure_code',json_extract(a.observation_json,'$.failure_code'),
           'diagnostics',json_object('structured_output_correction',json_extract(a.observation_json,'$.diagnostics.structured_output_correction')))

@@ -2252,8 +2252,9 @@ class WorkflowHost:
             if execution_handoff(json.loads(attempts[-1]["observation_json"] or "{}")):
                 feedback = self.verification.feedback(run_id, role, component_id, task.command_id)
                 if feedback:
-                    inputs = tuple(i for i in inputs if not i.ref.endswith("--implementation-reviews")) + feedback
-                    immutable_context_refs = tuple(i for i in immutable_context_refs if not i.endswith("--implementation-reviews")) + tuple(i.ref for i in feedback)
+                    suffixes = ("--implementation-reviews", "--verified-engineering-memory")
+                    inputs = tuple(i for i in inputs if not i.ref.endswith(suffixes)) + feedback
+                    immutable_context_refs = tuple(i for i in immutable_context_refs if not i.endswith(suffixes)) + tuple(i.ref for i in feedback)
         lifecycle_command = Command.REQUEST_AUXILIARY if isinstance(task, AuxiliaryTask) else Command.REQUEST_RESEARCH_NODE
         literature_failure: tuple[str, dict[str, object], bool] | None = None; coverage_failure = False; preflight_diagnostics: dict[str, object] = {}; attempt_started_at: float | None = None
         retrieve = command is AgentCommand.GROUNDING or (command is AgentCommand.LITERATURE_REVIEW and isinstance(task, ResearchNodeTask) and task.key.subkind is ResearchNodeSubkind.MAIN)

@@ -116,3 +116,73 @@ def test_legacy_verifier_contract_remains_readable():
     assert "coverage" not in report and "checks" not in report["probe"]
     validate_review(request, report)
     assert "coverage" not in review_schema(request)["properties"]
+
+
+def test_paired_comparison_executes_both_variants_in_alternating_order(tmp_path):
+    checks = [declared(), declared("timing", "comparison")]
+    process, document, assessed = run_probe(tmp_path,
+        "from hypoloom_probe import check,compare\norder=[];syncs=[]\n"
+        "compare('timing',lambda:order.append('r'),lambda:order.append('c'),"
+        "workload='same list append, CPU',warmup=2,repeats=3,synchronize=lambda:syncs.append(1))\n"
+        "with check('values') as c:\n"
+        " c.equal(order,['r','c','c','r','r','c','c','r','r','c'])\n"
+        " c.equal(len(syncs),20)\n", checks)
+    assert process.returncode == 0 and assessed["passed"]
+    measurement = document["checks"][1]["measurement"]
+    assert measurement["repeats"] == 3 and measurement["device"] == "cpu"
+    assert len(measurement["reference"]["samples_seconds"]) == 3
+    assert measurement["speedup"] == measurement["reference"]["median_seconds"] / measurement["candidate"]["median_seconds"]
+    for key, value in (("speedup", 999), ("device", "cuda")):
+        forged = deepcopy(document)
+        forged["checks"][1]["measurement"][key] = value
+        if key == "device": forged["checks"][1]["measurement"]["synchronized"] = False
+        with pytest.raises(ValueError): validate_result(forged, checks, attempt_id="probe-1", report_ref="inspection-1")
+    forged = deepcopy(document)
+    forged["checks"][1]["measurement"]["reference"]["median_seconds"] *= 2
+    with pytest.raises(ValueError): validate_result(forged, checks, attempt_id="probe-1", report_ref="inspection-1")
+
+
+@pytest.mark.parametrize("options", ["device='cuda'", "repeats=1", "warmup=-1", "workload=''"])
+def test_invalid_comparison_cannot_generate_successful_evidence(tmp_path, options):
+    workload = "" if "workload" in options else "workload='same work',"
+    process, document, assessed = run_probe(tmp_path,
+        "from hypoloom_probe import check,compare\nwith check('values') as c:c.equal(1,1)\n"
+        f"compare('timing',lambda:1,lambda:1,{workload}{options})\n",
+        [declared(), declared("timing", "comparison")])
+    assert process.returncode != 0 and not assessed["passed"]
+    assert document["checks"][1]["status"] == "ERROR"
+
+
+def test_killed_probe_keeps_completed_and_unfinished_checks_without_passing(tmp_path):
+    checks = [declared(), declared("stuck")]
+    probe = {"checks": checks, "argv": ["python", "verification/probe.py"]}
+    files = execution_files(probe, attempt_id="probe-1", report_ref="inspection-1")
+    files["verification/probe.py"] = ("import time\nfrom hypoloom_probe import check\n"
+        "with check('values') as c:c.equal(2,2)\nwith check('stuck') as c:time.sleep(60)\n").encode()
+    for name, data in files.items():
+        path = tmp_path / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
+    process = subprocess.Popen([sys.executable, str(tmp_path / RUNNER_PATH)], cwd=tmp_path,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 5
+        document = None
+        while time.monotonic() < deadline:
+            if (tmp_path / RESULT_PATH).exists():
+                document = decode_result((tmp_path / RESULT_PATH).read_bytes())
+                if document["checks"][0]["status"] == "PASS" and document["checks"][1]["status"] == "ERROR": break
+            time.sleep(0.01)
+        assert document and document["checks"][0]["status"] == "PASS"
+        assert document["checks"][1]["status"] == "ERROR"
+        assert not validate_result(document, checks, attempt_id="probe-1", report_ref="inspection-1")["passed"]
+    finally:
+        process.kill(); process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize("version,allowed", [(35, False), (36, False), (37, True)])
+def test_comparison_is_versioned_without_changing_legacy_plans(version, allowed):
+    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=version)
+    report = deepcopy(FakeAgent().invoke(request).typed_candidate)
+    report["probe"]["checks"].append(declared("timing", "comparison"))
+    if allowed: validate_review(request, report)
+    else:
+        with pytest.raises(ValueError, match="unsupported check kind"): validate_review(request, report)

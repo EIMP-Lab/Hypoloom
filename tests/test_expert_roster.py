@@ -11,6 +11,8 @@ import pytest
 import yaml
 
 from hypoloom.domain import ResearchContract
+from hypoloom.expert_batch import batch_limits
+from hypoloom.manager_context import effective_forks
 from hypoloom.oracle import _read_goal_component_contract
 from hypoloom.policy import ComponentSnapshot, PolicySnapshot, ProposalSnapshot, ResearchPolicy
 from hypoloom.profile_admission import admit_profile
@@ -58,6 +60,20 @@ def audit_contract(document):
         [{"fact_id": "goal", "goal_id": "goal", "fact_type": "GoalDefined"}],
         {"goal": {"research_contract": document}}, "component-evaluator/1", issues)
     return value, issues
+
+
+def test_frozen_contract_keeps_per_expert_fork_limits(bindings):
+    source = roster_source(2)
+    source["experts"]["defaults"].update(max_hypotheses_per_round=3, max_forks=2)
+    source["experts"]["experts"][0].update(max_hypotheses_per_round=1, max_forks=1)
+    report = preview(source, bindings)
+    assert report.admitted, report.blockers
+    contract = ResearchContract.from_mapping(report.create_run_payload["research_contract"])
+    for role, forks, parallel in (("researcher-1", 1, 1), ("researcher-2", 3, 2)):
+        frozen = batch_limits(contract.document, role)
+        assert frozen == batch_limits(contract.to_dict(), role)
+        assert (frozen["forks"], frozen["parallel_chains"]) == (forks, parallel)
+        assert effective_forks([], role, default=frozen["forks"], maximum=frozen["forks"]) == forks
 
 
 @pytest.mark.parametrize("count", [1, 3, 4, 16, 64])

@@ -167,3 +167,45 @@ def test_missing_binding_or_native_workspace_does_not_inject_current_seed(tmp_pa
     assert reader(request, tmp_path) is None
     assert reader(request, None) is None
     assert key not in json.loads(_prompt(request, plugin_root=tmp_path))
+
+
+def test_new_engineering_brief_is_bound_and_leaves_room_for_verified_memory(tmp_path):
+    path = "skills/research-workflow/references/engineering-performance.md"
+    store = ExpertPluginStore(tmp_path)
+    binding = store.ensure("run", "alpha", "Measured engineering")
+    view = store.read("run", "alpha", commit=binding.commit, attempt_id="brief", max_bytes=1024**2)
+    try:
+        request = replace(_request(AgentCommand.EXPERIMENT_EXECUTION, binding, budget=16384), schema_version=37)
+        memory = EmbeddedInput.from_bytes("node--verified-engineering-memory", "application/json",
+            canonical_json({"scope": "measured conditions", "evidence": "x" * 5000}))
+        request = replace(request, input_artifacts=request.input_artifacts + (memory,))
+        before = request.to_dict()
+        manifest = {}
+        prompt = json.loads(_prompt(request, tool_workspace=True, plugin_root=view.root, manifest=manifest))
+        brief = prompt["workflow_guidance"]
+        assert brief["content"] == (view.root / path).read_text()
+        assert brief["plugin_commit"] == binding.commit and brief["path"].endswith(path)
+        assert len(brief["content"].encode()) < len((view.root / REFERENCE).read_bytes())
+        supplied = next(item for item in prompt["rendered_inputs"] if item["ref"] == memory.ref)
+        assert "path" not in supplied and manifest["inline_input_bytes"] <= 16384
+        assert request.to_dict() == before
+    finally:
+        view.close()
+
+
+def test_new_protocol_uses_retained_full_reference_if_its_plugin_lacks_brief(tmp_path):
+    path = "skills/research-workflow/references/engineering-performance.md"
+    seed = tmp_path / "seed"
+    shutil.copytree(SEED_ROOT, seed)
+    (seed / REFERENCE).parent.mkdir(parents=True, exist_ok=True)
+    (seed / REFERENCE).write_text("Original owner's measured constraints.\n")
+    store = ExpertPluginStore(tmp_path / "state", seed_root=seed)
+    binding = store.ensure("run", "alpha", "Retained owner")
+    view = store.read("run", "alpha", commit=binding.commit, attempt_id="retained", max_bytes=1024**2)
+    try:
+        request = replace(_request(AgentCommand.EXPERIMENT_EXECUTION, binding), schema_version=37)
+        value = performance_guidance(request, view.root)
+        assert value["content"] == "Original owner's measured constraints.\n"
+        assert value["path"].endswith(REFERENCE) and not (view.root / path).exists()
+    finally:
+        view.close()

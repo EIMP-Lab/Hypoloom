@@ -75,15 +75,15 @@ def _cc_window(model: str, environment: Mapping[str, str]):
     native = _native_window(model)
     disabled = environment.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
     tagged = model.lower().endswith("[1m]") and not disabled
-    # CC 2.1.296 still reports 200K for an unrecognized bare claude-* ID
-    # including claude-private@YYYYMMDD. Keep the native regression explicit.
-    custom = native is None and not model.lower().startswith("claude-")
+    # CC 2.1.325 applies numeric overrides to unrecognized aliases too,
+    # including claude-private@YYYYMMDD. Known built-ins retain their rules.
+    custom = native is None
     maximum = int(environment["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]) if "CLAUDE_CODE_MAX_CONTEXT_TOKENS" in environment else None
     if maximum and (custom and not tagged or environment.get("DISABLE_COMPACT") == "1"):
         return maximum, "cc_config", custom
     if tagged: return 1000000, "cc_model_suffix", custom
     if native is not None: return min(native, 200000) if disabled else native, "cc_builtin", custom
-    return 200000, "cc_default", custom
+    return 200000 if disabled else 1000000, "cc_default", custom
 
 
 def resolve_window(model: str, settings: Mapping, environment: Mapping, memory: Mapping,

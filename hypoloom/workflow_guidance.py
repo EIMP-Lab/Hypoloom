@@ -14,12 +14,19 @@ _PERFORMANCE_STAGES = frozenset({
     AgentCommand.RESULT_ANALYSIS,
 })
 _PERFORMANCE_PATH = "skills/research-workflow/references/performance.md"
+_ENGINEERING_PATH = "skills/research-workflow/references/engineering-performance.md"
 _CONFIGURATION_PATH = "skills/research-workflow/references/configuration-studies.md"
 MAX_GUIDANCE_BYTES = 16 * 1024
 
 
 def performance_guidance(request: AgentRequest, plugin_root: Path | None, *,
                          max_bytes: int = MAX_GUIDANCE_BYTES) -> dict | None:
+    from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
+    if request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
+        brief = _reference_guidance(request, plugin_root, _ENGINEERING_PATH, max_bytes=max_bytes)
+        if brief is not None and brief["status"] != "unavailable": return brief
+        # A retained plugin may lack the brief. Use only its own bound full
+        # reference; never silently copy current seed guidance into an old view.
     return _reference_guidance(request, plugin_root, _PERFORMANCE_PATH, max_bytes=max_bytes)
 
 

@@ -30,23 +30,69 @@ probe source and specifies tested conditions, untested conditions and blocking
 gaps. A measurement records a workload's timing, not a universal speed guarantee.
 Protocol mistakes are corrected within the same invocation and its original
 budget, using `methodology.yaml.output_correction` (the template allows three
-failed validations). No extra probe revision loop is started automatically.
+failed validations). New runs support bounded probe repair: when evidence review
+identifies a probe defect without a demonstrated candidate blocker, the verifier can
+submit corrected probe files while retaining every declared check. The Host reruns
+them against the same read-only capture, then commissions an independent review.
+At most two repairs are allowed, further limited by the configured model retry
+allowance. They do not consume the author's code-repair submissions. Exhaustion
+remains inconclusive and cannot authorize training. Retained runs keep their frozen rules.
 
 Unchanged captures may reuse recent evidence within the same run. Code, entrypoint,
 environment or resource changes require another inspection. There is no universal
 vectorization threshold, mandatory baseline equivalence or cross-run pass cache.
 A small probe samples behavior; it does not prove complete program correctness.
 
-TUI and Web show an **Implementation Verifier** card beside Grounding with per-expert
+ACI 37 adds a shorter, version-bound engineering reference for design, execution
+and analysis. It covers repeated data reads, byte-bounded raw-feature caches,
+worker-safe file handles, gradient-preserving loss implementations and causal
+history reuse. The detailed references remain available in the same expert plugin.
+A retained plugin without the brief uses its own full reference; current seed
+content is never inserted into an older plugin version.
+
+For a justified reference/candidate pair, a verifier can declare a `comparison`
+check and call `hypoloom_probe.compare(id, reference, candidate, workload=...,
+device="cpu", warmup=2, repeats=5)`. It alternates execution order and records
+individual samples, derived medians and their ratio. CUDA comparisons require
+`device="cuda", synchronize=torch.cuda.synchronize`. Correctness needs separate
+assertions; a measured ratio below one is valid evidence, not an automatic
+scientific failure. Changed algorithms need their own invariants when baseline
+equivalence is inappropriate. Probe observations are saved atomically before and
+after each check, so a killed check remains unfinished and cannot pass.
+
+After an actual successful probe and independent passing review, the Host can
+supply `--verified-engineering-memory` to later engineering nodes of the same run,
+expert and component. This read-only input holds at most four complete records
+within 6 KiB, selected from the most recent 16 review commissions. Each record
+names the code digest, capture, probe, review, covered and uncovered conditions,
+and actual measurements. Oversized records are omitted whole. The independent
+Oracle reconciles these references and timings with the durable records. This
+is conditional evidence recall, not model-weight training or a substitute for
+checking a new candidate. No memory is produced from an author's claimed pass,
+an unfinished Process or an inconclusive review.
+
+Native CC engineering nodes also bound each foreground Bash invocation to at
+most 60 seconds and the remaining invocation budget, reserving up to 15 seconds
+(10% of the original budget) for handoff. The hook changes neither commands nor
+existing permission rules. Spawn checks must use an importable file with a main
+guard and bounded joins/queue waits. An already captured submission continues
+through Host verification even if its author later times out; the Agent timeout
+stays recorded, and an unsubmitted draft is never promoted automatically.
+Provider thinking defaults are unchanged.
+
+TUI shows a compact **Implementation Verifier** card beside Grounding with the model,
+current phases and per-expert blocker/advisory counts. Follow-ups of the same finding
+are counted once in the current summary. Press **v** for paginated reports, individual
+probe checks, coverage and invocation diagnostics. The Web card shows per-expert
 deliveries, triggers, reuse, completed first-pass results, blockers and advisories.
 Report generation, delivery in an expert task input, response, repair submission and
 independently verified resolution are distinct. Delivery does not establish reading
 or understanding. Finding resolution requires an explicit prior report/finding reference.
 Verifier accounting is global; subject attribution does not bill the work twice.
-Press **v** in TUI or **Verification history** in Web for paginated evidence.
-Stale Host observations remain unconfirmed; retained runs show unsupported status.
+Use **Verification history** in Web for paginated evidence.
+Stale Host observations remain unconfirmed; runs predating verification show unsupported status.
 
-The card also separates inconclusive verification and invocation failures from
+Verification details also separate inconclusive verification and invocation failures from
 author code defects, and shows phase time, output corrections, check results,
 coverage and available wire/response model observations. An omitted thinking
 parameter does not establish disabled reasoning. Delivery evidence reads a

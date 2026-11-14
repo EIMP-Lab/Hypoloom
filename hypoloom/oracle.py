@@ -1371,6 +1371,7 @@ def _audit_agent_attempts(
         frozen_modes[run_id] = mode if mode in {"enforce", "observe"} else None
     agent_attempts = [row for row in attempts if row["kind"] == "AGENT"]
     attempts_by_id = {str(row["attempt_id"]): row for row in agent_attempts}
+    all_attempts_by_id = {str(row["attempt_id"]): row for row in attempts}
     successful: dict[str, tuple[AgentRequest, AgentResponse]] = {}
 
     ordinal_groups: dict[tuple[str, str], list[sqlite3.Row]] = {}
@@ -1483,9 +1484,14 @@ def _audit_agent_attempts(
                 )
             )
 
+        if request is not None and any(i.ref.endswith("--verified-engineering-memory") for i in request.input_artifacts):
+            from .verification_audit import engineering_memory_binding
+            try: engineering_memory_binding(request, attempt, commands_by_id, all_attempts_by_id, attempt_payloads)
+            except (AssertionError, ValueError, KeyError, TypeError):
+                issues.append(OracleIssue("engineering_memory_binding_invalid", "engineering memory differs from its capture, reviewed Process or consumer scope", (attempt_id,)))
         if raw_request.get("command") == "VERIFY_IMPLEMENTATION" and request is not None:
             from .verification_audit import request_binding
-            try: request_binding(request, command, commands_by_id, {str(r["attempt_id"]): r for r in attempts}, attempt_payloads)
+            try: request_binding(request, command, commands_by_id, all_attempts_by_id, attempt_payloads)
             except (AssertionError, ValueError, KeyError, TypeError):
                 issues.append(OracleIssue("implementation_review_binding_invalid", "verifier inputs differ from their captured source or Host probe evidence", (attempt_id,)))
         if raw_request.get("command") == "PAPER_READ" and request is not None:
