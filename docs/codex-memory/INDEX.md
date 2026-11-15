@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Probe GPU reservation cleanup, November 15](../qualification.md#probe-gpu-reservation-cleanup-2026-11-15):
+  closed probe and unopened queue cleanup through existing owner keys, no frozen
+  runtime mutation; authorized live recovery and a scoped temporary compatibility
+  helper. Twenty new regressions, 158 affected checks and 388 public passes;
+  subsequent dev/main commit and push are authorized.
+
 - [Verified engineering recall and probe recovery, November 15](../design/verified-engineering-memory.md):
   ACI 37 / adapter 94 short guidance, bounded paired measurements, same-owner
   evidence inputs, native deadline propagation, compact verification and CC

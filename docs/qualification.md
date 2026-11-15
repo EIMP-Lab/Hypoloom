@@ -1,5 +1,64 @@
 # Qualification: G0–G5
 
+## Probe GPU reservation cleanup (2026-11-15)
+
+The user explicitly authorized repair after a read-only diagnosis found seven
+new probe requests waiting behind twelve closed probe commitments and one
+unopened request belonging to a cancelled retained run. All twelve bound process
+groups were absent. The three physical GPUs were idle, while the pool correctly
+continued accounting for their unreleased commitments. The initial reconciler
+dry replay returned success but covered none of the thirteen stale probe keys.
+
+The failed boundary was Host retirement of pool-owned Process effects:
+`SharedGpuHost.reconcile()` selected only each scientific execution ID and
+predicted only formal `--process-N` requests. The repair reads both formal and
+probe histories under their existing workflow, verifies each original dispatch
+key, and derives the next ordinal independently. Probe waits map to their parent
+experiment. Existing transactions, immutable Attempt/dispatch rows and the pool's
+process-absence check remain the authorities. No ledger, schema, ACI version,
+automatic cross-run reclamation or new runtime daemon is introduced.
+
+Bounded implementation validation, not a new full G0–G5 promotion:
+
+- **20 new regressions** exercise real SQLite and authenticated pool sockets,
+  including actual disposable CPU process groups. They cover every terminal
+  reason, live and unknown ownership, prestart failure, cancellation before an
+  Attempt exists, independent ordinals, mismatched dispatch identity, transport
+  retry and a second owner acquiring freed capacity. Synthetic GPU telemetry
+  does not qualify CUDA execution. The first test invocation had **18 passes /
+  one fixture failure**: its second probe incorrectly created a new command owner
+  instead of retaining the first Attempt's command. That fixture was corrected
+  without changing production validation, and unknown-liveness coverage was added.
+- **158 affected tests pass** in 49.07 seconds, including actual native CC/local
+  provider/CPU probe review, real Host crash/recovery and pool process tests.
+  Twenty-five existing multi-threaded fork deprecation warnings remain.
+  Independent native-root census confirms 19 closed Agents, four closed Processes,
+  a clean Oracle and no live members of its 23 recorded groups. Four documentation
+  checks and undefined-name/whitespace checks also pass.
+- **388 public tests pass / one CUDA skip** in 25.36 seconds. The earlier focused
+  Host/recovery/closure/core-budget selection also passed all 61 tests.
+  Evidence: `.local/qualification/probe-pool-cleanup-20261115/` in dev and
+  `.local/repairs/probe-pool-20261115/` in the main checkout.
+
+Authorized operational recovery used a read-only StateStore, a private copy of
+the repaired reconciler, exact same-UID owner keys and the existing live pool
+`release` protocol. The pool service retained its process-absence checks. All
+thirteen old requests were released; the ongoing frozen run then executed all
+seven probes (five Process successes, two failures) and opened seven independent
+review calls. Process success is not implementation approval. Its seven closed
+probe reservations were also released, and resource waits became empty.
+
+A transient user service applies that same limited compatibility cleanup to the
+one active run every 30 seconds and exits after terminal cleanup. It never opens
+research databases for writing, starts/resumes a Host, reserves GPUs, signals
+research processes or modifies a frozen bundle. It is an operator deployment,
+not runtime seed guidance or a new shared state authority. The cancelled run's
+logical database digest and all 221/224 files in the two frozen bundles remained
+unchanged. Existing research continues under its original model and budget;
+no additional paid qualification calls were made. The user subsequently authorized
+committing and pushing the repair to dev and its corresponding public projection
+to main. This publication retains the bounded validation scope above.
+
 ## Verified engineering recall and probe recovery (2026-11-15)
 
 The user authorized implementation and dev publication followed by selective

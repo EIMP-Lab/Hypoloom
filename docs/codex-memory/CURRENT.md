@@ -1,5 +1,21 @@
 # Current Hypoloom development state
 
+- November 15 probe GPU cleanup: the user authorized repairing the observed
+  capacity stall, releasing the cancelled prior run's exact stale requests and
+  maintaining probe cleanup for the active frozen run. Reconciliation now uses
+  each Process's actual execution ID, independent formal/probe next ordinals,
+  and experiment-scoped probe wait keys. No schema/ACI change or bundle migration.
+  Public checks: 388 passes / one CUDA skip; affected Host/pool/native CPU lane:
+  158 passes. Twenty new regressions cover closed/live/unknown groups, cancellation,
+  retries and exact ownership. The operator released 12 closed bound probes and
+  one unopened request; the active run then executed seven probes and entered
+  independent review. A run-scoped temporary helper uses read-only StateStore plus
+  the repaired reconciler and existing pool RPC, exiting at terminal cleanup.
+  The retired database and both frozen bundles are unchanged. This is a bounded
+  repair, not a new full G0–G5 qualification. The user subsequently authorized
+  committing and pushing dev, followed by the corresponding main projection.
+  [Evidence](../qualification.md#probe-gpu-reservation-cleanup-2026-11-15).
+
 - November 15 engineering recall: implementation and dev/main publication are
   authorized. ACI 37 / adapter 94 adds bound short guidance, actual paired probe
   timings, partial observations, same-owner evidence recall and bounded native
