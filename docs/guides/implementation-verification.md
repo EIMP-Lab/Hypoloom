@@ -23,6 +23,13 @@ observations before formal execution. Probe records and retry ordinals are separ
 from scientific executions. Failed checks and insufficient evidence return through
 engineering repair. The author releases Agent capacity using execution handoff while waiting.
 
+GPU-backed probes have their own pool reservations. In new runs, the Host
+releases a closed probe's reservation after its process group is confirmed absent;
+stopping an experiment or run also withdraws probes queued before launch.
+An open probe or unknown process liveness retains its reservation. Existing frozen
+Hosts require an explicitly scoped operational cleanup for previously leaked
+reservations; updating the checkout or restarting the observer does not clear them.
+
 New probes declare their own checks and use the Host's assertion/timing helper.
 The Host records executed assertions, failures, exceptions and missing checks;
 printing PASS or returning exit 0 is insufficient. Evidence review includes the

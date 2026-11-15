@@ -247,7 +247,8 @@ class SharedGpuHost:
 
     @staticmethod
     def _experiment(key: Mapping[str, Any]) -> str:
-        return str(key["attempt_id"]).rsplit("--process-", 1)[0]
+        suffix = "--probe-" if str(key["execution_id"]).endswith("--implementation-probe") else "--process-"
+        return str(key["attempt_id"]).rsplit(suffix, 1)[0]
 
     def _wait(self, key: Mapping[str, Any], reason: str) -> None:
         self.host.resource_waits[self._experiment(key)] = (key["run_id"], reason[:512])
@@ -371,14 +372,15 @@ class SharedGpuHost:
                 if spec["payload"].get("execution_contract", {}).get("resource_intent") is None:
                     continue
                 experiment_id, execution_id = spec["experiment_id"], spec["execution_id"]
-                attempts = tuple(row for row in self.host.store.list_attempts(execution_id=execution_id)
+                executions = {execution_id: "process", experiment_id + "--implementation-probe": "probe"}
+                attempts = tuple(row for row in self.host.store.list_attempts(workflow_id=experiment_id)
                                  if row["run_id"] == run_id and row["workflow_id"] == experiment_id
-                                 and row["kind"] == "PROCESS")
+                                 and row["kind"] == "PROCESS" and row["execution_id"] in executions)
                 keys = []
                 for attempt in attempts:
                     if attempt["kind"] != "PROCESS" or attempt["state"] != "CLOSED":
                         continue
-                    expected = self.key(run_id, execution_id, attempt["attempt_id"])
+                    expected = self.key(run_id, attempt["execution_id"], attempt["attempt_id"])
                     dispatches = self.host.store.inspect(
                         "SELECT payload_json FROM workflow_transitions WHERE workflow_id=? "
                         "AND json_extract(payload_json,'$.attempt_id')=? "
@@ -395,8 +397,11 @@ class SharedGpuHost:
                 cancelled = self.host.store.inspect("SELECT command_id FROM workflow_commands WHERE command_id=?",
                                                      (f"{experiment_id}--agent-cancel",))
                 if stopping or head is not None and (head["state"] == "TERMINAL" or head["next_command"] == "CANCEL") or cancelled:
-                    ordinal = len(attempts) + 1
-                    keys.append(self.key(run_id, execution_id, f"{experiment_id}--process-{ordinal}"))
+                    # Probes have their own attempt sequence, including requests
+                    # queued before a Process exists. Retire both on cancellation.
+                    for execution_id, kind in executions.items():
+                        ordinal = sum(a["execution_id"] == execution_id for a in attempts) + 1
+                        keys.append(self.key(run_id, execution_id, f"{experiment_id}--{kind}-{ordinal}"))
                 for key in keys:
                     try:
                         if self.release(key):
