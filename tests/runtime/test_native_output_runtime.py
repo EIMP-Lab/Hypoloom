@@ -86,6 +86,34 @@ def test_legacy_helper_without_output_endpoint_keeps_native_schema(tmp_path):
     assert "Stop" not in json.loads(argv[argv.index("--settings") + 1]).get("hooks", {})
 
 
+@pytest.mark.parametrize("version", [38, 39])
+def test_verifier_submission_tool_uses_same_schema_session_and_readonly_mounts(tmp_path, version):
+    from hypoloom.domain import AgentCommand
+    from hypoloom.claude_agent_host import _output_schema, _prompt
+    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=version)
+    workspace = _workspace(tmp_path)
+    workspace.binding = {"session_id": "test-session"}
+    workspace.writable = False
+    schema = _output_schema(request, tool_workspace=True)
+    argv = full_cc_runtime.full_cc_argv(bwrap=Path("/usr/bin/bwrap"), executable=tmp_path / "claude",
+        request=request, model="review-model", workspace=workspace, provider_socket=tmp_path / "provider.sock",
+        host_socket=None, output_socket=tmp_path / "output.sock", output_schema=schema,
+        output_schema_path=tmp_path / "schema.json", extra_paths=())
+    servers = json.loads(argv[argv.index("--mcp-config") + 1])["mcpServers"]
+    assert argv[argv.index("--tools") + 1] == "Read,Glob,Grep"
+    assert ("--ro-bind", str(workspace.worktree_root), "/workspace") in tuple(zip(argv, argv[1:], argv[2:]))
+    prompt = json.loads(_prompt(request, tool_workspace=True))["instruction"]
+    if version == 39:
+        args = servers["verifier-output"]["args"]
+        assert args[args.index("--session-id") + 1] == "test-session"
+        assert args[args.index("--output-schema") + 1] == "/runtime/output-schema.json"
+        assert "mcp__verifier-output__submit_review" in argv
+        assert "submit_review" in prompt and "Do not repeat the report" in prompt
+        assert "submit_review" in argv[argv.index("--system-prompt") + 1]
+    else:
+        assert not servers and "submit_review" not in prompt
+
+
 def test_profile_cannot_shadow_output_validation_socket(tmp_path, monkeypatch):
     root = Path("/output-validation.sock")
     monkeypatch.setattr(Path, "is_dir", lambda self: True)

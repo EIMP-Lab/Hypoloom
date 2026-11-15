@@ -1,5 +1,11 @@
 # Development memory index
 
+- [Structured Verifier output, November 15](../design/structured-verifier-output.md):
+  ACI 39 / adapter 96 report preflight through existing native output validation,
+  compact completion, bounded narrative, precise field errors and active-path
+  optimization adoption checks. Native CC/CPU and captured-report replay preserve
+  evidence and ownership boundaries. [Qualification](../qualification.md#structured-verifier-output-and-adoption-checks-2026-11-15).
+
 - [Verifier cards and history navigation, November 15](../qualification.md#verifier-cards-and-history-navigation-2026-11-15):
   actual Textual property-collision crash, bilingual navigation repair, scoped
   RPM animation and recorded model names; operator-authorized old-run shutdown

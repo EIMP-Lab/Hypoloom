@@ -34,12 +34,13 @@ def test_normal_observation_keeps_validation_and_reported_billing_separate(
     if prevented_field:
         outer[prevented_field] = "stop_hook_prevented"
     before = copy.deepcopy(outer)
-    def accepted_text():
+    def accepted_text(*, final_message=None):
         # Mirror the validator's invocation-file interface. Unaccepted output
         # and an accepted file that fails decoding are delivery failures here;
         # native rejected-candidate traces are covered by the Host G3 cases.
         if snapshot.get("accepted") is not True or snapshot.get("error"):
             raise ValueError("native output was not accepted")
+        assert final_message == outer["result"]
         return outer["result"]
     handle = SimpleNamespace(
         _observation=None, _process=SimpleNamespace(poll=lambda: 0), request=request,

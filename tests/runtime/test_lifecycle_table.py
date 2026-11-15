@@ -99,16 +99,18 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Count both new memory/budget helpers. Transfer 200 unused lines from
     # shared_acceptance_host and 175 from expert_memory; preserve the total.
     # ACI 38 counts input_views; transfer 100 unused expert_memory lines.
+    # ACI 39 keeps report bounds and guidance in the existing review contract.
+    # Transfer 100 unused expert_memory lines (230 actual); same total budget.
     allocations = {"domain": 900, "lifecycle": 400, "ports": 100,
         "state_store": 450, "research_kernel": 750, "workflow_host": 4875, "institutional_controls": 100,
-        "verification": 375, "verification_contract": 350, "verification_probe": 325,
+        "verification": 375, "verification_contract": 450, "verification_probe": 325,
         "engineering_memory": 100, "engineering_budget": 75, "input_views": 100,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1100,
-        "expert_plugin": 700, "expert_memory": 425, "measurement_contract": 600, "profile_v4": 650,
+        "expert_plugin": 700, "expert_memory": 325, "measurement_contract": 600, "profile_v4": 650,
         "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
         "manager_context": 400, "interaction_host": 1200, "debate_host": 1200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,

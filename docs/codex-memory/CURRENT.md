@@ -1,5 +1,33 @@
 # Current Hypoloom development state
 
+- November 15 structured Verifier output: the user requests continuing the
+  diagnosed output/adoption optimization. ACI 39 / adapter 96 adds a Verifier-only
+  `submit_review` MCP tool using the same full schema, semantic validator,
+  per-Attempt socket/output file, failure budget and deadline. Preparation cannot
+  approve a candidate: Stop revalidates and the adapter matches the exact native
+  completion before consuming the prepared report. Rejected replacements revoke
+  old output. Existing normal JSON completion and ACI 38 remain supported.
+  Explanatory text is bounded to 16 KiB, with per-field schema limits and precise
+  nullable-object errors; probe source retains 256 KiB. Bound author guidance
+  asks for active entrypoint adoption/equivalence/timing evidence or explicit
+  deferral, and new review guidance traces actual data/training calls using
+  existing checks and coverage. Optional optimization gaps remain advisory.
+  Nineteen captured complete reports pass exact-content structured replay;
+  23 originally invalid rounds remain invalid, without inferred repair.
+  Native correction/Stop/CPU/independent review closes 19 Agents and four
+  Processes with no live groups. Private evidence stays under
+  `.local/qualification/structured-verifier-20261115/`. G1 plus 419 affected
+  rechecks reconciles 9,121 passes / 163 skips; all nine initial failures are
+  resolved without relaxing Host validation. Final main passes 415 / one skip.
+  Twelve G1 native roots close 193 Agents / 28 Processes, and two final native
+  rechecks close 38 / eight; all 267 recorded groups are absent. Twelve retained
+  terminal roots / 8,875 artifacts have baseline/source/installed-reader parity.
+  Both final wheels contain 224 source-matching runtime files. Existing research, frozen
+  runtime and private Profile are unchanged. Publication to dev then main follows
+  the session's existing authorization; no new paid-model or GPU lane is run.
+  [Design](../design/structured-verifier-output.md) /
+  [qualification](../qualification.md#structured-verifier-output-and-adoption-checks-2026-11-15).
+
 - November 15 observer cards and exit inspection: the reported TUI crash is
   reproduced when `VerificationScreen.offset = 0` invokes Textual's coordinate
   setter. Pagination now uses `page_offset`; English/Chinese navigation and

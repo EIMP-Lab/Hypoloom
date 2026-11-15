@@ -8,6 +8,47 @@ from pathlib import PurePosixPath
 MAX_PROBE_SECONDS = 120
 MAX_PROBE_BYTES = 256 * 1024
 MAX_PROBE_REPAIRS = 2
+MAX_REVIEW_NARRATIVE_BYTES = 16 * 1024
+
+
+def structured_submission(request):
+    from .agent_aci import STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION
+    return (request.schema_version >= STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION
+            and request.command.value == "VERIFY_IMPLEMENTATION")
+
+
+def _narrative_fields(raw):
+    """Explanatory text only; source, identifiers and evidence refs keep their limits."""
+    yield "summary", raw.get("summary"), 2048
+    for index, finding in enumerate(raw.get("findings", ())):
+        if isinstance(finding, dict):
+            for field in ("message", "resolution_condition"):
+                yield f"findings/{index}/{field}", finding.get(field), 2048
+    probe = raw.get("probe")
+    if isinstance(probe, dict):
+        for index, check in enumerate(probe.get("checks", ())):
+            if isinstance(check, dict):
+                for field in ("purpose", "basis"):
+                    yield f"probe/checks/{index}/{field}", check.get(field), 1024
+    coverage = raw.get("coverage")
+    if isinstance(coverage, dict):
+        for category in ("covered", "uncovered"):
+            for index, row in enumerate(coverage.get(category, ())):
+                if isinstance(row, dict):
+                    for field in ("condition", "reason"):
+                        yield f"coverage/{category}/{index}/{field}", row.get(field), 2048
+
+
+def _validate_narrative(raw):
+    size = 0
+    for path, value, limit in _narrative_fields(raw):
+        if not isinstance(value, str):
+            continue  # The ordinary validator owns required fields and types.
+        if len(value) > limit:
+            raise ValueError(f"/{path}: explanatory text exceeds {limit} characters; summarize and cite code locations")
+        size += len(value.encode("utf-8"))
+    if size > MAX_REVIEW_NARRATIVE_BYTES:
+        raise ValueError(f"review explanatory text exceeds {MAX_REVIEW_NARRATIVE_BYTES} bytes; remove repeated source and findings")
 
 
 def structured_probe(request):
@@ -137,6 +178,7 @@ def validate_review(request, raw):
             if any(p == w or p.startswith(w + "/") or w.startswith(p + "/") for p in RESERVED_PATHS for w in ctx["workspace_paths"]):
                 raise ValueError("candidate overlaps reserved Host probe paths; report inconclusive without a probe")
     if structured_probe(request): _validate_coverage(raw, ctx)
+    if structured_submission(request): _validate_narrative(raw)
     return raw
 
 
@@ -222,6 +264,17 @@ def review_schema(request):
             "covered": {"type": "array", "items": obj({"condition": text, "check_ids": {"type": "array", "items": text}})},
             "uncovered": {"type": "array", "items": obj({"condition": text, "reason": text, "blocking": {"type": "boolean"}})}})
         result["required"].append("coverage")
+    if structured_submission(request):
+        result["properties"]["summary"] = {"type": "string", "minLength": 1, "maxLength": 2048}
+        for field in ("message", "resolution_condition"):
+            finding["properties"][field] = {"type": "string", "minLength": 1, "maxLength": 2048}
+        for field in ("purpose", "basis"):
+            probe["properties"]["checks"]["items"]["properties"][field] = {"type": "string", "minLength": 1, "maxLength": 1024}
+        for category in ("covered", "uncovered"):
+            rows = result["properties"]["coverage"]["properties"][category]
+            for field in ("condition", "reason"):
+                if field in rows["items"]["properties"]:
+                    rows["items"]["properties"][field] = {"type": "string", "minLength": 1, "maxLength": 2048}
     return result
 
 
@@ -248,14 +301,26 @@ def instructions(request):
         + "changes_required requires a sourced blocker and probe=null. Only probe_required supplies probe files and argv=['python','verification/probe.py',...].\n")
     result += ("Keep summaries and findings concise. Cite source locations without repeating source code or prior reports. "
         "Use short, self-contained probes with explicit imports and public training initialization APIs. "
-        "Before returning JSON, check quoting/escaping of embedded Python source. Do not spend the invocation "
+        "Do not spend the invocation "
         "searching for files whose contents are already supplied in the captured source.\n")
     if structured_probe(request):
         result += PROBE_INSTRUCTIONS
     from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
     if request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
         result += COMPARISON_INSTRUCTIONS
+    if structured_submission(request):
+        result += ADOPTION_INSTRUCTIONS + STRUCTURED_OUTPUT_INSTRUCTIONS
+    else:
+        result += "Before returning JSON, check quoting/escaping of embedded Python source.\n"
     return result
+
+
+def system_instructions(request):
+    if structured_submission(request):
+        return SYSTEM_INSTRUCTIONS.replace(
+            "Return the complete requested AgentResponse JSON; the native Stop hook\nmay ask you to correct it within this invocation.",
+            "Submit the complete requested AgentResponse via submit_review, then finish\nwith {\"review_submitted\":true}. The native Stop hook revalidates it and may ask\nfor corrections within this invocation.")
+    return SYSTEM_INSTRUCTIONS
 
 
 SYSTEM_INSTRUCTIONS = """You are Hypoloom's independent code implementation verifier.
@@ -335,4 +400,36 @@ Keep probes bounded: use importable files and a main guard for spawn; bound chil
 join/queue waits, inspect exit codes and stop children on failure. Avoid repeated
 benchmark loops once the declared checks have completed. The Host checkpoints each
 check so a timeout retains diagnostics, but incomplete/failed Processes cannot pass.
+"""
+
+
+STRUCTURED_OUTPUT_INSTRUCTIONS = """
+Use mcp__verifier-output__submit_review with the complete AgentResponse envelope,
+including typed_candidate and declared_effects. Its input schema is the output
+schema; pass probe source as string values, letting the tool serialize JSON.
+Repair the specific reported fields and resubmit within the existing correction
+budget. After success finish with exactly {"review_submitted":true}; do not repeat
+the report. The Host Stop hook still revalidates it. Ordinary complete AgentResponse
+JSON is also supported, but hand-writing long embedded source risks serialization
+errors. Aim for a short paragraph summary, one finding per distinct defect, and
+a small probe (usually below 12 KiB). Explanatory text totals at most 16 KiB;
+summary/finding/coverage fields at most 2048 characters, check purpose/basis 1024.
+Use source locations and supplied evidence refs instead of copying code/logs.
+"""
+
+
+ADOPTION_INSTRUCTIONS = """
+For relevant efficiency claims, trace the submitted argv/configuration to the
+actual dataset, loader, model/loss and training/evaluation calls in captured code.
+A supplied optimization helper or a read reference is not evidence that the active
+entrypoint uses it. Probe the reachable path with a bounded representative workload,
+not a disconnected reimplementation. Cover applicable data-order/mutation/RNG,
+gradient and optimizer invariants; compare equivalent work when justified. State
+adopted changes and remaining unmeasured paths in existing summary/coverage fields.
+Distinguish loader-only, training-step and epoch results; low GPU utilization alone
+does not identify a bottleneck. Missing optional optimizations are advisories, not
+correctness blockers. For allocation/dispatch claims verify runtime behavior:
+for example sys.getsizeof may include an owned array's buffer but not a view's.
+If a small probe cannot establish a claim, record uncertainty rather than an
+invented defect, guaranteed speedup or universal worker/cache recommendation.
 """

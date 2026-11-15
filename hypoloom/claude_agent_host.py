@@ -62,6 +62,7 @@ from .provider_relay import ProviderRelay
 from .runtime_diagnostics import RuntimeDiagnostics, ProviderDiagnosticWriter, record_host_exception
 from .network_proxy import AttemptNetworkProxy
 from .native_output import NativeOutputValidator, decode_output
+from .verification_contract import structured_submission as _structured_verifier_output
 from .expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -76,7 +77,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/95"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/96"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -651,6 +652,7 @@ class ClaudeAgentHost:
                 deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
                 diagnostics=runtime_diagnostics,
                 context_notice=relay.context_notice if request.schema_version >= 25 else None,
+                structured_submission=_structured_verifier_output(request),
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
@@ -994,6 +996,7 @@ class ClaudeAgentHost:
         final_text_output = handle._output_validator is not None
         final_candidate = None
         validated_text = None
+        validated_final_message = None
         if reason is None and output is None:
             reason = AgentHostTerminalReason.INVALID_OUTPUT
             failure_code = "transport_output_too_large"
@@ -1024,9 +1027,10 @@ class ClaudeAgentHost:
                 failure_code = stream_failure
             if isinstance(outer, Mapping) and outer.get("subtype") == "success" and outer.get("is_error") is False:
                 try:
-                    validated_text = handle._output_validator.accepted_text()
-                    if outer.get("result") != validated_text:
-                        raise ValueError("provider result differs from validated native output")
+                    if not isinstance(outer.get("result"), str):
+                        raise ValueError("provider result must be the validated native completion")
+                    validated_text = handle._output_validator.accepted_text(final_message=outer["result"])
+                    validated_final_message = outer["result"]
                     final_candidate = decode_output(validated_text,
                         _output_schema(handle.request, tool_workspace=True))
                     diagnostics["native_output_delivery"] = "validated_invocation_file"
@@ -1113,6 +1117,7 @@ class ClaudeAgentHost:
                     workspace_artifacts=workspace_artifacts,
                     final_text_output=final_text_output,
                     validated_text=validated_text,
+                    validated_final_message=validated_final_message,
                     observed_wire_input_floor=wire_input_floor,
                     observed_wire_exchanges=exchanges,
                     session_usage_baseline=handle._session_usage_baseline,
@@ -1541,6 +1546,7 @@ def _provider_response(
     workspace_artifacts: tuple[WorkspaceArtifact, ...] | None = None,
     final_text_output: bool = False,
     validated_text: str | None = None,
+    validated_final_message: str | None = None,
     observed_wire_input_floor: object = None,
     observed_wire_exchanges: Sequence[Mapping[str, object]] | None = None,
     session_usage_baseline: Mapping[str, object] | None = None,
@@ -1601,7 +1607,8 @@ def _provider_response(
         return None, None, diagnostics
     if final_text_output:
         try:
-            if validated_text is not None and outer.get("result") != validated_text:
+            if validated_text is not None and outer.get("result") != (
+                    validated_final_message if validated_final_message is not None else validated_text):
                 raise ValueError("provider result differs from validated native output")
             structured = decode_output(validated_text if validated_text is not None else outer.get("result"), _output_schema(request,
                 tool_workspace=request.schema_version >= 11 or workspace_artifacts is not None))
@@ -3085,11 +3092,19 @@ def _prompt(
                 "\nThe identical output schema is readable at /runtime/output-schema.json. "
                 "Use that file directly when inspecting fields; do not extract it from conversation logs.\n")
         instruction += (
+            "\nUse mcp__verifier-output__submit_review to submit the complete AgentResponse "
+            "as structured tool arguments. Correct any reported field errors within this session. "
+            'After the tool succeeds, finish with exactly {"review_submitted":true}. '
+            "Do not repeat the report or embedded Python in the final message. "
+            "The native Stop hook revalidates the prepared report; tool success does not imply scientific acceptance. "
+            "Do not invoke StructuredOutput.\n"
+            if _structured_verifier_output(request) and tool_workspace else
             "\nFinish with exactly one complete JSON object as your ordinary final response, "
             "without markdown fences or surrounding prose. Do not invoke StructuredOutput. "
             "The Host Stop hook validates this unchanged schema; if it reports a validation "
             "error, correct and return the complete object in this same session. "
-            "CLI completion does not imply scientific acceptance.\nHYPOLOOM_OUTPUT_SCHEMA_JSON\n"
+            "CLI completion does not imply scientific acceptance.\n")
+        instruction += ("HYPOLOOM_OUTPUT_SCHEMA_JSON\n"
             + canonical_json(_output_schema(request, tool_workspace=tool_workspace)).decode("utf-8")
             + "\nEND_HYPOLOOM_OUTPUT_SCHEMA_JSON\n")
     rendered_inputs = []

@@ -50,6 +50,24 @@ environment or resource changes require another inspection. There is no universa
 vectorization threshold, mandatory baseline equivalence or cross-run pass cache.
 A small probe samples behavior; it does not prove complete program correctness.
 
+ACI 39 adds the Verifier-only `submit_review` tool. It accepts the full report as
+structured arguments, checks it with the existing validator, and returns precise
+field errors within the same correction budget. After successful preparation the
+Verifier finishes with `{"review_submitted":true}`; Stop revalidates the prepared
+report before Host admission. Preparation alone cannot approve training. Candidate
+files remain read-only and probes still run separately. Explanatory text is limited
+to 16 KiB in total, with 2048-character summary/finding/coverage fields and
+1024-character check purpose/basis fields. Probe source retains its 256 KiB limit.
+Older runs keep their frozen protocol; updating the checkout does not change them.
+
+The engineering brief asks authors to trace the actual entrypoint to data loading
+and training, adopt compatible supplied optimizations or explain deferrals in the
+existing implementation description, and record bounded equivalence/timing evidence.
+New Verifier guidance checks reachable calls and configuration using existing
+probe checks and coverage. Reading a reference or timing an unused helper does not
+demonstrate adoption. Missing optional optimizations are advisory; neither low GPU
+utilization nor a microbenchmark establishes whole-training performance.
+
 ACI 37 adds a shorter, version-bound engineering reference for design, execution
 and analysis. It covers repeated data reads, byte-bounded raw-feature caches,
 worker-safe file handles, gradient-preserving loss implementations and causal

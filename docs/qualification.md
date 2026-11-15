@@ -1,5 +1,82 @@
 # Qualification: G0–G5
 
+## Structured Verifier output and adoption checks (2026-11-15)
+
+The user requests continuing the diagnosed Verifier/output and performance-adoption
+work, with the existing dev-to-main publication authorization. Baselines are dev
+`d0f027f` and main `a5ab010`. [Design](design/structured-verifier-output.md).
+Evidence is under `.local/qualification/structured-verifier-20261115/` in dev.
+This is offline/native CPU qualification; no new paid-model or GPU lane is run.
+
+ACI 39 / adapter 96 provides a Verifier-only structured submission tool, reusing
+the complete output schema, semantic validator, Attempt/session, correction cap,
+deadline and atomic output file. Preparation is not acceptance. Native Stop
+revalidates the prepared review and the adapter checks the exact final completion;
+failed replacements cannot recover an older file. Normal final JSON remains
+supported. Narrative is bounded to 16 KiB with field constraints and actionable
+schema errors; probe source retains its existing 256 KiB limit. Bound author
+guidance and new Verifier guidance trace actual entrypoints/data/training calls,
+using existing implementation descriptions, checks and coverage. Optional
+performance changes remain advisory. The authority allocation remains 27,550
+lines, transferring 100 unused expert-memory lines to the existing contract.
+
+- **184 focused checks pass.** The initial run has 134 passes and seven failures:
+  one exposes an overly general nullable-probe schema diagnostic; six use a
+  virtualenv whose interpreter resolves outside its prefix, so execution sandbox
+  setup correctly fails. The error now identifies the matching branch's field;
+  qualification uses the standalone Python 3.12 / SQLite 3.53.4 runtime with
+  existing test dependencies on PYTHONPATH. No shared environment is modified.
+- **19 captured complete reports** survive structured preparation, Stop and
+  validated-file readback with exact parsed content/source. All **23 originally invalid
+  rounds** remain rejected on strict replay. This is transport/contract evidence,
+  not a claim that old malformed text can be recovered or MiMo will comply.
+- **Native CC/local deterministic provider/CPU closure passes** in 44.92 seconds.
+  Two inspect sessions receive precise Python syntax feedback, correct the tool
+  submission and finish with the small selector; two independent review sessions
+  use the same tool. All 19 Agents and four Processes close; all 23 recorded groups
+  are absent. One intentionally failing scientific Process remains failed. The
+  first native replay exposed the adapter's old report-equals-final-message
+  assumption; it was fixed without weakening final-completion matching.
+- **Public main passes 415 tests / one explicit CUDA skip** in 26.86 seconds.
+  An earlier invocation has 14 failures and 20 setup errors because its long
+  qualification directory exceeds AF_UNIX socket path limits. A short private
+  temporary root resolves these without product changes or weakened assertions.
+- Both clean wheels contain **224 runtime files**, byte-equal to their own
+  source copies. All eleven projected files match. Two pre-existing documentation
+  differences remain; executable Python ASTs agree across branches.
+- Read-only baseline, candidate-source and isolated installed-reader comparison
+  agrees on **12 terminal roots / 8,875 artifacts**, with unchanged logical
+  databases and artifact bytes. Four roots retain their pre-existing audit
+  findings; agreement does not repair them. Two nonterminal roots are excluded
+  from stable before/after comparison. The active ACI 38 run's 224 bundled runtime
+  files remain byte-equal to the pre-change main commit `a5ab010`.
+
+Full offline G1 records **9,112 passes / nine failures / 163 skips** in 1,532.63
+seconds. Eight failures are the old test double's `accepted_text()` signature;
+it now accepts and asserts the exact final message without changing billing or
+failure assertions. One regression correctly rejects newly exposed array bounds
+in a provider schema. Remove that duplicate metadata; the existing Host validator
+still enforces the same check/finding/coverage counts. All **419 affected checks
+pass** in 135.25 seconds, including both ordinary-final and structured-tool native
+CPU closures. Per-identity reconciliation is **9,121 passes / 163 skips / zero
+unresolved**, not an uninterrupted green full run. An earlier serial invocation
+was stopped after 581 passes to replace the overlong temporary root identified
+by the public test failures; its results are retained.
+
+Independent census of twelve native roots in G1 finds **193 closed Agents and
+28 closed Processes**, all **221 recorded groups absent**. The two final native
+rechecks add **38 closed Agents / eight closed Processes**, all **46 groups
+absent**. Counts use the primary Attempt process-group column, including Agent
+identities not repeated in observation JSON. Final public tests again pass
+**415 / one CUDA skip** in 26.84 seconds. Clean final wheels match the final
+sources; retained ACI 34–38 report schemas remain identical across the last
+provider-compatibility adjustment. Compilation, undefined-name and whitespace
+checks pass; existing multiprocessing fork deprecation warnings remain recorded.
+
+Existing research state, frozen runtimes and private
+Profiles are read-only. These checks establish transport, contract and CPU workflow
+behavior, not real-model wall-time savings or end-to-end GPU acceleration.
+
 ## Verifier cards and history navigation (2026-11-15)
 
 The user requests checking the old run after a monitor crash and improving both
