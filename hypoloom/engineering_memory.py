@@ -12,7 +12,8 @@ import json
 from .agent_aci import canonical_json
 from .verification_probe import validate_result
 
-MAX_MEMORY_BYTES = 6 * 1024
+LEGACY_MAX_MEMORY_BYTES = 6 * 1024
+MAX_MEMORY_BYTES = 64 * 1024
 MAX_MEMORY_ENTRIES = 4
 SUFFIX = "--verified-engineering-memory"
 SCOPE = ("Engineering evidence for this run, expert and component only. Conditions and reference bases are "
@@ -77,7 +78,7 @@ def verified_entry(*, run_id, role, component_id, commission, review, plan_commi
         return None
 
 
-def memory_document(run_id, role, component_id, entries, *, max_bytes=MAX_MEMORY_BYTES):
+def memory_document(run_id, role, component_id, entries, *, max_bytes=MAX_MEMORY_BYTES, include_omissions=True):
     """Newest whole records first; bound bytes without truncating their evidence."""
     document = {"schema_version": 1, "run_id": run_id, "expert": role, "component_id": component_id,
         "scope": SCOPE, "entries": [], "omitted_entries": 0}
@@ -94,6 +95,6 @@ def memory_document(run_id, role, component_id, entries, *, max_bytes=MAX_MEMORY
         if len(document["entries"]) > MAX_MEMORY_ENTRIES or len(canonical_json(candidate)) > max_bytes - 32:
             document["entries"].pop()
             document["omitted_entries"] += 1
-    if not document["entries"]: return None
+    if not document["entries"] and (not include_omissions or not document["omitted_entries"]): return None
     document["version_id"] = hashlib.sha256(canonical_json(document)).hexdigest()
     return document if len(canonical_json(document)) <= max_bytes else None

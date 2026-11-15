@@ -1,5 +1,23 @@
 # Current Hypoloom development state
 
+- November 15 readable engineering inputs: the user authorizes optimizing the
+  diagnosed verifier, recall and training paths. ACI 38 / adapter 95 adds
+  disposable read-only input pages (12,000 bytes each), preserving captured
+  bytes and references. Complete engineering memory has a separate 64 KiB cap;
+  inline reading stays 6 KiB and new requests expose all-omitted cases. ACI 37
+  retains its original policy. Independent ERC worktree `ERC-efficiency` adds
+  bounded feature caching, blocked SWFC, equivalent covariance contraction and
+  epoch metric transfers; logits-only model-owned evaluation reports CE instead
+  of zero. The private MERC Profile now reads the tested implementation bundle
+  for future captured revisions. Existing runs and original ERC stay unchanged.
+  G1 plus affected replays reconciles 9,013 passes / 245 skips; main passes
+  397 / one CUDA skip. Six native CPU roots close 170 Agents / 14 Processes;
+  all 184 groups are absent. ERC checks reconcile 124 passes / 18 skips.
+  Warm loader-only medians improve 16.59x / 11.17x; no full-training or paid-model
+  acceleration is claimed. Dev/main publication follows this session's existing
+  authorization. [Design](../design/readable-engineering-inputs.md) /
+  [results and limits](../qualification.md#readable-engineering-inputs-and-training-efficiency-2026-11-15).
+
 - November 15 probe GPU cleanup: the user authorized repairing the observed
   capacity stall, releasing the cancelled prior run's exact stale requests and
   maintaining probe cleanup for the active frozen run. Reconciliation now uses

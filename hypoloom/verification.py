@@ -224,9 +224,10 @@ class ImplementationVerification:
                        ensure_ascii=False, sort_keys=True).encode()),) + self.memory(run_id, role, component_id, task_id)
 
     def memory(self, run_id, role, component_id, task_id):
-        from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, canonical_json
-        from .engineering_memory import SUFFIX, memory_document, verified_entry
-        if int(self.host.store.get_run(run_id)["agent_aci_version"]) < ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
+        from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION, canonical_json
+        from .engineering_memory import SUFFIX, MAX_MEMORY_BYTES, LEGACY_MAX_MEMORY_BYTES, memory_document, verified_entry
+        version = int(self.host.store.get_run(run_id)["agent_aci_version"])
+        if version < ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
             return ()
         entries = []
         for row in reversed(review_rows(self.host.store, run_id, subject=role, component=component_id, phase="review", limit=16)):
@@ -245,7 +246,9 @@ class ImplementationVerification:
                 plan_commission=json.loads(plan_rows[0]["request_json"]).get("implementation_verification", {}),
                 plan_attempt=plan, probe=probe, execution=fact["payload"]["execution_contract"])
             if entry is not None: entries.append(entry)
-        document = memory_document(run_id, role, component_id, entries)
+        readable = version >= READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION
+        document = memory_document(run_id, role, component_id, entries,
+            max_bytes=MAX_MEMORY_BYTES if readable else LEGACY_MAX_MEMORY_BYTES, include_omissions=readable)
         return () if document is None else (EmbeddedInput.from_bytes(task_id + SUFFIX, "application/json", canonical_json(document)),)
 
     def status(self, run_id, experiment_id):

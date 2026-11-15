@@ -1,5 +1,13 @@
 # Development memory index
 
+- [Readable engineering inputs, November 15](../design/readable-engineering-inputs.md):
+  ACI 38 / adapter 95 lossless input pages, separate memory storage/reading
+  budgets, captured-input replay and an isolated ERC optimization revision.
+  Existing research remains frozen; private MERC reference inputs apply to
+  subsequent runs. G1 reconciliation: 9,013 passes / 245 skips; public checks:
+  397 passes / one skip. Evidence is under `.local/qualification/readable-engineering-20261115/`.
+  [Qualification and CPU-only limits](../qualification.md#readable-engineering-inputs-and-training-efficiency-2026-11-15).
+
 - [Probe GPU reservation cleanup, November 15](../qualification.md#probe-gpu-reservation-cleanup-2026-11-15):
   closed probe and unopened queue cleanup through existing owner keys, no frozen
   runtime mutation; authorized live recovery and a scoped temporary compatibility

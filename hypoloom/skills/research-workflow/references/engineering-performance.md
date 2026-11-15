@@ -30,8 +30,10 @@ Do not spend the invocation repeatedly rebuilding the same test suite. Submit
 captured code through the existing permitted handoff, then release capacity while
 the Host verifies it. Do not wait for a long prose report before submitting.
 7. Use supplied verified-engineering-memory as conditional evidence: check its
-source digest, workload and uncovered conditions. Read its exact /inputs path if
-offloaded. A historical pass or an author's claimed passed report cannot approve
+   source digest, workload and uncovered conditions. If a reading_view is advertised,
+   start at its index_path and overview; pages preserve the original evidence refs.
+   Otherwise read the exact /inputs path. An omission count is a limitation, not
+   evidence that no prior checks exist. A historical pass or an author's claimed passed report cannot approve
 changed code. Only actual Host observations can support new performance claims.
 8. Bound all child joins and queue waits by the remaining check budget. Spawn
 tests belong in an importable file with a main guard, not Python stdin. On child
@@ -39,5 +41,9 @@ failure report its exit code instead of waiting for a result it cannot produce.
 
 Keep scientific settings, precision, data coverage and evaluation obligations
 unchanged unless the existing research revision process authorizes a change.
+Check that the actual entrypoint uses the optimized loader/loss. Distinguish
+loader-only, forward-only, training-step and full-epoch timings. For model-owned
+losses, inspect evaluation-mode returns and the scheduler's monitored metric:
+a zero training placeholder is not a measured validation objective.
 When measurement is inappropriate or unavailable, state the concrete limitation;
 do not invent timings or turn missing performance evidence into scientific failure.

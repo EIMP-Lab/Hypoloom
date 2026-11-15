@@ -159,7 +159,7 @@ def test_native_verifier_uses_compact_system_prompt_and_numbered_source(tmp_path
     from hypoloom.full_cc_runtime import full_cc_argv
     from hypoloom.verification_contract import SYSTEM_INSTRUCTIONS
     from test_full_cc_runtime import _workspace
-    request = default_request(AgentCommand.VERIFY_IMPLEMENTATION)
+    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=37)
     source = EmbeddedInput.from_bytes("fixture--implementation-source", "application/json", b'{"candidate.py":"def f():\\n    return 2\\n"}')
     request = replace(request, input_artifacts=(*request.input_artifacts, source), immutable_context_refs=(*request.immutable_context_refs, source.ref))
     before = source.content_bytes()

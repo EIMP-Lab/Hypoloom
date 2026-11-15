@@ -1,5 +1,81 @@
 # Qualification: G0–G5
 
+## Readable engineering inputs and training efficiency (2026-11-15)
+
+The user authorizes optimizing the diagnosed verifier and training paths; the
+session's dev-to-main publication scope continues. Baselines are dev `fd92b1d`
+and main `5c8f0c2`. [Design](design/readable-engineering-inputs.md); private
+evidence is under `.local/qualification/readable-engineering-20261115/` in dev.
+This is offline/native CPU qualification, not a new paid-model or GPU promotion.
+
+ACI 38 / adapter 95 adds disposable read-only input pages, bounded to 12,000
+bytes, alongside unchanged captured JSON. Whole engineering records use a
+separate 64 KiB storage budget; inline reading remains 6 KiB. ACI 37 retains its
+original policy. The independent Oracle still resolves every included claim
+against its source, successful Process and accepted review.
+
+- Three captured verifier requests contain 205,410 / 241,662 / 236,862 raw input
+  bytes. Their new views use 33 / 39 / 37 files, with largest files of
+  12,000 / 11,997 / 11,999 bytes. Original input bytes are unchanged. Four real
+  qualified records of 6,196 / 6,454 / 7,338 / 7,986 bytes, previously all omitted,
+  now survive whole under their respective run/expert/component scopes.
+- Full G1 initially reports **8,999 passed / 245 skipped / 14 failed** in
+  1,395.70 seconds. Eight failures are old ACI/adapter assertions, corrected
+  without weakening compatibility checks. Five native cases detected runtime
+  source drift during development. One export fixture had no selected second
+  tip; its exact check passes on fresh replay, and all 18 export checks also pass
+  without changing export code or assertions. Preserve that original failure;
+  this does not establish a separate export fix. The **436 affected checks** and
+  **six remaining failed-case replays** pass after source stabilization.
+  Per-identity reconciliation is **9,013 passed / 245 skipped / zero unresolved**,
+  not one uninterrupted green full run. Compilation, undefined-name and
+  whitespace checks pass. The authority allocation remains 27,550 lines.
+- The dedicated native CC/local deterministic provider/CPU probe lane passes.
+  Independent census finds 19 closed Agents and four closed Processes, including
+  the intentional failed-probe fixture; all 23 recorded groups are absent. The
+  five native replay roots add 151 closed Agents and ten closed Processes with
+  all 161 groups absent. Their checks retain the real Host, broker, publication,
+  restart, evidence review and Oracle boundaries. No paid MiMo result is implied.
+- Public main passes **397 tests / one explicit CUDA skip**. Clean dev/main
+  wheels each contain 224 runtime files matching their own sources, including
+  the new helper. All twelve projected files match exactly. Two existing module
+  docstrings retain branch-specific documentation links; executable ASTs agree.
+  Initial builds exposed stale local `build/lib` copies of two already-deleted
+  execution-check modules; those wheels were rejected and clean source copies
+  were built instead. Original failed build evidence is retained.
+
+The separate local ERC commit `8ca7bc0` on `perf/training-efficiency-20261115`, based on
+`5dd42eb737e4692abdd693f61dc9e8a230c50069`, adds 128 MiB per-dataset/process raw
+feature caching, process-local HDF5 handles, blocked SWFC, equivalent sample
+covariance contraction and epoch metric transfers. Full and affected CPU checks
+reconcile **124 passed / 18 explicit skips**. Tests compare losses, gradients,
+Adam steps, shuffled batches, mutation isolation, cache bounds and spawn loading.
+The captured early-fusion implementation has identical sampled logits/loss and
+maximum gradient difference 7.45e-9 after applying the shared loss and contraction.
+
+With one CPU thread and existing real feature caches, five alternating warm
+loader passes have medians **MELD 1.4052 -> 0.0847 seconds** and
+**IEMOCAP 0.3744 -> 0.0335 seconds**. Cached batches match byte-for-byte; estimated
+cache sizes are 93,364,362 and 47,395,482 bytes. Synthetic SWFC forward/backward
+microbenchmarks show 38.68x at 128 anchors and 34.51x at 984 anchors, dimension 64.
+These exclude model, transfer, optimizer and full-epoch costs, run on a shared
+host, and do not measure CUDA or end-to-end training acceleration.
+
+A correctness change replaces the zero placeholder with cross-entropy for
+model-owned training loss and logits-only evaluation. The same captured model
+and fixture now reports **1.1204670667648315**, matching direct CE instead of 0.
+Existing evaluation auxiliary objectives remain unchanged. This changes plateau
+scheduler input: use a new experiment revision and retrain both paired arms;
+historical controls must not be treated as equivalent.
+
+The private `MERC-causal-unified` Profile now references the tested patch and
+evidence bundle at `.local/research-inputs/MERC-efficiency-20261115/`. Its pure
+preflight is admitted with no blockers or warnings. These materials guide future
+captures and do not confer implementation approval. Both retained runtime
+bundles match all 221/224 previously recorded file hashes; the active run remains
+ACI 37. The original ERC checkout is clean. No retained run was started, resumed,
+migrated, hot-patched or assigned new paid/GPU qualification work.
+
 ## Probe GPU reservation cleanup (2026-11-15)
 
 The user explicitly authorized repair after a read-only diagnosis found seven

@@ -69,14 +69,26 @@ after each check, so a killed check remains unfinished and cannot pass.
 
 After an actual successful probe and independent passing review, the Host can
 supply `--verified-engineering-memory` to later engineering nodes of the same run,
-expert and component. This read-only input holds at most four complete records
-within 6 KiB, selected from the most recent 16 review commissions. Each record
+expert and component. For ACI 38 and later, this read-only input holds at most
+four complete records within 64 KiB, selected from the most recent 16 review
+commissions. The inline reading budget remains 6 KiB; larger documents are read
+through the advertised pages. ACI 37 retains its original 6 KiB storage policy. Each record
 names the code digest, capture, probe, review, covered and uncovered conditions,
-and actual measurements. Oversized records are omitted whole. The independent
+and actual measurements. Oversized records are omitted whole; new requests
+report the omission count even when none fit. The independent
 Oracle reconciles these references and timings with the durable records. This
 is conditional evidence recall, not model-weight training or a substitute for
 checking a new candidate. No memory is produced from an author's claimed pass,
 an unfinished Process or an inconclusive review.
+
+New native requests advertise a `reading_view.index_path` beside verification
+context, submitted source and engineering memory. Start with that index and its
+overview. Source, probe scripts, logs and history are readable as text pages of
+at most 12,000 bytes, with original source labels and line offsets. Each field's
+pages concatenate exactly. `/inputs/NNNN.txt` still contains the unchanged
+authoritative input; views use the same read-only mount and evidence references.
+This avoids whole-file Read limits on escaped single-line JSON without removing
+checks, rewriting evidence or expanding the verifier's decision authority.
 
 Native CC engineering nodes also bound each foreground Bash invocation to at
 most 60 seconds and the remaining invocation budget, reserving up to 15 seconds

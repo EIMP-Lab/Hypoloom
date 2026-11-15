@@ -15,7 +15,9 @@ def test_memory_retains_whole_evidence_with_bounded_bytes_and_distinct_probes():
     huge = {**entries[0], "evidence": "x" * MAX_MEMORY_BYTES}
     bounded = memory_document("run", "expert", "component", [huge, entries[1]])
     assert bounded["entries"] == [entries[1]] and bounded["omitted_entries"] == 1
-    assert memory_document("run", "expert", "component", [huge]) is None
+    omitted = memory_document("run", "expert", "component", [huge])
+    assert omitted["entries"] == [] and omitted["omitted_entries"] == 1
+    assert memory_document("run", "expert", "component", [huge], include_omissions=False) is None
     assert memory_document("run", "expert", "component", entries, max_bytes=1) is None
 
 
@@ -23,3 +25,12 @@ def test_model_claim_without_process_and_review_is_never_a_verified_entry():
     claimed = {"observation_json": json.dumps({"response": {"typed_candidate": {"verdict": "passed"}}})}
     assert verified_entry(run_id="run", role="expert", component_id="component", commission={},
         review=claimed, plan_commission={}, plan_attempt=deepcopy(claimed), probe=claimed, execution={}) is None
+
+
+def test_records_larger_than_inline_budget_are_retained_whole():
+    entries = [{"source_output_digest": "a" * 64, "probe_attempt_id": str(i),
+        "covered": ["condition " * 800], "checks": [{"measurement": {"workload": "real batch"}}]}
+        for i in range(4)]
+    document = memory_document("run", "expert", "component", entries)
+    assert document["entries"] == entries and document["omitted_entries"] == 0
+    assert 6144 < len(canonical_json(document)) <= MAX_MEMORY_BYTES

@@ -34,6 +34,40 @@ def _request(command: AgentCommand, attempt: str) -> AgentRequest:
     return replace(default_request(command), attempt_id=attempt)
 
 
+def test_reading_pages_are_materialized_and_checked_on_retry(tmp_path):
+    from hypoloom.input_views import input_views
+    request = replace(_request(AgentCommand.VERIFY_IMPLEMENTATION, "readable"), schema_version=38,
+        input_artifacts=(EmbeddedInput.from_bytes("job--implementation-source", "application/json",
+            json.dumps({"../candidate.py": "answer = 42\n" * 4000}).encode()),))
+    manager = _manager(tmp_path)
+    workspace = manager.prepare(request, None)
+    files, _ = input_views(request)
+    # Inspect the directory actually mounted at /inputs, not a fake reader.
+    originals = list(manager.state_root.rglob("0000.txt"))
+    assert len(originals) == 1
+    directory = originals[0].parent
+    assert originals[0].read_bytes() == request.input_artifacts[0].content_bytes()
+    for name, content in files.items():
+        assert (directory / name).read_bytes() == content
+    import shutil
+    import subprocess
+    from hypoloom.full_cc_runtime import runtime_mounts
+    if bwrap := shutil.which("bwrap"):
+        argv = [bwrap, "--unshare-all", "--die-with-parent", "--tmpfs", "/tmp"]
+        for source, destination in runtime_mounts(()):
+            argv.extend(("--ro-bind", str(source), destination))
+        argv.extend(("--ro-bind", str(directory), "/inputs", "--", "/bin/bash", "-c",
+            'test -s /inputs/0000.view.txt && ! printf changed > /inputs/0000.view.txt'))
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+        assert result.returncode == 0, result.stderr
+        assert (directory / "0000.view.txt").read_bytes() == files["0000.view.txt"]
+    manager.prepare(request, None)
+    page = next(directory / name for name in files if ".page-" in name)
+    page.write_text("changed")
+    with pytest.raises(GitAuthoringIntegrityError, match="reading view changed"):
+        manager.prepare(request, None)
+
+
 def _transcript(
     workspace: PreparedSessionWorkspace, text: str, *, append: bool = False
 ) -> bytes:
