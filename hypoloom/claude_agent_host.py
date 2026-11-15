@@ -76,7 +76,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/94"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/95"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -3095,6 +3095,8 @@ def _prompt(
     rendered_inputs = []
     rendered_input_bytes: dict[str, int] = {}
     offloaded_refs: list[str] = []
+    from .input_views import input_views, INLINE_MEMORY_BYTES
+    _, reading_views = input_views(request) if tool_workspace else ({}, {})
     from .context_management import context_policy
     from .workflow_guidance import MAX_GUIDANCE_BYTES, configuration_guidance, performance_guidance
     policy = context_policy(request)
@@ -3118,6 +3120,9 @@ def _prompt(
         for index, item in sorted(enumerate(request.input_artifacts), key=priority):
             content = item.content_bytes()
             size = len(canonical_json(_render_input(item)))
+            if index in reading_views and (not item.ref.endswith("--verified-engineering-memory")
+                    or len(content) > INLINE_MEMORY_BYTES):
+                continue
             if (size <= remaining and content not in seen_content
                     and not item.ref.endswith(_OFFLOAD_INPUT_REF_SUFFIXES)
                     and len(content) < _OFFLOAD_INPUT_MIN_BYTES):
@@ -3132,6 +3137,8 @@ def _prompt(
             item.ref.endswith(_OFFLOAD_INPUT_REF_SUFFIXES)
             or len(item.content_bytes()) >= _OFFLOAD_INPUT_MIN_BYTES
             or index not in inline_indices
+            or (index in reading_views and (not item.ref.endswith("--verified-engineering-memory")
+                or len(item.content_bytes()) > INLINE_MEMORY_BYTES))
         ):
             rendered = {"ref": item.ref, "media_type": item.media_type,
                         "path": f"/inputs/{index:04d}.txt", "size_bytes": len(item.content_bytes())}
@@ -3147,6 +3154,8 @@ def _prompt(
                     if isinstance(source, str) else source for path, source in files.items()}, ensure_ascii=False)
                 rendered["source_view"] = "Line numbers are display only; original source is in the immutable input."
         rendered_inputs.append(rendered)
+        if index in reading_views:
+            rendered["reading_view"] = reading_views[index]
         if item.ref in aliases.values():
             rendered["ref_alias"] = next(alias for alias, ref in aliases.items() if ref == item.ref)
         if manifest is not None:

@@ -886,9 +886,11 @@ class AgentSessions:
         # Exact node inputs remain independently named even though CC now also
         # carries chain history. Retry inputs never follow a mutable whole run.
         inputs = _directory(root / "inputs" / _component(request.attempt_id))
+        from .input_views import input_views
+        reading_files, _ = input_views(request)
         expected_inputs = {
             f"{index:04d}.txt" for index in range(len(request.input_artifacts))
-        }
+        } | set(reading_files)
         if {item.name for item in inputs.iterdir()} - expected_inputs:
             raise GitAuthoringIntegrityError(
                 "Attempt input inventory differs from its frozen request"
@@ -899,6 +901,13 @@ class AgentSessions:
             if destination.exists():
                 if _regular(destination, request.max_input_bytes) != content:
                     raise GitAuthoringIntegrityError("Attempt input bytes changed")
+            else:
+                _write_new(destination, content)
+        for name, content in reading_files.items():
+            destination = inputs / name
+            if destination.exists():
+                if _regular(destination, request.max_input_bytes) != content:
+                    raise GitAuthoringIntegrityError("Attempt reading view changed")
             else:
                 _write_new(destination, content)
         source_root = _directory(root / "source")

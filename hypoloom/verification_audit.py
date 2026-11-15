@@ -5,8 +5,8 @@ import json
 def engineering_memory_binding(request, consumer, commands, attempts, observations):
     """Reconcile each recalled claim with the historical capture and Process."""
     import hashlib
-    from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, canonical_json
-    from .engineering_memory import MAX_MEMORY_BYTES, MAX_MEMORY_ENTRIES, SCOPE, SUFFIX
+    from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION, canonical_json
+    from .engineering_memory import MAX_MEMORY_BYTES, LEGACY_MAX_MEMORY_BYTES, MAX_MEMORY_ENTRIES, SCOPE, SUFFIX
     from .verification_probe import validate_result
     inputs = [i for i in request.input_artifacts if i.ref.endswith(SUFFIX)]
     if not inputs: return
@@ -14,14 +14,15 @@ def engineering_memory_binding(request, consumer, commands, attempts, observatio
     assert request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}
     item = inputs[0]
     assert item.ref == request.command_id + SUFFIX and item.ref in request.immutable_context_refs
-    assert len(item.content_bytes()) <= MAX_MEMORY_BYTES
+    readable = request.schema_version >= READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION
+    assert len(item.content_bytes()) <= (MAX_MEMORY_BYTES if readable else LEGACY_MAX_MEMORY_BYTES)
     memory = json.loads(item.content_bytes())
     assert set(memory) == {"schema_version", "run_id", "expert", "component_id", "scope", "entries", "omitted_entries", "version_id"}
     assert memory["schema_version"] == 1 and memory["scope"] == SCOPE
     assert (memory["run_id"], memory["expert"], memory["component_id"]) == (request.run_id, request.role, request.component_id)
     assert type(memory["omitted_entries"]) is int and memory["omitted_entries"] >= 0
     assert memory["version_id"] == hashlib.sha256(canonical_json({k: v for k, v in memory.items() if k != "version_id"})).hexdigest()
-    assert 1 <= len(memory["entries"]) <= MAX_MEMORY_ENTRIES
+    assert (0 if readable and memory["omitted_entries"] else 1) <= len(memory["entries"]) <= MAX_MEMORY_ENTRIES
     seen = set()
     for entry in memory["entries"]:
         assert set(entry) == {"experiment_id", "source_submit_command_id", "source_output_digest", "review_attempt_id",
