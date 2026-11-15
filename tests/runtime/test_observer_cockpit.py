@@ -102,7 +102,7 @@ def test_tui_expert_cards_follow_variable_rosters_and_reflow_without_losing_scro
                 content = lanes.query_one(Static)
                 text = _static_text(content)
                 assert text.count("Grounding Agent") == 1
-                assert "Implementation Verifier" in text
+                assert "Verifier" in text
                 assert text.count("╭") == count + 2 and text.count("╰") == count + 2
                 assert all(item.role in text for item in roster)
                 if not count:

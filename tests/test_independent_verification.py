@@ -128,7 +128,9 @@ def test_tui_verifier_card_stays_compact_with_large_report_history(monkeypatch):
         for name in ("alice", "bob", "carol", "dave")]
     view = {"state": "active", "model": "review-model", "effort": "high", "experts": subjects}
     lines = tui._verification_summary_lines(view)
-    assert len(lines) == 6 and len("\n".join(lines)) < 600
+    # State and model identity each have one row; findings remain in history.
+    assert len(lines) == len(subjects) + 3 and len("\n".join(lines)) < 600
+    assert lines[1] == "Model: review-model"
     assert all(any(name in line and "blockers 2" in line for line in lines) for name in ("alice", "bob", "carol", "dave"))
     assert "VERY_LONG_FINDING" not in "\n".join(lines) and "INTERNAL_ID" not in "\n".join(lines)
     assert "v · Reports" in lines[-1]

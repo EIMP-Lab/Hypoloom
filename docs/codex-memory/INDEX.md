@@ -1,5 +1,12 @@
 # Development memory index
 
+- [Verifier cards and history navigation, November 15](../qualification.md#verifier-cards-and-history-navigation-2026-11-15):
+  actual Textual property-collision crash, bilingual navigation repair, scoped
+  RPM animation and recorded model names; operator-authorized old-run shutdown
+  remains separate from read-only display changes. Evidence is under
+  `.local/qualification/observer-cards-20261115/` and the main checkout's
+  `.local/repairs/observer-verifier-20261115/`.
+
 - [Readable engineering inputs, November 15](../design/readable-engineering-inputs.md):
   ACI 38 / adapter 95 lossless input pages, separate memory storage/reading
   budgets, captured-input replay and an isolated ERC optimization revision.

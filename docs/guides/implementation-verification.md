@@ -99,7 +99,7 @@ through Host verification even if its author later times out; the Agent timeout
 stays recorded, and an unsubmitted draft is never promoted automatically.
 Provider thinking defaults are unchanged.
 
-TUI shows a compact **Implementation Verifier** card beside Grounding with the model,
+TUI shows a compact **Verifier** card beside Grounding with the model,
 current phases and per-expert blocker/advisory counts. Follow-ups of the same finding
 are counted once in the current summary. Press **v** for paginated reports, individual
 probe checks, coverage and invocation diagnostics. The Web card shows per-expert
@@ -110,6 +110,14 @@ or understanding. Finding resolution requires an explicit prior report/finding r
 Verifier accounting is global; subject attribution does not bill the work twice.
 Use **Verification history** in Web for paginated evidence.
 Stale Host observations remain unconfirmed; runs predating verification show unsupported status.
+
+Grounding, Verifier and expert cards have distinct icons and show their recorded
+base-model names. Multiple names indicate different invocations; unavailable
+names remain `—`. Active status lights breathe with fresh run-scoped RPM while
+the Host is confirmed, and stop animating when that observation expires or the
+Host is unconfirmed. They are request-rate indicators, not process heartbeats.
+Web respects reduced-motion preferences. Display updates can read compatible
+retained runs without changing their frozen execution code.
 
 Verification details also separate inconclusive verification and invocation failures from
 author code defects, and shows phase time, output corrections, check results,

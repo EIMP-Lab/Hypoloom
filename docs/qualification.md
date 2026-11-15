@@ -1,5 +1,61 @@
 # Qualification: G0–G5
 
+## Verifier cards and history navigation (2026-11-15)
+
+The user requests checking the old run after a monitor crash and improving both
+observer interfaces. The retained `diagnostics/host.jsonl` records a TUI failure
+at 09:47:03 local time: opening verification history assigns integer zero to
+Textual's `Widget.offset`, whose setter expects a coordinate pair. Direct
+construction reproduces the same `TypeError`. Rename the pagination attribute to
+`page_offset`; retain ordinary read-only history queries, and discard a page
+result when its dialog has closed. No persistence/schema or runtime authority is
+added. Baselines are dev `d24b8f9` and main `56f81b7`.
+
+Both interfaces call the card **Verifier**, give it a distinct icon and activity
+light, and expose recorded model names alongside Grounding, expert and other
+global task cards. Names reuse existing reliability groups and the configured
+Verifier fallback; unknown names stay unknown. TUI reuses its current snapshot
+for animation, at most four paints per second, without extra Host/database/API
+polls. Web preserves the light's animation phase across redraws and respects
+reduced-motion settings. Fresh run-scoped RPM and confirmed Host observation
+remain required; probe-only work is steady, not animated by old Agent requests.
+Compact Web metadata avoids empty rows and missing probe duration renders `—`.
+
+This is bounded observer/repair validation, not a new full G0–G5 promotion:
+
+- **199 affected tests pass / one missing-Playwright skip** in 157.85 seconds.
+  The selection includes real Textual interaction, Web routes, observer scope
+  and performance, cancellation UI, translations and **53 browser-named tests**
+  using the installed Chrome headless shell. No browser was downloaded.
+- **18 final checks pass**, including English/Chinese history open/next/back/
+  close and return to cancellation, model text, scroll-preserving TUI animation,
+  desktop/mobile browser layout, reduced motion, stale traffic, absent Host,
+  preserved light identity and safe rendering of model names containing markup.
+  The first focused invocation had two failures because a mount guard suppressed
+  the initial history page; the guard now checks the active screen instead of
+  rejecting Textual's in-progress mount. Original results are retained.
+- Main initially has **396 passes / one failure / one CUDA skip**. Its old
+  compact-card assertion expected six lines; the requested model row now makes
+  seven for four experts. The corrected assertion requires that row and retains
+  the original 600-character bound and exclusion of verbose findings/history.
+  All nine public verification tests pass on recheck: **397 passes / one skip**
+  per-identity reconciliation, not an uninterrupted green full run.
+- JavaScript syntax, undefined-name and whitespace checks pass. Screenshots,
+  original crash data and XML results remain under
+  `.local/qualification/observer-cards-20261115/`. Eight shared runtime, guide
+  and public-test files are selectively projected to main, retaining branch
+  histories and all frozen runtime bundles.
+
+Initial live inspection finds the ACI 37 run ACTIVE with a live managed Host and
+four Agent groups, no open scientific Processes and idle GPUs. No run-level
+cancellation had been accepted; the earlier retired run was already CANCELLED.
+The user then explicitly authorizes ending this exact run and verifying cleanup.
+One persisted `operator-end-*` request is accepted by the existing Host at
+revision 112; the four original Agents close and only FINAL_REPORT remains while
+STOPPING. No SQLite repair, process signal, runtime migration or replayed
+scientific execution is used. Final closure observations belong to the main
+checkout's `.local/repairs/observer-verifier-20261115/`.
+
 ## Readable engineering inputs and training efficiency (2026-11-15)
 
 The user authorizes optimizing the diagnosed verifier and training paths; the

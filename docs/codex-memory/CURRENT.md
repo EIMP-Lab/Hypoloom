@@ -1,5 +1,19 @@
 # Current Hypoloom development state
 
+- November 15 observer cards and exit inspection: the reported TUI crash is
+  reproduced when `VerificationScreen.offset = 0` invokes Textual's coordinate
+  setter. Pagination now uses `page_offset`; English/Chinese navigation and
+  returning to the End run dialog pass. TUI/Web use the name Verifier, distinct
+  icons, existing fresh run-scoped RPM for status lights, and recorded model
+  identities for Grounding, Verifier, experts and other global tasks. No new
+  counters, evidence authority or execution version is added. Affected checks
+  pass 199 / one missing-Playwright skip, including 53 browser-named cases;
+  the final 18-case recheck passes. Main reconciles 397 passes / one CUDA skip.
+  The user separately authorized cancellation of the still-active ACI 37 run;
+  Host accepted the exact cancellation at revision 112. Closure observations
+  remain in the private operator evidence; display updates do not migrate it.
+  [Evidence](../qualification.md#verifier-cards-and-history-navigation-2026-11-15).
+
 - November 15 readable engineering inputs: the user authorizes optimizing the
   diagnosed verifier, recall and training paths. ACI 38 / adapter 95 adds
   disposable read-only input pages (12,000 bytes each), preserving captured
