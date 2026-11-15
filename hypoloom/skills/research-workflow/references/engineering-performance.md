@@ -6,8 +6,13 @@ inlined for DESIGN, EXECUTION and ANALYSIS; it needs no duplicate Read. Read
 details. New algorithms need their own justified invariants, not forced equality
 to an unrelated baseline.
 
-1. Identify repeated data preparation and compute before spending the full trial
-budget. Reuse compatible measured evidence. In DESIGN use bounded CPU checks;
+1. Trace the actual submitted entrypoint and configuration to its dataset/loader,
+model/loss and training loop before spending the full trial budget. Inspect supplied
+optimization patches and measured evidence against this captured revision. Adopt
+compatible changes in the executed path, run bounded checks, or explain a concrete
+reason to defer them in the existing implementation description. Reading a bundle
+or adding an unused helper is not adoption. Identify repeated data preparation and
+compute. In DESIGN use bounded CPU checks;
 resource/GPU work belongs to EXECUTION's Host submission.
 2. For fixed features read repeatedly, compare deterministic raw-data caching
 under an explicit byte cap. Copy mutable returns, run random transforms on every
@@ -26,6 +31,10 @@ empty cases, causality and sample order. Then measure the same work after warmup
 including backward where relevant. Synchronize CUDA at timing boundaries. Record
 workload, variation and memory limits; local ratios are not whole-training gains.
 6. Land one checkable edit, run its bounded check and repair demonstrated errors.
+Record which active file/call/config uses the optimization, the before/after workload
+and measurement, and remaining unmeasured paths in the existing handoff. If a patch
+does not apply, inspect the actual source before adapting it; do not silently skip
+it or treat an unmeasured adaptation as the original verified result.
 Do not spend the invocation repeatedly rebuilding the same test suite. Submit
 captured code through the existing permitted handoff, then release capacity while
 the Host verifies it. Do not wait for a long prose report before submitting.

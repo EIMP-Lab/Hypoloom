@@ -12,6 +12,7 @@ from typing import Mapping
 from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
+from .verification_contract import structured_submission
 
 FULL_CC_PROFILE = "agent-full-cc/1"
 FULL_CC_TOOLS = ("Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill")
@@ -258,6 +259,16 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
     settings["autoMemoryEnabled"] = False
     native_tools = ("Read", "Glob", "Grep") if request.command.value in {"PAPER_READ", "VERIFY_IMPLEMENTATION"} else FULL_CC_TOOLS
     allowed = list(native_tools)
+    if output_socket is not None and structured_submission(request):
+        if output_schema_path is None:
+            raise ValueError("Verifier structured submission requires the admitted output schema")
+        argv.extend(("--ro-bind", str(Path(host_tools_server.__file__).resolve()), "/runtime/host_tools_server.py"))
+        config["mcpServers"]["verifier-output"] = {"command": "/usr/bin/python3", "args": [
+            "/runtime/native_output.py", "--review-tool", "--socket", "/output-validation.sock",
+            "--output-schema", "/runtime/output-schema.json", "--session-id", workspace.binding["session_id"],
+            "--max-bytes", str(max(4 * 1024 * 1024, request.budget.max_output_bytes * 2)),
+            "--timeout-seconds", str(request.budget.wall_seconds)]}
+        allowed.append("mcp__verifier-output__submit_review")
     plugin_root = getattr(workspace, "plugin_root", None)
     memory_root = getattr(workspace, "memory_root", None)
     research_root = getattr(workspace, "research_root", None)
@@ -286,10 +297,10 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         if scope is None: raise ValueError("this request has no Host tool scope")
         argv.extend(("--ro-bind", str(Path(host_tools_server.__file__).resolve()),
             "/runtime/host_tools_server.py", "--ro-bind", str(host_socket), "/host-tools.sock"))
-        config = {"mcpServers": {"host-tools": {"command": "/usr/bin/python3",
+        config["mcpServers"]["host-tools"] = {"command": "/usr/bin/python3",
             "args": ["/runtime/host_tools_server.py", "--socket", "/host-tools.sock", "--scope", scope,
                 *(("--output-schema", "/runtime/output-schema.json") if scope == "execution" and output_schema_path is not None else ()),
-                *(arg for name in tools for arg in ("--tool", name))]}}}
+                *(arg for name in tools for arg in ("--tool", name))]}
         allowed.extend("mcp__host-tools__" + tool["name"] for tool in host_tools_server.scoped_tools(scope, tools))
     for source, destination in (*runtime_mounts(extra_paths), *profile_mounts):
         argv.extend(("--ro-bind", str(source), destination))
@@ -307,8 +318,8 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         "--model", model, "--prompt-suggestions", "false", *workspace.session_arguments))
     if plugin_root is not None: argv.extend(("--plugin-dir", "/expert-plugin"))
     if request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= 35:
-        from .verification_contract import SYSTEM_INSTRUCTIONS
-        argv.extend(("--system-prompt", SYSTEM_INSTRUCTIONS))
+        from .verification_contract import system_instructions
+        argv.extend(("--system-prompt", system_instructions(request)))
     effort = runtime.get("effort")
     if effort is not None:
         if effort not in {"low", "medium", "high", "xhigh", "max"}:

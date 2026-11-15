@@ -538,6 +538,13 @@ def serve_stdio(
     schema = {} if output_schema_path is None else _decode(Path(output_schema_path).read_bytes())
     selected_tools = scoped_tools(scope, tools,
         candidate_schema=schema.get("$defs", {}).get("ExperimentSpecCandidate"))
+    return serve_mcp(selected_tools, lambda name, arguments: call_tool(socket_path, name, arguments),
+        max_request_bytes=max_request_bytes)
+
+
+def serve_mcp(selected_tools, invoke, *, max_request_bytes: int,
+              server_name: str = "hypoloom-host-tools") -> int:
+    """Shared stdlib MCP transport; the caller owns tool scope and authority."""
     allowed_tools = {tool["name"] for tool in selected_tools}
     while raw := sys.stdin.buffer.readline(max_request_bytes + 1):
         request_id = None
@@ -555,7 +562,7 @@ def serve_stdio(
                 result = {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "hypoloom-host-tools", "version": "1"},
+                    "serverInfo": {"name": server_name, "version": "1"},
                 }
             elif method == "ping":
                 result = {}
@@ -568,8 +575,7 @@ def serve_stdio(
                         raise ValueError("invalid MCP tool parameters")
                     if parameters.get("name") not in allowed_tools:
                         raise ValueError("Host tool is not authorized for this invocation scope")
-                    outcome = call_tool(
-                        socket_path,
+                    outcome = invoke(
                         parameters.get("name"),
                         parameters.get("arguments", {}),
                     )

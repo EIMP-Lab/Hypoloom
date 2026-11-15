@@ -65,7 +65,7 @@ def _decode(raw: str | bytes) -> Any:
         return json.loads(raw, parse_constant=_reject_constant, parse_float=_finite_float,
                           object_pairs_hook=_unique_object)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON at line {exc.lineno}, column {exc.colno}") from exc
+        raise ValueError(f"invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
     except (UnicodeError, RecursionError) as exc:
         raise ValueError("invalid JSON encoding or nesting") from exc
 
@@ -102,11 +102,28 @@ def _decode_output(text: str, validator) -> dict[str, Any]:
     except Exception as exc:
         raise _ValidationUnavailable("output schema could not be evaluated") from exc
     if error is not None:
+        # Nullable object branches otherwise report only '/probe: anyOf',
+        # concealing the field the model must fix. Reuse schema type selection;
+        # ambiguous unions retain their original error rather than guessing.
+        while error.validator in {"anyOf", "oneOf"} and error.context:
+            matching = [index for index, branch in enumerate(error.validator_value)
+                if isinstance(branch, dict) and isinstance(branch.get("type"), str)
+                and validator.is_type(error.instance, branch["type"])]
+            nested = [child for child in error.context
+                if len(matching) == 1 and child.schema_path[0] == matching[0]]
+            if not nested:
+                break
+            error = nested[0]
         path = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1")
                                for part in error.absolute_path)
         # jsonschema's human message often embeds the candidate value. Keep only
         # its precise location and constraint in the redacted diagnostic projection.
         hint = ""
+        if error.validator == "required" and isinstance(error.instance, dict):
+            missing = [key for key in error.validator_value if key not in error.instance]
+            hint = " Missing required fields: " + json.dumps(missing) + "."
+        elif error.validator in {"maxLength", "minLength", "maxItems", "maxProperties"}:
+            hint = f" Limit: {error.validator_value}."
         if error.validator == "enum" and "supporting_refs" in error.absolute_path:
             allowed = error.validator_value
             if isinstance(allowed, list) and all(isinstance(value, str) for value in allowed):
@@ -167,7 +184,8 @@ class NativeOutputValidator:
                  execution_tool_socket: Path | None = None,
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
                  final_report_check: Callable[[], Any] | None = None,
-                 context_notice: Callable[[], str | None] | None = None) -> None:
+                 context_notice: Callable[[], str | None] | None = None,
+                 structured_submission: bool = False) -> None:
         if acceptance_smoke and measurement_smoke:
             raise ValueError("a node authors either the common or the local parser")
         if (acceptance_smoke or measurement_smoke) and parser_source_root is None:
@@ -193,7 +211,7 @@ class NativeOutputValidator:
         self.deadline_at = deadline_at
         self._deadline_notice_window = (min(600.0 if design_implementation else 300.0,
             max(0.0, deadline_at - time.monotonic()) * 0.2)
-            if acceptance_smoke or design_implementation else 0.0)
+            if acceptance_smoke or design_implementation or structured_submission else 0.0)
         self.design_implementation = design_implementation
         self.diagnostics = diagnostics
         self.acceptance_smoke = acceptance_smoke
@@ -202,6 +220,8 @@ class NativeOutputValidator:
         self.candidate_check = candidate_check
         self.final_report_check = final_report_check
         self.context_notice = context_notice
+        self.structured_submission = structured_submission
+        self._prepared = False
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
         self._lock = threading.RLock()
@@ -209,6 +229,7 @@ class NativeOutputValidator:
         self._connections: set[socket.socket] = set()
         self._status = "not_observed"
         self._accepted = False
+        self._completion_text: str | None = None
         # The invocation-owned result is handed to the adapter without asking
         # the model to reproduce it. Sanitized diagnostics are never transport.
         self.output_path = self.socket_path.with_suffix(".json")
@@ -269,6 +290,11 @@ class NativeOutputValidator:
             self.diagnostics.event("native_output_validation_error", message=message)
 
     def _dispatch(self, document: Any) -> dict[str, Any]:
+        if isinstance(document, dict) and document.get("operation") == "prepare_output":
+            if not self.structured_submission or set(document) != {"session_id", "operation", "output"}:
+                raise ValueError("structured output submission is unavailable")
+            return self._validate({"session_id": document["session_id"],
+                "last_assistant_message": _encode(document["output"]).decode().rstrip("\n")}, prepare=True)
         # Reuse the existing Attempt/session boundary. An advisory cannot validate
         # a candidate, change tool permissions or consume a correction round.
         if isinstance(document, dict) and document.get("operation") == "context_notice":
@@ -293,6 +319,10 @@ class NativeOutputValidator:
                     "the start of the Host-submitted experiment for EXECUTION; DESIGN has no GPU grant. "
                     "Submit complete output with time for native Stop corrections, without claiming unrun checks."
                 ) if self.design_implementation else (
+                    f"Verifier has about {math.ceil(remaining)} seconds left before its existing deadline. "
+                    "Submit the smallest justified review with submit_review now, leaving time for corrections. "
+                    "Use existing coverage to state untested conditions; do not claim unrun checks or start full training."
+                ) if self.structured_submission else (
                     f"Grounding has about {math.ceil(remaining)} seconds left before its existing deadline. "
                     "Preserve reusable tests and the draft final JSON under /acceptance, update work notes, "
                     "and submit the complete final JSON as soon as scientific checks and smoke inputs are ready. "
@@ -306,7 +336,7 @@ class NativeOutputValidator:
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": notice}}
         return self._validate(document)
 
-    def _validate(self, document: Any) -> dict[str, Any]:
+    def _validate(self, document: Any, *, prepare: bool = False) -> dict[str, Any]:
         with self._lock:
             _remaining(self.deadline_at)
             if self._closed.is_set() or self._error is not None:
@@ -324,8 +354,21 @@ class NativeOutputValidator:
             hint = ""
             smoke = None
             validation_stage = "json_decode"
+            prepared = self._prepared
+            self._prepared = self._accepted = False
+            self._completion_text = None
+            text = document["last_assistant_message"]
+            selected_prepared = False
             try:
-                output = _decode_output(document["last_assistant_message"], self._validator)
+                selector = _decode(text) if not prepare and self.structured_submission else None
+                if isinstance(selector, dict) and set(selector) == {"review_submitted"} and selector["review_submitted"] is True:
+                    # A file alone is not a completed invocation. Only this
+                    # session's latest successful preparation can be selected.
+                    if not prepared:
+                        raise ValueError("no prepared review; call submit_review with the complete output")
+                    text = self._read_output()
+                    selected_prepared = True
+                output = _decode_output(text, self._validator)
                 if self.candidate_check is not None:
                     validation_stage = "candidate_validation"
                     self.candidate_check(output)
@@ -362,7 +405,7 @@ class NativeOutputValidator:
                     declaration = output.get("typed_candidate", {}).get(key)
                     if declaration is not None:
                         validation_stage = "parser_smoke"
-                        smoke = parser_smoke(document["last_assistant_message"],
+                        smoke = parser_smoke(text,
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
                             max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed)
@@ -391,24 +434,33 @@ class NativeOutputValidator:
             # output revokes acceptance and uses the same remaining correction cap.
             ordinal = len(self._rounds) + 1
             if error is None:
-                self._write_output(document["last_assistant_message"])
-                self._status = "recovered" if self._rejected else "first_pass"
+                self._write_output(text)
+                self._status = "prepared" if prepare else "recovered" if self._rejected else "first_pass"
+                self._prepared = prepare or selected_prepared
             else:
                 self._rejected += 1
                 self._status = "unresolved"
-            self._accepted = error is None
+            self._accepted = error is None and not prepare
+            if self._accepted:
+                self._completion_text = document["last_assistant_message"]
             # Optional observation of the boundary that actually rejected this
             # completion. Never reconstruct it later from diagnostic prose.
             failure_source = {"validation_stage": validation_stage} if error is not None else {}
-            self._rounds.append({"ordinal": ordinal, "status": "accepted" if error is None else "rejected",
+            self._rounds.append({"ordinal": ordinal, "status": ("prepared" if prepare else "accepted") if error is None else "rejected",
                                  "validation_error": error, **failure_source})
             if self.diagnostics is not None:
                 self.diagnostics.write_json(f"native-output/{ordinal:06d}.json", {
                     **document, **({"parser_smoke": smoke} if self.acceptance_smoke or self.measurement_smoke else {}),
                     "ordinal": ordinal, "error": error, **failure_source})
             _remaining(self.deadline_at)
+            if prepare:
+                return {"prepared": error is None, **({"error": error + hint,
+                    "remaining_corrections": self.max_failed_validations - self._rejected} if error is not None else {
+                    "next": 'Finish with {"review_submitted":true}; Stop will revalidate the prepared review. This is not scientific acceptance.'})}
             if error is not None and self._rejected < self.max_failed_validations:
                 return {"decision": "block", "reason": error + hint + (
+                    ". Correct the complete output using submit_review, then finish with {\"review_submitted\":true}."
+                    if self.structured_submission else
                     ". Correct the output and return one complete JSON object matching the full output schema. "
                     "Do not return a partial object, Markdown fences, or prose.") + (
                     " Repair the actual /acceptance parser and smoke fixtures when its execution or output fields fail."
@@ -428,7 +480,7 @@ class NativeOutputValidator:
         finally:
             Path(temporary).unlink(missing_ok=True)
 
-    def accepted_text(self) -> str:
+    def accepted_text(self, *, final_message: str | None = None) -> str:
         """Read the exact current result after Stop, including after close().
 
         Invocation state remains authoritative for acceptance. A file alone can
@@ -437,13 +489,18 @@ class NativeOutputValidator:
         with self._lock:
             if not self._accepted or self._error is not None:
                 raise ValueError("native output was not accepted")
-            with self.output_path.open("rb") as stream:
-                raw = stream.read(self.max_request_bytes + 1)
-            if len(raw) > self.max_request_bytes:
-                raise ValueError("native output exceeds size limit")
-            text = raw.decode("utf-8")
+            if final_message is not None and final_message != self._completion_text:
+                raise ValueError("provider result differs from validated native completion")
+            text = self._read_output()
             _decode_output(text, self._validator)
             return text
+
+    def _read_output(self) -> str:
+        with self.output_path.open("rb") as stream:
+            raw = stream.read(self.max_request_bytes + 1)
+        if len(raw) > self.max_request_bytes:
+            raise ValueError("native output exceeds size limit")
+        return raw.decode("utf-8")
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -596,16 +653,54 @@ def _read_stdin(maximum: int, deadline: float) -> bytes:
             raise ValueError("native Stop hook input exceeds size limit")
 
 
+def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
+                      max_request_bytes: int, timeout_seconds: float) -> int:
+    # Both modules are mounted read-only for the standalone stdlib bridge.
+    if __package__:
+        from .host_tools_server import serve_mcp
+    else:
+        from host_tools_server import serve_mcp
+    with Path(schema_path).open("rb") as stream:
+        raw = stream.read(max_request_bytes + 1)
+    if len(raw) > max_request_bytes:
+        raise ValueError("output schema exceeds size limit")
+    schema = _decode(raw)
+    tool = {"name": "submit_review", "description": (
+        "Prepare the complete Verifier AgentResponse using the supplied schema. "
+        "The Host checks fields, references and probe source within the existing correction budget. "
+        'After success finish with {"review_submitted":true}; preparation does not approve research.'),
+        "inputSchema": schema}
+    def invoke(name, arguments):
+        result = _call_endpoint(socket_path,
+            {"operation": "prepare_output", "session_id": session_id, "output": arguments},
+            max_request_bytes=max_request_bytes, timeout_seconds=timeout_seconds)
+        if result.get("prepared") is not True:
+            raise ValueError(str(result.get("error", "review preparation failed"))
+                + f" Remaining failed validations: {result.get('remaining_corrections', 0)}.")
+        return result
+    return serve_mcp((tool,), invoke, max_request_bytes=max_request_bytes,
+        server_name="hypoloom-verifier-output")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", required=True)
     parser.add_argument("--max-bytes", type=int, required=True)
     parser.add_argument("--timeout-seconds", type=float, required=True)
     parser.add_argument("--context-notice", action="store_true")
+    parser.add_argument("--review-tool", action="store_true")
+    parser.add_argument("--output-schema")
+    parser.add_argument("--session-id")
     arguments = parser.parse_args()
     try:
         if arguments.max_bytes < 1 or not math.isfinite(arguments.timeout_seconds) or arguments.timeout_seconds <= 0:
             raise ValueError("native Stop hook requires positive size and timeout limits")
+        if arguments.review_tool:
+            if not arguments.output_schema or not arguments.session_id:
+                raise ValueError("review tool requires its schema and session")
+            return serve_review_tool(arguments.socket, schema_path=arguments.output_schema,
+                session_id=arguments.session_id, max_request_bytes=arguments.max_bytes,
+                timeout_seconds=arguments.timeout_seconds)
         deadline = time.monotonic() + arguments.timeout_seconds
         hook = _decode(_read_stdin(arguments.max_bytes, deadline))
         if not isinstance(hook, dict):
@@ -620,6 +715,8 @@ def main() -> int:
                                 max_request_bytes=arguments.max_bytes,
                                 timeout_seconds=_remaining(deadline))
     except (ValueError, OSError, TypeError):
+        if arguments.review_tool:
+            return 1
         result = {} if arguments.context_notice else {
             "continue": False, "stopReason": "Host output validation unavailable; this candidate must not be accepted."}
     sys.stdout.buffer.write(_encode(result))

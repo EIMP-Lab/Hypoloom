@@ -158,6 +158,9 @@ def capabilities_for(command: AgentCommand, *, schema_version: int = 11) -> Agen
         raise TypeError("command must be an AgentCommand")
     from .agent_aci import supports_grounding_web, supports_literature_web
     value = (AGENT_CAPABILITY_MATRIX if schema_version >= 11 else _RETAINED_CAPABILITY_MATRIX)[command]
+    from .agent_aci import STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION
+    if schema_version >= STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION and command is AgentCommand.VERIFY_IMPLEMENTATION:
+        value = replace(value, mcp_servers=("verifier-output",))
     if schema_version >= 12 and command in {
         AgentCommand.LITERATURE_REVIEW, AgentCommand.HYPOTHESIS_PROPOSAL,
         AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, AgentCommand.EXPERIMENT_EXECUTION,
