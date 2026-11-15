@@ -715,6 +715,11 @@
       light.title = `${light.dataset.workTitle || ""}\n${describe(counts)} ${t("Pulse frequency follows RPM; it is not a heartbeat or token speed.")}`;
     };
     pulse(byId("grounding-pulse"), object(traffic.grounding), true);
+    const verifier = object(snapshot.overview?.verifier);
+    pulse(byId("verifier-pulse"), verifier.state === 'active' ? object(traffic.verifier) : {}, true);
+    const verifierState = ({active: 'RUN', probing: 'PROBE', queued: 'QUEUED', idle: 'IDLE', unsupported: 'OFF'})[verifier.state] || 'UNKNOWN';
+    if (byId('verifier-state')) setText('verifier-state', ['active', 'probing'].includes(verifier.state)
+      && (connection.dataset.state !== 'live' || snapshot.overview?.host_observation?.availability !== 'responded') ? 'OPEN?' : verifierState);
     const grounding = object(snapshot.overview?.grounding);
     const counts = object(traffic.grounding);
     const groundingState = grounding.state === "preparing" && connection.dataset.state === 'live' && snapshot.status?.provider_retry?.state === 'cooldown' ? 'COOLDOWN'
@@ -1542,6 +1547,7 @@
       const group = object(key === 'global_tasks' ? (overview.other_global_tasks || overview[key]) : overview[key]);
       if (!list(group.stages).length) return;
       const row = element("article", "global-task-summary");
+      row.append(agentModelLabel(group));
       const opened = list(group.activity).filter((item) => item.state === "OPEN");
       const stages = opened.length ? opened : list(group.stages).slice(-1);
       stages.forEach((stage) => {
@@ -1559,6 +1565,21 @@
     renderTraffic(snapshot);
   }
 
+  function agentModelLabel(group) {
+    const models = [...new Set(list(object(group.reliability).groups).map(row => row.model)
+      .filter(value => typeof value === 'string' && value && value !== 'unknown'))].sort();
+    const label = element('p', 'agent-model', t('Model: {0}', models.join(' / ') || group.model || '—'));
+    label.title = t('Recorded model names; different invocations may use different models.');
+    return label;
+  }
+
+  function agentIdentityIcon(kind) {
+    const icon = element('span', 'agent-identity-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.append(workingTileIcon(kind));
+    return icon;
+  }
+
   function renderGrounding(snapshot) {
     const container = byId('grounding-agent-card');
     const restorePulses = preservePulseTiming(container);
@@ -1569,6 +1590,7 @@
     const sharing = object(snapshot.overview?.grounding_sharing);
     const card = element('article', 'entity-card grounding-card');
     const heading = element('h3', '', 'Grounding');
+    heading.prepend(agentIdentityIcon('GROUNDING'));
     if (group.state === 'active') {
       const confirmed = object(snapshot.overview).host_observation?.availability === 'responded';
       const light = previousLight || element('span', 'breath-dot');
@@ -1579,7 +1601,7 @@
     }
     const badge = element('span', 'grounding-badge', 'UNKNOWN');
     badge.id = 'grounding-state'; heading.append(badge);
-    card.append(heading, element('p', 'panel-copy', t('Run-wide preparation · separate from expert work')));
+    card.append(heading, agentModelLabel(group), element('p', 'panel-copy', t('Run-wide preparation · separate from expert work')));
     const rpm = element('p', 'grounding-rpm', t('Grounding RPM') + ' ');
     const rpmValue = element('strong', '', '—'); rpmValue.id = 'grounding-rpm'; rpm.append(rpmValue);
     card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · task span {1} · active readers {2}',
@@ -1623,17 +1645,35 @@
   function renderVerifier(snapshot) {
     const container = byId('verifier-agent-card');
     if (!container) return;
+    const restorePulses = preservePulseTiming(container);
+    const previousLight = container.querySelector('.breath-dot');
     const expanded = new Set([...container.querySelectorAll('details[open]')].map(node => node.dataset.expert));
     const focusKey = container.contains(document.activeElement) ? document.activeElement.dataset.verifierFocus : null;
     const group = object(snapshot.overview?.verifier);
     const confirmed = snapshot.overview?.host_observation?.availability === 'responded';
-    const card = element('article', 'entity-card');
-    card.append(element('h3', '', t('Implementation Verifier') + ' · ' + (group.state === 'active' && !confirmed ? 'OPEN?' : (group.state || 'unsupported'))));
-    card.append(element('p', 'panel-copy', `${group.model || '—'} · ${group.effort || '—'}`));
+    const card = element('article', 'entity-card verifier-card');
+    const heading = element('h3', '', 'Verifier');
+    heading.prepend(agentIdentityIcon('VERIFIER'));
+    if (['active', 'probing'].includes(group.state)) {
+      const light = previousLight || element('span', 'breath-dot');
+      light.id = 'verifier-pulse';
+      light.classList.toggle('host-confirmed', confirmed);
+      light.classList.toggle('host-unconfirmed', !confirmed);
+      light.dataset.workTitle = t(confirmed ? 'Open work; Host responded' : 'Open work; activity unknown');
+      light.setAttribute('aria-label', light.dataset.workTitle);
+      heading.prepend(light);
+    }
+    const badge = element('span', 'agent-state-badge', 'UNKNOWN');
+    badge.id = 'verifier-state'; heading.append(badge);
+    const modelLabel = agentModelLabel(group);
+    if (group.effort) modelLabel.append(element('span', '', ' · ' + t('Effort: {0}', group.effort)));
+    card.append(heading, modelLabel);
     if (group.delivery_evidence === 'partial') card.append(element('p', 'panel-copy', t('Delivery history is partial; unconfirmed does not mean undelivered')));
-    const rpm = element('p', 'panel-copy', t('Verifier RPM') + ' ');
+    const rpm = element('p', 'agent-activity-summary', t('Verifier RPM') + ' ');
     const rpmValue = element('strong', '', '—'); rpmValue.id = 'verifier-rpm'; rpm.append(rpmValue);
-    card.append(rpm, element('p', 'panel-copy', t('≥{0} tokens · probe {1}', compactNumber(object(group.accounting).reported_tokens), compactDuration(group.probe_seconds))));
+    rpm.append(element('span', 'agent-usage', t('≥{0} tokens · probe {1}',
+      compactNumber(object(group.accounting).reported_tokens), Number.isFinite(group.probe_seconds) ? compactDuration(group.probe_seconds) : '—')));
+    card.append(rpm);
     const ids = new Set(list(group.attempt_ids));
     const active = list(snapshot.attempts).filter(a => ids.has(a.attempt_id) && a.state === 'OPEN');
     for (const attempt of active) {
@@ -1686,6 +1726,7 @@
     card.append(actionButton(t('Verification history'), () => openRemoteDetail('verification', {offset: 0, limit: 20}), 'detail-link'));
     for (const node of card.querySelectorAll('summary, button')) node.dataset.verifierFocus = `${node.closest('details')?.dataset.expert || ''}:${node.textContent}`;
     container.replaceChildren(card);
+    restorePulses();
     if (focusKey) [...card.querySelectorAll('[data-verifier-focus]')].find(node => node.dataset.verifierFocus === focusKey)?.focus({preventScroll:true});
   }
 
@@ -1757,7 +1798,12 @@
       viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
       "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", focusable: "false",
     });
-    if (kind === "AGENT") {
+    if (kind === 'VERIFIER') {
+      icon.append(svgElement('path', {d: 'M12 3L4 6v6c0 5 8 9 8 9s8-4 8-9V6z'}),
+        svgElement('path', {d: 'M8 12l3 3 5-6'}));
+    } else if (kind === 'GROUNDING') {
+      icon.append(svgElement('circle', {cx: 10, cy: 10, r: 6}), svgElement('path', {d: 'M15 15l6 6'}));
+    } else if (kind === "AGENT") {
       icon.append(
         svgElement("path", {d: "M12 8V4H8"}),
         svgElement("rect", {width: 16, height: 12, x: 4, y: 8, rx: 2}),
@@ -1926,6 +1972,7 @@
       const identity = element("div", "expert-identity");
       const openAttempts = list(snapshot.attempts).filter((attempt) => attempt && attempt.task_scope === "expert" && attempt.owner_role === expert.role && attempt.state === "OPEN").length;
       const heading = element("h3", "", expert.role || t("unnamed role"));
+      heading.prepend(agentIdentityIcon('AGENT'));
       if (openAttempts) {
         const confirmed = object(snapshot.overview).host_observation?.availability === "responded";
         const breath = previousLights.get(expert.role) || element("span", "breath-dot");
@@ -1937,6 +1984,7 @@
         heading.prepend(breath);
       }
       identity.append(element("p", "eyebrow", t("EXPERT {0}", String(expert.slot_ordinal ?? "?").padStart(2, "0"))), heading);
+      identity.append(agentModelLabel(summary));
       const rpm = element("p", "expert-rpm", "RPM ");
       const rpmValue = element("strong", "expert-rpm-value", "—");
       rpmValue.dataset.rpmValue = "";
@@ -5105,7 +5153,7 @@
     trendSeries = [{key:"run", label:t("Total RPM"), color:trendColors[0],
       values:trendsData.points.map(p => p.rpm), lower:trendsData.points.map(p => p.rpm_lower_bound)},
       ...trendsData.experts.map((s, i) => ({key:`expert:${s.role}`, label:s.role, color:trendColors[(i+1)%trendColors.length], values:s.rpm, lower:s.rpm_lower_bound})),
-      ...["grounding", "verifier", "other"].filter(key => trendsData[key]).map(key => ({key, label:key === "grounding" ? "Grounding" : key === "verifier" ? t("Implementation Verifier") : t("Other run tasks"), color:{grounding:"#8cabbc",verifier:"#b695da",other:"#df9b9b"}[key], values:trendsData[key].rpm, lower:trendsData[key].rpm_lower_bound}))];
+      ...["grounding", "verifier", "other"].filter(key => trendsData[key]).map(key => ({key, label:key === "grounding" ? "Grounding" : key === "verifier" ? "Verifier" : t("Other run tasks"), color:{grounding:"#8cabbc",verifier:"#b695da",other:"#df9b9b"}[key], values:trendsData[key].rpm, lower:trendsData[key].rpm_lower_bound}))];
     const rpmLegend = byId("trends-rpm-legend"); rpmLegend.replaceChildren();
     trendSeries.forEach(s => {
       const button = element("button", "", s.label); button.type="button"; button.style.color=s.color;

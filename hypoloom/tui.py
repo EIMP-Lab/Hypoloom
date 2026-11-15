@@ -542,7 +542,8 @@ def _verification_summary_lines(verifier, *, host_available=True):
         "unsupported": "Not enabled", "inspect": "Inspection", "review": "Evidence review",
         "awaiting_probe": "Awaiting probe", "passed": "Passed", "reused": "Reused",
         "changes_required": "Changes required", "inconclusive": "Unverified"}
-    lines = [f"{tr(labels.get(state, state))} · {_value(verifier.get('model'))} · {_value(verifier.get('effort'))}"]
+    lines = [f"{tr(labels.get(state, state))} · {_value(verifier.get('effort'))}",
+        tr("Model: {0}", _agent_models(verifier))]
     for subject in verifier.get("experts", []):
         counts = subject.get("state_counts", {})
         states = " · ".join(f"{tr(labels.get(key, key))} {value}" for key, value in counts.items() if value) or "—"
@@ -561,7 +562,7 @@ class VerificationScreen(ModalScreen[None]):
 
     def __init__(self, root, run_id):
         super().__init__()
-        self.root, self.run_id, self.offset = root, run_id, 0
+        self.root, self.run_id, self.page_offset = root, run_id, 0
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -579,8 +580,9 @@ class VerificationScreen(ModalScreen[None]):
     async def load_page(self):
         import asyncio
         from .observer_details import read_observer_detail
-        data = await asyncio.to_thread(read_observer_detail, self.root, self.run_id, "verification", offset=self.offset, limit=20)
-        lines = [f"{data.get('model') or '—'} · {data.get('state')} · {self.offset + 1}"]
+        data = await asyncio.to_thread(read_observer_detail, self.root, self.run_id, "verification", offset=self.page_offset, limit=20)
+        if self.app.screen is not self: return
+        lines = [f"{data.get('model') or '—'} · {data.get('state')} · {self.page_offset + 1}"]
         for subject in data["experts"]:
             lines.append(f"{subject['expert']} · {subject['deliveries']} deliveries · {subject['blockers']} blockers")
             lines.append(tr("Unverified {0} · invocation failures {1} · output rejections {2}",
@@ -607,16 +609,18 @@ class VerificationScreen(ModalScreen[None]):
                         for finding in report["findings"]:
                             lines.append(f"      {finding['finding_ref']} · {finding['severity']}: {finding['message']}\n      {finding['resolution_condition']}")
         self.query_one("#verification-history", Static).update(Text("\n".join(lines)))
-        self.query_one("#verification-previous", Button).disabled = self.offset == 0
+        self.query_one("#verification-previous", Button).disabled = self.page_offset == 0
         self.query_one("#verification-next", Button).disabled = not any(len(s["recent"]) == 20 for s in data["experts"])
 
     async def on_button_pressed(self, event: Button.Pressed):
-        if event.button.id == "verification-close": self.dismiss(); return
-        self.offset = max(0, self.offset + (20 if event.button.id == "verification-next" else -20))
+        event.stop()
+        if event.button.id == "verification-close": self.action_close(); return
+        if event.button.id not in {"verification-next", "verification-previous"}: return
+        self.page_offset = max(0, self.page_offset + (20 if event.button.id == "verification-next" else -20))
         await self.load_page()
 
     def action_close(self):
-        self.dismiss()
+        if self.is_mounted and self.app.screen is self: self.dismiss()
 
 
 def _send_terminal_clipboard_request(
@@ -911,12 +915,51 @@ class SummaryPanel(CockpitPanel):
         self.update("\n".join(lines))
 
 
+def _agent_models(group):
+    """Reuse recorded model identities; never infer a model from a role name."""
+    models = {row.get("model") for row in (group.get("reliability") or {}).get("groups", [])}
+    models = {value for value in models if isinstance(value, str) and value and value != "unknown"}
+    return " / ".join(sorted(models)) or group.get("model") or "—"
+
+
+def _activity_light(counts, *, active, confirmed, color, animate=True):
+    if not active: return "[#647887]○[/]"
+    if not confirmed: return "[#ffb86b]●[/]"
+    rpm = counts.get("rpm")
+    if animate and type(rpm) in (int, float) and rpm > 0:
+        period = (.8 + 1.2 / math.sqrt(rpm)) * 1.35
+        brightness = .45 + .55 * (1 - math.cos(time.monotonic() * math.tau / period)) / 2
+        color = "#" + "".join(f"{round(int(color[i:i+2], 16) * brightness):02x}" for i in (1, 3, 5))
+    return f"[{color}]●[/]"
+
+
 class ExpertsPanel(CockpitPanel):
+    _pulse_snapshot = None
+    _pulse_role_filter = ""
+    _pulse_active = False
+
+    def on_mount(self):
+        self.set_interval(.25, self._animate_activity)
+
+    def _animate_activity(self):
+        # Repaint existing presentation only; no database, provider or Host poll.
+        if (self._pulse_active and self._pulse_snapshot is not None and self.screen is self.app.screen
+                and self.app.is_running and self.app.animation_level != "none"):
+            self.update_snapshot(self._pulse_snapshot, self._pulse_role_filter)
+
     def update_snapshot(self, snapshot: MonitorSnapshot, role_filter: str = "") -> None:
+        self._pulse_snapshot, self._pulse_role_filter = snapshot, role_filter
+        self._pulse_active = False
         lines = []
         cards = []
         overview = snapshot.overview or {}
         traffic = _live_traffic(snapshot)
+        confirmed = _has_host_status(snapshot) or overview.get("host_observation", {}).get("availability") == "responded"
+        def light(counts, active, color):
+            rpm = counts.get("rpm")
+            self._pulse_active |= bool(active and confirmed and type(rpm) in (int, float) and rpm > 0)
+            return _activity_light(counts, active=active, confirmed=confirmed, color=color,
+                animate=self.app.animation_level != "none")
         grounding = overview.get("grounding", {})
         counts = traffic.get("grounding", {})
         label = {"active": "RUN", "completed": "DONE", "waiting_human": "WAIT",
@@ -927,7 +970,8 @@ class ExpertsPanel(CockpitPanel):
             label = "OPEN?"
         if label == "PREP" and _has_host_status(snapshot) and (snapshot.status.get("provider_retry") or {}).get("state") == "cooldown":
             label = "COOLDOWN"
-        grounding_lines = [f"[b #78dcff]Grounding[/] · {label}",
+        grounding_lines = [f"{light(counts, grounding.get('state') == 'active', '#78dcff')} ◈ [b #78dcff]Grounding[/] · {label}",
+            escape(tr("Model: {0}", _agent_models(grounding))),
             tr("Run-wide preparation · separate from expert work"),
             f"RPM {_count(counts.get('rpm'))} · " + tr("in flight {0} · queued {1}",
                 _count(counts.get('in_flight')), _count(counts.get('queued'))),
@@ -948,6 +992,7 @@ class ExpertsPanel(CockpitPanel):
                 _compact(usage.get('reported_tokens')),
                 _compact(usage.get('reserved_tokens')),
             ))
+            lines.append(escape(tr("Model: {0}", _agent_models(group))))
             for stage in group.get("activity", []):
                 lines.append(f"  {_value(stage.get('node'))} · {_stage_badge(stage, overview.get('host_observation', {}).get('availability', 'unconfirmed'))} "
                              f"· {_duration(stage.get('elapsed_seconds'))}")
@@ -993,7 +1038,9 @@ class ExpertsPanel(CockpitPanel):
             ) if stages else tr(
                 "not started"
             )
-            card = [f"[b]{_role(snapshot, role)}[/] · C{_count(expert.get('cycle'))} · {label}",
+            color = _EXPERT_COLORS[next((e.slot_ordinal - 1 for e in snapshot.experts if e.role == role), 0) % len(_EXPERT_COLORS)]
+            card = [f"{light(traffic.get('by_expert', {}).get(role, {}), opened, color)} 🤖 [b]{_role(snapshot, role)}[/] · C{_count(expert.get('cycle'))} · {label}",
+                escape(tr("Model: {0}", _agent_models(expert))),
                 f"RPM {_count(traffic.get('by_expert', {}).get(role, {}).get('rpm', 0 if traffic else None))}",
                 _lane_line(stages, host)]
             for stage in stages:
@@ -1037,10 +1084,12 @@ class ExpertsPanel(CockpitPanel):
             lines.append(tr("[dim]No experts match this filter[/dim]"))
         grounding_text = "\n".join(grounding_lines)
         verifier = overview.get("verifier", {})
-        verifier_text = "\n".join(_verification_summary_lines(verifier,
-            host_available=overview.get("host_observation", {}).get("availability") == "responded"))
+        verifier_light = light(traffic.get('verifier', {}) if verifier.get('state') == 'active' else {},
+            verifier.get('state') in {'active', 'probing'}, '#b695da')
+        verifier_text = f"{verifier_light} ✓ [b #b695da]Verifier[/]\n" + "\n".join(
+            escape(line) for line in _verification_summary_lines(verifier, host_available=confirmed))
         rendered = [Panel(Text.from_markup(grounding_text), title=tr("Grounding Agent"), border_style="#24566a", padding=(0, 1)),
-            Panel(Text(verifier_text), title=tr("Implementation Verifier"), border_style="#24566a", padding=(0, 1)),
+            Panel(Text.from_markup(verifier_text), title="Verifier", border_style="#76558e", padding=(0, 1)),
             Text.from_markup("\n".join(lines))]
         for card in cards:
             rendered.extend((Text(""), Panel(Text.from_markup(card), border_style="#24566a", padding=(0, 1))))
