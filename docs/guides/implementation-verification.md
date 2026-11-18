@@ -50,7 +50,10 @@ environment or resource changes require another inspection. There is no universa
 vectorization threshold, mandatory baseline equivalence or cross-run pass cache.
 A small probe samples behavior; it does not prove complete program correctness.
 
-ACI 39 adds the Verifier-only `submit_review` tool. It accepts the full report as
+From ACI 40, `submit_review` accepts the report fields directly, including
+verdict, findings, probe, coverage and evidence references. The Host supplies
+the task discriminator and effect, and validates the complete response. The tool
+describes the fields for the current review phase. ACI 39 accepts the full report as
 structured arguments, checks it with the existing validator, and returns precise
 field errors within the same correction budget. After successful preparation the
 Verifier finishes with `{"review_submitted":true}`; Stop revalidates the prepared

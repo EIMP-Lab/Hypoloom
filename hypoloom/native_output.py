@@ -185,7 +185,9 @@ class NativeOutputValidator:
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
                  final_report_check: Callable[[], Any] | None = None,
                  context_notice: Callable[[], str | None] | None = None,
-                 structured_submission: bool = False) -> None:
+                 structured_submission: bool = False, compact_review: bool = False) -> None:
+        if compact_review and not structured_submission:
+            raise ValueError("compact review requires structured submission")
         if acceptance_smoke and measurement_smoke:
             raise ValueError("a node authors either the common or the local parser")
         if (acceptance_smoke or measurement_smoke) and parser_source_root is None:
@@ -221,6 +223,7 @@ class NativeOutputValidator:
         self.final_report_check = final_report_check
         self.context_notice = context_notice
         self.structured_submission = structured_submission
+        self.compact_review = compact_review
         self._prepared = False
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
@@ -360,6 +363,16 @@ class NativeOutputValidator:
             text = document["last_assistant_message"]
             selected_prepared = False
             try:
+                if prepare and self.compact_review:
+                    validation_stage = "output_schema"
+                    report = _decode(text)
+                    if not isinstance(report, dict) or {"task_kind", "typed_candidate", "declared_effects"} & report.keys():
+                        raise ValueError("submit_review takes report fields directly; omit task_kind, typed_candidate and declared_effects")
+                    fields = self._validator.schema["properties"]
+                    task_kind = fields["typed_candidate"]["properties"]["task_kind"]["const"]
+                    effect = fields["declared_effects"]["items"]["properties"]["effect"]["const"]
+                    text = _encode({"typed_candidate": {"task_kind": task_kind, **report},
+                                    "declared_effects": [{"effect": effect}]}).decode().rstrip("\n")
                 selector = _decode(text) if not prepare and self.structured_submission else None
                 if isinstance(selector, dict) and set(selector) == {"review_submitted"} and selector["review_submitted"] is True:
                     # A file alone is not a completed invocation. Only this
@@ -465,7 +478,7 @@ class NativeOutputValidator:
                     "Do not return a partial object, Markdown fences, or prose.") + (
                     " Repair the actual /acceptance parser and smoke fixtures when its execution or output fields fail."
                     if self.acceptance_smoke else
-                    " Repair the actual /workspace local C5 parser and /workspace/smoke fixtures; its output requires metric, value and optional baseline."
+                    " Repair the actual /workspace local C5 parser and /workspace/smoke fixtures to match the frozen measurement."
                     if self.measurement_smoke else "")}
             return {}
 
@@ -654,7 +667,7 @@ def _read_stdin(maximum: int, deadline: float) -> bytes:
 
 
 def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
-                      max_request_bytes: int, timeout_seconds: float) -> int:
+                      max_request_bytes: int, timeout_seconds: float, compact_review: bool = False) -> int:
     # Both modules are mounted read-only for the standalone stdlib bridge.
     if __package__:
         from .host_tools_server import serve_mcp
@@ -665,8 +678,13 @@ def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
     if len(raw) > max_request_bytes:
         raise ValueError("output schema exceeds size limit")
     schema = _decode(raw)
+    if compact_review:
+        report = schema["properties"]["typed_candidate"]
+        schema = {**report, "properties": {key: spec for key, spec in report["properties"].items() if key != "task_kind"},
+                  "required": [key for key in report["required"] if key != "task_kind"]}
     tool = {"name": "submit_review", "description": (
-        "Prepare the complete Verifier AgentResponse using the supplied schema. "
+        ("Prepare the Verifier report fields directly. " if compact_review else
+         "Prepare the complete Verifier AgentResponse using the supplied schema. ") +
         "The Host checks fields, references and probe source within the existing correction budget. "
         'After success finish with {"review_submitted":true}; preparation does not approve research.'),
         "inputSchema": schema}
@@ -689,6 +707,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, required=True)
     parser.add_argument("--context-notice", action="store_true")
     parser.add_argument("--review-tool", action="store_true")
+    parser.add_argument("--compact-review", action="store_true")
     parser.add_argument("--output-schema")
     parser.add_argument("--session-id")
     arguments = parser.parse_args()
@@ -700,7 +719,7 @@ def main() -> int:
                 raise ValueError("review tool requires its schema and session")
             return serve_review_tool(arguments.socket, schema_path=arguments.output_schema,
                 session_id=arguments.session_id, max_request_bytes=arguments.max_bytes,
-                timeout_seconds=arguments.timeout_seconds)
+                timeout_seconds=arguments.timeout_seconds, compact_review=arguments.compact_review)
         deadline = time.monotonic() + arguments.timeout_seconds
         hook = _decode(_read_stdin(arguments.max_bytes, deadline))
         if not isinstance(hook, dict):

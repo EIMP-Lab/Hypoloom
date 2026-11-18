@@ -170,6 +170,37 @@ def test_local_parser_rejects_common_envelope_and_repairs_before_preregistration
         assert validator.snapshot()["accepted"] is True
 
 
+def test_design_smoke_requires_the_frozen_confirmation_units(tmp_path):
+    from hypoloom.native_output import NativeOutputValidator, call_validator
+    from hypoloom.runtime_diagnostics import RuntimeDiagnostics
+    from test_measurement_contract import declaration
+    root, _ = _case(tmp_path)
+    spec = {**declaration().to_dict(), "parser_argv": ["python", "/input/evaluate.py"],
+        "parser_files": ["evaluate.py"], "raw_artifacts": ["raw.json"], "success_operator": "LT",
+        "evidence": {"stage": "CONFIRMATION", "reduction": "WORST", "units": ["B", "C"]}}
+    (root / "evaluate.py").write_text("import json\nfrom pathlib import Path\n"
+        "rows = json.loads(Path('/raw/raw.json').read_text())\n"
+        "Path('/parsed/result.json').write_text(json.dumps({'metric':'median_latency_delta', 'observations':rows}))\n")
+    fixture = root / "smoke/raw.json"
+    rows = {"B": {"value": 8, "baseline": 10}}
+    fixture.write_text(json.dumps(rows))
+    with closing(NativeOutputValidator(tmp_path / "output.sock", output_schema={"type": "object"},
+            session_id="session", max_failed_validations=3, max_request_bytes=65536, deadline_at=time.monotonic() + 20,
+            measurement_smoke=True, parser_source_root=root, diagnostics=RuntimeDiagnostics(tmp_path / "trace"))) as validator:
+        def submit():
+            return call_validator(str(validator.socket_path), session_id="session",
+                last_assistant_message=json.dumps({"typed_candidate": {"measurement": spec}}),
+                timeout_seconds=5, max_request_bytes=65536)
+        rejected = submit()
+        assert rejected["decision"] == "block" and "evidence.units" in rejected["reason"]
+        rows["C"] = {"value": 11, "baseline": 10}
+        fixture.write_text(json.dumps(rows))
+        assert submit() == {}
+        smoke = json.loads((tmp_path / "trace/native-output/000002.json").read_text())["parser_smoke"]
+        assert smoke["observation"]["observations"] == rows
+        assert smoke["measurement"]["metric_value"] == "0.1" and smoke["measurement"]["criterion_met"] is False
+
+
 def test_goal_only_design_does_not_require_a_local_parser(tmp_path):
     from hypoloom.native_output import NativeOutputValidator, parser_smoke
     text = json.dumps({"typed_candidate": {"measurement": None}})

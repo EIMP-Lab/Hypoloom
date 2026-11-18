@@ -39,11 +39,12 @@ def test_native_verifier_prepares_corrects_and_finishes_without_repeating_report
         assert "mcp__verifier-output__submit_review" in tool_names
         assert not tool_names & {"Bash", "Write", "Edit", "StructuredOutput"}
         output = provider.displayed_candidate(document, deepcopy(calls[0][2]))
+        report = {k: v for k, v in output["typed_candidate"].items() if k != "task_kind"}
         step = scenario.steps[request.attempt_id]
-        inspect = output["typed_candidate"]["probe"] is not None
+        inspect = report["probe"] is not None
         if step == 1 and inspect:
-            output["typed_candidate"]["probe"]["files"]["verification/probe.py"] = "def broken("
-            return (("bad_review", "mcp__verifier-output__submit_review", output),)
+            report["probe"]["files"]["verification/probe.py"] = "def broken("
+            return (("bad_review", "mcp__verifier-output__submit_review", report),)
         results = provider._tool_results(document)
         if step == 2 and inspect:
             failed = results["bad_review"]
@@ -51,7 +52,7 @@ def test_native_verifier_prepares_corrects_and_finishes_without_repeating_report
             assert "does not compile" in provider._result_text(failed)
             corrected.add(request.attempt_id)
         if step == (2 if inspect else 1):
-            return (("good_review", "mcp__verifier-output__submit_review", output),)
+            return (("good_review", "mcp__verifier-output__submit_review", report),)
         assert step == (3 if inspect else 2)
         assert results["good_review"].get("is_error") is not True
         assert "review_submitted" in provider._result_text(results["good_review"])

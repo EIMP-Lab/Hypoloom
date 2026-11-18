@@ -1768,7 +1768,8 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
     assert "test_f1" in page.text(".metric-goal-empty")
     assert "Target > 0.7" in page.text(".metric-goal-empty")
     measurement = {"metric": {"name": "validation_delta", "direction": "MAXIMIZE", "target": "0"},
-        "comparison": "DELTA_FROM_BASELINE", "parse_rule": "Matched seed validation delta"}
+        "comparison": "DELTA_FROM_BASELINE", "parse_rule": "Matched seed validation delta",
+        "success_operator": "GT", "evidence": {"stage": "CONFIRMATION", "reduction": "WORST", "units": ["B", "C"]}}
     def local(index, value, **changes):
         return {"scope": "LOCAL", "experiment_id": f"experiment-{index}", "outcome_id": f"outcome-{index}",
             "component_id": "component-a", "hypothesis_id": "hypothesis-a",
@@ -1782,6 +1783,8 @@ def test_browser_local_only_trends_remain_visible_and_separate_measurements(brow
     page.wait("document.querySelectorAll('.metric-local .metric-single').length === 1")
     assert page.evaluate("document.querySelector('.metric-local svg') === null")
     assert page.text(".metric-single-value") == "-0.02199"
+    assert "Confirmation · Worst unit · units: B, C" in page.text(".metric-local-context")
+    assert "> 0" in page.text(".metric-local-criterion")
     assert "-0.021994627971751002" in page.evaluate("document.querySelector('.metric-single-value').title")
     assert len(page.text(".metric-local-context")) < len(long_id)
     assert long_id in page.evaluate("document.querySelector('.metric-local-context').title")

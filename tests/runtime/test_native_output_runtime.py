@@ -86,7 +86,7 @@ def test_legacy_helper_without_output_endpoint_keeps_native_schema(tmp_path):
     assert "Stop" not in json.loads(argv[argv.index("--settings") + 1]).get("hooks", {})
 
 
-@pytest.mark.parametrize("version", [38, 39])
+@pytest.mark.parametrize("version", [38, 39, 40])
 def test_verifier_submission_tool_uses_same_schema_session_and_readonly_mounts(tmp_path, version):
     from hypoloom.domain import AgentCommand
     from hypoloom.claude_agent_host import _output_schema, _prompt
@@ -103,8 +103,10 @@ def test_verifier_submission_tool_uses_same_schema_session_and_readonly_mounts(t
     assert argv[argv.index("--tools") + 1] == "Read,Glob,Grep"
     assert ("--ro-bind", str(workspace.worktree_root), "/workspace") in tuple(zip(argv, argv[1:], argv[2:]))
     prompt = json.loads(_prompt(request, tool_workspace=True))["instruction"]
-    if version == 39:
+    if version >= 39:
         args = servers["verifier-output"]["args"]
+        assert ("--compact-review" in args) is (version >= 40)
+        assert ("HYPOLOOM_OUTPUT_SCHEMA_JSON" in prompt) is (version == 39)
         assert args[args.index("--session-id") + 1] == "test-session"
         assert args[args.index("--output-schema") + 1] == "/runtime/output-schema.json"
         assert "mcp__verifier-output__submit_review" in argv

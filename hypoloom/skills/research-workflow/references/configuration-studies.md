@@ -24,23 +24,20 @@ accumulation need not reproduce the same negatives or batch statistics. Compare
 cost and scientific settings explicitly instead of assuming a larger batch or
 more workers is better; use the performance guidance for measured worker choices.
 
-Keep one accepted mechanism per hypothesis; parameter variants normally belong
-inside its study. Declare candidates, search seeds, validation metric/direction,
-dataset weights, trial ceiling including retries, selection rule and final seeds
-before execution, in existing admitted source/notes. Use logarithmic ranges when
-appropriate, a bounded pilot, then confirm promising choices with matched seeds
-and compute. Do not replace required task seeds with this heuristic or add an
-arbitrary significance gate. Leave room in the existing deadline for selection,
-final evaluation and artifact checks. If settings are inherited without tuning,
-say why; do not invent a search or imply they generalize.
+Keep parameter variants in one mechanism's study. At proposal record the default,
+bounded ranges or candidates, search seeds, validation metric/direction, dataset
+weights, trial ceiling including retries, selection rule and final seeds. Use
+logarithmic ranges when justified. Keep the plan in admitted source or notes.
+Explain inherited settings. Reserve time for final evaluation and artifact checks.
 
 ## Progressive investment
 
-Where the task permits, use fixed-repetition exploration, then confirm promising
-candidates before frozen final evaluation. Do not replace required task seeds.
-`--stages` checks finite staged studies. [Incremental execution](incremental-execution.md)
-provides explicit completed-work reuse and bounded performance probes through
-actual submitted code, with matching source/input/configuration/protocol context.
+Pilot on validation and expand when the stated rule warrants it. Freeze the
+selection and confirm on fresh development units with matched compute. In a local
+evidence plan use WORST for an every-unit claim or MEAN for an average effect.
+Keep required final seeds and protocol. `--stages` checks finite studies.
+[Incremental execution](incremental-execution.md) describes unit declarations,
+source-bound reuse and bounded probes.
 
 ## Execution and selection
 

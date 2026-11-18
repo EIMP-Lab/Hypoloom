@@ -1,5 +1,11 @@
 # Current Hypoloom development state
 
+- November 18. Fresh ACI 40 local measurements can bind a screening or
+  confirmation decision to named evidence units. The Host and Oracle compute
+  paired scores before the declared reduction. Native Verifier submissions use
+  report fields and Host-bound constants. See the [design](../design/stage-evidence-and-review.md)
+  and [qualification](../qualification.md#stage-evidence-and-compact-verifier-reports-2026-11-18).
+
 - November 15 structured Verifier output: the user requests continuing the
   diagnosed output/adoption optimization. ACI 39 / adapter 96 adds a Verifier-only
   `submit_review` MCP tool using the same full schema, semantic validator,

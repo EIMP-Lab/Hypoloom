@@ -1,5 +1,9 @@
 # Development memory index
 
+- [Stage evidence and compact Verifier reports, November 18](../design/stage-evidence-and-review.md).
+  Versioned evidence, configuration-search staging, CPU closure, archived review
+  replay and [qualification](../qualification.md#stage-evidence-and-compact-verifier-reports-2026-11-18).
+
 - [Structured Verifier output, November 15](../design/structured-verifier-output.md):
   ACI 39 / adapter 96 report preflight through existing native output validation,
   compact completion, bounded narrative, precise field errors and active-path

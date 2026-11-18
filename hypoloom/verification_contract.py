@@ -17,6 +17,11 @@ def structured_submission(request):
             and request.command.value == "VERIFY_IMPLEMENTATION")
 
 
+def compact_review(request):
+    from .agent_aci import STAGE_EVIDENCE_ACI_SCHEMA_VERSION
+    return request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= STAGE_EVIDENCE_ACI_SCHEMA_VERSION
+
+
 def _narrative_fields(raw):
     """Explanatory text only; source, identifiers and evidence refs keep their limits."""
     yield "summary", raw.get("summary"), 2048
@@ -309,7 +314,7 @@ def instructions(request):
     if request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION:
         result += COMPARISON_INSTRUCTIONS
     if structured_submission(request):
-        result += ADOPTION_INSTRUCTIONS + STRUCTURED_OUTPUT_INSTRUCTIONS
+        result += ADOPTION_INSTRUCTIONS + (COMPACT_REVIEW_INSTRUCTIONS if compact_review(request) else STRUCTURED_OUTPUT_INSTRUCTIONS)
     else:
         result += "Before returning JSON, check quoting/escaping of embedded Python source.\n"
     return result
@@ -319,7 +324,9 @@ def system_instructions(request):
     if structured_submission(request):
         return SYSTEM_INSTRUCTIONS.replace(
             "Return the complete requested AgentResponse JSON; the native Stop hook\nmay ask you to correct it within this invocation.",
-            "Submit the complete requested AgentResponse via submit_review, then finish\nwith {\"review_submitted\":true}. The native Stop hook revalidates it and may ask\nfor corrections within this invocation.")
+            ("Submit the report fields via submit_review" if compact_review(request) else
+             "Submit the complete requested AgentResponse via submit_review") +
+            ", then finish\nwith {\"review_submitted\":true}. The native Stop hook revalidates it and may ask\nfor corrections within this invocation.")
     return SYSTEM_INSTRUCTIONS
 
 
@@ -403,10 +410,7 @@ check so a timeout retains diagnostics, but incomplete/failed Processes cannot p
 """
 
 
-STRUCTURED_OUTPUT_INSTRUCTIONS = """
-Use mcp__verifier-output__submit_review with the complete AgentResponse envelope,
-including typed_candidate and declared_effects. Its input schema is the output
-schema; pass probe source as string values, letting the tool serialize JSON.
+REVIEW_COMPLETION = """\
 Repair the specific reported fields and resubmit within the existing correction
 budget. After success finish with exactly {"review_submitted":true}; do not repeat
 the report. The Host Stop hook still revalidates it. Ordinary complete AgentResponse
@@ -416,6 +420,17 @@ a small probe (usually below 12 KiB). Explanatory text totals at most 16 KiB;
 summary/finding/coverage fields at most 2048 characters, check purpose/basis 1024.
 Use source locations and supplied evidence refs instead of copying code/logs.
 """
+
+COMPACT_REVIEW_INSTRUCTIONS = """
+Call mcp__verifier-output__submit_review with the report fields at the top level.
+The Host supplies task_kind and declared_effects. Pass probe source as string values.
+""" + REVIEW_COMPLETION
+
+STRUCTURED_OUTPUT_INSTRUCTIONS = """
+Use mcp__verifier-output__submit_review with the complete AgentResponse envelope,
+including typed_candidate and declared_effects. Its input schema is the output
+schema; pass probe source as string values, letting the tool serialize JSON.
+""" + REVIEW_COMPLETION
 
 
 ADOPTION_INSTRUCTIONS = """

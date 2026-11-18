@@ -13,6 +13,7 @@ from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
 from hypoloom.expert_loop import ResearchNodeSubkind, ResearchNodeTask
 from hypoloom.fake_agent import FakeAgent, default_request
+from hypoloom.measurement_contract import StageEvidence
 from hypoloom.oracle import Oracle
 from hypoloom.outcome_adapter import OUTCOME_ADAPTER_VERSION
 from hypoloom.workflow_host import WorkflowHost
@@ -107,15 +108,38 @@ class StrictBoundaryAgent(DeclaredMeasurementAgent):
         return with_output_digest(response)
 
 
-def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path):
+class ConfirmationAgent(StrictBoundaryAgent):
+    def measurement(self, request):
+        return replace(super().measurement(request), evidence=StageEvidence("CONFIRMATION", ("B", "C"), "WORST"),
+            parse_rule="Compare each held-out fold with its own baseline and take the worst relative latency delta.")
+
+    def invoke(self, request):
+        response = super().invoke(request)
+        if request.command is not AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+            return response
+        raw = "A,10,5\nB,10,6\nC,10," + ("11" if request.task_context.key.cycle == 1 else "7") + "\n"
+        files = {"experiment.sh": f"printf '%s' '{raw}' > timings.csv\n".encode(),
+            "parse_metrics.py": b"""import csv, json
+from pathlib import Path
+rows = {unit: {'value': value, 'baseline': base} for unit, base, value in csv.reader(Path('/raw/timings.csv').open())}
+Path('/parsed/result.json').write_text(json.dumps({'metric': 'median_latency_delta',
+    'observations': {unit: rows[unit] for unit in ('B', 'C')}}))
+"""}
+        return with_output_digest(replace(response, proposed_workspace_artifacts=tuple(
+            WorkspaceArtifact.from_bytes(item.path, files.get(item.path, item.content_bytes()))
+            for item in response.proposed_workspace_artifacts)))
+
+
+@pytest.mark.parametrize("agent,first", [(StrictBoundaryAgent, "-0.1"), (ConfirmationAgent, "0.1")])
+def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path, agent, first):
     with tempfile.TemporaryDirectory(prefix="hypoloom-strict-target-", dir="/var/tmp") as directory:
-        host = WorkflowHost(tmp_path / "state", local_agent=StrictBoundaryAgent())
+        host = WorkflowHost(tmp_path / "state", local_agent=agent())
         try:
             host.initialize()
             created = host.handle(ControlRequest(schema_version=1, request_id="strict-create", expected_revision=0,
                 command="CREATE_RUN", payload=deferred_payload(tmp_path, Path(directory))))
             assert created.status == "accepted", created
-            assert host.store.get_run("c5-host")["agent_aci_version"] == "39"
+            assert host.store.get_run("c5-host")["agent_aci_version"] == "40"
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 host.tick()
@@ -124,7 +148,7 @@ def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path)
             assert host.store.latest_transition("c5-host")["state"] == "COMPLETED"
             outcomes = host.store.list_facts("c5-host", "CanonicalOutcomeAccepted")
             assert [(r["payload"]["metric_value"], r["payload"]["outcome"]) for r in outcomes] == [
-                ("-0.1", "CLEAN_REFUTATION"), ("-0.3", "SUCCESS")]
+                (first, "CLEAN_REFUTATION"), ("-0.3", "SUCCESS")]
             attempts = host.store.list_attempts()
             assert len([r for r in attempts if r["kind"] == "PROCESS"]) == 2
             assert all(r["state"] == "CLOSED" and r["terminal_reason"] == "SUCCEEDED" for r in attempts)

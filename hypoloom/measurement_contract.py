@@ -26,6 +26,31 @@ class MeasurementComparison(str, Enum):
     RELATIVE_DELTA_FROM_BASELINE = "RELATIVE_DELTA_FROM_BASELINE"
 
 
+@dataclass(frozen=True, slots=True)
+class StageEvidence:
+    stage: str
+    units: tuple[str, ...]
+    reduction: str
+
+    def __post_init__(self) -> None:
+        if self.stage not in ("SCREENING", "CONFIRMATION") or self.reduction not in ("MEAN", "WORST"):
+            raise MeasurementContractError("invalid_measurement", "unknown evidence stage or reduction")
+        if (not isinstance(self.units, tuple) or not self.units
+                or any(not isinstance(unit, str) or not unit or unit != unit.strip() for unit in self.units)
+                or len(set(self.units)) != len(self.units)):
+            raise MeasurementContractError("invalid_measurement", "evidence.units must contain distinct nonempty unit names")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"stage": self.stage, "units": list(self.units), "reduction": self.reduction}
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> StageEvidence:
+        if (not isinstance(raw, Mapping) or set(raw) != {"stage", "units", "reduction"}
+                or not isinstance(raw["units"], (list, tuple))):
+            raise MeasurementContractError("invalid_measurement", "evidence requires stage, units array and reduction")
+        return cls(raw["stage"], tuple(raw["units"]), raw["reduction"])
+
+
 def _paths(values: tuple[str, ...], label: str) -> None:
     if (not isinstance(values, tuple) or not values or any(not isinstance(value, str) for value in values)
             or len(set(values)) != len(values)):
@@ -48,10 +73,13 @@ class ScientificMeasurement:
     parser_files: tuple[str, ...]
     raw_artifacts: tuple[str, ...]
     success_operator: str | None = None
+    evidence: StageEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.metric, MetricSpec) or not isinstance(self.comparison, MeasurementComparison):
             raise MeasurementContractError("invalid_measurement", "typed metric and comparison are required")
+        if self.evidence is not None and not isinstance(self.evidence, StageEvidence):
+            raise MeasurementContractError("invalid_measurement", "evidence must be a typed stage declaration")
         operators = ("GT", "GE") if self.metric.direction is MetricDirection.MAXIMIZE else ("LT", "LE")
         if self.success_operator is not None and self.success_operator not in operators:
             raise MeasurementContractError("invalid_measurement", f"success_operator must be one of {operators} for {self.metric.direction.value}")
@@ -68,6 +96,7 @@ class ScientificMeasurement:
                            "target": self.metric.target}, "comparison": self.comparison.value,
                 "parse_rule": self.parse_rule, "parser_argv": list(self.parser_argv),
                 "parser_files": list(self.parser_files), "raw_artifacts": list(self.raw_artifacts),
+                **({"evidence": self.evidence.to_dict()} if self.evidence is not None else {}),
                 **({"success_operator": self.success_operator} if self.success_operator is not None else {})}
 
     def accepts(self, value: Decimal | int | float | str) -> bool:
@@ -81,7 +110,7 @@ class ScientificMeasurement:
     def from_dict(cls, raw: Mapping[str, Any]) -> ScientificMeasurement:
         fields = {"metric", "comparison", "parse_rule", "parser_argv", "parser_files", "raw_artifacts"}
         try:
-            if not isinstance(raw, Mapping) or not fields <= set(raw) or set(raw) - fields - {"success_operator"}:
+            if not isinstance(raw, Mapping) or not fields <= set(raw) or set(raw) - fields - {"success_operator", "evidence"}:
                 raise ValueError("declaration must have exact measurement fields")
             if "success_operator" in raw and raw["success_operator"] is None:
                 raise ValueError("success_operator cannot be null; omit only for legacy declarations")
@@ -95,7 +124,8 @@ class ScientificMeasurement:
                                         target=metric["target"]), comparison=MeasurementComparison(raw["comparison"]),
                        parse_rule=raw["parse_rule"], parser_argv=tuple(raw["parser_argv"]),
                        parser_files=tuple(raw["parser_files"]), raw_artifacts=tuple(raw["raw_artifacts"]),
-                       success_operator=raw.get("success_operator"))
+                       success_operator=raw.get("success_operator"),
+                       evidence=StageEvidence.from_dict(raw["evidence"]) if "evidence" in raw else None)
         except (KeyError, TypeError, ValueError) as exc:
             if isinstance(exc, MeasurementContractError):
                 raise
@@ -128,10 +158,61 @@ def assert_frozen_measurement(original: ScientificMeasurement, candidate: Scient
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MeasurementEvaluation:
-    value: str
+    value: str | None
     baseline: str | None
     metric_value: str
     criterion_met: bool
+
+
+def _value_pair(raw: Mapping[str, Any]) -> tuple[str, str | None]:
+    def numeric_field(name: str) -> str:
+        try:
+            return normalize_metric_value(raw[name])
+        except (ValueError, TypeError, DecimalException) as exc:
+            raise ValueError(f"parsed result.{name}: {exc}; expected a finite scalar number, not an object or array") from exc
+    return numeric_field("value"), None if raw.get("baseline") is None else numeric_field("baseline")
+
+
+def _compare(value: str, baseline: str | None, comparison: MeasurementComparison) -> Decimal:
+    measured = Decimal(value)
+    if comparison is not MeasurementComparison.VALUE:
+        if baseline is None:
+            raise ValueError("baseline comparison requires a finite baseline")
+        measured -= Decimal(baseline)
+        if comparison is MeasurementComparison.RELATIVE_DELTA_FROM_BASELINE:
+            if Decimal(baseline) == 0:
+                raise ValueError("relative comparison cannot divide by zero baseline")
+            measured /= abs(Decimal(baseline))
+    return measured
+
+
+def _evaluate_evidence(declaration: ScientificMeasurement, evidence: StageEvidence,
+                       raw: Mapping[str, Any]) -> MeasurementEvaluation:
+    if (not isinstance(raw, Mapping) or set(raw) != {"metric", "observations"}
+            or raw["metric"] != declaration.metric.name or not isinstance(raw["observations"], Mapping)):
+        raise ValueError("stage result requires the frozen metric and an observations object")
+    observations = raw["observations"]
+    if set(observations) != set(evidence.units):
+        raise ValueError("observations must cover exactly the declared evidence.units")
+    with localcontext() as context:
+        context.prec = 50
+        values = []
+        for unit in evidence.units:
+            row = observations[unit]
+            if not isinstance(row, Mapping) or "value" not in row or set(row) - {"value", "baseline"}:
+                raise ValueError(f"observation {unit!r} requires value and optional baseline")
+            try:
+                values.append(_compare(*_value_pair(row), declaration.comparison))
+            except ValueError as exc:
+                raise ValueError(f"observation {unit!r}: {exc}") from exc
+        if evidence.reduction == "MEAN":
+            aggregate = sum(values, Decimal(0)) / len(values)
+        else:
+            aggregate = min(values) if declaration.metric.direction is MetricDirection.MAXIMIZE else max(values)
+    # Compare the same decimal representation that CanonicalOutcomeAccepted records.
+    metric_value = normalize_metric_value(aggregate)
+    return MeasurementEvaluation(value=None, baseline=None, metric_value=metric_value,
+                                 criterion_met=declaration.accepts(metric_value))
 
 
 def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping[str, Any]) -> MeasurementEvaluation:
@@ -142,34 +223,21 @@ def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping
     a second time. Scientific intent cannot be inferred from the sign/name.
     """
     try:
+        if declaration.evidence is not None:
+            return _evaluate_evidence(declaration, declaration.evidence, raw)
         if (not isinstance(raw, Mapping) or not {"metric", "value"} <= set(raw)
                 or set(raw) - {"metric", "value", "baseline"} or raw["metric"] != declaration.metric.name):
             raise ValueError("parsed result must identify the frozen metric and only value/optional baseline")
-        def numeric_field(name: str) -> str:
-            try:
-                return normalize_metric_value(raw[name])
-            except (ValueError, TypeError, DecimalException) as exc:
-                raise ValueError(f"parsed result.{name}: {exc}; expected a finite scalar number, not an object or array") from exc
-        value = numeric_field("value")
-        baseline = None if raw.get("baseline") is None else numeric_field("baseline")
+        value, baseline = _value_pair(raw)
         with localcontext() as context:
             context.prec = 50
-            measured = Decimal(value)
-            if declaration.comparison is not MeasurementComparison.VALUE:
-                if baseline is None:
-                    raise ValueError("baseline comparison requires a finite baseline")
-                measured -= Decimal(baseline)
-                if declaration.comparison is MeasurementComparison.RELATIVE_DELTA_FROM_BASELINE:
-                    if Decimal(baseline) == 0:
-                        raise ValueError("relative comparison cannot divide by zero baseline")
-                    measured /= abs(Decimal(baseline))
-            metric_value = normalize_metric_value(measured)
+            metric_value = normalize_metric_value(_compare(value, baseline, declaration.comparison))
         return MeasurementEvaluation(value=value, baseline=baseline, metric_value=metric_value,
                                      criterion_met=declaration.accepts(metric_value))
     except (ValueError, TypeError, DecimalException) as exc:
         raise MeasurementContractError("invalid_parsed_measurement", str(exc)) from exc
 
 
-__all__ = ["MeasurementComparison", "MeasurementContractError", "ScientificMeasurement",
+__all__ = ["MeasurementComparison", "MeasurementContractError", "ScientificMeasurement", "StageEvidence",
            "MeasurementEvaluation", "measurement_parser_files", "assert_frozen_measurement", "assert_measurement_constraints",
            "evaluate_parsed_measurement"]

@@ -1,4 +1,9 @@
 {
+  "{0} · {1} · units: {2}": "{0} · {1} · 证据单元：{2}",
+  "Confirmation": "确认",
+  "Screening": "初筛",
+  "Worst unit": "最弱单元",
+  "Equal-weight mean": "等权平均",
   "Select GPUs": "选择 GPU",
   "Eligible GPUs": "可选 GPU",
   "Apply GPU selection": "应用 GPU 选择",

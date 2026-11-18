@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 from dataclasses import replace
 from string import Formatter
 
@@ -46,7 +47,14 @@ def test_tui_switch_preserves_observation_filter_staleness_and_modal_draft(tmp_p
     app = HypoloomVNextMonitor(root, 'language-test', initial_snapshot=snapshot,
                               interval=3600, web_enabled=False)
     monkeypatch.setattr(app, '_refresh_snapshot', forbidden)
-    monkeypatch.setattr('hypoloom.control_protocol.request_over_socket', forbidden)
+    # Modal modules can import request_over_socket during this test. Guard the
+    # actual connection so an imported alias cannot retain a mock after teardown.
+    connect = socket.socket.connect
+    def guard_control(sock, address):
+        if sock.family == socket.AF_UNIX and str(address).endswith('/control.sock'):
+            forbidden()
+        return connect(sock, address)
+    monkeypatch.setattr(socket.socket, 'connect', guard_control)
 
     async def exercise():
         async with app.run_test(size=size) as pilot:

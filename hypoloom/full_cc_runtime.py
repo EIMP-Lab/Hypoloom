@@ -10,9 +10,10 @@ from pathlib import Path, PurePosixPath
 from typing import Mapping
 
 from . import host_tools_server, native_output, provider_bridge
-from .agent_aci import AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request
+from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
+                        STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
-from .verification_contract import structured_submission
+from .verification_contract import compact_review, structured_submission
 
 FULL_CC_PROFILE = "agent-full-cc/1"
 FULL_CC_TOOLS = ("Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill")
@@ -265,6 +266,7 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         argv.extend(("--ro-bind", str(Path(host_tools_server.__file__).resolve()), "/runtime/host_tools_server.py"))
         config["mcpServers"]["verifier-output"] = {"command": "/usr/bin/python3", "args": [
             "/runtime/native_output.py", "--review-tool", "--socket", "/output-validation.sock",
+            *(["--compact-review"] if compact_review(request) else []),
             "--output-schema", "/runtime/output-schema.json", "--session-id", workspace.binding["session_id"],
             "--max-bytes", str(max(4 * 1024 * 1024, request.budget.max_output_bytes * 2)),
             "--timeout-seconds", str(request.budget.wall_seconds)]}
@@ -571,6 +573,18 @@ def full_cc_instruction(request: AgentRequest) -> str:
         )
     shared = (grounding_acceptance_request(request)
         and getattr(getattr(request.task_context, "kind", None), "value", None) != "GROUNDING_QUERY_PLAN")
+    staged = request.schema_version >= STAGE_EVIDENCE_ACI_SCHEMA_VERSION
+    if staged and declared_measurement_request(request) and request.command.value in {
+            "HYPOTHESIS_PROPOSAL", "HYPOTHESIS_UPDATE", "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}:
+        common += (
+            "When a local decision depends on named repetitions, splits or conditions, declare measurement.evidence "
+            "at synthesis with stage SCREENING or CONFIRMATION, exact units, and MEAN or WORST. "
+            "The parser emits {metric, observations:{unit:{value, baseline?}}} for exactly those units. "
+            "For confirmation, freeze the selected configuration and name the fresh units that decide it. "
+            "A changed decision rule, unit set or parser needs a child/revised hypothesis. "
+            "At proposal, bound any meaningful parameter search and validation budget; expand it only under the "
+            "stated screening rule. Keep final evaluation independent of selection. "
+        )
     if (shared and request.command.value == "GROUNDING") or (
             request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and declared_measurement_request(request)):
         common += (
@@ -705,7 +719,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "and metrics=[]; never invent completion_score for an artifact goal. With a measurement use "
                 "metrics exactly [measurement.metric] and preserve all declared parser fields. The local C5 parser is "
                 "independent: author its declared files under /workspace and execute them under /input; it emits "
-                "only metric, value and optional baseline. The common parser retains the accepted read-only /acceptance source "
+                + ("metric and observations for stage evidence, otherwise metric, value and optional baseline. "
+                   if staged else "only metric, value and optional baseline. ") +
+                "The common parser retains the accepted read-only /acceptance source "
                 "and emits only measurements and checks in its separate Process phase. These are separate parser outputs; "
                 "do not substitute the common JSON format for the local C5 result. Write/test source under /workspace, reference captured programs as "
                 "/input/<relative-path>; import the submitted target via HYPOLOOM_TARGET_ROOT. Host captures argv-referenced "
@@ -748,8 +764,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "implementation.patch; omit workspace artifacts from structured output. "
             "Raw execution writes the declared raw_artifacts. The parser runs separately, "
             "CPU-only without network: /input source and /raw outputs are read-only, /parsed "
-            "is writable. Write /parsed/result.json containing only metric, finite numeric "
-            "value and optional baseline, never a scientific verdict. The Host applies the "
+            "is writable. Write /parsed/result.json containing "
+            + ("metric and observations for stage evidence, otherwise " if staged else "only ") +
+            "metric, finite numeric value and optional baseline, never a scientific verdict. The Host applies the "
             "declared comparison. VALUE uses value directly. DELTA_FROM_BASELINE requires the "
             "unsubtracted candidate value and baseline; e.g. value=.72 and baseline=.68 yield .04. "
             "RELATIVE_DELTA_FROM_BASELINE also divides by abs(baseline). If your parser already "

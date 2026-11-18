@@ -17,20 +17,20 @@ from hypoloom.fake_agent import FakeAgent, default_request
 from hypoloom.verification_contract import validate_review, review_schema, instructions
 
 
-def _review():
-    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=39)
+def _review(version=39):
+    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=version)
     report = deepcopy(FakeAgent().invoke(request).typed_candidate)
     report["supporting_refs"] = ["R1"]
     output = {"typed_candidate": report, "declared_effects": [{"effect": request.effect_requirements[0]}]}
     return request, output
 
 
-def _server(tmp_path, *, cap=3, structured=True, check=None):
-    request, _ = _review()
+def _server(tmp_path, *, cap=3, structured=True, check=None, version=39):
+    request, _ = _review(version)
     return native_output.NativeOutputValidator(tmp_path / "output.sock",
         output_schema=_output_schema(request, tool_workspace=True), session_id="review-session",
         max_failed_validations=cap, max_request_bytes=1024 * 1024,
-        deadline_at=time.monotonic() + 15, structured_submission=structured,
+        deadline_at=time.monotonic() + 15, structured_submission=structured, compact_review=version >= 40,
         candidate_check=check or _native_candidate_check(request, None))
 
 
@@ -143,26 +143,36 @@ def test_stop_revalidates_semantics_after_tool_preflight(tmp_path):
         server.close()
 
 
-def test_stdlib_mcp_advertises_full_schema_and_returns_field_corrections(tmp_path):
-    request, output = _review()
+@pytest.mark.parametrize("version", [39, 40])
+def test_stdlib_mcp_advertises_versioned_schema_and_returns_field_corrections(tmp_path, version):
+    request, output = _review(version)
     schema = _output_schema(request, tool_workspace=True)
     path = tmp_path / "schema.json"
     path.write_text(json.dumps(schema))
-    server = _server(tmp_path)
+    server = _server(tmp_path, version=version)
+    arguments = output if version == 39 else {k: v for k, v in output["typed_candidate"].items() if k != "task_kind"}
     try:
         requests = [{"jsonrpc": "2.0", "id": 1, "method": "initialize"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "submit_review", "arguments": {}}},
-            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "submit_review", "arguments": output}}]
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "submit_review", "arguments": arguments}}]
         completed = subprocess.run([sys.executable, str(Path(native_output.__file__)), "--review-tool",
             "--socket", str(server.socket_path), "--output-schema", str(path), "--session-id", "review-session",
-            "--max-bytes", "1048576", "--timeout-seconds", "5"],
+            "--max-bytes", "1048576", "--timeout-seconds", "5", *(["--compact-review"] if version == 40 else [])],
             input="".join(json.dumps(row) + "\n" for row in requests), text=True, capture_output=True, timeout=10)
         assert completed.returncode == 0, completed.stderr
         rows = [json.loads(row) for row in completed.stdout.splitlines()]
-        assert len(rows) == 4 and rows[1]["result"]["tools"][0]["inputSchema"] == schema
+        assert len(rows) == 4
+        advertised = rows[1]["result"]["tools"][0]["inputSchema"]
+        if version == 39:
+            assert advertised == schema
+        else:
+            original = schema["properties"]["typed_candidate"]
+            assert advertised["properties"] == {k: v for k, v in original["properties"].items() if k != "task_kind"}
+            assert set(advertised["required"]) == set(arguments)
+            assert advertised["additionalProperties"] is False
         assert rows[2]["result"]["isError"]
-        assert "typed_candidate" in rows[2]["result"]["content"][0]["text"]
+        assert ("typed_candidate" if version == 39 else "summary") in rows[2]["result"]["content"][0]["text"]
         assert not rows[3]["result"]["isError"] and not server.snapshot()["accepted"]
         assert _stop(server) == {}
         assert json.loads(server.accepted_text()) == output
@@ -170,10 +180,26 @@ def test_stdlib_mcp_advertises_full_schema_and_returns_field_corrections(tmp_pat
         server.close()
 
 
-@pytest.mark.parametrize("version", [38, 39])
+@pytest.mark.parametrize("extra", [{"task_kind": "VERIFY_IMPLEMENTATION"}, {"declared_effects": []}, {"typed_candidate": {}}])
+def test_flat_tool_rejects_envelope_fields_and_revokes_stale_preparation(tmp_path, extra):
+    _, output = _review(40)
+    report = {k: v for k, v in output["typed_candidate"].items() if k != "task_kind"}
+    server = _server(tmp_path, version=40)
+    try:
+        assert _prepare(server, report)["prepared"]
+        assert not _prepare(server, {**report, **extra})["prepared"]
+        assert _stop(server)["decision"] == "block"
+        assert _prepare(server, report)["prepared"]
+        assert _stop(server) == {}
+        assert json.loads(server.accepted_text()) == output
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("version", [38, 39, 40])
 def test_ordinary_json_completion_remains_supported(tmp_path, version):
-    _, output = _review()
-    server = _server(tmp_path, structured=version == 39)
+    _, output = _review(version)
+    server = _server(tmp_path, version=version, structured=version >= 39)
     try:
         assert _stop(server, json.dumps(output)) == {}
         assert json.loads(server.accepted_text()) == output

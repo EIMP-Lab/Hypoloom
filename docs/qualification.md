@@ -1,5 +1,54 @@
 # Qualification: G0–G5
 
+## Stage evidence and compact Verifier reports (2026-11-18)
+
+New runs use ACI 40 and adapter 97. Qualification logs are retained locally in
+`.local/qualification/stage-evidence-20261118/`. The local outcome and shared GOAL formats
+remain readable under their existing evaluator. The previous tips were dev
+`891d1e2` and main `fb4fc79`. [Design](design/stage-evidence-and-review.md).
+
+- An actual CPU Host ran a confirmation using two held-out folds and retained
+  a favorable screening observation in the raw file. The worst relative latency
+  delta was +0.1, failing the frozen target. The revised run measured −0.3 and
+  succeeded. Both independent parser replays agreed with the canonical outcomes.
+- A local native CLI/provider fixture exercised four Verifier submissions,
+  including two invalid probes corrected in the same sessions. All 19 Agent
+  and four Process attempts closed. All 23 recorded process groups had exited.
+- Replaying the 47 accepted reviews from the preceding run recovered every
+  original report, evidence reference, probe and fixed effect. For these requests
+  the instruction text shrank by a median of 4,015 UTF-8 bytes per invocation.
+  Model latency, billing and GPU throughput require separate live measurements.
+- The previous and candidate Oracle reports for the preceding ACI 39 run agree
+  on 23 canonical outcomes and zero open attempts or pending effects. SHA-256
+  checks over the SQLite file and all 1,033 artifact files agree before and after.
+- Installed-wheel and previous-reader audits agree on 200 outcomes in seven
+  terminal runs spanning ACI 29, 32, 33, 35, 37, 38 and 39. Three older runs
+  retain one prior finding each. Across 18 distinct request shapes from the
+  ACI 39 run, report schemas and instruction text also match byte-for-byte.
+
+The first full offline run with installed CLI 2.1.326 recorded 9,141 passes,
+163 skips and 11 failures. Three caught a configuration reference that exceeded
+its shared inline budget. Consolidating the instructions brought its size from
+6,134 to 5,267 bytes. All 35 guidance and native handoff checks passed. Three
+renderer checks passed with the local Node 22, and the four timing, cache and
+parallel-Host cases passed on isolated recheck with their original assertions.
+The real Chromium stage/threshold check and the grouped parser smoke both passed.
+
+One existing partial-stream fallback accounting check still fails on CLI
+2.1.326. The native per-model ledger reports 54 input tokens while completed
+assistant messages account for 29. The preceding dev commit reproduces the
+same difference, and CLI 2.1.325 passes the unchanged check. The framework
+continues to use the existing accounting rules. Public-tree qualification
+passed 444 checks with one explicit CUDA skip.
+
+On the final runtime tree with CLI 2.1.325 and Node 22, the full offline
+selection recorded 9,152 passes, 163 skips and one failure. A language-toggle
+test had left its forbidden-control stub in a lazily imported TUI module.
+The test now guards the actual Unix control connection and restores it at
+teardown. Running all four language sizes immediately before the real Host
+cancel test exercises the failing order. The complete selection plus this
+ordered recheck covers 9,153 passing test identities and 163 skips.
+
 ## Structured Verifier output and adoption checks (2026-11-15)
 
 The user requests continuing the diagnosed Verifier/output and performance-adoption
