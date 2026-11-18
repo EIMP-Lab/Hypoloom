@@ -32,28 +32,59 @@ def _decimal(value: Any) -> Decimal:
     return result
 
 
+def _unit_score(row: Mapping[str, Any], comparison: str, *, staged: bool) -> Decimal:
+    if not isinstance(row, Mapping) or "value" not in row or set(row) - {"value", "baseline"}:
+        raise ValueError("expected value and optional baseline")
+    value = _decimal(row["value"])
+    baseline = _decimal(row["baseline"]) if row.get("baseline") is not None else None
+    if staged:
+        value = +value
+        baseline = +baseline if baseline is not None else None
+    if comparison == "VALUE":
+        return value
+    if comparison not in ("DELTA_FROM_BASELINE", "RELATIVE_DELTA_FROM_BASELINE") or baseline is None:
+        raise ValueError("unknown comparison or missing paired baseline")
+    delta = value - baseline
+    if comparison == "DELTA_FROM_BASELINE":
+        return delta
+    if not baseline:
+        raise ValueError("relative measurement has zero baseline")
+    return delta / abs(baseline)
+
+
 def interpret_measurement(declaration: Mapping[str, Any], result: Mapping[str, Any]) -> MeasurementOracleResult:
     """Independent comparison, not the producer's evaluator/MetricSpec.accepts."""
     try:
         metric = declaration["metric"]
-        if (set(result) - {"metric", "value", "baseline"} or not {"metric", "value"} <= result.keys()
-                or result["metric"] != metric["name"]):
+        if not isinstance(result, Mapping) or result.get("metric") != metric["name"]:
             raise ValueError("parsed measurement fields or metric identity differ")
-        value = _decimal(result["value"])
-        if "baseline" in result and result["baseline"] is not None: _decimal(result["baseline"])
         with localcontext() as context:
             context.prec = 50
             comparison = declaration["comparison"]
-            if comparison == "VALUE": measured = value
-            elif comparison in {"DELTA_FROM_BASELINE", "RELATIVE_DELTA_FROM_BASELINE"}:
-                baseline = _decimal(result["baseline"])
-                measured = value - baseline
-                if comparison == "RELATIVE_DELTA_FROM_BASELINE":
-                    if not baseline: raise ValueError("relative measurement has zero baseline")
-                    measured /= abs(baseline)
-            else: raise ValueError("unknown measurement comparison")
-            text = format(measured, "f").rstrip("0").rstrip(".") if "." in format(measured, "f") else format(measured, "f")
-            if measured == 0: text = "0"
+            if "evidence" in declaration:
+                # Decode the frozen plan, then compute from the parser replay independently.
+                from .measurement_contract import StageEvidence
+                plan = StageEvidence.from_dict(declaration["evidence"])
+                rows = result.get("observations")
+                if set(result) != {"metric", "observations"} or not isinstance(rows, Mapping) or set(rows) != set(plan.units):
+                    raise ValueError("observations must match exactly the declared evidence units")
+                scores = [_unit_score(rows[unit], comparison, staged=True) for unit in plan.units]
+                if plan.reduction == "MEAN":
+                    measured = sum(scores) / len(scores)
+                elif metric["direction"] == "MINIMIZE":
+                    measured = max(scores)
+                else:
+                    measured = min(scores)
+            else:
+                measured = _unit_score({k: v for k, v in result.items() if k != "metric"}, comparison, staged=False)
+        if "evidence" in declaration:
+            measured = measured.normalize()  # canonical fact precision after the reduction
+        if "evidence" in declaration and abs(measured.adjusted()) > 1000:
+            text = str(measured)
+        else:
+            text = format(measured, "f")
+            if "." in text: text = text.rstrip("0").rstrip(".")
+        if measured == 0: text = "0"
         target = _decimal(metric["target"])
         direction = metric["direction"]
         if direction not in {"MINIMIZE", "MAXIMIZE"}: raise ValueError("invalid metric direction")

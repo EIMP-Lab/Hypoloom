@@ -10,6 +10,23 @@ required.
 
 ## During a run
 
+For a configuration-dependent hypothesis, declare a bounded search range, default
+configuration, validation rule and trial budget at proposal. Use a small screening
+budget first. Expand on validation if the prespecified rule warrants it. Freeze the
+selected configuration before evaluating fresh confirmation units.
+
+From ACI 40 a local measurement can record, for example,
+`"evidence":{"stage":"CONFIRMATION","units":["fold-B","fold-C"],"reduction":"WORST"}`.
+With this declaration the parser returns
+`{"metric":"gain","observations":{"fold-B":{"value":0.04},"fold-C":{"value":-0.01}}}`.
+Maximizing gain with `GT 0` gives a canonical local refutation at −0.01. For an
+average-effect claim use `MEAN`. For paired or relative comparisons include
+a baseline per unit. Incomplete evidence is a technical failure. Changing the
+screening predicate or units uses a child/revised hypothesis. Formal evaluation
+uses the shared goal criteria. For a fresh run, supply relevant previous results
+and source references as read-only research inputs and record the selection
+history. The new run evaluates its own confirmation evidence.
+
 | Stage | Method |
 |---|---|
 | Grounding | Reuse supplied context and retained drafts, investigate necessary gaps and test the commissioned evaluator. Background-only tasks do not invent one. |

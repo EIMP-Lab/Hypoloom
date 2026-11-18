@@ -880,6 +880,8 @@
         element("p", "", t("Execution: {0} · source Process only", item.execution_terminal_reason || "unknown")),
         element("p", "", t("Recorded outcome: {0} · local metric: {1}", item.local_outcome, item.local_metric_value ?? "none")),
         element("p", "", t("LOCAL criterion: {0}. Shared GOAL verdict: {1} (run-wide).", !item.local_measurement ? t("not declared") : item.local_outcome === "SUCCESS" ? "passed" : item.local_outcome === "CLEAN_REFUTATION" ? t("not met") : t("unavailable ({0})", item.local_outcome || t("unknown outcome")), status.goal_verdict || "PENDING")));
+      const stage = localEvidenceLabel(item.local_measurement);
+      if (stage) card.append(element("p", "", stage));
       if (item.goal_evaluation) {
         card.append(element("h4", "", t("Published observations")));
         const observations = element("dl", "acceptance-observations");
@@ -1006,6 +1008,15 @@
     return {metrics: ordered, series, targets};
   }
 
+  function localEvidenceLabel(measurement) {
+    const evidence = measurement?.evidence;
+    if (!evidence) return "";
+    return t("{0} · {1} · units: {2}",
+      evidence.stage === "CONFIRMATION" ? t("Confirmation") : t("Screening"),
+      evidence.reduction === "WORST" ? t("Worst unit") : t("Equal-weight mean"),
+      list(evidence.units).join(", "));
+  }
+
   function localMetricTrendModel(common, snapshot) {
     const metrics = new Map(), series = new Map(), labels = new Map();
     list(common.outcomes).forEach((outcome) => {
@@ -1025,9 +1036,9 @@
         const role = hypothesis ? hypothesis.proposer_role : component && component.owner_role;
         labels.set(key, metric.name);
         series.set(key, {key, label: metric.name,
-          context: [role, compact(hypothesis?.claim || hypothesisId || outcome.experiment_id, 64)].filter(Boolean).join(" · "),
+          context: [role, localEvidenceLabel(measurement), compact(hypothesis?.claim || hypothesisId || outcome.experiment_id, 64)].filter(Boolean).join(" · "),
           comparison: measurement.comparison === "DELTA_FROM_BASELINE" ? t("Delta from baseline") : measurement.comparison === "RELATIVE_DELTA_FROM_BASELINE" ? t("Relative delta from baseline") : measurement.comparison === "VALUE" ? "Value" : t("Local measurement"),
-          criterion: `${metric.direction === 'MAXIMIZE' ? '≥' : metric.direction === 'MINIMIZE' ? '≤' : metric.direction} ${metric.target ?? '?'}`,
+          criterion: `${METRIC_OPERATORS[measurement.success_operator] || (metric.direction === 'MAXIMIZE' ? '≥' : '≤')} ${metric.target ?? '?'}`,
 
           title: [hypothesisId || outcome.experiment_id, hypothesis?.claim, measurement.comparison, measurement.parse_rule].filter(Boolean).join("\n"),
           accent: expertClass(snapshot, role)});

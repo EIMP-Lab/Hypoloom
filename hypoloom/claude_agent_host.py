@@ -62,7 +62,7 @@ from .provider_relay import ProviderRelay
 from .runtime_diagnostics import RuntimeDiagnostics, ProviderDiagnosticWriter, record_host_exception
 from .network_proxy import AttemptNetworkProxy
 from .native_output import NativeOutputValidator, decode_output
-from .verification_contract import structured_submission as _structured_verifier_output
+from .verification_contract import compact_review, structured_submission as _structured_verifier_output
 from .expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -77,7 +77,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/96"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/97"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -653,6 +653,7 @@ class ClaudeAgentHost:
                 diagnostics=runtime_diagnostics,
                 context_notice=relay.context_notice if request.schema_version >= 25 else None,
                 structured_submission=_structured_verifier_output(request),
+                compact_review=compact_review(request),
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
@@ -2287,7 +2288,7 @@ def _declared_measurement_request(request: AgentRequest) -> bool:
 
 
 def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
-    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION
+    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION
     strings = {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
     schema = {"type": "object", "additionalProperties": False,
         "properties": {
@@ -2308,6 +2309,12 @@ def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
         schema["allOf"] = [{"if": {"properties": {"metric": {"properties": {"direction": {"const": direction}}}}},
             "then": {"properties": {"success_operator": {"enum": operators}}}}
             for direction, operators in (("MAXIMIZE", ["GT", "GE"]), ("MINIMIZE", ["LT", "LE"]))]
+    if schema_version >= STAGE_EVIDENCE_ACI_SCHEMA_VERSION:
+        schema["properties"]["evidence"] = {"type": "object", "additionalProperties": False,
+            "properties": {"stage": {"enum": ["SCREENING", "CONFIRMATION"]},
+                "units": {**strings, "uniqueItems": True},
+                "reduction": {"enum": ["MEAN", "WORST"]}}, "required": ["stage", "units", "reduction"],
+            "description": "For a staged local decision, name exactly the units that decide it. The parser returns metric and observations keyed by these units, each with value and optional paired baseline. Host compares each pair, then takes the equal-weight mean or the least favorable unit."}
     return schema
 
 
@@ -3087,26 +3094,32 @@ def _prompt(
             "reference before acceptance. Do not reconstruct or retype encoded reference IDs. "
             "All other identity fields retain their exact supplied values.\n")
     if request.schema_version >= 11:
-        if tool_workspace:
+        if tool_workspace and not compact_review(request):
             instruction += (
                 "\nThe identical output schema is readable at /runtime/output-schema.json. "
                 "Use that file directly when inspecting fields; do not extract it from conversation logs.\n")
-        instruction += (
-            "\nUse mcp__verifier-output__submit_review to submit the complete AgentResponse "
-            "as structured tool arguments. Correct any reported field errors within this session. "
-            'After the tool succeeds, finish with exactly {"review_submitted":true}. '
-            "Do not repeat the report or embedded Python in the final message. "
-            "The native Stop hook revalidates the prepared report; tool success does not imply scientific acceptance. "
-            "Do not invoke StructuredOutput.\n"
-            if _structured_verifier_output(request) and tool_workspace else
-            "\nFinish with exactly one complete JSON object as your ordinary final response, "
-            "without markdown fences or surrounding prose. Do not invoke StructuredOutput. "
-            "The Host Stop hook validates this unchanged schema; if it reports a validation "
-            "error, correct and return the complete object in this same session. "
-            "CLI completion does not imply scientific acceptance.\n")
-        instruction += ("HYPOLOOM_OUTPUT_SCHEMA_JSON\n"
-            + canonical_json(_output_schema(request, tool_workspace=tool_workspace)).decode("utf-8")
-            + "\nEND_HYPOLOOM_OUTPUT_SCHEMA_JSON\n")
+        if compact_review(request) and tool_workspace:
+            instruction += (
+                "\nUse mcp__verifier-output__submit_review with the report fields in the tool schema. "
+                "The complete Stop schema is available at /runtime/output-schema.json. "
+                'After success finish with exactly {"review_submitted":true}. Do not repeat the report.\n')
+        else:
+            instruction += (
+                "\nUse mcp__verifier-output__submit_review to submit the complete AgentResponse "
+                "as structured tool arguments. Correct any reported field errors within this session. "
+                'After the tool succeeds, finish with exactly {"review_submitted":true}. '
+                "Do not repeat the report or embedded Python in the final message. "
+                "The native Stop hook revalidates the prepared report; tool success does not imply scientific acceptance. "
+                "Do not invoke StructuredOutput.\n"
+                if _structured_verifier_output(request) and tool_workspace else
+                "\nFinish with exactly one complete JSON object as your ordinary final response, "
+                "without markdown fences or surrounding prose. Do not invoke StructuredOutput. "
+                "The Host Stop hook validates this unchanged schema; if it reports a validation "
+                "error, correct and return the complete object in this same session. "
+                "CLI completion does not imply scientific acceptance.\n")
+            instruction += ("HYPOLOOM_OUTPUT_SCHEMA_JSON\n"
+                + canonical_json(_output_schema(request, tool_workspace=tool_workspace)).decode("utf-8")
+                + "\nEND_HYPOLOOM_OUTPUT_SCHEMA_JSON\n")
     rendered_inputs = []
     rendered_input_bytes: dict[str, int] = {}
     offloaded_refs: list[str] = []

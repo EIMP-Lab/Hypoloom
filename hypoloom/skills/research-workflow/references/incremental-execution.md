@@ -8,6 +8,15 @@ evaluation in admitted project source. Do not force full final coverage on every
 idea. Single-seed screening is permitted only when the task permits it; it is not
 formal multi-seed acceptance. Final test observations never select the recipe.
 
+For ACI 40 local stage decisions, declare `measurement.evidence` at synthesis.
+For example, `{"stage":"CONFIRMATION","units":["fold-B","fold-C"],"reduction":"WORST"}`
+asks whether both fresh folds meet the local target. Emit only `metric` and
+`observations` with one `{value, baseline?}` per named unit. The Host applies
+the declared comparison within each unit before reduction. A screening fold
+can remain in raw history; the confirmation predicate uses its own declared
+units. Keep selection/configuration and data provenance in the admitted source.
+Use a revised or child hypothesis for a changed predicate or unit set.
+
 The finite-study helper also accepts `--stages stages.json`. This is an ordered
 array of `{name, basis, plan, trials, selection?, evaluation?}` using the existing
 study formats. Later stages retain the implementation, data, metric, sharing and
