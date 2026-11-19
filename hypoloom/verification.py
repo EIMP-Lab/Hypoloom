@@ -188,6 +188,14 @@ class ImplementationVerification:
             ctx["probe_repairs_remaining"] = max(0, value["probe_repair_limit"] - value["probe_revision"])
         if plan and "checks" in plan:
             ctx.update(probe_plan=plan, probe_report_ref=inspection["report_ref"])
+            from .agent_aci import VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
+            if (value["phase"] == "review"
+                    and int(self.host.store.get_run(task.run_id)["agent_aci_version"]) >= VERIFIER_COMPLETION_ACI_SCHEMA_VERSION):
+                # The report_ref already identifies this exact plan. Keep the
+                # historical findings and every other plan in the reading set.
+                for entry in prior:
+                    if entry["report_ref"] == inspection["report_ref"]:
+                        entry["report"] = {k: v for k, v in entry["report"].items() if k != "probe"}
         resolved = {ref for r in prior if r["report"]["verdict"] == "passed" for ref in r["report"]["resolved_refs"]}
         ctx["open_blocker_refs"] = [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]
             if r["delivery_id"] == value["delivery_id"] and f["severity"] == "blocker" and r["report_ref"] + "#" + f["id"] not in resolved]

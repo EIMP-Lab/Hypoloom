@@ -1,5 +1,9 @@
 # Current Hypoloom development state
 
+- November 19. ACI 41 Verifier attempts close on exhausted corrections or a
+  failed validator. Independent review reuses the bound probe and displays
+  observed check statuses. See the [design](../design/verifier-completion.md).
+
 - November 18. Fresh ACI 40 local measurements can bind a screening or
   confirmation decision to named evidence units. The Host and Oracle compute
   paired scores before the declared reduction. Native Verifier submissions use

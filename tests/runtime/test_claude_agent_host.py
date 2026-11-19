@@ -776,7 +776,7 @@ def test_expert_experiment_schema_fails_closed_without_component_config() -> Non
 def test_aci9_literature_query_plan_schema_allows_only_query_and_venues() -> None:
     request, template = _claude_literature_query_plan_request()
 
-    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/97"
+    assert CLAUDE_AGENT_HOST_VERSION == "claude-code-bwrap/98"
     assert request.required_output_schema == "LiteratureQuery/v2"
     schema = _output_schema(request)
     assert schema["required"] == ["typed_candidate"]
@@ -4047,6 +4047,45 @@ def test_rejected_stop_feedback_preserves_primary_failure(tmp_path, mode, update
     assert observation.response is None
     assert "result.baseline" in observation.diagnostics["validation_error"]["message"]
     assert not process_group_exists(handle.process_group_id)
+
+
+@pytest.mark.parametrize("entrypoint,failure", [
+    ("poll", "exhausted"), ("wait", "exhausted"), ("wait", "session-mismatch"), ("poll", "closed")])
+def test_verifier_stops_live_group_when_no_review_can_be_delivered(tmp_path, entrypoint, failure):
+    from hypoloom.native_output import NativeOutputValidator, call_validator
+
+    host = _host(tmp_path)
+    handle = _start(host, mode="descendants")
+    request = replace(default_request(AgentCommand.VERIFY_IMPLEMENTATION), schema_version=41,
+        attempt_id=handle.request.attempt_id)
+    handle.request = request
+    validator = NativeOutputValidator(tmp_path / "output.sock",
+        output_schema=_output_schema(request, tool_workspace=True), session_id="verifier",
+        max_failed_validations=2, max_request_bytes=1024 * 1024, deadline_at=time.monotonic() + 20,
+        structured_submission=True, compact_review=True, verdict_scoped_review=True)
+    handle._output_validator = validator
+    try:
+        def stop(session):
+            return call_validator(str(validator.socket_path), session_id=session, last_assistant_message="{}",
+                max_request_bytes=1024 * 1024, timeout_seconds=2)
+        assert stop("verifier")["decision"] == "block"
+        assert host.poll(handle) is None
+        if failure == "session-mismatch":
+            with pytest.raises(ValueError, match="session mismatch"):
+                stop("wrong-session")
+        elif failure == "closed":
+            validator.close()
+        else:
+            assert stop("verifier") == {}
+        obs = host.poll(handle) if entrypoint == "poll" else host.wait(handle, timeout=5)
+        assert obs.terminal_reason is AgentHostTerminalReason.INVALID_OUTPUT
+        assert obs.failure_code == ("invalid_candidate" if failure == "exhausted" else "invalid_provider_envelope")
+        if failure == "exhausted":
+            assert "required" in obs.diagnostics["validation_error"]["message"]
+        assert obs.response is None and host.poll(handle) is obs
+        assert not process_group_exists(handle.process_group_id)
+    finally:
+        host.cleanup(handle)
 
 
 def test_failed_provider_keeps_bounded_stderr_without_stdout_transcript(

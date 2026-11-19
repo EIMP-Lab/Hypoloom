@@ -1,5 +1,42 @@
 # Qualification: G0–G5
 
+## Verifier completion and evidence inputs (2026-11-19)
+
+ACI 41 and native adapter 98 use the existing verdict validator and attempt
+budget. The [design](design/verifier-completion.md) describes the native
+tool projection, termination and evidence inputs. The private test output is
+under `.local/qualification/verifier-completion-20261119/`.
+
+- All 82 focused cases passed with the project's Conda Python and a local
+  provider fixture. They cover exhausted corrections and failed endpoints
+  through both process observation entry points, group cleanup, probe repair,
+  omission of duplicate material, missing observations and ordinary full reports.
+  The first native CPU run used a venv whose interpreter resolved outside its
+  declared experiment prefix. Repeating the test with the control interpreter
+  closed 19 Agents and four Processes. All 23 recorded process groups had exited.
+- The full offline selection recorded 9,072 passes, 246 skips and nine
+  failures with the control interpreter. Eight failures traced to runtime
+  files changing after test runs had pinned them. In the ordinal-ten case,
+  the recorded pre-spawn failures identified the same cause. The ninth
+  detected that the review contract and input views exceeded their module
+  allocations. The total workflow-core allowance stays at 27,550 lines.
+  With the final runtime held fixed, all nine cases passed in 255.71 seconds.
+- Offline replay of 118 captured flat submissions from 56 ACI 40 attempts
+  preserved all 33 previously valid submissions. Of 85 previously rejected
+  submissions, 49 passed the full schema and semantic checks with their original
+  contents after tool argument normalization. The other 36 still failed.
+  These counts describe tool submissions, including repeated corrections.
+- Of those 56 attempts, all 23 independent reviews contained a historical
+  probe identical to the one bound as the current plan. Removing the second
+  copy from those archived review contexts saved 500,823 UTF-8 bytes in total.
+  Per review, the median reduction was 22,920 bytes and the median share of
+  the serialized verification context removed was 21.48%. The measurement
+  covers input file size. The provider reads evidence on demand.
+- The full report schemas and instructions for 56 archived ACI 39 and 56
+  ACI 40 requests matched the preceding version byte for byte. The clean dev
+  wheel and isolated installation matched all 224 tracked runtime files.
+  Live defect detection, model billing and latency require separate measurements.
+
 ## Stage evidence and compact Verifier reports (2026-11-18)
 
 New runs use ACI 40 and adapter 97. Qualification logs are retained locally in

@@ -63,6 +63,16 @@ to 16 KiB in total, with 2048-character summary/finding/coverage fields and
 1024-character check purpose/basis fields. Probe source retains its 256 KiB limit.
 Older runs keep their frozen protocol; updating the checkout does not change them.
 
+From ACI 41, supply a probe object to `submit_review` for `probe_required`.
+For `passed`, `changes_required` and `inconclusive`, omit the field. The Host
+fills in JSON null and validates the verdict against the evidence. When a review
+exhausts its correction allowance or the validator becomes unavailable, the
+Host closes that attempt and its process group at its next poll. The existing
+attempt budget governs retries. The independent reviewer can read each planned
+check's observed status in the evidence overview. A missing result appears as
+null. The current probe is available through `probe_plan` and its report
+reference. Full observations and earlier distinct plans remain available.
+
 The engineering brief asks authors to trace the actual entrypoint to data loading
 and training, adopt compatible supplied optimizations or explain deferrals in the
 existing implementation description, and record bounded equivalence/timing evidence.

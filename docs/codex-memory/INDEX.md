@@ -1,5 +1,7 @@
 # Development memory index
 
+- [Verifier completion and evidence inputs, November 19](../design/verifier-completion.md).
+
 - [Stage evidence and compact Verifier reports, November 18](../design/stage-evidence-and-review.md).
   Versioned evidence, configuration-search staging, CPU closure, archived review
   replay and [qualification](../qualification.md#stage-evidence-and-compact-verifier-reports-2026-11-18).

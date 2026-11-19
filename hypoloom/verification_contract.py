@@ -22,6 +22,11 @@ def compact_review(request):
     return request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= STAGE_EVIDENCE_ACI_SCHEMA_VERSION
 
 
+def verdict_scoped_review(request):
+    from .agent_aci import VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
+    return request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
+
+
 def _narrative_fields(raw):
     """Explanatory text only; source, identifiers and evidence refs keep their limits."""
     yield "summary", raw.get("summary"), 2048
@@ -303,7 +308,10 @@ def instructions(request):
         "Use supporting_refs AND findings[].evidence_refs aliases from this request. resolved_refs and followup_of instead use "
         "only supplied prior report_ref#finding_id values, never input R aliases or current finding ids. "
         + ("No prior findings exist: resolved_refs=[] and followup_of=null. " if not ctx.get("finding_refs") else "See verification-context.finding_refs for prior findings. ")
-        + "changes_required requires a sourced blocker and probe=null. Only probe_required supplies probe files and argv=['python','verification/probe.py',...].\n")
+        + ("changes_required requires a sourced blocker. In submit_review omit probe for passed, changes_required and inconclusive. "
+           "For probe_required supply probe as a JSON object with files, checks and argv=['python','verification/probe.py',...].\n"
+           if verdict_scoped_review(request) else
+           "changes_required requires a sourced blocker and probe=null. Only probe_required supplies probe files and argv=['python','verification/probe.py',...].\n"))
     result += ("Keep summaries and findings concise. Cite source locations without repeating source code or prior reports. "
         "Use short, self-contained probes with explicit imports and public training initialization APIs. "
         "Do not spend the invocation "

@@ -62,7 +62,7 @@ from .provider_relay import ProviderRelay
 from .runtime_diagnostics import RuntimeDiagnostics, ProviderDiagnosticWriter, record_host_exception
 from .network_proxy import AttemptNetworkProxy
 from .native_output import NativeOutputValidator, decode_output
-from .verification_contract import compact_review, structured_submission as _structured_verifier_output
+from .verification_contract import compact_review, structured_submission as _structured_verifier_output, verdict_scoped_review
 from .expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -77,7 +77,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/97"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/98"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -654,6 +654,7 @@ class ClaudeAgentHost:
                 context_notice=relay.context_notice if request.schema_version >= 25 else None,
                 structured_submission=_structured_verifier_output(request),
                 compact_review=compact_review(request),
+                verdict_scoped_review=verdict_scoped_review(request),
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
@@ -868,19 +869,26 @@ class ClaudeAgentHost:
     ) -> ClaudeAgentObservation | None:
         handle = self._require_handle(handle_or_attempt)
         with handle._lock:
-            if handle._observation is not None:
-                return handle._observation
-            returncode = handle._process.poll()
-            if self._clock() >= handle.deadline_at:
-                if returncode is None:
-                    self._terminate_group(handle)
-                return self._observe(handle, AgentHostTerminalReason.TIMED_OUT)
-            if returncode is None:
+            return self._poll(handle, handle.deadline_at)
+
+    def _poll(self, handle: RunningClaudeAgent, deadline: float) -> ClaudeAgentObservation | None:
+        if handle._observation is not None:
+            return handle._observation
+        reason = None
+        failure_code = None
+        if self._clock() >= deadline:
+            reason = AgentHostTerminalReason.TIMED_OUT
+        elif handle._cancel_requested:
+            reason = AgentHostTerminalReason.CANCELLED
+        elif handle._output_validator is not None and verdict_scoped_review(handle.request):
+            failure_code = handle._output_validator.terminal_review_failure()
+            if failure_code is not None:
+                reason = AgentHostTerminalReason.INVALID_OUTPUT
+        if handle._process.poll() is None:
+            if reason is None:
                 return None
-            reason = (
-                AgentHostTerminalReason.CANCELLED if handle._cancel_requested else None
-            )
-            return self._observe(handle, reason)
+            self._terminate_group(handle)
+        return self._observe(handle, reason, failure_code=failure_code)
 
     def wait(
         self,
@@ -898,19 +906,9 @@ class ClaudeAgentHost:
             )
         while True:
             with handle._lock:
-                if handle._observation is not None:
-                    return handle._observation
-                if self._clock() >= deadline:
-                    if handle._process.poll() is None:
-                        self._terminate_group(handle)
-                    return self._observe(handle, AgentHostTerminalReason.TIMED_OUT)
-                if handle._process.poll() is not None:
-                    reason = (
-                        AgentHostTerminalReason.CANCELLED
-                        if handle._cancel_requested
-                        else None
-                    )
-                    return self._observe(handle, reason)
+                observation = self._poll(handle, deadline)
+                if observation is not None:
+                    return observation
                 if cancel_event is not None and cancel_event.is_set():
                     self.cancel(handle)
                     return self._observe(handle, AgentHostTerminalReason.CANCELLED)
@@ -944,6 +942,8 @@ class ClaudeAgentHost:
         self,
         handle: RunningClaudeAgent,
         forced_reason: AgentHostTerminalReason | None,
+        *,
+        failure_code: str | None = None,
     ) -> ClaudeAgentObservation:
         if handle._observation is not None:
             return handle._observation
@@ -954,7 +954,6 @@ class ClaudeAgentHost:
             handle._output_validator.close()
         returncode = handle._process.poll()
         response: AgentResponse | None = None
-        failure_code: str | None = None
         diagnostics: dict[str, object] = {
             "adapter_retry_policy": {
                 "structured_output_failed_validation_cap": (
@@ -998,6 +997,14 @@ class ClaudeAgentHost:
         final_candidate = None
         validated_text = None
         validated_final_message = None
+        if forced_reason is AgentHostTerminalReason.INVALID_OUTPUT and output:
+            # A CLI result can race the final rejection. Keep any genuine
+            # accounting while the Host-owned validation failure stays final.
+            _, _, accounting = _provider_response(handle.request, handle.model, output,
+                final_text_output=final_text_output, observed_wire_input_floor=wire_input_floor,
+                observed_wire_exchanges=exchanges, session_usage_baseline=handle._session_usage_baseline,
+                validate_candidate=False)
+            diagnostics.update(accounting)
         if reason is None and output is None:
             reason = AgentHostTerminalReason.INVALID_OUTPUT
             failure_code = "transport_output_too_large"
@@ -1146,10 +1153,14 @@ class ClaudeAgentHost:
                     if row.get("status") == "rejected"]
                 if handle.request.schema_version >= 24 and rejected and (message := bounded_diagnostic_text(rejected[-1])):
                     diagnostics["validation_error"] = {"code": "invalid_candidate", "message": message}
-                    if (reason is AgentHostTerminalReason.INVALID_OUTPUT
+                    if forced_reason is AgentHostTerminalReason.INVALID_OUTPUT and failure_code == "invalid_candidate":
+                        diagnostics["provider_diagnostic"] = message
+                    if (forced_reason is None and reason is AgentHostTerminalReason.INVALID_OUTPUT
                             and failure_code == "invalid_provider_envelope" and not snapshot.get("error")):
                         failure_code = "invalid_candidate"
                         diagnostics["provider_diagnostic"] = message
+                if forced_reason is AgentHostTerminalReason.INVALID_OUTPUT and failure_code == "invalid_provider_envelope":
+                    diagnostics["provider_diagnostic"] = bounded_diagnostic_text(snapshot.get("error") or "native output validator is closed")
             if (failure_code == "invalid_candidate" and final_text_output
                     and isinstance(handle.tool_workspace, PreparedSessionWorkspace)
                     and handle.request.command.value == "GROUNDING"):

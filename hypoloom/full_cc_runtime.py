@@ -13,7 +13,7 @@ from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
                         STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
-from .verification_contract import compact_review, structured_submission
+from .verification_contract import compact_review, structured_submission, verdict_scoped_review
 
 FULL_CC_PROFILE = "agent-full-cc/1"
 FULL_CC_TOOLS = ("Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill")
@@ -267,6 +267,7 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
         config["mcpServers"]["verifier-output"] = {"command": "/usr/bin/python3", "args": [
             "/runtime/native_output.py", "--review-tool", "--socket", "/output-validation.sock",
             *(["--compact-review"] if compact_review(request) else []),
+            *(["--verdict-scoped-review"] if verdict_scoped_review(request) else []),
             "--output-schema", "/runtime/output-schema.json", "--session-id", workspace.binding["session_id"],
             "--max-bytes", str(max(4 * 1024 * 1024, request.budget.max_output_bytes * 2)),
             "--timeout-seconds", str(request.budget.wall_seconds)]}

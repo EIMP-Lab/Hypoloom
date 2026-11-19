@@ -42,6 +42,8 @@ def test_native_verifier_prepares_corrects_and_finishes_without_repeating_report
         report = {k: v for k, v in output["typed_candidate"].items() if k != "task_kind"}
         step = scenario.steps[request.attempt_id]
         inspect = report["probe"] is not None
+        if not inspect:
+            del report["probe"]
         if step == 1 and inspect:
             report["probe"]["files"]["verification/probe.py"] = "def broken("
             return (("bad_review", "mcp__verifier-output__submit_review", report),)
