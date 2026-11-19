@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .agent_aci import READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION
+from .agent_aci import READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION, VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
 
 PAGE_BYTES = 12000
 INLINE_MEMORY_BYTES = 6 * 1024
@@ -24,6 +24,20 @@ def _pages(data):
                     end -= 1
         yield data[start:end]
         start = end
+
+
+def _review_check_status(plan, observation):
+    if not isinstance(plan, dict) or not isinstance(plan.get("checks"), list):
+        return {}
+    results = observation.get("check_results") if isinstance(observation, dict) else None
+    rows = results.get("checks") if isinstance(results, dict) else None
+    statuses = {}
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                statuses[row["id"]] = row.get("status")
+    return {check["id"]: statuses.get(check["id"]) for check in plan["checks"]
+            if isinstance(check, dict) and isinstance(check.get("id"), str)}
 
 
 def input_views(request):
@@ -79,6 +93,12 @@ def input_views(request):
                     overview[key] = [json_pages(f"/{key}/{n}", entry) for n, entry in enumerate(child)]
                 elif key in {"probe_plan", "probe_evidence"} and child is not None:
                     overview[key] = json_pages("/" + key, child)
+                    if (key == "probe_evidence" and isinstance(child, dict) and value.get("phase") == "review"
+                            and request.schema_version >= VERIFIER_COMPLETION_ACI_SCHEMA_VERSION):
+                        # The evidence pages retain the full observations, including
+                        # errors. A missing result stays visible for every planned check.
+                        overview[key]["usable"] = child.get("usable")
+                        overview[key]["check_status"] = _review_check_status(value.get("probe_plan"), child.get("observation"))
                 else:
                     overview[key] = readable(child, "/" + key)
         else:

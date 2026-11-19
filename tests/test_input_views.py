@@ -44,6 +44,21 @@ def test_source_pages_reconstruct_exact_text_with_safe_names(source):
     assert request.to_dict() == before and input_views(request) == (files, ads)
 
 
+@pytest.mark.parametrize("version", [40, 41])
+def test_review_overview_preserves_missing_checks_and_raw_observations(version):
+    evidence = {"usable": False, "observation": {"stderr": "failed to finish",
+        "check_results": {"checks": [{"id": "write", "status": "ERROR"}]}}}
+    request = request_for("--verification-context", {"phase": "review", "probe_evidence": evidence,
+        "probe_plan": {"checks": [{"id": "write"}, {"id": "read"}]}}, version=version)
+    files, ads = input_views(request)
+    entry = overview(files, ads[0])[0]["probe_evidence"]
+    assert json.loads(read_pages(files, entry)) == evidence
+    if version == 41:
+        assert entry["usable"] is False and entry["check_status"] == {"write": "ERROR", "read": None}
+    else:
+        assert "check_status" not in entry
+
+
 def test_nested_probe_logs_and_plan_code_are_readable_without_escaped_json():
     source = "assert 2 + 2 == 4\n" * 4000
     logs = "PASS step\n" * 8000

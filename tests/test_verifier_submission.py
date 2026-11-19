@@ -31,6 +31,7 @@ def _server(tmp_path, *, cap=3, structured=True, check=None, version=39):
         output_schema=_output_schema(request, tool_workspace=True), session_id="review-session",
         max_failed_validations=cap, max_request_bytes=1024 * 1024,
         deadline_at=time.monotonic() + 15, structured_submission=structured, compact_review=version >= 40,
+        verdict_scoped_review=version >= 41,
         candidate_check=check or _native_candidate_check(request, None))
 
 
@@ -143,7 +144,7 @@ def test_stop_revalidates_semantics_after_tool_preflight(tmp_path):
         server.close()
 
 
-@pytest.mark.parametrize("version", [39, 40])
+@pytest.mark.parametrize("version", [39, 40, 41])
 def test_stdlib_mcp_advertises_versioned_schema_and_returns_field_corrections(tmp_path, version):
     request, output = _review(version)
     schema = _output_schema(request, tool_workspace=True)
@@ -158,7 +159,8 @@ def test_stdlib_mcp_advertises_versioned_schema_and_returns_field_corrections(tm
             {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "submit_review", "arguments": arguments}}]
         completed = subprocess.run([sys.executable, str(Path(native_output.__file__)), "--review-tool",
             "--socket", str(server.socket_path), "--output-schema", str(path), "--session-id", "review-session",
-            "--max-bytes", "1048576", "--timeout-seconds", "5", *(["--compact-review"] if version == 40 else [])],
+            "--max-bytes", "1048576", "--timeout-seconds", "5", *(["--compact-review"] if version >= 40 else []),
+            *(["--verdict-scoped-review"] if version >= 41 else [])],
             input="".join(json.dumps(row) + "\n" for row in requests), text=True, capture_output=True, timeout=10)
         assert completed.returncode == 0, completed.stderr
         rows = [json.loads(row) for row in completed.stdout.splitlines()]
@@ -166,11 +168,15 @@ def test_stdlib_mcp_advertises_versioned_schema_and_returns_field_corrections(tm
         advertised = rows[1]["result"]["tools"][0]["inputSchema"]
         if version == 39:
             assert advertised == schema
-        else:
+        elif version == 40:
             original = schema["properties"]["typed_candidate"]
             assert advertised["properties"] == {k: v for k, v in original["properties"].items() if k != "task_kind"}
             assert set(advertised["required"]) == set(arguments)
             assert advertised["additionalProperties"] is False
+        else:
+            assert set(advertised["required"]) == set(arguments) - {"probe"}
+            assert advertised["properties"]["probe"]["type"] == ["object", "null"]
+            assert "probe" in schema["properties"]["typed_candidate"]["required"]
         assert rows[2]["result"]["isError"]
         assert ("typed_candidate" if version == 39 else "summary") in rows[2]["result"]["content"][0]["text"]
         assert not rows[3]["result"]["isError"] and not server.snapshot()["accepted"]
@@ -196,13 +202,49 @@ def test_flat_tool_rejects_envelope_fields_and_revokes_stale_preparation(tmp_pat
         server.close()
 
 
-@pytest.mark.parametrize("version", [38, 39, 40])
+@pytest.mark.parametrize("version", [38, 39, 40, 41])
 def test_ordinary_json_completion_remains_supported(tmp_path, version):
     _, output = _review(version)
     server = _server(tmp_path, version=version, structured=version >= 39)
     try:
         assert _stop(server, json.dumps(output)) == {}
         assert json.loads(server.accepted_text()) == output
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("probe_field", [{}, {"probe": None}, {"probe": "null"}])
+def test_no_probe_tool_verdict_restores_canonical_null_and_still_requires_stop(tmp_path, probe_field):
+    _, output = _review(41)
+    report = output["typed_candidate"]
+    report.update(verdict="inconclusive", probe=None)
+    arguments = {k: v for k, v in report.items() if k not in {"task_kind", "probe"}}
+    server = _server(tmp_path, version=41)
+    try:
+        assert _prepare(server, {**arguments, **probe_field})["prepared"]
+        assert server.terminal_review_failure() is None and not server.snapshot()["accepted"]
+        assert _stop(server) == {}
+        assert json.loads(server.accepted_text()) == output
+    finally:
+        server.close()
+
+
+def test_tool_probe_wrapper_preserves_source_and_invalid_values_exhaust_budget(tmp_path):
+    _, output = _review(41)
+    arguments = {k: v for k, v in output["typed_candidate"].items() if k != "task_kind"}
+    plan = arguments["probe"]
+    server = _server(tmp_path, version=41)
+    try:
+        assert _prepare(server, {**arguments, "probe": json.dumps(plan)})["prepared"]
+        assert _stop(server) == {} and json.loads(server.accepted_text()) == output
+        for invalid in ({k: v for k, v in arguments.items() if k != "probe"}, {**arguments, "probe": "bad JSON"}):
+            assert "probe_required needs a JSON object" in _prepare(server, invalid)["error"]
+            assert server.terminal_review_failure() is None
+        rejected = _prepare(server, {**arguments, "verdict": "inconclusive"})
+        assert "omit this field" in rejected["error"] and rejected["remaining_corrections"] == 0
+        assert server.terminal_review_failure() == "invalid_candidate"
+        with pytest.raises(ValueError, match="not accepted"):
+            server.accepted_text()
     finally:
         server.close()
 

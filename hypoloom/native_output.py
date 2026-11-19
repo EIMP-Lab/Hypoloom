@@ -141,6 +141,27 @@ def decode_output(text: str, schema: Mapping[str, Any]) -> dict[str, Any]:
     return _decode_output(text, _validator(schema))
 
 
+def _prepare_review_probe(report: dict[str, Any]) -> None:
+    """Restore the canonical probe field at the native tool boundary only."""
+    verdict = report.get("verdict")
+    probe = report.get("probe")
+    if verdict in ("passed", "changes_required", "inconclusive"):
+        if probe is not None and probe != "null":
+            raise ValueError("/probe: omit this field for " + verdict + "; only probe_required takes a probe")
+        report["probe"] = None
+    elif verdict == "probe_required":
+        # Some compatible tool transports stringify a nested argument. Unwrap
+        # one complete JSON object; its files and checks still get full validation.
+        if isinstance(probe, str):
+            try:
+                probe = _decode(probe)
+            except ValueError:
+                probe = None
+        if not isinstance(probe, dict):
+            raise ValueError("/probe: probe_required needs a JSON object with files, argv, timeout_seconds and checks")
+        report["probe"] = probe
+
+
 def _encode(document: Any) -> bytes:
     return json.dumps(document, ensure_ascii=True, allow_nan=False,
                       separators=(",", ":")).encode() + b"\n"
@@ -185,7 +206,8 @@ class NativeOutputValidator:
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
                  final_report_check: Callable[[], Any] | None = None,
                  context_notice: Callable[[], str | None] | None = None,
-                 structured_submission: bool = False, compact_review: bool = False) -> None:
+                 structured_submission: bool = False, compact_review: bool = False,
+                 verdict_scoped_review: bool = False) -> None:
         if compact_review and not structured_submission:
             raise ValueError("compact review requires structured submission")
         if acceptance_smoke and measurement_smoke:
@@ -224,6 +246,7 @@ class NativeOutputValidator:
         self.context_notice = context_notice
         self.structured_submission = structured_submission
         self.compact_review = compact_review
+        self.verdict_scoped_review = verdict_scoped_review
         self._prepared = False
         self.parser_source_root = parser_source_root
         self.parser_smoke_max_bytes = parser_smoke_max_bytes or max(1, max_request_bytes // 2)
@@ -368,6 +391,8 @@ class NativeOutputValidator:
                     report = _decode(text)
                     if not isinstance(report, dict) or {"task_kind", "typed_candidate", "declared_effects"} & report.keys():
                         raise ValueError("submit_review takes report fields directly; omit task_kind, typed_candidate and declared_effects")
+                    if self.verdict_scoped_review:
+                        _prepare_review_probe(report)
                     fields = self._validator.schema["properties"]
                     task_kind = fields["typed_candidate"]["properties"]["task_kind"]["const"]
                     effect = fields["declared_effects"]["items"]["properties"]["effect"]["const"]
@@ -514,6 +539,15 @@ class NativeOutputValidator:
         if len(raw) > self.max_request_bytes:
             raise ValueError("native output exceeds size limit")
         return raw.decode("utf-8")
+
+    def terminal_review_failure(self) -> str | None:
+        """Report an irreversible validation failure to the owning process adapter."""
+        with self._lock:
+            if self._rejected >= self.max_failed_validations:
+                return "invalid_candidate"
+            if self._closed.is_set() or self._error is not None:
+                return "invalid_provider_envelope"
+            return None
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -667,7 +701,8 @@ def _read_stdin(maximum: int, deadline: float) -> bytes:
 
 
 def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
-                      max_request_bytes: int, timeout_seconds: float, compact_review: bool = False) -> int:
+                      max_request_bytes: int, timeout_seconds: float, compact_review: bool = False,
+                      verdict_scoped_review: bool = False) -> int:
     # Both modules are mounted read-only for the standalone stdlib bridge.
     if __package__:
         from .host_tools_server import serve_mcp
@@ -682,6 +717,13 @@ def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
         report = schema["properties"]["typed_candidate"]
         schema = {**report, "properties": {key: spec for key, spec in report["properties"].items() if key != "task_kind"},
                   "required": [key for key in report["required"] if key != "task_kind"]}
+        if verdict_scoped_review:
+            # Preserve the admitted object's nested constraints and explicit
+            # JSON null compatibility. The Host enforces the verdict dependency.
+            probe = next(branch for branch in schema["properties"]["probe"]["anyOf"] if branch["type"] == "object")
+            schema["properties"]["probe"] = {**probe, "type": ["object", "null"],
+                "description": "Supply a JSON object for probe_required. Omit this field for all other verdicts."}
+            schema["required"].remove("probe")
     tool = {"name": "submit_review", "description": (
         ("Prepare the Verifier report fields directly. " if compact_review else
          "Prepare the complete Verifier AgentResponse using the supplied schema. ") +
@@ -708,6 +750,7 @@ def main() -> int:
     parser.add_argument("--context-notice", action="store_true")
     parser.add_argument("--review-tool", action="store_true")
     parser.add_argument("--compact-review", action="store_true")
+    parser.add_argument("--verdict-scoped-review", action="store_true")
     parser.add_argument("--output-schema")
     parser.add_argument("--session-id")
     arguments = parser.parse_args()
@@ -719,7 +762,8 @@ def main() -> int:
                 raise ValueError("review tool requires its schema and session")
             return serve_review_tool(arguments.socket, schema_path=arguments.output_schema,
                 session_id=arguments.session_id, max_request_bytes=arguments.max_bytes,
-                timeout_seconds=arguments.timeout_seconds, compact_review=arguments.compact_review)
+                timeout_seconds=arguments.timeout_seconds, compact_review=arguments.compact_review,
+                verdict_scoped_review=arguments.verdict_scoped_review)
         deadline = time.monotonic() + arguments.timeout_seconds
         hook = _decode(_read_stdin(arguments.max_bytes, deadline))
         if not isinstance(hook, dict):
