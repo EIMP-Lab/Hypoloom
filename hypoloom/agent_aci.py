@@ -87,7 +87,8 @@ STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION = 39
 STAGE_EVIDENCE_ACI_SCHEMA_VERSION = 40
 VERIFIER_COMPLETION_ACI_SCHEMA_VERSION = 41
 SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION = 42
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION
+EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION = 43
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -126,6 +127,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         STAGE_EVIDENCE_ACI_SCHEMA_VERSION,
         VERIFIER_COMPLETION_ACI_SCHEMA_VERSION,
         SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION,
+        EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -173,6 +175,7 @@ _COMMANDS_BY_SCHEMA = {
     STAGE_EVIDENCE_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     VERIFIER_COMPLETION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1872,6 +1875,9 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
                      | ({"acceptance"} if request.schema_version >= SHARED_ACCEPTANCE_ACI_SCHEMA_VERSION else set()), "Grounding candidate")
         try:
             from .shared_acceptance import SharedAcceptance
+            if (request.schema_version < EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION and isinstance(raw.get("acceptance"), Mapping)
+                    and "diagnostics" in raw["acceptance"]):
+                raise ValueError("shared diagnostics require ACI 43")
             clarification = raw.get("clarification")
             background = None if dialogue and raw["background"] is None else GroundingBackground.from_dict(raw["background"], max_bytes=request.budget.max_output_bytes)
             return GroundingCandidate(task_kind=raw["task_kind"], summary=background.project_summary if background is not None else clarification["question"],

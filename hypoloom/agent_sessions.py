@@ -248,6 +248,7 @@ class PreparedSessionWorkspace:
     leader_resources: dict[str, Any] | None = None
     final_report_root: Path | None = None
     acceptance_root: Path | None = None
+    evaluator_seed_files: dict[str, bytes] | None = None
     captured_acceptance_files: dict[str, bytes] = field(default_factory=dict)
     papers: Any = None
     session_usage_baseline: Mapping[str, Any] | None = None
@@ -985,7 +986,16 @@ class AgentSessions:
         from .agent_aci import grounding_acceptance_request
         if grounding_acceptance_request(request) and request.command not in {AgentCommand.PAPER_READ, AgentCommand.VERIFY_IMPLEMENTATION}:
             if request.command is AgentCommand.GROUNDING:
-                workspace.acceptance_root = _directory(root / "acceptance-authoring")
+                draft = root / "acceptance-authoring"
+                if request.schema_version >= 43:
+                    config = next(json.loads(item.content_bytes()) for item in request.input_artifacts if item.ref.endswith(("--grounding-config", "--expert-config")))
+                    if seed := config.get("evaluator_seed"):
+                        from .evaluator_examples import load_seed, prepare_seed
+                        if binding is None:
+                            raise GitAuthoringIntegrityError("evaluator seed requires its bound target")
+                        workspace.evaluator_seed_files = load_seed(seed, binding.checkout, binding.commit, request.budget.max_output_bytes)
+                        prepare_seed(draft, workspace.evaluator_seed_files)
+                workspace.acceptance_root = _directory(draft)
             else:
                 supplied = [item for item in request.input_artifacts if item.ref.endswith("--shared-acceptance")]
                 if not supplied and (request.command is AgentCommand.FINAL_REPORT

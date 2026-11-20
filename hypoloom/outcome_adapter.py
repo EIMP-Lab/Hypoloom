@@ -136,7 +136,8 @@ def validate_measurement_result(component: Mapping[str, Any], measurement: Scien
                     *("parser/" + name for name in measurement.parser_files)}
         if not required <= paths or any(path != "result.json" and not path.startswith(("raw/", "parser/")) for path in paths):
             raise ValueError("measurement publication lacks its raw/parser/result inventory")
-        raw = json.loads((root / "result.json").read_bytes(), object_pairs_hook=_unique_object,
+        from .domain import parsed_decimal_number
+        raw = json.loads((root / "result.json").read_bytes(), object_pairs_hook=_unique_object, parse_float=parsed_decimal_number,
                          parse_constant=_reject_component_constant)
         evaluation = evaluate_parsed_measurement(measurement, raw)
         if component.get("required_artifacts"):

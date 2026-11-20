@@ -85,6 +85,7 @@ metric:
 | `metric.direction` | `maximize` or `minimize`. |
 | `metric.target` | Finite numeric threshold, expressed in the metric's units. |
 | `evaluation` | Set to `grounding` when experts must share an acceptance procedure established during Grounding. Describe the complete requirements in `description`. |
+| `evaluator_seed` | Optional reviewed Git directory and protocol identifier. Grounding replays its pinned examples before accepting the evaluator. [Shared GOAL evaluation](../docs/guides/shared-evaluation.md) |
 
 For `evaluation: grounding`, keep `metric: null` and omit `completion` and
 `stop_conditions.target_metric`. One complete `GOAL` candidate must satisfy all
@@ -471,6 +472,7 @@ filesystem:
 | Field | Meaning and accepted values |
 | --- | --- |
 | `allow_read_paths` | List of existing absolute paths to data and other approved read-only inputs. Use an empty list when no additional data is needed. Never include credential directories. |
+| `evaluation_only_read_paths` | Held-out files or directories mounted read-only in the formal GOAL raw Process. Supply absolute, disjoint canonical paths. |
 | `sandbox_os` | Keep `linux_bwrap` for the supported Linux bubblewrap sandbox. |
 | `gpus` | `[]` means CPU-only. `auto` uses the Host-authorized inventory; a list narrows it to GPU UUIDs or nonnegative integer indices. Prefer stable UUIDs. This field never grants devices by itself. |
 | `max_gpus_per_experiment` | Positive per-experiment GPU-count ceiling; `1` does not enable GPUs when `gpus: []`. |

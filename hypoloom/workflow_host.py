@@ -41,7 +41,7 @@ from .domain import CandidateFieldError
 from .runtime_diagnostics import record_host_exception
 from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReason, CanonicalOutcomeAccepted, ComponentId, ComponentResultKind, EvidenceId, EvidenceLinked, ExecutionId, ExperimentId, ExperimentPreregistered, FactId, GoalDefined, GoalId, GoalVerdict, GoalVerdictRecorded, HypothesisAssessed, HypothesisAssessment, HypothesisId, HypothesisProposed, ExecutionContract, LogicalArtifact, MethodFamilyId, ProducerOutcomeBinding, ResearchContract, ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, OutcomeId, RunId, RunVersion, ScientificOutcome, VerdictId, REVISIONABLE_INTEGRITY_VALIDATION_CODES)
 from .fake_agent import FakeAgent, FakeAgentMode
-from .execution_workspace import (EXECUTION_WORKSPACE_VERSION, ExecutionWorkspace, ExecutionWorkspaceError, GitTargetBinding, PreparedAgentWorkspace, PreparedExecution, TargetPreparationError, bind_clean_git_target, execution_environment_contract, execution_read_root_projection, verify_downstream_implementation_contracts)
+from .execution_workspace import (EXECUTION_WORKSPACE_VERSION, ExecutionWorkspace, ExecutionWorkspaceError, GitTargetBinding, PreparedAgentWorkspace, PreparedExecution, TargetPreparationError, bind_clean_git_target, execution_environment_contract, evaluation_only_roots, execution_read_root_projection, verify_downstream_implementation_contracts)
 from .expert_loop import (AuxiliaryRequestKind, AuxiliaryTask, AuxiliaryTaskView, DerivedWorkState, ExpertLineage, ExpertLineageInput, HypothesisUpdateDisposition, ResearchNodeKey, ResearchNodeKind, ResearchNodeSubkind, ResearchNodeTask, ResearchNodeView, ScientificNodeRefs, _EXPERT_NODE_ORDER, reduce_expert_lineage)
 from .expert_batch import BatchHistory, batch_limits, research_round_available, supports_hypothesis_batches, proposal_siblings, sibling_proposal_failed
 from .git_authoring_workspace import (GIT_AUTHORING_WORKSPACE_VERSION, GitAuthoringPreparationError, GitAuthoringIntegrityError, GitAuthoringWorkspace, PreparedGitAuthoringWorkspace)
@@ -433,6 +433,8 @@ class WorkflowHost:
         execution_blockers = component_execution_blockers(contract.document)
         if execution_blockers: raise ValueError("; ".join(item.message for item in execution_blockers))
         execution_fields = {"delay_seconds", "allow_gpu", "target", "runtime_prefix", "read_roots"}
+        if "evaluation_only_roots" in contract.document["safety"]:
+            execution_fields.add("evaluation_only_roots")
         if not isinstance(execution, Mapping) or set(execution) != execution_fields: raise ValueError("execution has unknown or missing operational bindings")
         raw_delay = execution["delay_seconds"]
         allow_gpu = execution.get("allow_gpu", False)
@@ -484,6 +486,24 @@ class WorkflowHost:
         if [str(Path(str(value)).resolve()) for value in requested_safety.get("read_roots", ())] != resolved_roots: raise ValueError("resolved read roots differ from research contract")
         config = {"execution": {"allow_gpu": allow_gpu, "delay_seconds": delay, "target": target_record,
             "runtime_prefix": runtime_prefix, "read_roots": resolved_roots}}
+        if seed := (product or {}).get("goal", {}).get("evaluator_seed"):
+            from .evaluator_examples import load_seed
+            if int(self.version.agent_aci_version) < 43 or target_record is None or contract.document["goal"].get("evaluation") != {"mode": "grounding"}:
+                raise ValueError("evaluator seed requires a bound ACI 43 Grounding target")
+            load_seed(seed, **target_record, max_bytes=profile_agent_budget(contract.document, self.agent_budget).max_output_bytes)
+        product_paths = (product or {}).get("safety", {}).get("evaluation_only_read_paths", [])
+        if (requested_safety.get("evaluation_only_roots", ()) != tuple(product_paths)
+                or execution.get("evaluation_only_roots", []) != product_paths):
+            raise ValueError("evaluation-only inputs differ from Profile controls")
+        if product_paths:
+            if int(self.version.agent_aci_version) < 43:
+                raise ValueError("evaluation-only inputs require matching ACI 43 Profile bindings")
+            agent = self.claude_agent_host
+            protected = [self.state_root, *getattr(agent, "runtime_paths", ())]
+            if getattr(agent, "settings_path", None):
+                protected.append(agent.settings_path)
+            config["execution"]["evaluation_only_roots"] = evaluation_only_roots(product_paths,
+                config["execution"], contract.document, protected=protected)
         if self.shared_gpu is not None: config["gpu_pool"] = self.shared_gpu.configuration
         if self.shared_gpu is not None and allow_gpu:
             config["gpu_selection"] = [gpu.uuid for gpu in restrict_profile_capabilities(
@@ -3145,7 +3165,7 @@ class WorkflowHost:
                     "CUDA_VISIBLE_DEVICES": "" if isinstance(grant, ResourceIntent) else ",".join(grant.device_uuids), "HYPOLOOM_REQUIRED_INPUTS": json.dumps(required_inputs, sort_keys=True, separators=(",", ":")),
                     "HYPOLOOM_READ_ROOTS": json.dumps(execution["read_roots"], separators=(",", ":"))}
                 environment.update(execution_read_root_projection(execution, execution_plan,
-                    generic=getattr(candidate, "measurement", None) is not None or getattr(candidate, "evaluation_scope", None) == "GOAL")[1])
+                    formal_goal=getattr(candidate, "evaluation_scope", None) == "GOAL", generic=getattr(candidate, "measurement", None) is not None or getattr(candidate, "evaluation_scope", None) == "GOAL")[1])
                 if execution["target"] is not None: environment["HYPOLOOM_TARGET_ROOT"] = execution["target"]["checkout"]
                 environment.update(execution_plan["environment"])
                 fact = ExperimentPreregistered(fact_id=_fact_id(request.run_id, "experiment", component_index,
@@ -3753,7 +3773,7 @@ class WorkflowHost:
                 "HYPOLOOM_RESULT_PATH": "result.json", "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
                 "CUDA_VISIBLE_DEVICES": "" if isinstance(grant, ResourceIntent) else ",".join(grant.device_uuids), "HYPOLOOM_REQUIRED_INPUTS": json.dumps(required_inputs, sort_keys=True, separators=(",", ":")),
                 "HYPOLOOM_READ_ROOTS": json.dumps(execution["read_roots"], separators=(",", ":"))}
-            environment.update(execution_read_root_projection(execution, plan,
+            environment.update(execution_read_root_projection(execution, plan, formal_goal=candidate.evaluation_scope == "GOAL",
                 generic=candidate.measurement is not None or candidate.evaluation_scope == "GOAL")[1])
             if execution["target"] is not None: environment["HYPOLOOM_TARGET_ROOT"] = execution["target"]["checkout"]
             environment.update(plan["environment"])
@@ -4122,11 +4142,15 @@ class WorkflowHost:
             except ResourceUnavailable as exc: self.resource_waits[experiment_id] = (run_id, str(exc)[:512]); return
         self.resource_waits.pop(experiment_id, None)
         self._crash("before_process_intent_commit")
-        mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt_id)
+        mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt_id, probe=bool(probe))
         plan = _component_plan(self._research_contract(run_id).document, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]), self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"])), grant.kind is ResourceKind.GPU)
         probe_files = {}
         if probe:
             from .execution_workspace import sandbox_command
+            execution = self._run_config(run_id)["execution"]
+            if execution.get("evaluation_only_roots") and (spec["payload"].get("goal_evaluation") or {}).get("scope") == "GOAL":
+                _, public_env = execution_read_root_projection(execution, plan, generic=True)
+                contract = {**contract, "environment": {**dict(contract["environment"]), **public_env}}
             formal_argv = sandbox_command(contract["argv"], source_path, "python")
             contract = {**contract, "argv": probe["argv"], "timeout_seconds": min(contract["timeout_seconds"], probe["timeout_seconds"])}
             source_path = probe["argv"][1]
@@ -4397,7 +4421,7 @@ class WorkflowHost:
         return self._implementation_patch(request.run_id, str(request.component_id), str(candidate.method_family_id))
 
     def _execution_mounts(self, run_id: str, spec: Mapping[str, Any], workspace: ExecutionWorkspace,
-                          attempt_id: str) -> tuple[tuple[tuple[Path, str], ...], GitTargetBinding | None, bytes | None]:
+                          attempt_id: str, *, probe: bool = False) -> tuple[tuple[tuple[Path, str], ...], GitTargetBinding | None, bytes | None]:
         execution = self._run_config(run_id)["execution"]; payload = spec["payload"]; target = execution["target"]
         binding = None if target is None else GitTargetBinding(checkout=Path(target["checkout"]), commit=target["commit"])
         patch = self._implementation_patch(run_id, str(payload["component_id"]), str(payload["method_family_id"]))
@@ -4415,7 +4439,7 @@ class WorkflowHost:
             if not isinstance(item, Mapping): raise OperationalHalt("component data binding is invalid")
             source = Path(str(item["source"])); data_sources.append(source); mounts.append((source, str(item["sandbox"])))
         read_bindings, _ = execution_read_root_projection(execution, plan,
-            generic=payload.get("measurement") is not None or (payload.get("goal_evaluation") or {}).get("scope") == "GOAL")
+            formal_goal=not probe and (payload.get("goal_evaluation") or {}).get("scope") == "GOAL", generic=payload.get("measurement") is not None or (payload.get("goal_evaluation") or {}).get("scope") == "GOAL")
         for source, destination in read_bindings:
             if binding is not None and source == binding.checkout and destination == str(source) or any(source == item or source in item.parents or item in source.parents for item in data_sources): continue
             mounts.append((source, destination))

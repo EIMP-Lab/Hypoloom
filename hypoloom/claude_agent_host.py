@@ -78,7 +78,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/99"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/100"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -657,6 +657,8 @@ class ClaudeAgentHost:
                 compact_review=compact_review(request),
                 verdict_scoped_review=verdict_scoped_review(request),
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
+                semantic_examples=request.schema_version >= 43,
+                seed_files=getattr(tool_workspace, "evaluator_seed_files", None),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
@@ -2330,7 +2332,7 @@ def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
     return schema
 
 
-def _shared_acceptance_schema() -> dict[str, Any]:
+def _shared_acceptance_schema(*, diagnostics: bool = False) -> dict[str, Any]:
     strings = {"type": "array", "uniqueItems": True, "items": {"type": "string", "minLength": 1}}
     # Project SharedAcceptance._paths' existing per-path rules into CC validation;
     # capture still owns file existence, symlinks and cross-file collisions.
@@ -2351,7 +2353,12 @@ def _shared_acceptance_schema() -> dict[str, Any]:
             "description": "Canonical relative source paths under /acceptance, e.g. evaluate.py, without the /acceptance prefix; no absolute paths, empty/dot/dot-dot segments, backslashes or NUL."},
         "raw_artifacts": {**paths,
             "description": "Canonical relative evidence paths under /raw, e.g. predictions.json, without the /raw prefix; no absolute paths, empty/dot/dot-dot segments, backslashes or NUL."}}
-    return {"type": "object", "additionalProperties": False, "properties": properties, "required": list(properties)}
+    required = list(properties)
+    if diagnostics:
+        properties["diagnostics"] = {"type": "object", "minProperties": 1,
+            "additionalProperties": {"enum": ["BOOLEAN", "DECIMAL"]},
+            "description": "Optional named report-only observations. Their values do not decide goal or validity."}
+    return {"type": "object", "additionalProperties": False, "properties": properties, "required": required}
 
 
 def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorkspace,
@@ -2819,7 +2826,7 @@ def _output_schema(
                         "options": {"type": "array", "uniqueItems": True, "items": {"type": "string", "minLength": 1}}}}]}
                 candidate_required.append("clarification")
             if request.schema_version >= 16:
-                candidate_properties["acceptance"] = {"anyOf": [{"type": "null"}, _shared_acceptance_schema()]}
+                candidate_properties["acceptance"] = {"anyOf": [{"type": "null"}, _shared_acceptance_schema(diagnostics=request.schema_version >= 43)]}
                 candidate_required.append("acceptance")
         if request.command.value == "HYPOTHESIS_UPDATE":
             candidate_properties["update_disposition"] = (

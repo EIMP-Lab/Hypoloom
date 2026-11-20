@@ -112,3 +112,18 @@ TUI 与 Web 的卡片统一使用 **Verifier** 名称。Grounding、Verifier 和
 不据此判定尚未交付。累计交付数及首次通过率仍从完整检验历史计算。
 
 机制用于新建运行，不热升级或迁移既有冻结运行。
+
+## 成对扰动探针
+
+从 ACI 43 起，可以在探针检查中使用 `paired_inputs`。它只取一次样本，再比较两个副本。扰动函数原地修改其中一个副本，两个选择函数分别指出应保持不变的全部输入和必须发生变化的区域。
+
+```python
+from hypoloom_probe import check, paired_inputs
+
+with check("prefix_invariance") as c:
+    a, b = paired_inputs(draw_sample, change_suffix,
+                         control=lambda row: row["prefix"], target=lambda row: row["suffix"])
+    c.equal(candidate(a), candidate(b))
+```
+
+对照部分变化或目标部分没有变化时，探针记录 `ERROR`。模型输出断言失败时记录 `FAIL`。数组或张量可以提供相应的 `clone` 和返回单个布尔值的 `equal` 函数。选择函数应返回可以快照的值，例如已分离的张量。

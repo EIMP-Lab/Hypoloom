@@ -60,11 +60,11 @@ class _Validator:
         return value
 
 
-_GOAL = {"title", "description", "metric", "constraints", "stop_conditions", "completion", "evaluation"}
+_GOAL = {"evaluator_seed", "title", "description", "metric", "constraints", "stop_conditions", "completion", "evaluation"}
 _EXPERT = {"name", "role", "persona", "focus", "model", "effort", "max_forks", "max_hypotheses_per_round", "stage_overrides"}
 _DEFAULTS = {"model", "effort", "max_forks", "max_hypotheses_per_round"}
 _METHOD = {"schema_version", "runtime", "budget", "literature", "inner_loop", "interaction", "graph_evolution", "memory", "output_correction"}
-_SAFETY = {"allow_read_paths", "sandbox_os", "gpus", "max_gpus_per_experiment", "experiment_timeout_minutes", "per_expert_budget_usd", "total_budget_usd", "bash", "filesystem"}
+_SAFETY = {"evaluation_only_read_paths", "allow_read_paths", "sandbox_os", "gpus", "max_gpus_per_experiment", "experiment_timeout_minutes", "per_expert_budget_usd", "total_budget_usd", "bash", "filesystem"}
 _STAGES = {"grounding", "literature_review", "hypothesis_proposal", "hypothesis_proposal.forward",
     "hypothesis_proposal.backward", "hypothesis_proposal.synthesis", "inner_loop.code", "inner_loop.run",
     "inner_loop.analysis", "hypothesis_update", "cycle_report", "self_evolve", "observer", "debate", "leader"}
@@ -150,6 +150,7 @@ def _safety(v: _Validator, value: Mapping[str, Any]) -> None:
         if not isinstance(gpus, list) or any(not _gpu_selector(item) for item in gpus):
             v.error("safety.yaml.gpus", "expected auto or a GPU UUID/index list")
         elif len(set(gpus)) != len(gpus): v.error("safety.yaml.gpus", "duplicate GPU identifiers")
+    v.strings(value.get("evaluation_only_read_paths", []), "safety.yaml.evaluation_only_read_paths")
     v.strings(value.get("allow_read_paths", []), "safety.yaml.allow_read_paths")
     bash = v.object(value.get("bash", {}), {"deny_patterns", "network_allowed"}, "safety.yaml.bash")
     v.strings(bash.get("deny_patterns", []), "safety.yaml.bash.deny_patterns")
@@ -291,6 +292,16 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     prompt_language = language.get("prompt_language", "en")
     report_language = language.get("report_language", prompt_language)
     metric = goal.get("metric")
+    if "evaluator_seed" in goal:
+        from .evaluator_examples import checked_seed_spec
+        try:
+            checked_seed_spec(goal["evaluator_seed"])
+            if goal.get("evaluation") != "grounding":
+                raise ValueError("evaluator_seed requires Grounding evaluation")
+        except ValueError as exc:
+            v.error("goal.yaml.evaluator_seed", str(exc))
+    if safety.get("evaluation_only_read_paths") and goal.get("evaluation") != "grounding":
+        v.error("safety.yaml.evaluation_only_read_paths", "evaluation-only inputs require shared GOAL evaluation")
     if "evaluation" in goal and goal["evaluation"] != "grounding":
         v.error("goal.yaml.evaluation", "expected grounding")
     if goal.get("evaluation") == "grounding" and (metric is not None or "completion" in goal or stops.get("target_metric") is not None):
@@ -361,6 +372,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
         language={"default": prompt_language, "overrides": {"cycle_report": report_language}})
     settings = {"profile_version": 4, "goal": {"constraints": constraints, "stop_conditions": {key: value for key, value in stops.items() if key != "target_metric"},
         "completion_mode": "explicit_signals" if "completion" in goal else "shared_goal",
+        **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
         **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {})}, "experts": experts,
         "methodology": {key: value for key, value in methodology.items() if key not in {"schema_version", "runtime", "budget"}},
         "language": language, "notify": notify, "safety": {key: value for key, value in safety.items() if key not in {"allow_read_paths", "sandbox_os", "experiment_timeout_minutes"}}}
@@ -472,7 +484,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
     if not isinstance(value, dict) or set(value) != {"profile_version", "goal", "experts", "methodology", "language", "notify", "safety"} or value["profile_version"] != 4:
         raise ValueError("invalid Profile v4 product settings")
     goal = value["goal"]
-    if not isinstance(goal, dict) or set(goal) != {"constraints", "stop_conditions", "completion_mode"} | ({"evaluation"} if "evaluation" in goal else set()) or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
+    if not isinstance(goal, dict) or set(goal) - {"evaluation", "evaluator_seed"} != {"constraints", "stop_conditions", "completion_mode"} or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
         raise ValueError("invalid Profile v4 goal controls")
     if "evaluation" in goal and (goal["evaluation"] != "grounding" or goal["completion_mode"] != "shared_goal"):
         raise ValueError("Grounding evaluation requires shared_goal controls")
@@ -485,6 +497,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
         if validator.issues: raise ValueError("legacy expert round limit must be a positive integer")
     projected = project_profile_v4(goal={"title": "Admitted product controls", "description": "Validate controls without redefining scientific components.",
         "constraints": goal["constraints"], "stop_conditions": stops,
+        **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
         **({"evaluation": goal["evaluation"]} if "evaluation" in goal else {})}, experts=value["experts"],
         methodology={"schema_version": 4, **value["methodology"]}, language=value["language"], notify=value["notify"], safety=value["safety"])
     if projected.issues: raise ValueError("invalid Profile v4 controls: " + "; ".join(issue.location + ": " + issue.message for issue in projected.issues))

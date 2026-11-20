@@ -315,6 +315,10 @@ def instructions(request):
             "Otherwise decide passed/changes_required/inconclusive.\n"
             if can_repair_probe(request, ctx) else
             "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n"))
+    if request.schema_version >= 43:
+        result += ("For a perturbation check use hypoloom_probe.paired_inputs(sample, perturb, control=..., target=...). "
+            "Draw the base once, mutate one clone in place, select all fixed inputs and the changed region. "
+            "Supply clone/equal for arrays or tensors. Inside check(), assert the candidate's actual paired outputs.\n")
     if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
         if ctx.get("entrypoint_smoke"):
             result += ("The author supplied entrypoint_smoke. Declare formal_entrypoint as a required assertion. "

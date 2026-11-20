@@ -1,7 +1,7 @@
 """Immutable domain values for the Hypoloom finite core."""
 from __future__ import annotations
 from dataclasses import asdict, astuple, dataclass, field, fields, is_dataclass
-from decimal import Decimal, DecimalException, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 import math
 from types import MappingProxyType
@@ -104,20 +104,28 @@ def validate_physical_gpu_uuid(value: Any) -> None:
 def _require_digest(value: object, field: str) -> None:
     if not isinstance(value, str) or len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise ValueError(f"{field} must be a lowercase SHA-256 digest")
+def parsed_decimal_number(token: str) -> float | str:
+    """Keep ordinary JSON numbers compatible and retain digits a float would lose."""
+    approx = float(token)
+    return approx if Decimal(str(approx)) == Decimal(token) else token
+
+
 def normalize_metric_value(value: Decimal | int | float | str) -> str:
     """Return a canonical finite decimal representation."""
     if isinstance(value, bool): raise ValueError("metric value must be numeric, not bool")
     try:
-        number = Decimal(str(value))
+        number = Decimal(value) if isinstance(value, (int, Decimal)) else Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError("metric value must be numeric") from exc
     if not number.is_finite(): raise ValueError("metric value must be finite")
     if number == 0: return "0"
-    try:
-        normalized = number.normalize()
-    except DecimalException as exc:
-        raise ValueError("metric magnitude is unsupported") from exc
-    return str(normalized) if abs(normalized.adjusted()) > 1000 else format(normalized, "f")
+    if number.adjusted() > 999999: raise ValueError("metric magnitude is unsupported")
+    sign, digits, exponent = number.as_tuple()
+    end = len(digits)
+    while digits[end - 1] == 0:
+        end -= 1
+    normalized = Decimal((sign, digits[:end], exponent + len(digits) - end))
+    return format(normalized, "E") if abs(normalized.adjusted()) > 1000 else format(normalized, "f")
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RunVersion:
     workflow_definition_version: str; research_contract_version: str; evaluator_version: str

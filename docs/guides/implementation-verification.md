@@ -159,3 +159,18 @@ than counted as proven undelivered. Aggregate delivery and first-pass counts
 still use the complete verification history.
 
 This applies to new runs. Existing frozen runs are not hot-upgraded or migrated.
+
+## Paired perturbation probes
+
+In ACI 43, call `paired_inputs` inside a probe check to draw one sample and compare two copies. The perturbation edits its copy in place. The selectors identify all inputs that must stay fixed and the region that must change.
+
+```python
+from hypoloom_probe import check, paired_inputs
+
+with check("prefix_invariance") as c:
+    a, b = paired_inputs(draw_sample, change_suffix,
+                         control=lambda row: row["prefix"], target=lambda row: row["suffix"])
+    c.equal(candidate(a), candidate(b))
+```
+
+A changed control or an unchanged target produces `ERROR`. A failed output assertion produces `FAIL`. For arrays or tensors supply an appropriate `clone` and scalar-valued `equal` function, and select values that support a snapshot, such as detached tensors.

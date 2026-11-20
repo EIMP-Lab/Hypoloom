@@ -6,7 +6,7 @@ Every parser replay gets a fresh disposable directory, never a retained run writ
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, DecimalException, localcontext
+from decimal import Context, Decimal, DecimalException, Inexact, localcontext
 import json
 from pathlib import Path
 import sys
@@ -32,14 +32,11 @@ def _decimal(value: Any) -> Decimal:
     return result
 
 
-def _unit_score(row: Mapping[str, Any], comparison: str, *, staged: bool) -> Decimal:
+def _unit_score(row: Mapping[str, Any], comparison: str) -> Decimal:
     if not isinstance(row, Mapping) or "value" not in row or set(row) - {"value", "baseline"}:
         raise ValueError("expected value and optional baseline")
     value = _decimal(row["value"])
     baseline = _decimal(row["baseline"]) if row.get("baseline") is not None else None
-    if staged:
-        value = +value
-        baseline = +baseline if baseline is not None else None
     if comparison == "VALUE":
         return value
     if comparison not in ("DELTA_FROM_BASELINE", "RELATIVE_DELTA_FROM_BASELINE") or baseline is None:
@@ -58,8 +55,7 @@ def interpret_measurement(declaration: Mapping[str, Any], result: Mapping[str, A
         metric = declaration["metric"]
         if not isinstance(result, Mapping) or result.get("metric") != metric["name"]:
             raise ValueError("parsed measurement fields or metric identity differ")
-        with localcontext() as context:
-            context.prec = 50
+        with localcontext(Context(prec=50)) as context:
             comparison = declaration["comparison"]
             if "evidence" in declaration:
                 # Decode the frozen plan, then compute from the parser replay independently.
@@ -68,23 +64,19 @@ def interpret_measurement(declaration: Mapping[str, Any], result: Mapping[str, A
                 rows = result.get("observations")
                 if set(result) != {"metric", "observations"} or not isinstance(rows, Mapping) or set(rows) != set(plan.units):
                     raise ValueError("observations must match exactly the declared evidence units")
-                scores = [_unit_score(rows[unit], comparison, staged=True) for unit in plan.units]
+                scores = [_unit_score(rows[unit], comparison) for unit in plan.units]
                 if plan.reduction == "MEAN":
                     measured = sum(scores) / len(scores)
                 elif metric["direction"] == "MINIMIZE":
                     measured = max(scores)
                 else:
                     measured = min(scores)
+                if context.flags[Inexact]:
+                    measured = Context(prec=28).plus(measured)
             else:
-                measured = _unit_score({k: v for k, v in result.items() if k != "metric"}, comparison, staged=False)
-        if "evidence" in declaration:
-            measured = measured.normalize()  # canonical fact precision after the reduction
-        if "evidence" in declaration and abs(measured.adjusted()) > 1000:
-            text = str(measured)
-        else:
-            text = format(measured, "f")
-            if "." in text: text = text.rstrip("0").rstrip(".")
-        if measured == 0: text = "0"
+                measured = _unit_score({k: v for k, v in result.items() if k != "metric"}, comparison)
+        from .shared_acceptance_oracle import _normal
+        text = _normal(measured)
         target = _decimal(metric["target"])
         direction = metric["direction"]
         if direction not in {"MINIMIZE", "MAXIMIZE"}: raise ValueError("invalid metric direction")
@@ -108,7 +100,10 @@ def _read_result(path: Path) -> Mapping[str, Any]:
     def nonfinite(value: str) -> Any: raise ValueError(f"nonfinite JSON value {value}")
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
         raise ValueError("parsed measurement publication is absent or unbounded")
-    result = json.loads(path.read_bytes(), object_pairs_hook=unique, parse_constant=nonfinite)
+    def numeric(token):
+        value = float(token)
+        return token if Decimal(token) != Decimal(str(value)) else value
+    result = json.loads(path.read_bytes(), object_pairs_hook=unique, parse_constant=nonfinite, parse_float=numeric)
     if not isinstance(result, Mapping): raise ValueError("parsed result must be an object")
     return result
 

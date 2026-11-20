@@ -10,6 +10,24 @@ from .measurement_contract import ScientificMeasurement, evaluate_parsed_measure
 from .shared_acceptance import SharedAcceptance, acceptance_source_files, evaluate_shared_acceptance
 
 
+def accepted_grounding_source(store, run_id):
+    """Recover the single accepted evaluator and its captured source bytes."""
+    sources = []
+    for row in store.inspect(
+            "SELECT * FROM execution_attempts WHERE run_id=? AND kind='AGENT' "
+            "AND state='CLOSED' AND terminal_reason='SUCCEEDED' "
+            "AND json_extract(observation_json,'$.request.command')='GROUNDING'", (run_id,)):
+        observed = json.loads(row["observation_json"])
+        request = AgentRequest.from_dict(observed["request"])
+        validated = validate_postflight(request, observed["response"])
+        declaration = validated.candidate.acceptance
+        if declaration is not None:
+            sources.append((row["attempt_id"], declaration, acceptance_source_files(declaration, validated.workspace_files)))
+    if len(sources) > 1:
+        raise AgentACIError("shared_acceptance_source", "expected one accepted final Grounding evaluator")
+    return sources[0] if sources else None
+
+
 class SharedAcceptanceHost:
     def __init__(self, host: Any):
         self.host = host
@@ -25,20 +43,7 @@ class SharedAcceptanceHost:
 
     def _source(self, run_id: str):
         if not self.enabled(run_id): return None
-        sources = []
-        for row in self.host.store.inspect(
-                "SELECT * FROM execution_attempts WHERE run_id=? AND kind='AGENT' "
-                "AND state='CLOSED' AND terminal_reason='SUCCEEDED' "
-                "AND json_extract(observation_json,'$.request.command')='GROUNDING'", (run_id,)):
-            observed = json.loads(row["observation_json"])
-            request = AgentRequest.from_dict(observed["request"])
-            validated = validate_postflight(request, observed["response"])
-            declaration = validated.candidate.acceptance
-            if declaration is not None:
-                sources.append((row["attempt_id"], declaration, acceptance_source_files(declaration, validated.workspace_files)))
-        if len(sources) > 1:
-            raise AgentACIError("shared_acceptance_source", "expected one accepted final Grounding evaluator")
-        return sources[0] if sources else None
+        return accepted_grounding_source(self.host.store, run_id)
 
     def input(self, run_id: str) -> EmbeddedInput:
         attempt_id, acceptance, files = self.source(run_id, required=True)
@@ -58,7 +63,7 @@ class SharedAcceptanceHost:
         source = self.source(run_id)
         if source is None or value is None: return False
         if value.get("source_attempt_id") != source[0]: raise AgentACIError("shared_acceptance_source", "outcome changed its common source")
-        return evaluate_shared_acceptance(source[1], {name: value[name] for name in ("measurements", "checks")})
+        return evaluate_shared_acceptance(source[1], {k: v for k, v in value.items() if k != "source_attempt_id"})
 
     def assessment_qualifies(self, run_id: str, assessment, evidence, outcomes) -> bool:
         if not self.enabled(run_id): return assessment["payload"].get("assessment") == "SUPPORTED"
@@ -101,7 +106,7 @@ class SharedAcceptanceHost:
                 errors.append(name + detail); continue
             try:
                 raw = read_parser_result(parser)
-                if json.loads((publication / relative).read_bytes()) != raw: raise ValueError("published parsed observations differ")
+                if (publication / relative).read_bytes() != (parser.output_dir / "result.json").read_bytes(): raise ValueError("published parsed observations differ")
                 if name == "local":
                     checked = evaluate_parsed_measurement(ScientificMeasurement.from_dict(spec["payload"]["measurement"]), raw)
                     local_result = {"metric_value": checked.metric_value, "criterion_met": checked.criterion_met,

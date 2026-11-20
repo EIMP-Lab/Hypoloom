@@ -1,5 +1,28 @@
 # Qualification: G0–G5
 
+## Shared evaluation inputs and evaluator reuse (2026-11-20)
+
+ACI 43 and native adapter 100 distinguish success criteria, mandatory validity
+checks and typed report-only observations. A CPU parser fixture held its score
+and validity constant while changing a diagnostic. A second fixture failed the
+validity check. A parser that coupled the diagnostic to validity failed the
+first example during Grounding correction. Host and Oracle agreed at a strict
+threshold of ten to the power of 28 under three decimal contexts.
+
+Two isolated Host runs exercised GOAL and LOCAL through preregistration, a
+real implementation probe, independent review, formal execution, publication
+and Oracle replay. Only the GOAL raw command read the held-out fixture. The
+accepted evaluator was exported from the read-only state and checked against
+labeled examples. Profile admission and session preparation verified Git blob
+selection, protocol identity and the scoped source capture. Existing Git commits
+identify reusable code and fixtures. The current Grounding Attempt remains the
+source of accepted scientific rules.
+
+The main suite passed 504 cases and skipped one opt-in CUDA test. Three native
+CLI integration cases passed with a local provider fixture. These CPU results
+measure correctness and isolation. Time savings in an actual research run
+have yet to be measured. [Configuration and examples](guides/shared-evaluation.md)
+
 ## Submission recovery and entrypoint verification (2026-11-20)
 
 ACI 42 and native adapter 99 enforce distinct candidate lists at submission

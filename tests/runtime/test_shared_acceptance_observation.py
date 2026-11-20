@@ -248,6 +248,7 @@ const withClass = (node, name) => [
   ...node.children.flatMap(child => withClass(child, name))];
 """
     tail = """
+snapshot.status.shared_acceptance.outcomes[1].goal_evaluation.diagnostics = {optional_cache_matches: false};
 const local = snapshot.status.shared_acceptance.outcomes[0];
 local.hypothesis_id = 'long-hypothesis-' + 'abc'.repeat(70);
 snapshot.hypotheses = [{hypothesis_id: local.hypothesis_id, claim: 'A long claim '.repeat(15)}];
@@ -312,6 +313,8 @@ process.stdout.write(JSON.stringify({rendered, single, grouped, waiting, singleG
         "LOCAL: not a common-goal evaluation",
         "Recorded outcome: SUCCESS · local metric: 0",
         "candidate-3",
+        "Report-only diagnostics",
+        "optional_cache_matches",
         "artifact-3",
     ):
         assert value in observed["rendered"]

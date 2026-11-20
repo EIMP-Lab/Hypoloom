@@ -22,7 +22,7 @@ from .contract_normalization import (
 )
 from .execution_workspace import (
     TargetPreparationError, bind_clean_git_target, validate_bound_git_target,
-    execution_read_root_projection,
+    evaluation_only_roots, execution_read_root_projection,
 )
 from .profile_v3 import (
     PROFILE_V3_FILES,
@@ -124,6 +124,9 @@ class ProfileAdmissionReport:
                 "read_roots": [{"host": str(host), "sandbox": sandbox} for host, sandbox in bindings],
                 "environment": environment,
                 "note": "Declared mounts only; data/model completeness is not inferred. Production plans may bind explicit data paths."}
+            if execution.get("evaluation_only_roots"):
+                visibility["formal_goal_only"] = [{"host": path, "sandbox": f"/hypoloom-evaluation/{i}"}
+                    for i, path in enumerate(execution["evaluation_only_roots"], 1)]
         return {
             "profile_name": self.profile_name,
             "profile_path": self.profile_path,
@@ -386,6 +389,8 @@ def admit_profile(
                 controls.update(successor_controls)
                 if v4_projection is not None:
                     controls["product"] = copy.deepcopy(dict(v4_projection.settings))
+                    if paths := v4_projection.settings["safety"].get("evaluation_only_read_paths"):
+                        compilation.contract["safety"]["evaluation_only_roots"] = paths
                     if v4_projection.settings["goal"].get("evaluation") == "grounding":
                         compilation.contract["schema_version"] = 3
                         compilation.contract["goal"]["evaluation"] = {"mode": "grounding"}
@@ -468,6 +473,15 @@ def admit_profile(
                     "methodology.yaml.runtime.target_repo",
                     str(exc),
                 )
+        seed_spec = v4_projection.settings["goal"].get("evaluator_seed") if v4_projection else None
+        if seed_spec and operational["target"]:
+            from .evaluator_examples import load_seed
+            from .agent_aci import DEFAULT_REAL_AGENT_BUDGET
+            from .agent_budget import profile_agent_budget
+            try:
+                load_seed(seed_spec, **operational["target"], max_bytes=profile_agent_budget(contract, DEFAULT_REAL_AGENT_BUDGET).max_output_bytes)
+            except (OSError, ValueError) as exc:
+                block("evaluator_seed_binding_failed", "goal.yaml.evaluator_seed", str(exc))
         runtime_prefix = runtime.get("conda_env")
         if runtime_prefix is not None:
             prefix = Path(str(runtime_prefix))
@@ -501,6 +515,12 @@ def admit_profile(
             else:
                 resolved_roots.append(str(root_path.resolve()))
         operational["read_roots"] = resolved_roots
+        if "evaluation_only_roots" in safety_contract:
+            try:
+                operational["evaluation_only_roots"] = evaluation_only_roots(
+                    safety_contract["evaluation_only_roots"], operational, contract, protected=private_profile_files)
+            except (OSError, ValueError) as exc:
+                block("evaluation_only_root_binding_failed", "safety.yaml.evaluation_only_read_paths", str(exc))
         # Apply the existing no-credential-mount boundary to the new authoring
         # location as well; a read-only data mount would still expose values.
         mounted = [Path(value) for value in resolved_roots]

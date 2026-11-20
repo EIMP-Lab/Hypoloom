@@ -208,6 +208,7 @@ class NativeOutputValidator:
                  session_id: str, max_failed_validations: int, max_request_bytes: int,
                  deadline_at: float, diagnostics: RuntimeDiagnostics | None = None,
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
+                 semantic_examples: bool = False, seed_files: Mapping[str, bytes] | None = None,
                  design_implementation: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
@@ -246,6 +247,8 @@ class NativeOutputValidator:
             if acceptance_smoke or design_implementation or structured_submission else 0.0)
         self.design_implementation = design_implementation
         self.diagnostics = diagnostics
+        self.semantic_examples = semantic_examples
+        self.seed_files = seed_files
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
         self.execution_tool_socket = execution_tool_socket
@@ -453,6 +456,7 @@ class NativeOutputValidator:
                         validation_stage = "parser_smoke"
                         smoke = parser_smoke(text,
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
+                            semantic_examples=self.semantic_examples, seed_files=self.seed_files,
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
                             max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed)
                         if smoke.get("error"):
@@ -583,7 +587,8 @@ class NativeOutputValidator:
 
 
 def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_seconds: float,
-                 max_bytes: int, declaration_key: str = "acceptance",
+                 max_bytes: int, declaration_key: str = "acceptance", semantic_examples: bool = True,
+                 seed_files: Mapping[str, bytes] | None = None,
                  cancel_event: threading.Event | None = None) -> dict[str, Any] | None:
     """Snapshot declared fixtures and use the production parser environment.
 
@@ -605,37 +610,65 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
         test_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="parser-smoke-", dir=test_root) as temporary:
             work = Path(temporary)
-            raw_root = work / "raw"
-            raw_root.mkdir()
-            files = {}
+            from .evaluator_examples import CASES, check_seed_contract, examples, fixture_path
+            from .shared_acceptance import normalize_shared_observation
+            if seed_files is not None:
+                check_seed_contract(seed_files, contract)
             remaining = max_bytes
-            for key, origin, names in (("parser_files", source_root, contract.parser_files),
-                    ("raw_artifacts", source_root / "smoke", contract.raw_artifacts)):
-                for name in names:
-                    path = origin / name
-                    path.resolve().relative_to(origin.resolve())
-                    if path.is_symlink() or not path.is_file():
-                        raise ValueError(f"missing regular smoke input: {key}/{name}")
-                    with path.open("rb") as stream: content = stream.read(remaining + 1)
-                    remaining -= len(content)
-                    if remaining < 0: raise ValueError("parser source and smoke fixtures exceed the output byte budget")
-                    if key == "parser_files":
-                        files[name] = content
+            def read(name):
+                nonlocal remaining
+                path = source_root / name
+                if path.resolve() != source_root.resolve() / name or not path.is_file() or path.is_symlink():
+                    raise ValueError(f"missing regular smoke input: {name}")
+                with path.open("rb") as stream:
+                    content = stream.read(remaining + 1)
+                remaining -= len(content)
+                if remaining < 0:
+                    raise ValueError("parser source and smoke fixtures exceed the output byte budget")
+                return content
+
+            files = {name: read(name) for name in contract.parser_files}
+            def run_case(case, raw, expected, ordinal):
+                root = work / str(ordinal)
+                for name, content in raw.items():
+                    destination = root / "raw" / name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(content)
+                prepared = prepare_parser(contract, files, raw_dir=root / "raw", work_dir=root / "parser",
+                    attempt_id="parser-smoke", execution_id="parser-smoke",
+                    timeout_seconds=_remaining(deadline), max_output_bytes=max_bytes)
+                result = run_parser(prepared, cancel_event=cancel_event)
+                if result.error:
+                    with (Path(prepared.process_request.cwd) / "stderr.log").open("rb") as log:
+                        log.seek(0, os.SEEK_END); log.seek(max(0, log.tell() - 1536))
+                        detail = log.read().decode(errors="replace")
+                    raise ValueError(result.error + (": " + detail if detail else ""))
+                if expected and normalize_shared_observation(result.raw_result, contract) != expected[0]:
+                    raise ValueError(f"case {case}: actual parser observation differs from the expected observation")
+                return result.raw_result
+
+            cases = {}
+            if declaration_key == "acceptance" and semantic_examples and (source_root / CASES).exists():
+                cases = examples(read(CASES), contract)
+            # Keep exact bytes for comparison so unchanged seed cases run only once.
+            completed = {}
+            baseline = None
+            for case in cases or ("baseline",):
+                raw = {name: read(fixture_path(case, name)) for name in contract.raw_artifacts}
+                actual = run_case(case, raw, cases.get(case), len(completed))
+                completed[case] = (raw, actual)
+                if case == "baseline":
+                    baseline = actual
+            if seed_files is not None:
+                for i, (case, expected) in enumerate(examples(seed_files[CASES], contract).items(), len(completed)):
+                    raw = {name: seed_files[fixture_path(case, name)] for name in contract.raw_artifacts}
+                    if case in completed and completed[case][0] == raw:
+                        if normalize_shared_observation(completed[case][1], contract) != expected[0]:
+                            raise ValueError(f"seed case {case}: actual parser observation differs")
                     else:
-                        destination = raw_root / name
-                        destination.parent.mkdir(parents=True, exist_ok=True)
-                        destination.write_bytes(content)
-            prepared = prepare_parser(contract, files, raw_dir=raw_root, work_dir=work / "parser",
-                attempt_id="parser-smoke", execution_id="parser-smoke",
-                timeout_seconds=_remaining(deadline), max_output_bytes=max_bytes)
-            result = run_parser(prepared, cancel_event=cancel_event)
-            if result.error:
-                with (Path(prepared.process_request.cwd) / "stderr.log").open("rb") as log:
-                    log.seek(0, os.SEEK_END); log.seek(max(0, log.tell() - 1536))
-                    detail = log.read().decode(errors="replace")
-                raise ValueError(result.error + (": " + detail if detail else ""))
-            return {"observation": result.raw_result, "error": None}
-    except (ValueError, OSError, TypeError, AttributeError) as exc:
+                        run_case("seed/" + case, raw, expected, i)
+            return {"observation": baseline, "error": None}
+    except (ValueError, OSError, TypeError, AttributeError, KeyError) as exc:
         return {"observation": None, "error": str(exc)[:2048]}
 
 

@@ -4626,6 +4626,7 @@ class _OracleComponentMounts:
     required_inputs: tuple[tuple[str, tuple[str, ...]], ...]
     target_root: str | None
     read_root_map: tuple[tuple[str, str], ...] = ()
+    formal_goal_inputs: tuple[str, ...] = ()
 
 
 def _oracle_uses_submitted_target(document: Any, component_id: Any, request: Mapping[str, Any],
@@ -4866,6 +4867,14 @@ def _oracle_component_mounts(
             continue
         bindings.append(_OracleMountBinding(source=root, destination=root))
 
+    formal_inputs = []
+    if isinstance(goal_evaluation, Mapping) and goal_evaluation.get("scope") == "GOAL":
+        for i, source in enumerate(safety.get("evaluation_only_roots", ()), 1):
+            destination = f"/hypoloom-evaluation/{i}"
+            formal_inputs.append(destination)
+            read_roots.append(destination)
+            bindings.append(_OracleMountBinding(source=source, destination=destination))
+
     input_specs = component.get("required_inputs", [])
     raw_upstream = spec_payload.get("upstream_outcomes")
     if not isinstance(input_specs, list) or not isinstance(raw_upstream, list):
@@ -4980,7 +4989,7 @@ def _oracle_component_mounts(
         bindings.append(_OracleMountBinding(source=str(publication.resolve(strict=True)), destination=item["path"]))
     return _OracleComponentMounts(
         bindings=tuple(bindings),
-        read_roots=tuple(read_roots),
+        read_roots=tuple(read_roots), formal_goal_inputs=tuple(formal_inputs),
         required_inputs=tuple(required_inputs),
         target_root=target_root,
         read_root_map=tuple(sorted(aliases.items())),
@@ -10445,11 +10454,11 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
         diagnostic = candidate.get("parser_validation_error")
         candidate_goal = candidate.get("goal_evaluation")
         goal_matches = candidate_goal is None and expected_goal is None
-        if (isinstance(candidate_goal, Mapping) and set(candidate_goal) == {"source_attempt_id", "measurements", "checks"}
+        if (isinstance(candidate_goal, Mapping) and "source_attempt_id" in candidate_goal
                 and candidate_goal["source_attempt_id"] == binding["source_attempt_id"]):
             try:
                 interpreted = interpret_shared_acceptance(binding["acceptance"],
-                    {name: candidate_goal[name] for name in ("measurements", "checks")})
+                    {k: v for k, v in candidate_goal.items() if k != "source_attempt_id"})
                 goal_matches = {"source_attempt_id": candidate_goal["source_attempt_id"], **interpreted.observations} == expected_goal
             except (KeyError, TypeError, ValueError):
                 pass

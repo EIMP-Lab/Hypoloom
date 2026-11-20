@@ -5,6 +5,7 @@ import ``check`` and ``measure`` from ``hypoloom_probe`` inside that Process.
 """
 from __future__ import annotations
 
+import copy
 import json
 import math
 from pathlib import Path, PurePosixPath
@@ -258,6 +259,30 @@ class _Run:
 def check(key):
     if _active is None: raise RuntimeError("checks must run through the Host probe runner")
     return _Check(_active, key, "assertion")
+
+
+def paired_inputs(sample, perturb, *, control, target, clone=copy.deepcopy, equal=None):
+    """Draw once and perturb one copy in place. Selectors cover fixed and changed inputs."""
+    if equal is None:
+        from operator import eq as equal
+    try:
+        reference = sample()
+        original, variant = clone(reference), clone(reference)
+        fixed, before = control(reference), target(reference)
+        if any(not equal(control(item), fixed) or not equal(target(item), before) for item in (original, variant)):
+            raise ValueError("paired fixture clones differ before the perturbation")
+        # Snapshot selected values independently of the caller's batch copier.
+        fixed, before = copy.deepcopy((fixed, before))
+        perturb(variant)
+        if not equal(control(original), fixed) or not equal(target(original), before):
+            raise ValueError("paired fixture changed its reference while perturbing the variant")
+        if not equal(control(variant), fixed):
+            raise ValueError("paired fixture changed the control")
+        if equal(target(variant), before):
+            raise ValueError("paired fixture did not change the target")
+    except AssertionError as exc:
+        raise ValueError("paired fixture preparation failed: " + str(exc)) from exc
+    return original, variant
 
 
 def measure(key, function, *, workload, warmup=1, repeats=5, synchronize=None):

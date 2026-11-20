@@ -105,18 +105,20 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # unused expert_memory lines to the existing contract and input views.
     # ACI 42 puts draft recovery and formal sample verification in the existing
     # Host and validators. Transfer 250 unused lines from debate_host (464 actual).
-    allocations = {"domain": 925, "lifecycle": 400, "ports": 100,
-        "state_store": 450, "research_kernel": 750, "workflow_host": 5000, "institutional_controls": 100,
-        "verification": 400, "verification_contract": 500, "verification_probe": 375,
+    # ACI 43 moves 300 spare debate lines to evaluator examples (200) and the
+    # four existing owners of decimal, session, mount and probe behavior (25 each).
+    allocations = {"domain": 950, "lifecycle": 400, "ports": 100,
+        "state_store": 450, "research_kernel": 750, "workflow_host": 5025, "institutional_controls": 100,
+        "verification": 400, "verification_contract": 500, "verification_probe": 400,
         "engineering_memory": 100, "engineering_budget": 75, "input_views": 125,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
-        "expert_batch": 700, "agent_sessions": 1100,
+        "expert_batch": 700, "agent_sessions": 1125,
         "expert_plugin": 700, "expert_memory": 275, "measurement_contract": 600, "profile_v4": 650,
         "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
-        "manager_context": 400, "interaction_host": 1200, "debate_host": 950, "profile_permissions": 150,
+        "manager_context": 400, "interaction_host": 1200, "debate_host": 650, "evaluator_examples": 200, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 325, "shared_acceptance_host": 125,
         "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,

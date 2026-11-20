@@ -37,7 +37,62 @@ _PATCH_SIZE_LIMIT = 64 * 1024 * 1024
 EXECUTION_ENVIRONMENT_CONTRACT_VERSION = "execution-environment/2"
 
 
+def evaluation_only_roots(values, execution, document, *, protected=()):
+    """Validate the extra GOAL mounts against every existing route to the same data."""
+    if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+        raise ValueError("evaluation_only_read_paths must be a list of absolute paths")
+    if not values:
+        return []
+    if document.get("goal", {}).get("evaluation") != {"mode": "grounding"}:
+        raise ValueError("evaluation-only inputs require shared GOAL evaluation")
+    visible = [*map(Path, execution["read_roots"]), *map(Path, protected),
+               *map(Path, ("/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/dev", "/sys", "/proc")),
+               Path.home() / ".ssh", Path.home() / ".claude", Path(sys.prefix), Path(__file__).resolve().parent]
+    aliases = Path("/hypoloom-evaluation")
+    if any(aliases.is_relative_to(root) or root.is_relative_to(aliases) for root in map(Path, execution["read_roots"])):
+        raise ValueError("public read root overlaps the formal GOAL mount destinations")
+    if execution.get("target"):
+        visible.append(Path(execution["target"]["checkout"]))
+    if execution.get("runtime_prefix"):
+        visible.append(Path(execution["runtime_prefix"]))
+    product = document.get("methodology", {}).get("controls", {}).get("product", {})
+    notify = product.get("notify", {})
+    for settings in (product.get("methodology", {}).get("literature", {}), notify, *notify.get("sinks", {}).values()):
+        if isinstance(settings, Mapping) and settings.get("credentials_file"):
+            visible.append(Path(settings["credentials_file"]))
+    for protocol in document.get("protocols", {}).values():
+        for binding in protocol.get("requirements", {}).get("argv_bindings", []):
+            if binding.get("scope") == "absolute":
+                visible.append(Path(binding["path"]))
+            elif binding.get("scope") == "target" and execution.get("target"):
+                visible.append(Path(execution["target"]["checkout"]) / binding["path"])
+    resolved = []
+    for value in values:
+        path = Path(value)
+        if (not path.is_absolute() or path != path.resolve() or not (path.is_file() or path.is_dir())
+                or not os.access(path, os.R_OK | (os.X_OK if path.is_dir() else 0))):
+            raise ValueError("evaluation-only input must be a readable canonical file or directory")
+        if any(path.is_relative_to(other.resolve()) or other.resolve().is_relative_to(path) for other in visible):
+            raise ValueError("evaluation-only input overlaps an existing mount or protected path")
+        visible.append(path)
+        resolved.append(str(path))
+    return resolved
+
+
 def execution_read_root_projection(
+    execution: Mapping[str, Any], plan: Mapping[str, Any], *, generic: bool, formal_goal: bool = False,
+) -> tuple[tuple[tuple[Path, str], ...], dict[str, str]]:
+    bindings, environment = _public_read_roots(execution, plan, generic=generic)
+    if formal_goal and execution.get("evaluation_only_roots"):
+        extra = tuple((Path(path), f"/hypoloom-evaluation/{i}")
+                      for i, path in enumerate(execution["evaluation_only_roots"], 1))
+        roots = json.loads(environment["HYPOLOOM_READ_ROOTS"])
+        environment["HYPOLOOM_READ_ROOTS"] = json.dumps([*roots, *(alias for _, alias in extra)], separators=(",", ":"))
+        bindings += extra
+    return bindings, environment
+
+
+def _public_read_roots(
     execution: Mapping[str, Any], plan: Mapping[str, Any], *, generic: bool,
 ) -> tuple[tuple[tuple[Path, str], ...], dict[str, str]]:
     """Mechanically transport admitted roots; grant no additional filesystem access.
