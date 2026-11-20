@@ -74,6 +74,13 @@ def execution_read_root_projection(
     return tuple(bindings), environment
 
 
+def sandbox_command(argv, source_relative_path, python_executable):
+    command = [python_executable if argv[0] == "python" else argv[0], *argv[1:]]
+    if len(command) > 1 and command[1] == source_relative_path:
+        command[1] = str(PurePosixPath("/input") / source_relative_path)
+    return command
+
+
 def execution_environment_contract(sandbox_profile: str) -> dict[str, Any]:
     """Advisory capability contract of one execution sandbox profile.
 
@@ -992,9 +999,7 @@ class ExecutionWorkspace:
                 argv.extend(("--setenv", name, value))
             else:
                 argv.extend(("--unsetenv", name))
-        command = [sandbox_executable if execution_argv[0] == "python" else execution_argv[0], *execution_argv[1:]]
-        if len(command) > 1 and command[1] == source_relative_path:
-            command[1] = str(PurePosixPath("/input") / source_relative_path)
+        command = sandbox_command(execution_argv, source_relative_path, sandbox_executable)
         if self.device_bindings:
             command = [*cuda_launch_prefix(sandbox_executable), *command]
         argv.extend(("--chdir", "/output", "--", *command))

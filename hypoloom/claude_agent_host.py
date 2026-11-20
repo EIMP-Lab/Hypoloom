@@ -31,6 +31,7 @@ from .agent_aci import (
     AgentResponse,
     AgentStatus,
     DeclaredEffect,
+    SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION,
     WorkspaceArtifact,
     canonical_json,
     grounding_acceptance_request,
@@ -77,7 +78,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/98"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/99"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -2430,6 +2431,20 @@ def _observer_output_check(request: AgentRequest) -> Callable[[Mapping[str, Any]
     return check
 
 
+def _candidate_string_array(
+    request: AgentRequest, *, nonempty: bool = True, literal: str | None = None,
+) -> dict[str, object]:
+    items: dict[str, object] = {"type": "string"} if literal is None else {"const": literal}
+    schema: dict[str, object] = {"type": "array", "items": items}
+    if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
+        schema["uniqueItems"] = True
+        if nonempty:
+            schema["minItems"] = 1
+        if literal is None:
+            items["minLength"] = 1
+    return schema
+
+
 def _experiment_candidate_schema(request: AgentRequest) -> Mapping[str, object]:
     """One existing candidate projection for both design output and MCP submit."""
     frozen_experiment = (
@@ -2452,12 +2467,11 @@ def _experiment_candidate_schema(request: AgentRequest) -> Mapping[str, object]:
                         "direction": {"enum": ["MAXIMIZE", "MINIMIZE"]},
                         "target": {"type": "string"}},
                     "required": ["name", "direction", "target"]}}),
-            "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+            "acceptance_criteria": _candidate_string_array(request),
             "evaluator_version": ({"const": frozen_experiment["evaluator_version"]}
                 if frozen_experiment is not None else {"type": "string"}),
             "artifact_requirements": ({"const": frozen_experiment["artifact_requirements"]}
-                if frozen_experiment is not None else {
-                    "type": "array", "items": {"const": "result.json"}}),
+                if frozen_experiment is not None else _candidate_string_array(request, literal="result.json")),
             "resource_preference": {"enum": ["CPU", "AUTO", "GPU_REQUIRED"]},
         },
         "required": [
@@ -2582,7 +2596,7 @@ def _output_schema(
                     else {"type": "string", "minLength": 1}
                 ),
                 "claim": {"type": "string", "minLength": 1},
-                "assumptions": {"type": "array", "items": {"type": "string"}},
+                "assumptions": _candidate_string_array(request, nonempty=False),
                 **lineage_properties,
             },
             "required": [

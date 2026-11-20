@@ -1,4 +1,12 @@
 {
+  "Ready {0} · awaiting outcome {1} · rejected drafts {2}": "就绪 {0} · 等待收尾 {1} · 已拒绝草案 {2}",
+  "Rejected {0} · {1}": "草案已拒绝 {0} · {1}",
+  "Dispatch paused at {0} · {1}": "调度暂停于 {0} · {1}",
+  "Process {0} · {1} · {2} · logs {3} bytes": "进程 {0} · {1} · {2} · 日志 {3} 字节",
+  "Reported stage {0} · completed {1} · running {2} · failed {3}": "上报阶段 {0} · 工作单元已完成 {1} · 运行中 {2} · 失败 {3}",
+  " · partial sample": " · 部分采样",
+  "Work stage unreported": "进程尚未上报工作阶段",
+  "Process time budget remaining {0} s": "进程剩余时限 {0} 秒",
   "{0} · {1} · units: {2}": "{0} · {1} · 证据单元：{2}",
   "Confirmation": "确认",
   "Screening": "初筛",

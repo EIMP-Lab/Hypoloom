@@ -186,6 +186,8 @@ class ImplementationVerification:
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
         if "probe_repair_limit" in value:
             ctx["probe_repairs_remaining"] = max(0, value["probe_repair_limit"] - value["probe_revision"])
+        if "entrypoint_smoke" in snapshot["arguments"]:
+            ctx["entrypoint_smoke"] = snapshot["arguments"]["entrypoint_smoke"]
         if plan and "checks" in plan:
             ctx.update(probe_plan=plan, probe_report_ref=inspection["report_ref"])
             from .agent_aci import VERIFIER_COMPLETION_ACI_SCHEMA_VERSION

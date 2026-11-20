@@ -441,3 +441,26 @@ cover declared contexts, outputs, bounded performance probes, recovery and the
 difference between completed-work reuse and training checkpoint resume. The
 helper must be included in submitted source. Existing preset driver behavior is
 unchanged; this API is an opt-in for admitted project entrypoints.
+
+## Submission and execution diagnostics (ACI 42)
+
+Each acceptance criterion, required artifact and hypothesis assumption must be
+distinct within its list. Submission diagnostics identify the field and both
+zero-based positions of a duplicate. Correct the list and resubmit. Replaying an
+accepted submission returns its original experiment ID. An authenticated legacy
+draft rejected before preregistration records the reason on the experiment.
+Its owner can submit a replacement naming that ID within the current budget.
+
+If a project accepts a small fixture on its formal command, supply for example
+`"entrypoint_smoke": {"args": ["--fixture", "tiny"], "outputs": ["sample.json"]}`
+to `submit_experiment`. The verifier appends the arguments to the admitted
+command in the probe workspace and checks the exit code and new nonempty files.
+The sample and the independent checks share the probe time limit. For projects
+without a declared fixture, reviewers record their own entrypoint evidence or
+explain the uncovered path in the review.
+
+STATUS, the terminal UI and the Web operations view show ready experiments,
+outcomes awaiting collection and recently rejected drafts. On a live Process,
+the remaining time is its execution allowance. When the project writes
+`work_units` records, these views also report the latest stage and observed
+unit counts. A partial sample indicates that some records were omitted.

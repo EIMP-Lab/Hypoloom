@@ -205,6 +205,26 @@ class MonitorSnapshot:
         )
 
 
+def _experiment_queue(heads):
+    ready = []
+    evaluating = []
+    rejected = []
+    for head in heads:
+        if head["state"] == "READY":
+            ready.append(head["workflow_id"])
+        elif head["state"] == "EVALUATING":
+            evaluating.append(head["workflow_id"])
+        elif head["state"] == "TERMINAL" and head.get("previous_state") == "DRAFTED":
+            payload = _json_object(head["payload_json"])
+            if payload.get("reason") in {"invalid_submission", "preflight_declined"}:
+                rejected.append({"experiment_id": head["workflow_id"], "revision": head["revision"],
+                    "created_at": head["created_at"], "command_id": head["command_id"],
+                    **{key: payload[key] for key in ("reason", "source_submit_command_id", "field_error") if key in payload}})
+    rejected.sort(key=lambda row: (row["created_at"], row["experiment_id"]), reverse=True)
+    return {"ready_count": len(ready), "evaluating_count": len(evaluating), "rejected_count": len(rejected),
+        "ready": ready[:20], "evaluating": evaluating[:20], "recent_rejections": rejected[:10]}
+
+
 def build_status_projection(
     store: StateStore,
     run_id: str,
@@ -292,6 +312,7 @@ def build_status_projection(
         "run_state": run_head["state"],
         "run_revision": run_head["revision"],
         "experiment_states": [row["state"] for row in experiment_heads],
+        "experiment_queue": _experiment_queue(experiment_heads),
         "open_attempts": sum(row["state"] == "OPEN" for row in selected_attempts),
         "canonical_outcome_count": outcome_count,
         "goal_verdict": goal_verdict,
@@ -1567,6 +1588,7 @@ _HOST_STATUS_FIELDS = (
     "resource_blocked",
     "resource_selection",
     "process_activity",
+    "experiment_queue",
     "provider_retry",
     "provider_traffic",
     "notifications",

@@ -137,6 +137,7 @@ def request_binding(request, command, commands, attempts, observations):
     submit = json.loads(source["request_json"])
     snapshot = submit["source_snapshot"]
     assert value["source_output_digest"] == snapshot["output_digest"]
+    assert ctx.get("entrypoint_smoke") == snapshot["arguments"].get("entrypoint_smoke")
     import base64
     captured = {a.path: a.content_bytes() for a in map(WorkspaceArtifact.from_dict, snapshot["arguments"]["workspace_files"])}
     actual = {path: value.encode("utf-8") if isinstance(value, str) else base64.b64decode(value["content_base64"], validate=True)
@@ -200,6 +201,10 @@ def probe_context(attempt, intent, contexts, commands, attempts, observations, t
     assert report["request"]["command"] == "VERIFY_IMPLEMENTATION"
     assert report["response"]["typed_candidate"]["verdict"] == "probe_required"
     probe = report["response"]["typed_candidate"]["probe"]
+    submission = json.loads(commands[commission["source_submit_command_id"]]["request_json"])
+    if "entrypoint_smoke" in submission["source_snapshot"]["arguments"]:
+        assert any(c["id"] == "formal_entrypoint" and c["kind"] == "assertion" and c["required"] is True
+                   for c in probe["checks"])
     assert 0 < probe["timeout_seconds"] <= 120 and probe["argv"][1] in probe["files"]
     assert not set(probe["files"]) & set(context["workspace"])
     if attempt["state"] == "CLOSED":

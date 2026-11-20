@@ -150,7 +150,7 @@ class ObserverRefresh:
                             tuple(row for row in self._offline.attempts if row.state == 'OPEN'),
                             {row['attempt_id']: row['observation'] for row in attempts})
                         by_id = {row.attempt_id: row for row in live}
-                        host = _host_observation(self.root)
+                        host = _host_observation(self.root, self.run_id)
                         host['orphaned'] = self._offline.status['run_state'] not in _TERMINAL and host['availability'] == 'absent'
                         observed_at = time.time()
                         overview = refresh_summary_clock(self._offline.overview,

@@ -302,6 +302,7 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
             "/runtime/host_tools_server.py", "--ro-bind", str(host_socket), "/host-tools.sock"))
         config["mcpServers"]["host-tools"] = {"command": "/usr/bin/python3",
             "args": ["/runtime/host_tools_server.py", "--socket", "/host-tools.sock", "--scope", scope,
+                *(("--entrypoint-smoke",) if scope == "execution" and request.schema_version >= 42 else ()),
                 *(("--output-schema", "/runtime/output-schema.json") if scope == "execution" and output_schema_path is not None else ()),
                 *(arg for name in tools for arg in ("--tool", name))]}
         allowed.extend("mcp__host-tools__" + tool["name"] for tool in host_tools_server.scoped_tools(scope, tools))
@@ -500,6 +501,10 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 "optional list of comparable closed Process Attempt IDs. Keep device free memory separate from "
                 "attributed workload use. Estimates do not choose GPUs or override Profile floors/reserves. "
             )
+            if request.schema_version >= 42 and request.command.value == "EXPERIMENT_EXECUTION":
+                common += ("If the project supports a minimal sample on the formal entrypoint, supply entrypoint_smoke "
+                    "with args to append to the admitted command and expected output files relative to /output. "
+                    "The verifier runs it in the probe Process and shares its time allowance. ")
             if request.schema_version >= 27:
                 common += (
                     "Preview resource_estimate and optional positive gpus with get_resources before submitting. "

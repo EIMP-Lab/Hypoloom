@@ -507,7 +507,18 @@ class Oracle:
                 issues,
                 research_contract_version=version_tuple.get("research_contract_version"),
             )
-            _audit_owned_workspace_residue(self.artifact_root, attempts, issues)
+            # A closed Process still owns its unpublished result until its
+            # experiment leaves EVALUATING. Resolve the exact observed attempt.
+            evaluating = {row["workflow_id"] for row in experiment_heads if row["state"] == "EVALUATING"}
+            specs = {row["experiment_id"]: row["execution_id"] for row in facts if row["fact_type"] == "ExperimentPreregistered"}
+            observed = {(row["workflow_id"], transition_payloads.get(_row_identifier(row), {}).get("attempt_id"))
+                        for row in transitions if row["workflow_id"] in evaluating and row["state"] == "EVALUATING"
+                        and (row["command_type"] == "OBSERVE_ATTEMPT_TERMINAL" and row["previous_state"] == "EXECUTING"
+                             or row["command_type"] == "CANCEL" and transition_payloads.get(_row_identifier(row), {}).get("synthetic") is True)}
+            collecting = {(a["workflow_id"], a["attempt_id"]) for a in attempts if a["kind"] == "PROCESS"
+                and a["state"] == "CLOSED" and a["run_id"] == run_id and a["workflow_id"] == a["experiment_id"]
+                and a["execution_id"] == specs.get(a["experiment_id"]) and (a["workflow_id"], a["attempt_id"]) in observed}
+            _audit_owned_workspace_residue(self.artifact_root, attempts, issues, collecting=collecting)
             artifact_counts = _audit_artifacts(
                 self.artifact_root,
                 run_id,
@@ -2992,6 +3003,23 @@ def _submitted_source_documents(snapshot: Mapping[str, Any], prefix: str) -> dic
     return documents
 
 
+def _submission_field_error(candidate):
+    """Derive a rejected field directly from the authenticated wire values."""
+    if not isinstance(candidate, Mapping): return None
+    for field in ("acceptance_criteria", "artifact_requirements"):
+        values = candidate.get(field)
+        if not isinstance(values, list) or not values:
+            return {"field": field, "code": "invalid_list"}
+        first = {}
+        for i, value in enumerate(values):
+            if not isinstance(value, str) or not value or value != value.strip():
+                return {"field": field, "code": "invalid_text", "index": i}
+            if value in first:
+                return {"field": field, "code": "duplicate_item", "index": i, "first_index": first[value]}
+            first[value] = i
+    return None
+
+
 def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transitions: Sequence[Mapping[str, Any]],
                                 payloads: Mapping[str, Mapping[str, Any]], attempts: Sequence[Mapping[str, Any]],
                                 observations: Mapping[str, Mapping[str, Any]], issues: list[OracleIssue],
@@ -3001,7 +3029,8 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
     declined: dict[str, Mapping[str, Any]] = {}
     for terminal in transitions:
         terminal_payload = payloads.get(_row_identifier(terminal), {})
-        if terminal_payload.get("reason") != "preflight_declined": continue
+        reason = terminal_payload.get("reason")
+        if reason not in {"preflight_declined", "invalid_submission"}: continue
         experiment_id = str(terminal["workflow_id"])
         creation = next((row for row in creations if row["workflow_id"] == experiment_id), None)
         rid = f"{experiment_id}--preflight-rendezvous"
@@ -3013,12 +3042,20 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
             and by_id.get(str(terminal["command_id"]), {}).get("command_type") == "CANCEL"
             and terminal_payload.get("discarded_before_preregistration") is True
             and terminal_payload.get("source_submit_command_id") == creation["command_id"]
-            and terminal_payload.get("rendezvous_id") == rid
-            and len(replies) == 1 and replies[0]["revision"] < terminal["revision"]
             and not any(row["experiment_id"] == experiment_id for row in facts if row["fact_type"] in {"ExperimentPreregistered", "CanonicalOutcomeAccepted"})
             and not any(row["workflow_id"] == experiment_id and row["kind"] == "PROCESS" for row in attempts))
+        if reason == "preflight_declined":
+            valid = valid and terminal_payload.get("rendezvous_id") == rid and len(replies) == 1 and replies[0]["revision"] < terminal["revision"]
+        elif valid:
+            command = by_id.get(str(creation["command_id"]))
+            source = None if command is None else _raw_submit_source(command, attempts, observations)
+            error = None if source is None else _submission_field_error(source[1]["arguments"].get("candidate"))
+            valid = (error is not None and error == terminal_payload.get("field_error")
+                     and terminal_payload.get("scope") == "experiment" and terminal_payload.get("phase") == "preregister"
+                     and source[1]["output_digest"] == terminal_payload.get("source_output_digest")
+                     and source[0]["component_id"] == terminal_payload.get("component_id"))
         if valid: declined[experiment_id] = terminal
-        else: issues.append(OracleIssue("preflight_control_close_invalid", "unpreregistered rejection must follow its real DECLINED review and have no scientific or Process effect", (experiment_id,)))
+        else: issues.append(OracleIssue("preflight_control_close_invalid", "draft rejection lacks its verified cause or has scientific or Process effects", (experiment_id,)))
     for creation in creations:
         identity = payloads.get(_row_identifier(creation), {})
         command = by_id.get(str(creation["command_id"]))
@@ -3035,7 +3072,10 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
             if (control_predecessor != predecessor or control_predecessor not in declined
                     or identity.get("revision_of_outcome_id") is not None
                     or any(identity.get(key) != prior_identity.get(key) for key in ("execution_node_command_id", "hypothesis_id", "role", "component_id", "expert_cycle"))
-                    or identity.get("experiment_ordinal") != prior_identity.get("experiment_ordinal", -1) + 1):
+                    or declined[control_predecessor]["raw_order"] >= creation["raw_order"]
+                    or any(previous["raw_order"] < other["raw_order"] < creation["raw_order"]
+                           and payloads.get(_row_identifier(other), {}).get("execution_node_command_id") == request["command_id"]
+                           for other in creations)):
                 issues.append(OracleIssue("preflight_repair_source_invalid", "control repair must replace the exact immediate declined submission within one execution chain", (str(creation["workflow_id"]), str(control_predecessor))))
         elif predecessor is not None and identity.get("revision_of_outcome_id") is None:
             issues.append(OracleIssue("experiment_repair_source_invalid", "repair without a canonical predecessor must name its declined control predecessor", (str(creation["workflow_id"]),)))
@@ -3884,6 +3924,7 @@ def _audit_owned_workspace_residue(
     artifact_root: Path,
     attempts: Sequence[sqlite3.Row],
     issues: list[OracleIssue],
+    *, collecting=(),
 ) -> None:
     for attempt in attempts:
         if attempt["state"] == "OPEN":
@@ -3899,7 +3940,9 @@ def _audit_owned_workspace_residue(
             )
             continue
         work = artifact_root / "work" / attempt_id
-        if work.exists() or work.is_symlink():
+        pending = (attempt["kind"] == "PROCESS" and attempt["terminal_reason"] != "LOST"
+                   and (attempt["workflow_id"], attempt_id) in collecting)
+        if work.is_symlink() or (work.exists() and not (pending and work.is_dir())):
             issues.append(
                 OracleIssue(
                     "owned_work_residue",
@@ -3911,6 +3954,8 @@ def _audit_owned_workspace_residue(
             continue
         staging = artifact_root / "result-staging" / attempt_id
         if not staging.exists() and not staging.is_symlink():
+            continue
+        if pending and staging.is_dir() and not staging.is_symlink():
             continue
         invalid = _unexpected_staging_residue(staging)
         if invalid:
