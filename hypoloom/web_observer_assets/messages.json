@@ -466,6 +466,7 @@
   "Grounding source Attempt: {0}": "研究准备来源调用：{0}",
   "Accepted declaration and published observations only. The recorded goal verdict remains authoritative; expert values are not merged or compared here.": "仅显示已接纳声明与已发布观察。记录的目标结论仍是依据；此处不合并或比较专家数值。",
   "must be true": "必须为真",
+  "Report-only diagnostics": "仅供报告的诊断值",
   "Required validity checks": "必要有效性检查",
   "{0} must be true": "{0} 必须为真",
   "No separate validity checks declared.": "未声明额外有效性检查。",

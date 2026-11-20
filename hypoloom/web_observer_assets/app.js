@@ -887,7 +887,15 @@
         const observations = element("dl", "acceptance-observations");
         Object.entries(item.goal_evaluation.measurements || {}).forEach(([name, value]) => observations.append(element("dt", "", name), element("dd", "", value)));
         Object.entries(item.goal_evaluation.checks || {}).forEach(([name, value]) => observations.append(element("dt", "", name), element("dd", "", String(value))));
-        card.append(observations, rawDetails(t("Technical source · recorded outcome"), item.goal_evaluation));
+        card.append(observations);
+        if (item.goal_evaluation.diagnostics) {
+          card.append(element("h4", "", t("Report-only diagnostics")));
+          const report = element("dl", "acceptance-observations");
+          Object.entries(item.goal_evaluation.diagnostics).forEach(([name, value]) =>
+            report.append(element("dt", "", name), element("dd", "", String(value))));
+          card.append(report);
+        }
+        card.append(rawDetails(t("Technical source · recorded outcome"), item.goal_evaluation));
       }
       else card.append(element("p", "", item.scope === "LOCAL"
         ? t("LOCAL: not a common-goal evaluation.")

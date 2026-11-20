@@ -86,6 +86,7 @@ class SharedAcceptance:
     parser_argv: tuple[str, ...]
     parser_files: tuple[str, ...]
     raw_artifacts: tuple[str, ...]
+    diagnostics: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         _text(self.summary, "summary")
@@ -99,6 +100,11 @@ class SharedAcceptance:
         validity = _names(self.validity_checks, "validity_checks")
         if set(validity).intersection(names):
             raise SharedAcceptanceError("validity checks must be separate from success criteria")
+        reported = _names([name for name, _ in self.diagnostics], "diagnostics")
+        if set(reported).intersection((*names, *validity)):
+            raise SharedAcceptanceError("diagnostic names must be separate from criteria and validity checks")
+        if any(kind not in ("BOOLEAN", "DECIMAL") for _, kind in self.diagnostics):
+            raise SharedAcceptanceError("diagnostic types must be BOOLEAN or DECIMAL")
         if not isinstance(self.parser_argv, tuple) or not self.parser_argv:
             raise SharedAcceptanceError("parser_argv must be an explicit nonempty argv")
         for item in self.parser_argv:
@@ -110,16 +116,19 @@ class SharedAcceptance:
         return {"summary": self.summary, "rule": self.rule,
             "criteria": [item.to_dict() for item in self.criteria],
             "validity_checks": list(self.validity_checks), "parser_argv": list(self.parser_argv),
-            "parser_files": list(self.parser_files), "raw_artifacts": list(self.raw_artifacts)}
+            "parser_files": list(self.parser_files), "raw_artifacts": list(self.raw_artifacts),
+            **({"diagnostics": dict(self.diagnostics)} if self.diagnostics else {})}
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> SharedAcceptance:
         fields = {"summary", "rule", "criteria", "validity_checks", "parser_argv", "parser_files", "raw_artifacts"}
-        if not isinstance(raw, Mapping) or set(raw) != fields:
+        if not isinstance(raw, Mapping) or set(raw) - {"diagnostics"} != fields:
             raise SharedAcceptanceError("shared acceptance fields are not exact")
         if not isinstance(raw["criteria"], (list, tuple)) or not isinstance(raw["parser_argv"], (list, tuple)):
             raise SharedAcceptanceError("criteria/parser_argv must be arrays")
-        return cls(summary=raw["summary"], rule=raw["rule"],
+        if "diagnostics" in raw and (not isinstance(raw["diagnostics"], Mapping) or not raw["diagnostics"]):
+            raise SharedAcceptanceError("declare diagnostics as a nonempty object of named types")
+        return cls(diagnostics=tuple(raw.get("diagnostics", {}).items()), summary=raw["summary"], rule=raw["rule"],
             criteria=tuple(SharedCriterion.from_dict(item) for item in raw["criteria"]),
             validity_checks=_names(raw["validity_checks"], "validity_checks"),
             parser_argv=tuple(raw["parser_argv"]), parser_files=_paths(raw["parser_files"], "parser_files"),
@@ -127,8 +136,8 @@ class SharedAcceptance:
 
 
 def normalize_shared_observation(raw: Mapping[str, Any], acceptance: SharedAcceptance | None = None) -> dict[str, Any]:
-    if not isinstance(raw, Mapping) or set(raw) != {"measurements", "checks"}:
-        raise SharedAcceptanceError("shared parser output must contain only measurements and checks")
+    if not isinstance(raw, Mapping) or set(raw) - {"diagnostics"} != {"measurements", "checks"}:
+        raise SharedAcceptanceError("shared parser output requires measurements and checks with optional declared diagnostics")
     measurements, checks = raw["measurements"], raw["checks"]
     if not isinstance(measurements, Mapping) or not isinstance(checks, Mapping):
         raise SharedAcceptanceError("shared measurements/checks must be objects")
@@ -138,7 +147,16 @@ def normalize_shared_observation(raw: Mapping[str, Any], acceptance: SharedAccep
         raise SharedAcceptanceError("shared checks must be boolean")
     if set(measured).intersection(checked):
         raise SharedAcceptanceError("measurement and check names cannot overlap")
+    reported = raw.get("diagnostics", {})
+    if not isinstance(reported, Mapping) or ("diagnostics" in raw and not reported):
+        raise SharedAcceptanceError("shared diagnostics must be a nonempty object")
+    if (set(measured) | set(checked)).intersection(reported):
+        raise SharedAcceptanceError("diagnostic names overlap verdict fields")
+    diagnostics = {_text(name, "diagnostic name"): value if type(value) is bool else _decimal(value)
+                   for name, value in reported.items()}
     if acceptance is not None:
+        if dict(acceptance.diagnostics) != {k: "BOOLEAN" if type(v) is bool else "DECIMAL" for k, v in diagnostics.items()}:
+            raise SharedAcceptanceError("shared diagnostics differ from the exact declared names or types")
         numeric = {item.name for item in acceptance.criteria if item.operator != "IS_TRUE"}
         boolean = {item.name for item in acceptance.criteria if item.operator == "IS_TRUE"} | set(acceptance.validity_checks)
         if set(measured) != numeric or set(checked) != boolean:
@@ -147,7 +165,7 @@ def normalize_shared_observation(raw: Mapping[str, Any], acceptance: SharedAccep
                     ("checks", boolean, set(checked)))
                 for kind, names in (("missing", expected - actual), ("unexpected", actual - expected)) if names]
             raise SharedAcceptanceError("shared observations differ from the exact declared names; " + "; ".join(differences))
-    return {"measurements": measured, "checks": checked}
+    return {"measurements": measured, "checks": checked, **({"diagnostics": diagnostics} if diagnostics else {})}
 
 
 def evaluate_shared_acceptance(acceptance: SharedAcceptance, raw: Mapping[str, Any]) -> bool:
@@ -185,7 +203,7 @@ def normalize_goal_evaluation_binding(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def normalize_goal_evaluation_observation(raw: Mapping[str, Any]) -> dict[str, Any]:
-    if not isinstance(raw, Mapping) or set(raw) != {"source_attempt_id", "measurements", "checks"}:
+    if not isinstance(raw, Mapping) or "source_attempt_id" not in raw:
         raise SharedAcceptanceError("goal evaluation observation requires exact source/measurements/checks")
     return {"source_attempt_id": _text(raw["source_attempt_id"], "Grounding source Attempt"),
-        **normalize_shared_observation({name: raw[name] for name in ("measurements", "checks")})}
+        **normalize_shared_observation({name: value for name, value in raw.items() if name != "source_attempt_id"})}

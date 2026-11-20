@@ -376,7 +376,7 @@ def _shared_qualification(view: PolicySnapshot, item: ComponentSnapshot) -> bool
     if observation["source_attempt_id"] != view.shared_acceptance_source_attempt_id:
         raise ValueError("goal evaluation source differs from accepted Grounding")
     assert view.shared_acceptance is not None
-    raw = normalize_shared_observation({name: observation[name] for name in ("measurements", "checks")}, view.shared_acceptance)
+    raw = normalize_shared_observation({k: v for k, v in observation.items() if k != "source_attempt_id"}, view.shared_acceptance)
     if not all(raw["checks"][name] for name in view.shared_acceptance.validity_checks): return None
     if not item.evidence_linked or item.assessment_id is None or not _terminal(item): return None
     return evaluate_shared_acceptance(view.shared_acceptance, raw)

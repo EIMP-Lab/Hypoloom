@@ -94,7 +94,7 @@ def shared_goal_stop(facts, payloads, transitions, workflow_version=None):
             _need(binding.get("scope") == "GOAL" and binding.get("source_attempt_id") == observed.get("source_attempt_id"),
                   "common successful stop changes its exact evaluator source or scope")
             qualified = qualified or interpret_shared_acceptance(binding["acceptance"],
-                {name: observed[name] for name in ("measurements", "checks")}).goal_met
+                {k: v for k, v in observed.items() if k != "source_attempt_id"}).goal_met
     _need(not common or qualified, "local support alone cannot establish common goal success")
     return stop, verdict
 

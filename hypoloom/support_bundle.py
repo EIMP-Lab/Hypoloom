@@ -39,7 +39,7 @@ class SupportBundleError(DebugModeError):
 
 _ENVIRONMENT_KEYS = {"env", "environment", "environ", "host_environment"}
 _ROOT_KEYS = {"target_repo", "target_root", "repository_root", "project_root",
-              "runtime_prefix", "runtime_paths", "read_roots", "input_root"}
+              "runtime_prefix", "runtime_paths", "read_roots", "evaluation_only_roots", "evaluation_only_read_paths", "input_root"}
 _SAFE_METADATA_KEYS = {
     "kind", "event", "timestamp", "observed_at", "started_at", "ended_at",
     "run_id", "attempt_id", "command_id", "session_id", "workflow_id",

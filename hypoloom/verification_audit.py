@@ -216,6 +216,14 @@ def probe_context(attempt, intent, contexts, commands, attempts, observations, t
     if report["request"]["schema_version"] >= 35:
         from .verification_probe import RUNNER_PATH
         argv = ["python", RUNNER_PATH]
+    mounts = context.get("component_mounts")
+    if mounts and mounts.formal_goal_inputs:
+        from dataclasses import replace
+        withheld = set(mounts.formal_goal_inputs)
+        public = replace(mounts, bindings=tuple(b for b in mounts.bindings if b.destination not in withheld),
+                         read_roots=tuple(root for root in mounts.read_roots if root not in withheld), formal_goal_inputs=())
+        environment = {**context["resource"]["environment"], "HYPOLOOM_READ_ROOTS": json.dumps(public.read_roots, separators=(",", ":"))}
+        context = {**context, "component_mounts": public, "resource": {**context["resource"], "environment": environment}}
     return {**context, "source_path": argv[1], "execution_argv": tuple(argv),
             "contract": {**context["contract"], "argv": argv,
                          "timeout_seconds": min(probe["timeout_seconds"], context["contract"]["timeout_seconds"])}}

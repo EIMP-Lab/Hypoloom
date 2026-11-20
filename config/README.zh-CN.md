@@ -79,6 +79,7 @@ metric:
 | `metric.direction` | `maximize` 表示越大越好，`minimize` 表示越小越好。 |
 | `metric.target` | 有限数值阈值，单位须与指标一致。 |
 | `evaluation` | 设置为 `grounding`，要求专家共用在 Grounding 阶段建立的验收流程；在 `description` 中说明完整要求。 |
+| `evaluator_seed` | 可选。指定已审阅的 Git 目录和协议标识，Grounding 接纳评估器前会重跑绑定的样例。[共享 GOAL 评估](../docs/guides/shared-evaluation.zh-CN.md) |
 
 设置 `evaluation: grounding` 时，保留 `metric: null`，不填写 `completion` 或
 `stop_conditions.target_metric`。必须由一个完整的 `GOAL` 候选满足全部已确认要求，
@@ -446,6 +447,7 @@ filesystem:
 | 字段 | 含义与取值 |
 | --- | --- |
 | `allow_read_paths` | 已存在的数据与其他获准只读输入的绝对路径列表；无需额外数据时可设为空列表。不得包含凭据目录。 |
+| `evaluation_only_read_paths` | 仅挂载到正式 GOAL 原始实验进程的只读文件或目录。填写彼此独立的规范绝对路径。 |
 | `sandbox_os` | 保留 `linux_bwrap`，使用受支持的 Linux bubblewrap 沙箱。 |
 | `gpus` | `[]` 表示仅 CPU；`auto` 使用 Host 已授权设备范围；列表可用 GPU UUID 或非负整数索引进一步缩小范围，推荐稳定的 UUID。该字段本身不授予设备权限。 |
 | `max_gpus_per_experiment` | 单次实验的 GPU 数量上限，正整数；`gpus: []` 时，填写 `1` 也不会启用 GPU。 |

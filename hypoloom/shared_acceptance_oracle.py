@@ -26,10 +26,11 @@ def _number(value):
         type(value) in {str, int, float, Decimal}, "shared observation is not a decimal"
     )
     try:
-        number = Decimal(str(value))
+        number = Decimal(value) if isinstance(value, (int, Decimal)) else Decimal(str(value))
     except InvalidOperation as exc:
         raise ValueError("shared observation is not a decimal") from exc
     _need(number.is_finite(), "shared observation is nonfinite")
+    _need(not number or number.adjusted() <= 999999, "shared observation magnitude is unsupported")
     return number
 
 
@@ -37,6 +38,13 @@ def _normal(value):
     number = _number(value)
     if not number:
         return "0"
+    # Large exponents must not expand into fixed-point strings. Build the
+    # scientific form directly from the supplied coefficient, without arithmetic.
+    if abs(number.adjusted()) > 1000:
+        sign, digits, exponent = number.as_tuple()
+        significant = "".join(map(str, digits)).rstrip("0")
+        mantissa = significant[0] + ("." + significant[1:] if len(significant) > 1 else "")
+        return ("-" if sign else "") + mantissa + f"E{number.adjusted():+d}"
     text = format(number, "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
 
@@ -82,7 +90,7 @@ class _Parser:
 def _declaration(raw):
     _need(
         isinstance(raw, Mapping)
-        and set(raw)
+        and set(raw) - {"diagnostics"}
         == {
             "summary",
             "rule",
@@ -128,6 +136,12 @@ def _declaration(raw):
         len(set(names)) == len(names) and not set(names).intersection(validity),
         "shared criterion names overlap",
     )
+    if "diagnostics" in raw:
+        fields = raw["diagnostics"]
+        _need(isinstance(fields, Mapping) and fields, "invalid shared diagnostic declaration")
+        _names(list(fields), "diagnostic names")
+        _need(not set(fields).intersection((*names, *validity)) and
+              all(kind in ("BOOLEAN", "DECIMAL") for kind in fields.values()), "invalid shared diagnostic fields")
     argv = raw["parser_argv"]
     _need(
         isinstance(argv, (list, tuple))
@@ -172,7 +186,7 @@ def interpret_shared_acceptance(
 ) -> SharedOracleResult:
     _declaration(declaration)
     _need(
-        isinstance(result, Mapping) and set(result) == {"measurements", "checks"},
+        isinstance(result, Mapping) and set(result) == {"measurements", "checks"} | ({"diagnostics"} if "diagnostics" in declaration else set()),
         "shared parser emitted extra/missing fields",
     )
     measurements, checks = result["measurements"], result["checks"]
@@ -194,6 +208,14 @@ def interpret_shared_acceptance(
         and all(type(value) is bool for value in checks.values()),
         "shared observations differ from exact declared names/types",
     )
+    report = {}
+    if "diagnostics" in declaration:
+        values = result["diagnostics"]
+        _need(isinstance(values, Mapping) and set(values) == set(declaration["diagnostics"]), "shared diagnostics differ")
+        for name, kind in declaration["diagnostics"].items():
+            if kind == "BOOLEAN":
+                _need(type(values[name]) is bool, "shared diagnostic must be boolean")
+            report[name] = values[name] if kind == "BOOLEAN" else _normal(values[name])
     normalized = {name: _normal(value) for name, value in measurements.items()}
     criteria = []
     for item in declaration["criteria"]:
@@ -213,7 +235,7 @@ def interpret_shared_acceptance(
     valid = all(checks[name] for name in declaration["validity_checks"])
     values = [value for _, value in criteria]
     return SharedOracleResult(
-        {"measurements": normalized, "checks": dict(checks)},
+        {"measurements": normalized, "checks": dict(checks), **({"diagnostics": report} if report else {})},
         tuple(criteria),
         valid,
         valid and (all(values) if declaration["rule"] == "ALL" else any(values)),

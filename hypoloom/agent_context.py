@@ -1155,6 +1155,9 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             "protocol_catalog": contract_document["protocols"],
             "delivery_contracts": contract_document.get("delivery_contracts", {}),
             "goal": contract_document["goal"], "grounding_scope": "role-neutral"}
+        seed = contract_document["methodology"].get("controls", {}).get("product", {}).get("goal", {}).get("evaluator_seed")
+        if seed:
+            config["evaluator_seed"] = seed
         config_ref = f"{run_id}--grounding-config"
     else:
         config = {"execution": dict(host._run_config(run_id))["execution"],
@@ -1178,6 +1181,10 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             if task.key.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL:
                 config["exploration_progress"] = host._batch_history(run_id, component_id, role).exploration_progress(
                     host._active_expert_chains(run_id, role))
+    if "evaluation_only_roots" in config["execution"]:
+        config["execution"] = dict(config["execution"])
+        held = config["execution"].pop("evaluation_only_roots")
+        config["execution"]["formal_goal_inputs"] = [f"/hypoloom-evaluation/{i}" for i in range(1, len(held) + 1)]
     context_plan = {"production": component_is_production(contract_document, component_id)}
     _, root_environment = execution_read_root_projection(config["execution"], context_plan,
         generic=bool(raw_component.get("result", {}).get("deferred")) or host.shared_acceptance.enabled(run_id))

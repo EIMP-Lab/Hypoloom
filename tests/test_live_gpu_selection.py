@@ -327,7 +327,7 @@ def test_host_dispatch_uses_new_devices_and_persists_selection_revision(live, mo
     captured = {}
     host._at_capacity = lambda *args: False
     host._participant_busy = lambda *args, **kwargs: False
-    host._execution_mounts = lambda *args: ((), None, None)
+    host._execution_mounts = lambda *args, **kwargs: ((), None, None)
     host._implementation_patch = lambda *args: None
     document = {"budget": {"min_vram_per_experiment": 1024}}
     host._research_contract = lambda _: SimpleNamespace(document=document)

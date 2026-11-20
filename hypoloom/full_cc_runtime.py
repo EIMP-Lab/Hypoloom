@@ -658,10 +658,17 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 'raw_artifacts=["predictions.json"]. /acceptance is not mounted in the parser Process; '
                 "it is the local authoring/test path, not the parser_argv execution path. "
                 "The CPU parser reads declared files under /raw and source under /input, writes /parsed/result.json "
-                "(or HYPOLOOM_MEASUREMENT_RESULT_PATH) with exactly measurements and checks; no goal_met/verdict. "
+                + ("(or HYPOLOOM_MEASUREMENT_RESULT_PATH) with measurements, checks and any declared diagnostics. "
+                   if request.schema_version >= 43 else "(or HYPOLOOM_MEASUREMENT_RESULT_PATH) with exactly measurements and checks; no goal_met/verdict. ") +
                 "measurements must contain exactly the numeric criterion names, with raw numeric values, not threshold booleans. "
                 "checks must contain exactly the IS_TRUE criterion names plus validity_checks; these are exact keys, not prose. "
-                "Do not add undeclared diagnostic measurements or rename keys with suffixes; explain them in summary or logs. "
+                + ("Declare report-only diagnostics as a map of names to BOOLEAN or DECIMAL. Emit exactly these in diagnostics, "
+                   "separate from validity checks and criteria. For a diagnostic-only perturbation keep the scientific verdict fixed. "
+                   "You may place a labeled baseline and variants in /acceptance/work/acceptance-cases.json. Each case has "
+                   "observation (full parser output) and goal_met. Baseline raw files go in smoke/, other cases in work/cases/<name>/. "
+                   "For a configured evaluator_seed, review /acceptance/acceptance.json against the current question, split, references "
+                   "and candidate identity. Grounding owns the new declaration. The Host rechecks the pinned examples with your final parser. "
+                   if request.schema_version >= 43 else "Do not add undeclared diagnostic measurements or rename keys with suffixes; explain them in summary or logs. ") +
                 "Place one tiny, complete raw fixture for each raw_artifacts path under /acceptance/smoke/. "
                 "The native Stop hook asks the Host to execute the declared parser on those fixtures (CPU, at most 15 seconds) and reuses "
                 "the Host's exact output validator before accepting Grounding. Below-target fixture values are allowed; "
@@ -691,6 +698,9 @@ def full_cc_instruction(request: AgentRequest) -> str:
             "Local SUPPORTED with an unresolved shared goal may request another scientific iteration or revised cycle. "
             "Only Policy accepts the complete goal and stops peers. "
         )
+        if request.schema_version >= 43:
+            common += ("When execution.formal_goal_inputs is present, its paths are mounted read-only in the preregistered GOAL "
+                "raw Process only. Use public fixtures for design, LOCAL, verification and minimum entrypoint samples. ")
         measurement_choice = (
             "SYNTHESIS may declare a local C5 measurement or measurement=null for a GOAL-only hypothesis. "
             "Plan screening and early-stop ablations in SYNTHESIS: declare a local C5 measurement so DESIGN can "
@@ -728,11 +738,13 @@ def full_cc_instruction(request: AgentRequest) -> str:
                 + ("metric and observations for stage evidence, otherwise metric, value and optional baseline. "
                    if staged else "only metric, value and optional baseline. ") +
                 "The common parser retains the accepted read-only /acceptance source "
-                "and emits only measurements and checks in its separate Process phase. These are separate parser outputs; "
+                + ("and emits measurements, checks and any declared diagnostics in its separate Process phase. "
+                   if request.schema_version >= 43 else "and emits only measurements and checks in its separate Process phase. These are separate parser outputs; ") +
                 "do not substitute the common JSON format for the local C5 result. Write/test source under /workspace, reference captured programs as "
                 "/input/<relative-path>; import the submitted target via HYPOLOOM_TARGET_ROOT. Host captures argv-referenced "
                 "source, local parser files and implementation.patch, not an expert replacement of /acceptance. Raw execution "
-                "writes all declared common evidence for GOAL; common parser output is measurements/checks, not a verdict. "
+                + ("writes all declared common evidence for GOAL. The parser reports the declared observations and the Host computes the verdict. "
+                   if request.schema_version >= 43 else "writes all declared common evidence for GOAL; common parser output is measurements/checks, not a verdict. ") +
                 "Every GOAL termination branch, including an early screen failure, must produce the required raw evidence; "
                 "missing evidence is an execution failure, not a clean refutation. Do not fabricate placeholder results "
                 "to satisfy the common parser or change a frozen null measurement to repair a GOAL-only hypothesis. "

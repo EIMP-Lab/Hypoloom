@@ -6,7 +6,7 @@ original hypothesis preregistration and its admitted source for comparisons.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, DecimalException, localcontext
+from decimal import Context, Decimal, DecimalException, Inexact, localcontext
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Mapping
@@ -194,8 +194,7 @@ def _evaluate_evidence(declaration: ScientificMeasurement, evidence: StageEviden
     observations = raw["observations"]
     if set(observations) != set(evidence.units):
         raise ValueError("observations must cover exactly the declared evidence.units")
-    with localcontext() as context:
-        context.prec = 50
+    with localcontext(Context(prec=50)) as context:
         values = []
         for unit in evidence.units:
             row = observations[unit]
@@ -209,6 +208,9 @@ def _evaluate_evidence(declaration: ScientificMeasurement, evidence: StageEviden
             aggregate = sum(values, Decimal(0)) / len(values)
         else:
             aggregate = min(values) if declaration.metric.direction is MetricDirection.MAXIMIZE else max(values)
+        if context.flags[Inexact]:
+            # Staged reductions publish inexact arithmetic at 28 significant digits.
+            aggregate = Context(prec=28).plus(aggregate)
     # Compare the same decimal representation that CanonicalOutcomeAccepted records.
     metric_value = normalize_metric_value(aggregate)
     return MeasurementEvaluation(value=None, baseline=None, metric_value=metric_value,
@@ -229,8 +231,7 @@ def evaluate_parsed_measurement(declaration: ScientificMeasurement, raw: Mapping
                 or set(raw) - {"metric", "value", "baseline"} or raw["metric"] != declaration.metric.name):
             raise ValueError("parsed result must identify the frozen metric and only value/optional baseline")
         value, baseline = _value_pair(raw)
-        with localcontext() as context:
-            context.prec = 50
+        with localcontext(Context(prec=50)) as context:
             metric_value = normalize_metric_value(_compare(value, baseline, declaration.comparison))
         return MeasurementEvaluation(value=value, baseline=baseline, metric_value=metric_value,
                                      criterion_met=declaration.accepts(metric_value))

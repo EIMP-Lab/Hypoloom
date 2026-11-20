@@ -158,7 +158,8 @@ def read_parser_result(prepared: PreparedParser) -> Mapping[str, Any]:
         raise ValueError("parser produced undeclared files")
     def reject_constant(value: str) -> Any:
         raise ValueError(f"nonfinite parsed JSON constant {value}")
-    raw = json.loads(path.read_bytes(), object_pairs_hook=_unique_object, parse_constant=reject_constant)
+    from .domain import parsed_decimal_number
+    raw = json.loads(path.read_bytes(), object_pairs_hook=_unique_object, parse_constant=reject_constant, parse_float=parsed_decimal_number)
     if not isinstance(raw, Mapping):
         raise ValueError("parser result must be an object")
     return raw

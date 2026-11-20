@@ -112,7 +112,7 @@ class _InteractionAudit:
                         self.attempts.values(), self.observations, self.root / "artifacts")[0]
                 from .shared_acceptance_oracle import interpret_shared_acceptance
                 if interpret_shared_acceptance(declarations[source_id],
-                        {name: observed[name] for name in ("measurements", "checks")}).goal_met:
+                        {k: v for k, v in observed.items() if k != "source_attempt_id"}).goal_met:
                     return True
         return False
 

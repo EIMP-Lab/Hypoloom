@@ -129,7 +129,7 @@ def _assessment_goal_result(assessment: Mapping[str, Any], view: ResearchStore, 
             raise ResearchValidationError("shared result differs from its GOAL preregistration")
         acceptance = _grounding_acceptance(binding, view, run_id)
         try:
-            raw = normalize_shared_observation({name: observation[name] for name in ("measurements", "checks")}, acceptance)
+            raw = normalize_shared_observation({k: v for k, v in observation.items() if k != "source_attempt_id"}, acceptance)
             if all(raw["checks"][name] for name in acceptance.validity_checks):
                 results.append(evaluate_shared_acceptance(acceptance, raw))
         except (KeyError, SharedAcceptanceError) as exc:
@@ -380,7 +380,7 @@ class ResearchKernel:
                 if candidate.goal_evaluation["source_attempt_id"] != binding["source_attempt_id"]:
                     raise ResearchValidationError("shared outcome source differs from preregistration")
                 acceptance = _grounding_acceptance(binding, view, run_id)
-                try: normalize_shared_observation({name: candidate.goal_evaluation[name] for name in ("measurements", "checks")}, acceptance)
+                try: normalize_shared_observation({k: v for k, v in candidate.goal_evaluation.items() if k != "source_attempt_id"}, acceptance)
                 except SharedAcceptanceError as exc: raise ResearchValidationError(str(exc)) from exc
             if (
                 spec["execution_id"] != str(candidate.execution_id)
