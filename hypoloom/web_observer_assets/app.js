@@ -1262,11 +1262,24 @@
 
     const waitsContainer = byId("resource-wait-list");
     waitsContainer.replaceChildren();
+    const queue = status.experiment_queue;
+    if (queue) {
+      waitsContainer.append(element("p", "panel-copy", t("Ready {0} · awaiting outcome {1} · rejected drafts {2}", queue.ready_count, queue.evaluating_count, queue.rejected_count)));
+      for (const row of queue.recent_rejections) {
+        waitsContainer.append(element("p", "panel-copy", t("Rejected {0} · {1}", row.experiment_id, row.field_error?.field || row.reason)));
+      }
+    }
+    const fault = status.dispatch_error;
+    if (fault?.phase) waitsContainer.append(element("p", "blocked", t("Dispatch paused at {0} · {1}", fault.command || fault.phase, fault.experiment_id || fault.run_id || "")));
     for (const process of status.process_activity || []) {
       const grant = process.resource_grant || {};
       const bytes = (process.logs || []).reduce((sum, row) => sum + row.bytes, 0);
       const ages = (process.logs || []).filter(row => row.bytes > 0).map(row => row.age_seconds);
-      waitsContainer.append(element("p", "panel-copy", t("{0}: {1} {2} · process {3} · logs {4} bytes{5}. Scientific progress unknown; OPEN records ownership.", process.experiment_id, grant.kind || t("resource unknown"), (grant.gpu_uuids || []).join(", "), process.process_alive === true ? "alive" : process.process_alive === false ? t("exited, collection pending") : t("liveness unknown"), bytes, ages.length ? t(" · last write {0} s ago", Math.round(Math.min(...ages))) : t(" · no output observed"))));
+      waitsContainer.append(element("p", "panel-copy", t("Process {0} · {1} · {2} · logs {3} bytes", process.experiment_id, [grant.kind || t("resource unknown"), ...(grant.gpu_uuids || [])].join(" "), process.process_alive === true ? "alive" : process.process_alive === false ? t("exited, collection pending") : t("liveness unknown"), bytes) + (ages.length ? t(" · last write {0} s ago", Math.round(Math.min(...ages))) : t(" · no output observed"))));
+      const units = process.work_units;
+      if (units) waitsContainer.append(element("p", "panel-copy", t("Reported stage {0} · completed {1} · running {2} · failed {3}", units.stage, units.completed, units.running, units.failed) + (units.partial ? t(" · partial sample") : "")));
+      else waitsContainer.append(element("p", "panel-copy", t("Work stage unreported")));
+      if (Number.isFinite(process.remaining_seconds)) waitsContainer.append(element("p", "panel-copy", t("Process time budget remaining {0} s", Math.floor(process.remaining_seconds))));
     }
     const waits = status.resource_waits;
     if (!hasHostStatus || !Array.isArray(waits)) {

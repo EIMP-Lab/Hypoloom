@@ -338,16 +338,22 @@ def validate_original_debate_scope(request: Mapping[str, Any], participant: Deba
         bound = participant.hypothesis_id in request["immutable_context_refs"]
     else:
         bound = False
+        batch_ref = request["command_id"] + "--batch-context"
+        has_batch = batch_ref in request["immutable_context_refs"]
         for item in request.get("input_artifacts", ()):
             if item["ref"] not in request["immutable_context_refs"] or item.get("media_type") != "application/json":
+                continue
+            if has_batch and item["ref"] != batch_ref:
                 continue
             value = json.loads(base64.b64decode(item["content_base64"], validate=True))
             if not isinstance(value, Mapping):
                 continue
-            if item["ref"].endswith("--batch-context") and value.get("chains", {}).get(scope.chain) == participant.hypothesis_id:
-                bound = True
+            if has_batch:
+                bound = isinstance(value.get("chains"), Mapping) and value["chains"].get(scope.chain) == participant.hypothesis_id
+                break
             fact = value.get("payload", value)
-            if (isinstance(fact, Mapping) and fact.get("fact_type", value.get("fact_type")) == "HypothesisProposed"
+            if (isinstance(fact, Mapping) and item["ref"] in (value.get("fact_id"), fact.get("fact_id"), participant.hypothesis_id)
+                    and fact.get("fact_type", value.get("fact_type")) == "HypothesisProposed"
                     and (fact.get("hypothesis_id"), fact.get("component_id"), fact.get("proposer_role")) ==
                         (participant.hypothesis_id, scope.component_id, scope.role)):
                 bound = True

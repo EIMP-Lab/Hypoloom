@@ -59,6 +59,35 @@ def _require_text(value: object, field: str) -> None:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError(f"{field} must be a non-empty, trimmed string")
 def _require_id(value: object, field: str) -> None: _require_text(value, field)
+
+
+class CandidateFieldError(ValueError):
+    """A structural defect attributable to a single submitted field."""
+
+    def __init__(self, field: str, code: str, message: str, *, index: int | None = None,
+                 first_index: int | None = None) -> None:
+        self.detail = {"field": field, "code": code}
+        if index is not None:
+            self.detail["index"] = index
+        if first_index is not None:
+            self.detail["first_index"] = first_index
+        path = field if index is None else f"{field}[{index}]"
+        super().__init__(f"{path} {message}")
+
+
+def require_distinct_text(value: object, field: str, *, nonempty: bool = True) -> None:
+    if not isinstance(value, tuple) or (nonempty and not value):
+        raise CandidateFieldError(field, "invalid_list", "must be a nonempty tuple" if nonempty else "must be a tuple")
+    positions: dict[str, int] = {}
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item or item != item.strip():
+            raise CandidateFieldError(field, "invalid_text", "must be a nonempty trimmed string", index=index)
+        if item in positions:
+            first = positions[item]
+            raise CandidateFieldError(field, "duplicate_item", f"duplicates {field}[{first}]", index=index, first_index=first)
+        positions[item] = index
+
+
 def _require_text_tuple(value: object, field: str, *, nonempty: bool = True) -> None:
     if not isinstance(value, tuple) or (nonempty and not value):
         qualifier = "a non-empty" if nonempty else "a"
@@ -642,7 +671,7 @@ class HypothesisCandidate:
     parent_hypothesis_id: HypothesisId | None = None; relation: str | None = None
     def __post_init__(self) -> None:
         _require_text(self.claim, "claim"); _require_text(self.owner_role, "owner_role")
-        _require_text_tuple(self.assumptions, "assumptions", nonempty=False)
+        require_distinct_text(self.assumptions, "assumptions", nonempty=False)
         if self.parent_hypothesis_id is not None: _require_id(self.parent_hypothesis_id, "parent_hypothesis_id")
         if (self.parent_hypothesis_id is None) != (self.relation is None):
             raise ValueError("parent_hypothesis_id and relation must be supplied together")
@@ -657,9 +686,9 @@ class ExperimentSpecCandidate:
         if not all(isinstance(metric, MetricSpec) for metric in self.metrics):
             raise ValueError("metrics must contain only MetricSpec values")
         if len({metric.name for metric in self.metrics}) != len(self.metrics): raise ValueError("metric names must be unique")
-        _require_text_tuple(self.acceptance_criteria, "acceptance_criteria")
+        require_distinct_text(self.acceptance_criteria, "acceptance_criteria")
         _require_text(self.evaluator_version, "evaluator_version")
-        _require_text_tuple(self.artifact_requirements, "artifact_requirements")
+        require_distinct_text(self.artifact_requirements, "artifact_requirements")
         if not isinstance(self.resource_preference, ResourcePreference): raise ValueError("resource_preference must be a ResourcePreference")
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ExecutionContract:
@@ -811,7 +840,7 @@ def _validate_fact(fact: _FactBase) -> None:
         elif fact.metric is not None:
             raise ValueError("an artifact result must not declare a metric")
         if not isinstance(fact.trial_plan, TrialPlan): raise ValueError("trial_plan must be a TrialPlan")
-        _require_text_tuple(fact.acceptance_criteria, "acceptance_criteria")
+        require_distinct_text(fact.acceptance_criteria, "acceptance_criteria")
         _require_text(fact.evaluator_version, "evaluator_version")
         _require_text_tuple(fact.required_artifacts, "required_artifacts", nonempty=False)
         if not isinstance(fact.upstream_outcomes, tuple) or any(

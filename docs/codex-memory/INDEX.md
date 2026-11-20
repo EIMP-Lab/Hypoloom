@@ -1,5 +1,7 @@
 # Development memory index
 
+- [Draft rejection, outcome collection and entrypoint verification, November 20](../qualification.md#submission-recovery-and-entrypoint-verification-2026-11-20).
+
 - [Verifier completion and evidence inputs, November 19](../design/verifier-completion.md).
 
 - [Stage evidence and compact Verifier reports, November 18](../design/stage-evidence-and-review.md).

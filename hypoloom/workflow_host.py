@@ -37,6 +37,7 @@ from .measurement_contract import ScientificMeasurement, assert_frozen_measureme
 from .collaboration import (ExpertSignal, ExpertSignalKind, RendezvousDisposition, RendezvousOrigin, RendezvousRequest, derive_rendezvous_records)
 from .contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
 from .diagnostics import bounded_diagnostic_text
+from .domain import CandidateFieldError
 from .runtime_diagnostics import record_host_exception
 from .domain import (AgentCommand, ArtifactId, AssessmentId, AttemptTerminalReason, CanonicalOutcomeAccepted, ComponentId, ComponentResultKind, EvidenceId, EvidenceLinked, ExecutionId, ExperimentId, ExperimentPreregistered, FactId, GoalDefined, GoalId, GoalVerdict, GoalVerdictRecorded, HypothesisAssessed, HypothesisAssessment, HypothesisId, HypothesisProposed, ExecutionContract, LogicalArtifact, MethodFamilyId, ProducerOutcomeBinding, ResearchContract, ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, OutcomeId, RunId, RunVersion, ScientificOutcome, VerdictId, REVISIONABLE_INTEGRITY_VALIDATION_CODES)
 from .fake_agent import FakeAgent, FakeAgentMode
@@ -55,7 +56,7 @@ from .research_kernel import ResearchKernel, ResearchValidationError
 from .resource_experience import RESOURCE_EXPERIENCE_VERSION, summarize_resource_experience
 from .profile_v4 import request_literature_tools, restrict_profile_capabilities
 from .runner import RUNNER_VERSION, LocalRunner, ProcessRequest, RunningProcess, process_group_exists
-from .state_store import HostWriterCapability, IdentityConflict, RevisionConflict, StateStore, StateTransaction
+from .state_store import HostWriterCapability, IdentityConflict, RevisionConflict, StateStore, StateStoreError, StateTransaction
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _TERMINAL_RUNS = {state.value for state in (RunState.COMPLETED, RunState.FAILED, RunState.CANCELLED)}
 _VERSION_FIELDS = tuple(RunVersion.__dataclass_fields__)
@@ -212,7 +213,7 @@ class WorkflowHost:
         self._role_views_ready = set()
         self._role_view_errors = {}
         self.archive_errors: dict[str, str] = {}
-        self.dispatch_errors: dict[str, dict[str, str]] = {}
+        self.dispatch_errors: dict[str, dict[str, Any]] = {}
         self._diagnostic_context: dict[str, Any] = {}
         self.gpu_pressure: dict[str, tuple[tuple[GpuPressureTracker, ...], int, dict[str, tuple[str, int | None]]]] = {}; self.resource_waits: dict[str, tuple[str, str]] = {}; self.stop_requested = False; self.operational_halt: str | None = None; self.terminal_exit_ready = False
     def initialize(self) -> None:
@@ -902,8 +903,14 @@ class WorkflowHost:
             if self.stop_request is not None and run["state"] not in _TERMINAL_RUNS | {RunState.STOPPING.value}:
                 raise OperationalHalt("cancellation recovery cannot resume scientific dispatch")
             if run["state"] in _TERMINAL_RUNS or run["state"] == RunState.WAITING_HUMAN.value: continue
-            if run["run_id"] in self.dispatch_errors and run["state"] != RunState.STOPPING.value: continue
             try:
+                fault = self.dispatch_errors.get(run["run_id"])
+                if fault is not None and run["state"] != RunState.STOPPING.value:
+                    if (run["state"] == RunState.ACTIVE.value and fault.get("allow_collection")
+                            and self._collect_admitted_outcome(run["run_id"], fault.get("experiment_id"))):
+                        progressed = True
+                        yield progressed
+                    continue
                 from .provider_recovery import apply_scheduled_retry
                 if apply_scheduled_retry(self, run["run_id"]):
                     run = self.store.latest_transition(run["run_id"])
@@ -911,15 +918,20 @@ class WorkflowHost:
                 elif run["state"] == RunState.STOPPING.value: self._drive_stopping(run["run_id"])
                 elif run["state"] == RunState.COMPLETING.value: self._complete(run["run_id"])
                 else: self._drive_active(run)
-            except (OperationalHalt, HostConfigurationError, sqlite3.DatabaseError):
+            except (OperationalHalt, HostConfigurationError, sqlite3.DatabaseError, StateStoreError,
+                    ResearchValidationError, ArtifactError, ExecutionWorkspaceError):
                 raise
             except Exception as exc:
                 # Preserve the failed source and the control interface. Cleanup
                 # failures still halt: quarantine must never hide failed shutdown.
                 if run["state"] == RunState.STOPPING.value: raise
-                self.dispatch_errors[run["run_id"]] = {"exception_type": type(exc).__name__, "phase": "dispatch",
-                    "host_generation": self.generation}
-                self._record_exception(exc, **{**self._diagnostic_context, "phase": "dispatch_quarantined", "run_id": run["run_id"]})
+                detail = {**self._diagnostic_context, "scope": "run", "occurred_at": time.time(),
+                    "allow_collection": fault is None and self._diagnostic_context["phase"] in {"experiment", "agent_launch", "agent_request"}}
+                if fault is not None:
+                    fault.update(allow_collection=False, collection_error={**detail, "exception_type": type(exc).__name__})
+                else:
+                    self.dispatch_errors[run["run_id"]] = {**detail, "exception_type": type(exc).__name__, "host_generation": self.generation}
+                self._record_exception(exc, **{**detail, "failed_phase": detail["phase"], "phase": "dispatch_quarantined"})
                 continue
             if self._cycle_reports_enabled(str(run["run_id"])):
                 current = self.store.latest_transition(str(run["run_id"]))
@@ -2852,7 +2864,12 @@ class WorkflowHost:
         for attempt_id, handle in tuple(self.running_agents.items()):
             self._diagnostic_context = {"phase": "agent_observation", "run_id": handle.request.run_id, "command_id": handle.request.command_id, "attempt_id": attempt_id}
             run_head = self.store.latest_transition(handle.request.run_id)
-            paused = handle.request.run_id in self.dispatch_errors and run_head["state"] != RunState.STOPPING.value
+            fault = self.dispatch_errors.get(handle.request.run_id)
+            paused = fault is not None and run_head["state"] != RunState.STOPPING.value
+            if (paused and run_head["state"] == RunState.ACTIVE.value and fault.get("allow_collection")
+                    and handle.request.command is AgentCommand.ANSWER_RENDEZVOUS
+                    and handle.request.owner_workflow_id != fault.get("experiment_id")):
+                paused = not self._is_admitted_outcome_review(handle.request)
             sibling_failed = sibling_proposal_failed(self, handle.request)
             resource_blocked = self.resource_recovery.for_request(handle.request)
             if paused or sibling_failed or resource_blocked: self.claude_agent_host.cancel(handle)
@@ -3322,6 +3339,10 @@ class WorkflowHost:
             result["resource_wait"] = wait[1]
         if not terminal and run_id in self.dispatch_errors:
             result.update(status="blocked", dispatch_error=dict(self.dispatch_errors[run_id]))
+        if head["state"] == ExperimentState.EVALUATING.value:
+            result["phase"] = "awaiting_outcome"
+        elif head["state"] == ExperimentState.READY.value:
+            result["phase"] = "ready"
         if attempts:
             latest = attempts[-1]; observation = json.loads(latest["observation_json"] or "{}")
             if latest["state"] == "OPEN":
@@ -3339,7 +3360,8 @@ class WorkflowHost:
             result["evaluation"] = json.loads(head["payload_json"]).get("outcome")
         rejection = self._preflight_rejection(run_id, experiment_id)
         if rejection is not None:
-            result.update(preflight={"status": "rejected", "reply": rejection.to_dict()}, repairable=True)
+            result.update(preflight=rejection, repairable=True)
+            if rejection["reason"] == "invalid_submission": result["status"] = "rejected"
         spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         from .execution_budget import experiment_execution_feedback
         result.update(experiment_execution_feedback(self, spec, observation if attempts else {}))
@@ -3367,13 +3389,24 @@ class WorkflowHost:
         head = self.store.latest_transition(experiment_id)
         if head is None or head["state"] != ExperimentState.TERMINAL.value: return None
         payload = json.loads(head["payload_json"])
-        if payload.get("reason") != "preflight_declined" or not payload.get("discarded_before_preregistration"): return None
+        if payload.get("reason") not in {"preflight_declined", "invalid_submission"} or not payload.get("discarded_before_preregistration"): return None
         creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (experiment_id,))
         if len(creation) != 1 or payload.get("source_submit_command_id") != json.loads(creation[0]["payload_json"]).get("source_submit_command_id"): return None
+        if self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id) is not None: return None
+        if payload["reason"] == "invalid_submission":
+            command, _, _, source = self._submission_source(payload["source_submit_command_id"])
+            if (command["workflow_id"] != experiment_id or command["run_id"] != run_id
+                    or source.output_digest != payload.get("source_output_digest")):
+                raise OperationalHalt("rejected draft differs from its accepted submit source")
+            try:
+                source.candidate.validate_preregistration_fields()
+            except CandidateFieldError as exc:
+                if exc.detail == payload.get("field_error"):
+                    return {"status": "rejected", "reason": payload["reason"], "field_error": exc.detail}
+            raise OperationalHalt("rejected draft has no matching structural defect")
         origin, reply = self._review_status(run_id, str(payload["component_id"]), "preflight", experiment_id)
         if origin is None or payload.get("rendezvous_id") != origin.rendezvous_id or reply is None or reply.disposition is not RendezvousDisposition.DECLINED: return None
-        if self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id) is not None: return None
-        return reply
+        return {"status": "rejected", "reason": "preflight_declined", "reply": reply.to_dict()}
 
     def _experiment_tool_log(self, experiment_id: str, max_bytes: int = 16384) -> str:
         attempts = [row for row in self.store.list_attempts(workflow_id=experiment_id) if row["kind"] == "PROCESS"]
@@ -3452,7 +3485,7 @@ class WorkflowHost:
             for row in self._expert_attempts(request.task_context))
 
     def _submit_experiment(self, request: AgentRequest, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        from .agent_aci import validate_experiment_submission
+        from .agent_aci import validate_experiment_candidate_fields, validate_experiment_submission
         task = request.task_context
         assert isinstance(task, ResearchNodeTask)
         predecessor = arguments.get("replaces_experiment_id")
@@ -3468,9 +3501,11 @@ class WorkflowHost:
             source = json.loads(previous["request_json"])
             if source.get("arguments") != normalized_arguments:
                 raise IdentityConflict("accepted submit key already has a different immutable candidate")
+            self._submission_source(command_id)
             return dict(json.loads(previous["result_json"]))
         if request.run_id in self.dispatch_errors:
             raise AgentACIError("dispatch_paused", "Host dispatch is quarantined; a new experiment cannot be scheduled")
+        validate_experiment_candidate_fields(normalized_arguments.get("candidate"))
         head = self.store.latest_transition(request.run_id)
         if head is None: raise OperationalHalt("execution node lacks its run")
         if self._participant_paused(request.run_id, request.role, str(request.component_id), "CREATE_EXPERIMENT", getattr(task.key, "chain", None) or "1"):
@@ -3594,13 +3629,26 @@ class WorkflowHost:
         command = self._tool_command(command_id)
         if command is None or command["command_type"] != Command.CREATE_EXPERIMENT.value or command["response_status"] != "accepted":
             raise OperationalHalt("execution source lacks its accepted submit command")
-        data = json.loads(command["request_json"])
-        request = AgentRequest.from_dict(data["source_request"])
-        if (data.get("tool") != "submit_experiment" or data.get("execution_node_command_id") != request.command_id
-                or command["run_id"] != request.run_id):
-            raise OperationalHalt("submit command ownership differs from its invocation")
-        source = data["source_snapshot"]
-        validated = validate_submission_snapshot(request, source)
+        try:
+            data = json.loads(command["request_json"])
+            request = AgentRequest.from_dict(data["source_request"])
+            source = data["source_snapshot"]
+            validated = validate_submission_snapshot(request, source)
+            owner = self.store.inspect("SELECT run_id,workflow_id,command_id,kind,attempt_ordinal, "
+                "json_extract(observation_json,'$.request') AS request_json "
+                "FROM execution_attempts WHERE attempt_id=?", (request.attempt_id,))
+            if (len(owner) != 1 or (owner[0]["run_id"], owner[0]["workflow_id"], owner[0]["command_id"],
+                    owner[0]["kind"], owner[0]["attempt_ordinal"]) != (request.run_id, request.owner_workflow_id,
+                    request.command_id, "AGENT", request.attempt_ordinal)
+                    or json.loads(owner[0]["request_json"]) != data["source_request"]
+                    or data["tool"] != "submit_experiment" or data["execution_node_command_id"] != request.command_id
+                    or command["run_id"] != request.run_id or data["arguments"]["candidate"] != source["arguments"]["candidate"]
+                    or command["accepted_revision"] != 1 or json.loads(command["result_json"])["exp_id"] != command["workflow_id"]
+                    or data["predecessor_experiment_id"] != source["arguments"].get("replaces_experiment_id")
+                    or command_id != f"{request.command_id}--submit--{data['predecessor_experiment_id'] or 'initial'}"):
+                raise OperationalHalt("accepted submit command ownership differs from its invocation")
+        except (TypeError, KeyError, ValueError) as exc:
+            raise OperationalHalt("accepted submit source fails immutable snapshot validation") from exc
         return command, request, source, validated
 
     def _submission_execution_plan(self, request: AgentRequest, candidate: Any,
@@ -3644,7 +3692,28 @@ class WorkflowHost:
 
     def _preregister_submission(self, run_id: str, experiment_id: str, identity: Mapping[str, Any]) -> None:
         command_id = str(identity["source_submit_command_id"])
-        _source_command, request, source, validated = self._submission_source(command_id)
+        command, request, source, validated = self._submission_source(command_id)
+        if (command["workflow_id"] != experiment_id or command["run_id"] != run_id
+                or request.attempt_id != identity["source_agent_attempt_id"]
+                or request.command_id != identity["execution_node_command_id"]
+                or request.component_id != identity["component_id"] or request.role != identity["role"]):
+            raise OperationalHalt("preregistration differs from its accepted submission identity")
+        try:
+            validated.candidate.validate_preregistration_fields()
+        except CandidateFieldError as exc:
+            with self.store.transaction() as tx:
+                head = tx.latest_transition(experiment_id)
+                if (head is None or head["state"] != ExperimentState.DRAFTED.value
+                        or tx.find_fact(run_id, "ExperimentPreregistered", experiment_id) is not None
+                        or tx.list_attempts(workflow_id=experiment_id, kind="PROCESS", include_observation=False)):
+                    raise OperationalHalt("invalid submission is not an unregistered draft") from exc
+                tx.append_transition(self._transition_record(tx, run_id, experiment_id, "EXPERIMENT",
+                    Command.CANCEL, ExperimentState.TERMINAL, payload={
+                        "reason": "invalid_submission", "discarded_before_preregistration": True,
+                        "scope": "experiment", "phase": "preregister",
+                        "component_id": request.component_id, "source_submit_command_id": command_id,
+                        "source_output_digest": validated.output_digest, "field_error": exc.detail}))
+            return
         candidate = validated.candidate; contract = self._research_contract(run_id)
         component = contract.component(str(identity["component_id"]))
         assert component is not None
@@ -3863,11 +3932,54 @@ class WorkflowHost:
                     payload={"role": source_request.role, "component_id": component_id, "source_submit_command_id": submit_id,
                         "rendezvous_id": origin.rendezvous_id, "rendezvous_origin": record, "rendezvous_request": origin.request(run_id).to_dict()}))
         return experiment_id
-    def _drive_experiment(self, run_id: str, head: Mapping[str, Any], command: str | None) -> None:
+    def _is_admitted_outcome_review(self, request: AgentRequest) -> bool:
+        experiment = request.owner_workflow_id
+        head = self.store.latest_transition(experiment)
+        if head is None or head["run_id"] != request.run_id or head["state"] != ExperimentState.EVALUATING.value:
+            return False
+        spec = self.store.find_fact(request.run_id, "ExperimentPreregistered", experiment)
+        if spec is None: raise OperationalHalt("pending result review lacks its preregistration")
+        origin, reply = self._review_status(request.run_id, spec["payload"]["component_id"], "analyze", experiment)
+        if origin is None or reply is not None or request.role != origin.target_role: return False
+        expected = origin.request(request.run_id)
+        inputs = [i for i in request.input_artifacts if i.ref == origin.rendezvous_id + "--rendezvous"]
+        return (request.immutable_context_refs == expected.context_refs and len(inputs) == 1
+                and json.loads(inputs[0].content_bytes()) == expected.to_dict())
+
+    def _collect_admitted_outcome(self, run_id: str, failed_experiment: str | None) -> bool:
+        """During a dispatch fault, only finish an already observed, independent Process."""
+        for head in self.store.list_workflow_heads(run_id, "EXPERIMENT"):
+            experiment = head["workflow_id"]
+            if (experiment == failed_experiment or head["state"] != ExperimentState.EVALUATING.value
+                    or head["next_command"] not in {Command.ACCEPT_OUTCOME.value, None}
+                    or (head["due_at"] is not None and head["due_at"] > time.time())):
+                continue
+            spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment)
+            if spec is None: raise OperationalHalt("pending outcome lacks its preregistration")
+            component = spec["payload"]["component_id"]
+            if self._review_role(self._research_contract(run_id), component, "analyze") is not None:
+                origin, reply = self._review_status(run_id, component, "analyze", experiment)
+                if origin is None or reply is None: continue
+            elif head["next_command"] is None:
+                continue
+            self._drive_experiment(run_id, head, Command.ACCEPT_OUTCOME.value, during_quarantine=True)
+            return True
+        return False
+
+    def _drive_experiment(self, run_id: str, head: Mapping[str, Any], command: str | None, *, during_quarantine: bool = False) -> None:
+        self._diagnostic_context = {"phase": "experiment", "run_id": run_id,
+            "experiment_id": head["workflow_id"], "command": command, "revision": head["revision"],
+            "command_id": head["command_id"]}
+        self._run_experiment_command(run_id, head, command, during_quarantine=during_quarantine)
+        self._diagnostic_context = {"phase": "dispatch", "run_id": run_id}
+
+    def _run_experiment_command(self, run_id: str, head: Mapping[str, Any], command: str | None, *, during_quarantine: bool) -> None:
         state = head["state"]
         creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (head["workflow_id"],))
         if not creation: raise OperationalHalt(f"experiment {head['workflow_id']!r} lacks creation payload")
         identity = json.loads(creation[0]["payload_json"])
+        self._diagnostic_context.update({k: identity[k] for k in ("component_id", "role", "execution_node_command_id",
+            "source_submit_command_id", "chain") if k in identity})
         if command == Command.REQUEST_SPEC_CANDIDATE.value:
             if _uses_expert_loop(self._research_contract(run_id)):
                 task = ResearchNodeTask(key=ResearchNodeKey(run_id=run_id,
@@ -3907,7 +4019,7 @@ class WorkflowHost:
         elif command == Command.EXECUTE.value: self._start_process(run_id, head["workflow_id"], retry=False)
         elif command == Command.ACCEPT_OUTCOME.value:
             if head["due_at"] is not None and float(head["due_at"]) > time.time(): return
-            self._evaluate_experiment(run_id, head["workflow_id"])
+            self._evaluate_experiment(run_id, head["workflow_id"], during_quarantine=during_quarantine)
         elif command == Command.CANCEL.value and state == ExperimentState.DRAFTED.value:
             rejection: dict[str, Any] = {}
             if identity.get("source_submit_command_id"):
@@ -4014,12 +4126,15 @@ class WorkflowHost:
         plan = _component_plan(self._research_contract(run_id).document, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]), self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"])), grant.kind is ResourceKind.GPU)
         probe_files = {}
         if probe:
+            from .execution_workspace import sandbox_command
+            formal_argv = sandbox_command(contract["argv"], source_path, "python")
             contract = {**contract, "argv": probe["argv"], "timeout_seconds": min(contract["timeout_seconds"], probe["timeout_seconds"])}
             source_path = probe["argv"][1]
             probe_files = {k: v.encode() for k, v in probe["files"].items()}
             if "checks" in probe:
                 from .verification_probe import RUNNER_PATH, execution_files
-                probe_files.update(execution_files(probe, attempt_id=attempt_id, report_ref=probe["report_ref"]))
+                probe_files.update(execution_files(probe, attempt_id=attempt_id, report_ref=probe["report_ref"],
+                    smoke=agent_response.get("arguments", {}).get("entrypoint_smoke"), formal_argv=formal_argv))
                 source_path = RUNNER_PATH
                 contract = {**contract, "argv": ["python", RUNNER_PATH]}
         prepared = workspace.plan(agent_request=agent_request, agent_response=agent_response, attempt_id=attempt_id, attempt_ordinal=ordinal,
@@ -4392,18 +4507,32 @@ class WorkflowHost:
             payload = {"source_attempt_id": attempt_id, "evaluator_retry_ordinal": ordinal, "failure_stage": stage, "failure_class": type(exc).__name__, "retry_after_seconds": delay}
             transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.RETRY_EVALUATOR, ExperimentState.EVALUATING, next_command=Command.ACCEPT_OUTCOME.value, payload=payload)
             transition["due_at"] = time.time() + delay; tx.append_transition(transition)
-    def _evaluate_experiment(self, run_id: str, experiment_id: str) -> None:
+    def _evaluate_experiment(self, run_id: str, experiment_id: str, *, during_quarantine: bool = False) -> None:
         spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         if spec is None: raise OperationalHalt(f"experiment {experiment_id} lacks preregistration")
         execution_id = spec["execution_id"]; attempts = self.store.list_attempts(execution_id=execution_id)
         eligible = [row for row in attempts if row["state"] == "CLOSED" and row["terminal_reason"] != "LOST"]
         if not eligible: raise OperationalHalt(f"EVALUATING experiment {experiment_id} has no candidate attempt")
         attempt = eligible[0]; observation = json.loads(attempt["observation_json"])
+        if (attempt["kind"] != "PROCESS" or attempt["run_id"] != run_id
+                or attempt["workflow_id"] != experiment_id or attempt["experiment_id"] != experiment_id):
+            raise OperationalHalt("terminal Process ownership differs from its preregistered experiment")
+        if during_quarantine:
+            selected = self.store.inspect("SELECT json_extract(t.payload_json,'$.attempt_id') AS attempt_id "
+                "FROM workflow_transitions t JOIN workflow_commands c ON c.command_id=t.command_id "
+                "WHERE t.run_id=? AND t.workflow_id=? AND t.state='EVALUATING' AND t.previous_state!='EVALUATING' "
+                "AND c.command_type IN ('OBSERVE_ATTEMPT_TERMINAL','CANCEL') AND c.response_status='accepted'",
+                (run_id, experiment_id))
+            if len(selected) != 1 or selected[0]["attempt_id"] != attempt["attempt_id"] or len(eligible) != 1:
+                raise OperationalHalt("outcome collection cannot authenticate the selected terminal Process")
         spec, contract, agent_request, agent_response, source_path, result_path, workspace, _, grant = self._execution_inputs(
             run_id, experiment_id, attempt_id=attempt["attempt_id"], synthetic=bool(observation.get("synthetic_before_spawn")))
         if self.publisher is None: raise OperationalHalt("Workflow Host is not initialized")
         process_request = observation.get("process_request")
         if not isinstance(process_request, Mapping): raise OperationalHalt("terminal observation lacks its committed ProcessRequest")
+        if (any(process_request.get(key) != attempt[key] for key in ("attempt_id", "attempt_ordinal", "execution_id"))
+                or observation.get("terminal_reason") != attempt["terminal_reason"]):
+            raise OperationalHalt("terminal observation differs from its committed Process identity or reason")
         mounts, target_binding, patch = self._execution_mounts(run_id, spec, workspace, attempt["attempt_id"])
         # Submitted target code is source, not a newly declared result artifact.
         implementation_bytes = self._implementation_patch(run_id, str(spec["payload"]["component_id"]), str(spec["payload"]["method_family_id"]))
@@ -4422,6 +4551,8 @@ class WorkflowHost:
                 raise OperationalHalt("measurement ProcessRequest differs from its frozen two-stage plan")
         else: prepared = workspace.recover(process_request, **planning)
         integrity_error = observation.get("integrity_error")
+        if during_quarantine and integrity_error is not None:
+            raise OperationalHalt("pending result already records a workspace integrity failure")
         try:
             if integrity_error is not None or observation.get("synthetic_before_spawn"):
                 collected = workspace.integrity_diagnostic(prepared, str(integrity_error or "synthetic_terminal_before_spawn"),
@@ -4429,6 +4560,7 @@ class WorkflowHost:
             else: collected = workspace.collect(prepared, observation, agent_request=agent_request, agent_response=agent_response,
                 preserve_partial_outputs=spec["payload"].get("goal_evaluation") is not None or agent_request.get("schema_version", 0) >= 32)
         except (ExecutionWorkspaceError, OSError, ValueError) as exc:
+            if during_quarantine: raise OperationalHalt("cannot verify pending result workspace") from exc
             integrity_error = f"{type(exc).__name__}:{exc}"[:1024]
             collected = workspace.integrity_diagnostic(prepared, integrity_error, agent_request=agent_request, agent_response=agent_response)
         if parser is not None and spec["payload"].get("goal_evaluation") is not None:
@@ -4454,6 +4586,7 @@ class WorkflowHost:
             publication = self.publisher.publish(key, collected.staging_dir, collected.relative_paths, schema_version=2)
         except ArtifactDurabilityError as exc: self._schedule_evaluator_retry(run_id, experiment_id, str(attempt["attempt_id"]), exc, stage="artifact_publication"); return
         except ArtifactError as exc:
+            if during_quarantine: raise OperationalHalt("cannot verify pending result publication") from exc
             if self.store.inspect("SELECT 1 FROM execution_artifacts WHERE attempt_id=?", (attempt["attempt_id"],)):
                 raise OperationalHalt(f"recorded artifact conflicts during evaluation: {exc}") from exc
             integrity_error = f"{type(exc).__name__}:{exc}"[:1024]

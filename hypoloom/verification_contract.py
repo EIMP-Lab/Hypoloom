@@ -80,6 +80,8 @@ def can_repair_probe(request, ctx):
 
 def validate_review(request, raw):
     """The same validator serves native correction and Host admission."""
+    from .agent_aci import SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION
+    from .verification_probe import ENTRYPOINT_CHECK
     expected = {"task_kind", "summary", "supporting_refs", "verdict", "findings", "probe", "resolved_refs"}
     if structured_probe(request): expected.add("coverage")
     if not isinstance(raw, dict) or set(raw) != expected or raw["task_kind"] != "VERIFY_IMPLEMENTATION":
@@ -185,9 +187,19 @@ def validate_review(request, raw):
             from .verification_probe import RESERVED_PATHS, validate_checks
             from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
             validate_checks(probe["checks"], comparisons=request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION)
+            entry = next((c for c in probe["checks"] if c["id"] == ENTRYPOINT_CHECK), None)
+            if (request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION and (ctx.get("entrypoint_smoke") or entry)
+                    and (entry is None or not entry["required"] or entry["kind"] != "assertion")):
+                raise ValueError("declare formal_entrypoint as a required assertion for the minimum sample")
             if any(p == w or p.startswith(w + "/") or w.startswith(p + "/") for p in RESERVED_PATHS for w in ctx["workspace_paths"]):
                 raise ValueError("candidate overlaps reserved Host probe paths; report inconclusive without a probe")
     if structured_probe(request): _validate_coverage(raw, ctx)
+    if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION and verdict == "passed":
+        coverage = raw["coverage"]
+        checked = any(ENTRYPOINT_CHECK in row["check_ids"] for row in coverage["covered"])
+        gap = any(row["condition"] == ENTRYPOINT_CHECK for row in coverage["uncovered"])
+        if not checked and (ctx.get("entrypoint_smoke") or not gap):
+            raise ValueError("formal_entrypoint requires observed coverage or an explicit uncovered condition with a reason")
     if structured_submission(request): _validate_narrative(raw)
     return raw
 
@@ -289,6 +301,7 @@ def review_schema(request):
 
 
 def instructions(request):
+    from .agent_aci import SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION
     ctx = context(request)
     phase = ctx["phase"]
     result = INSTRUCTIONS + "\n" + (
@@ -302,6 +315,15 @@ def instructions(request):
             "Otherwise decide passed/changes_required/inconclusive.\n"
             if can_repair_probe(request, ctx) else
             "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n"))
+    if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
+        if ctx.get("entrypoint_smoke"):
+            result += ("The author supplied entrypoint_smoke. Declare formal_entrypoint as a required assertion. "
+                "The Host runner executes it before your probe source and records exit status and declared output evidence. "
+                "Reference the check in review coverage. Use independent checks for output contents and parser behavior.\n")
+        else:
+            result += ("Exercise the admitted command with a bounded project sample in its real runtime and verify its outputs. "
+                "Use a required assertion named formal_entrypoint when you do so. If its path cannot be exercised, "
+                "include condition='formal_entrypoint' in coverage.uncovered with the specific reason and whether it blocks passing.\n")
     result += (
         "Your current filesystem is the review session. Source JSON is inline or at its exact advertised /inputs/NNNN.txt path. "
         "These JSON containers are not Python modules. /input exists ONLY in the later Process sandbox; do not search for it here. "

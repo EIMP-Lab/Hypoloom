@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import runpy
+import stat
 import statistics
+import subprocess
 import sys
 import time
 import traceback
@@ -19,6 +21,7 @@ MAX_RESULT_BYTES = 64 * 1024
 RUNNER_PATH = "verification/_hypoloom_runner.py"
 PLAN_PATH = "verification/_hypoloom_plan.json"
 RESULT_PATH = "verification-results.json"
+ENTRYPOINT_CHECK = "formal_entrypoint"
 RESERVED_PATHS = frozenset({RUNNER_PATH, PLAN_PATH})
 _active = None
 
@@ -144,9 +147,34 @@ def _validate_comparison(value):
         raise ValueError("comparison speedup does not match observed medians")
 
 
-def execution_files(probe, *, attempt_id, report_ref):
+def validate_entrypoint_smoke(value):
+    if not isinstance(value, dict) or set(value) != {"args", "outputs"}:
+        raise ValueError("entrypoint_smoke requires args and outputs")
+    args, outputs = value["args"], value["outputs"]
+    if (not isinstance(args, list) or not 1 <= len(args) <= 32
+            or any(not isinstance(arg, str) or not arg or len(arg) > 1024 or "\0" in arg for arg in args)):
+        raise ValueError("entrypoint_smoke.args must contain 1..32 bounded application arguments")
+    if not isinstance(outputs, list) or not 1 <= len(outputs) <= 8:
+        raise ValueError("entrypoint_smoke.outputs must name 1..8 expected files")
+    for name in outputs:
+        if not isinstance(name, str) or not name.isprintable() or len(name) > 256:
+            raise ValueError("invalid entrypoint_smoke output")
+        path = PurePosixPath(name)
+        if (not path.parts or path.is_absolute() or path.as_posix() != name or ".." in path.parts
+                or "\\" in name or path.parts[0] in {RESULT_PATH, Path(RESULT_PATH).with_suffix(".tmp").name}):
+            raise ValueError("entrypoint_smoke output must be a relative file in the Process output directory")
+    if len(outputs) != len(set(outputs)):
+        raise ValueError("entrypoint_smoke outputs must be distinct")
+
+
+def execution_files(probe, *, attempt_id, report_ref, smoke=None, formal_argv=None):
     """Host-owned wrapper uses the existing workspace/Attempt identity."""
     plan = {"checks": probe["checks"], "argv": probe["argv"], "attempt_id": attempt_id, "report_ref": report_ref}
+    if smoke is not None:
+        validate_entrypoint_smoke(smoke)
+        if not formal_argv or not any(c["id"] == ENTRYPOINT_CHECK and c["required"] and c["kind"] == "assertion" for c in probe["checks"]):
+            raise ValueError("submitted minimum sample lacks its formal entrypoint assertion")
+        plan["entrypoint_smoke"] = {"argv": [*formal_argv, *smoke["args"]], "outputs": smoke["outputs"]}
     return {RUNNER_PATH: Path(__file__).read_bytes(), PLAN_PATH: json.dumps(plan, allow_nan=False).encode()}
 
 
@@ -285,12 +313,32 @@ def compare(key, reference, candidate, *, workload, device="cpu", warmup=2, repe
         item.row.update(status="MEASURED", measurement=measurement)
 
 
+def _run_entrypoint(smoke):
+    paths = [Path(name) for name in smoke["outputs"]]
+    with check(ENTRYPOINT_CHECK) as evidence:
+        for path in paths:
+            if path.exists() or path.is_symlink() or any(p.is_symlink() for p in path.parents):
+                raise ValueError(f"sample output already exists or is linked: {path}")
+        argv = list(smoke["argv"])
+        if argv[0] == "python": argv[0] = sys.executable
+        completed = subprocess.run(argv, check=False)
+        evidence.equal(completed.returncode, 0, "formal entrypoint exit code")
+        for path in paths:
+            present = False
+            if not any(p.is_symlink() for p in path.parents) and path.exists():
+                info = path.lstat()
+                present = stat.S_ISREG(info.st_mode) and info.st_size > 0 and info.st_nlink == 1
+            evidence.true(present, f"formal entrypoint produced {path}")
+
+
 def main():
     global _active
     plan = json.loads((Path(__file__).parent / Path(PLAN_PATH).name).read_text())
     _active = _Run(plan)
     _active.persist()
     sys.modules["hypoloom_probe"] = sys.modules[__name__]
+    if "entrypoint_smoke" in plan:
+        _run_entrypoint(plan["entrypoint_smoke"])
     source = Path(__file__).parent.parent / plan["argv"][1]
     sys.argv = [str(source), *plan["argv"][2:]]
     try:

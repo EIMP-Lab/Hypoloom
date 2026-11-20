@@ -19,10 +19,10 @@ def declared(key="values", kind="assertion", required=True):
     return {"id": key, "kind": kind, "required": required, "purpose": "Exercise captured values", "basis": "Independent hand calculation"}
 
 
-def run_probe(tmp_path, source, checks=None):
+def run_probe(tmp_path, source, checks=None, *, smoke=None, formal_argv=None):
     checks = checks or [declared()]
     probe = {"checks": checks, "argv": ["python", "verification/probe.py"]}
-    files = execution_files(probe, attempt_id="probe-1", report_ref="inspection-1")
+    files = execution_files(probe, attempt_id="probe-1", report_ref="inspection-1", smoke=smoke, formal_argv=formal_argv)
     files["verification/probe.py"] = source.encode()
     for name, data in files.items():
         path = tmp_path / name
@@ -31,6 +31,47 @@ def run_probe(tmp_path, source, checks=None):
     result = subprocess.run([sys.executable, str(tmp_path / RUNNER_PATH)], cwd=tmp_path, capture_output=True, timeout=10)
     document = decode_result((tmp_path / RESULT_PATH).read_bytes())
     return result, document, validate_result(document, checks, attempt_id="probe-1", report_ref="inspection-1")
+
+
+@pytest.mark.parametrize("mode,passed", [("normal", True), ("missing", False), ("import_failure", False),
+    ("empty", False), ("symlink", False), ("stale", False)])
+def test_formal_entrypoint_checks_real_command_and_new_output(tmp_path, monkeypatch, mode, passed):
+    entry = tmp_path / "app" / "main.py"
+    entry.parent.mkdir()
+    (entry.parent / "dependency.py").write_text("VALUE = 'expected'\n")
+    entry.write_text("""import os, sys
+from pathlib import Path
+from dependency import VALUE
+assert os.environ['SAMPLE_SETTING'] == VALUE
+assert sys.argv[1:3] == ['--config', 'frozen']
+assert sys.argv[3:5] == ['--fixture', 'tiny']
+mode = sys.argv[5]
+if mode == 'import_failure': import absent_sample_dependency
+if mode == 'normal': Path('sample.json').write_text('42')
+if mode == 'empty': Path('sample.json').touch()
+if mode == 'symlink': Path('sample.json').symlink_to(__file__)
+""")
+    monkeypatch.setenv("SAMPLE_SETTING", "expected")
+    if mode == "stale": (tmp_path / "sample.json").write_text("42")
+    checks = [declared("formal_entrypoint"), declared()]
+    smoke = {"args": ["--fixture", "tiny", mode], "outputs": ["sample.json"]}
+    process, report, assessment = run_probe(tmp_path, "from hypoloom_probe import check\n"
+        "with check('values') as c: c.equal(1, 1)\n", checks, smoke=smoke,
+        formal_argv=["python", str(entry), "--config", "frozen"])
+    assert (process.returncode == 0) is assessment["passed"] is passed
+    assert (report["checks"][0]["status"] == "PASS") is passed
+
+
+def test_submission_smoke_check_is_required_and_receipt_bound():
+    request = default_request(AgentCommand.VERIFY_IMPLEMENTATION)
+    ctx = {**context(request), "entrypoint_smoke": {"args": ["--tiny"], "outputs": ["raw/value.json"]}}
+    request = replace(request, input_artifacts=(EmbeddedInput.from_bytes(request.input_artifacts[0].ref,
+        "application/json", json.dumps(ctx).encode()),))
+    report = deepcopy(FakeAgent().invoke(request).typed_candidate)
+    validate_review(request, report)
+    report["probe"]["checks"] = [c for c in report["probe"]["checks"] if c["id"] != "formal_entrypoint"]
+    with pytest.raises(ValueError, match="formal_entrypoint"):
+        validate_review(request, report)
 
 
 @pytest.mark.parametrize("body,status", [

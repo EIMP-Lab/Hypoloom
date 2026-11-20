@@ -303,7 +303,7 @@ def _current_activity(stages, processes, observed_at):
     return _visible_stages([stage for stage in stages if (stage["cycle"] or 0) == cycle])
 
 
-def _host_observation(state_root):
+def _host_observation(state_root, run_id=None):
     """Historical diagnostics are not evidence that a Host is alive or dead."""
     from .diagnostics import bounded_diagnostic_text
 
@@ -320,9 +320,13 @@ def _host_observation(state_root):
                 continue
             if not isinstance(record, dict) or record.get("kind") != "host_exception":
                 continue
+            if run_id is not None and record.get("run_id") not in (run_id, None):
+                continue
             latest = {key: bounded_diagnostic_text(record.get(key))
                 for key in ("timestamp", "stage", "exception_type")}
             latest["stage"] = bounded_diagnostic_text(record.get("phase", record.get("stage")))
+            for key in ("scope", "run_id", "experiment_id", "command_id", "command", "failed_phase", "revision", "host_generation"):
+                if key in record: latest[key] = bounded_diagnostic_text(str(record[key]))
             latest["evidence"] = "diagnostics/host.jsonl"
             break
     except OSError:
@@ -749,7 +753,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         notices.append("Accepted or bound plugin evidence is unavailable or incomplete.")
     if totals["evolutions"]["changed"] is None:
         notices.append("Successful self-evolution lacks retained plugin-update evidence; effective change count is unknown.")
-    host_observation = _host_observation(state_root)
+    host_observation = _host_observation(state_root, run_id)
     host_observation["orphaned"] = terminal is None and host_observation["availability"] == "absent"
     def auxiliary_group(scope, group=None):
         def selected_scope(value):

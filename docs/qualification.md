@@ -1,5 +1,25 @@
 # Qualification: G0–G5
 
+## Submission recovery and entrypoint verification (2026-11-20)
+
+ACI 42 and native adapter 99 enforce distinct candidate lists at submission
+and report the field and both positions of a duplicate. Twelve native output
+schemas for hypothesis and experiment candidates at ACI 6, 13, 27, 39, 40 and
+41 were byte-identical to their previous public versions.
+
+An isolated replay authenticated all 31 stored submission receipts. Thirty
+siblings retained their state. The one draft with a duplicate criterion
+closed locally, and all 107 scientific facts retained their original bytes.
+Four interruption points during independent outcome collection each recovered
+to a single accepted outcome. The CPU sandbox test exercised the captured
+formal command with its declared arguments, mounted fixture and output.
+[Workflow guide](guides/research-workflow.md#submission-and-execution-diagnostics-aci-42)
+
+The public suite passed 486 tests and skipped its opt-in CUDA case. The
+development regression selection passed 699 cases on its first run. Both
+browser cases skipped during that run passed when repeated with local Chrome
+for Testing, bringing the selection to 701 distinct passing cases.
+
 ## Verifier completion and evidence inputs (2026-11-19)
 
 ACI 41 and native adapter 98 use the existing verdict validator and attempt

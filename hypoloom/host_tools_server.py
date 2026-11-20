@@ -64,6 +64,10 @@ _TOOLS = (
                 "description": {"type": "string"},
                 "replaces_experiment_id": {"type": "string"},
                 "resource_estimate": _RESOURCE_ESTIMATE_SCHEMA,
+                "entrypoint_smoke": {"type": "object", "additionalProperties": False, "required": ["args", "outputs"],
+                    "description": "ACI 42+. Run a project-supported minimum sample through the formal command during verification. Args are appended to the command. Outputs name new nonempty files relative to /output.",
+                    "properties": {"args": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+                        "outputs": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 256}}}},
                 "reuse_experiments": {"type": "array", "maxItems": 16, "uniqueItems": True,
                     "items": {"type": "string", "minLength": 1},
                     "description": "ACI 32+: terminal same-run/component/owner experiments whose published outputs are explicitly mounted read-only for compatible completed-work reuse."},
@@ -147,14 +151,16 @@ _TOOL_SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in (*_TOOLS, *_RESOU
 
 
 def scoped_tools(scope: str, tools: tuple[str, ...] | None = None, *,
-                 candidate_schema: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], ...]:
+                 candidate_schema: Mapping[str, Any] | None = None, entrypoint_smoke: bool = False) -> tuple[dict[str, Any], ...]:
     if scope == "execution": selected = (*_TOOLS, *_RESOURCE_TOOLS)
     elif scope == "resources": selected = _RESOURCE_TOOLS
     elif scope in {"grounding", "literature"}: selected = (*_WEB_TOOLS, *(_READING_TOOLS if scope == "literature" and tools is not None else ()))
     else: raise ValueError("unknown Host tool scope")
-    if scope == "execution" and candidate_schema is not None:
-        selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": {
-            **item["inputSchema"]["properties"], "candidate": candidate_schema}}}
+    if scope == "execution":
+        properties = dict(_TOOL_SCHEMAS["submit_experiment"]["properties"])
+        if candidate_schema is not None: properties["candidate"] = candidate_schema
+        if not entrypoint_smoke: properties.pop("entrypoint_smoke")
+        selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": properties}}
             if item["name"] == "submit_experiment" else item for item in selected)
     if tools is None: return selected
     if not isinstance(tools, tuple) or any(not isinstance(name, str) for name in tools):
@@ -190,6 +196,12 @@ def _error(message: str) -> dict[str, Any]:
     return {"ok": False, "error": message}
 
 
+class HostToolFieldError(ValueError):
+    def __init__(self, message, detail):
+        super().__init__(message)
+        self.detail = detail
+
+
 def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
     if tool not in _TOOL_SCHEMAS:
         raise ValueError("unknown Host tool")
@@ -209,7 +221,7 @@ def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
     for name, value in arguments.items():
         if name in {"sources", "readings", "reading_ids"}:
             valid = isinstance(value, list) and 1 <= len(value) <= (2 if name == "sources" else 32)
-        elif name in {"candidate", "resource_estimate"}:
+        elif name in {"candidate", "resource_estimate", "entrypoint_smoke"}:
             # The standalone bridge has no package imports. Domain/ACI admission
             # owns canonical nested estimate validation before any Host effect.
             valid = isinstance(value, dict)
@@ -420,6 +432,8 @@ class AgentToolServer:
                 call.response = response
             except Exception as exc:
                 call.response = _error(str(exc))
+                if getattr(exc, "code", None) == "invalid_candidate" and isinstance(getattr(exc, "detail", None), dict):
+                    call.response["field_error"] = exc.detail
                 self._record_exception(exc, stage, call.tool)
             finally:
                 call.ready.set()
@@ -474,6 +488,8 @@ def _call_host(
         raise ValueError("invalid or oversized Host tool response")
     response = _decode(raw)
     if not isinstance(response, dict) or response.get("ok") is not True:
+        if isinstance(response, dict) and isinstance(response.get("field_error"), dict):
+            raise HostToolFieldError(response["error"], response["field_error"])
         raise ValueError(
             response.get("error", "invalid Host tool response")
             if isinstance(response, dict)
@@ -532,12 +548,12 @@ def call_tool(socket_path: str, tool: str, arguments: Any) -> dict[str, Any]:
 def serve_stdio(
     socket_path: str, *, max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
     scope: str = "execution", tools: tuple[str, ...] | None = None,
-    output_schema_path: str | None = None,
+    output_schema_path: str | None = None, entrypoint_smoke: bool = False,
 ) -> int:
     """MCP newline JSON transport; stdout contains only protocol responses."""
     schema = {} if output_schema_path is None else _decode(Path(output_schema_path).read_bytes())
     selected_tools = scoped_tools(scope, tools,
-        candidate_schema=schema.get("$defs", {}).get("ExperimentSpecCandidate"))
+        candidate_schema=schema.get("$defs", {}).get("ExperimentSpecCandidate"), entrypoint_smoke=entrypoint_smoke)
     return serve_mcp(selected_tools, lambda name, arguments: call_tool(socket_path, name, arguments),
         max_request_bytes=max_request_bytes)
 
@@ -590,6 +606,9 @@ def serve_mcp(selected_tools, invoke, *, max_request_bytes: int,
                         "content": [{"type": "text", "text": str(exc)}],
                         "isError": True,
                     }
+                    if isinstance(exc, HostToolFieldError):
+                        result["structuredContent"] = {"code": "invalid_candidate", "field_error": exc.detail}
+                        result["content"].append({"type": "text", "text": _encode(result["structuredContent"]).decode().strip()})
             else:
                 raise ValueError("unsupported MCP method")
             response = {"jsonrpc": "2.0", "id": request_id, "result": result}
@@ -610,10 +629,11 @@ def main() -> int:
     parser.add_argument("--scope", choices=("execution", "resources", "grounding", "literature"), default="execution")
     parser.add_argument("--tool", action="append")
     parser.add_argument("--output-schema")
+    parser.add_argument("--entrypoint-smoke", action="store_true")
     arguments = parser.parse_args()
     return serve_stdio(arguments.socket, scope=arguments.scope,
         tools=None if arguments.tool is None else tuple(arguments.tool),
-        output_schema_path=arguments.output_schema)
+        output_schema_path=arguments.output_schema, entrypoint_smoke=arguments.entrypoint_smoke)
 
 
 if __name__ == "__main__":

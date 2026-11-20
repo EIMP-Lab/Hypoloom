@@ -854,6 +854,17 @@ class SummaryPanel(CockpitPanel):
                 ))
         budget_lines.extend(_agent_usage_lines(status, overview.get("accounting")))
         health = [f"OPEN {_count(status.get('open_attempts'))} · Oracle {_oracle_observation_label(snapshot.oracle)}"]
+        queue = status.get("experiment_queue")
+        if queue:
+            health.append(tr("Ready {0} · awaiting outcome {1} · rejected drafts {2}",
+                queue["ready_count"], queue["evaluating_count"], queue["rejected_count"]))
+            for row in queue["recent_rejections"][:2]:
+                error = row.get("field_error") or {}
+                health.append(escape(tr("Rejected {0} · {1}", row["experiment_id"], error.get("field") or row["reason"])))
+        fault = status.get("dispatch_error") or {}
+        if fault.get("phase"):
+            health.append(escape(tr("Dispatch paused at {0} · {1}",
+                fault.get("command") or fault["phase"], fault.get("experiment_id") or fault.get("run_id", ""))))
         pending = sum(item.get("state") == "OPEN" for item in status.get("grounding_dialogue", []))
         if pending:
             health.append(tr("[yellow]Grounding: {0} questions pending · w Web[/]", pending))
@@ -864,12 +875,21 @@ class SummaryPanel(CockpitPanel):
             grant = (process.get("resource_grant") or {}).get("kind", tr("resource unknown"))
             log_bytes = sum(row.get("bytes", 0) for row in process.get("logs", []))
             health.append(escape(tr(
-                "Process {0}: {1} · {2} · logs {3} bytes · scientific progress unknown",
+                "Process {0} · {1} · {2} · logs {3} bytes",
                 process['experiment_id'],
                 grant,
                 alive,
                 log_bytes,
             )))
+            units = process.get("work_units")
+            if units:
+                health.append(escape(tr("Reported stage {0} · completed {1} · running {2} · failed {3}",
+                    units["stage"], units["completed"], units["running"], units["failed"])
+                    + (tr(" · partial sample") if units["partial"] else "")))
+            else:
+                health.append(tr("Work stage unreported"))
+            if process.get("remaining_seconds") is not None:
+                health.append(tr("Process time budget remaining {0} s", int(process["remaining_seconds"])))
         blocks = status.get("resource_blocked") or []
         if blocks: health.append(tr("[yellow]GPU infrastructure blocked · ") + escape(", ".join(str(b["code"]) for b in blocks)) + tr(
             " · g GPU recheck[/]"

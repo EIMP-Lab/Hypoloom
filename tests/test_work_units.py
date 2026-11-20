@@ -1,6 +1,7 @@
 """Real CPU subprocess effects distinguish reuse from an unchanged rerun."""
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,7 @@ import sys
 import pytest
 
 from hypoloom.work_units import WorkUnitError, WorkUnits
+from hypoloom.process_observation import observed_work_units
 
 
 def unit(tmp_path, **changes):
@@ -31,6 +33,30 @@ Path('value.json').write_text(json.dumps({'value': 42}))
 def effects(tmp_path):
     path = tmp_path / "effects.jsonl"
     return path.read_text().splitlines() if path.exists() else []
+
+
+def test_status_reads_bounded_live_work_and_skips_unsafe_or_partial_records(tmp_path):
+    work = tmp_path / "work"
+    units = WorkUnits(work / "attempt" / "output")
+    units.run("one", **unit(tmp_path))
+    assert observed_work_units(work, "attempt") == {"completed": 1, "running": 0, "failed": 0, "stage": "pilot", "partial": False}
+    second = units.units / "two"
+    second.mkdir()
+    (second / "record.json").write_text(json.dumps({"unit_id": "two", "stage": "validation", "schema_version": 1, "status": "running"}))
+    for name in ("large", "fifo", "hardlink", "broken"): (units.units / name).mkdir()
+    (units.units / "large" / "record.json").write_bytes(b"x" * 32769)
+    os.mkfifo(units.units / "fifo" / "record.json")
+    (units.units / "broken" / "record.json").write_bytes(b"[")
+    os.link(second / "record.json", units.units / "hardlink" / "record.json")
+    (units.units / "link").symlink_to(second, target_is_directory=True)
+    assert observed_work_units(work, "attempt")["running"] == 0
+    (units.units / "hardlink" / "record.json").unlink()
+    assert observed_work_units(work, "attempt") == {"completed": 1, "running": 1, "failed": 0, "stage": "validation", "partial": True}
+    (work / "linked-attempt").symlink_to(work / "attempt", target_is_directory=True)
+    assert observed_work_units(work, "linked-attempt") is None and observed_work_units(work, "../attempt") is None
+    for number in range(80): (units.units / f"extra-{number}").mkdir()
+    sample = observed_work_units(work, "attempt")
+    assert sample is None or sample["partial"]
 
 
 def test_partial_failure_reuses_completed_sibling_and_runs_only_failed_unit(tmp_path):

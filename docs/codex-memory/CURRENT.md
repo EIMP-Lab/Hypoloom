@@ -1,5 +1,10 @@
 # Current Hypoloom development state
 
+- November 20. ACI 42 rejects invalid submission lists at intake. A verified
+  historical draft can close locally while independent admitted work is collected.
+  Native adapter 99 preserves earlier candidate schemas.
+  [Workflow guide](../guides/research-workflow.md#submission-and-execution-diagnostics-aci-42)
+
 - November 19. ACI 41 Verifier attempts close on exhausted corrections or a
   failed validator. Independent review reuses the bound probe and displays
   observed check statuses. See the [design](../design/verifier-completion.md).

@@ -122,8 +122,16 @@ def _decode_output(text: str, validator) -> dict[str, Any]:
         if error.validator == "required" and isinstance(error.instance, dict):
             missing = [key for key in error.validator_value if key not in error.instance]
             hint = " Missing required fields: " + json.dumps(missing) + "."
-        elif error.validator in {"maxLength", "minLength", "maxItems", "maxProperties"}:
+        elif error.validator in {"maxLength", "minLength", "minItems", "maxItems", "maxProperties"}:
             hint = f" Limit: {error.validator_value}."
+        elif error.validator == "uniqueItems" and isinstance(error.instance, list):
+            first = {}
+            for index, item in enumerate(error.instance):
+                if not isinstance(item, str): continue
+                if item in first:
+                    hint = f" Duplicate item at index {index} matches index {first[item]} (zero-based)."
+                    break
+                first[item] = index
         if error.validator == "enum" and "supporting_refs" in error.absolute_path:
             allowed = error.validator_value
             if isinstance(allowed, list) and all(isinstance(value, str) for value in allowed):

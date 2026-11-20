@@ -25,11 +25,13 @@ from .collaboration import (
 )
 from .domain import (
     AgentCommand,
+    CandidateFieldError,
     HypothesisAssessment,
     MetricDirection,
     MetricSpec,
     ResourceEstimate,
     ResourcePreference,
+    require_distinct_text,
 )
 from .expert_loop import (
     AgentTaskContext,
@@ -84,7 +86,8 @@ READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION = 38
 STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION = 39
 STAGE_EVIDENCE_ACI_SCHEMA_VERSION = 40
 VERIFIER_COMPLETION_ACI_SCHEMA_VERSION = 41
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
+SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION = 42
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -122,6 +125,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION,
         STAGE_EVIDENCE_ACI_SCHEMA_VERSION,
         VERIFIER_COMPLETION_ACI_SCHEMA_VERSION,
+        SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -168,6 +172,7 @@ _COMMANDS_BY_SCHEMA = {
     STRUCTURED_VERIFIER_OUTPUT_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     STAGE_EVIDENCE_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     VERIFIER_COMPLETION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -218,10 +223,11 @@ class AgentStatus(str, Enum):
 class AgentACIError(ValueError):
     """A typed Agent envelope failed schema or postflight validation."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, detail: Mapping[str, Any] | None = None) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
+        self.detail = detail
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -560,6 +566,10 @@ class ExperimentSpecCandidate:
     measurement: ScientificMeasurement | None = None
     execution_argv: tuple[str, ...] | None = None
     evaluation_scope: str | None = None
+
+    def validate_preregistration_fields(self) -> None:
+        require_distinct_text(self.acceptance_criteria, "acceptance_criteria")
+        require_distinct_text(self.artifact_requirements, "artifact_requirements")
 
     def __post_init__(self) -> None:
         for name in (
@@ -1450,6 +1460,12 @@ def validate_execution_completion(latest_state: str | None, *, waiting_for: str 
 def validate_experiment_submission(
     request: AgentRequest, arguments: Mapping[str, Any]
 ) -> tuple[ExperimentSpecCandidate, dict[str, bytes], dict[str, Any]]:
+    return _parse_experiment_submission(request, arguments, check_fields=True)
+
+
+def _parse_experiment_submission(
+    request: AgentRequest, arguments: Mapping[str, Any], *, check_fields: bool
+) -> tuple[ExperimentSpecCandidate, dict[str, bytes], dict[str, Any]]:
     """Validate a submission source; Host separately owns admission/idempotency.
 
     The existing execution artifact digest now binds this typed source snapshot
@@ -1464,7 +1480,13 @@ def validate_experiment_submission(
         optional.add("resource_estimate")
     if request.schema_version >= INCREMENTAL_EXECUTION_ACI_SCHEMA_VERSION:
         optional.add("reuse_experiments")
+    if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
+        optional.add("entrypoint_smoke")
     _strict_keys(arguments, required | optional, "experiment submission", optional=optional)
+    if "entrypoint_smoke" in arguments:
+        from .verification_probe import validate_entrypoint_smoke
+        try: validate_entrypoint_smoke(arguments["entrypoint_smoke"])
+        except ValueError as exc: raise AgentACIError("invalid_entrypoint_smoke", str(exc)) from exc
     if "reuse_experiments" in arguments:
         reuse = arguments["reuse_experiments"]
         if (not isinstance(reuse, list) or len(reuse) > 16
@@ -1477,7 +1499,7 @@ def validate_experiment_submission(
             resource_estimate = ResourceEstimate.from_dict(arguments["resource_estimate"])
         except (TypeError, ValueError) as exc:
             raise AgentACIError("invalid_resource_estimate", str(exc)) from exc
-    candidate = _experiment_candidate(_mapping(arguments["candidate"], "candidate"))
+    candidate = _experiment_candidate(_mapping(arguments["candidate"], "candidate"), check_fields=check_fields)
     _validate_evaluation_scope(request, candidate)
     _validate_measurement_version(request, candidate.measurement)
     if (candidate.component_id, candidate.owner_role, candidate.method_family_id) != (
@@ -1542,7 +1564,9 @@ def validate_experiment_submission(
 def validate_submission_snapshot(request: AgentRequest, snapshot: Mapping[str, Any]) -> ValidatedSubmission:
     """Revalidate the exact committed tool source at materialization/read time."""
     _strict_keys(snapshot, {"kind", "command_id", "attempt_id", "input_digest", "arguments", "output_digest"}, "submit source")
-    candidate, files, expected = validate_experiment_submission(request, _mapping(snapshot["arguments"], "arguments"))
+    # Historical receipts must authenticate their original bytes, including a
+    # draft which the domain subsequently rejected. Admission is a separate step.
+    candidate, files, expected = _parse_experiment_submission(request, _mapping(snapshot["arguments"], "arguments"), check_fields=False)
     if canonical_json(snapshot) != canonical_json(expected):
         raise AgentACIError("submission_source_mismatch", "source bytes or invocation binding changed")
     return ValidatedSubmission(candidate=candidate, workspace_files=files, output_digest=expected["output_digest"])
@@ -1793,6 +1817,8 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
                     raise ValueError("every synthesis member must explicitly declare its hypothesis lineage")
             return HypothesisSetCandidate(hypotheses=tuple(HypothesisSetMember(chain_id=item["chain_id"],
                 candidate=_hypothesis_candidate(item["candidate"])) for item in batch.hypotheses))
+        except AgentACIError:
+            raise
         except ValueError as exc:
             raise AgentACIError("invalid_candidate", str(exc)) from exc
     if command is AgentCommand.ADJUDICATE:
@@ -1898,7 +1924,21 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
     return _experiment_candidate(raw)
 
 
-def _experiment_candidate(raw: Mapping[str, Any]) -> ExperimentSpecCandidate:
+def _candidate_text_list(raw, field, *, nonempty=True):
+    value = raw.get(field)
+    try:
+        require_distinct_text(tuple(value) if isinstance(value, (list, tuple)) else value, field, nonempty=nonempty)
+    except CandidateFieldError as exc:
+        raise AgentACIError("invalid_candidate", str(exc), detail=exc.detail) from exc
+
+
+def validate_experiment_candidate_fields(raw):
+    candidate = _mapping(raw, "candidate")
+    _candidate_text_list(candidate, "acceptance_criteria")
+    _candidate_text_list(candidate, "artifact_requirements")
+
+
+def _experiment_candidate(raw: Mapping[str, Any], *, check_fields: bool = True) -> ExperimentSpecCandidate:
     allowed = {
         "component_id",
         "owner_role",
@@ -1912,6 +1952,8 @@ def _experiment_candidate(raw: Mapping[str, Any]) -> ExperimentSpecCandidate:
         "measurement", "execution_argv", "evaluation_scope",
     }
     _strict_keys(raw, allowed, "ExperimentSpec candidate", optional={"measurement", "execution_argv", "evaluation_scope"})
+    if check_fields:
+        validate_experiment_candidate_fields(raw)
     try:
         metrics = tuple(
             MetricSpec(
@@ -1956,6 +1998,7 @@ def _hypothesis_candidate(raw: Mapping[str, Any]) -> HypothesisCandidate:
         "Hypothesis candidate",
         optional={"parent_hypothesis_id", "relation", "measurement"},
     )
+    _candidate_text_list(raw, "assumptions", nonempty=False)
     try:
         return HypothesisCandidate(
             component_id=raw["component_id"],

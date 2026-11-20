@@ -572,6 +572,14 @@ def _valid_response(request: AgentRequest) -> AgentResponse:
             elif ctx["probe_evidence"]["usable"]:
                 candidate["coverage"]["covered"] = [{"condition": "Fixture probe executed; no semantic quality claim",
                     "check_ids": [c["id"] for c in ctx["probe_plan"]["checks"] if c["required"]]}]
+            from .agent_aci import SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION
+            if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
+                if ctx.get("entrypoint_smoke") and ctx["phase"] == "inspect":
+                    candidate["probe"]["checks"].append({"id": "formal_entrypoint", "purpose": "Run the declared sample",
+                        "basis": "Successful exit and declared output files", "kind": "assertion", "required": True})
+                elif not ctx.get("entrypoint_smoke") and ctx["phase"] == "review":
+                    candidate["coverage"]["uncovered"].append({"condition": "formal_entrypoint",
+                        "reason": "The fixture checks source compilation only.", "blocking": False})
     effect = DeclaredEffect(
         effect=required_effect(request.command),
         command_id=request.command_id,

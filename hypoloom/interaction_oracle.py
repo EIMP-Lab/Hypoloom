@@ -7,6 +7,7 @@ the evidence; this module cannot accept a scientific or control effect.
 """
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 from decimal import Decimal
@@ -27,6 +28,7 @@ class _InteractionAudit:
         self.observations = observations
         self.facts = payloads
         self.fact_rows = facts
+        self.hypothesis_refs = {row["hypothesis_id"]: row["fact_id"] for row in facts if row["fact_type"] == "HypothesisProposed"}
         self.transitions = [(dict(row), _payload(row)) for row in transitions]
         self.events = [(row, value["expert_interaction"]) for row, value in self.transitions if "expert_interaction" in value]
         goals = [payloads[str(row["fact_id"])] for row in facts if row["fact_type"] == "GoalDefined"]
@@ -247,8 +249,10 @@ class _InteractionAudit:
                   and any(item["fact_type"] == "HypothesisProposed" and item["hypothesis_id"] == participant["hypothesis_id"]
                     and item["component_id"] == scope["component_id"] and item["proposer_role"] == scope["role"] for item in frozen),
                   "Observer Debate scope does not own its accepted hypothesis")
-            _need(any(self.original_matches(value.get("request", {}), participant) and item["state"] == "CLOSED"
-                and item["terminal_reason"] == "SUCCEEDED" and item["ended_at"] <= started and "session" in value
+            _need(any(item["state"] == "CLOSED" and item["terminal_reason"] == "SUCCEEDED"
+                and item["ended_at"] <= started and "session" in value
+                and value.get("request", {}).get("command") in {"RESULT_ANALYSIS", "EXPERIMENT_EXECUTION", "EXPERIMENT_DESIGN_IMPLEMENT"}
+                and self.original_matches(value["request"], participant, self.hypothesis_refs.get(participant["hypothesis_id"]))
                 for other, item in self.attempts.items() for value in [self.observations[other]] if item["kind"] == "AGENT"),
                 "Observer Debate participant has no actual closed original session")
         if len({item["scope"]["role"] for item in permitted}) >= 2 and self.settings.get("debate", {}).get("enabled", False) and not closing:
@@ -320,24 +324,35 @@ class _InteractionAudit:
             _need(event["action"] == "observed" and proposal["leader"] is None and proposal["debate"] is None, "none Observer manufactured an interaction")
 
     @staticmethod
-    def original_matches(request, participant):
+    def original_matches(request, participant, fact_ref):
         scope = participant["scope"]
         key = request.get("task_context", {}).get("key", {})
-        if (request.get("role"), request.get("component_id"), key.get("chain")) != (scope["role"], scope["component_id"], scope["chain"]):
+        if (request.get("role"), request.get("component_id"), key.get("expert_slot"), key.get("component_id"), key.get("chain")) != (
+                scope["role"], scope["component_id"], scope["role"], scope["component_id"], scope["chain"]):
             return False
         if request.get("schema_version", 0) < 14:
             return participant["hypothesis_id"] in request.get("immutable_context_refs", ())
+        admitted = set(request.get("immutable_context_refs", ()))
         inputs = request.get("input_artifacts", ())
-        if any(item["ref"].endswith("--batch-context") for item in inputs):
-            if _input(request, "--batch-context").get("chains", {}).get(scope["chain"]) == participant["hypothesis_id"]:
-                return True
+        batch_ref = request["command_id"] + "--batch-context"
+        if batch_ref in admitted:
+            batch = [item for item in inputs if item["ref"] == batch_ref and item.get("media_type") == "application/json"]
+            if len(batch) != 1: return False
+            value = json.loads(base64.b64decode(batch[0]["content_base64"], validate=True))
+            return (isinstance(value, dict) and isinstance(value.get("chains"), dict)
+                    and value["chains"].get(scope["chain"]) == participant["hypothesis_id"])
         for item in inputs:
-            if item.get("media_type") != "application/json":
+            if (item["ref"] not in (fact_ref, participant["hypothesis_id"]) or item["ref"] not in admitted
+                    or item.get("media_type") != "application/json"):
                 continue
-            value = _input(request, item["ref"])
-            value = value.get("payload", value)
-            if value.get("fact_type") == "HypothesisProposed" and (value.get("hypothesis_id"), value.get("component_id"), value.get("proposer_role")) == (
-                    participant["hypothesis_id"], scope["component_id"], scope["role"]):
+            value = json.loads(base64.b64decode(item["content_base64"], validate=True))
+            if not isinstance(value, dict):
+                continue
+            fact = value.get("payload", value)
+            if (isinstance(fact, dict) and item["ref"] in (value.get("fact_id"), fact.get("fact_id"), participant["hypothesis_id"])
+                    and fact.get("fact_type", value.get("fact_type")) == "HypothesisProposed"
+                    and (fact.get("hypothesis_id"), fact.get("component_id"), fact.get("proposer_role")) ==
+                        (participant["hypothesis_id"], scope["component_id"], scope["role"])):
                 return True
         return False
 
@@ -598,7 +613,8 @@ class _InteractionAudit:
         _need(len(forks) == 2 and len({item["session_id"] for item in forks.values()}) == 2, "Debate duplicates participant forks")
         for role, fork in forks.items():
             source, request, value = self.source(fork["original_attempt_id"], self.observations[fork["original_attempt_id"]]["request"]["command"])
-            _need(self.original_matches(request, fork["participant"]) and value["session"]["session_id"] == fork["original_session_id"]
+            _need(self.original_matches(request, fork["participant"], self.hypothesis_refs.get(fork["participant"]["hypothesis_id"]))
+                  and value["session"]["session_id"] == fork["original_session_id"]
                   and source["ended_at"] <= _time(start_row["created_at"]) + 0.001, "Debate original does not own the actual hypothesis/chain/session")
         rounds = {}
         judges = []
