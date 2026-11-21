@@ -22,7 +22,7 @@ from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_AC
 from .agent_capabilities import capabilities_for
 from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
 from .context_management import continuation_observation
-from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
+from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, authoring_wall_budget, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
@@ -2374,14 +2374,20 @@ class WorkflowHost:
                 AuxiliaryRequestKind.GROUNDING, AuxiliaryRequestKind.GROUNDING_QUERY_PLAN, AuxiliaryRequestKind.FINAL_REPORT, AuxiliaryRequestKind.DEBATE_JUDGE}
             request_budget = remaining_agent_budget(contract.document, role, charges, self.agent_budget, run_scoped=run_scoped)
             run_record = tx.get_run(run_id); remaining_wall = None if run_record is None else wallclock_remaining_seconds(contract.document, run_record["created_at"])
-            if command is AgentCommand.PAPER_READ: remaining_wall = min((request_budget or base_budget).wall_seconds, self.paper_reading.remaining_wall(task), remaining_wall if remaining_wall is not None else float("inf"))
-            expired = run_record is None or remaining_wall is not None and remaining_wall <= 0
-            rejected = request_budget is None or expired; request_budget = request_budget or base_budget
-            if not rejected and remaining_wall is not None and remaining_wall < request_budget.wall_seconds:
-                request_budget = AgentBudget(max_turns=request_budget.max_turns,
-                    max_tokens=request_budget.max_tokens, max_output_bytes=request_budget.max_output_bytes,
-                    wall_seconds=remaining_wall, max_cost=request_budget.max_cost,
-                    token_enforcement_mode=request_budget.token_enforcement_mode)
+            parent_remaining = self.paper_reading.remaining_wall(task) if command is AgentCommand.PAPER_READ else None
+            now = time.time()
+            stage_started = min((row["started_at"] for row in attempts),
+                                default=now if attempt_started_at is None else attempt_started_at)
+            budget_rejection = None
+            if request_budget is not None:
+                request_budget = authoring_wall_budget(contract.document, command.value, request_budget,
+                    started_at=stage_started, now=now, run_remaining=remaining_wall, parent_remaining=parent_remaining)
+                if request_budget is None:
+                    budget_rejection = ("Run wall time exhausted" if remaining_wall is not None and remaining_wall <= 0
+                        else "Parent attempt deadline reached" if parent_remaining is not None and parent_remaining <= 0
+                        else f"Stage hard deadline reached for {command.value} across its attempts")
+            rejected = run_record is None or request_budget is None
+            request_budget = request_budget or base_budget
             real = self.claude_agent_host is not None
             permission_profile = (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE
                 if command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and real
@@ -2412,7 +2418,8 @@ class WorkflowHost:
         note("budget_exhausted" if rejected else "admitted")
         self._diagnostic_context = {"phase": "agent_launch", "run_id": run_id, "command_id": task.command_id, "attempt_id": attempt_id}
         if rejected:
-            self._agent_failure(request, AttemptTerminalReason.FAILED, "profile_budget_exhausted", retryable=False, details={"budget_rejected": True})
+            self._agent_failure(request, AttemptTerminalReason.FAILED, "profile_budget_exhausted", retryable=False,
+                details={"budget_rejected": True, **({"agent_host_diagnostic": budget_rejection} if budget_rejection else {})})
             return
         if literature_failure is not None:
             self._agent_failure(request, AttemptTerminalReason.FAILED, literature_failure[0], retryable=literature_failure[2],
@@ -2591,7 +2598,8 @@ class WorkflowHost:
             request_budget = request_budget or base_budget
             if not rejected and remaining_wall is not None and remaining_wall < request_budget.wall_seconds:
                 request_budget = AgentBudget(max_turns=request_budget.max_turns, max_tokens=request_budget.max_tokens,
-                    max_output_bytes=request_budget.max_output_bytes, wall_seconds=remaining_wall, max_cost=request_budget.max_cost, token_enforcement_mode=request_budget.token_enforcement_mode)
+                    max_output_bytes=request_budget.max_output_bytes, wall_seconds=remaining_wall, max_cost=request_budget.max_cost,
+                    token_enforcement_mode=request_budget.token_enforcement_mode, wall_source="budget.wallclock_hours")
             request = AgentRequest(
                 schema_version=EXPERT_LOOP_ACI_SCHEMA_VERSION, run_id=run_id, owner_workflow_id=owner_id, command=command,
                 command_id=effect_command_id, attempt_id=attempt_id, attempt_ordinal=ordinal, role=role,

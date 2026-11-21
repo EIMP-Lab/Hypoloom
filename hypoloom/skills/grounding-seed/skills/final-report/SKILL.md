@@ -36,8 +36,11 @@ does not mean no raw test measurements exist. Say which sources were included,
 omitted or unavailable; do not infer absence from a byte limit or missing summary.
 
 Use `agent_attempts_by_status` and `unsuccessful_agent_attempts` for the complete
-pre-report attempt history, including timeouts, cancellations and recovered
-failures. `final_failures` lists only exhausted/nonretryable nodes; an empty list
+attempt history. For failed authoring work, report the recorded exit detail,
+latest validation error and last verified check separately when supplied.
+Use the effective time budget and retry class to explain a timeout. Include
+timeouts, cancellations and recovered failures in the pre-report counts.
+`final_failures` lists only exhausted/nonretryable nodes; an empty list
 does not establish failure-free execution. Separate operator cancellation,
 technical failure, recovered calls and scientific refutation.
 

@@ -115,7 +115,8 @@ def request_binding(request, command, commands, attempts, observations):
             assert diagnostic["validation_error"] == source_observation["diagnostics"]["validation_error"]
         else:
             assert set(diagnostic) <= {"source_attempt_id", "source_attempt_ordinal", "terminal_reason", "retry_class",
-                "failure_code", "failure_stage", "diagnostic_summary", "rejected_structured_output", "allowed_supporting_refs"}
+                "failure_code", "failure_stage", "diagnostic_summary", "rejected_structured_output", "allowed_supporting_refs",
+                *({"latest_validation_error"} if request.schema_version >= 44 else set())}
             assert source_attempt["terminal_reason"] in {"FAILED", "TIMED_OUT", "LOST"}
             assert diagnostic["source_attempt_ordinal"] == source_attempt["attempt_ordinal"]
             assert diagnostic["terminal_reason"] == source_attempt["terminal_reason"]
@@ -125,6 +126,9 @@ def request_binding(request, command, commands, attempts, observations):
                 assert diagnostic[key] == bounded_diagnostic_text(source_observation[key])
             if "diagnostic_summary" in diagnostic:
                 assert diagnostic["diagnostic_summary"] == diagnostic_summary(source_observation)
+            if "latest_validation_error" in diagnostic:
+                recorded = source_observation["diagnostics"]["structured_output_correction"]["authoring"]["validation_error"]
+                assert diagnostic["latest_validation_error"] == bounded_diagnostic_text(recorded)
             if "rejected_structured_output" in diagnostic:
                 assert diagnostic["rejected_structured_output"] == source_observation["diagnostics"]["provider_structured_candidate"]
             if "allowed_supporting_refs" in diagnostic:

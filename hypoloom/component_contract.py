@@ -22,6 +22,7 @@ from .agent_budget import (
     MAX_PROVIDER_AUTH_COOLDOWN_SECONDS,
     PROFILE_BUDGET_FIELDS,
     validate_initial_vram_budget,
+    validate_stage_wall_seconds,
     ROLE_BUDGET_FIELDS,
 )
 from .contract_normalization import normalize_experiment_isolation
@@ -1043,6 +1044,10 @@ class _Compiler:
             validate_initial_vram_budget(value)
         except ValueError as exc:
             self.block("contract_invalid_value", f"{location}.initial_vram_per_experiment", str(exc))
+        try:
+            validate_stage_wall_seconds(value)
+        except ValueError as exc:
+            self.block("contract_invalid_value", f"{location}.stage_wall_seconds", str(exc))
         canonical = self.canonical(value, location)
         result = canonical if isinstance(canonical, dict) else {}
         positive = {"run_tokens", "per_expert_tokens", "max_experiments", "max_papers",

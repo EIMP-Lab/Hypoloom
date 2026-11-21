@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .agent_aci import (
+    AUTHORING_STAGES,
     AgentACIError,
     AgentRequest,
     AgentResponse,
@@ -35,7 +36,7 @@ from .collaboration import derive_rendezvous_records
 from .contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
 from .control_protocol import ControlRequest, request_over_socket
 from .domain import HypothesisAssessment, ResearchContract, ScientificOutcome
-from .diagnostics import diagnostic_summary, recovery_summary
+from .diagnostics import authoring_status, terminal_diagnostic_summary, recovery_summary
 from .expert_loop import (
     AuxiliaryRequestKind,
     AuxiliaryTask,
@@ -94,6 +95,9 @@ class AttemptView:
     session_id: str | None = None
     context_tokens: int | None = None
     wall_seconds: float | None = None
+    soft_wall_seconds: float | None = None
+    wall_source: str | None = None
+    authoring: Mapping[str, Any] | None = None
     context_source: str | None = None
     budget_max_tokens: int | None = None
     context_window_tokens: int | None = None
@@ -765,6 +769,14 @@ def _with_live_attempt_context(
             continue
         observation = observations.get(attempt.attempt_id)
         if attempt.state == "OPEN" and observation is not None:
+            if observation.get("request", {}).get("schema_version", 0) >= 44 and attempt.command in AUTHORING_STAGES:
+                progress_path = root / "diagnostics" / "agents" / run_id / attempt.attempt_id / "authoring-status.json"
+                try:
+                    with progress_path.open("rb") as stream:
+                        current = json.loads(stream.read(8192))
+                    attempt = replace(attempt, authoring=authoring_status({}, current))
+                except (OSError, ValueError):
+                    pass  # The first Host check might still be pending.
             from .context_observation import read_transcript_metrics, read_native_status, read_native_events
             transcript = _session_transcript_path(root, run_id, observation)
             metrics = read_transcript_metrics(transcript, attempt.session_id, attempt.started_at,
@@ -966,7 +978,7 @@ def _attempt_views(
                 else None
             ),
             returncode=_optional_int(observation.get("returncode")),
-            diagnostic_summary=diagnostic_summary(observation),
+            diagnostic_summary=terminal_diagnostic_summary(observation),
             stdout_path=(
                 observation.get("stdout_path")
                 if isinstance(observation.get("stdout_path"), str)
@@ -991,6 +1003,10 @@ def _attempt_views(
             input_material=(observation.get("diagnostics") or {}).get("input_material"),
             session_scope=session.get("scope") if isinstance(session, Mapping) else None,
             wall_seconds=wall_seconds,
+            soft_wall_seconds=budget.get("soft_wall_seconds") if wall_seconds else None,
+            wall_source=(budget.get("wall_source") or ("budget.agent_invocation.wall_seconds"
+                if request.get("schema_version", 0) >= 44 else "request.budget.wall_seconds")) if wall_seconds else None,
+            authoring=authoring_status(observation.get("diagnostics") or {}) or None,
             budget_max_tokens=budget_max_tokens,
         ))
     return tuple(rendered), frozenset(scientific_process_attempt_ids)

@@ -13,6 +13,12 @@ from .shared_acceptance import SharedAcceptance, evaluate_shared_acceptance, nor
 CASES = "work/acceptance-cases.json"
 
 
+def case_format_example():
+    """An example for a toy numeric GOAL of score > 0."""
+    return {name: {"observation": {"measurements": {"score": score}, "checks": {}}, "goal_met": score > 0}
+            for name, score in (("baseline", 0), ("higher", 1))}
+
+
 def _object(pairs):
     value = dict(pairs)
     if len(value) != len(pairs):
@@ -26,14 +32,28 @@ def _json(data):
 
 def examples(data, acceptance):
     cases = _json(data)
+    layout = "Use each case name as a top-level key beside baseline, with observation and boolean goal_met."
     if not isinstance(cases, dict) or "baseline" not in cases or not 2 <= len(cases) <= 8:
-        raise ValueError("acceptance-cases.json requires baseline and one to seven named variants")
+        raise ValueError(f"{CASES}: requires baseline and one to seven named variants. {layout}")
     result = {}
     for name, case in cases.items():
-        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) or not isinstance(case, dict)
-                or set(case) != {"observation", "goal_met"} or type(case["goal_met"]) is not bool):
-            raise ValueError("each evaluator case needs a safe name, observation and boolean goal_met")
-        observation = normalize_shared_observation(case["observation"], acceptance)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name):
+            raise ValueError(f"{CASES}: case names must match [A-Za-z0-9_-]{{1,64}}. {layout}")
+        path = f"{CASES}/{name}"
+        if not isinstance(case, dict):
+            raise ValueError(f"{path}: expected a case object, got {type(case).__name__}. {layout}")
+        fields = {"observation", "goal_met"}
+        if set(case) != fields:
+            missing = sorted(fields - case.keys())
+            unexpected = [key[:64] for key in sorted(case.keys() - fields)[:4]]
+            raise ValueError(f"{path}: expected exactly observation and goal_met. "
+                             f"Missing {json.dumps(missing)}, unexpected {json.dumps(unexpected)}. {layout}")
+        if type(case["goal_met"]) is not bool:
+            raise ValueError(f"{path}/goal_met: expected a JSON boolean, got {type(case['goal_met']).__name__}")
+        try:
+            observation = normalize_shared_observation(case["observation"], acceptance)
+        except ValueError as exc:
+            raise ValueError(f"{path}/observation: {exc}") from exc
         if evaluate_shared_acceptance(acceptance, observation) != case["goal_met"]:
             raise ValueError(f"case {name}: expected observations disagree with the declared goal")
         result[name] = (observation, case["goal_met"])

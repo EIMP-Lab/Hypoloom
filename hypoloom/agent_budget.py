@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping
 
-from .agent_aci import AgentACIError, AgentBudget, execution_handoff
+from .agent_aci import AUTHORING_STAGES, AgentACIError, AgentBudget, execution_handoff
 from .agent_context import (
     RETRYABLE_AGENT_FAILURES,
     agent_retry_class,
@@ -32,7 +32,7 @@ PROFILE_BUDGET_FIELDS = frozenset({
     "gpu_vram_reserve_mb", "gpu_vram_reserve_percent", "initial_vram_per_experiment", "max_turns",
     "total_budget_usd", "per_expert_budget_usd", "max_active_agents",
     "max_active_processes", "max_active_reviews", "provider_auth_cooldown_seconds",
-    "provider_rpm_limit", "provider_max_in_flight",
+    "provider_rpm_limit", "provider_max_in_flight", "stage_wall_seconds",
 })
 ROLE_BUDGET_FIELDS = frozenset({
     "per_expert_tokens", "max_experiments", "max_papers", "timeout", "max_turns", "per_expert_budget_usd",
@@ -45,6 +45,41 @@ AGENT_INVOCATION_BUDGET_FIELDS = frozenset({
 # provider recovery remains bounded by the infrastructure attempt allowance.
 DEFAULT_PROVIDER_AUTH_COOLDOWN_SECONDS = 5 * 3600.0
 MAX_PROVIDER_AUTH_COOLDOWN_SECONDS = 7 * 86400.0
+
+
+def validate_stage_wall_seconds(budget: Mapping[str, Any]) -> None:
+    limits = budget.get("stage_wall_seconds", {})
+    if not isinstance(limits, Mapping) or any(stage not in AUTHORING_STAGES
+            or type(value) is not int or not 0 < value < 2**53 for stage, value in limits.items()):
+        raise ValueError("budget.stage_wall_seconds requires positive integer seconds for "
+                         + ", ".join(sorted(AUTHORING_STAGES)))
+
+
+def authoring_wall_budget(document: Mapping[str, Any], stage: str, budget: AgentBudget, *,
+                          started_at: float, now: float, run_remaining: float | None,
+                          parent_remaining: float | None = None) -> AgentBudget | None:
+    """The same logical stage retains its absolute deadline across retries and restarts."""
+    limits = document["budget"].get("stage_wall_seconds", {})
+    stage_limit = limits.get(stage)
+    source = f"budget.stage_wall_seconds.{stage}"
+    if stage == "GROUNDING" and stage_limit is None:
+        support = document.get("support_role_budgets")
+        role = support.get("grounding-agent") if isinstance(support, Mapping) else None
+        stage_limit = role.get("timeout") if isinstance(role, Mapping) else None
+        source = "budget.roles.grounding-agent.timeout"
+    hard = budget.wall_seconds
+    if stage_limit is not None:
+        hard = stage_limit - max(0, now - started_at)
+    else:
+        source = None
+    if run_remaining is not None and run_remaining < hard:
+        hard, source = run_remaining, "budget.wallclock_hours"
+    if parent_remaining is not None and parent_remaining < hard:
+        hard, source = parent_remaining, "parent_request.deadline"
+    if hard <= 0:
+        return None
+    return replace(budget, wall_seconds=hard, wall_source=source,
+                   soft_wall_seconds=min(budget.wall_seconds, hard) if stage_limit is not None else None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +317,8 @@ def profile_agent_budget(document: Mapping[str, Any], fallback: AgentBudget) -> 
     invocation = raw_budget.get("agent_invocation") if isinstance(raw_budget, Mapping) else None
     if invocation is None:
         return fallback
+    if isinstance(invocation, Mapping) and set(invocation) - AGENT_INVOCATION_BUDGET_FIELDS:
+        raise ValueError("budget.agent_invocation contains unknown fields")
     budget = AgentBudget.from_dict(invocation)
     if budget.max_cost is not None:
         canonical_cost = format(Decimal(budget.max_cost).normalize(), "f")
@@ -326,6 +363,7 @@ def validate_new_run_budget(document: Mapping[str, Any], fallback: AgentBudget) 
     if unknown:
         raise ValueError(f"budget has unknown fields: {sorted(unknown)!r}")
     validate_initial_vram_budget(budget)
+    validate_stage_wall_seconds(budget)
     gpu_memory_reserve_mib(budget, 0)
     if not isinstance(budget["agent_invocation"], Mapping):
         raise ValueError("new runs require budget.agent_invocation to be an object")

@@ -22,6 +22,7 @@ from typing import Any
 from .agent_aci import AgentACIError, AgentRequest, AgentResponse, validate_postflight
 from .agent_budget import AgentAttemptCharge, fold_agent_attempts, usage_projection
 from .diagnostics import (
+    authoring_status,
     bounded_diagnostic_text,
     credential_shaped_text,
     diagnostic_summary,
@@ -426,7 +427,7 @@ def _structured_output_correction(value: object) -> dict[str, Any] | None:
     """Whitelist the stored CC observation; never read raw logs or candidates."""
     if isinstance(value, Mapping) and value.get("scope") == "native_stop_validation":
         if (value.get("validation_source") != "host_stop_hook"
-                or value.get("status") not in {"not_observed", "first_pass", "recovered", "unresolved", "validation_failed"}
+                or value.get("status") not in {"not_observed", "first_pass", "prepared", "recovered", "unresolved", "validation_failed"}
                 or type(value.get("accepted")) is not bool):
             return None
         counts = ("call_count", "rejected_count")
@@ -440,10 +441,12 @@ def _structured_output_correction(value: object) -> dict[str, Any] | None:
             "status": item["status"], "validation_error": bounded_diagnostic_text(item.get("validation_error")),
             **({"validation_stage": bounded_diagnostic_text(item.get("validation_stage"))}
                if "validation_stage" in item else {}),
-        } for item in raw[:64] if isinstance(item, Mapping) and item.get("status") in {"accepted", "rejected", "error"}]
+        } for item in raw[:64] if isinstance(item, Mapping) and item.get("status") in {"accepted", "prepared", "rejected", "error"}]
         result = {"scope": "native_stop_validation", "validation_source": "host_stop_hook",
                   "status": value["status"], "accepted": value["accepted"],
                   **{key: value[key] for key in counts}, "rounds": rounds}
+        if isinstance(status := value.get("authoring"), Mapping):
+            result["authoring"] = {"last_verified": None, "validation_error": None, **authoring_status({}, status)}
         if (error := bounded_diagnostic_text(value.get("error"))) is not None:
             result["error"] = error
         if len(raw) > len(rounds) or value.get("truncated") is True:

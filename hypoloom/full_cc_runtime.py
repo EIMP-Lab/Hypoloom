@@ -21,6 +21,10 @@ HOST_TOOLS = ("submit_experiment", "wait_experiment", "get_experiment_log",
               "cancel_experiment", "list_my_experiments")
 
 
+def draft_check_available(request: AgentRequest) -> bool:
+    return request.schema_version >= 44 and request.command.value in {"GROUNDING", "EXPERIMENT_DESIGN_IMPLEMENT"}
+
+
 def host_tool_configuration(request: AgentRequest) -> tuple[str | None, tuple[str, ...]]:
     resources = request.schema_version >= RESOURCE_LEARNING_ACI_SCHEMA_VERSION
     if request.command.value == "EXPERIMENT_EXECUTION":
@@ -242,6 +246,9 @@ def full_cc_argv(*, bwrap: Path, executable: Path, request: AgentRequest,
             "type": "command", "command": shlex.join(("/usr/bin/python3", "/runtime/engineering_budget.py",
                 "--deadline", request.deadline, "--wall-seconds", str(request.budget.wall_seconds))), "timeout": 3}]})
     if output_socket is not None:
+        if draft_check_available(request):
+            argv.extend(("--setenv", "HYPOLOOM_DRAFT_SESSION", workspace.binding["session_id"],
+                         "--setenv", "HYPOLOOM_DRAFT_MAX_BYTES", str(request.budget.max_output_bytes)))
         if output_schema_path is not None:
             argv.extend(("--ro-bind", str(output_schema_path), "/runtime/output-schema.json"))
         argv.extend(("--ro-bind", str(Path(native_output.__file__).resolve()), "/runtime/native_output.py",
@@ -369,6 +376,24 @@ def _workflow_instruction(request: AgentRequest) -> str:
 
 
 def full_cc_instruction(request: AgentRequest) -> str:
+    instruction = _stage_instruction(request)
+    if request.budget.soft_wall_seconds is not None:
+        instruction += (f" The progress window is {request.budget.soft_wall_seconds:g} seconds. A newly "
+            f"passed Host check renews it within the hard deadline {request.deadline} "
+            f"({request.budget.wall_source}). Repeating checks or writing files does not renew it.")
+    if not draft_check_available(request):
+        return instruction
+    if request.command.value == "GROUNDING" and grounding_acceptance_request(request):
+        from .evaluator_examples import case_format_example
+        instruction += (" Example work/acceptance-cases.json for a toy score > 0 criterion: "
+            + json.dumps(case_format_example(), separators=(",", ":"))
+            + ". Substitute your declared observations and corresponding raw fixtures.")
+    return instruction + (" To check a complete draft file now, run: python3 /runtime/native_output.py "
+        "--check-draft PATH. This uses the Host's submission checks and reports the failing field or case. "
+        "It does not spend a Stop correction or submit output. Repair that draft and submit the final JSON normally.")
+
+
+def _stage_instruction(request: AgentRequest) -> str:
     if request.command.value == "VERIFY_IMPLEMENTATION":
         from .verification_contract import instructions
         return instructions(request)

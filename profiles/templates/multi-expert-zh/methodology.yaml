@@ -47,6 +47,8 @@ budget:
   per_expert_budget_usd: 15
   wallclock_hours: 6
   experiment_timeout: 1800  # seconds / 秒
+  stage_wall_seconds:
+    GROUNDING: 1800  # 各次重试共享此硬时限。通过新的框架检查可以续展下方的 600 秒进展时限。
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3

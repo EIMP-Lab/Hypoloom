@@ -2771,6 +2771,12 @@
       appendDefinition(grid, t("failure code"), attempt.failure_code || "—");
       appendDefinition(grid, t("return code"), attempt.returncode ?? "—");
       appendDefinition(grid, "diagnostic", attempt.diagnostic_summary || "—");
+      if (attempt.wall_seconds != null) appendDefinition(grid, t("Hard time limit"), compactDuration(attempt.wall_seconds) + " · " + attempt.wall_source);
+      if (attempt.soft_wall_seconds != null) appendDefinition(grid, t("Progress window"), compactDuration(attempt.soft_wall_seconds) + " · budget.agent_invocation.wall_seconds");
+      if (attempt.authoring?.progress_due_at) appendDefinition(grid, t("Progress deadline"), formatTimestamp(attempt.authoring.progress_due_at));
+      if (attempt.authoring?.last_verified) appendDefinition(grid, t("Last verified check"), attempt.authoring.last_verified.check + " · " + formatTimestamp(attempt.authoring.last_verified.at));
+      if (attempt.authoring?.validation_error) appendDefinition(grid, t("Latest validation error"), attempt.authoring.validation_error);
+      if (attempt.authoring?.repeated_errors) appendDefinition(grid, t("Repeated validation errors"), attempt.authoring.repeated_errors);
       appendDefinition(grid, t("stdout log"), attempt.stdout_path || "—");
       appendDefinition(grid, t("stderr log"), attempt.stderr_path || "—");
       const devices = list(attempt.gpu_usage).length ? list(attempt.gpu_usage)
@@ -3072,8 +3078,10 @@
       compactReliability(preview, object(summary.reliability).metrics, {expanded: true});
     });
     const totals = object(summary.totals);
+    const firstStart = totals.experiments?.time_to_first_start_seconds;
     const cards = [
-      ["experiments", t("Experiments"), object(totals.experiments).total, "resources", t("Distinct experiment IDs")],
+      ["experiments", t("Experiments"), object(totals.experiments).total, "resources", firstStart == null
+        ? t("Distinct experiment IDs") : t("First formal experiment after {0}", compactDuration(firstStart))],
       ["hypotheses", t("Hypotheses"), totals.hypotheses, "map", t("Accepted hypothesis identities")],
       ["literature", t("Literature"), object(totals.literature).retrieved, "literature", t("{0} PDFs with extracted evidence", displayValue(object(totals.literature).pdf_available))],
       ["skills", t("Expert skill library"), object(totals.skills).count, "skills", t("{0} accepted/bound catalog", object(totals.skills).coverage || "unavailable")],

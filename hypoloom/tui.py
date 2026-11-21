@@ -826,6 +826,9 @@ class SummaryPanel(CockpitPanel):
                 _count(totals.get('chains')),
                 _count(totals.get('active_chains')),
             ))
+            first_start = totals.get("experiments", {}).get("time_to_first_start_seconds")
+            if first_start is not None:
+                activity.append(tr("First formal experiment after {0}", _duration(first_start)))
             if budget.get("max_experiments") is not None:
                 budget_lines.append(_limit_line(tr("🧪 Exp"), experiments, budget['max_experiments']))
             reliability.extend(_reliability_lines(overview.get("reliability")))
@@ -1424,6 +1427,19 @@ class AttemptsPanel(CockpitPanel):
                     f"   [yellow]{_short_text(attempt.diagnostic_summary, limit=220)}[/yellow]"
                 )
             if attempt.kind == "AGENT":
+                if attempt.wall_seconds is not None:
+                    lines.append(tr("   Hard time limit {0} s · {1}", f"{attempt.wall_seconds:g}", _value(attempt.wall_source)))
+                if attempt.soft_wall_seconds is not None:
+                    lines.append(tr("   Progress window {0} s · budget.agent_invocation.wall_seconds", f"{attempt.soft_wall_seconds:g}"))
+                authoring = attempt.authoring or {}
+                if due := authoring.get("progress_due_at"):
+                    lines.append(tr("   Progress deadline {0}", _service_time(due)))
+                if last := authoring.get("last_verified"):
+                    lines.append(tr("   Last verified check {0} · {1}", _value(last["check"]), _service_time(last["at"])))
+                if error := authoring.get("validation_error"):
+                    lines.append(tr("   Latest validation error {0}", _short_text(error, limit=300)))
+                if authoring.get("repeated_errors"):
+                    lines.append(tr("   Repeated validation errors {0}", authoring["repeated_errors"]))
                 context = attempt.context or {}
                 if "current_request_exchange" in context:
                     lines.append(tr(

@@ -57,7 +57,7 @@ from .git_authoring_workspace import (
     PreparedGitAuthoringWorkspace,
 )
 from .agent_sessions import STATELESS_SESSION_COMMANDS, PreparedSessionWorkspace
-from .full_cc_runtime import FULL_CC_PROFILE, full_cc_argv, full_cc_environment, full_cc_instruction, host_tool_configuration, request_network_allowed, structured_output_validation_cap
+from .full_cc_runtime import FULL_CC_PROFILE, draft_check_available, full_cc_argv, full_cc_environment, full_cc_instruction, host_tool_configuration, request_network_allowed, structured_output_validation_cap
 from .host_tools_server import AgentToolServer
 from .provider_relay import ProviderRelay
 from .runtime_diagnostics import RuntimeDiagnostics, ProviderDiagnosticWriter, record_host_exception
@@ -78,7 +78,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/100"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/101"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -271,6 +271,7 @@ class RunningClaudeAgent:
     _started_wall_at: float = field(default_factory=time.time, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _cancel_requested: bool = field(default=False, repr=False)
+    _wall_stop: str | None = field(default=None, repr=False)
     _closed: bool = field(default=False, repr=False)
     _observation: ClaudeAgentObservation | None = field(default=None, repr=False)
 
@@ -565,9 +566,11 @@ class ClaudeAgentHost:
             raise AgentDeadlineExpired(
                 "Agent request deadline expired before provider launch"
             )
-        deadline_at = self._clock() + min(
-            request.budget.wall_seconds, remaining_wall_seconds
-        )
+        remaining = min(request.budget.wall_seconds, remaining_wall_seconds)
+        deadline_at = self._clock() + remaining
+        transport_deadline = time.monotonic() + remaining
+        if not full_cc and request.budget.soft_wall_seconds is not None:
+            deadline_at -= request.budget.wall_seconds - request.budget.soft_wall_seconds
         with self._handles_lock:
             prior = self._handles.get(request.attempt_id)
             if prior is not None and not prior._closed:
@@ -614,7 +617,7 @@ class ClaudeAgentHost:
                 max_request_bytes=max(4 * 1024 * 1024, request.budget.max_tokens * 16),
                 max_response_bytes=_FULL_CC_TRANSPORT_BYTES,
                 max_requests=request.budget.max_turns * 4 + 4,
-                deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
+                deadline_at=transport_deadline,
                 token_budget=request.budget.max_tokens if request.budget.token_enforcement_mode == "enforce" else None,
                 diagnostics=runtime_diagnostics, context_policy=context_policy(request), traffic_binding=traffic_binding,
                 diagnostic_writer=self._provider_diagnostics)
@@ -624,7 +627,7 @@ class ClaudeAgentHost:
                 network = AttemptNetworkProxy(endpoint_root / "network.sock",
                     max_connections=request.budget.max_turns * 4 + 4,
                     max_total_bytes=min(512 * 1024 * 1024, max(16 * 1024 * 1024, request.budget.max_output_bytes * 256)),
-                    deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds))
+                    deadline_at=transport_deadline)
                 resources.callback(network.close)
                 network_socket = network.socket_path
             host_socket = None
@@ -650,12 +653,17 @@ class ClaudeAgentHost:
                 session_id=tool_workspace.binding["session_id"],
                 max_failed_validations=structured_output_validation_cap(request),
                 max_request_bytes=max(4 * 1024 * 1024, request.budget.max_output_bytes * 2),
-                deadline_at=time.monotonic() + min(request.budget.wall_seconds, remaining_wall_seconds),
+                deadline_at=transport_deadline,
                 diagnostics=runtime_diagnostics,
                 context_notice=relay.context_notice if request.schema_version >= 25 else None,
                 structured_submission=_structured_verifier_output(request),
                 compact_review=compact_review(request),
                 verdict_scoped_review=verdict_scoped_review(request),
+                draft_check=draft_check_available(request),
+                authoring_progress=(draft_check_available(request) or
+                    request.schema_version >= 44 and verdict_scoped_review(request)),
+                soft_wall_seconds=request.budget.soft_wall_seconds,
+                invocation_wall_seconds=request.budget.wall_seconds,
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 semantic_examples=request.schema_version >= 43,
                 seed_files=getattr(tool_workspace, "evaluator_seed_files", None),
@@ -881,8 +889,13 @@ class ClaudeAgentHost:
         failure_code = None
         if self._clock() >= deadline:
             reason = AgentHostTerminalReason.TIMED_OUT
+            handle._wall_stop = "caller_timeout" if deadline < handle.deadline_at else "deadline"
         elif handle._cancel_requested:
             reason = AgentHostTerminalReason.CANCELLED
+        elif (handle.request.budget.soft_wall_seconds is not None and handle._output_validator is not None
+                and handle._output_validator.soft_deadline_expired()):
+            reason = AgentHostTerminalReason.TIMED_OUT
+            handle._wall_stop = "no_verified_progress"
         elif handle._output_validator is not None and verdict_scoped_review(handle.request):
             failure_code = handle._output_validator.terminal_review_failure()
             if failure_code is not None:
@@ -968,6 +981,8 @@ class ClaudeAgentHost:
         }
         if handle._prompt_manifest is not None:
             diagnostics.update(handle._prompt_manifest)
+        if forced_reason is AgentHostTerminalReason.TIMED_OUT and handle.request.schema_version >= 44:
+            diagnostics["wall_stop"] = handle._wall_stop or "deadline"
         reason = forced_reason
         exchanges: list[Mapping[str, object]] | None = None
         wire_input_floor: int | None = None
@@ -1232,7 +1247,8 @@ class ClaudeAgentHost:
                 diagnostics["context"] = latest_context(exchanges, context_policy(handle.request))
                 fresh_session = (isinstance(handle.tool_workspace, PreparedSessionWorkspace)
                     and handle.tool_workspace.session_arguments[:1] == ("--session-id",))
-                if (failure := provider_failure(exchanges, fresh_session=fresh_session)) is not None:
+                if ((handle.request.schema_version < 44 or forced_reason is None)
+                        and (failure := provider_failure(exchanges, fresh_session=fresh_session)) is not None):
                     diagnostics["provider_failure"] = failure
             except (OSError, ValueError, TypeError):
                 diagnostics["served_models"] = []  # Observation cannot block authoritative closure.
@@ -1597,6 +1613,11 @@ def _provider_response(
     if isinstance(subtype, str):
         diagnostics["provider_subtype"] = subtype
     if subtype != "success" or outer.get("is_error") is True:
+        from .provider_observation import terminal_gateway_timeout
+        if (request.schema_version >= 44 and outer.get("is_error") is True
+                and terminal_gateway_timeout(observed_wire_exchanges, outer.get("result"))):
+            diagnostics["provider_failure"] = {"code": "transport_error", "http_status": 504,
+                                               "source": "cli_gateway_timeout"}
         provider_diagnostic = bounded_diagnostic_text(outer.get("result"))
         if provider_diagnostic is None:
             provider_diagnostic = _provider_error_summary(outer.get("errors"))

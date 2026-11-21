@@ -178,6 +178,21 @@ def structured_output_trace(events: Sequence[Mapping[str, Any]]) -> dict[str, An
             "truncated": truncated or len(rounds) > 64, "rounds": rounds[:64]}
 
 
+def _exit_detail(observation, diagnostics):
+    if observation.get("failure_code") == "timed_out":
+        if diagnostics.get("wall_stop") == "caller_timeout":
+            return "Caller wait deadline reached"
+        return ("Authoring window elapsed without a newly passed check"
+                if diagnostics.get("wall_stop") == "no_verified_progress" else "Agent deadline reached")
+    if observation.get("failure_code") == "nonzero_exit":
+        return bounded_diagnostic_text(diagnostics.get("provider_diagnostic")) or "Provider process exited"
+    return None
+
+
+def terminal_diagnostic_summary(observation):
+    return _exit_detail(observation, observation.get("diagnostics") or {}) or diagnostic_summary(observation)
+
+
 def diagnostic_summary(observation: Mapping[str, Any]) -> str | None:
     """Project only explicitly admitted text; never expose arbitrary stderr."""
 
@@ -195,6 +210,9 @@ def diagnostic_summary(observation: Mapping[str, Any]) -> str | None:
     diagnostics = observation.get("diagnostics")
     if not isinstance(diagnostics, Mapping):
         return None
+    if (observation.get("request") or {}).get("schema_version", 0) >= 44:
+        if detail := _exit_detail(observation, diagnostics):
+            return detail
     validation = diagnostics.get("validation_error")
     if isinstance(validation, Mapping):
         code = bounded_diagnostic_text(validation.get("code"))
@@ -223,6 +241,35 @@ def diagnostic_summary(observation: Mapping[str, Any]) -> str | None:
                 return f"Native CC output recovered after {rejected} rejected completion(s); Host acceptance is separate."
     subtype = bounded_diagnostic_text(diagnostics.get("provider_subtype"))
     return None if subtype == "success" else subtype
+
+
+def authoring_status(diagnostics, live=None):
+    """Project only Host-observed checks and bounded feedback, including retained rounds."""
+    from math import isfinite
+    correction = diagnostics.get("structured_output_correction")
+    status = live
+    if status is None and isinstance(correction, Mapping):
+        status = correction.get("authoring")
+    if not isinstance(status, Mapping):
+        status = {}
+    result = {}
+    prior_error = diagnostics.get("validation_error")
+    error = status.get("validation_error", prior_error.get("message") if isinstance(prior_error, Mapping) else None)
+    if text := bounded_diagnostic_text(error):
+        result["validation_error"] = text
+    repeats = status.get("repeated_errors")
+    if type(repeats) is int and repeats >= 0:
+        result["repeated_errors"] = repeats
+    last = status.get("last_verified")
+    if isinstance(last, Mapping) and isinstance(last.get("check"), str) and re.fullmatch(
+            r"output_schema|candidate_validation|complete_draft|parser_cases/[0-9]{1,2}", last["check"]):
+        at = last.get("at")
+        if type(at) in (int, float) and isfinite(at) and 0 < at <= 253402300799:
+            result["last_verified"] = {"check": last["check"], "at": at}
+    due = status.get("progress_due_at")
+    if type(due) in (int, float) and isfinite(due) and 0 < due <= 253402300799:
+        result["progress_due_at"] = due
+    return result
 
 
 __all__ = [

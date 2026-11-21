@@ -102,8 +102,15 @@ def background_json_schema() -> dict[str, Any]:
 def validate_web_sources(sources: Sequence[str], retrieved_urls: Collection[str]) -> tuple[str, ...]:
     """Bind dynamic citations to actual tool observations, not immutable refs."""
     values = _texts(sources, "web_sources")
-    if len(set(values)) != len(values) or not set(values) <= set(retrieved_urls):
-        raise GroundingBackgroundError("web_sources must be unique actually retrieved URLs")
+    seen = {}
+    for index, value in enumerate(values):
+        if value in seen:
+            raise GroundingBackgroundError(f"/web_sources/{index}: repeats /web_sources/{seen[value]}; "
+                                          "web_sources must be unique actually retrieved URLs")
+        if value not in retrieved_urls:
+            raise GroundingBackgroundError(f"/web_sources/{index}: URL was not actually retrieved. "
+                "Use the exact URL from a successful web tool result. Cite a supplied literature packet via supporting_refs.")
+        seen[value] = index
     try:
         for value in values:
             _uri_parts(value, "Grounding web source")

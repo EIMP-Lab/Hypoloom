@@ -460,6 +460,7 @@ def _experiment_records(facts, transitions, agents, experts):
             continue
         record = experiments.setdefault(payload["experiment_id"], {})
         if row["fact_type"] == "ExperimentPreregistered":
+            record["execution_id"] = payload.get("execution_id")
             record["role"] = hypotheses.get(payload.get("hypothesis_id")) or owners.get(payload.get("component_id"))
         else:
             record["outcome"] = payload.get("outcome")
@@ -475,6 +476,16 @@ def _experiment_counts(records, role=None):
     values = [item for item in records.values() if role is None or item.get("role") == role]
     return {"total": len(values), "states": dict(Counter(item.get("state") or "UNKNOWN" for item in values)),
         "outcomes": dict(Counter(item["outcome"] for item in values if item.get("outcome")))}
+
+
+def _first_experiment_start(attempts, experiments):
+    starts = []
+    for row in attempts:
+        execution = experiments.get(row.get("experiment_id"), {}).get("execution_id")
+        if (row.get("kind") == "PROCESS" and row.get("process_group_id") and execution
+                and row.get("execution_id") == execution and (at := _time(row.get("started_at"))) is not None):
+            starts.append(at)
+    return min(starts, default=None)
 
 
 def _chains(nodes, stages):
@@ -729,6 +740,10 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         "active_chains": sum(item["active_chains"] for item in expert_values),
         "literature": _literature_counts(literature), "skills": _skill_counts(skills), "evolutions": _evolutions(agents),
         "leader": _interaction_counts(leaders), "debate": _interaction_counts(debates)}
+    first_start = _first_experiment_start(attempts, experiments)
+    totals["experiments"]["first_started_at"] = first_start
+    totals["experiments"]["time_to_first_start_seconds"] = (
+        max(0.0, first_start - created) if first_start is not None and created is not None else None)
     if any(item["skills"]["coverage"] != "complete" for item in expert_values):
         totals["skills"]["coverage"] = "partial" if totals["skills"]["count"] is not None else "unavailable"
     if any(row.get("state") == "OPEN" for row in attempts):
