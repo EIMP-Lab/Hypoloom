@@ -1,5 +1,38 @@
 # Qualification: G0–G5
 
+## Verified progress during agent authoring (2026-11-21)
+
+ACI 44 and native adapter 101 use the existing submission validator for
+advisory draft checks. A captured Grounding draft failed at the extra fields
+under the baseline case. Moving the case declarations into the documented
+shape let the original parser pass all eight fixtures. Preflight consumed zero
+formal correction rounds. The captured gateway timeout also classified as an
+infrastructure failure with its independent draft feedback available.
+
+A local provider and the native CLI exercised a rejected draft, ordinary Stop
+validation, retry from an archived draft, formal CPU execution and Oracle
+closure. All 13 Agent attempts and the one Process attempt closed. Controlled
+clock tests exercised renewal for newly verified progress, duplicate checks,
+caller timeout, cancellation and the stage deadline across retries.
+
+All 1,042 captured ACI 38–43 requests from eight retained runs round-tripped
+without a wire change. Their first formal Process timestamps matched an
+independent join of preregistration facts and launched Process attempts,
+including two runs with no first experiment. The previous and candidate
+Oracles produced byte-identical reports for all eight runs, accounting for
+109 canonical outcomes, zero open attempts and zero pending effects. The
+effect on time to first experiment requires a new research run.
+
+The frozen offline suite reported 9,145 passes, 246 skips, eight failures and
+one teardown error. Two literature fixtures exceeded the Unix socket path
+limit in the temporary checkout and passed on the same files in dev. The
+Process teardown passed on isolated replay. The other six failures reproduced
+on the previous dev revision with the same assertions. They cover two debate
+bindings, Grounding session identity, a Process observation, an MCP diagnostic
+and CLI usage accounting. A separate Chromium run passed ten of eleven cases.
+Its provider-wait label assertion also failed on the previous revision.
+All 225 tracked runtime files matched the built wheel.
+
 ## Shared evaluation inputs and evaluator reuse (2026-11-20)
 
 ACI 43 and native adapter 100 distinguish success criteria, mandatory validity

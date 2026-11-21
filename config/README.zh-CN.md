@@ -214,6 +214,8 @@ budget:
   per_expert_budget_usd: 15
   wallclock_hours: 6
   experiment_timeout: 1800  # 秒
+  stage_wall_seconds:
+    GROUNDING: 1800
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3
@@ -338,7 +340,8 @@ GPU 预留量也允许为零。
 | `budget.agent_invocation.max_turns` | 单次调用的模型交互轮数上限，正整数。 |
 | `budget.agent_invocation.max_tokens` | 单次调用的 token 总额度，正整数；不是模型上下文窗口大小。 |
 | `budget.agent_invocation.max_output_bytes` | 返回输出的字节上限，正整数；模板为 262144，即 256 KiB。 |
-| `budget.agent_invocation.wall_seconds` | 单次调用的时限，单位为秒，正数；模板为 600。 |
+| `budget.agent_invocation.wall_seconds` | 单次 Agent 尝试的秒数。对配置了阶段硬时限的任务，此值是初始进展时限，也是每次通过新检查后可续展的时长。模板为 600 秒。 |
+| `budget.stage_wall_seconds` | 可选映射，键为 `GROUNDING`、`EXPERIMENT_DESIGN_IMPLEMENT` 或 `VERIFY_IMPLEMENTATION`，值为正整数秒数。阶段从同一任务首次尝试开始计时，包含重试和等待。未显式配置 Grounding 时采用 `budget.roles.grounding-agent.timeout`。每次尝试还受整场运行剩余时间约束。 |
 | `budget.agent_invocation.max_cost` | 单次调用的美元费用上限，使用规范的非负十进制字符串，例如 `"1"` 或 `"0.5"`。付费任务应设置正额度，`"0"` 不表示无限；与整组费用分别约束。 |
 | `budget.agent_invocation.token_enforcement_mode` | `enforce` 执行 token 限额；`observe` 只记录 token 用量，不执行这一 token 上限，其他限制继续有效。除非明确只需观察，否则保留 `enforce`。 |
 

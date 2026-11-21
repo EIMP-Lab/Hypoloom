@@ -334,7 +334,8 @@ def test_experiments_and_hypotheses_are_not_attempts_and_pruning_retains_assessm
         _transition(2, kind="EXPERIMENT", identity="e", state="TERMINAL")]
     summary = _summary(tmp_path, facts=facts, graph=graph, transitions=transitions,
         attempts=[_attempt("one"), _attempt("two")])
-    assert summary["totals"]["experiments"] == {"total": 1, "states": {"TERMINAL": 1}, "outcomes": {"SUCCESS": 1}}
+    assert summary["totals"]["experiments"] == {"total": 1, "states": {"TERMINAL": 1}, "outcomes": {"SUCCESS": 1},
+        "first_started_at": None, "time_to_first_start_seconds": None}
     assert summary["totals"]["hypotheses"] == 1
     own = summary["experts"][0]
     assert own["experiments"]["total"] == 1

@@ -132,6 +132,12 @@ def _decode_output(text: str, validator) -> dict[str, Any]:
                     hint = f" Duplicate item at index {index} matches index {first[item]} (zero-based)."
                     break
                 first[item] = index
+        if error.validator == "type":
+            hint = f" Expected {error.validator_value}, received {type(error.instance).__name__}."
+        if error.validator == "enum" and "supporting_refs" not in error.absolute_path:
+            if len(error.validator_value) <= 12:
+                hint = (" Allowed values: " + json.dumps(error.validator_value, ensure_ascii=True)[:384]
+                        + f". Received {type(error.instance).__name__}.")
         if error.validator == "enum" and "supporting_refs" in error.absolute_path:
             allowed = error.validator_value
             if isinstance(allowed, list) and all(isinstance(value, str) for value in allowed):
@@ -216,7 +222,9 @@ class NativeOutputValidator:
                  final_report_check: Callable[[], Any] | None = None,
                  context_notice: Callable[[], str | None] | None = None,
                  structured_submission: bool = False, compact_review: bool = False,
-                 verdict_scoped_review: bool = False) -> None:
+                 verdict_scoped_review: bool = False, authoring_progress: bool = False,
+                 draft_check: bool = False, soft_wall_seconds: float | None = None,
+                 invocation_wall_seconds: float | None = None) -> None:
         if compact_review and not structured_submission:
             raise ValueError("compact review requires structured submission")
         if acceptance_smoke and measurement_smoke:
@@ -242,8 +250,21 @@ class NativeOutputValidator:
         self.max_failed_validations = max_failed_validations
         self.max_request_bytes = max_request_bytes
         self.deadline_at = deadline_at
+        self.authoring_progress = authoring_progress
+        self.draft_check = draft_check
+        self._soft_seconds = soft_wall_seconds
+        self._soft_deadline = deadline_at
+        if soft_wall_seconds is not None:
+            if (not authoring_progress or invocation_wall_seconds is None
+                    or not 0 < soft_wall_seconds <= invocation_wall_seconds):
+                raise ValueError("invalid authoring progress window")
+            self._soft_deadline = deadline_at - invocation_wall_seconds + soft_wall_seconds
+        self._progress_rank = 0
+        self._last_verified = None
+        self._latest_error = None
+        self._repeated_errors = 0
         self._deadline_notice_window = (min(600.0 if design_implementation else 300.0,
-            max(0.0, deadline_at - time.monotonic()) * 0.2)
+            max(0.0, self._current_deadline() - time.monotonic()) * 0.2)
             if acceptance_smoke or design_implementation or structured_submission else 0.0)
         self.design_implementation = design_implementation
         self.diagnostics = diagnostics
@@ -278,13 +299,16 @@ class NativeOutputValidator:
         class Handler(socketserver.BaseRequestHandler):
             def handle(self) -> None:
                 incomplete = False
+                advisory = False
                 try:
                     with endpoint._lock:
                         if endpoint._closed.is_set():
                             raise ValueError("native output validator is closed")
                         endpoint._connections.add(self.request)
                     raw = _read_line(self.request, endpoint.max_request_bytes, endpoint.deadline_at)
-                    response = {"ok": True, "result": endpoint._dispatch(_decode(raw))}
+                    document = _decode(raw)
+                    advisory = isinstance(document, dict) and document.get("operation") == "check_draft"
+                    response = {"ok": True, "result": endpoint._dispatch(document)}
                     payload = _encode(response)
                     if len(payload) > endpoint.max_request_bytes:
                         raise ValueError("native output response exceeds size limit")
@@ -299,15 +323,17 @@ class NativeOutputValidator:
                     message = str(exc) if isinstance(exc, ValueError) else (
                         "native output validation deadline exceeded" if time.monotonic() >= endpoint.deadline_at
                         else "native output transport failed")
-                    endpoint._fail(message)
+                    if not advisory:
+                        endpoint._fail(message)
                     payload = _encode({"ok": False, "error": message})
                 except Exception:
-                    endpoint._fail("native output validation failed")
+                    if not advisory:
+                        endpoint._fail("native output validation failed")
                     payload = _encode({"ok": False, "error": "native output validation failed"})
                 try:
                     self.request.sendall(payload)
                 except OSError:
-                    if not incomplete:
+                    if not incomplete and not advisory:
                         endpoint._fail("native output response transport failed")
                 finally:
                     with endpoint._lock:
@@ -327,6 +353,12 @@ class NativeOutputValidator:
             self.diagnostics.event("native_output_validation_error", message=message)
 
     def _dispatch(self, document: Any) -> dict[str, Any]:
+        if isinstance(document, dict) and document.get("operation") == "check_draft":
+            if (not self.draft_check or set(document) != {"session_id", "operation", "text"}
+                    or document.get("session_id") != self.session_id or not isinstance(document.get("text"), str)):
+                return {"valid": False, "error": "draft check is unavailable for this session"}
+            return self._validate({"session_id": self.session_id, "last_assistant_message": document["text"]},
+                                  preview=True)
         if isinstance(document, dict) and document.get("operation") == "prepare_output":
             if not self.structured_submission or set(document) != {"session_id", "operation", "output"}:
                 raise ValueError("structured output submission is unavailable")
@@ -347,7 +379,7 @@ class NativeOutputValidator:
                 # Missing telemetry does not weaken Stop validation or block tools.
                 notice = None
             notices = []
-            remaining = self.deadline_at - time.monotonic()
+            remaining = self._current_deadline() - time.monotonic()
             if 0 < remaining <= self._deadline_notice_window:
                 notices.append((
                     f"DESIGN has about {math.ceil(remaining)} seconds left before its existing deadline. "
@@ -366,6 +398,9 @@ class NativeOutputValidator:
                     "Leave time for native Stop corrections; do not weaken criteria or treat drafts as accepted."))
             if isinstance(notice, str) and notice:
                 notices.append(notice)
+            if self._soft_seconds is not None and 0 < remaining <= self._deadline_notice_window:
+                notices.insert(0, "The authoring progress window is ending. Run the Host draft check or submit "
+                    "the current result. Only a newly passed check can extend work within the hard deadline.")
             if not notices:
                 return {}
             notice = "\n".join(notices)
@@ -373,9 +408,36 @@ class NativeOutputValidator:
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": notice}}
         return self._validate(document)
 
-    def _validate(self, document: Any, *, prepare: bool = False) -> dict[str, Any]:
+    def _current_deadline(self):
+        return self.deadline_at if self._soft_seconds is None else min(self.deadline_at, self._soft_deadline)
+
+    def soft_deadline_expired(self) -> bool:
+        return self._soft_seconds is not None and time.monotonic() >= self._current_deadline()
+
+    def _verified(self, rank: int, check: str) -> None:
+        if not self.authoring_progress or rank <= self._progress_rank or self._closed.is_set() or self.soft_deadline_expired():
+            return
+        now = time.monotonic()
+        self._progress_rank = rank
+        self._last_verified = {"check": check, "at": time.time()}
+        if self._soft_seconds is not None:
+            self._soft_deadline = min(self.deadline_at, max(self._soft_deadline, now + self._soft_seconds))
+        self._record_authoring()
+
+    def _authoring_status(self):
+        status = {"last_verified": self._last_verified, "validation_error": self._latest_error,
+                  "repeated_errors": self._repeated_errors}
+        if self._soft_seconds is not None:
+            status["progress_due_at"] = time.time() + self._soft_deadline - time.monotonic()
+        return status
+
+    def _record_authoring(self):
+        if self.diagnostics is not None and self.authoring_progress:
+            self.diagnostics.write_json("authoring-status.json", self._authoring_status())
+
+    def _validate(self, document: Any, *, prepare: bool = False, preview: bool = False) -> dict[str, Any]:
         with self._lock:
-            _remaining(self.deadline_at)
+            _remaining(self._current_deadline())
             if self._closed.is_set() or self._error is not None:
                 raise ValueError("native output validator is unavailable")
             required = {"session_id", "last_assistant_message"}
@@ -392,8 +454,9 @@ class NativeOutputValidator:
             smoke = None
             validation_stage = "json_decode"
             prepared = self._prepared
-            self._prepared = self._accepted = False
-            self._completion_text = None
+            if not preview:
+                self._prepared = self._accepted = False
+                self._completion_text = None
             text = document["last_assistant_message"]
             selected_prepared = False
             try:
@@ -418,9 +481,11 @@ class NativeOutputValidator:
                     text = self._read_output()
                     selected_prepared = True
                 output = _decode_output(text, self._validator)
+                self._verified(1, "output_schema")
                 if self.candidate_check is not None:
                     validation_stage = "candidate_validation"
                     self.candidate_check(output)
+                    self._verified(2, "candidate_validation")
                 if self.final_report_check is not None:
                     validation_stage = "final_report"
                     from .git_authoring_workspace import GitAuthoringIntegrityError
@@ -458,7 +523,9 @@ class NativeOutputValidator:
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
                             semantic_examples=self.semantic_examples, seed_files=self.seed_files,
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
-                            max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed)
+                            max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed,
+                            **({"case_verified": lambda count: self._verified(2 + count, f"parser_cases/{count}")}
+                               if self.authoring_progress else {}))
                         if smoke.get("error"):
                             raise ValueError(f"{label} parser smoke test: " + str(smoke["error"])[:2048])
                         if self.acceptance_smoke:
@@ -477,9 +544,23 @@ class NativeOutputValidator:
                 hint = getattr(exc, "correction_hint", "")
                 if validation_stage == "json_decode" and isinstance(exc, _SchemaMismatch):
                     validation_stage = "output_schema"
-            _remaining(self.deadline_at)
+            _remaining(self._current_deadline())
             if self._closed.is_set():
                 raise ValueError("native output validator is closed")
+            if self.authoring_progress:
+                from .diagnostics import bounded_diagnostic_text
+                detail = bounded_diagnostic_text(error + hint) if error else None
+                if detail and detail == self._latest_error:
+                    self._repeated_errors += 1
+                    self._record_authoring()
+                    hint += " This check has failed again. Repair the indicated part of the saved draft before retrying."
+                elif detail != self._latest_error:
+                    self._latest_error = detail
+                    self._record_authoring()
+                if error is None:
+                    self._verified(32, "complete_draft")
+            if preview:
+                return {"valid": error is None, **({"error": error + hint} if error is not None else {})}
             # Repeated Stop rechecks current files and Host state. Changed invalid
             # output revokes acceptance and uses the same remaining correction cap.
             ordinal = len(self._rounds) + 1
@@ -496,12 +577,13 @@ class NativeOutputValidator:
             # Optional observation of the boundary that actually rejected this
             # completion. Never reconstruct it later from diagnostic prose.
             failure_source = {"validation_stage": validation_stage} if error is not None else {}
+            recorded_error = self._latest_error if self.authoring_progress else error
             self._rounds.append({"ordinal": ordinal, "status": ("prepared" if prepare else "accepted") if error is None else "rejected",
-                                 "validation_error": error, **failure_source})
+                                 "validation_error": recorded_error, **failure_source})
             if self.diagnostics is not None:
                 self.diagnostics.write_json(f"native-output/{ordinal:06d}.json", {
                     **document, **({"parser_smoke": smoke} if self.acceptance_smoke or self.measurement_smoke else {}),
-                    "ordinal": ordinal, "error": error, **failure_source})
+                    "ordinal": ordinal, "error": recorded_error, **failure_source})
             _remaining(self.deadline_at)
             if prepare:
                 return {"prepared": error is None, **({"error": error + hint,
@@ -567,6 +649,7 @@ class NativeOutputValidator:
                     "call_count": len(self._rounds), "rejected_count": self._rejected,
                     "rounds": [dict(round_) for round_ in self._rounds],
                     "validation_source": "host_stop_hook",
+                    **({"authoring": self._authoring_status()} if self.authoring_progress else {}),
                     **({"error": self._error} if self._error is not None else {})}
 
     def close(self) -> None:
@@ -589,7 +672,8 @@ class NativeOutputValidator:
 def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_seconds: float,
                  max_bytes: int, declaration_key: str = "acceptance", semantic_examples: bool = True,
                  seed_files: Mapping[str, bytes] | None = None,
-                 cancel_event: threading.Event | None = None) -> dict[str, Any] | None:
+                 cancel_event: threading.Event | None = None,
+                 case_verified: Callable[[int], None] | None = None) -> dict[str, Any] | None:
     """Snapshot declared fixtures and use the production parser environment.
 
     This runs only on the Host. Each correction gets fresh inputs and output;
@@ -657,6 +741,8 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                 raw = {name: read(fixture_path(case, name)) for name in contract.raw_artifacts}
                 actual = run_case(case, raw, cases.get(case), len(completed))
                 completed[case] = (raw, actual)
+                if case_verified is not None:
+                    case_verified(len(completed))
                 if case == "baseline":
                     baseline = actual
             if seed_files is not None:
@@ -667,6 +753,8 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                             raise ValueError(f"seed case {case}: actual parser observation differs")
                     else:
                         run_case("seed/" + case, raw, expected, i)
+                    if case_verified is not None:
+                        case_verified(i + 1)
             return {"observation": baseline, "error": None}
     except (ValueError, OSError, TypeError, AttributeError, KeyError) as exc:
         return {"observation": None, "error": str(exc)[:2048]}
@@ -784,6 +872,26 @@ def serve_review_tool(socket_path: str, *, schema_path: str, session_id: str,
 
 
 def main() -> int:
+    if sys.argv[1:2] == ["--check-draft"]:
+        parser = argparse.ArgumentParser(description="Check a draft through this attempt's Host validator")
+        parser.add_argument("--check-draft", required=True, type=Path)
+        path = parser.parse_args().check_draft
+        try:
+            limit = int(os.environ["HYPOLOOM_DRAFT_MAX_BYTES"])
+            if not path.is_file() or not 0 < path.stat().st_size <= limit:
+                raise ValueError("expected a nonempty regular draft file within the output budget")
+            with path.open("rb") as stream:
+                raw = stream.read(limit + 1)
+            if len(raw) > limit:
+                raise ValueError("draft exceeds the output budget")
+            result = _call_endpoint("/output-validation.sock",
+                {"operation": "check_draft", "session_id": os.environ["HYPOLOOM_DRAFT_SESSION"],
+                 "text": raw.decode("utf-8")}, max_request_bytes=max(4 * 1024 * 1024, limit * 2),
+                timeout_seconds=30)
+        except (KeyError, OSError, ValueError) as exc:
+            result = {"valid": False, "error": str(exc)}
+        sys.stdout.buffer.write(_encode(result))
+        return 0 if result.get("valid") is True else 1
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", required=True)
     parser.add_argument("--max-bytes", type=int, required=True)

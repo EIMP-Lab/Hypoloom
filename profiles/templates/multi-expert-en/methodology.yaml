@@ -47,6 +47,8 @@ budget:
   per_expert_budget_usd: 15
   wallclock_hours: 6
   experiment_timeout: 1800  # seconds / 秒
+  stage_wall_seconds:
+    GROUNDING: 1800  # One hard deadline across retries. Verified progress can renew the 600 s window below.
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3

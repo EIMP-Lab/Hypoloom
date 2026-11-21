@@ -226,6 +226,8 @@ budget:
   per_expert_budget_usd: 15
   wallclock_hours: 6
   experiment_timeout: 1800  # seconds
+  stage_wall_seconds:
+    GROUNDING: 1800
   max_experiments: 96
   max_active_hypotheses: 6
   max_active_agents: 3
@@ -359,7 +361,8 @@ whole-run or per-expert budgets.
 | `budget.agent_invocation.max_turns` | Positive maximum number of model turns in one invocation. |
 | `budget.agent_invocation.max_tokens` | Positive total token allowance for one invocation, not the model's context-window size. |
 | `budget.agent_invocation.max_output_bytes` | Positive maximum size of the returned output, in bytes; template: 262144 (256 KiB). |
-| `budget.agent_invocation.wall_seconds` | Positive per-invocation deadline, in seconds; template: 600. |
+| `budget.agent_invocation.wall_seconds` | Seconds per invocation. In a stage with a configured hard deadline, this is the initial and renewable progress window. The template uses 600 seconds. |
+| `budget.stage_wall_seconds` | Optional positive integer seconds keyed by `GROUNDING`, `EXPERIMENT_DESIGN_IMPLEMENT` or `VERIFY_IMPLEMENTATION`. The hard deadline runs from the first attempt of the same task and includes retries and waits. For Grounding, `budget.roles.grounding-agent.timeout` supplies the limit when this map omits Grounding. The remaining run time caps every attempt. |
 | `budget.agent_invocation.max_cost` | Nonnegative canonical decimal string in USD, such as `"1"` or `"0.5"`. Use a positive allowance for paid work; `"0"` is not unlimited. This limit is separate from total spending. |
 | `budget.agent_invocation.token_enforcement_mode` | `enforce` applies the token allowance; `observe` records token usage without enforcing that token ceiling. Other limits remain active. Keep `enforce` unless observation-only accounting is intentional. |
 

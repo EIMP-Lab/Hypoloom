@@ -93,7 +93,11 @@ def agent_retry_class(code: str, details: Mapping[str, Any] | None,
         return "INFRASTRUCTURE" if bounded_context else None
     if failure.get("code") in {"input_too_long", "token_budget_exceeded"}: return None
     if failure.get("code") in PROVIDER_UNAVAILABLE: return "INFRASTRUCTURE"
+    if failure.get("source") == "cli_gateway_timeout" or diagnostics.get("wall_stop") in {"deadline", "caller_timeout"}:
+        return "INFRASTRUCTURE"
     correction = diagnostics.get("structured_output_correction") or {}
+    if diagnostics.get("wall_stop") == "no_verified_progress":
+        return "MODEL" if (correction.get("authoring") or {}).get("validation_error") else "INFRASTRUCTURE"
     if (bounded_context and not failure and not correction.get("error") and correction.get("status") == "unresolved"
             and type(correction.get("rejected_count")) is int and correction["rejected_count"] > 0):
         return "MODEL"  # Native semantic rejection still spends corrective retries.
@@ -115,6 +119,8 @@ def agent_failure_stage(code: str, details: Mapping[str, Any] | None) -> str:
     if code == "host_restart": return "host_recovery"
     if code in {"provider_transport_limit", "transport_output_too_large"}: return "provider_transport"
     failure = _failure_diagnostics(details).get("provider_failure")
+    if isinstance(failure, Mapping) and failure.get("source") == "cli_gateway_timeout":
+        return "provider_transport"
     if isinstance(failure, Mapping) and failure.get("code") in {"context_capacity", "compaction_failed"}:
         return "context_reconstruction"
     if isinstance(failure, Mapping) and failure.get("code") in PROVIDER_UNAVAILABLE | {"input_too_long", "token_budget_exceeded"}:
@@ -419,6 +425,9 @@ def agent_retry_inputs(
     }
     if (summary := diagnostic_summary(observation)) is not None:
         payload["diagnostic_summary"] = summary
+    correction = _failure_diagnostics(observation).get("structured_output_correction") or {}
+    if error := bounded_diagnostic_text((correction.get("authoring") or {}).get("validation_error")):
+        payload["latest_validation_error"] = error
     if (rejected := _persisted_rejected_structured_output(
         observation,
     )) is not None:

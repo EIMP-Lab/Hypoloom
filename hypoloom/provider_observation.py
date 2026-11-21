@@ -461,6 +461,15 @@ def retry_after_seconds(value, *, now):
         return None
 
 
+def terminal_gateway_timeout(exchanges, cli_error):
+    """A closing relay can also synthesize 504 during cancellation. Require the CLI's error result."""
+    if not isinstance(cli_error, str) or not cli_error.casefold().startswith("request timed out"):
+        return False
+    last = next((row for row in reversed(exchanges or ()) if row.get("request_path") == "/v1/messages"), {})
+    return (last.get("upstream_status") == 504 or last.get("relay_status") == 504
+            and last.get("response_body_complete") is False)
+
+
 def provider_failure(exchanges, *, fresh_session: bool | None = None):
     """Last transport outcome; a subsequent success clears a transient error."""
     if not exchanges:

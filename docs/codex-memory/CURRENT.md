@@ -1,5 +1,11 @@
 # Current Hypoloom development state
 
+- November 21. ACI 44 and native adapter 101 run advisory drafts through the
+  submission validator. Verified authoring progress renews a bounded window
+  within one logical stage deadline. Confirmed terminal gateway timeouts retain
+  infrastructure recovery and separate validation feedback.
+  [Authoring guide](../guides/shared-evaluation.md)
+
 - November 20. ACI 42 rejects invalid submission lists at intake. A verified
   historical draft can close locally while independent admitted work is collected.
   Native adapter 99 preserves earlier candidate schemas.

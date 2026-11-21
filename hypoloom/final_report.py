@@ -132,6 +132,7 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
     nodes = set()
     agent_states = Counter()
     unsuccessful = []
+    from .diagnostics import authoring_status, bounded_diagnostic_text, terminal_diagnostic_summary
     successful_commands = {row.get("command_id") for row in attempts
         if row.get("kind") == "AGENT" and row.get("terminal_reason") == "SUCCEEDED"}
     for row in attempts:
@@ -142,12 +143,17 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
         agent_states[row.get("terminal_reason") or row.get("state") or "UNKNOWN"] += 1
         if row.get("state") == "CLOSED" and row.get("terminal_reason") != "SUCCEEDED":
             diagnostics = observation.get("diagnostics") or {}
+            authoring = authoring_status(diagnostics)
+            budget = request.get("budget") or {}
             unsuccessful.append({"attempt_id": row["attempt_id"], "command": request.get("command"),
                 "terminal_reason": row.get("terminal_reason"), "failure_code": observation.get("failure_code"),
                 "failure_stage": observation.get("failure_stage"),
                 "provider_subtype": diagnostics.get("provider_subtype"),
-                "provider_diagnostic": str(diagnostics["provider_diagnostic"])[:1024]
-                    if diagnostics.get("provider_diagnostic") is not None else None,
+                "provider_diagnostic": bounded_diagnostic_text(diagnostics.get("provider_diagnostic")),
+                "exit_detail": terminal_diagnostic_summary(observation), "retry_class": observation.get("retry_class"),
+                **({"authoring": authoring} if authoring else {}),
+                **({"time_budget": {key: budget.get(key) for key in ("wall_seconds", "wall_source", "soft_wall_seconds")}}
+                   if budget.get("wall_source") else {}),
                 "command_has_successful_attempt": row.get("command_id") in successful_commands})
         context = request.get("task_context")
         if isinstance(context, dict) and "key" in context:

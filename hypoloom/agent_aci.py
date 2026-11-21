@@ -11,6 +11,7 @@ import base64
 import binascii
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal
 from enum import Enum
@@ -88,7 +89,9 @@ STAGE_EVIDENCE_ACI_SCHEMA_VERSION = 40
 VERIFIER_COMPLETION_ACI_SCHEMA_VERSION = 41
 SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION = 42
 EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION = 43
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION
+AUTHORING_PROGRESS_ACI_SCHEMA_VERSION = 44
+AUTHORING_STAGES = frozenset({"GROUNDING", "EXPERIMENT_DESIGN_IMPLEMENT", "VERIFY_IMPLEMENTATION"})
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = AUTHORING_PROGRESS_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -128,6 +131,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         VERIFIER_COMPLETION_ACI_SCHEMA_VERSION,
         SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION,
         EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION,
+        AUTHORING_PROGRESS_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -176,6 +180,7 @@ _COMMANDS_BY_SCHEMA = {
     VERIFIER_COMPLETION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    AUTHORING_PROGRESS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -241,6 +246,8 @@ class AgentBudget:
     wall_seconds: float
     max_cost: str | None = "0"
     token_enforcement_mode: str = "enforce"
+    soft_wall_seconds: float | None = None
+    wall_source: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("max_turns", "max_tokens", "max_output_bytes"):
@@ -251,6 +258,13 @@ class AgentBudget:
             raise AgentACIError("invalid_budget", "wall_seconds must be numeric")
         if not 0 < float(self.wall_seconds) < float("inf"):
             raise AgentACIError("invalid_budget", "wall_seconds must be finite and positive")
+        if self.soft_wall_seconds is not None and (
+                type(self.soft_wall_seconds) not in (int, float)
+                or not 0 < self.soft_wall_seconds <= self.wall_seconds or not self.wall_source):
+            raise AgentACIError("invalid_budget", "soft_wall_seconds requires a source and must fit the hard limit")
+        if self.wall_source is not None and (not isinstance(self.wall_source, str)
+                or not re.fullmatch(r"budget\.[A-Za-z0-9_.-]{1,100}|parent_request\.deadline", self.wall_source)):
+            raise AgentACIError("invalid_budget", "invalid wall time source")
         if self.max_cost is not None and (not isinstance(self.max_cost, str) or not self.max_cost or self.max_cost != self.max_cost.strip()):
             raise AgentACIError("invalid_budget", "max_cost must be decimal text")
         if self.max_cost is not None:
@@ -265,10 +279,17 @@ class AgentBudget:
             )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        document = asdict(self)
+        for name in ("soft_wall_seconds", "wall_source"):
+            if document[name] is None:
+                del document[name]
+        return document
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> AgentBudget:
+        for name in ("soft_wall_seconds", "wall_source"):
+            if name in value and value[name] is None:
+                raise AgentACIError("invalid_budget", f"omit unused {name}")
         _strict_keys(
             value,
             {
@@ -278,9 +299,10 @@ class AgentBudget:
                 "wall_seconds",
                 "max_cost",
                 "token_enforcement_mode",
+                "soft_wall_seconds", "wall_source",
             },
             "budget",
-            optional={"token_enforcement_mode"},
+            optional={"token_enforcement_mode", "soft_wall_seconds", "wall_source"},
         )
         try:
             return cls(**dict(value))
@@ -857,6 +879,10 @@ class AgentRequest:
             raise AgentACIError("invalid_effect_requirements", f"expected exactly {expected!r}")
         if not isinstance(self.budget, AgentBudget):
             raise AgentACIError("invalid_budget", "budget must be AgentBudget")
+        if self.schema_version < AUTHORING_PROGRESS_ACI_SCHEMA_VERSION and self.budget.wall_source is not None:
+            raise AgentACIError("invalid_budget", "stage time budgets require ACI 44")
+        if self.budget.soft_wall_seconds is not None and self.command.value not in AUTHORING_STAGES:
+            raise AgentACIError("invalid_budget", "progress windows require an authoring stage")
         if self.budget.max_cost is None and self.schema_version < REFERENCE_ALIAS_ACI_SCHEMA_VERSION:
             raise AgentACIError("invalid_budget", "unbounded invocation cost requires ACI v19")
         if (

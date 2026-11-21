@@ -107,6 +107,8 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # Host and validators. Transfer 250 unused lines from debate_host (464 actual).
     # ACI 43 moves 300 spare debate lines to evaluator examples (200) and the
     # four existing owners of decimal, session, mount and probe behavior (25 each).
+    # ACI 44 transfers 75 spare resource-experience lines to the existing
+    # budget fold (50) and evaluator case-format diagnostics (25).
     allocations = {"domain": 950, "lifecycle": 400, "ports": 100,
         "state_store": 450, "research_kernel": 750, "workflow_host": 5025, "institutional_controls": 100,
         "verification": 400, "verification_contract": 500, "verification_probe": 400,
@@ -117,12 +119,12 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1125,
         "expert_plugin": 700, "expert_memory": 275, "measurement_contract": 600, "profile_v4": 650,
-        "agent_budget": 650, "participant_controls": 250, "expert_interaction": 650,
-        "manager_context": 400, "interaction_host": 1200, "debate_host": 650, "evaluator_examples": 200, "profile_permissions": 150,
+        "agent_budget": 700, "participant_controls": 250, "expert_interaction": 650,
+        "manager_context": 400, "interaction_host": 1200, "debate_host": 650, "evaluator_examples": 225, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 325, "shared_acceptance_host": 125,
         "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,
-        "gpu_attribution": 800, "resource_experience": 700, "host_settings": 350, "provider_recovery": 150}
+        "gpu_attribution": 800, "resource_experience": 625, "host_settings": 350, "provider_recovery": 150}
     paths = tuple(f"hypoloom/{name}.py" for name in allocations
         if name not in {"expert_batch", "expert_plugin", "expert_memory", "measurement_contract", "expert_interaction", "interaction_host", "debate_host", "profile_permissions"}
         or (root / f"hypoloom/{name}.py").exists())

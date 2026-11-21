@@ -58,6 +58,20 @@ class _RejectedGroundingScenario(shared_retry._FinalRetryScenario):
             # The retried task must read retained source before editing it.
             calls = (*calls, ("ground_existing", "Read", {"file_path": "/acceptance/evaluate.py"}))
         for identity, tool, arguments in calls:
+            if identity == "ground_readonly" and request.schema_version >= 44:
+                arguments["command"] += """
+python3 - <<'PY'
+from pathlib import Path
+import json, subprocess
+draft = Path('/acceptance/work/preflight.json')
+draft.parent.mkdir(exist_ok=True)
+draft.write_text('{}')
+check = subprocess.run(['python3', '/runtime/native_output.py', '--check-draft', str(draft)],
+                       capture_output=True, text=True)
+result = json.loads(check.stdout)
+assert check.returncode == 1 and result['valid'] is False and 'Missing required fields' in result['error']
+print('HOST_DRAFT_CHECK_RETURNED_FIELD')
+PY"""
             if request.command is AgentCommand.GROUNDING and tool == "StructuredOutput":
                 if self.rejected_grounding is None:
                     self.rejected_grounding = request.attempt_id
@@ -95,6 +109,7 @@ def test_native_rejected_grounding_archive_survives_reconstruction_and_cpu(tmp_p
     groundings = [(row, observed) for row, observed in agents
                  if observed["request"]["command"] == "GROUNDING"]
     assert not scenario.errors, scenario.errors
+    assert "HOST_DRAFT_CHECK_RETURNED_FIELD" in scenario.grounding_evidence["ground_readonly"]
     assert len(groundings) == 2
     failed, retry = groundings
     assert failed[0]["attempt_id"] == scenario.rejected_grounding
@@ -106,8 +121,9 @@ def test_native_rejected_grounding_archive_survives_reconstruction_and_cpu(tmp_p
     assert failed[1]["retry_class"] == "MODEL" and failed[1].get("response") is None
     trace = failed[1]["diagnostics"]["structured_output_correction"]
     assert trace["status"] == "unresolved" and trace["rejected_count"] > 0
-    assert failed[1]["diagnostics"]["validation_error"] == {"code": "invalid_candidate",
-        "message": "web_sources must be unique actually retrieved URLs"}
+    error = failed[1]["diagnostics"]["validation_error"]
+    assert error["code"] == "invalid_candidate"
+    assert "/web_sources/0: URL was not actually retrieved" in error["message"]
     failed_stdout = (tmp_path / "state/diagnostics/agents" / _RUN / failed[0]["attempt_id"] / "stdout.log")
     failed_result = next(row for row in reversed([json.loads(line) for line in failed_stdout.read_text().splitlines()])
                          if row.get("type") == "result")

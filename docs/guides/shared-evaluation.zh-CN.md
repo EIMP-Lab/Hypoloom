@@ -13,6 +13,12 @@
 
 ### 在 Grounding 中运行成对样例
 
+从 ACI 44 起，Grounding 和 Design 可以把完整草稿存入工作区，然后执行 `python3 /runtime/native_output.py --check-draft 路径`。Host 使用正式提交时的结构、引用和适用的 CPU 样例检查，并返回失败的字段或样例。草稿检查保留正式纠错次数，修改完成后仍由 Stop 校验最终提交。
+
+启用进展时限后，首次通过结构检查、候选检查、更多解析样例或完整草稿检查都可续时。每次尝试的每个进展只计一次，续展受阶段和整场运行的硬时限约束。尝试详情显示实际生效的时限与来源、最近通过的检查和待修错误。模型 API 请求和训练进程各自计时。[预算配置](../../config/README.zh-CN.md)
+
+跨轮比较可读取 `overview.totals.experiments.first_started_at` 和 `time_to_first_start_seconds`。正式实验完成预注册并绑定进程后，这两个字段分别给出该次进程尝试的开始时间，以及距整场运行开始的秒数，此前取值为 null。每次编写任务的 `authoring.repeated_errors` 记录连续检查遇到相同错误的重复次数。
+
 使用答案已知的小型合成或公开样例。基准样例位于 `/acceptance/smoke/<原始文件>`。可以在 `/acceptance/work/acceptance-cases.json` 中为每个样例声明完整的预期观测值和预期结论。例如，某协议要求分数为正且样本完整，以下三例分别覆盖基准、仅缓存发生变化和样本缺失。
 
 ```json

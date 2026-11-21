@@ -13,6 +13,12 @@ In ACI 43, Grounding can publish report-only fields alongside the shared criteri
 
 ### Run paired examples during Grounding
 
+In ACI 44, Grounding and Design can check a complete draft before submitting it. Save the draft in the authoring workspace and run `python3 /runtime/native_output.py --check-draft PATH`. The Host checks the same schema, references and applicable CPU fixtures used at submission. A failed check reports the field or case and leaves the formal correction allowance available. Submit the final JSON through the usual Stop hook after editing.
+
+For a stage with a progress window, the first successful schema check, candidate check, additional passing parser cases and completed draft can renew the window. Each milestone counts once per attempt. The stage and run deadlines bound all renewals. The attempt details show the effective limits, their source, the last verified check and outstanding validation error. API request and training timeouts are independent. [Budget settings](../../config/README.md)
+
+To compare runs, use `overview.totals.experiments.first_started_at` and `time_to_first_start_seconds`. Both stay null until a preregistered execution has a bound Process. The elapsed time uses the start of that Process attempt. Each authoring attempt also records `authoring.repeated_errors` when the same validation error recurs on consecutive checks.
+
 Use small synthetic or public examples with known answers. The default fixture is `/acceptance/smoke/<raw_artifact>`. Add an optional `/acceptance/work/acceptance-cases.json` containing the full expected parser observation and expected verdict for each case. This example requires a positive score and a complete sample set.
 
 ```json
