@@ -199,8 +199,9 @@ class ImplementationVerification:
                "max_probe_seconds": MAX_PROBE_SECONDS, "probe_evidence": evidence,
                "target": config.get("target"), "bindings": config.get("read_only_bindings", []),
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
+        contract = self.host._research_contract(task.run_id).to_dict()
         if aci_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
-            goal = self.host._research_contract(task.run_id).document.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {})
+            goal = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {})
             if requirements := goal.get("implementation_requirements"):
                 ctx["implementation_requirements"] = requirements
             if actions:
@@ -225,7 +226,7 @@ class ImplementationVerification:
         def embedded(suffix, document):
             return EmbeddedInput.from_bytes(task.command_id + suffix, "application/json",
                 json.dumps(document, ensure_ascii=False, sort_keys=True).encode())
-        runtime = resolve_node_runtime(self.host._research_contract(task.run_id).to_dict(), None, "verifier")
+        runtime = resolve_node_runtime(contract, None, "verifier")
         # No Goal, hypothesis, private expert memory, skills or scientific success criteria.
         files = {}
         for path, data in validated.workspace_files.items():

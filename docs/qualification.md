@@ -1,5 +1,28 @@
 # Qualification: G0–G5
 
+## Frozen Profile requirements in verifier requests (2026-11-22)
+
+The Host raised `TypeError` before dispatching the first verifier for a
+preregistered submission with two named engineering requirements. Its
+request builder now reads the requirements and verifier settings from the
+same JSON-compatible copy of the frozen contract. Two regression cases
+create the run through Profile admission and reproduce the original failure
+on the previous revision.
+
+The repaired Host built all three verifier inputs from the original capture,
+preserving both check descriptions and ten submitted files. A fresh public
+bundle produced the same inputs. Four input sets from earlier inspections
+and reviews without named requirements matched byte for byte. Five retained
+runs yielded identical audit reports over 798 Agent requests and 81 outcomes.
+
+A native CPU run with a named requirement completed two inspections, two
+successful probes, two passing reviews and two formal Processes. Its Oracle
+found zero open attempts and zero pending effects. The focused suite passed
+73 cases and portable replay passed 191. The full offline suite reported
+9,153 passes, 246 skips and nine failures. All nine failures reproduced on
+the previous dev commit. The public suite passed 524 cases with one explicit
+CUDA skip. Both clean wheels matched their 225 tracked runtime files.
+
 ## Project requirements, LOCAL scoring and verifier repairs (2026-11-22)
 
 ACI 45 and native adapter 102 use named assertions for project engineering

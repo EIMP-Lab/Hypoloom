@@ -45,12 +45,12 @@ def bindings(tmp_path_factory):
     return root, target, data
 
 
-def preview(source, bindings):
+def preview(source, bindings, *, run_id="roster-preview"):
     root, target, data = bindings
     source = copy.deepcopy(source)
     source["methodology"]["runtime"].update(target_repo=str(target), conda_env=sys.prefix)
     source["safety"]["allow_read_paths"] = [str(data)]
-    return admit_profile(root / "preview", run_id="roster-preview", source_texts={
+    return admit_profile(root / "preview", run_id=run_id, source_texts={
         name + ".yaml": yaml.safe_dump(value, allow_unicode=True) for name, value in source.items()})
 
 

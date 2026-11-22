@@ -9,14 +9,15 @@ from types import SimpleNamespace
 import pytest
 
 from hypoloom.agent_aci import EmbeddedInput, WorkspaceArtifact
+from hypoloom.control_protocol import ControlRequest
 from hypoloom.domain import AgentCommand
 from hypoloom.fake_agent import FakeAgent, default_request
-from hypoloom.lifecycle import Command, RunState
 from hypoloom.verification import ImplementationVerification, review_rows
 from hypoloom.verification_audit import formal_gate, request_binding
 from hypoloom.verification_contract import can_repair_probe, context, review_schema, validate_review
 from hypoloom.verification_probe import execution_files, RUNNER_PATH, RESULT_PATH, decode_result
 from hypoloom.workflow_host import WorkflowHost
+from test_expert_roster import bindings as bindings, preview, roster_source
 
 
 def embedded(ref, value):
@@ -129,15 +130,21 @@ def test_old_runs_and_exhausted_allowances_cannot_start_probe_repairs(version, r
 
 
 @pytest.fixture
-def recovery(tmp_path, monkeypatch, request):
+def recovery(tmp_path, monkeypatch, request, bindings):
     scenario = getattr(request, "param", "repaired")
     host = WorkflowHost(tmp_path / "state")
     host.store.initialize()
-    document = {"budget": {"max_retries": 2}, "methodology": {"controls": {"product": {
-        "experts": {"verifier": {"model": "review-model"}}, "methodology": {}, "language": {}, "safety": {}}}}}
+    profile = roster_source(1)
+    profile["experts"]["verifier"] = {"model": "review-model"}
+    profile["methodology"]["budget"]["max_retries"] = {"no_repairs": 0, "persistent": 10}.get(scenario, 2)
     if scenario in {"repeated_fixture", "reload"}:
-        document["methodology"]["controls"]["product"]["goal"] = {"implementation_requirements": {
-            "fixture": "Check the submitted reader against the artifact written by the submitted producer."}}
+        profile["goal"]["implementation_requirements"] = {
+            "fixture": "Check the submitted reader against the artifact written by the submitted producer."}
+    admission = preview(profile, bindings, run_id="run-fake")
+    assert admission.admitted, admission.blockers
+    created = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN", admission.create_run_payload))
+    assert created.status == "accepted", created.error
+    host._activate("run-fake")
     candidate = (b"from pathlib import Path\ndef save(n): Path('value').write_text(str(n))\n"
                  b"def load(): return int(Path('value').read_text())\n" if scenario == "reload" else b"answer = 42\n")
     smoke = {"args": ["--sample"], "outputs": ["sample.json"]} if scenario == "mixed_entrypoint" else None
@@ -146,13 +153,7 @@ def recovery(tmp_path, monkeypatch, request):
     arguments = {"workspace_files": [WorkspaceArtifact.from_bytes("candidate.py", candidate).to_dict()]}
     if smoke:
         arguments["entrypoint_smoke"] = smoke
-    contract = SimpleNamespace(document=document, to_dict=lambda: document)
-    monkeypatch.setattr(host, "_research_contract", lambda _: contract)
-    monkeypatch.setattr(host, "_run_config", lambda _: {"execution": {}})
     with host.store.transaction() as tx:
-        tx.create_run("run-fake", host.version)
-        tx.append_transition(host._transition_record(tx, "run-fake", "run-fake", "RUN", Command.CREATE_RUN, RunState.CREATED))
-        tx.append_transition(host._transition_record(tx, "run-fake", "run-fake", "RUN", Command.ACTIVATE, RunState.ACTIVE))
         tx.record_command({"command_id": "submit", "run_id": "run-fake", "workflow_id": "experiment",
             "command_type": "CREATE_EXPERIMENT", "request": {"source_snapshot": {"output_digest": "a" * 64,
                 "arguments": arguments}}})
@@ -245,7 +246,7 @@ def recovery(tmp_path, monkeypatch, request):
                     "implementation_probe": True, "check_results": result, "stdout": process.stdout.decode(),
                     "stderr": process.stderr.decode(), "returncode": process.returncode})
         return result
-    yield host, verification, execute, requests, failures, document
+    yield host, verification, execute, requests, failures, profile["goal"].get("implementation_requirements", {})
     host.store.close()
     host._projection_executor.shutdown(wait=True)
 
@@ -254,6 +255,7 @@ def test_host_repairs_probe_then_requires_fresh_evidence_and_review(recovery):
     host, verification, execute, requests, failures, _ = recovery
     allowed, first = verification.gate("run-fake", "experiment")
     assert allowed and first
+    assert "implementation_requirements" not in context(requests[0])
     assert execute(first)["checks"][0]["status"] == "ERROR"
     allowed, repaired = verification.gate("run-fake", "experiment")
     assert allowed and repaired and repaired["report_ref"] != first["report_ref"]
@@ -293,9 +295,9 @@ def test_host_repairs_probe_then_requires_fresh_evidence_and_review(recovery):
         request_binding(forged, commands[forged.command_id], commands, attempts, bad)
 
 
+@pytest.mark.parametrize("recovery", ["no_repairs"], indirect=True)
 def test_zero_repair_budget_stays_inconclusive_and_never_authorizes_training(recovery):
-    _, verification, execute, requests, failures, document = recovery
-    document["budget"]["max_retries"] = 0
+    _, verification, execute, requests, failures, _ = recovery
     _, probe = verification.gate("run-fake", "experiment")
     execute(probe)
     assert verification.gate("run-fake", "experiment") == (False, None)
@@ -305,8 +307,7 @@ def test_zero_repair_budget_stays_inconclusive_and_never_authorizes_training(rec
 
 @pytest.mark.parametrize("recovery,success", [("reload", True), ("repeated_fixture", False)], indirect=["recovery"])
 def test_host_binds_project_check_and_routes_actual_probe_evidence(recovery, success):
-    host, verification, execute, requests, failures, document = recovery
-    required = document["methodology"]["controls"]["product"]["goal"]["implementation_requirements"]
+    host, verification, execute, requests, failures, required = recovery
     _, plan = verification.gate("run-fake", "experiment")
     assert context(requests[0])["implementation_requirements"] == required
     result = execute(plan)["checks"][0]
@@ -333,8 +334,7 @@ def test_host_binds_project_check_and_routes_actual_probe_evidence(recovery, suc
 
 @pytest.mark.parametrize("recovery", ["persistent"], indirect=True)
 def test_probe_repairs_stop_after_two_even_with_a_larger_model_retry_budget(recovery):
-    host, verification, execute, requests, failures, document = recovery
-    document["budget"]["max_retries"] = 10
+    host, verification, execute, requests, failures, _ = recovery
     for _ in range(3):
         allowed, plan = verification.gate("run-fake", "experiment")
         assert allowed and plan
