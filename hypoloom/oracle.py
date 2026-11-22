@@ -1362,6 +1362,7 @@ def _audit_agent_attempts(
         else None
     )
     frozen_modes: dict[str, str | None] = {}
+    engineering_requirements = {}
     for fact in facts:
         if fact["fact_type"] != "GoalDefined":
             continue
@@ -1369,6 +1370,9 @@ def _audit_agent_attempts(
         payload = fact_payloads.get(str(fact["fact_id"]), {})
         contract = payload.get("research_contract")
         budget = contract.get("budget") if isinstance(contract, Mapping) else None
+        if isinstance(contract, Mapping):
+            product = contract.get("methodology", {}).get("controls", {}).get("product", {})
+            engineering_requirements[run_id] = product.get("goal", {}).get("implementation_requirements", {})
         invocation = (
             budget.get("agent_invocation") if isinstance(budget, Mapping) else None
         )
@@ -1502,7 +1506,8 @@ def _audit_agent_attempts(
                 issues.append(OracleIssue("engineering_memory_binding_invalid", "engineering memory differs from its capture, reviewed Process or consumer scope", (attempt_id,)))
         if raw_request.get("command") == "VERIFY_IMPLEMENTATION" and request is not None:
             from .verification_audit import request_binding
-            try: request_binding(request, command, commands_by_id, all_attempts_by_id, attempt_payloads)
+            try: request_binding(request, command, commands_by_id, all_attempts_by_id, attempt_payloads,
+                                 requirements=engineering_requirements.get(request.run_id, {}))
             except (AssertionError, ValueError, KeyError, TypeError):
                 issues.append(OracleIssue("implementation_review_binding_invalid", "verifier inputs differ from their captured source or Host probe evidence", (attempt_id,)))
         if raw_request.get("command") == "PAPER_READ" and request is not None:

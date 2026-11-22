@@ -248,12 +248,21 @@ def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
     return dict(arguments)
 
 
-class WebToolOperation:
-    """An authorized read, with completion returned to the owning Host thread."""
+class HostToolOperation:
+    """Run a bounded read off the writer thread, then finish on its owner."""
+    allowed_tools = frozenset()
 
-    def __init__(self, read: Callable[[], dict[str, Any]],
+    def __init__(self, read: Callable[[], dict[str, Any] | None],
                  finish: Callable[[dict[str, Any] | None, Exception | None], dict[str, Any]]) -> None:
         self.read, self.finish = read, finish
+
+
+class WebToolOperation(HostToolOperation):
+    allowed_tools = frozenset({"web_search", "web_fetch"})
+
+
+class SubmissionCheckOperation(HostToolOperation):
+    allowed_tools = frozenset({"submit_experiment"})
 
 
 class _PendingCall:
@@ -262,7 +271,7 @@ class _PendingCall:
         self.arguments = arguments
         self.ready = threading.Event()
         self.response: dict[str, Any] = _error("Host tool endpoint closed")
-        self.operation: WebToolOperation | None = None
+        self.operation: HostToolOperation | None = None
         self.result: dict[str, Any] | None = None
         self.error: Exception | None = None
         self.read_complete = False
@@ -281,7 +290,7 @@ class AgentToolServer:
         self,
         socket_path: Path,
         attempt_id: str,
-        handler: Callable[[str, str, Mapping[str, Any]], dict[str, Any] | WebToolOperation],
+        handler: Callable[[str, str, Mapping[str, Any]], dict[str, Any] | HostToolOperation],
         capture_workspace: Callable[[Mapping[str, Any]], list[dict[str, Any]]] | None = None,
         max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
         *, scope: str = "execution", tools: tuple[str, ...] | None = None,
@@ -406,11 +415,12 @@ class AgentToolServer:
             try:
                 # Retain an already completed read through the ordinary finish
                 # path; native delivery evidence still determines source use.
-                if time.monotonic() >= call.deadline_at and not call.read_complete:
+                if time.monotonic() >= call.deadline_at and (not call.read_complete or call.tool == "submit_experiment"):
                     raise TimeoutError("Host tool request expired before servicing")
                 arguments = dict(call.arguments)
                 if (
                     call.tool == "submit_experiment"
+                    and not call.read_complete
                     and self.capture_workspace is not None
                 ):
                     arguments["workspace_files"] = self.capture_workspace(arguments["candidate"])
@@ -418,9 +428,9 @@ class AgentToolServer:
                 result = (call.operation.finish(call.result, call.error)
                     if call.read_complete and call.operation is not None
                     else self.handler(self.attempt_id, call.tool, arguments))
-                if isinstance(result, WebToolOperation):
-                    if call.tool not in {"web_search", "web_fetch"}:
-                        raise TypeError("only authorized web reads may leave the Host thread")
+                if isinstance(result, HostToolOperation):
+                    if call.tool not in result.allowed_tools:
+                        raise TypeError("off-thread check is unavailable for this Host tool")
                     call.operation = result
                     continue
                 stage = "result_validation"

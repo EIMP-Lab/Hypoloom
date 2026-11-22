@@ -1,5 +1,50 @@
 # Qualification: G0–G5
 
+## Project requirements, LOCAL scoring and verifier repairs (2026-11-22)
+
+ACI 45 and native adapter 102 use named assertions for project engineering
+requirements, known-answer LOCAL measurements and evidence-based verifier
+repairs. The [design](design/implementation-and-measurement-checks.md)
+describes where each check runs and which evidence reaches the author.
+
+Replaying a captured screening parser and its original raw observations
+produced −0.56005774073766762825. The mean candidate-minus-control difference
+from the two absolute readouts was +0.02304054727793945. Admission rejected
+the archived parser. Returning the absolute candidate values made it pass
+both the original example and a synthetic negative example.
+The new submission check also reproduced all five archived staged-output
+shape errors using the captured parser files and each job's actual raw input.
+
+The stopped run had 74 recorded, validated probes. Ten had failed
+author-supplied command samples. Two combined that failure with a verifier
+fixture error. Two revised probes repeated the previous fixture error.
+Controlled CPU checks exercised actual command exit and output evidence,
+an artifact save/reload and an inconclusive review after one ineffective
+fixture repair. A blocked parser check also let a concurrent status request
+complete. Pausing admission before the check returned prevented creation of
+an experiment.
+
+Four retained runs supplied 765 Agent requests and 80 canonical outcomes.
+Every request round-tripped through the wire reader. The candidate and
+previous Oracles produced byte-identical reports for all four runs, with
+zero open attempts and zero pending effects.
+
+The final targeted selection passed 97 checks and the portable replay
+selection passed 191. All eight native CPU scenarios passed. Seven finished
+together, and the crash-after-commit scenario passed independently after
+its 90-second test deadline expired during concurrent qualification. The
+public-tree suite passed 524 cases and skipped one. All 225 tracked runtime
+files matched the built public wheel byte for byte.
+
+The full frozen offline run reported 9,136 passes, 246 skips, 25 failures
+and one setup error. Sixteen of those 26 cases passed on follow-up, including
+three renderer tests with Node 22 and two tests using the final native
+callback and recovery fixtures. All ten remaining failures reproduced on the
+previous dev revision. Six were already documented in the November 21 run.
+The four additional cases concern late Agent completion and asynchronous
+session archiving. A separate 19-case check passed with the final native
+callback, including concurrent status, pause and submission retry.
+
 ## Verified progress during agent authoring (2026-11-21)
 
 ACI 44 and native adapter 101 use the existing submission validator for

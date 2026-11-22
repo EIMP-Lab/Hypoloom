@@ -56,6 +56,15 @@ def check_replacement_budget(host, request, owned, predecessor):
 
 def experiment_execution_feedback(host, spec, observation):
     result = {}
+    review = observation.get("implementation_verification") or {}
+    if actions := review.get("probe_actions"):
+        result["probe_actions"] = actions
+        if actions["author_entrypoint"]:
+            result.update(failure_category="submitted_entrypoint_failed", repair_instruction=
+                "Use the entrypoint exit code and expected outputs to repair the submitted command or identify an environment failure.")
+        elif actions["fixture_only"] and review["report"]["verdict"] == "inconclusive":
+            result.update(failure_category="verifier_fixture_inconclusive", repair_instruction=
+                "Report incomplete verification. The fixture failed to exercise the candidate; no author code change is evidenced.")
     if observation.get("gpu_diagnostic") is not None:
         result["gpu_diagnostic"] = observation["gpu_diagnostic"]
         if confirmed_gpu_fault(observation):

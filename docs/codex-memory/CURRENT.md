@@ -1,5 +1,11 @@
 # Current Hypoloom development state
 
+- November 22. ACI 45 and native adapter 102 bind optional Profile engineering
+  requirements to independent assertions. Local submissions exercise known
+  numeric answers before preregistration. Recorded check failures route
+  command repairs and verifier fixture revisions.
+  [Design](../design/implementation-and-measurement-checks.md)
+
 - November 21. ACI 44 and native adapter 101 run advisory drafts through the
   submission validator. Verified authoring progress renews a bounded window
   within one logical stage deadline. Confirmed terminal gateway timeouts retain

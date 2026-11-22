@@ -31,6 +31,7 @@ from .agent_aci import (
     AgentResponse,
     AgentStatus,
     DeclaredEffect,
+    ENGINEERING_CHECKS_ACI_SCHEMA_VERSION,
     SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION,
     WorkspaceArtifact,
     canonical_json,
@@ -78,7 +79,7 @@ from .literature import (
 )
 
 
-CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/101"
+CLAUDE_AGENT_HOST_VERSION = "claude-code-bwrap/102"
 CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP = 1
 CLAUDE_AGENT_TRANSPORT_RETRIES = 0
 CLAUDE_AGENT_TOOL_PERMISSION_PROFILE = FULL_CC_PROFILE
@@ -666,6 +667,7 @@ class ClaudeAgentHost:
                 invocation_wall_seconds=request.budget.wall_seconds,
                 acceptance_smoke=request.command.value == "GROUNDING" and grounding_acceptance_request(request),
                 semantic_examples=request.schema_version >= 43,
+                measurement_examples_required=request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION,
                 seed_files=getattr(tool_workspace, "evaluator_seed_files", None),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",

@@ -109,18 +109,20 @@ def test_exact_workflow_core_stays_within_the_accepted_physical_loc_budget() -> 
     # four existing owners of decimal, session, mount and probe behavior (25 each).
     # ACI 44 transfers 75 spare resource-experience lines to the existing
     # budget fold (50) and evaluator case-format diagnostics (25).
+    # ACI 45 uses 125 spare measurement-contract lines for Host admission (25),
+    # verifier requirements and repair routing (50), and local examples (50).
     allocations = {"domain": 950, "lifecycle": 400, "ports": 100,
-        "state_store": 450, "research_kernel": 750, "workflow_host": 5025, "institutional_controls": 100,
-        "verification": 400, "verification_contract": 500, "verification_probe": 400,
+        "state_store": 450, "research_kernel": 750, "workflow_host": 5050, "institutional_controls": 100,
+        "verification": 400, "verification_contract": 550, "verification_probe": 400,
         "engineering_memory": 100, "engineering_budget": 75, "input_views": 125,
         "resource_controls": 225,
         "execution_reuse": 125,
         "control_protocol": 300, "control_server": 250, "recovery": 100, "policy": 650,
         "outcome_adapter": 850, "expert_loop": 1100,
         "expert_batch": 700, "agent_sessions": 1125,
-        "expert_plugin": 700, "expert_memory": 275, "measurement_contract": 600, "profile_v4": 650,
+        "expert_plugin": 700, "expert_memory": 275, "measurement_contract": 475, "profile_v4": 650,
         "agent_budget": 700, "participant_controls": 250, "expert_interaction": 650,
-        "manager_context": 400, "interaction_host": 1200, "debate_host": 650, "evaluator_examples": 225, "profile_permissions": 150,
+        "manager_context": 400, "interaction_host": 1200, "debate_host": 650, "evaluator_examples": 275, "profile_permissions": 150,
         "session_archive": 400, "grounding_dialogue": 500,
         "shared_acceptance": 325, "shared_acceptance_host": 125,
         "compute_resources": 1200, "gpu_pool": 850, "shared_gpu_host": 500, "resource_recovery": 125,

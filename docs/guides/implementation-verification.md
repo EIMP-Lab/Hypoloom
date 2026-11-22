@@ -2,6 +2,21 @@
 
 English · [简体中文](implementation-verification.zh-CN.md)
 
+## Project-specific engineering requirements
+
+Starting with ACI 45, a v4 Profile can give the independent verifier explicit requirements in `goal.yaml`. Each ID uses 1–64 ASCII letters, digits, underscores or hyphens. The Host reserves `formal_entrypoint` for the command sample.
+
+```yaml
+implementation_requirements:
+  artifact_reload: Exercise the submitted producer and load its artifact with the project's public reader. Compare outputs on the same small input.
+```
+
+Choose requirements that apply to every submission and describe the expected behavior when an existing artifact can be reused. Authors receive the requirements at admission. The verifier receives the same IDs and text, declares a required assertion for each ID, and cites its successful execution in review coverage. A failed or unexercised requirement prevents a passing verdict.
+
+The Host also records who can act on a failed check. When the author's submitted command sample fails, the author receives its execution evidence. A verifier can repair a faulty paired input on the same captured code. If the revised check repeats the same fixture error, the reviewer can return `inconclusive` or identify an independently evidenced defect in the submitted code. These outcomes keep formal execution pending or closed according to the existing repair policy.
+
+## Independent verification workflow
+
 The Host commissions an independent implementation verifier when an expert submits
 captured code. It checks correctness, engineering choices and computational efficiency.
 It does not generate hypotheses or judge scientific merit. Checks come from the

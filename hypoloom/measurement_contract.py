@@ -173,6 +173,13 @@ def _value_pair(raw: Mapping[str, Any]) -> tuple[str, str | None]:
     return numeric_field("value"), None if raw.get("baseline") is None else numeric_field("baseline")
 
 
+def measurement_answer(declaration: ScientificMeasurement, raw: Mapping[str, Any]):
+    """Return the validated absolute readings and canonical score of a local known-answer case."""
+    result = evaluate_parsed_measurement(declaration, raw)
+    rows = raw["observations"] if declaration.evidence is not None else {declaration.metric.name: raw}
+    return {unit: _value_pair(row) for unit, row in rows.items()}, result.metric_value
+
+
 def _compare(value: str, baseline: str | None, comparison: MeasurementComparison) -> Decimal:
     measured = Decimal(value)
     if comparison is not MeasurementComparison.VALUE:

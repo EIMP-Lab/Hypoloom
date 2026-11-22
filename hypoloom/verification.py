@@ -11,12 +11,12 @@ import os
 import stat
 from pathlib import Path
 
-from .agent_aci import EmbeddedInput
+from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, EmbeddedInput
 from .domain import AttemptTerminalReason
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask
 from .lifecycle import Command, ExperimentState, RunState
 from .profile_v4 import resolve_node_runtime
-from .verification_contract import MAX_PROBE_SECONDS, MAX_PROBE_REPAIRS
+from .verification_contract import MAX_PROBE_SECONDS, MAX_PROBE_REPAIRS, probe_actions
 
 
 def review_rows(store, run_id, *, experiment_id=None, subject=None, component=None, phase=None, limit=None):
@@ -35,13 +35,22 @@ def review_rows(store, run_id, *, experiment_id=None, subject=None, component=No
     return list(reversed(rows)) if limit is not None else rows
 
 
+def _recorded_actions(observation):
+    request = observation.get("request", {})
+    if request.get("schema_version", 0) >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
+        for item in request.get("input_artifacts", ()):
+            if item["ref"].endswith("--verification-context"):
+                return json.loads(EmbeddedInput.from_dict(item).content_bytes()).get("probe_actions", {})
+    return {}
+
+
 def accepted_review(store, row):
     attempts = store.list_attempts(command_id=row["command_id"])
     for attempt in reversed(attempts):
         observation = json.loads(attempt["observation_json"] or "{}")
         if attempt["state"] == "CLOSED" and attempt["terminal_reason"] == "SUCCEEDED" and "response" in observation:
             return {"report_ref": attempt["attempt_id"], "report": observation["response"]["typed_candidate"],
-                    "ended_at": attempt["ended_at"]}
+                    "ended_at": attempt["ended_at"], **({"probe_actions": actions} if (actions := _recorded_actions(observation)) else {})}
     return None
 
 
@@ -145,6 +154,7 @@ class ImplementationVerification:
         value = row["request"]["implementation_verification"]
         source = self.source(task.run_id, value["experiment_id"])
         spec, execution, author, snapshot, validated = source
+        aci_version = int(self.host.store.get_run(task.run_id)["agent_aci_version"])
         if validated.output_digest != value["source_output_digest"]:
             raise ValueError("verification source differs from captured submission")
         prior = self._prior(task.run_id, value["subject_expert"], value["component_id"], task.command_id)
@@ -153,11 +163,13 @@ class ImplementationVerification:
         if value.get("probe_report_ref"):
             row = self.host.store.get_attempt(value["probe_report_ref"])
             observation = json.loads(row["observation_json"])
-            inspection = {"report_ref": row["attempt_id"], "report": observation["response"]["typed_candidate"]}
+            inspection = {"report_ref": row["attempt_id"], "report": observation["response"]["typed_candidate"],
+                          "probe_actions": _recorded_actions(observation)}
         else:
             inspection = next((accepted_review(self.host.store, r) for r in review_rows(self.host.store, task.run_id,
                 experiment_id=value["experiment_id"], phase="inspect")), None)
         plan = (inspection or {}).get("report", {}).get("probe")
+        actions = {}
         if value["phase"] == "review":
             last = (next(p for p in probes if p["attempt_id"] == value["probe_attempt_id"])
                     if value.get("probe_attempt_id") else probes[-1])
@@ -172,9 +184,12 @@ class ImplementationVerification:
                 try:
                     assessment = validate_result(observation.get("check_results"), plan["checks"],
                         attempt_id=last["attempt_id"], report_ref=inspection["report_ref"])
-                    evidence["usable"] = (last["state"] == "CLOSED" and last["terminal_reason"] == "SUCCEEDED"
-                        and observation.get("implementation_probe") is True and not observation.get("synthetic_before_spawn")
-                        and assessment["passed"] and not observation.get("check_results_error"))
+                    observed = observation.get("implementation_probe") is True and not observation.get("synthetic_before_spawn") and not observation.get("check_results_error")
+                    if aci_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION and observed:
+                        actions = probe_actions(assessment["checks"], plan["checks"],
+                            author_smoke=bool(snapshot["arguments"].get("entrypoint_smoke")),
+                            previous=inspection.get("probe_actions", {}))
+                    evidence["usable"] = last["state"] == "CLOSED" and last["terminal_reason"] == "SUCCEEDED" and observed and assessment["passed"]
                 except (ValueError, TypeError):
                     evidence["usable"] = False
         config = self.host._run_config(task.run_id)["execution"]
@@ -184,6 +199,12 @@ class ImplementationVerification:
                "max_probe_seconds": MAX_PROBE_SECONDS, "probe_evidence": evidence,
                "target": config.get("target"), "bindings": config.get("read_only_bindings", []),
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
+        if aci_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
+            goal = self.host._research_contract(task.run_id).document.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {})
+            if requirements := goal.get("implementation_requirements"):
+                ctx["implementation_requirements"] = requirements
+            if actions:
+                ctx["probe_actions"] = actions
         if "probe_repair_limit" in value:
             ctx["probe_repairs_remaining"] = max(0, value["probe_repair_limit"] - value["probe_revision"])
         if "entrypoint_smoke" in snapshot["arguments"]:
@@ -192,7 +213,7 @@ class ImplementationVerification:
             ctx.update(probe_plan=plan, probe_report_ref=inspection["report_ref"])
             from .agent_aci import VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
             if (value["phase"] == "review"
-                    and int(self.host.store.get_run(task.run_id)["agent_aci_version"]) >= VERIFIER_COMPLETION_ACI_SCHEMA_VERSION):
+                    and aci_version >= VERIFIER_COMPLETION_ACI_SCHEMA_VERSION):
                 # The report_ref already identifies this exact plan. Keep the
                 # historical findings and every other plan in the reading set.
                 for entry in prior:
@@ -224,7 +245,8 @@ class ImplementationVerification:
         current = [row for row in reports if row["delivery_id"] == task_id]
         actions = [{"experiment_id": row["experiment_id"], "report_ref": row["report_ref"],
             "verdict": row["report"]["verdict"], "summary": row["report"]["summary"],
-            "findings": row["report"]["findings"]} for row in current[-2:]]
+            "findings": row["report"]["findings"], **({"probe_actions": row["probe_actions"]} if row.get("probe_actions") else {})}
+            for row in current[-2:]]
         return (EmbeddedInput.from_bytes(task_id + "--implementation-reviews", "application/json",
             json.dumps({"current_actions": actions, "reports": reports,
                 "scope": "Engineering only. Read current_actions first. implementation_not_verified means formal training never started; "

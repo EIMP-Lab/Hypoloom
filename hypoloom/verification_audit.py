@@ -90,8 +90,8 @@ def formal_gate(attempt, context, commands, attempts, observations):
     assert observations[ref]["response"]["typed_candidate"]["verdict"] == "passed"
 
 
-def request_binding(request, command, commands, attempts, observations):
-    from .agent_aci import WorkspaceArtifact
+def request_binding(request, command, commands, attempts, observations, *, requirements=None):
+    from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, WorkspaceArtifact
     value = json.loads(command["request_json"])["implementation_verification"]
     assert request.owner_workflow_id == request.run_id and request.role == request.component_id == "verifier"
     assert request.task_context.expert_slot is None and request.task_context.component_id is None
@@ -135,6 +135,10 @@ def request_binding(request, command, commands, attempts, observations):
                 assert diagnostic["failure_stage"] in {"provider_structured_output", "provider_output"}
                 assert diagnostic["allowed_supporting_refs"] == source_observation["request"]["immutable_context_refs"]
     ctx = inputs["verification-context"]
+    if request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
+        assert ctx.get("implementation_requirements", {}) == (requirements or {})
+        if ctx["phase"] == "inspect":
+            assert not ctx.get("probe_actions")
     assert all(ctx[k] == v for k, v in value.items())
     source = commands[value["source_submit_command_id"]]
     assert source["run_id"] == request.run_id and source["workflow_id"] == value["experiment_id"]
@@ -182,10 +186,22 @@ def request_binding(request, command, commands, attempts, observations):
             try:
                 checks = validate_result(actual.get("check_results"), ctx["probe_plan"]["checks"],
                     attempt_id=probe["attempt_id"], report_ref=ctx["probe_report_ref"])
-                usable = (probe["terminal_reason"] == "SUCCEEDED" and actual.get("implementation_probe") is True
-                    and not actual.get("synthetic_before_spawn") and not actual.get("check_results_error") and checks["passed"])
-            except (ValueError, TypeError): usable = False
+                observed = actual.get("implementation_probe") is True and not actual.get("synthetic_before_spawn") and not actual.get("check_results_error")
+                usable = probe["terminal_reason"] == "SUCCEEDED" and observed and checks["passed"]
+            except (ValueError, TypeError):
+                checks = None
+                usable = False
             assert evidence["usable"] is usable
+            if request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
+                from .verification_contract import probe_actions
+                previous = {}
+                if commissioned["phase"] == "review":
+                    from .agent_aci import AgentRequest
+                    from .verification_contract import context
+                    previous = context(AgentRequest.from_dict(inspection["request"])).get("probe_actions", {})
+                expected = (probe_actions(checks["checks"], ctx["probe_plan"]["checks"],
+                    author_smoke=bool(snapshot["arguments"].get("entrypoint_smoke")), previous=previous) if checks and observed else {})
+                assert ctx.get("probe_actions", {}) == expected
 
 
 def probe_context(attempt, intent, contexts, commands, attempts, observations, transitions, payloads):

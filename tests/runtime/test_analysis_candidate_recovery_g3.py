@@ -1,7 +1,7 @@
 """Native analysis preserves MODEL correction through fresh reconstruction.
 
 The local scripted provider changes the parser during execution after a valid
-DESIGN sample, submits a wrong frozen local-parser envelope, then
+DESIGN sample, submits a parser that returns a wrong envelope on the larger formal batch, then
 requests scientific iteration on its operational failure. Real Claude/bwrap,
 Host, CPU collection, fresh recovery and Oracle own the boundaries.
 The common parser independently qualifies the goal; local failure stays failed.
@@ -30,7 +30,7 @@ from test_claude_file_tool_cli import _installed_claude, _result_text, _tool_res
 from test_claude_measurement_g3 import _NoPublicWeb
 from test_claude_shared_acceptance_g3 import (
     _AcceptanceScenario, _DECLARATION, _GOAL, _RUN, _common_source,
-    _experiment_files, _local_measurement, _payload,
+    _batch_sensitive_parser, _experiment_files, _local_measurement, _payload,
 )
 from test_full_cc_host_g3 import _new_host, _request_from_provider, _start_provider
 from test_real_analysis_probe import _input
@@ -99,10 +99,10 @@ class _AnalysisCorrectionScenario(_AcceptanceScenario):
         if request is None or self.errors:
             return ()
         if request.command is AgentCommand.EXPERIMENT_EXECUTION and self.steps[request.attempt_id] == 0:
-            # DESIGN now rejects this envelope before preregistration. Inject
-            # it in EXECUTION to reach the analysis retry boundary under test.
+            # The two-row known answers pass. The larger formal batch exercises
+            # the operational failure and subsequent analysis retry.
             calls = (("wrong_local_envelope", "Write", {"file_path": "/workspace/parse_local.py",
-                "content": _common_source(self.nonce)}),)
+                "content": _batch_sensitive_parser(self.nonce)}),)
         elif (request.command is _ANALYSIS and request.attempt_id != self.rejected_analysis
                 and self.steps[request.attempt_id] == 1):
             index = next(index for index, item in enumerate(request.input_artifacts)
@@ -242,7 +242,7 @@ def test_native_analysis_correction_reconstructs_and_preserves_operational_failu
             assert json.loads(_input(request, prefix + "spec")) == spec
             assert json.loads(_input(request, prefix + "outcome")) == outcome
             assert json.loads(_input(request, prefix + "process")) == process
-            assert _input(request, prefix + "parse_local.py") == _common_source(nonce).encode()
+            assert _input(request, prefix + "parse_local.py") == _batch_sensitive_parser(nonce).encode()
             assert _input(request, prefix + "experiment.py") == _experiment_files(_GOAL)["experiment.py"]
         assert spec["payload"]["goal_evaluation"] == {
             "scope": "GOAL", "source_attempt_id": scenario.source_attempt_id, "acceptance": _DECLARATION}
@@ -253,7 +253,7 @@ def test_native_analysis_correction_reconstructs_and_preserves_operational_failu
             (spec["payload"]["execution_contract"]["source_submit_command_id"],))[0]
         captured = json.loads(submit["request_json"])["source_snapshot"]["arguments"]["workspace_files"]
         assert next(WorkspaceArtifact.from_dict(item).content_bytes() for item in captured
-            if item["path"] == "parse_local.py") == _common_source(nonce).encode()
+            if item["path"] == "parse_local.py") == _batch_sensitive_parser(nonce).encode()
         tools = []
         for row, observed in agents:
             assert observed["session"]["transcript_complete"] is True

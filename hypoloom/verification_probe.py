@@ -261,6 +261,10 @@ def check(key):
     return _Check(_active, key, "assertion")
 
 
+class FixtureError(ValueError):
+    """The verifier could not construct the inputs its check requires."""
+
+
 def paired_inputs(sample, perturb, *, control, target, clone=copy.deepcopy, equal=None):
     """Draw once and perturb one copy in place. Selectors cover fixed and changed inputs."""
     if equal is None:
@@ -270,18 +274,18 @@ def paired_inputs(sample, perturb, *, control, target, clone=copy.deepcopy, equa
         original, variant = clone(reference), clone(reference)
         fixed, before = control(reference), target(reference)
         if any(not equal(control(item), fixed) or not equal(target(item), before) for item in (original, variant)):
-            raise ValueError("paired fixture clones differ before the perturbation")
+            raise FixtureError("paired fixture clones differ before the perturbation")
         # Snapshot selected values independently of the caller's batch copier.
         fixed, before = copy.deepcopy((fixed, before))
         perturb(variant)
         if not equal(control(original), fixed) or not equal(target(original), before):
-            raise ValueError("paired fixture changed its reference while perturbing the variant")
+            raise FixtureError("paired fixture changed its reference while perturbing the variant")
         if not equal(control(variant), fixed):
-            raise ValueError("paired fixture changed the control")
+            raise FixtureError("paired fixture changed the control")
         if equal(target(variant), before):
-            raise ValueError("paired fixture did not change the target")
+            raise FixtureError("paired fixture did not change the target")
     except AssertionError as exc:
-        raise ValueError("paired fixture preparation failed: " + str(exc)) from exc
+        raise FixtureError("paired fixture preparation failed: " + str(exc)) from exc
     return original, variant
 
 

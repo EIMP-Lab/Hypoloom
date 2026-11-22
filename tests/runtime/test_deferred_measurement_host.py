@@ -63,6 +63,20 @@ Path('/parsed/result.json').write_text(json.dumps({'metric':'median_latency_delt
     'baseline': str(statistics.median(float(row[0]) for row in rows))}))
 ''',
         }
+        if request.schema_version >= 45:
+            cases = {}
+            for name, amount, score in (("baseline", 10, "0"), ("faster", 8, "-0.2")):
+                obs = {"metric": "median_latency_delta"}
+                if self.measurement(request).evidence:
+                    obs["observations"] = {u: {"value": amount, "baseline": 10} for u in ("B", "C")}
+                    contents = f"B,10,{amount}\nC,10,{amount}\n"
+                else:
+                    obs.update(value=amount, baseline=10)
+                    contents = f"10,{amount}\n"
+                prefix = "smoke" if name == "baseline" else "work/cases/faster"
+                files[f"{prefix}/timings.csv"] = contents.encode()
+                cases[name] = {"observation": obs, "metric_value": score}
+            files["work/measurement-cases.json"] = json.dumps(cases).encode()
         return with_output_digest(replace(response, schema_version=request.schema_version,
             command_id=request.command_id, attempt_id=request.attempt_id, attempt_ordinal=request.attempt_ordinal,
             typed_candidate=candidate, proposed_workspace_artifacts=tuple(
@@ -139,7 +153,7 @@ def test_strict_equality_refutes_then_revised_cpu_hypothesis_completes(tmp_path,
             created = host.handle(ControlRequest(schema_version=1, request_id="strict-create", expected_revision=0,
                 command="CREATE_RUN", payload=deferred_payload(tmp_path, Path(directory))))
             assert created.status == "accepted", created
-            assert host.store.get_run("c5-host")["agent_aci_version"] == "44"
+            assert host.store.get_run("c5-host")["agent_aci_version"] == "45"
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 host.tick()
@@ -262,6 +276,71 @@ def _manual_submission(host):
     source = next(json.loads(row["observation_json"])["response"] for row in host.store.list_attempts()
                   if row["kind"] == "AGENT" and json.loads(row["observation_json"])["request"]["command"] == "EXPERIMENT_DESIGN_IMPLEMENT")
     return request, {"candidate": source["typed_candidate"], "workspace_files": source["proposed_workspace_artifacts"]}
+
+
+def test_native_submit_keeps_writer_responsive_and_rechecks_authority(deferred_host, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from functools import partial
+    import threading
+    from hypoloom import workflow_host
+    from hypoloom.host_tools_server import AgentToolServer, _call_host
+    host = deferred_host
+    request, arguments = _manual_submission(host)
+    captures, threads = [], []
+    entered, release = threading.Event(), threading.Event()
+    real_check = workflow_host.check_submitted_measurement
+    def held_check(*args, **kwargs):
+        threads.append(threading.get_ident())
+        entered.set()
+        assert release.wait(10)
+        real_check(*args, **kwargs)
+    def capture(candidate):
+        captures.append(candidate)
+        return arguments["workspace_files"]
+    def service_until(endpoint, done):
+        deadline = time.monotonic() + 8
+        while not done() and time.monotonic() < deadline:
+            endpoint.service()
+            time.sleep(0.002)
+        assert done()
+    monkeypatch.setattr(workflow_host, "check_submitted_measurement", held_check)
+    monkeypatch.setitem(host.running_agents, request.attempt_id, None)
+    with tempfile.TemporaryDirectory() as tree, ThreadPoolExecutor(max_workers=2) as client:
+        endpoint = AgentToolServer(Path(tree) / "submit.sock", request.attempt_id,
+            host.handle_agent_tool, capture_workspace=capture)
+        try:
+            call = partial(_call_host, str(endpoint.socket_path))
+            submission = client.submit(call, "submit_experiment", {"candidate": arguments["candidate"]})
+            service_until(endpoint, entered.is_set)
+            assert len(threads) == 1 and threads[0] != threading.get_ident()
+            status = client.submit(call, "list_my_experiments", {})
+            service_until(endpoint, status.done)
+            assert status.result()["experiments"] == []
+            host.dispatch_errors[request.run_id] = {"phase": "dispatch"}
+            release.set()
+            service_until(endpoint, submission.done)
+            with pytest.raises(ValueError, match="dispatch_paused"):
+                submission.result()
+            assert len(captures) == 1 and not host.store.list_workflow_heads(request.run_id, "EXPERIMENT")
+        finally:
+            release.set()
+            endpoint.close()
+            host.running_agents.pop(request.attempt_id, None)
+
+
+def test_first_submission_rejects_wrong_captured_score_before_creating_an_experiment(deferred_host):
+    host = deferred_host
+    request, arguments = _manual_submission(host)
+    broken = []
+    for item in map(WorkspaceArtifact.from_dict, arguments["workspace_files"]):
+        data = item.content_bytes()
+        if item.path == "parse_metrics.py":
+            data = data.replace(b"float(row[1])", b"float(row[1]) - float(row[0])")
+        broken.append(WorkspaceArtifact.from_bytes(item.path, data).to_dict())
+    with pytest.raises(AgentACIError, match="expected metric_value"):
+        host.handle_agent_tool(request.attempt_id, "submit_experiment", {**arguments, "workspace_files": broken})
+    assert not host.store.list_workflow_heads(request.run_id, "EXPERIMENT")
+    assert host.handle_agent_tool(request.attempt_id, "submit_experiment", arguments)["exp_id"]
 
 
 def test_quarantine_rejects_new_submit_preserves_replay_and_reports_blocked_wait(deferred_host):

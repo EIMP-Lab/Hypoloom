@@ -11,6 +11,7 @@ from .shared_acceptance import SharedAcceptance, evaluate_shared_acceptance, nor
 
 
 CASES = "work/acceptance-cases.json"
+MEASUREMENT_CASES = "work/measurement-cases.json"
 
 
 def case_format_example():
@@ -62,6 +63,32 @@ def examples(data, acceptance):
 
 def fixture_path(case, artifact):
     return ("smoke/" if case == "baseline" else f"work/cases/{case}/") + artifact
+
+
+def measurement_examples(data, declaration):
+    """Read known absolute observations and independently specified final scores."""
+    from .domain import normalize_metric_value
+    from .measurement_contract import measurement_answer
+    cases = _json(data)
+    if (not isinstance(cases, dict) or "baseline" not in cases or not 2 <= len(cases) <= 8
+            or any(not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", key) for key in cases)):
+        raise ValueError(f"{MEASUREMENT_CASES}: provide baseline and one to seven short named cases")
+    if any(p == MEASUREMENT_CASES or p.startswith(("smoke/", "work/cases/")) for p in declaration.parser_files):
+        raise ValueError("measurement parser_files must be separate from the known-answer cases")
+    result = {}
+    for name, case in cases.items():
+        try:
+            if not isinstance(case, dict) or set(case) != {"observation", "metric_value"}:
+                raise ValueError("expected observation and metric_value")
+            readings, score = measurement_answer(declaration, case["observation"])
+            if score != normalize_metric_value(case["metric_value"]):
+                raise ValueError(f"expected metric_value disagrees with Host scoring ({score})")
+        except ValueError as exc:
+            raise ValueError(f"{MEASUREMENT_CASES}/{name}: {exc}") from exc
+        result[name] = (readings, score)
+    if all(answer == result["baseline"] for answer in result.values()):
+        raise ValueError(f"{MEASUREMENT_CASES}: include a case with different known observations")
+    return result
 
 
 def checked_seed_spec(spec):

@@ -117,6 +117,16 @@ def test_six_yaml_profile_v4_custom_measurement_admission_to_real_cpu_oracle(tmp
         host.close()
 
 
+def _write_local_examples(files):
+    fixtures = {path: content for path, content in files.items() if path.startswith(("smoke/", "work/"))}
+    if not fixtures:
+        return ""
+    return ("\npython3 - <<'PY'\nfrom pathlib import Path\n"
+            f"for relative, content in {fixtures!r}.items():\n"
+            " path = Path('/workspace') / relative\n path.parent.mkdir(parents=True, exist_ok=True)\n"
+            " path.write_text(content)\nPY\n")
+
+
 class _DeclaredScenario(_MemoryScenario):
     def __init__(self, root: Path, nonce: str):
         super().__init__(root, nonce)
@@ -237,6 +247,8 @@ class _DeclaredScenario(_MemoryScenario):
                 "assert result == {'metric': 'median_latency_delta', 'value': '9.0', 'baseline': '10.0'}, result\n"
                 f"print({_LOCAL_SUCCESS!r})\nPY"
             )
+            if step == 5:
+                script += _write_local_examples(files)
             return (
                 (
                     "parser_failure" if step == 3 else "parser_success",
@@ -430,7 +442,8 @@ def _run_real_claude_measurement_g3(tmp_path: Path, profile_kind: str, *,
             assert {
                 item["path"]
                 for item in design["response"]["proposed_workspace_artifacts"]
-            } == {"experiment.sh", "parse_metrics.py", "implementation.patch"}
+            } == {"experiment.sh", "parse_metrics.py", "implementation.patch", "smoke/timings.csv",
+                  "work/measurement-cases.json", "work/cases/faster/timings.csv"}
             for observation in observations:
                 session = observation["session"]
                 assert session["transcript_complete"] is True

@@ -2,6 +2,21 @@
 
 English · [简体中文](shared-evaluation.zh-CN.md)
 
+## Known answers for a LOCAL measurement
+
+From ACI 45, each non-null local measurement needs a small example with a known result and at least one variant with different expected observations. Put the manifest in `/workspace/work/measurement-cases.json`. For a staged metric `score` with unit `dev` and comparison `DELTA_FROM_BASELINE`, this manifest checks both directions.
+
+```json
+{
+  "baseline": {"observation": {"metric": "score", "observations": {"dev": {"value": 0.75, "baseline": 0.50}}}, "metric_value": 0.25},
+  "lower":    {"observation": {"metric": "score", "observations": {"dev": {"value": 0.25, "baseline": 0.50}}}, "metric_value": -0.25}
+}
+```
+
+Supply every declared raw file under `/workspace/smoke/` for the case named `baseline` and `/workspace/work/cases/<name>/` for each variant. Include 2–8 cases in total. Use observations with independently known readings. For delta comparisons, `value` and `baseline` are absolute readings. The Host applies the comparison and the declared reduction to compute `metric_value`. Design checks the draft. Experiment submission repeats the check on the captured parser and examples before preregistration. Each check shares a 15-second CPU limit across its cases. GOAL-only submissions with a null local measurement use their shared evaluator.
+
+## Shared GOAL criteria and diagnostics
+
 In ACI 43, Grounding can publish report-only fields alongside the shared criteria and validity checks. A diagnostic can be false or nonzero while a candidate meets the goal. The parser emits each declared field using its exact name and type. Oracle replays the same parser from the published raw evidence.
 
 | Declaration field | Parser output | Effect |

@@ -17,10 +17,10 @@ from hypoloom.domain import AgentCommand
 from hypoloom.oracle import Oracle
 
 from test_claude_file_tool_cli import _installed_claude
-from test_claude_measurement_g3 import _NoPublicWeb
+from test_claude_measurement_g3 import _NoPublicWeb, _write_local_examples
 from test_claude_shared_acceptance_g3 import (
     _AcceptanceChoices, _AcceptanceScenario, _DECLARATION, _GOAL, _RUN,
-    _common_source, _experiment_files, _fixture_pairs, _payload,
+    _common_source, _experiment_files, _fixture_pairs, _known_accuracy_examples, _payload,
 )
 from test_full_cc_host_g3 import _new_host, _request_from_provider, _start_provider
 
@@ -124,6 +124,8 @@ assert not Path('/tmp/shared-local-check/goal.json').exists()
 print('EXPERT_RAW_AND_BOTH_PARSERS_CHECKED: local passed; common raw input is incomplete')
 PY
 """
+                if request.schema_version >= 45:
+                    script += _write_local_examples(_known_accuracy_examples())
                 return (("expert_local_check", "Bash", {"command": script, "timeout": 10000}),)
         calls = super().tool_calls(number)
         if request is not None and request.command is AgentCommand.EXPERIMENT_EXECUTION:

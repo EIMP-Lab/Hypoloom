@@ -1,7 +1,7 @@
 """Native parser-boundary failure must recover through a new scientific hypothesis.
 
-After DESIGN's sample check, the execution session introduces a parser edit
-that wrongly emits the accepted common parser's envelope.
+After DESIGN, the submitted parser works on the two-row known answers.
+On the larger formal workload it wrongly emits the common parser's envelope.
 The real Host rejects an in-hypothesis parser rewrite. Ordinary analysis/update
 and the next cycle must establish a new hypothesis before corrected publication.
 All model choices are local scripted-provider fixtures; no paid model or GPU.
@@ -31,7 +31,7 @@ from test_claude_measurement_g3 import _NoPublicWeb
 from test_claude_multichain_g3 import _BatchScenario
 from test_claude_shared_acceptance_g3 import (
     _AcceptanceChoices, _AcceptanceScenario, _DECLARATION, _GOAL, _RUN,
-    _common_source, _experiment_files, _fixture_pairs, _local_measurement, _payload,
+    _batch_sensitive_parser, _common_source, _experiment_files, _fixture_pairs, _local_measurement, _payload,
 )
 from test_full_cc_host_g3 import _new_host, _request_from_provider, _start_provider
 from test_real_design_recovery_probe import _write_json
@@ -172,7 +172,7 @@ class _FrozenLocalParserScenario(_AcceptanceScenario):
             else:
                 if phase == "seed":
                     tool, arguments = "Write", {"file_path": "/workspace/parse_local.py",
-                        "content": _common_source(self.nonce)}
+                        "content": _batch_sensitive_parser(self.nonce)}
                 elif phase in {"submit", "resubmit"}:
                     tool = "mcp__host-tools__submit_experiment"
                     arguments = {"candidate": self.designs[request.role], "gpus": 0}
@@ -299,7 +299,7 @@ def test_native_frozen_local_parser_failure_revises_new_hypothesis_then_meets_go
     assert hypotheses[1]["payload"]["relation"] == "revises"
     assert hypotheses[0]["payload"]["claim"] != hypotheses[1]["payload"]["claim"]
     assert len({row["hypothesis_id"] for row in evidence["preregistrations"]}) == 2
-    assert evidence["submitted_local_parsers"] == [_common_source(nonce), _experiment_files(_GOAL)["parse_local.py"].decode()]
+    assert evidence["submitted_local_parsers"] == [_batch_sensitive_parser(nonce), _experiment_files(_GOAL)["parse_local.py"].decode()]
     assert evidence["submitted_raw_sources"] == [_experiment_files(role)["experiment.py"].decode() for role in (_GOAL, _GOAL + "-revised")]
     assert all(row["payload"]["measurement"] == _local_measurement().to_dict() for row in evidence["preregistrations"])
     assert all(row["payload"]["goal_evaluation"]["acceptance"] == _DECLARATION for row in evidence["preregistrations"])

@@ -71,10 +71,37 @@ def context(request):
                           if item.ref.endswith("--verification-context")).content_bytes())
 
 
+def probe_actions(rows, checks, *, author_smoke, previous):
+    """Attribute only known failures of the submitted sample or the verifier's own fixture."""
+    required = {check["id"] for check in checks if check["required"]}
+    fixtures = {}
+    entrypoint_details = None
+    for row in rows:
+        if row["id"] not in required:
+            continue
+        if author_smoke and row["id"] == "formal_entrypoint" and row["status"] == "FAIL":
+            entrypoint_details = row["details"]
+        if row["status"] == "ERROR" and not row.get("failures", 0):
+            for detail in row["details"]:
+                if detail.startswith(("FixtureError: ", "ValueError: paired fixture ")):
+                    fixtures[row["id"]] = detail
+                    break
+    if not fixtures and entrypoint_details is None:
+        return {}
+    repeated = sorted(key for key, detail in fixtures.items() if previous.get("verifier_fixtures", {}).get(key) == detail)
+    errors = {row["id"] for row in rows if row["id"] in required and row["status"] in {"FAIL", "ERROR"}}
+    return {"author_entrypoint": entrypoint_details is not None,
+            **({"entrypoint_details": entrypoint_details} if entrypoint_details is not None else {}),
+            "verifier_fixtures": fixtures, "repeated_fixtures": repeated,
+            "fixture_only": bool(fixtures) and errors == fixtures.keys()}
+
+
 def can_repair_probe(request, ctx):
     from .agent_aci import PROBE_RECOVERY_ACI_SCHEMA_VERSION
     remaining = ctx.get("probe_repairs_remaining", 0)
-    return (request.schema_version >= PROBE_RECOVERY_ACI_SCHEMA_VERSION
+    actions = ctx.get("probe_actions", {})
+    return (not actions.get("author_entrypoint") and not actions.get("repeated_fixtures")
+            and request.schema_version >= PROBE_RECOVERY_ACI_SCHEMA_VERSION
             and ctx["phase"] == "review" and type(remaining) is int and remaining > 0)
 
 
@@ -134,12 +161,21 @@ def validate_review(request, raw):
     blockers = any(item["severity"] == "blocker" for item in raw["findings"])
     if verdict == "passed" and blockers or verdict == "changes_required" and not blockers:
         raise ValueError("changes_required needs a sourced blocker; passed cannot retain blockers")
+    if verdict == "changes_required" and ctx.get("probe_actions", {}).get("fixture_only"):
+        for finding in raw["findings"]:
+            if finding["severity"] == "blocker" and not any(ref.endswith("--implementation-source") for ref in finding["evidence_refs"]):
+                raise ValueError("a verifier fixture error alone cannot justify an author repair; cite the independent source defect or report inconclusive")
     probe = raw["probe"]
     if (probe is not None) != (verdict == "probe_required"):
         raise ValueError("only probe_required supplies a probe")
     if ctx["phase"] == "inspect" and verdict == "passed":
         raise ValueError("initial inspection cannot pass without Host Process evidence")
     if ctx["phase"] == "review" and verdict == "probe_required":
+        actions = ctx.get("probe_actions", {})
+        if actions.get("author_entrypoint"):
+            raise ValueError("the submitted entrypoint sample failed; address the author's command or record an inconclusive environment")
+        if actions.get("repeated_fixtures"):
+            raise ValueError("the revised verifier fixture repeated the same error; report inconclusive or a separately evidenced candidate blocker")
         if not can_repair_probe(request, ctx):
             raise ValueError("probe repair allowance exhausted or unsupported; decide from evidence or report inconclusive")
         if blockers:
@@ -187,6 +223,9 @@ def validate_review(request, raw):
             from .verification_probe import RESERVED_PATHS, validate_checks
             from .agent_aci import ENGINEERING_MEMORY_ACI_SCHEMA_VERSION
             validate_checks(probe["checks"], comparisons=request.schema_version >= ENGINEERING_MEMORY_ACI_SCHEMA_VERSION)
+            required = {row["id"] for row in probe["checks"] if row["required"] and row["kind"] == "assertion"}
+            if missing := set(ctx.get("implementation_requirements", {})) - required:
+                raise ValueError("Profile implementation requirements need same-ID required assertions: " + ", ".join(sorted(missing)))
             entry = next((c for c in probe["checks"] if c["id"] == ENTRYPOINT_CHECK), None)
             if (request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION and (ctx.get("entrypoint_smoke") or entry)
                     and (entry is None or not entry["required"] or entry["kind"] != "assertion")):
@@ -194,6 +233,10 @@ def validate_review(request, raw):
             if any(p == w or p.startswith(w + "/") or w.startswith(p + "/") for p in RESERVED_PATHS for w in ctx["workspace_paths"]):
                 raise ValueError("candidate overlaps reserved Host probe paths; report inconclusive without a probe")
     if structured_probe(request): _validate_coverage(raw, ctx)
+    if verdict == "passed" and ctx.get("implementation_requirements"):
+        covered = {key for row in raw["coverage"]["covered"] for key in row["check_ids"]}
+        if missing := ctx["implementation_requirements"].keys() - covered:
+            raise ValueError("missing observed Profile implementation requirements: " + ", ".join(sorted(missing)))
     if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION and verdict == "passed":
         coverage = raw["coverage"]
         checked = any(ENTRYPOINT_CHECK in row["check_ids"] for row in coverage["covered"])
@@ -315,6 +358,15 @@ def instructions(request):
             "Otherwise decide passed/changes_required/inconclusive.\n"
             if can_repair_probe(request, ctx) else
             "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n"))
+    if ctx.get("implementation_requirements"):
+        result += ("For each implementation_requirements entry exercise its actual implementation using a required assertion "
+                   "with the exact same ID. Trace the admitted command and load its real outputs when required. "
+                   "If evidence cannot establish the condition, report the gap; a mock path or a file name cannot establish it.\n")
+    if ctx.get("probe_actions"):
+        result += ("The Host attributed observed failures in probe_actions. Give the author the submitted entrypoint error, "
+                   "and the verifier the sample setup errors. A verifier fixture error alone cannot establish a candidate defect. "
+                   "When the submitted entrypoint failed or a fixture error recurred after revision, give a sourced "
+                   "changes_required finding or return inconclusive if no candidate defect is established.\n")
     if request.schema_version >= 43:
         result += ("For a perturbation check use hypoloom_probe.paired_inputs(sample, perturb, control=..., target=...). "
             "Draw the base once, mutate one clone in place, select all fixed inputs and the changed region. "

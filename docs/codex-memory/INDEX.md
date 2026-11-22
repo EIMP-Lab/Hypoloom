@@ -1,5 +1,7 @@
 # Development memory index
 
+- [Project engineering requirements, local known answers and verifier repair routing, November 22](../design/implementation-and-measurement-checks.md).
+
 - [Authoring progress windows, draft checks and recovery, November 21](../guides/shared-evaluation.md).
 
 - [Draft rejection, outcome collection and entrypoint verification, November 20](../qualification.md#submission-recovery-and-entrypoint-verification-2026-11-20).

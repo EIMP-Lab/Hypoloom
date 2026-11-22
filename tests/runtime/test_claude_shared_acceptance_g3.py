@@ -28,7 +28,7 @@ from hypoloom.oracle import Oracle
 from hypoloom.profile_admission import admit_profile
 
 from test_claude_file_tool_cli import _installed_claude, _result_text, _tool_results
-from test_claude_measurement_g3 import _DeclaredScenario, _NoPublicWeb
+from test_claude_measurement_g3 import _DeclaredScenario, _NoPublicWeb, _write_local_examples
 from test_deferred_measurement_host import DeclaredMeasurementAgent, _candidate_bodies
 from test_full_cc_host_g3 import _MODEL, _new_host, _request_from_provider, _start_provider
 from test_profile_admission import _materialize_expert_loop_pilot_v3
@@ -95,6 +95,18 @@ else:
     return source.replace("denominator = len(rows['labels'])", "denominator = len(rows['labels']) + 1") if broken else source
 
 
+def _batch_sensitive_parser(nonce):
+    source = _common_source(nonce)
+    original = "result_path.write_text(json.dumps(evaluate(json.loads((raw_root / 'predictions.json').read_text()))))"
+    replacement = ("raw = json.loads((raw_root / 'predictions.json').read_text())\n"
+                   "    rows = raw['diagnostic']\n"
+                   "    result = ({'metric': 'diagnostic_accuracy', 'value': accuracy(rows)} "
+                   "if len(rows['labels']) <= 2 else evaluate(raw))\n"
+                   "    result_path.write_text(json.dumps(result))")
+    assert original in source
+    return source.replace(original, replacement)
+
+
 def _fixture_pairs():
     labels = [0, 1, 0, 1]
     return {"labels": labels, "candidates": {
@@ -126,6 +138,18 @@ value = Decimal(sum(left == right for left, right in zip(rows['labels'], rows['p
 result_path.write_text(json.dumps({'metric': 'diagnostic_accuracy', 'value': str(value)}))
 '''
     return {"experiment.py": raw.encode(), "parse_local.py": local.encode(), "implementation.patch": b""}
+
+
+def _known_accuracy_examples():
+    from hypoloom.evaluator_examples import MEASUREMENT_CASES, fixture_path
+    files, cases = {}, {}
+    for name, predictions, value in (("baseline", [0, 1], 1), ("partial", [0, 0], 0.5)):
+        row = {"labels": [0, 1], "predictions": predictions, "candidate": "fixture"}
+        raw = {"diagnostic": row, "suites": {"suite_one": row, "suite_two": row}}
+        files[fixture_path(name, "predictions.json")] = json.dumps(raw)
+        cases[name] = {"observation": {"metric": "diagnostic_accuracy", "value": value}, "metric_value": value}
+    files[MEASUREMENT_CASES] = json.dumps(cases)
+    return files
 
 
 class _AcceptanceChoices(DeclaredMeasurementAgent):
@@ -326,6 +350,8 @@ assert set(goal) == {'measurements', 'checks'} and set(local) == {'metric', 'val
 print('EXPERT_RAW_AND_BOTH_PARSERS_CHECKED')
 PY
 """
+                if request.schema_version >= 45:
+                    script += _write_local_examples(_known_accuracy_examples())
                 return (("expert_local_check", "Bash", {"command": script, "timeout": 10000}),)
             if self.local_stop_repair and step == 6:
                 return (("wrong_local_envelope", "Write", {"file_path": "/workspace/parse_local.py",
@@ -511,8 +537,9 @@ def test_native_grounding_shared_source_local_failure_and_complete_goal_stop(tmp
             assert report.ok, report.to_dict()
             assert not host.running_agents and not host.running
             assert all(not process_group_exists(row["process_group_id"]) for row in attempts if row["process_group_id"])
-            # Grounding plus both local DESIGNs each reject once and then recover.
-            assert len(smoke_processes) == 6
+            # Two Grounding checks, then one rejected draft, two passing draft cases
+            # and two passing captured submission cases for each of the two experts.
+            assert len(smoke_processes) == 12
             assert all(not process_group_exists(handle.process_group_id) and handle._guardian.poll() is not None
                 and not Path(handle.request.cwd).exists() for handle in smoke_processes)
             (tmp_path / "shared-acceptance-evidence.json").write_text(json.dumps({
