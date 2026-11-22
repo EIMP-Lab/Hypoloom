@@ -11,7 +11,7 @@ from typing import Mapping
 
 from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
-                        STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
+                        ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
 from .verification_contract import compact_review, structured_submission, verdict_scoped_review
 
@@ -645,6 +645,15 @@ def _stage_instruction(request: AgentRequest) -> str:
             "Passing the structural smoke alone does not establish these semantic assertions. "
             "A GOAL-only measurement=null needs no local parser or local fixture. "
         )
+    if (request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION and request.command.value in {"EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}
+            and declared_measurement_request(request)):
+        common += ("For each non-null local measurement put known answers in /workspace/work/measurement-cases.json. "
+                   "Use baseline and at least one named variant (up to eight cases total). Each case has observation "
+                   "(the expected parser output with absolute value and baseline per declared unit) and metric_value "
+                   "(the expected final Host score). For example .75 versus .5 gives .25 in DELTA_FROM_BASELINE. "
+                   "Place each declared raw file in smoke/<file> for baseline and work/cases/<name>/<file> for variants. "
+                   "Keep cases out of parser_files. DESIGN and submit_experiment exercise the isolated parser and Host "
+                   "comparison on these bytes. Retain the fixtures when repairing or submitting the experiment. ")
     if shared:
         common += (
             "The goal is an original research commission resolved by the shared Grounding evaluator. "

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import fcntl
 import hashlib
 import json
@@ -19,7 +20,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, request_digest, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot, with_output_digest)
+from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION
 from .agent_capabilities import capabilities_for
+from .host_tools_server import HostToolOperation, SubmissionCheckOperation
 from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
 from .context_management import continuation_observation
 from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, authoring_wall_budget, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
@@ -27,7 +30,7 @@ from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
 from .backup_restore import create_quiesced_backup
 from .host_settings import HostConfigurationError, PRIVATE_SETTINGS_NAME, prepare_host_settings, runtime_environment_id, provider_retry_status, provider_connection
-from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, component_result_contract, prepare_candidate_validation
+from .candidate_validation import assert_candidate_patch_compiles, bounded_diagnostics, check_submitted_measurement, component_result_contract, prepare_candidate_validation
 from .control_protocol import ControlRequest, ControlResponse, send_message, socket_address
 from .claude_agent_host import (CLAUDE_AGENT_GIT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_HOST_VERSION, CLAUDE_AGENT_STRUCTURED_OUTPUT_FAILED_VALIDATION_CAP, CLAUDE_AGENT_TOOL_PERMISSION_PROFILE, CLAUDE_AGENT_TRANSPORT_RETRIES, AgentDeadlineExpired, AgentHostError, AgentHostTerminalReason, ClaudeAgentHost, RunningClaudeAgent, SandboxUnavailable, _cleanup_tool_workspace, validate_claude_model_selector)
 from .compute_resources import ComputeCapabilities, GpuPressureTracker, LocalComputeResources, ResourceUnavailable, gpu_memory_reserve_mib, gpu_pressure_attribution, gpu_pressure_payload
@@ -427,6 +430,9 @@ class WorkflowHost:
         if product is not None and int(self.version.agent_aci_version) >= 31:
             from .profile_v4 import validate_product_settings
             validate_product_settings(product)
+        if isinstance(product, Mapping) and product.get("goal", {}).get("implementation_requirements") and (
+                int(self.version.agent_aci_version) < ENGINEERING_CHECKS_ACI_SCHEMA_VERSION or not product["experts"].get("verifier", {}).get("model")):
+            raise ValueError("Profile implementation_requirements require an independent verifier model and ACI 45 or later")
         validate_new_run_budget(contract.document, self.agent_budget)
         if _uses_expert_loop(contract) and self.claude_agent_host is not None and (self.literature_io is None or self.literature_io.configuration.get("adapter") != "openalex"):
             raise ValueError("real ACI-7 expert loop requires a qualified OpenAlex literature adapter")
@@ -3450,7 +3456,7 @@ class WorkflowHost:
                 parts.append(stream.read(max_bytes // 2).decode("utf-8", errors="replace"))
         return "\n".join(parts)[-max_bytes:]
 
-    def handle_agent_tool(self, attempt_id: str, tool: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+    def handle_agent_tool(self, attempt_id: str, tool: str, arguments: Mapping[str, Any]) -> dict[str, Any] | HostToolOperation:
         """Admit one scoped MCP operation on the Host writer thread; never wait."""
         if tool == "read_papers": return self.paper_reading.handle(self._agent_tool_request(attempt_id, grounding=True), arguments)
         if tool == "get_resources":
@@ -3476,9 +3482,7 @@ class WorkflowHost:
         request = self._agent_tool_request(attempt_id)
         if not isinstance(arguments, Mapping): raise AgentACIError("tool_arguments", "tool arguments must be an object")
         if tool == "submit_experiment":
-            if self.resource_recovery.for_request(request):
-                raise AgentACIError("resource_infrastructure_blocked", "GPU infrastructure is blocked. End this attempt; the operator must recheck resources. Do not downgrade to CPU.")
-            return self._submit_experiment(request, arguments)
+            return self._submit_experiment(request, arguments, defer_measurement=attempt_id in self.running_agents)
         owned = {str(item["exp_id"]): item for item in self._owned_tool_experiments(request)}
         if tool == "list_my_experiments":
             if arguments: raise AgentACIError("tool_arguments", "list_my_experiments takes no arguments")
@@ -3512,8 +3516,11 @@ class WorkflowHost:
             and execution_handoff(json.loads(row["observation_json"])) == experiment_id
             for row in self._expert_attempts(request.task_context))
 
-    def _submit_experiment(self, request: AgentRequest, arguments: Mapping[str, Any]) -> dict[str, Any]:
+    def _submit_experiment(self, request: AgentRequest, arguments: Mapping[str, Any], *,
+                           defer_measurement: bool = False, measurement_checked: bool = False) -> dict[str, Any] | HostToolOperation:
         from .agent_aci import validate_experiment_candidate_fields, validate_experiment_submission
+        if self.resource_recovery.for_request(request):
+            raise AgentACIError("resource_infrastructure_blocked", "GPU infrastructure is blocked. End this attempt; the operator must recheck resources. Do not downgrade to CPU.")
         task = request.task_context
         assert isinstance(task, ResearchNodeTask)
         predecessor = arguments.get("replaces_experiment_id")
@@ -3553,6 +3560,17 @@ class WorkflowHost:
         if self.shared_gpu is None and "resource_estimate" in normalized_arguments:
             raise AgentACIError("resource_estimate_unavailable", "learned estimates require an explicitly configured shared pool")
         candidate, files, source_snapshot = validate_experiment_submission(request, resolved_arguments)
+        if request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION and candidate.measurement is not None and not measurement_checked:
+            check = partial(check_submitted_measurement, candidate.measurement, files, max_bytes=request.budget.max_output_bytes)
+            if defer_measurement:
+                def finish(_, error):
+                    if error is not None:
+                        raise error
+                    # Recheck ownership, budgets, resource controls and replay identity on the writer.
+                    live = self._agent_tool_request(request.attempt_id)
+                    return self._submit_experiment(live, normalized_arguments, measurement_checked=True)
+                return SubmissionCheckOperation(check, finish)
+            check()
         self._validate_submission_candidate(request, candidate, files, source_snapshot)
         from .execution_reuse import submission_inputs
         submission_inputs(self, request, source_snapshot["arguments"])

@@ -2,6 +2,21 @@
 
 [English](shared-evaluation.md) · 简体中文
 
+## LOCAL 测量的已知答案
+
+从 ACI 45 起，每个非空的本地测量都要提供已知答案的样例，至少一个变体应有不同的预期读数。清单位于 `/workspace/work/measurement-cases.json`。以下例子用一个名为 `dev` 的单元和 `DELTA_FROM_BASELINE` 比较，同时检验变好和变差两种情况。
+
+```json
+{
+  "baseline": {"observation": {"metric": "score", "observations": {"dev": {"value": 0.75, "baseline": 0.50}}}, "metric_value": 0.25},
+  "lower":    {"observation": {"metric": "score", "observations": {"dev": {"value": 0.25, "baseline": 0.50}}}, "metric_value": -0.25}
+}
+```
+
+名为 `baseline` 的样例把声明的原始文件放在 `/workspace/smoke/`，各变体放在 `/workspace/work/cases/<名称>/`。总计提供 2 至 8 个样例。对于差值比较，`value` 和 `baseline` 分别填写已知的候选与对照绝对读数。Host 按声明的比较和归约规则计算 `metric_value`。设计阶段检查草稿，提交实验时再用实际捕获的解析器和样例复核，通过后才预注册。每次检查的所有样例共用 15 秒 CPU 沙箱运行时限。仅使用 GOAL 且本地测量为空的提交沿用共享评估器。
+
+## 共享 GOAL 的判据与诊断
+
 从 ACI 43 起，Grounding 可以在公共成功判据和有效性检查之外声明仅供报告的诊断值。诊断值为假或非零时，候选仍可达标。解析器按声明的名称和类型输出每个字段。独立 Oracle 从已发布的原始证据重新执行解析器。
 
 | 声明 | 解析器输出 | 用途 |

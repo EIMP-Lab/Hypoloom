@@ -215,6 +215,7 @@ class NativeOutputValidator:
                  deadline_at: float, diagnostics: RuntimeDiagnostics | None = None,
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
                  semantic_examples: bool = False, seed_files: Mapping[str, bytes] | None = None,
+                 measurement_examples_required: bool = False,
                  design_implementation: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
@@ -269,6 +270,7 @@ class NativeOutputValidator:
         self.design_implementation = design_implementation
         self.diagnostics = diagnostics
         self.semantic_examples = semantic_examples
+        self.measurement_examples_required = measurement_examples_required
         self.seed_files = seed_files
         self.acceptance_smoke = acceptance_smoke
         self.measurement_smoke = measurement_smoke
@@ -522,6 +524,7 @@ class NativeOutputValidator:
                         smoke = parser_smoke(text,
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
                             semantic_examples=self.semantic_examples, seed_files=self.seed_files,
+                            measurement_examples_required=self.measurement_examples_required,
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
                             max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed,
                             **({"case_verified": lambda count: self._verified(2 + count, f"parser_cases/{count}")}
@@ -672,6 +675,7 @@ class NativeOutputValidator:
 def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_seconds: float,
                  max_bytes: int, declaration_key: str = "acceptance", semantic_examples: bool = True,
                  seed_files: Mapping[str, bytes] | None = None,
+                 measurement_examples_required: bool = False, captured_files: Mapping[str, bytes] | None = None,
                  cancel_event: threading.Event | None = None,
                  case_verified: Callable[[int], None] | None = None) -> dict[str, Any] | None:
     """Snapshot declared fixtures and use the production parser environment.
@@ -679,7 +683,7 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
     This runs only on the Host. Each correction gets fresh inputs and output;
     Agent data roots, authoring trees and environment never reach the parser.
     """
-    from .measurement_contract import ScientificMeasurement
+    from .measurement_contract import ScientificMeasurement, measurement_answer
     from .measurement_execution import prepare_parser, run_parser
     from .shared_acceptance import SharedAcceptance
 
@@ -694,18 +698,24 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
         test_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="parser-smoke-", dir=test_root) as temporary:
             work = Path(temporary)
-            from .evaluator_examples import CASES, check_seed_contract, examples, fixture_path
+            from .evaluator_examples import (CASES, MEASUREMENT_CASES, check_seed_contract, examples,
+                                             fixture_path, measurement_examples)
             from .shared_acceptance import normalize_shared_observation
             if seed_files is not None:
                 check_seed_contract(seed_files, contract)
             remaining = max_bytes
             def read(name):
                 nonlocal remaining
-                path = source_root / name
-                if path.resolve() != source_root.resolve() / name or not path.is_file() or path.is_symlink():
-                    raise ValueError(f"missing regular smoke input: {name}")
-                with path.open("rb") as stream:
-                    content = stream.read(remaining + 1)
+                if captured_files is None:
+                    path = source_root / name
+                    if path.resolve() != source_root.resolve() / name or not path.is_file() or path.is_symlink():
+                        raise ValueError(f"missing regular smoke input: {name}")
+                    with path.open("rb") as stream:
+                        content = stream.read(remaining + 1)
+                else:
+                    if name not in captured_files:
+                        raise ValueError(f"missing captured smoke input: {name}")
+                    content = captured_files[name]
                 remaining -= len(content)
                 if remaining < 0:
                     raise ValueError("parser source and smoke fixtures exceed the output byte budget")
@@ -727,11 +737,23 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                         log.seek(0, os.SEEK_END); log.seek(max(0, log.tell() - 1536))
                         detail = log.read().decode(errors="replace")
                     raise ValueError(result.error + (": " + detail if detail else ""))
-                if expected and normalize_shared_observation(result.raw_result, contract) != expected[0]:
-                    raise ValueError(f"case {case}: actual parser observation differs from the expected observation")
+                if expected:
+                    if declaration_key == "measurement":
+                        try:
+                            readings, score = measurement_answer(contract, result.raw_result)
+                        except ValueError as exc:
+                            raise ValueError(f"case {case}: {exc}") from exc
+                        if (readings, score) != expected:
+                            mismatched = [unit for unit in readings if readings[unit] != expected[0][unit]]
+                            raise ValueError(f"case {case}: expected metric_value {expected[1]}, observed {score}; "
+                                             f"check absolute value/baseline in {', '.join(mismatched)}")
+                    elif normalize_shared_observation(result.raw_result, contract) != expected[0]:
+                        raise ValueError(f"case {case}: actual parser observation differs from the expected observation")
                 return result.raw_result
 
             cases = {}
+            if declaration_key == "measurement" and measurement_examples_required:
+                cases = measurement_examples(read(MEASUREMENT_CASES), contract)
             if declaration_key == "acceptance" and semantic_examples and (source_root / CASES).exists():
                 cases = examples(read(CASES), contract)
             # Keep exact bytes for comparison so unchanged seed cases run only once.

@@ -5,6 +5,7 @@ inside the existing no-network execution sandbox and returns bounded diagnostic
 bytes for the Host to persist and feed into a later Agent attempt.
 """
 from __future__ import annotations
+import json
 from pathlib import Path
 from typing import Any, Mapping
 from .agent_aci import AgentRequest, validate_postflight, validate_submission_snapshot
@@ -147,6 +148,19 @@ def assert_candidate_patch_compiles(workspace: ExecutionWorkspace,
                     f"implementation_patch_compile_failed: {relative}: "
                     f"{exc.msg} (line {exc.lineno})"
                 ) from exc
+
+def check_submitted_measurement(declaration, files, *, max_bytes):
+    """Exercise the actual captured parser and fixtures before its first durable submission."""
+    import tempfile
+    from .native_output import parser_smoke
+    from .agent_aci import AgentACIError
+    root = Path(tempfile.gettempdir())
+    result = parser_smoke(json.dumps({"typed_candidate": {"measurement": declaration.to_dict()}}),
+        source_root=root, test_root=root, declaration_key="measurement", captured_files=files,
+        timeout_seconds=15, max_bytes=max_bytes, measurement_examples_required=True)
+    if result["error"]:
+        raise AgentACIError("invalid_candidate", "local measurement examples: " + result["error"])
+
 
 def _patched_python_paths(patch: bytes) -> tuple[str, ...]:
     """List the distinct destination ``.py`` paths a unified diff writes."""

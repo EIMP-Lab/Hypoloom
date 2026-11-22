@@ -14,7 +14,7 @@ from hypoloom.fake_agent import FakeAgent, default_request
 from hypoloom.lifecycle import Command, RunState
 from hypoloom.verification import ImplementationVerification, review_rows
 from hypoloom.verification_audit import formal_gate, request_binding
-from hypoloom.verification_contract import context, review_schema, validate_review
+from hypoloom.verification_contract import can_repair_probe, context, review_schema, validate_review
 from hypoloom.verification_probe import execution_files, RUNNER_PATH, RESULT_PATH, decode_result
 from hypoloom.workflow_host import WorkflowHost
 
@@ -135,6 +135,17 @@ def recovery(tmp_path, monkeypatch, request):
     host.store.initialize()
     document = {"budget": {"max_retries": 2}, "methodology": {"controls": {"product": {
         "experts": {"verifier": {"model": "review-model"}}, "methodology": {}, "language": {}, "safety": {}}}}}
+    if scenario in {"repeated_fixture", "reload"}:
+        document["methodology"]["controls"]["product"]["goal"] = {"implementation_requirements": {
+            "fixture": "Check the submitted reader against the artifact written by the submitted producer."}}
+    candidate = (b"from pathlib import Path\ndef save(n): Path('value').write_text(str(n))\n"
+                 b"def load(): return int(Path('value').read_text())\n" if scenario == "reload" else b"answer = 42\n")
+    smoke = {"args": ["--sample"], "outputs": ["sample.json"]} if scenario == "mixed_entrypoint" else None
+    if smoke:
+        candidate = b"raise SystemExit(2)\n"
+    arguments = {"workspace_files": [WorkspaceArtifact.from_bytes("candidate.py", candidate).to_dict()]}
+    if smoke:
+        arguments["entrypoint_smoke"] = smoke
     contract = SimpleNamespace(document=document, to_dict=lambda: document)
     monkeypatch.setattr(host, "_research_contract", lambda _: contract)
     monkeypatch.setattr(host, "_run_config", lambda _: {"execution": {}})
@@ -144,10 +155,10 @@ def recovery(tmp_path, monkeypatch, request):
         tx.append_transition(host._transition_record(tx, "run-fake", "run-fake", "RUN", Command.ACTIVATE, RunState.ACTIVE))
         tx.record_command({"command_id": "submit", "run_id": "run-fake", "workflow_id": "experiment",
             "command_type": "CREATE_EXPERIMENT", "request": {"source_snapshot": {"output_digest": "a" * 64,
-                "arguments": {"workspace_files": [WorkspaceArtifact.from_bytes("candidate.py", b"answer = 42\n").to_dict()]}}}})
+                "arguments": arguments}}})
     author = SimpleNamespace(role="author", component_id="code", command_id="delivery")
     source = ({}, {"source_submit_command_id": "submit", "argv": ["python", "candidate.py"], "environment": {}},
-        author, {"arguments": {}}, SimpleNamespace(output_digest="a" * 64, workspace_files={"candidate.py": b"answer = 42\n"}))
+        author, {"arguments": arguments}, SimpleNamespace(output_digest="a" * 64, workspace_files={"candidate.py": candidate}))
     verification = ImplementationVerification(host)
     monkeypatch.setattr(verification, "source", lambda *_: source)
     failures = []
@@ -168,6 +179,15 @@ def recovery(tmp_path, monkeypatch, request):
             report["probe"]["files"]["verification/probe.py"] = (
                 "from hypoloom_probe import check\nwith check('fixture') as c: c.true(math.isfinite(" +
                 ("undefined_value" if scenario == "persistent" else "42") + "))\n")
+            if scenario in {"repeated_fixture", "mixed_entrypoint"}:
+                report["probe"]["files"]["verification/probe.py"] = (
+                    "from hypoloom_probe import check, paired_inputs\nwith check('fixture') as c:\n"
+                    " a, b = paired_inputs(lambda: [1, 2], lambda row: None, control=lambda s: s[0], target=lambda s: s[1])\n"
+                    " c.equal(a[0], b[0])\n")
+            if scenario == "reload":
+                report["probe"]["files"]["verification/probe.py"] = (
+                    "import runpy\nfrom hypoloom_probe import check\nmodule = runpy.run_path('candidate.py')\n"
+                    "with check('fixture') as c:\n module['save'](42)\n c.equal(module['load'](), 42)\n")
             if scenario == "comparison":
                 report["probe"]["checks"].append({"id": "paired", "kind": "comparison", "required": True,
                     "purpose": "Compare captured integer summation", "basis": "Equal range, independent arithmetic identity"})
@@ -181,7 +201,7 @@ def recovery(tmp_path, monkeypatch, request):
             report.update(verdict="changes_required", summary="The candidate contains a demonstrated defect.",
                 findings=[{"id": "wrong", "severity": "blocker", "message": "Candidate is wrong",
                     "evidence_refs": [request.immutable_context_refs[0]], "resolution_condition": "Fix the candidate", "followup_of": None}])
-        elif not ctx["probe_evidence"]["usable"] and ctx["probe_repairs_remaining"]:
+        elif not ctx["probe_evidence"]["usable"] and can_repair_probe(request, ctx):
             report.update(verdict="probe_required", probe=deepcopy(ctx["probe_plan"]),
                 summary="Correct the missing math import and retain the implementation assertion.")
             report["probe"]["files"]["verification/probe.py"] = "import math\n" + report["probe"]["files"]["verification/probe.py"]
@@ -202,7 +222,7 @@ def recovery(tmp_path, monkeypatch, request):
         aid = f"experiment--probe-{ordinal}"
         folder = tmp_path / aid
         files = {**source[-1].workspace_files, **{p: s.encode() for p, s in plan["files"].items()},
-            **execution_files(plan, attempt_id=aid, report_ref=plan["report_ref"])}
+            **execution_files(plan, attempt_id=aid, report_ref=plan["report_ref"], smoke=smoke, formal_argv=source[1]["argv"])}
         for name, data in files.items():
             path = folder / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,6 +303,34 @@ def test_zero_repair_budget_stays_inconclusive_and_never_authorizes_training(rec
     assert context(requests[-1])["probe_repairs_remaining"] == 0
 
 
+@pytest.mark.parametrize("recovery,success", [("reload", True), ("repeated_fixture", False)], indirect=["recovery"])
+def test_host_binds_project_check_and_routes_actual_probe_evidence(recovery, success):
+    host, verification, execute, requests, failures, document = recovery
+    required = document["methodology"]["controls"]["product"]["goal"]["implementation_requirements"]
+    _, plan = verification.gate("run-fake", "experiment")
+    assert context(requests[0])["implementation_requirements"] == required
+    result = execute(plan)["checks"][0]
+    if success:
+        assert result["status"] == "PASS" and result["assertions"] == 1
+        assert verification.gate("run-fake", "experiment") == (True, None)
+        assert not failures
+    else:
+        assert result["status"] == "ERROR" and "FixtureError" in result["details"][0]
+        _, revised = verification.gate("run-fake", "experiment")
+        assert revised and execute(revised)["checks"][0]["status"] == "ERROR"
+        assert verification.gate("run-fake", "experiment") == (False, None)
+        assert failures[-1]["report"]["verdict"] == "inconclusive"
+        assert failures[-1]["probe_actions"]["repeated_fixtures"] == ["fixture"]
+        assert context(requests[-1])["probe_repairs_remaining"] == 1
+    commands = {r["command_id"]: r for r in host.store.inspect("SELECT * FROM workflow_commands")}
+    attempts = {r["attempt_id"]: r for r in host.store.list_attempts(run_id="run-fake")}
+    observations = {k: json.loads(r["observation_json"] or "{}") for k, r in attempts.items()}
+    for req in requests:
+        request_binding(req, commands[req.command_id], commands, attempts, observations, requirements=required)
+        with pytest.raises(AssertionError):
+            request_binding(req, commands[req.command_id], commands, attempts, observations, requirements={})
+
+
 @pytest.mark.parametrize("recovery", ["persistent"], indirect=True)
 def test_probe_repairs_stop_after_two_even_with_a_larger_model_retry_budget(recovery):
     host, verification, execute, requests, failures, document = recovery
@@ -304,6 +352,24 @@ def test_demonstrated_candidate_blocker_is_not_routed_to_probe_repair(recovery):
     execute(plan)
     assert verification.gate("run-fake", "experiment") == (False, None)
     assert len(requests) == 2 and failures[-1]["report"]["verdict"] == "changes_required"
+
+
+@pytest.mark.parametrize("recovery", ["mixed_entrypoint"], indirect=True)
+def test_failing_submitted_command_returns_to_author_on_the_first_review(recovery):
+    from hypoloom.execution_budget import experiment_execution_feedback
+    host, verification, execute, requests, failures, _ = recovery
+    _, plan = verification.gate("run-fake", "experiment")
+    checks = {row["id"]: row for row in execute(plan)["checks"]}
+    assert checks["formal_entrypoint"]["status"] == "FAIL" and checks["fixture"]["status"] == "ERROR"
+    assert verification.gate("run-fake", "experiment") == (False, None)
+    assert len(requests) == 2 and len(host.store.list_attempts(kind="PROCESS")) == 1
+    final = failures[-1]
+    assert final["probe_actions"]["author_entrypoint"] and "fixture" in final["probe_actions"]["verifier_fixtures"]
+    feedback = experiment_execution_feedback(None, None, {"implementation_verification": final})
+    assert feedback["failure_category"] == "submitted_entrypoint_failed"
+    assert any("actual=2" in item for item in feedback["probe_actions"]["entrypoint_details"])
+    delivered = json.loads(verification.feedback("run-fake", "author", "code", "delivery")[0].content_bytes())
+    assert delivered["current_actions"][-1]["probe_actions"] == final["probe_actions"]
 
 
 def test_open_probe_cannot_be_reviewed_or_duplicated(recovery):

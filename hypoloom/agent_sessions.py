@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, Mapping, Sequence
 
-from .agent_aci import AgentACIError, AgentRequest, WorkspaceArtifact
+from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, AgentACIError, AgentRequest, WorkspaceArtifact
 from .artifacts import AgentArtifactKey, ArtifactPublisher, ArtifactPublication
 from .domain import AgentCommand
 from .context_management import continuation_observation
@@ -325,6 +325,14 @@ class PreparedSessionWorkspace:
             if not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(arg, str) or not arg or "\x00" in arg for arg in argv):
                 raise GitAuthoringIntegrityError("measurement execution requires explicit argv")
             paths = set(() if declaration is None else declaration.parser_files)
+            if declaration is not None and self.request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
+                from .evaluator_examples import MEASUREMENT_CASES, fixture_path, measurement_examples
+                manifest = self.worktree_root / MEASUREMENT_CASES
+                if manifest.resolve() != self.worktree_root.resolve() / MEASUREMENT_CASES or not manifest.is_file():
+                    raise GitAuthoringIntegrityError(f"missing regular local measurement examples: {MEASUREMENT_CASES}")
+                cases = measurement_examples(_regular(manifest, budget), declaration)
+                paths.add(MEASUREMENT_CASES)
+                paths.update(fixture_path(case, name) for case in cases for name in declaration.raw_artifacts)
             for arg in argv:
                 if arg.startswith("/input/"):
                     paths.add(arg.removeprefix("/input/"))

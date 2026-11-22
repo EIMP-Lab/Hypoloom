@@ -59,6 +59,7 @@ constraints:
 | `description` | Nonempty research objective. State the baseline, expected improvement, measurement procedure and required evidence. `>-` folds the following lines into one string. |
 | `metric` | `null` lets research establish the metric. To specify one shared metric, use the object described below. |
 | `constraints` | List of research requirements and exclusions. These instructions do not replace sandbox permissions. |
+| `implementation_requirements` | Optional mapping of up to 12 check IDs to observable engineering requirements for every submitted implementation. Select an independent verifier at launch. [Examples and evidence](../docs/guides/implementation-verification.md#project-specific-engineering-requirements) |
 
 New runs have no expert research-round limit. Round numbers, reports and
 evolution remain; experiment, time, cost, invocation, iteration and repair

@@ -60,7 +60,7 @@ class _Validator:
         return value
 
 
-_GOAL = {"evaluator_seed", "title", "description", "metric", "constraints", "stop_conditions", "completion", "evaluation"}
+_GOAL = {"evaluator_seed", "title", "description", "metric", "constraints", "implementation_requirements", "stop_conditions", "completion", "evaluation"}
 _EXPERT = {"name", "role", "persona", "focus", "model", "effort", "max_forks", "max_hypotheses_per_round", "stage_overrides"}
 _DEFAULTS = {"model", "effort", "max_forks", "max_hypotheses_per_round"}
 _METHOD = {"schema_version", "runtime", "budget", "literature", "inner_loop", "interaction", "graph_evolution", "memory", "output_correction"}
@@ -253,6 +253,15 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     title = v.text(goal.get("title"), "goal.yaml.title")
     description = v.text(goal.get("description"), "goal.yaml.description")
     constraints = v.strings(goal.get("constraints", []), "goal.yaml.constraints")
+    requirements = goal.get("implementation_requirements", {})
+    if not isinstance(requirements, dict) or len(requirements) > 12:
+        v.error("goal.yaml.implementation_requirements", "expected a mapping of at most 12 check IDs to observable engineering requirements")
+        requirements = {}
+    for key, requirement in requirements.items():
+        if (not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", key)
+                or key == "formal_entrypoint" or not isinstance(requirement, str)
+                or not requirement.strip() or "\x00" in requirement or len(requirement) > 1024):
+            v.error("goal.yaml.implementation_requirements", "use a unique short ASCII check ID other than formal_entrypoint and 1..1024 characters of text")
     stops = v.object(goal.get("stop_conditions", {}), {"max_wall_clock_hours", "target_metric"}, "goal.yaml.stop_conditions")
     if "max_rounds_per_expert" in stops:
         v.error("goal.yaml.stop_conditions.max_rounds_per_expert",
@@ -365,13 +374,15 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     max_sources = methodology.get("literature", {}).get("max_sources", 8) if isinstance(methodology.get("literature", {}), dict) else 8
     if isinstance(role_budgets, dict):
         for role in roles: role_budgets.setdefault(role["id"], {"max_papers": max_sources})
-    legacy = project_profile_v3(goal={"topic": title, "objective": description, "context": "\n".join(constraints), "completion": completion},
+    context = [*constraints, *(f"{key}: {text}" for key, text in requirements.items())]
+    legacy = project_profile_v3(goal={"topic": title, "objective": description, "context": "\n".join(context), "completion": completion},
         experts={"roles": roles}, methodology={"schema_version": 3, "mode": {"research_loop": "expert-six-node/1", "domain_grounding": "required",
             "experiment_isolation": "git_authoring_worktree", "observer": "disabled", "component_ownership": "balanced"},
             "runtime": copy.deepcopy(methodology.get("runtime", {})), "budget": budget},
         language={"default": prompt_language, "overrides": {"cycle_report": report_language}})
     settings = {"profile_version": 4, "goal": {"constraints": constraints, "stop_conditions": {key: value for key, value in stops.items() if key != "target_metric"},
         "completion_mode": "explicit_signals" if "completion" in goal else "shared_goal",
+        **({"implementation_requirements": requirements} if requirements else {}),
         **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
         **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {})}, "experts": experts,
         "methodology": {key: value for key, value in methodology.items() if key not in {"schema_version", "runtime", "budget"}},
@@ -484,7 +495,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
     if not isinstance(value, dict) or set(value) != {"profile_version", "goal", "experts", "methodology", "language", "notify", "safety"} or value["profile_version"] != 4:
         raise ValueError("invalid Profile v4 product settings")
     goal = value["goal"]
-    if not isinstance(goal, dict) or set(goal) - {"evaluation", "evaluator_seed"} != {"constraints", "stop_conditions", "completion_mode"} or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
+    if not isinstance(goal, dict) or set(goal) - {"evaluation", "evaluator_seed", "implementation_requirements"} != {"constraints", "stop_conditions", "completion_mode"} or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
         raise ValueError("invalid Profile v4 goal controls")
     if "evaluation" in goal and (goal["evaluation"] != "grounding" or goal["completion_mode"] != "shared_goal"):
         raise ValueError("Grounding evaluation requires shared_goal controls")
@@ -497,6 +508,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
         if validator.issues: raise ValueError("legacy expert round limit must be a positive integer")
     projected = project_profile_v4(goal={"title": "Admitted product controls", "description": "Validate controls without redefining scientific components.",
         "constraints": goal["constraints"], "stop_conditions": stops,
+        **({"implementation_requirements": goal["implementation_requirements"]} if "implementation_requirements" in goal else {}),
         **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
         **({"evaluation": goal["evaluation"]} if "evaluation" in goal else {})}, experts=value["experts"],
         methodology={"schema_version": 4, **value["methodology"]}, language=value["language"], notify=value["notify"], safety=value["safety"])
