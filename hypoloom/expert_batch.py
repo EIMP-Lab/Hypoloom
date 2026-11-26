@@ -86,6 +86,50 @@ def research_round_available(document: Mapping[str, Any], cycle: int, schema_ver
     return schema_version >= UNLIMITED_RESEARCH_ROUNDS_ACI_SCHEMA_VERSION or cycle <= legacy_round_limit(document)
 
 
+def prior_parser_failures(store, task, history):
+    """Carry unresolved design checks from the last three rounds back to synthesis."""
+    from .measurement_contract import MeasurementContractError, validate_parser_entrypoint
+    key = task.key
+    if key.cycle <= 1:
+        return []
+    rows = store.inspect("""
+        SELECT json_extract(c.request_json,'$.task_context.key.cycle') AS cycle,
+               json_extract(c.request_json,'$.task_context.key.chain') AS chain, a.attempt_id,
+               COALESCE(json_extract(a.observation_json,'$.diagnostics.structured_output_correction.authoring.validation_stage'),
+                        json_extract(a.observation_json,'$.diagnostics.structured_output_correction.rounds[#-1].validation_stage')) AS stage,
+               COALESCE(json_extract(a.observation_json,'$.diagnostics.structured_output_correction.authoring.validation_error'),
+                        json_extract(a.observation_json,'$.diagnostics.structured_output_correction.rounds[#-1].validation_error')) AS detail
+        FROM workflow_commands c JOIN execution_attempts a ON a.command_id=c.command_id
+        WHERE c.run_id=? AND c.command_type='REQUEST_RESEARCH_NODE'
+          AND json_extract(c.request_json,'$.task_context.key.node_kind')='EXPERIMENT_DESIGN_IMPLEMENT'
+          AND json_extract(c.request_json,'$.task_context.key.component_id')=?
+          AND json_extract(c.request_json,'$.task_context.key.expert_slot')=?
+          AND json_extract(c.request_json,'$.task_context.key.cycle') BETWEEN ? AND ?
+          AND a.state='CLOSED' AND a.terminal_reason!='SUCCEEDED'
+          AND NOT EXISTS (SELECT 1 FROM execution_attempts ok WHERE ok.command_id=c.command_id AND ok.terminal_reason='SUCCEEDED')
+        ORDER BY a.started_at DESC, a.attempt_id
+        """, (key.run_id, key.component_id, key.expert_slot, max(1, key.cycle - 3), key.cycle - 1))
+    groups = {}
+    for row in rows:
+        if row["stage"] != "parser_smoke" or not row["detail"]:
+            continue
+        measurement = history.hypothesis(row["cycle"], row["chain"])["payload"].get("measurement")
+        if not measurement:
+            continue
+        owner, detail = "EXPERIMENT_DESIGN_IMPLEMENT", str(row["detail"])[:384]
+        try:
+            validate_parser_entrypoint(measurement["parser_argv"], measurement["parser_files"])
+        except MeasurementContractError as exc:
+            owner, detail = "HYPOTHESIS_PROPOSAL", str(exc)
+        signature = (tuple(measurement["parser_argv"]), tuple(measurement["parser_files"]), owner, detail)
+        group = groups.setdefault(signature, {"repair_node": owner, "validation_stage": row["stage"],
+            "detail": detail, "latest_attempt_id": row["attempt_id"], "cycles": [], "attempts": 0})
+        group["attempts"] += 1
+        if row["cycle"] not in group["cycles"]:
+            group["cycles"].append(row["cycle"])
+    return list(groups.values())[:4]
+
+
 def batch_limits(document: Mapping[str, Any], role: str, *, schema_version: int = CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION) -> dict[str, int]:
     product = document.get("methodology", {}).get("controls", {}).get("product", {})
     inner = product.get("methodology", {}).get("inner_loop", {})

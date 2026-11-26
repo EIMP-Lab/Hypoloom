@@ -1181,15 +1181,23 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             if required_family is None: raise OperationalHalt("expert component lacks one ready required-input family")
             config["required_method_family_id"] = required_family
         config_ref = f"{run_id}--{component_id}--expert-config"
+        from .agent_aci import RESEARCH_PROGRESS_ACI_SCHEMA_VERSION
+        version = int(host.store.get_run(run_id)["agent_aci_version"])
+        if version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION and task.key.node_kind is ResearchNodeKind.HYPOTHESIS_UPDATE:
+            config["remaining_experiments"] = host._experiment_allowances(run_id, role)
         if host._batch_enabled(run_id):
-            config["inner_loop_limits"] = batch_limits(contract_document, role, schema_version=int(host.store.get_run(run_id)["agent_aci_version"]))
-            if int(host.store.get_run(run_id)["agent_aci_version"]) >= 30:
+            config["inner_loop_limits"] = batch_limits(contract_document, role, schema_version=version)
+            if version >= 30:
                 from .execution_budget import research_round_budget
                 config["research_budget"] = research_round_budget(task, config["inner_loop_limits"])
             config["effective_max_forks"] = host._effective_batch_forks(run_id, role)
             if task.key.node_kind is ResearchNodeKind.HYPOTHESIS_PROPOSAL:
-                config["exploration_progress"] = host._batch_history(run_id, component_id, role).exploration_progress(
-                    host._active_expert_chains(run_id, role))
+                history = host._batch_history(run_id, component_id, role)
+                config["exploration_progress"] = history.exploration_progress(host._active_expert_chains(run_id, role))
+                if version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION and task.key.subkind is ResearchNodeSubkind.SYNTHESIS:
+                    from .expert_batch import prior_parser_failures
+                    if failures := prior_parser_failures(host.store, task, history):
+                        config["prior_parser_failures"] = failures
     if "evaluation_only_roots" in config["execution"]:
         config["execution"] = dict(config["execution"])
         held = config["execution"].pop("evaluation_only_roots")

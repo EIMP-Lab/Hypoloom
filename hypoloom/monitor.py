@@ -21,6 +21,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -143,6 +144,7 @@ class ComponentView:
     current_cycle: int = 0
     revision_warning: str | None = None
     revision_activity: Mapping[str, Any] | None = None
+    research_progress: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +272,7 @@ def build_status_projection(
     goal_verdict = None
     required_component_count = required_assessment_count = 0
     goals = tuple(row for row in selected_facts if row["fact_type"] == "GoalDefined")
+    owners = {}
     if len(goals) == 1:
         raw_contract = goals[0]["payload"].get("research_contract")
         if isinstance(raw_contract, Mapping):
@@ -278,6 +281,7 @@ def build_status_projection(
             except ValueError:
                 contract = None
             if contract is not None:
+                owners = {str(component.component_id): component.owner_role for component in contract.components}
                 required_ids = {
                     str(component.component_id) for component in contract.components
                     if component.tier.value != "should"
@@ -311,6 +315,8 @@ def build_status_projection(
     configuration = _json_object(creation[0]["payload_json"]) if creation else {}
     from .resource_recovery import read_resource_blocks
     from .resource_controls import selection_status
+    from .observer_progress import research_progress, result_producers
+    producers = result_producers(run_id, selected_attempts)
     return {
         "run_id": run_id,
         "run_state": run_head["state"],
@@ -333,7 +339,8 @@ def build_status_projection(
         "gpu_pool": configuration.get("gpu_pool"),
         "resource_selection": selection_status(store, run_id, configuration),
         "grounding_dialogue": dialogue,
-        "shared_acceptance": _shared_acceptance_projection(run_id, selected_attempts, selected_facts),
+        "research_progress": research_progress(selected_facts, producers, owners),
+        "shared_acceptance": _shared_acceptance_projection(run_id, selected_attempts, selected_facts, producers),
     }
 
 
@@ -341,6 +348,7 @@ def _shared_acceptance_projection(
     run_id: str,
     attempts: Sequence[Mapping[str, Any]],
     facts: Sequence[Mapping[str, Any]],
+    producers: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Display existing raw evidence; do not compare criteria or select a winner."""
     goals = [row["payload"].get("research_contract") for row in facts
@@ -369,16 +377,9 @@ def _shared_acceptance_projection(
     source_attempt_id, declaration = completed[0]
     specs = {row["experiment_id"]: row["payload"] for row in facts
              if row["fact_type"] == "ExperimentPreregistered"}
-    from .artifacts import ArtifactKey
-    producers = {}
-    for attempt in attempts:
-        if attempt.get("kind") != "PROCESS" or attempt.get("run_id") != run_id: continue
-        try:
-            key = ArtifactKey(run_id=run_id, experiment_id=attempt.get("experiment_id"),
-                execution_id=attempt.get("execution_id"), attempt_id=attempt.get("attempt_id"), artifact_kind="result")
-        except (ValueError, TypeError):
-            continue  # Legacy/partial observation: never infer a successful Process.
-        producers[key.artifact_id] = attempt
+    from .observer_progress import result_producers, stage_coverage
+    if producers is None:
+        producers = result_producers(run_id, attempts)
     outcomes = []
     for row in facts:
         if row["fact_type"] != "CanonicalOutcomeAccepted":
@@ -398,6 +399,7 @@ def _shared_acceptance_projection(
             "local_outcome": payload.get("outcome"),
             "local_metric_value": payload.get("metric_value"),
             "local_measurement": specs.get(row["experiment_id"], {}).get("measurement"),
+            "stage_coverage": stage_coverage(specs.get(row["experiment_id"], {}).get("measurement"), payload),
             "goal_evaluation": payload.get("goal_evaluation"),
         })
     # These mappings are display copies, never aliases of the supplied fact view.
@@ -1130,6 +1132,7 @@ def _component_views(
     expert_lineage_terminated: frozenset[str] | None = None,
     experiment_ordinals: Mapping[str, int] | None = None,
     revision_activity: Mapping[str, Mapping[str, Any]] | None = None,
+    research_progress: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[ComponentView, ...]:
     ordinal_by_workflow = experiment_ordinals or {}
     activities = revision_activity or {}
@@ -1216,6 +1219,26 @@ def _component_views(
                 reasons += tuple(f"automatic recovery ended: {role} · {item.failure_code or item.phase}"
                                  for role, item in latest.items())
         activity = activities.get(component_id, {})
+        progress = dict((research_progress or {}).get(component_id, {}))
+        if component_id in (expert_lineage_terminated or ()):
+            progress["lineage_terminated"] = True
+        elif not open_attempts and not reasons:
+            latest = max((item for item in attempts if item.component_id == component_id and item.task_scope == "expert"
+                          and item.owner_role == component.owner_role and item.kind == "AGENT"),
+                         key=lambda item: (item.started_at, item.attempt_id), default=None)
+            failure = progress.get("last_failure")
+            evidence = progress.get("last_evidence")
+            latest_end = latest.ended_at if latest and latest.ended_at is not None else 0
+            failure_at, evidence_at = (datetime.fromisoformat(record["at"].replace("Z", "+00:00")).timestamp()
+                                       if record and record.get("at") else 0 for record in (failure, evidence))
+            if failure and failure["experiment_id"] == workflow_id and failure_at >= max(latest_end, evidence_at):
+                progress["attention"] = {"stage": failure["stage"], "owner": failure["owner"], "source": workflow_id}
+            elif latest and latest_end >= max(failure_at, evidence_at) and latest.terminal_reason in {"FAILED", "TIMED_OUT", "LOST"} and latest.task_kind in {
+                    "EXPERIMENT_DESIGN_IMPLEMENT", "HYPOTHESIS_PROPOSAL", "EXPERIMENT_EXECUTION"}:
+                from .provider_observation import PROVIDER_UNAVAILABLE
+                provider = latest.operational_reason in PROVIDER_UNAVAILABLE
+                progress["attention"] = {"stage": latest.operational_reason if provider else latest.task_kind,
+                    "owner": "provider_recovery" if provider else component.owner_role, "source": latest.attempt_id}
         result.append(ComponentView(
             component_id=component_id,
             tier=component.tier.value,
@@ -1232,6 +1255,7 @@ def _component_views(
             current_cycle=activity.get("cycle") or 0,
             revision_warning=activity_warning(activity),
             revision_activity=activity or None,
+            research_progress=progress or None,
         ))
     return tuple(result)
 
@@ -1346,6 +1370,7 @@ def _expert_lineage_termination_components(
     hypotheses: Sequence[Mapping[str, Any]],
     *,
     research_contract_version: str,
+    transitions: Sequence[Mapping[str, Any]] = (),
 ) -> frozenset[str] | None:
     if research_contract_version not in {"hypoloom-research-v7", "hypoloom-research-v8", "hypoloom-research-v9", "hypoloom-research-v10", "hypoloom-research-v11", "hypoloom-research-v12"}:
         return None
@@ -1365,6 +1390,12 @@ def _expert_lineage_termination_components(
         if isinstance(component_id, str) and isinstance(role, str):
             key = (component_id, role)
             current_cycles[key] = current_cycles.get(key, 0) + 1
+    # Batch hypotheses share one cycle. Use the accepted batch's cycle whenever available.
+    for row in transitions:
+        if row["workflow_kind"] == "RUN" and row.get("command_type") == "ACCEPT_HYPOTHESIS":
+            payload = row["payload"]
+            if batch := payload.get("hypothesis_batch"):
+                current_cycles[(payload["component_id"], payload["role"])] = batch["cycle"]
     terminated: set[str] = set()
     for row in attempts:
         if row["state"] != "CLOSED" or row["terminal_reason"] != "SUCCEEDED":
@@ -1529,8 +1560,10 @@ def build_monitor_snapshot(
                     research_contract_version=str(
                         run["research_contract_version"]
                     ),
+                    transitions=transition_rows,
                 ),
                 experiment_ordinals=experiment_ordinals,
+                research_progress=status["research_progress"],
                 revision_activity=revision_activities(transition_rows,
                     facts_by_type.get("CanonicalOutcomeAccepted", ()), contract.document,
                     agent_aci_version=int(run["agent_aci_version"]), run_state=status["run_state"], process_attempts=raw_attempts),

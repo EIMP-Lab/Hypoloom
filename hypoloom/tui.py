@@ -1152,6 +1152,23 @@ class ComponentsPanel(CockpitPanel):
                 )
             )
             lines.append(tr("   open={0}", _value(open_attempts)))
+            progress = component.research_progress or {}
+            if progress.get("lineage_terminated"):
+                lines.append(tr("Research lineage closed"))
+            if evidence := progress.get("last_evidence"):
+                lines.append(tr("Last comparable evidence · {0} · {1}", _value(evidence["experiment_id"]), _value(evidence["at"])))
+                if coverage := evidence.get("coverage"):
+                    labels = coverage["replicates"]
+                    if labels:
+                        label = "Validated replicates · {0}" if coverage["validated"] else "Preregistered replicates · {0}"
+                        lines.append(tr(label, _value(", ".join(labels))))
+                    else:
+                        lines.append(tr("Replicate coverage unspecified"))
+            if failure := progress.get("last_failure"):
+                lines.append(tr("Last execution failure · {0} · {1} · {2}", _value(failure["experiment_id"]),
+                    tr(failure["stage"]), _value(failure["owner"])))
+            if attention := progress.get("attention"):
+                lines.append(tr("Needs attention · {0} · {1}", tr(attention["stage"]), _value(attention["owner"])))
             warning = _revision_warning_badge(component)
             if warning is not None:
                 lines.append(f"   {warning}")

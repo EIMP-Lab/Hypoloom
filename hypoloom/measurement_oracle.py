@@ -64,7 +64,15 @@ def interpret_measurement(declaration: Mapping[str, Any], result: Mapping[str, A
                 rows = result.get("observations")
                 if set(result) != {"metric", "observations"} or not isinstance(rows, Mapping) or set(rows) != set(plan.units):
                     raise ValueError("observations must match exactly the declared evidence units")
-                scores = [_unit_score(rows[unit], comparison) for unit in plan.units]
+                scores = []
+                for unit in plan.units:
+                    observed = rows[unit]
+                    if plan.replicates:
+                        if not isinstance(observed, Mapping) or observed.keys() != set(plan.replicates):
+                            raise ValueError(f"{unit!r} differs from its frozen replicate coverage")
+                        scores.append(sum(_unit_score(observed[rep], comparison) for rep in plan.replicates) / len(plan.replicates))
+                    else:
+                        scores.append(_unit_score(observed, comparison))
                 if plan.reduction == "MEAN":
                     measured = sum(scores) / len(scores)
                 elif metric["direction"] == "MINIMIZE":

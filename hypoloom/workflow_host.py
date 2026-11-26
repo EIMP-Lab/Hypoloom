@@ -728,12 +728,24 @@ class WorkflowHost:
 
     def _durable_status(self, run_id):
         attempts = self.store.list_attempts(run_id=run_id, include_observation=False)
-        # Only Grounding contributes the declaration displayed by STATUS.
+        # Keep Agent transcripts off the STATUS path. Only Grounding provides the shared declaration.
         grounding = {row["attempt_id"]: row for row in self.store.inspect(
             "SELECT a.* FROM execution_attempts a JOIN workflow_commands c ON c.command_id=a.command_id "
             "WHERE a.run_id=? AND a.kind='AGENT' AND a.state='CLOSED' AND a.terminal_reason='SUCCEEDED' "
             "AND json_extract(c.request_json,'$.task_context.request_kind')='GROUNDING'", (run_id,))}
-        attempts = tuple(grounding.get(row["attempt_id"], row) for row in attempts)
+        failures = {row["attempt_id"]: row["observation_json"] for row in self.store.inspect("""
+            SELECT a.attempt_id, CASE WHEN json_type(a.observation_json,'$.gpu_diagnostic')='object'
+              THEN a.observation_json ELSE json_object('returncode',json_extract(a.observation_json,'$.returncode'),
+                'synthetic_before_spawn',json_extract(a.observation_json,'$.synthetic_before_spawn'),
+                'failure_class',json_extract(a.observation_json,'$.failure_class'),
+                'implementation_verification',json_object('report',json_object('verdict',
+                    json_extract(a.observation_json,'$.implementation_verification.report.verdict')))) END AS observation_json
+            FROM research_facts f JOIN execution_artifacts p ON p.artifact_id=f.artifact_id
+            JOIN execution_attempts a ON a.attempt_id=p.attempt_id
+            WHERE f.run_id=? AND f.fact_type='CanonicalOutcomeAccepted' AND json_extract(f.payload_json,'$.outcome')='EXECUTION_FAILURE'
+            """, (run_id,))}
+        attempts = tuple({**row, "observation_json": failures[row["attempt_id"]]} if row["attempt_id"] in failures
+            else grounding.get(row["attempt_id"], row) for row in attempts)
         result = build_status_projection(self.store, run_id, quiescent_for_backup=None, attempts=attempts)
         if result is not None:
             result["agent_usage"] = self._agent_usage(run_id, attempts, result["run_state"] in _TERMINAL_RUNS)
@@ -1132,11 +1144,18 @@ class WorkflowHost:
             self._research_contract(run_id).document, role,
             self._agent_charges.read(self.store, run_id, committed=True), self.agent_budget) is not None
 
-    def _batch_creation_available(self, run_id: str, role: str) -> bool:
+    def _experiment_allowances(self, run_id: str, role: str) -> dict[str, int]:
         document = self._research_contract(run_id).document
-        rows = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (run_id,))
+        counts, = self.store.inspect("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE json_extract(payload_json,'$.role')=?) AS owned "
+            "FROM workflow_transitions WHERE run_id=? AND workflow_kind='EXPERIMENT' AND revision=1", (role, run_id))
         cap = profile_role_cap(document, role, "max_experiments")
-        return len(rows) < document["budget"]["max_experiments"] and (cap is None or sum(json.loads(row["payload_json"]).get("role") == role for row in rows) < cap)
+        remaining = {"run_experiments": max(0, document["budget"]["max_experiments"] - counts["total"])}
+        if cap is not None:
+            remaining["expert_experiments"] = max(0, cap - counts["owned"])
+        return remaining
+
+    def _batch_creation_available(self, run_id: str, role: str) -> bool:
+        return all(self._experiment_allowances(run_id, role).values())
     def _effective_batch_forks(self, run_id: str, role: str) -> int:
         from .manager_context import effective_forks
         maximum = batch_limits(self._research_contract(run_id).document, role)["forks"]
@@ -2870,6 +2889,8 @@ class WorkflowHost:
             if rows:
                 identity = json.loads(rows[-1]["payload_json"]); experiment_id = str(rows[-1]["workflow_id"])
                 spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
+                if spec is None and self._withdrawn_draft_completed(run_id, experiment_id, identity):
+                    terminal.append(chain)
                 outcomes = [row for row in self.store.list_facts(run_id, "CanonicalOutcomeAccepted") if row["experiment_id"] == experiment_id]
                 if outcomes and spec is not None:
                     def raw(row): return {**row, "payload_json": json.dumps(row["payload"])}
@@ -2892,6 +2913,16 @@ class WorkflowHost:
             "terminal_tips": {chain: None if tip is None else tip.to_dict() for chain, tip in tips.items()},
             "selected_tip": None if batch.selection is None else batch.selection.get("selected_tip")}
         return context, tips, tuple(sorted(set(terminal)))
+
+    def _withdrawn_draft_completed(self, run_id, experiment_id, identity):
+        withdrawn = self._preflight_rejection(run_id, experiment_id)
+        if not withdrawn or withdrawn["reason"] != "draft_withdrawn":
+            return False
+        task = ResearchNodeTask(key=ResearchNodeKey(run_id=run_id, component_id=identity["component_id"],
+            expert_slot=identity["role"], cycle=identity["expert_cycle"], chain=identity["chain"],
+            experiment_ordinal=identity["chain_iteration"], node_kind=ResearchNodeKind.EXPERIMENT_EXECUTION))
+        return self._expert_success(task) is not None
+
     def _poll_agents(self) -> bool:
         if self.claude_agent_host is None: return False
         progressed = False
@@ -3353,20 +3384,28 @@ class WorkflowHost:
             and int(identity.get("expert_cycle", 1)) == task.key.cycle
             and (not self._batch_enabled(request.run_id) or identity.get("execution_node_command_id") == task.command_id))
 
+    def _tool_process_history(self, run_id, experiment_id):
+        from .observer_progress import result_producers
+        spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
+        attempts = () if spec is None else self.store.list_attempts(execution_id=spec["execution_id"], kind="PROCESS")
+        outcome = next((row for row in self.store.list_facts(run_id, "CanonicalOutcomeAccepted")
+                        if row["experiment_id"] == experiment_id), None)
+        latest = (result_producers(run_id, attempts).get(outcome["artifact_id"]) if outcome is not None
+                  else max(attempts, key=lambda a: a["attempt_ordinal"], default=None))
+        return spec, outcome, attempts, latest
+
     def _experiment_tool_view(self, run_id: str, experiment_id: str, *, include_log: bool = True) -> dict[str, Any]:
         head = self.store.latest_transition(experiment_id)
         if head is None: raise AgentACIError("unknown_experiment", "experiment is absent")
-        outcome = next(
-            (row for row in self.store.list_facts(run_id, "CanonicalOutcomeAccepted") if row["experiment_id"] == experiment_id), None)
+        spec, outcome, attempts, latest = self._tool_process_history(run_id, experiment_id)
         terminal = head["state"] == ExperimentState.TERMINAL.value
         status = "completed" if terminal else "running" if head["state"] in {ExperimentState.EXECUTING.value, ExperimentState.EVALUATING.value} else "queued"
-        attempts = [item for item in self.store.list_attempts(workflow_id=experiment_id) if item["kind"] == "PROCESS"]
         end = (max(float(item["ended_at"]) for item in attempts)
                if attempts and all(item["state"] == "CLOSED" for item in attempts) else time.time())
         elapsed = max(0.0, end - min((float(item["started_at"]) for item in attempts), default=end))
         result: dict[str, Any] = {"exp_id": experiment_id, "status": status, "state": head["state"],
             "terminal": terminal, "elapsed": elapsed, "outcome": None if outcome is None else outcome["payload"],
-            **({"tail_log": self._experiment_tool_log(experiment_id)} if include_log else {})}
+            **({"tail_log": self._experiment_tool_log(latest)} if include_log else {})}
         if self.verification.enabled(run_id): result["implementation_verification"] = self.verification.status(run_id, experiment_id)
         wait = self.resource_waits.get(experiment_id)
         if not terminal and wait is not None and wait[0] == run_id:
@@ -3377,8 +3416,9 @@ class WorkflowHost:
             result["phase"] = "awaiting_outcome"
         elif head["state"] == ExperimentState.READY.value:
             result["phase"] = "ready"
-        if attempts:
-            latest = attempts[-1]; observation = json.loads(latest["observation_json"] or "{}")
+        observation = {}
+        if latest:
+            observation = json.loads(latest["observation_json"] or "{}")
             if latest["state"] == "OPEN":
                 from .process_observation import process_activity
                 result["activity"] = process_activity(self, latest)
@@ -3395,10 +3435,13 @@ class WorkflowHost:
         rejection = self._preflight_rejection(run_id, experiment_id)
         if rejection is not None:
             result.update(preflight=rejection, repairable=True)
+            if rejection["reason"] == "draft_withdrawn":
+                result.update(status="withdrawn", repair_instruction=
+                    "To correct the draft, submit with replaces_experiment_id naming this draft. "
+                    "To abandon the branch, return a final summary without waiting_for_experiment_id.")
             if rejection["reason"] == "invalid_submission": result["status"] = "rejected"
-        spec = self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id)
         from .execution_budget import experiment_execution_feedback
-        result.update(experiment_execution_feedback(self, spec, observation if attempts else {}))
+        result.update(experiment_execution_feedback(self, spec, observation))
         if self.shared_gpu is not None and include_log: result["resource_planning"] = self.shared_gpu.experiment_view(run_id, experiment_id)
         if spec is not None and outcome is not None and self.publisher is not None:
             artifacts = self.store.inspect("SELECT path FROM execution_artifacts WHERE artifact_id=?", (outcome["artifact_id"],))
@@ -3415,7 +3458,9 @@ class WorkflowHost:
                     "available": sorted(path for path in expected if (root / path).is_file()),
                     "missing": sorted(path for path in expected if not (root / path).is_file())}
         if spec is not None and spec["payload"].get("measurement") is not None:
+            from .observer_progress import stage_coverage
             result["measurement"] = {"hypothesis_id": spec["hypothesis_id"], "parser_change_requires_new_hypothesis": True,
+                "stage_coverage": stage_coverage(spec["payload"]["measurement"], outcome["payload"] if outcome else None),
                 "repair_guidance": "The first preregistration froze measurement fields and parser bytes. Repair raw execution with the same parser, or propose a revised hypothesis/new cycle to change parsing."}
         return result
 
@@ -3423,10 +3468,26 @@ class WorkflowHost:
         head = self.store.latest_transition(experiment_id)
         if head is None or head["state"] != ExperimentState.TERMINAL.value: return None
         payload = json.loads(head["payload_json"])
-        if payload.get("reason") not in {"preflight_declined", "invalid_submission"} or not payload.get("discarded_before_preregistration"): return None
-        creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1", (experiment_id,))
-        if len(creation) != 1 or payload.get("source_submit_command_id") != json.loads(creation[0]["payload_json"]).get("source_submit_command_id"): return None
+        if not payload.get("discarded_before_preregistration") or head["previous_state"] != ExperimentState.DRAFTED.value: return None
+        creation = self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE run_id=? AND workflow_id=? AND revision=1", (run_id, experiment_id))
+        if len(creation) != 1: return None
+        identity = json.loads(creation[0]["payload_json"])
         if self.store.find_fact(run_id, "ExperimentPreregistered", experiment_id) is not None: return None
+        if payload.get("cancel_requested") and payload.get("reason") in {None, "draft_withdrawn"}:
+            cancel = self._tool_command(head["command_id"])
+            attempt_id = payload.get("source_agent_attempt_id")
+            caller = self.store.get_attempt(attempt_id) if attempt_id else None
+            submit = identity.get("source_submit_command_id")
+            if (not submit or payload.get("source_submit_command_id", submit if payload.get("reason") is None else None) != submit
+                    or caller is None or caller["command_id"] != identity.get("execution_node_command_id")
+                    or caller["kind"] != "AGENT" or caller["run_id"] != run_id or not cancel or cancel["workflow_id"] != experiment_id
+                    or cancel["command_type"] != Command.CANCEL.value or cancel["response_status"] != "accepted"
+                    or json.loads(cancel["request_json"]) != {"tool": "cancel_experiment",
+                        "source_agent_attempt_id": attempt_id, "exp_id": experiment_id}):
+                return None
+            return {"status": "withdrawn", "reason": "draft_withdrawn", "source_submit_command_id": submit}
+        if (payload.get("reason") not in {"preflight_declined", "invalid_submission"}
+                or payload.get("source_submit_command_id") != identity.get("source_submit_command_id")): return None
         if payload["reason"] == "invalid_submission":
             command, _, _, source = self._submission_source(payload["source_submit_command_id"])
             if (command["workflow_id"] != experiment_id or command["run_id"] != run_id
@@ -3442,10 +3503,8 @@ class WorkflowHost:
         if origin is None or payload.get("rendezvous_id") != origin.rendezvous_id or reply is None or reply.disposition is not RendezvousDisposition.DECLINED: return None
         return {"status": "rejected", "reason": "preflight_declined", "reply": reply.to_dict()}
 
-    def _experiment_tool_log(self, experiment_id: str, max_bytes: int = 16384) -> str:
-        attempts = [row for row in self.store.list_attempts(workflow_id=experiment_id) if row["kind"] == "PROCESS"]
-        if not attempts: return ""
-        attempt = max(attempts, key=lambda row: (float(row["started_at"]), str(row["attempt_id"])))
+    def _experiment_tool_log(self, attempt: Mapping[str, Any] | None, max_bytes: int = 16384) -> str:
+        if attempt is None: return ""
         parts: list[str] = []
         for name in ("stdout.log", "stderr.log"):
             path = self.state_root / "artifacts" / "work" / str(attempt["attempt_id"]) / "logs" / name
@@ -3505,12 +3564,16 @@ class WorkflowHost:
             limit = arguments.get("max_bytes", 16384)
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 65536:
                 raise AgentACIError("tool_arguments", "max_bytes must be between 1 and 65536")
-            return {"exp_id": experiment_id, "tail_log": self._experiment_tool_log(experiment_id, limit)}
+            _, _, _, latest = self._tool_process_history(request.run_id, experiment_id)
+            return {"exp_id": experiment_id, "tail_log": self._experiment_tool_log(latest, limit)}
         if tool == "cancel_experiment": self._cancel_tool_experiment(request, experiment_id)
         return self._experiment_tool_view(request.run_id, experiment_id)
 
     def _execution_can_handoff(self, request: AgentRequest, experiment_id: str) -> bool:
         from .agent_aci import execution_handoff
+        rejection = self._preflight_rejection(request.run_id, experiment_id)
+        if rejection and rejection["reason"] == "draft_withdrawn":
+            return False
         return request.schema_version >= 22 and not any(
             row["state"] == "CLOSED" and row["terminal_reason"] == "SUCCEEDED"
             and execution_handoff(json.loads(row["observation_json"])) == experiment_id
@@ -3839,6 +3902,13 @@ class WorkflowHost:
         state = ExperimentState(head["state"])
         command = Command.REQUEST_CANCEL if state is ExperimentState.EXECUTING else Command.CANCEL
         next_state = state if state is ExperimentState.EXECUTING else ExperimentState.TERMINAL if state is ExperimentState.DRAFTED else ExperimentState.EVALUATING
+        withdrawal = {}
+        if state is ExperimentState.DRAFTED:
+            identity = json.loads(self.store.inspect("SELECT payload_json FROM workflow_transitions WHERE workflow_id=? AND revision=1",
+                (experiment_id,))[0]["payload_json"])
+            withdrawal = {"discarded_before_preregistration": True}
+            if identity.get("execution_node_command_id") == request.command_id and identity.get("source_submit_command_id"):
+                withdrawal.update(reason="draft_withdrawn", source_submit_command_id=identity["source_submit_command_id"])
         with self.store.transaction() as tx:
             tx.record_command({"command_id": command_id, "run_id": request.run_id, "workflow_id": experiment_id,
                 "expected_revision": head["revision"], "command_type": command.value,
@@ -3846,7 +3916,7 @@ class WorkflowHost:
                 "status": "accepted", "result": {"cancel_requested": True}, "revision": int(head["revision"]) + 1})
             tx.append_transition(self._transition_record(tx, request.run_id, experiment_id, "EXPERIMENT", command,
                 next_state, command_id=command_id, payload={"cancel_requested": True, "source_agent_attempt_id": request.attempt_id,
-                    **({"discarded_before_preregistration": True} if state is ExperimentState.DRAFTED else {})}))
+                    **withdrawal}))
         for attempt_id, handle in tuple(self.running.items()):
             attempt = self.store.get_attempt(attempt_id)
             if attempt is not None and attempt["workflow_id"] == experiment_id: self.runner.cancel(handle)
@@ -3914,9 +3984,10 @@ class WorkflowHost:
                     and item.get("expert_cycle") == key.cycle and item.get("chain_iteration") == key.experiment_ordinal]
             if preflight_predecessor is not None:
                 prior = self.store.latest_transition(str(preflight_predecessor))
+                rejection = self._preflight_rejection(run_id, str(preflight_predecessor))
                 if (submission is None or submission[1]["predecessor_experiment_id"] != preflight_predecessor
-                        or prior is None or self._preflight_rejection(run_id, str(preflight_predecessor)) is None
-                        or component_creations[-1].get("source_submit_command_id") != json.loads(prior["payload_json"]).get("source_submit_command_id")
+                        or prior is None or rejection is None or not component_creations
+                        or component_creations[-1].get("source_submit_command_id") != rejection.get("source_submit_command_id", json.loads(prior["payload_json"]).get("source_submit_command_id"))
                         or component_creations[-1].get("hypothesis_id") != hypothesis_id):
                     raise OperationalHalt("preflight repair lacks its exact declined control predecessor")
             expert_cycle = decision.payload.get("expert_cycle")

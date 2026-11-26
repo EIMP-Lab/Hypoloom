@@ -882,6 +882,13 @@
         element("p", "", t("LOCAL criterion: {0}. Shared GOAL verdict: {1} (run-wide).", !item.local_measurement ? t("not declared") : item.local_outcome === "SUCCESS" ? "passed" : item.local_outcome === "CLEAN_REFUTATION" ? t("not met") : t("unavailable ({0})", item.local_outcome || t("unknown outcome")), status.goal_verdict || "PENDING")));
       const stage = localEvidenceLabel(item.local_measurement);
       if (stage) card.append(element("p", "", stage));
+      if (item.stage_coverage) {
+        const coverage = item.stage_coverage;
+        const labels = list(coverage.replicates);
+        card.append(element("p", "panel-copy", labels.length
+          ? t(coverage.validated ? "Validated replicates · {0}" : "Preregistered replicates · {0}", labels.join(", "))
+          : t("Replicate coverage unspecified")));
+      }
       if (item.goal_evaluation) {
         card.append(element("h4", "", t("Published observations")));
         const observations = element("dl", "acceptance-observations");
@@ -2063,7 +2070,18 @@
         identity.append(element("p", "", t("proposes: {0}", list(expert.proposing_component_ids).join(", ") || "—")));
       }
       list(snapshot.components).filter((component) => component.owner_role === expert.role)
-        .forEach((component) => appendRevisionActivity(identity, component));
+        .forEach((component) => {
+          appendRevisionActivity(identity, component);
+          const progress = object(component.research_progress);
+          const evidence = progress.last_evidence, failure = progress.last_failure, attention = progress.attention;
+          if (progress.lineage_terminated) identity.append(element("p", "detail-note", t("Research lineage closed")));
+          if (evidence) identity.append(element("p", "detail-note",
+            t("Last comparable evidence · {0} · {1}", evidence.experiment_id, formatTimestamp(Date.parse(evidence.at) / 1000))));
+          if (failure) identity.append(element("p", "detail-note",
+            t("Last execution failure · {0} · {1} · {2}", failure.experiment_id, t(failure.stage), failure.owner || "—")));
+          if (attention) identity.append(element("p", "blocked",
+            t("Needs attention · {0} · {1}", t(attention.stage), attention.owner || "—")));
+        });
       list(expert.pause_requested).forEach((pause) => {
         identity.append(pauseNotice(pause, working.some((attempt) => attempt.command === "DEBATE" || attempt.command === "DEBATE_JUDGE")));
       });

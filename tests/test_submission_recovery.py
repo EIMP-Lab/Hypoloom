@@ -33,17 +33,22 @@ def submission():
     return request, args
 
 
-def historical_draft(host, *, corrupt=False):
+def historical_draft(host, *, corrupt=False, open_chain=None):
     request, args = submission()
+    if open_chain:
+        task = replace(request.task_context, key=replace(request.task_context.key, chain=open_chain))
+        request = replace(request, task_context=task, command_id=task.command_id)
     snapshot = validate_experiment_submission(request, args)[2]
-    args["candidate"]["acceptance_criteria"] = ["valid", "E", "E"]
-    snapshot["arguments"]["candidate"] = deepcopy(args["candidate"])
+    if not open_chain:
+        args["candidate"]["acceptance_criteria"] = ["valid", "E", "E"]
+        snapshot["arguments"]["candidate"] = deepcopy(args["candidate"])
     del snapshot["output_digest"]
     snapshot["output_digest"] = "0" * 64 if corrupt else hashlib.sha256(canonical_json(snapshot)).hexdigest()
     submit = request.command_id + "--submit--initial"
     identity = {"source_submit_command_id": submit, "source_agent_attempt_id": request.attempt_id,
         "execution_node_command_id": request.command_id, "component_id": request.component_id,
-        "role": request.role, "expert_cycle": 1, "experiment_ordinal": 1}
+        "role": request.role, "expert_cycle": 1, "experiment_ordinal": 1,
+        **({"chain": open_chain, "chain_iteration": 1, "hypothesis_id": "h-a"} if open_chain else {})}
     with host.store.transaction() as tx:
         tx.record_command({"command_id": request.command_id, "run_id": request.run_id, "workflow_id": request.run_id,
             "command_type": "REQUEST_RESEARCH_NODE", "request": {"task_context": request.task_context.to_dict()}})
@@ -56,8 +61,9 @@ def historical_draft(host, *, corrupt=False):
                 "source_request": request.to_dict(), "source_snapshot": snapshot, "tool": "submit_experiment"}})
         tx.append_transition(host._transition_record(tx, request.run_id, "draft-A", "EXPERIMENT", Command.CREATE_EXPERIMENT,
             ExperimentState.DRAFTED, command_id=submit, next_command=Command.PREREGISTER.value, payload=identity))
-        tx.close_attempt(request.attempt_id, terminal_reason="FAILED", ended_at=time.time(),
-            payload={"request": request.to_dict(), "failure_code": "dispatch_paused"})
+        if not open_chain:
+            tx.close_attempt(request.attempt_id, terminal_reason="FAILED", ended_at=time.time(),
+                payload={"request": request.to_dict(), "failure_code": "dispatch_paused"})
     return request, args, snapshot
 
 
@@ -81,6 +87,59 @@ def test_first_submission_rejects_before_allocating_a_workflow_or_command(host):
     assert error.value.detail == {"field": "acceptance_criteria", "code": "duplicate_item", "first_index": 1, "index": 2}
     assert host.store.inspect("SELECT command_id FROM workflow_commands") == before
     assert not host.store.list_workflow_heads(request.run_id, "EXPERIMENT")
+
+
+def test_withdrawn_draft_can_be_repaired_until_its_controller_finishes(host, monkeypatch):
+    from hypoloom.agent_aci import validate_execution_completion
+    request, _, _ = historical_draft(host, open_chain="a")
+    history = SimpleNamespace(batches=[SimpleNamespace(members={"a": "h-a", "b": "h-b"},
+        command_id="batch", selection=None)])
+    def context(current):
+        monkeypatch.setattr(current, "_batch_history", lambda *_: history)
+        return current._batch_context(request.run_id, request.component_id, request.role, 1)
+    host._cancel_tool_experiment(request, "draft-A")
+    closed = host.store.latest_transition("draft-A")
+    host._cancel_tool_experiment(request, "draft-A")
+    assert host.store.latest_transition("draft-A") == closed
+    assert host._preflight_rejection(request.run_id, "draft-A") == {
+        "status": "withdrawn", "reason": "draft_withdrawn", "source_submit_command_id": request.command_id + "--submit--initial"}
+    assert not host._execution_can_handoff(request, "draft-A")
+    with pytest.raises(AgentACIError):
+        validate_execution_completion("TERMINAL", waiting_for="draft-A", latest_experiment_id="draft-A", can_handoff=False)
+    assert context(host)[2] == ()
+    with host.store.transaction() as tx:
+        tx.close_attempt(request.attempt_id, ended_at=time.time(), terminal_reason="SUCCEEDED",
+            payload={"request": request.to_dict(), "response": {"typed_candidate": {"summary": "Withdrew this branch."}}})
+    # Reload solely from durable records. Branch b is still independently schedulable.
+    reopened = WorkflowHost(host.state_root)
+    try:
+        for current in (host, reopened):
+            batch, tips, terminal = context(current)
+            assert terminal == ("a",) and tips == {"a": None, "b": None}
+            assert batch["terminal_tips"] == tips
+            assert not current.store.list_facts(request.run_id, "CanonicalOutcomeAccepted")
+            assert not current.store.list_attempts(workflow_id="draft-A")
+        commands = host.store.inspect("SELECT * FROM workflow_commands")
+        transitions = host.store.inspect("SELECT rowid AS raw_order,* FROM workflow_transitions ORDER BY rowid")
+        contents = {_row_identifier(t): json.loads(t["payload_json"]) for t in transitions}
+        attempts = host.store.list_attempts(run_id=request.run_id)
+        observations = {a["attempt_id"]: json.loads(a["observation_json"]) for a in attempts}
+        issues = []
+        _audit_submitted_experiments(commands, transitions, contents, attempts, observations, issues)
+        assert not issues
+        withdrawal = contents[_row_identifier(closed)]
+        submit = withdrawal.pop("source_submit_command_id")
+        _audit_submitted_experiments(commands, transitions, contents, attempts, observations, issues)
+        assert [issue.code for issue in issues] == ["preflight_control_close_invalid"]
+        withdrawal.pop("reason")
+        issues.clear()
+        _audit_submitted_experiments(commands, transitions, contents, attempts, observations, issues)
+        assert not issues
+        withdrawal.update(reason="draft_withdrawn", source_submit_command_id=submit, source_agent_attempt_id="foreign-attempt")
+        _audit_submitted_experiments(commands, transitions, contents, attempts, observations, issues)
+        assert [issue.code for issue in issues] == ["preflight_control_close_invalid"]
+    finally:
+        reopened.close()
 
 
 def test_native_and_domain_validation_identify_the_same_hypothesis_duplicate():
@@ -197,7 +256,7 @@ def test_authenticated_legacy_draft_replays_and_only_field_defects_can_close_it(
     assert [issue.code for issue in issues] == ["preflight_control_close_invalid"]
 
 
-def cpu_run(host):
+def cpu_run(host, *, batch_target=None):
     metric = {"name": "score", "direction": "MAXIMIZE", "target": "1"}
     component = {"id": "primary.score", "tier": "primary", "name": "score", "owner": "scientist",
         "proposers": ["scientist"], "dependencies": [], "required_inputs": [], "protocol": None,
@@ -209,9 +268,94 @@ def cpu_run(host):
         "protocols": {}, "delivery_contracts": {}, "methodology": {}, "runtime": {},
         "budget": {"max_experiments": 4, "agent_invocation": host.agent_budget.to_dict()}, "safety": {}, "observer": {}}
     execution = {"delay_seconds": 0, "allow_gpu": False, "target": None, "runtime_prefix": None, "read_roots": []}
+    if batch_target is not None:
+        import subprocess
+        from hypoloom.profile_v4 import project_profile_v4
+        from test_expert_roster import roster_source
+        settings = project_profile_v4(**roster_source(1)).settings
+        settings["experts"]["experts"][0]["name"] = "scientist"
+        settings["goal"]["completion_mode"] = "explicit_signals"
+        for role in ("leader", "debate"):
+            settings["methodology"]["interaction"][role]["enabled"] = False
+        settings["methodology"]["graph_evolution"]["enabled"] = False
+        contract["methodology"] = {"type": "hg", "controls": {"product": settings,
+            "research_loop": "expert-six-node/1", "domain_grounding": "required", "experiment_isolation": "git_authoring_worktree"}}
+        contract["roles"][0].update(focus="Measure accuracy", autonomy="evidence_first",
+            budget={"per_expert_tokens": 200000, "max_experiments": 4, "max_papers": 4})
+        contract["components"][0]["result"].update(metric="accuracy", target="0.55", baseline="0.5")
+        contract["goal"]["summary_metric"].update(name="accuracy", target="0.55")
+        contract["budget"].update(max_retries=2, max_active_hypotheses=2, experiment_timeout=120)
+        contract["runtime"]["target_repo"] = str(batch_target)
+        execution["target"] = {"checkout": str(batch_target), "commit": subprocess.check_output(
+            ["git", "-C", str(batch_target), "rev-parse", "HEAD"], text=True).strip()}
     response = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN",
         {"run_id": "run-fake", "research_contract": contract, "execution": execution}))
     assert response.status == "accepted", response.error
+
+
+@pytest.fixture(scope="module")
+def batch_target():
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    # The sandbox reserves /tmp. Bind only this disposable checkout as its project.
+    with tempfile.TemporaryDirectory(prefix="hypoloom-draft-target-", dir="/var/tmp") as directory:
+        target = Path(directory)
+        for args in (["init", "-q"], ["-c", "user.name=Fixture", "-c", "user.email=test@example.invalid",
+                                    "commit", "--allow-empty", "-qm", "fixture"]):
+            subprocess.run(["git", "-C", str(target), *args], check=True)
+        yield target
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_withdrawal_releases_the_real_batch_for_adjudication(tmp_path, monkeypatch, batch_target, repair):
+    from hypoloom.agent_aci import with_output_digest
+    from hypoloom.expert_loop import ResearchNodeSubkind
+    from hypoloom.oracle import Oracle
+    class TwoChains(FakeAgent):
+        def invoke(self, request):
+            reply = super().invoke(request)
+            if request.command is AgentCommand.HYPOTHESIS_PROPOSAL and request.task_context.key.subkind is ResearchNodeSubkind.SYNTHESIS:
+                member = reply.typed_candidate["hypotheses"][0]["candidate"]
+                batch = [{"chain_id": key, "candidate": {**member, "claim": f"Test mechanism {key}"}} for key in ("a", "b")]
+                return with_output_digest(replace(reply, typed_candidate={"schema_version": 1, "hypotheses": batch}))
+            return reply
+    host = WorkflowHost(tmp_path / "state", local_agent=TwoChains())
+    host.initialize()
+    try:
+        cpu_run(host, batch_target=batch_target)
+        send = host.handle_agent_tool
+        withdrawn = []
+        def intercept(attempt, tool, args):
+            result = send(attempt, tool, args)
+            if tool == "submit_experiment" and not withdrawn and host.local_execution_agents[attempt].task_context.key.chain == "a":
+                draft = result["exp_id"]
+                withdrawn.append(draft)
+                assert send(attempt, "cancel_experiment", {"exp_id": draft})["status"] == "withdrawn"
+                if repair:
+                    args = {**args, "replaces_experiment_id": draft}
+                    successor = send(attempt, "submit_experiment", args)["exp_id"]
+                    assert successor != draft and send(attempt, "submit_experiment", args)["exp_id"] == successor
+            return result
+        monkeypatch.setattr(host, "handle_agent_tool", intercept)
+        deadline = time.monotonic() + 60
+        while host.store.latest_transition("run-fake")["state"] != "COMPLETED" and time.monotonic() < deadline:
+            host.tick()
+            assert not host.dispatch_errors, host.dispatch_errors
+            time.sleep(.01)
+        assert host.store.latest_transition("run-fake")["state"] == "COMPLETED"
+        outcomes = host.store.list_facts("run-fake", "CanonicalOutcomeAccepted")
+        assert len(withdrawn) == 1 and len(outcomes) == (2 if repair else 1)
+        assert all(row["experiment_id"] != withdrawn[0] for row in outcomes)
+        assert host.store.inspect("SELECT 1 FROM workflow_commands WHERE command_type='ACCEPT_ADJUDICATION'")
+        audit = Oracle(host.store.database_path, host.publisher.root).audit("run-fake")
+        assert audit.ok, audit
+        from hypoloom.monitor import build_monitor_snapshot
+        component, = build_monitor_snapshot(host.state_root, "run-fake", _oracle={}).components
+        assert component.research_progress["lineage_terminated"]
+        assert component.research_progress["last_evidence"]["experiment_id"] in {row["experiment_id"] for row in outcomes}
+    finally:
+        host.close()
 
 
 def pending_cpu_process(host, monkeypatch):

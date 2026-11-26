@@ -749,6 +749,40 @@ class _Audit:
                     found.append(self.source(identity, "RESULT_ANALYSIS"))
         return found
 
+    def completed_withdrawal(self, hypothesis_id, before, judge_started):
+        creations = [(r, p) for r, p in self.transitions if r["command_type"] == "CREATE_EXPERIMENT"
+            and p.get("hypothesis_id") == hypothesis_id and self.rank(r) < before]
+        if not creations:
+            return False
+        latest, owner = max(creations, key=lambda item: self.rank(item[0]))
+        experiment = latest["workflow_id"]
+        if (any(r["experiment_id"] == experiment and r["fact_type"] in {"ExperimentPreregistered", "CanonicalOutcomeAccepted"}
+                for r in self.rows.values())
+                or any(a["workflow_id"] == experiment and a["kind"] == "PROCESS" for a in self.attempts.values())):
+            return False
+        for row, payload in self.transitions:
+            if (row["workflow_id"] != experiment or row["command_type"] != "CANCEL"
+                    or row["previous_state"] != "DRAFTED" or row["state"] != "TERMINAL"
+                    or not self.rank(latest) < self.rank(row) < before or payload.get("cancel_requested") is not True
+                    or payload.get("discarded_before_preregistration") is not True or payload.get("reason") not in {None, "draft_withdrawn"}):
+                continue
+            submit = latest["command_id"]
+            caller_id = payload.get("source_agent_attempt_id")
+            caller = self.attempts.get(caller_id, {})
+            cancel = self.commands[row["command_id"]]
+            if (owner.get("source_submit_command_id") != submit
+                    or payload.get("source_submit_command_id", submit if payload.get("reason") is None else None) != submit
+                    or caller.get("kind") != "AGENT" or caller["command_id"] != owner["execution_node_command_id"]
+                    or cancel["workflow_id"] != experiment or cancel["response_status"] != "accepted"
+                    or json.loads(cancel["request_json"]) != {"tool": "cancel_experiment", "exp_id": experiment,
+                        "source_agent_attempt_id": caller_id}):
+                return False
+            return any(a["command_id"] == caller["command_id"] and a["state"] == "CLOSED" and a["terminal_reason"] == "SUCCEEDED"
+                and _time(row["created_at"]) <= a["ended_at"] <= judge_started
+                and not self.observations[a["attempt_id"]]["response"]["typed_candidate"].get("waiting_for_experiment_id")
+                for a in self.attempts.values())
+        return False
+
     def adjudication(self, row, payload):
         _need(row["command_type"] == "ACCEPT_ADJUDICATION" and row["workflow_kind"] == "RUN"
               and row["workflow_id"] == row["run_id"] == self.run_id, "adjudication is not a run-level accepted control")
@@ -772,7 +806,9 @@ class _Audit:
         refs = set(request.get("immutable_context_refs", ())) | set(chains.values())
         for chain, tip in tips.items():
             if tip is None:
-                _need(self.final_failures(identity, chain=chain, before=self.rank(row)), "null tip lacks its own accepted final failure")
+                _need(self.final_failures(identity, chain=chain, before=self.rank(row))
+                      or self.completed_withdrawal(chains[chain], self.rank(row), self.attempts[payload["agent_attempt_id"]]["started_at"]),
+                      "null tip lacks its own accepted final failure or completed draft withdrawal")
                 continue
             self.tip(tip, chain, chains[chain])
             refs.update((tip["experiment_id"], tip["outcome_id"], tip["outcome_fact_id"], tip["artifact_id"]))

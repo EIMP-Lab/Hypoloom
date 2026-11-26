@@ -464,3 +464,27 @@ outcomes awaiting collection and recently rejected drafts. On a live Process,
 the remaining time is its execution allowance. When the project writes
 `work_units` records, these views also report the latest stage and observed
 unit counts. A partial sample indicates that some records were omitted.
+
+### Recovering a research branch and interpreting expanded results
+
+From ACI 46 the Host checks the runnable project script against `parser_files` at
+hypothesis submission. Declare the path at proposal and supply its bytes at design.
+Synthesis receives unresolved parser checks from the preceding three rounds,
+including the responsible node and the number of attempts with that failure.
+
+An execution Agent can correct a draft it withdrew before preregistration by
+submitting `replaces_experiment_id` with that draft's ID within its repair budget.
+Returning a final summary closes the withdrawn branch and lets its peers proceed
+to adjudication. The withdrawal has no scientific outcome. A decision to close
+an entire lineage carries a `termination_reason`. The Host checks budget reasons
+against the remaining run or expert experiment allowance in the update request.
+
+When seeds, folds or trials determine a local result, preregister their labels
+in `measurement.evidence.replicates`. The parser returns a value and optional
+paired baseline for each `observations[unit][replicate]`. The Host compares each
+pair, averages the replicates within each unit, then applies the declared
+`MEAN` or `WORST` across units. A larger confirmation needs a new hypothesis.
+The experiment's `state.json` records planned coverage and whether it was validated.
+The expert view shows the latest comparable result and the stage and responsible
+role for a technical failure. STATUS counts failures by evaluation scope and
+distinguishes verification before launch from a formal process that started.

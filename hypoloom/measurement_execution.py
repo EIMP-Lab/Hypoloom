@@ -47,8 +47,9 @@ def _parser_input_argument(argument: str, files: Mapping[str, bytes], raw_artifa
     Absolute paths and other arguments retain their explicit meaning.
     """
     option, separator, value = argument.partition("=") if argument.startswith("--") else ("", "", argument)
-    if value in files:
-        value = "/input/" + value
+    source = value.removeprefix("./")
+    if source in files:
+        value = "/input/" + source
     elif value and not value.startswith(("/", "-")) and value not in {".", ".."}:
         if value in raw_artifacts or any(path.startswith(value.rstrip("/") + "/") for path in raw_artifacts):
             value = "/raw/" + value

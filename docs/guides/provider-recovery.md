@@ -193,7 +193,10 @@ Existing runs keep their original provider rules.
 
 Kimi's explicit weekly/monthly exhaustion becomes quota exhaustion without an
 inferred reset instant. MiMo 402 means insufficient balance; 429 alone cannot
-distinguish request limits from plan exhaustion. Anthropic 529 and compatible
+distinguish request limits from plan exhaustion. MiMo Token Plan's observed
+`limitation` error with code `"429"` and message `quota exhausted` enters quota
+recovery. A valid Retry-After schedules the next attempt. Without one the Host
+waits for operator action. Anthropic 529 and compatible
 overload types use temporary-service recovery. Authentication checks remain.
 Diagnostics retain the selected rule family without endpoint/credential exposure.
 Coverage is bounded, not a complete vendor catalog.

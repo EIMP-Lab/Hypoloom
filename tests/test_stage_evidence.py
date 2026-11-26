@@ -94,6 +94,44 @@ def test_stage_contract_is_versioned_and_optional():
         evaluate_parsed_measurement(spec, {"metric": "effect", "value": 1})
 
 
+@pytest.mark.parametrize("command", [("python", "scripts/score.py"), ("python3", "-I", "/input/scripts/score.py"),
+    ("python", "-X", "utf8", "./scripts/score.py"), ("./scripts/score.py",), ("sh", "scripts/score.py")])
+def test_proposal_requires_its_parser_entry_in_the_manifest(command):
+    spec = replace(declaration(), parser_argv=command, parser_files=("config.json",))
+    _validate_measurement_version(replace(default_request(), schema_version=45), spec)
+    current = replace(default_request(), schema_version=46)
+    with pytest.raises(AgentACIError, match="scripts/score.py.*parser_files"):
+        _validate_measurement_version(current, spec)
+    _validate_measurement_version(current, replace(spec, parser_files=("config.json", "scripts/score.py")))
+
+
+@pytest.mark.parametrize("command", [("python", "-c", "print('example.py')"),
+    ("python", "-m", "json.tool", "data.py"), ("/usr/bin/cat", "/raw/result.py")])
+def test_non_file_entrypoints_do_not_require_a_project_script(command):
+    _validate_measurement_version(replace(default_request(), schema_version=46),
+        replace(declaration(), parser_argv=command, parser_files=("config.json",)))
+
+
+def test_replicates_are_validated_and_averaged_within_each_unit():
+    raw = declaration().to_dict()
+    raw["evidence"]["replicates"] = ["seed-0", "seed-1"]
+    spec = ScientificMeasurement.from_dict(raw)
+    assert spec.to_dict() == raw
+    jsonschema.validate(raw, _measurement_schema(46))
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(raw, _measurement_schema(45))
+    rows = {"B": {"seed-0": {"value": 2}, "seed-1": {"value": 4}},
+            "C": {"seed-0": {"value": -1}, "seed-1": {"value": 3}}}
+    check(spec, rows, "1", True)
+    from hypoloom.measurement_contract import measurement_answer
+    readings, _ = measurement_answer(spec, {"metric": "effect", "observations": rows})
+    assert readings["B"]["seed-1"] == ("4", None)
+    for invalid in ({"seed-0": {"value": 8}}, {"value": 0}, {**rows["B"], "extra": {"value": 0}}):
+        for evaluator, arg in ((evaluate_parsed_measurement, spec), (interpret_measurement, raw)):
+            with pytest.raises(ValueError, match="replicate"):
+                evaluator(arg, {"metric": "effect", "observations": {**rows, "B": invalid}})
+
+
 @pytest.mark.parametrize("plan", [None, {}, {"stage": "FINAL"}, {"units": []}, {"units": "A"},
     {"units": ["A", "A"]}, {"units": [" A"]}, {"reduction": "BEST"}, {"other": 1}])
 def test_invalid_plan_rejected(plan):

@@ -11,7 +11,8 @@ from typing import Mapping
 
 from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
-                        ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
+                        ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION,
+                        STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
 from .verification_contract import compact_review, structured_submission, verdict_scoped_review
 
@@ -605,6 +606,21 @@ def _stage_instruction(request: AgentRequest) -> str:
     shared = (grounding_acceptance_request(request)
         and getattr(getattr(request.task_context, "kind", None), "value", None) != "GROUNDING_QUERY_PLAN")
     staged = request.schema_version >= STAGE_EVIDENCE_ACI_SCHEMA_VERSION
+    if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+        if request.command.value in {"HYPOTHESIS_PROPOSAL", "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION"}:
+            common += ("Include the project parser script invoked by parser_argv in parser_files. Read prior_parser_failures "
+                "when present. Correct a declaration error at synthesis and use design to repair implementation or fixtures. "
+                "For an expanded local decision, freeze evidence.replicates with the seed, fold or trial labels in a revised hypothesis. "
+                "Return observations[unit][replicate] with value and optional paired baseline for every pair. "
+                "The Host averages replicate scores within each unit before reducing across units. "
+                "Extra trials present only in raw output do not expand a frozen screening decision. ")
+        if request.command.value == "HYPOTHESIS_UPDATE":
+            common += ("For TERMINATE_LINEAGE supply termination_reason. Use scientific_judgment for a scientific stopping decision. "
+                "For an exhausted allowance select the matching zero scope from remaining_experiments in the expert config. "
+                "Round numbers, per-hypothesis iterations and execution repair limits cannot terminate the expert's research. ")
+        if request.command.value == "EXPERIMENT_EXECUTION":
+            common += ("After withdrawing an unregistered draft, either submit a replacement naming that exact "
+                "replaces_experiment_id within the repair budget, or omit waiting_for_experiment_id in your final summary to close the branch. ")
     if staged and declared_measurement_request(request) and request.command.value in {
             "HYPOTHESIS_PROPOSAL", "HYPOTHESIS_UPDATE", "EXPERIMENT_DESIGN_IMPLEMENT", "EXPERIMENT_EXECUTION", "RESULT_ANALYSIS"}:
         common += (

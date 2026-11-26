@@ -527,6 +527,8 @@ def _valid_response(request: AgentRequest) -> AgentResponse:
             if request.schema_version >= 16: candidate["acceptance"] = None
         if request.command is AgentCommand.HYPOTHESIS_UPDATE:
             candidate["update_disposition"] = HypothesisUpdateDisposition.TERMINATE_LINEAGE.value
+            if request.schema_version >= 46:
+                candidate["termination_reason"] = "scientific_judgment"
         if request.command is AgentCommand.RESULT_ANALYSIS and request.schema_version >= 14:
             candidate["iteration_disposition"] = "COMPLETE"
         artifacts = ()

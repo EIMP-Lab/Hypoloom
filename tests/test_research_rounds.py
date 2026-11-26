@@ -56,3 +56,40 @@ def test_current_expert_guidance_has_progress_without_remaining_rounds():
     assert "no research-round limit" in prompt
     assert "remaining_future_rounds" not in prompt
     assert "finite allowances" in prompt
+
+
+def test_termination_requires_a_host_confirmed_scope_or_scientific_judgment():
+    import json
+    import jsonschema
+    from hypoloom.agent_aci import AgentACIError, EmbeddedInput, validate_postflight, with_output_digest
+    from hypoloom.claude_agent_host import _output_schema
+    from hypoloom.fake_agent import FakeAgent
+    base = default_request(AgentCommand.HYPOTHESIS_UPDATE)
+    ref = f"{base.run_id}--{base.component_id}--expert-config"
+    config = {"research_budget": {"current_round": 4, "max_iterations_per_hypothesis": 4},
+        "remaining_experiments": {"run_experiments": 4, "expert_experiments": 0}}
+    request = replace(base, schema_version=46, immutable_context_refs=(ref,),
+        input_artifacts=(EmbeddedInput.from_bytes(ref, "application/json", json.dumps(config).encode()),))
+    response = FakeAgent().invoke(request)
+    current = _output_schema(request, reference_aliases=False)["properties"]["typed_candidate"]
+    for reason in ("scientific_judgment", "expert_experiments", "run_experiments", "rounds", None):
+        candidate = dict(response.typed_candidate)
+        candidate.pop("termination_reason")
+        if reason is not None:
+            candidate["termination_reason"] = reason
+        packet = with_output_digest(replace(response, typed_candidate=candidate))
+        if reason in ("scientific_judgment", "expert_experiments"):
+            assert validate_postflight(request, packet).candidate.termination_reason == reason
+            jsonschema.validate(candidate, current)
+        else:
+            with pytest.raises(AgentACIError, match="TERMINATE_LINEAGE"):
+                validate_postflight(request, packet)
+            with pytest.raises(jsonschema.ValidationError):
+                jsonschema.validate(candidate, current)
+    revise = {**response.typed_candidate, "update_disposition": "REVISE_NEXT_CYCLE"}
+    with pytest.raises(AgentACIError, match="termination_reason"):
+        validate_postflight(request, with_output_digest(replace(response, typed_candidate=revise)))
+    del revise["termination_reason"]
+    validate_postflight(request, with_output_digest(replace(response, typed_candidate=revise)))
+    old = replace(request, schema_version=45)
+    validate_postflight(old, FakeAgent().invoke(old))

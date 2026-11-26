@@ -2325,7 +2325,7 @@ def _declared_measurement_request(request: AgentRequest) -> bool:
 
 
 def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
-    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION
+    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION
     strings = {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
     schema = {"type": "object", "additionalProperties": False,
         "properties": {
@@ -2352,6 +2352,11 @@ def _measurement_schema(schema_version: int = 32) -> dict[str, Any]:
                 "units": {**strings, "uniqueItems": True},
                 "reduction": {"enum": ["MEAN", "WORST"]}}, "required": ["stage", "units", "reduction"],
             "description": "For a staged local decision, name exactly the units that decide it. The parser returns metric and observations keyed by these units, each with value and optional paired baseline. Host compares each pair, then takes the equal-weight mean or the least favorable unit."}
+    if schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+        schema["properties"]["parser_files"]["description"] = "Include the project script invoked by parser_argv and every project dependency it reads."
+        schema["properties"]["evidence"]["properties"]["replicates"] = {**strings, "minItems": 1, "uniqueItems": True,
+            "description": "Freeze seed, fold or trial labels when an expanded run will contribute to the decision. "
+            "Return observations[unit][replicate] for every declared pair. Host averages replicate scores per unit before the declared reduction."}
     return schema
 
 
@@ -2416,7 +2421,17 @@ def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorks
 
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
     from .domain import AgentCommand
-    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, validate_adjudication_candidate
+    from .agent_aci import EXPLICIT_MEASUREMENT_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION, validate_adjudication_candidate
+    from .measurement_contract import validate_parser_entrypoint
+    if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION and request.command in {
+            AgentCommand.PROPOSE_HYPOTHESIS, AgentCommand.HYPOTHESIS_PROPOSAL}:
+        def check_proposal(output):
+            candidate = output["typed_candidate"]
+            proposals = [item["candidate"] for item in candidate["hypotheses"]] if "hypotheses" in candidate else [candidate]
+            for proposal in proposals:
+                if measurement := proposal.get("measurement"):
+                    validate_parser_entrypoint(measurement["parser_argv"], measurement["parser_files"])
+        return check_proposal
     if request.command is AgentCommand.VERIFY_IMPLEMENTATION:
         from .verification_contract import validate_review
         from .reference_aliases import canonical_output, reference_aliases
@@ -2433,6 +2448,9 @@ def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWor
 
     def check(output):
         if observer is not None: observer(output)
+        if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION and request.command is AgentCommand.GROUNDING:
+            if acceptance := output["typed_candidate"].get("acceptance"):
+                validate_parser_entrypoint(acceptance["parser_argv"], acceptance["parser_files"])
         sources = output.get("typed_candidate", {}).get("web_sources", ())
         if not sources: return
         from .grounding_background import transcript_web_results, retrieved_web_urls, validate_web_sources
@@ -2852,6 +2870,11 @@ def _output_schema(
                 candidate_properties["acceptance"] = {"anyOf": [{"type": "null"}, _shared_acceptance_schema(diagnostics=request.schema_version >= 43)]}
                 candidate_required.append("acceptance")
         if request.command.value == "HYPOTHESIS_UPDATE":
+            from .agent_aci import RESEARCH_PROGRESS_ACI_SCHEMA_VERSION, lineage_termination_reasons
+            if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+                candidate_properties["termination_reason"] = {"enum": lineage_termination_reasons(request),
+                    "description": "Required only on TERMINATE_LINEAGE. Use scientific_judgment for a scientific stopping decision. "
+                    "A budget reason requires a zero remaining allowance for that exact scope in the Host input."}
             candidate_properties["update_disposition"] = (
                 {
                     "const": "TERMINATE_LINEAGE",
@@ -2897,6 +2920,10 @@ def _output_schema(
             "properties": candidate_properties,
             "required": candidate_required,
         }
+        if "termination_reason" in candidate_properties:
+            candidate["if"] = {"properties": {"update_disposition": {"const": "TERMINATE_LINEAGE"}}}
+            candidate["then"] = {"required": ["termination_reason"]}
+            candidate["else"] = {"not": {"required": ["termination_reason"]}}
     if _declared_measurement_request(request) and synthesis:
         declared = _measurement_schema(request.schema_version)
         measurement = ({"anyOf": [declared, {"type": "null"}]}

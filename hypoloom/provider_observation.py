@@ -119,6 +119,8 @@ def provider_error(error, *, service="generic"):
         return "auth_failed"
     if normalized := _GLM_ERRORS.get(_glm_code(error, service)):
         return normalized
+    if service == "mimo_token_plan" and kind == "limitation" and code == "429" and message == "quota exhausted":
+        return "quota_exhausted"
     # Preserve the observed compatible-gateway signature; duration is not delay.
     if (kind == "permission_error" or service == "kimi_code" and kind is None) and re.match(
             r"you've reached your ([1-9][0-9]*-hour) usage limit\.\s+"

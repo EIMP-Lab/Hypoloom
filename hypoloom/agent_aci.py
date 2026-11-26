@@ -91,8 +91,9 @@ SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION = 42
 EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION = 43
 AUTHORING_PROGRESS_ACI_SCHEMA_VERSION = 44
 ENGINEERING_CHECKS_ACI_SCHEMA_VERSION = 45
+RESEARCH_PROGRESS_ACI_SCHEMA_VERSION = 46
 AUTHORING_STAGES = frozenset({"GROUNDING", "EXPERIMENT_DESIGN_IMPLEMENT", "VERIFY_IMPLEMENTATION"})
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = ENGINEERING_CHECKS_ACI_SCHEMA_VERSION
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = RESEARCH_PROGRESS_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -134,6 +135,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION,
         AUTHORING_PROGRESS_ACI_SCHEMA_VERSION,
         ENGINEERING_CHECKS_ACI_SCHEMA_VERSION,
+        RESEARCH_PROGRESS_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -184,6 +186,7 @@ _COMMANDS_BY_SCHEMA = {
     EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     AUTHORING_PROGRESS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     ENGINEERING_CHECKS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    RESEARCH_PROGRESS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -680,6 +683,7 @@ class ExpertLoopCandidate:
     summary: str
     supporting_refs: tuple[str, ...]
     update_disposition: HypothesisUpdateDisposition | None = None
+    termination_reason: str | None = None
     iteration_disposition: IterationDisposition | None = None
     waiting_for_experiment_id: str | None = None
 
@@ -1378,6 +1382,13 @@ def validate_postflight(
         update = request.command is AgentCommand.HYPOTHESIS_UPDATE
         if update != (candidate.update_disposition is not None):
             raise AgentACIError("task_candidate_mismatch", "only hypothesis update has a disposition")
+        if update and request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+            terminating = candidate.update_disposition is HypothesisUpdateDisposition.TERMINATE_LINEAGE
+            if terminating and candidate.termination_reason not in lineage_termination_reasons(request):
+                raise AgentACIError("invalid_candidate", "TERMINATE_LINEAGE requires scientific_judgment or a Host-confirmed "
+                    "exhausted run/expert experiment allowance. The current round and per-hypothesis iterations cannot close a lineage.")
+            if not terminating and candidate.termination_reason is not None:
+                raise AgentACIError("invalid_candidate", "termination_reason belongs only to TERMINATE_LINEAGE")
         iteration = request.command is AgentCommand.RESULT_ANALYSIS and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION
         if iteration != (candidate.iteration_disposition is not None):
             raise AgentACIError("task_candidate_mismatch", "only ACI14 result analysis requires iteration_disposition")
@@ -1403,6 +1414,9 @@ def validate_postflight(
         if required:
             from .shared_acceptance import acceptance_source_files
             try:
+                if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+                    from .measurement_contract import validate_parser_entrypoint
+                    validate_parser_entrypoint(candidate.acceptance.parser_argv, candidate.acceptance.parser_files)
                 selected = acceptance_source_files(candidate.acceptance, workspace)
                 if set(selected) != set(workspace): raise ValueError("Grounding may publish only the declared evaluator source files")
             except ValueError as exc: raise AgentACIError("invalid_workspace", str(exc)) from exc
@@ -1651,8 +1665,28 @@ def canonical_json(value: Any) -> bytes:
         raise AgentACIError("noncanonical_json", str(exc)) from exc
 
 
+def lineage_termination_reasons(request: AgentRequest) -> list[str]:
+    reasons = ["scientific_judgment"]
+    ref = f"{request.run_id}--{request.component_id}--expert-config"
+    for item in request.input_artifacts:
+        if item.ref == ref and ref in request.immutable_context_refs:
+            remaining = json.loads(item.content_bytes()).get("remaining_experiments", {})
+            reasons.extend(scope for scope in ("run_experiments", "expert_experiments")
+                           if type(remaining.get(scope)) is int and remaining[scope] == 0)
+            break
+    return reasons
+
+
 def _validate_measurement_version(request: AgentRequest, measurement: ScientificMeasurement | None) -> None:
     if measurement is None: return
+    if request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+        from .measurement_contract import validate_parser_entrypoint
+        try:
+            validate_parser_entrypoint(measurement.parser_argv, measurement.parser_files)
+        except ValueError as exc:
+            raise AgentACIError("invalid_candidate", str(exc)) from exc
+    elif measurement.evidence is not None and measurement.evidence.replicates:
+        raise AgentACIError("wrong_schema_version", "evidence.replicates requires ACI46")
     if measurement.evidence is not None and request.schema_version < STAGE_EVIDENCE_ACI_SCHEMA_VERSION:
         raise AgentACIError("wrong_schema_version", "stage evidence requires ACI40")
     if request.schema_version < 12:
@@ -1928,6 +1962,11 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
     ):
         allowed = {"task_kind", "summary", "supporting_refs", "update_disposition"}
         optional = {"update_disposition"}
+        if command is AgentCommand.HYPOTHESIS_UPDATE and request.schema_version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION:
+            allowed.add("termination_reason")
+            optional.add("termination_reason")
+            if "termination_reason" in raw:
+                _text(raw["termination_reason"], "termination_reason")
         iteration = command is AgentCommand.RESULT_ANALYSIS and request.schema_version >= MULTICHAIN_ACI_SCHEMA_VERSION
         web_summary = command is AgentCommand.LITERATURE_REVIEW and _is_literature_main(request.task_context) and supports_literature_web(request.schema_version)
         handoff = command is AgentCommand.EXPERIMENT_EXECUTION and request.schema_version >= EXECUTION_HANDOFF_ACI_SCHEMA_VERSION
@@ -1950,6 +1989,7 @@ def _candidate(request: AgentRequest, raw: Mapping[str, Any]) -> Candidate:
                 supporting_refs=_tuple(raw["supporting_refs"], "supporting_refs"),
                 update_disposition=(None if disposition is None else
                                     HypothesisUpdateDisposition(disposition)),
+                termination_reason=raw.get("termination_reason"),
                 iteration_disposition=IterationDisposition(raw["iteration_disposition"]) if iteration else None,
                 waiting_for_experiment_id=raw.get("waiting_for_experiment_id") if handoff else None,
                 **({"web_sources": _tuple(raw.get("web_sources", ()), "web_sources")} if web_summary else {}),

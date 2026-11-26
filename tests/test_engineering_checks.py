@@ -64,6 +64,23 @@ def test_draft_and_submitted_bytes_run_through_production_parser_and_scoring(tmp
     assert parser_smoke(packet, **{**args, "measurement_examples_required": False})["error"] is None
 
 
+def test_synthesis_corrects_the_manifest_before_design_and_runs_the_same_parser():
+    from hypoloom.claude_agent_host import _native_candidate_check
+    spec, files = measurement_package()
+    files["scripts/score.py"] = files.pop("parse.py")
+    files["config.json"] = b"{}"
+    spec = replace(spec, parser_argv=("python", "./scripts/score.py"), parser_files=("config.json",))
+    request = replace(default_request(AgentCommand.HYPOTHESIS_PROPOSAL), schema_version=46)
+    check = _native_candidate_check(request, None)
+    def batch(measurement):
+        return {"typed_candidate": {"hypotheses": [{"chain_id": "a", "candidate": {"measurement": measurement.to_dict()}}]}}
+    with pytest.raises(ValueError, match="scripts/score.py.*parser_files"):
+        check(batch(spec))
+    spec = replace(spec, parser_files=("config.json", "scripts/score.py"))
+    check(batch(spec))
+    check_submitted_measurement(spec, files, max_bytes=100_000)
+
+
 def test_case_labels_cannot_change_the_host_rule_or_escape_the_fixture_root():
     spec, files = measurement_package()
     cases = json.loads(files[MEASUREMENT_CASES])

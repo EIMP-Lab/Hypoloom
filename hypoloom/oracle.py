@@ -3035,7 +3035,11 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
     for terminal in transitions:
         terminal_payload = payloads.get(_row_identifier(terminal), {})
         reason = terminal_payload.get("reason")
-        if reason not in {"preflight_declined", "invalid_submission"}: continue
+        legacy_withdrawal = (reason is None and terminal_payload.get("cancel_requested") is True
+                             and terminal_payload.get("discarded_before_preregistration") is True)
+        if legacy_withdrawal:
+            reason = "draft_withdrawn"
+        if reason not in {"preflight_declined", "invalid_submission", "draft_withdrawn"}: continue
         experiment_id = str(terminal["workflow_id"])
         creation = next((row for row in creations if row["workflow_id"] == experiment_id), None)
         rid = f"{experiment_id}--preflight-rendezvous"
@@ -3046,11 +3050,21 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
         valid = (creation is not None and terminal["previous_state"] == "DRAFTED" and terminal["state"] == "TERMINAL"
             and by_id.get(str(terminal["command_id"]), {}).get("command_type") == "CANCEL"
             and terminal_payload.get("discarded_before_preregistration") is True
-            and terminal_payload.get("source_submit_command_id") == creation["command_id"]
+            and terminal_payload.get("source_submit_command_id", creation["command_id"] if legacy_withdrawal else None) == creation["command_id"]
             and not any(row["experiment_id"] == experiment_id for row in facts if row["fact_type"] in {"ExperimentPreregistered", "CanonicalOutcomeAccepted"})
             and not any(row["workflow_id"] == experiment_id and row["kind"] == "PROCESS" for row in attempts))
         if reason == "preflight_declined":
             valid = valid and terminal_payload.get("rendezvous_id") == rid and len(replies) == 1 and replies[0]["revision"] < terminal["revision"]
+        elif valid and reason == "draft_withdrawn":
+            cancel = by_id[str(terminal["command_id"])]
+            caller_id = terminal_payload.get("source_agent_attempt_id")
+            owner = payloads[_row_identifier(creation)].get("execution_node_command_id")
+            valid = (terminal_payload.get("cancel_requested") is True and owner is not None
+                and cancel["response_status"] == "accepted" and cancel["workflow_id"] == experiment_id
+                and json.loads(cancel["request_json"]) == {"tool": "cancel_experiment", "exp_id": experiment_id,
+                    "source_agent_attempt_id": caller_id}
+                and any(a["attempt_id"] == caller_id and a["command_id"] == owner and a["run_id"] == terminal["run_id"]
+                        and a["kind"] == "AGENT" for a in attempts))
         elif valid:
             command = by_id.get(str(creation["command_id"]))
             source = None if command is None else _raw_submit_source(command, attempts, observations)
@@ -3059,8 +3073,10 @@ def _audit_submitted_experiments(commands: Sequence[Mapping[str, Any]], transiti
                      and terminal_payload.get("scope") == "experiment" and terminal_payload.get("phase") == "preregister"
                      and source[1]["output_digest"] == terminal_payload.get("source_output_digest")
                      and source[0]["component_id"] == terminal_payload.get("component_id"))
-        if valid: declined[experiment_id] = terminal
-        else: issues.append(OracleIssue("preflight_control_close_invalid", "draft rejection lacks its verified cause or has scientific or Process effects", (experiment_id,)))
+        if valid:
+            declined[experiment_id] = terminal
+        elif not legacy_withdrawal:
+            issues.append(OracleIssue("preflight_control_close_invalid", "draft rejection lacks its verified cause or has scientific or Process effects", (experiment_id,)))
     for creation in creations:
         identity = payloads.get(_row_identifier(creation), {})
         command = by_id.get(str(creation["command_id"]))

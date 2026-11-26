@@ -181,3 +181,19 @@ def test_plot_timeout_has_a_specific_safe_reason(monkeypatch):
     def timeout(*args, **kwargs): raise subprocess.TimeoutExpired("private command", 15)
     monkeypatch.setattr(notification_plot.subprocess, "run", timeout)
     assert chart_capability()["reason"] == "plot_timeout"
+
+
+def test_mimo_token_plan_quota_is_distinct_from_transient_429():
+    from hypoloom.provider_observation import provider_error, provider_failure, provider_retry_gate
+    error = {"type": "limitation", "code": "429", "message": "quota exhausted"}
+    code = provider_error(error, service="mimo_token_plan")
+    assert code == "quota_exhausted"
+    assert provider_error(error, service="generic") is None
+    assert provider_error({**error, "message": "too many requests"}, service="mimo_token_plan") is None
+    exchange = {"upstream_status": 429, "ended_at": 100, "provider_error_code": code}
+    for headers, expected in (({}, "waiting_operator"), ({"retry-after": "600"}, "cooldown")):
+        failure = provider_failure([{**exchange, "response_headers": headers}])
+        gate = provider_retry_gate([{**failure, "ended_at": 100}], cooldown_seconds=60, cleared_at=None, now=101)
+        assert gate["state"] == expected
+        assert gate["next_retry_at"] == (None if not headers else 700)
+    assert provider_failure([{**exchange, "provider_error_code": None}])["code"] == "rate_limited"

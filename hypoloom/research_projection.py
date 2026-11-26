@@ -267,10 +267,13 @@ def _render_projection(
                     if attempt == selected:
                         experiment_files[name] = content
         head = next(t for t in reversed(transitions) if t["workflow_id"] == experiment)
+        from .observer_progress import stage_coverage
+        coverage = stage_coverage(spec["payload"].get("measurement"), None if outcome is None else outcome["payload"]) if spec else None
         experiment_files["state.json"] = _json({
             "experiment_id": experiment, "state": head["state"], "revision": head["revision"],
             "canonical_outcome": None if outcome is None else outcome["payload"],
             "canonical_process_attempt_id": selected,
+            **({"stage_coverage": coverage} if coverage is not None else {}),
             "result_available": "result.json" in experiment_files, "available_logs": logs,
         })
         files.update({f"{prefix}/{name}": content for name, content in experiment_files.items()})

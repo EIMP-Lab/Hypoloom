@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from decimal import Context, Decimal, DecimalException, Inexact, localcontext
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Mapping
+import re
+from typing import Any, Mapping, Sequence
 
 from .domain import MetricDirection, MetricSpec, normalize_metric_value
 
@@ -31,24 +32,66 @@ class StageEvidence:
     stage: str
     units: tuple[str, ...]
     reduction: str
+    replicates: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.stage not in ("SCREENING", "CONFIRMATION") or self.reduction not in ("MEAN", "WORST"):
             raise MeasurementContractError("invalid_measurement", "unknown evidence stage or reduction")
-        if (not isinstance(self.units, tuple) or not self.units
-                or any(not isinstance(unit, str) or not unit or unit != unit.strip() for unit in self.units)
-                or len(set(self.units)) != len(self.units)):
-            raise MeasurementContractError("invalid_measurement", "evidence.units must contain distinct nonempty unit names")
+        for name, labels in (("units", self.units), ("replicates", self.replicates)):
+            if (not isinstance(labels, tuple) or (name == "units" and not labels)
+                    or any(not isinstance(label, str) or not label or label != label.strip() for label in labels)
+                    or len(set(labels)) != len(labels)):
+                raise MeasurementContractError("invalid_measurement", f"evidence.{name} must contain distinct nonempty names")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"stage": self.stage, "units": list(self.units), "reduction": self.reduction}
+        return {"stage": self.stage, "units": list(self.units), "reduction": self.reduction,
+                **({"replicates": list(self.replicates)} if self.replicates else {})}
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> StageEvidence:
-        if (not isinstance(raw, Mapping) or set(raw) != {"stage", "units", "reduction"}
+        if (not isinstance(raw, Mapping) or set(raw) - {"stage", "units", "reduction", "replicates"}
+                or not {"stage", "units", "reduction"} <= set(raw)
                 or not isinstance(raw["units"], (list, tuple))):
             raise MeasurementContractError("invalid_measurement", "evidence requires stage, units array and reduction")
-        return cls(raw["stage"], tuple(raw["units"]), raw["reduction"])
+        replicates = raw.get("replicates", ())
+        if "replicates" in raw and (not isinstance(replicates, (list, tuple)) or not replicates):
+            raise MeasurementContractError("invalid_measurement", "evidence.replicates must be a nonempty array")
+        return cls(raw["stage"], tuple(raw["units"]), raw["reduction"], tuple(replicates))
+
+
+def validate_parser_entrypoint(argv: Sequence[str], files: Sequence[str]) -> None:
+    """Check a statically identified project entrypoint before freezing the declaration."""
+    entry = argv[0]
+    interpreter = PurePosixPath(entry).name
+    if re.fullmatch(r"python(?:[23](?:\.[0-9]+)?)?", interpreter):
+        args = iter(argv[1:])
+        for arg in args:
+            if arg == "-" or arg.startswith(("-c", "-m")):
+                return  # stdin, inline code or an installed module
+            if arg == "--":
+                entry = next(args, "")
+                break
+            if arg in {"-X", "-W", "--check-hash-based-pycs"}:
+                next(args, None)
+            elif not arg.startswith("-"):
+                entry = arg
+                break
+        else:
+            return
+    elif interpreter in {"sh", "bash", "Rscript", "node", "ruby", "perl"}:
+        # A positional script is unambiguous. Options may select inline or module mode.
+        if len(argv) < 2 or argv[1].startswith("-"):
+            return
+        entry = argv[1]
+    elif "/" not in entry:
+        return  # a command resolved through the sandbox PATH
+    if entry.startswith("/") and not entry.startswith("/input/"):
+        return
+    path = entry.removeprefix("/input/").removeprefix("./")
+    if path and path not in files:
+        raise MeasurementContractError("parser_entrypoint_missing",
+            f"parser_argv entry {path!r} must be listed in parser_files to mount it under /input. "
+            "Correct the hypothesis measurement declaration before designing the experiment.")
 
 
 def _paths(values: tuple[str, ...], label: str) -> None:
@@ -177,6 +220,9 @@ def measurement_answer(declaration: ScientificMeasurement, raw: Mapping[str, Any
     """Return the validated absolute readings and canonical score of a local known-answer case."""
     result = evaluate_parsed_measurement(declaration, raw)
     rows = raw["observations"] if declaration.evidence is not None else {declaration.metric.name: raw}
+    if declaration.evidence is not None and declaration.evidence.replicates:
+        return {unit: {rep: _value_pair(row[rep]) for rep in declaration.evidence.replicates}
+                for unit, row in rows.items()}, result.metric_value
     return {unit: _value_pair(row) for unit, row in rows.items()}, result.metric_value
 
 
@@ -205,12 +251,15 @@ def _evaluate_evidence(declaration: ScientificMeasurement, evidence: StageEviden
         values = []
         for unit in evidence.units:
             row = observations[unit]
-            if not isinstance(row, Mapping) or "value" not in row or set(row) - {"value", "baseline"}:
-                raise ValueError(f"observation {unit!r} requires value and optional baseline")
-            try:
-                values.append(_compare(*_value_pair(row), declaration.comparison))
-            except ValueError as exc:
-                raise ValueError(f"observation {unit!r}: {exc}") from exc
+            if evidence.replicates and (not isinstance(row, Mapping) or set(row) != set(evidence.replicates)):
+                raise ValueError(f"observation {unit!r} must cover exactly the declared replicates")
+            cells = [row[rep] for rep in evidence.replicates] if evidence.replicates else [row]
+            scores = []
+            for cell in cells:
+                if not isinstance(cell, Mapping) or "value" not in cell or set(cell) - {"value", "baseline"}:
+                    raise ValueError(f"observation {unit!r} requires value and optional baseline")
+                scores.append(_compare(*_value_pair(cell), declaration.comparison))
+            values.append(sum(scores) / len(scores) if evidence.replicates else scores[0])
         if evidence.reduction == "MEAN":
             aggregate = sum(values, Decimal(0)) / len(values)
         else:

@@ -263,6 +263,7 @@ class NativeOutputValidator:
         self._progress_rank = 0
         self._last_verified = None
         self._latest_error = None
+        self._latest_validation_stage = None
         self._repeated_errors = 0
         self._deadline_notice_window = (min(600.0 if design_implementation else 300.0,
             max(0.0, self._current_deadline() - time.monotonic()) * 0.2)
@@ -429,6 +430,8 @@ class NativeOutputValidator:
     def _authoring_status(self):
         status = {"last_verified": self._last_verified, "validation_error": self._latest_error,
                   "repeated_errors": self._repeated_errors}
+        if self._latest_validation_stage:
+            status["validation_stage"] = self._latest_validation_stage
         if self._soft_seconds is not None:
             status["progress_due_at"] = time.time() + self._soft_deadline - time.monotonic()
         return status
@@ -553,6 +556,7 @@ class NativeOutputValidator:
             if self.authoring_progress:
                 from .diagnostics import bounded_diagnostic_text
                 detail = bounded_diagnostic_text(error + hint) if error else None
+                self._latest_validation_stage = validation_stage if detail else None
                 if detail and detail == self._latest_error:
                     self._repeated_errors += 1
                     self._record_authoring()
