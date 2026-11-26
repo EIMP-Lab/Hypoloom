@@ -12,7 +12,8 @@ import sys
 from typing import Any, Mapping
 
 from .execution_workspace import CollectedExecution, PreparedExecution, _stage_candidate
-from .measurement_driver import RAW_EXECUTION_FAILED, sequence_request
+from .measurement_driver import GOAL_PREFLIGHT_FAILED, RAW_EXECUTION_FAILED, sequence_request
+from .goal_preflight import REPORT, VALIDATED_REPORT, read_report, sample_request
 from .measurement_execution import ParserDeclaration, PreparedParser, materialize_parser, plan_parser, read_parser_result
 
 
@@ -21,12 +22,13 @@ class PreparedEvaluation:
     execution: PreparedExecution
     local_parser: PreparedParser | None
     goal_parser: PreparedParser | None
+    has_preflight: bool = False
 
 
 def plan_evaluation(prepared: PreparedExecution, *, local_measurement: ParserDeclaration | None,
         local_files: Mapping[str, bytes], goal_acceptance: ParserDeclaration | None,
         goal_files: Mapping[str, bytes], execution_id: str, timeout_seconds: float,
-        python_executable: str = sys.executable, runtime_prefix: str = sys.prefix) -> PreparedEvaluation:
+        python_executable: str = sys.executable, runtime_prefix: str = sys.prefix, preflight=None) -> PreparedEvaluation:
     if local_measurement is None and goal_acceptance is None:
         return PreparedEvaluation(prepared, None, None)
     raw = replace(prepared.process_request, stdout_path="raw-stdout.log", stderr_path="raw-stderr.log")
@@ -39,10 +41,11 @@ def plan_evaluation(prepared: PreparedExecution, *, local_measurement: ParserDec
     goal = None if goal_acceptance is None else plan_parser(goal_acceptance, goal_files,
         work_dir=prepared.attempt_root / "goal-parser", attempt_id=prepared.attempt_id + "--goal-parser", **arguments)
     outer = sequence_request(raw, None if local is None else local.process_request,
+        preflight_request=sample_request(raw, preflight) if preflight else None,
         goal_parser_request=None if goal is None else goal.process_request, attempt_id=prepared.attempt_id,
         attempt_ordinal=raw.attempt_ordinal, execution_id=execution_id, cwd=prepared.log_dir,
         timeout_seconds=timeout_seconds)
-    return PreparedEvaluation(replace(prepared, process_request=outer), local, goal)
+    return PreparedEvaluation(replace(prepared, process_request=outer), local, goal, preflight is not None)
 
 
 def materialize_evaluation(prepared: PreparedEvaluation) -> None:
@@ -55,7 +58,7 @@ def materialize_evaluation(prepared: PreparedEvaluation) -> None:
 def _completion_code(observation: Mapping[str, Any], *, has_goal: bool) -> int | None:
     code, reason = observation.get("returncode"), observation.get("terminal_reason")
     expected = "SUCCEEDED" if code == 0 else "FAILED"
-    completed = (type(code) is int and code in ({0, 70, 71, 72, 73} if has_goal else {0, 70, 71})
+    completed = (type(code) is int and code in ({0, 70, 71, 72, 73, GOAL_PREFLIGHT_FAILED} if has_goal else {0, 70, 71})
                  and reason == expected and not observation.get("synthetic_before_spawn")
                  and not observation.get("integrity_error"))
     return code if completed else None
@@ -70,7 +73,7 @@ def evaluation_phase_success(observation: Mapping[str, Any], *, has_local: bool,
         has_goal: bool) -> tuple[bool, bool | None, bool | None]:
     """Decode actual process completion only, never scientific eligibility."""
     code = _completion_code(observation, has_goal=has_goal)
-    raw = code is not None and code != RAW_EXECUTION_FAILED
+    raw = code is not None and code not in {RAW_EXECUTION_FAILED, GOAL_PREFLIGHT_FAILED}
     return raw, (raw and code in {0, 72}) if has_local else None, (raw and code in {0, 71}) if has_goal else None
 
 
@@ -98,6 +101,13 @@ def collect_evaluation(prepared: PreparedEvaluation, collected: CollectedExecuti
         path = execution.log_dir / ("raw-" + name + ".log")
         if path.is_file() and not path.is_symlink():
             files["raw/" + name + ".log"] = path.read_bytes()
+    if prepared.has_preflight:
+        if (execution.log_dir / VALIDATED_REPORT).is_file():
+            files["preflight/" + REPORT] = read_report(execution.log_dir, VALIDATED_REPORT)
+        for name in ("stdout", "stderr"):
+            log = execution.log_dir / ("preflight-" + name + ".log")
+            if log.is_file() and not log.is_symlink():
+                files["preflight/" + name + ".log"] = log.read_bytes()
     for prefix, parser in (("", prepared.local_parser), ("goal/", prepared.goal_parser)):
         if parser is None:
             continue

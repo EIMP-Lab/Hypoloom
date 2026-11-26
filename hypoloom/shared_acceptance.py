@@ -196,9 +196,16 @@ def uses_grounding_evaluation(contract: Mapping[str, Any]) -> bool:
 
 
 def normalize_goal_evaluation_binding(raw: Mapping[str, Any]) -> dict[str, Any]:
-    if not isinstance(raw, Mapping) or set(raw) != {"scope", "source_attempt_id", "acceptance"} or raw["scope"] not in {"LOCAL", "GOAL"}:
+    fields = {"scope", "source_attempt_id", "acceptance"}
+    if not isinstance(raw, Mapping) or set(raw) not in (fields, fields | {"preflight"}) or raw["scope"] not in {"LOCAL", "GOAL"}:
         raise SharedAcceptanceError("goal evaluation binding requires exact scope/source/acceptance")
-    return {"scope": raw["scope"], "source_attempt_id": _text(raw["source_attempt_id"], "Grounding source Attempt"),
+    extra = {}
+    if "preflight" in raw:
+        from .goal_preflight import checked_spec
+        if raw["scope"] != "GOAL":
+            raise SharedAcceptanceError("preflight requires GOAL scope")
+        extra["preflight"] = checked_spec(raw["preflight"])
+    return {**extra, "scope": raw["scope"], "source_attempt_id": _text(raw["source_attempt_id"], "Grounding source Attempt"),
         "acceptance": SharedAcceptance.from_dict(raw["acceptance"]).to_dict()}
 
 

@@ -372,7 +372,11 @@ def instructions(request):
             "Draw the base once, mutate one clone in place, select all fixed inputs and the changed region. "
             "Supply clone/equal for arrays or tensors. Inside check(), assert the candidate's actual paired outputs.\n")
     if request.schema_version >= SUBMISSION_VALIDATION_ACI_SCHEMA_VERSION:
-        if ctx.get("entrypoint_smoke"):
+        if ctx.get("goal_preflight"):
+            result += ("The Host will exercise the pinned GOAL entrypoint on development data immediately before formal execution. "
+                "Keep this probe focused on independent implementation requirements and candidate-specific checks. "
+                "Record formal_entrypoint as uncovered with that pending Host check unless this probe observed it.\n")
+        elif ctx.get("entrypoint_smoke"):
             result += ("The author supplied entrypoint_smoke. Declare formal_entrypoint as a required assertion. "
                 "The Host runner executes it before your probe source and records exit status and declared output evidence. "
                 "Reference the check in review coverage. Use independent checks for output contents and parser behavior.\n")

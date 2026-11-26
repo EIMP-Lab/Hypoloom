@@ -1,4 +1,4 @@
-"""Execute two sandbox commands under an existing outer Process Attempt.
+"""Execute isolated preflight, raw and parser phases under one outer Process Attempt.
 
 There is no database, outcome authority, or new durable identity here. Internal
 children use LocalRunner's existing process groups and parent-death guardian.
@@ -18,6 +18,7 @@ RAW_EXECUTION_FAILED = 70
 PARSER_EXECUTION_FAILED = 71
 GOAL_PARSER_EXECUTION_FAILED = 72
 BOTH_PARSERS_EXECUTION_FAILED = 73
+GOAL_PREFLIGHT_FAILED = 74
 
 
 def validate_parser_inputs(request: Any) -> None:
@@ -32,17 +33,21 @@ def validate_parser_inputs(request: Any) -> None:
 def sequence_request(raw_request: Any, parser_request: Any, *, attempt_id: str,
                      attempt_ordinal: int, execution_id: str, cwd: str | Path,
                      timeout_seconds: float, python_executable: str = sys.executable,
-                     goal_parser_request: Any = None) -> Any:
+                     goal_parser_request: Any = None, preflight_request: Any = None) -> Any:
     from .runner import ProcessRequest
     if parser_request is None and goal_parser_request is None:
         raise ValueError("measurement sequence requires at least one parser")
     if any(request is not None and request.execution_id != execution_id
-           for request in (raw_request, parser_request, goal_parser_request)):
+           for request in (raw_request, parser_request, goal_parser_request, preflight_request)):
         raise ValueError("both internal commands must belong to the outer execution")
     payload = {"raw_request": raw_request.to_dict(),
                "parser_request": None if parser_request is None else parser_request.to_dict()}
     if goal_parser_request is not None:
         payload["goal_parser_request"] = goal_parser_request.to_dict()
+    if preflight_request is not None:
+        if goal_parser_request is None:
+            raise ValueError("preflight requires a GOAL parser")
+        payload["preflight_request"] = preflight_request.to_dict()
     return ProcessRequest(attempt_id=attempt_id, attempt_ordinal=attempt_ordinal,
                           execution_id=execution_id,
                           argv=(python_executable, "-m", "hypoloom.measurement_driver",
@@ -76,7 +81,7 @@ def _run_phase(phase: str, request: Any) -> bool:
     from .domain import AttemptTerminalReason
     from .runner import LocalRunner
     try:
-        if phase != "raw":
+        if phase in {"parser", "goal_parser"}:
             validate_parser_inputs(request)
         stop = threading.Event()
         relays = []
@@ -103,7 +108,8 @@ def _run_phase(phase: str, request: Any) -> bool:
 def run_sequence(plan: Mapping[str, Any]) -> int:
     from .runner import ProcessRequest
     old_fields = {"raw_request", "parser_request"}
-    if not isinstance(plan, Mapping) or set(plan) not in (old_fields, old_fields | {"goal_parser_request"}):
+    goal_fields = old_fields | {"goal_parser_request"}
+    if not isinstance(plan, Mapping) or set(plan) not in (old_fields, goal_fields, goal_fields | {"preflight_request"}):
         raise ValueError("driver requires exact raw/local/optional goal request fields")
     raw = ProcessRequest.from_dict(plan["raw_request"])
     parser = None if plan["parser_request"] is None else ProcessRequest.from_dict(plan["parser_request"])
@@ -112,6 +118,26 @@ def run_sequence(plan: Mapping[str, Any]) -> int:
         raise ValueError("measurement sequence requires a local or goal parser")
     if any(item is not None and raw.execution_id != item.execution_id for item in (parser, goal)):
         raise ValueError("internal commands differ in execution ownership")
+    if "preflight_request" in plan:
+        from .goal_preflight import VALIDATED_REPORT, check_sample_outputs, read_report
+        sample = ProcessRequest.from_dict(plan["preflight_request"])
+        directory = Path(sample.cwd).parent / "goal-preflight"
+        if sample.execution_id != raw.execution_id or sample.attempt_id != raw.attempt_id + "--preflight":
+            raise ValueError("GOAL preflight differs from its formal Attempt")
+        try:
+            directory.mkdir(mode=0o700)
+            if not _run_phase("goal_preflight", sample):
+                raise ValueError("sample process failed or timed out")
+            report = read_report(directory)
+            check_sample_outputs(directory, goal)
+            with (Path(sample.cwd) / VALIDATED_REPORT).open("xb") as stream:
+                stream.write(report)
+        except (OSError, ValueError) as exc:
+            detail = f"GOAL preflight failed: {exc}"
+            print(detail, file=sys.stderr, flush=True)
+            with (Path(sample.cwd) / sample.stderr_path).open("a") as log:
+                print(detail, file=log)
+            return GOAL_PREFLIGHT_FAILED
     if not _run_phase("raw", raw):
         return RAW_EXECUTION_FAILED
     local_ok = parser is None or _run_phase("parser", parser)

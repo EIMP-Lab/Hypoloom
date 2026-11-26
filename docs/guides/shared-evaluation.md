@@ -76,3 +76,21 @@ evaluator_seed:
 ```
 
 Admission reads the selected files from the target's bound Git commit. The new Grounding workspace starts with these source files and examples. Retries preserve draft edits. A final submission must preserve the selected protocol's criteria, validity checks, diagnostics and raw input names, and pass its pinned examples even if the draft examples change. Grounding then publishes the evaluator with a new source Attempt. For a changed scientific question or split, select a matching protocol version or start Grounding with a fresh evaluator.
+
+### Run a pinned development sample before GOAL evaluation
+
+A v4 Profile using Grounding can bind a Python entrypoint from the research target. Compute its digest with `git show HEAD:scripts/goal_experiment.py | sha256sum` in that repository and record the result in `goal.yaml`.
+
+```yaml
+evaluation: grounding
+preflight:
+  path: scripts/goal_experiment.py
+  sha256: "<64 lowercase hexadecimal digits>"
+  timeout_seconds: 120
+```
+
+The Host verifies the file against the bound Git commit on admission. In design and submission, use `python /input/scripts/goal_experiment.py` followed by the candidate's arguments and capture the entrypoint bytes along with its inputs. The Host appends `--preflight` only for the development sample. The template replaces the author-supplied `entrypoint_smoke` for these GOAL submissions.
+
+The sample uses the same candidate capture, interpreter and resource grant in a fresh sandbox with a separate writable `/output`. It receives public and declared reuse inputs. The Host reserves `evaluation_only_read_paths` for formal execution. The sample shares the outer Attempt deadline and has its own ceiling of 1–300 seconds. A template should exercise the candidate on bounded development data, write the GOAL parser's declared raw filenames and finish with a regular `/output/preflight.json` containing `{"passed":true}` and any small engineering diagnostics (64 KiB total). Sample files stay in the sample directory. Only the formal raw outputs go to the scoring parsers.
+
+On success the publication contains `preflight/preflight.json` and the stage logs. On failure the Host skips formal execution, records the engineering failure `goal_preflight_failed` (driver exit 74) and retains `preflight/stderr.log` for repair. LOCAL experiments and profiles without a preflight keep their existing execution path. The stage runs independently of the optional implementation verifier.

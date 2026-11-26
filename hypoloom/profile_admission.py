@@ -473,6 +473,12 @@ def admit_profile(
                     "methodology.yaml.runtime.target_repo",
                     str(exc),
                 )
+        if v4_projection and (preflight := v4_projection.settings["goal"].get("preflight")):
+            from .goal_preflight import check_target
+            try:
+                check_target(preflight, operational["target"])
+            except (OSError, ValueError) as exc:
+                block("preflight_binding_failed", "goal.yaml.preflight", str(exc))
         seed_spec = v4_projection.settings["goal"].get("evaluator_seed") if v4_projection else None
         if seed_spec and operational["target"]:
             from .evaluator_examples import load_seed

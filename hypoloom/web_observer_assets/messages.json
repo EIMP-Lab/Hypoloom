@@ -1324,6 +1324,7 @@
   "Replicate coverage unspecified": "重复试验覆盖范围未声明",
   "implementation_verification": "实现验证",
   "before_process_start": "正式进程启动前",
+  "goal_preflight": "全局评测预检",
   "formal_execution": "正式进程已启动",
   "unobserved": "缺少进程记录",
   "owns: {0}": "负责：{0}",

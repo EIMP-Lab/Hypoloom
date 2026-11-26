@@ -57,7 +57,11 @@ class SharedAcceptanceHost:
             return None
         if scope not in {"LOCAL", "GOAL"}: raise AgentACIError("shared_acceptance_scope", "select LOCAL or GOAL")
         attempt_id, acceptance, _ = self.source(run_id, required=True)
-        return {"scope": scope, "source_attempt_id": attempt_id, "acceptance": acceptance.to_dict()}
+        value = {"scope": scope, "source_attempt_id": attempt_id, "acceptance": acceptance.to_dict()}
+        controls = self.host._research_contract(run_id).document["methodology"].get("controls", {})
+        if scope == "GOAL" and (preflight := controls.get("product", {}).get("goal", {}).get("preflight")):
+            value["preflight"] = dict(preflight)
+        return value
 
     def qualifies(self, run_id: str, value: Mapping[str, Any] | None) -> bool:
         source = self.source(run_id)
@@ -80,7 +84,7 @@ class SharedAcceptanceHost:
         files = {item.path: item.content_bytes() for raw in response["arguments"]["workspace_files"] if (item := WorkspaceArtifact.from_dict(raw))}
         evaluation = plan_evaluation(prepared, local_measurement=None if local is None else ScientificMeasurement.from_dict(local),
             local_files=files, goal_acceptance=acceptance if binding["scope"] == "GOAL" else None, goal_files=goal_files,
-            execution_id=spec["execution_id"], timeout_seconds=spec["payload"]["execution_contract"]["timeout_seconds"],
+            preflight=binding.get("preflight"), execution_id=spec["execution_id"], timeout_seconds=spec["payload"]["execution_contract"]["timeout_seconds"],
             python_executable=str(workspace.python_executable), runtime_prefix=str(workspace.runtime_prefix))
         return evaluation.execution, evaluation
 
@@ -99,6 +103,8 @@ class SharedAcceptanceHost:
             if parser is None: continue
             if not ok:
                 if raw_ok: detail = " parser did not complete successfully"
+                elif prepared.has_preflight and observation.get("returncode") == 74:
+                    detail = " parser not run because the Profile GOAL preflight failed"
                 elif raw_execution_failed(observation): detail = " parser not run because raw execution did not complete successfully"
                 else: detail = " parser result unavailable because execution phase completion is unconfirmed"
                 if not raw_ok:

@@ -60,7 +60,7 @@ class _Validator:
         return value
 
 
-_GOAL = {"evaluator_seed", "title", "description", "metric", "constraints", "implementation_requirements", "stop_conditions", "completion", "evaluation"}
+_GOAL = {"preflight", "evaluator_seed", "title", "description", "metric", "constraints", "implementation_requirements", "stop_conditions", "completion", "evaluation"}
 _EXPERT = {"name", "role", "persona", "focus", "model", "effort", "max_forks", "max_hypotheses_per_round", "stage_overrides"}
 _DEFAULTS = {"model", "effort", "max_forks", "max_hypotheses_per_round"}
 _METHOD = {"schema_version", "runtime", "budget", "literature", "inner_loop", "interaction", "graph_evolution", "memory", "output_correction"}
@@ -301,6 +301,14 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     prompt_language = language.get("prompt_language", "en")
     report_language = language.get("report_language", prompt_language)
     metric = goal.get("metric")
+    if "preflight" in goal:
+        from .goal_preflight import checked_spec
+        try:
+            checked_spec(goal["preflight"])
+            if goal.get("evaluation") != "grounding":
+                raise ValueError("preflight requires shared Grounding evaluation")
+        except ValueError as exc:
+            v.error("goal.yaml.preflight", str(exc))
     if "evaluator_seed" in goal:
         from .evaluator_examples import checked_seed_spec
         try:
@@ -383,6 +391,7 @@ def project_profile_v4(*, goal: Mapping[str, Any], experts: Mapping[str, Any], m
     settings = {"profile_version": 4, "goal": {"constraints": constraints, "stop_conditions": {key: value for key, value in stops.items() if key != "target_metric"},
         "completion_mode": "explicit_signals" if "completion" in goal else "shared_goal",
         **({"implementation_requirements": requirements} if requirements else {}),
+        **({"preflight": goal["preflight"]} if "preflight" in goal else {}),
         **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
         **({"evaluation": "grounding"} if goal.get("evaluation") == "grounding" else {})}, "experts": experts,
         "methodology": {key: value for key, value in methodology.items() if key not in {"schema_version", "runtime", "budget"}},
@@ -495,7 +504,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
     if not isinstance(value, dict) or set(value) != {"profile_version", "goal", "experts", "methodology", "language", "notify", "safety"} or value["profile_version"] != 4:
         raise ValueError("invalid Profile v4 product settings")
     goal = value["goal"]
-    if not isinstance(goal, dict) or set(goal) - {"evaluation", "evaluator_seed", "implementation_requirements"} != {"constraints", "stop_conditions", "completion_mode"} or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
+    if not isinstance(goal, dict) or set(goal) - {"evaluation", "evaluator_seed", "implementation_requirements", "preflight"} != {"constraints", "stop_conditions", "completion_mode"} or goal["completion_mode"] not in {"shared_goal", "explicit_signals"}:
         raise ValueError("invalid Profile v4 goal controls")
     if "evaluation" in goal and (goal["evaluation"] != "grounding" or goal["completion_mode"] != "shared_goal"):
         raise ValueError("Grounding evaluation requires shared_goal controls")
@@ -510,6 +519,7 @@ def validate_product_settings(value: object, *, allow_legacy_round_limit: bool =
         "constraints": goal["constraints"], "stop_conditions": stops,
         **({"implementation_requirements": goal["implementation_requirements"]} if "implementation_requirements" in goal else {}),
         **({"evaluator_seed": goal["evaluator_seed"]} if "evaluator_seed" in goal else {}),
+        **({"preflight": goal["preflight"]} if "preflight" in goal else {}),
         **({"evaluation": goal["evaluation"]} if "evaluation" in goal else {})}, experts=value["experts"],
         methodology={"schema_version": 4, **value["methodology"]}, language=value["language"], notify=value["notify"], safety=value["safety"])
     if projected.issues: raise ValueError("invalid Profile v4 controls: " + "; ".join(issue.location + ": " + issue.message for issue in projected.issues))

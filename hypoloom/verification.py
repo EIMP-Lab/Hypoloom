@@ -200,6 +200,8 @@ class ImplementationVerification:
                "target": config.get("target"), "bindings": config.get("read_only_bindings", []),
                "prior_reports": prior, "finding_refs": [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]]}
         contract = self.host._research_contract(task.run_id).to_dict()
+        if preflight := (spec.get("payload", {}).get("goal_evaluation") or {}).get("preflight"):
+            ctx["goal_preflight"] = preflight
         if aci_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
             goal = contract.get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {})
             if requirements := goal.get("implementation_requirements"):

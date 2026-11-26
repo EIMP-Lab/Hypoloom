@@ -11,7 +11,7 @@ from typing import Mapping
 
 from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
-                        ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION,
+                        ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION, GOAL_PREFLIGHT_ACI_SCHEMA_VERSION,
                         STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
 from .verification_contract import compact_review, structured_submission, verdict_scoped_review
@@ -531,6 +531,11 @@ def _stage_instruction(request: AgentRequest) -> str:
                 common += ("If the project supports a minimal sample on the formal entrypoint, supply entrypoint_smoke "
                     "with args to append to the admitted command and expected output files relative to /output. "
                     "The verifier runs it in the probe Process and shares its time allowance. ")
+            if request.schema_version >= GOAL_PREFLIGHT_ACI_SCHEMA_VERSION:
+                common += ("When expert-config supplies goal_preflight, GOAL submissions use python /input/<its path> "
+                    "as the formal entrypoint. Read that pinned script for its candidate input contract. Capture its "
+                    "unchanged bytes and candidate files via execution_argv. Omit entrypoint_smoke and --preflight; "
+                    "the Host runs the bounded development sample before the formal job. ")
             if request.schema_version >= 27:
                 common += (
                     "Preview resource_estimate and optional positive gpus with get_resources before submitting. "

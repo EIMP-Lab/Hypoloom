@@ -64,6 +64,8 @@ def research_progress(facts, producers, owners):
             view["last_evidence"] = {**record, "coverage": stage_coverage(spec.get("measurement"), outcome)}
         elif outcome.get("outcome") == "EXECUTION_FAILURE":
             stage, owner = failure_stage(producers.get(outcome.get("artifact_id")), owners.get(component))
+            if outcome.get("validation_code") == "goal_preflight_failed":
+                stage, owner = "goal_preflight", owners.get(component)
             counts = view["failure_counts"].setdefault(record["scope"] or "component", {})
             counts[stage] = counts.get(stage, 0) + 1
             view["last_failure"] = {**record, "stage": stage, "owner": owner}

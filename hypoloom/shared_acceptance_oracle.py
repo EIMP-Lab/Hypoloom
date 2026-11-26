@@ -420,9 +420,12 @@ def audit_shared_bindings(
             )
             if binding is None:
                 continue
+            template = goals[0].get("methodology", {}).get("controls", {}).get("product", {}).get("goal", {}).get("preflight")
+            expected = template if isinstance(binding, Mapping) and binding.get("scope") == "GOAL" else None
             _need(
                 isinstance(binding, Mapping)
-                and set(binding) == {"scope", "source_attempt_id", "acceptance"}
+                and set(binding) == {"scope", "source_attempt_id", "acceptance"} | ({"preflight"} if expected else set())
+                and binding.get("preflight") == expected
                 and binding["scope"] in {"LOCAL", "GOAL"},
                 "common preregistration binding fields differ",
             )
@@ -461,13 +464,13 @@ def phase_success(observation, *, local, goal):
     code = observation.get("returncode")
     complete = (
         type(code) is int
-        and code in ({0, 70, 71, 72, 73} if goal else {0, 70, 71})
+        and code in ({0, 70, 71, 72, 73, 74} if goal else {0, 70, 71})
         and observation.get("terminal_reason")
         == ("SUCCEEDED" if code == 0 else "FAILED")
         and not observation.get("synthetic_before_spawn")
         and not observation.get("integrity_error")
     )
-    raw = complete and code != 70
+    raw = complete and code not in {70, 74}
     return (
         raw,
         (raw and code in {0, 72}) if local else None,
@@ -551,7 +554,7 @@ def audit_parser_process_requests(request, payload, *, adapter_version=None):
     _need(
         set(plan)
         == (
-            {"raw_request", "parser_request", "goal_parser_request"}
+            {"raw_request", "parser_request", "goal_parser_request"} | ({"preflight_request"} if binding.get("preflight") else set())
             if goal
             else {"raw_request", "parser_request"}
         ),
@@ -587,6 +590,28 @@ def audit_parser_process_requests(request, payload, *, adapter_version=None):
         "shared raw/outer process identities or logs differ",
     )
     raw_argv = raw["argv"]
+    if template := binding.get("preflight"):
+        from .goal_preflight import sample_request
+        from .runner import ProcessRequest
+        expected_sample = sample_request(ProcessRequest.from_dict(raw), template).to_dict()
+        sample = plan["preflight_request"]
+        _need(sample == expected_sample, "GOAL preflight sandbox, command or budget differs from the formal source")
+        command = raw_argv[raw_argv.index("--chdir") + 3:]
+        _need(len(command) >= 2 and command[1] == "/input/" + template["path"] and "--preflight" not in command,
+              "GOAL entrypoint differs from Profile template")
+        argv = sample["argv"]
+        options = argv[:argv.index("--chdir")]
+        for i, flag in enumerate(options[:-2]):
+            if flag in {"--bind", "--ro-bind", "--dev-bind"}:
+                _need(not Path(options[i + 2]).is_relative_to("/hypoloom-evaluation"), "preflight exposes a held-out mount")
+            if flag == "--setenv" and options[i + 1] == "HYPOLOOM_READ_ROOTS":
+                _need(all(not Path(p).is_relative_to("/hypoloom-evaluation") for p in json.loads(options[i + 2])),
+                      "preflight exposes a held-out alias")
+        writable = [(options[i+1], options[i+2]) for i, flag in enumerate(options[:-2]) if flag == "--bind"]
+        _need(writable == [(str(Path(raw["cwd"]).parent / "goal-preflight"), "/output")]
+              and argv[len(options) + 3:] == [*command, "--preflight"]
+              and sample["timeout_seconds"] == min(raw["timeout_seconds"], template["timeout_seconds"]),
+              "preflight output, command or deadline differs")
     mounts = [
         raw_argv[index + 1]
         for index, value in enumerate(raw_argv[:-2])

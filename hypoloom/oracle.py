@@ -1362,7 +1362,7 @@ def _audit_agent_attempts(
         else None
     )
     frozen_modes: dict[str, str | None] = {}
-    engineering_requirements = {}
+    engineering_goals = {}
     for fact in facts:
         if fact["fact_type"] != "GoalDefined":
             continue
@@ -1372,7 +1372,7 @@ def _audit_agent_attempts(
         budget = contract.get("budget") if isinstance(contract, Mapping) else None
         if isinstance(contract, Mapping):
             product = contract.get("methodology", {}).get("controls", {}).get("product", {})
-            engineering_requirements[run_id] = product.get("goal", {}).get("implementation_requirements", {})
+            engineering_goals[run_id] = product.get("goal", {})
         invocation = (
             budget.get("agent_invocation") if isinstance(budget, Mapping) else None
         )
@@ -1507,7 +1507,8 @@ def _audit_agent_attempts(
         if raw_request.get("command") == "VERIFY_IMPLEMENTATION" and request is not None:
             from .verification_audit import request_binding
             try: request_binding(request, command, commands_by_id, all_attempts_by_id, attempt_payloads,
-                                 requirements=engineering_requirements.get(request.run_id, {}))
+                                 requirements=engineering_goals.get(request.run_id, {}).get("implementation_requirements"),
+                                 preflight=engineering_goals.get(request.run_id, {}).get("preflight"))
             except (AssertionError, ValueError, KeyError, TypeError):
                 issues.append(OracleIssue("implementation_review_binding_invalid", "verifier inputs differ from their captured source or Host probe evidence", (attempt_id,)))
         if raw_request.get("command") == "PAPER_READ" and request is not None:
@@ -3361,6 +3362,14 @@ def _audit_execution_integrity(
                     (fact_id,),
                 )
             )
+        template = (payload.get("goal_evaluation") or {}).get("preflight")
+        if template:
+            source_files = None if submitted is None else _decode_workspace(submitted[1])
+            if (not source_files or template["path"] not in source_files
+                    or hashlib.sha256(source_files[template["path"]]).hexdigest() != template["sha256"]
+                    or tuple((expected_argv or ())[:2]) != ("python", "/input/" + template["path"])
+                    or "--preflight" in expected_argv or "entrypoint_smoke" in submitted[1]["arguments"]):
+                issues.append(OracleIssue("goal_preflight_source_invalid", "GOAL submission differs from its pinned entrypoint", (fact_id,)))
         reuse_expected = []
         try:
             selected_reuse = [] if submitted is None else submitted[1]["arguments"].get("reuse_experiments", [])
@@ -10429,6 +10438,15 @@ def _audit_shared_component_result(component, spec, spec_payload, outcome, paylo
                                         goal=binding["scope"] == "GOAL")
     try:
         if root is None or attempt is None: raise ValueError("common evaluation lacks publication or Process")
+        if observation.get("returncode") == 74 and (not binding.get("preflight") or (root / "preflight/preflight.json").exists()
+                or actual != "EXECUTION_FAILURE" or payload.get("validation_code") != "goal_preflight_failed"):
+            issues.append(OracleIssue("goal_preflight_failure_invalid", "failed preflight must be recorded as an engineering failure", (identity,)))
+        if binding.get("preflight") and observation.get("returncode") in {0, 70, 71, 72, 73}:
+            from .goal_preflight import read_report
+            try:
+                read_report(root / "preflight")
+            except (ValueError, OSError) as exc:
+                issues.append(OracleIssue("goal_preflight_evidence_missing", str(exc), (identity,)))
         outer = observation["process_request"]
         raw = json.loads(outer["argv"][3])["raw_request"]["argv"]
         prefixes = [raw[index + 1] for index, value in enumerate(raw[:-2]) if value == "--ro-bind" and raw[index + 2] == "/runtime"]

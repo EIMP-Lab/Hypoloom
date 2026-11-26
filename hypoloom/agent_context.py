@@ -1181,6 +1181,8 @@ def expert_inputs(host, run_id: str, task: ResearchNodeTask | AuxiliaryTask,
             if required_family is None: raise OperationalHalt("expert component lacks one ready required-input family")
             config["required_method_family_id"] = required_family
         config_ref = f"{run_id}--{component_id}--expert-config"
+        if preflight := contract_document["methodology"].get("controls", {}).get("product", {}).get("goal", {}).get("preflight"):
+            config["goal_preflight"] = preflight
         from .agent_aci import RESEARCH_PROGRESS_ACI_SCHEMA_VERSION
         version = int(host.store.get_run(run_id)["agent_aci_version"])
         if version >= RESEARCH_PROGRESS_ACI_SCHEMA_VERSION and task.key.node_kind is ResearchNodeKind.HYPOTHESIS_UPDATE:

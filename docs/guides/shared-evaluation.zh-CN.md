@@ -76,3 +76,21 @@ evaluator_seed:
 ```
 
 准入从目标仓库绑定的 Git 提交读取指定文件。新一轮 Grounding 从这些源码和样例开始，重试会保留草稿。最终提交须保留所选协议的成功判据、有效性检查、诊断项和原始输入名称。即使修改了草稿样例，也须通过原版本中的样例。Grounding 完成后，Host 记录本轮新接纳的来源 Attempt。研究问题或数据划分发生变化时，可以选择匹配的新版协议，也可以让 Grounding 重新编写评估器。
+
+### 正式 GOAL 评测前运行固定的小样本
+
+使用 Grounding 的 v4 Profile 可以绑定研究仓库中的 Python 入口。在目标仓库运行 `git show HEAD:scripts/goal_experiment.py | sha256sum`，把实际摘要填入 `goal.yaml`。
+
+```yaml
+evaluation: grounding
+preflight:
+  path: scripts/goal_experiment.py
+  sha256: "<64 位小写十六进制摘要>"
+  timeout_seconds: 120
+```
+
+准入时 Host 从已绑定的 Git 提交核对文件。设计与提交使用 `python /input/scripts/goal_experiment.py` 加候选参数，同时捕获入口文件和候选输入。Host 仅在小样本命令末尾追加 `--preflight`。启用模板的 GOAL 由 Host 统一执行这一步，作者提交时省略 `entrypoint_smoke`。
+
+小样本沿用正式候选源码、解释器和资源授权，读取公共输入和显式复用的产物，在独立的 `/output` 中写入 Grounding 解释器声明的原始证据文件名。正式专用的 `evaluation_only_read_paths` 只在随后正式运行时挂载。小样本占用同一次 Attempt 的总时限，自身上限可设为 1–300 秒。模板完成后写普通文件 `/output/preflight.json`，其中 `passed` 为布尔值 `true`，可附工程诊断，总计最多 64 KiB。计分解释器只读取正式阶段的输出。
+
+成功时可在发布物中查看 `preflight/preflight.json` 和阶段日志。超时、执行失败、缺少报告或缺少声明的证据文件时，Host 跳过正式执行，把 `goal_preflight_failed` 记为工程失败（退出码 74），并保留 `preflight/stderr.log` 供修复。该步骤独立于可选的实现检验专家。LOCAL 实验及未配置模板的 Profile 沿用原有流程。

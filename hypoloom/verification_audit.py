@@ -90,7 +90,7 @@ def formal_gate(attempt, context, commands, attempts, observations):
     assert observations[ref]["response"]["typed_candidate"]["verdict"] == "passed"
 
 
-def request_binding(request, command, commands, attempts, observations, *, requirements=None):
+def request_binding(request, command, commands, attempts, observations, *, requirements=None, preflight=None):
     from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, WorkspaceArtifact
     value = json.loads(command["request_json"])["implementation_verification"]
     assert request.owner_workflow_id == request.run_id and request.role == request.component_id == "verifier"
@@ -144,6 +144,8 @@ def request_binding(request, command, commands, attempts, observations, *, requi
     assert source["run_id"] == request.run_id and source["workflow_id"] == value["experiment_id"]
     submit = json.loads(source["request_json"])
     snapshot = submit["source_snapshot"]
+    candidate_scope = snapshot["arguments"].get("candidate", {}).get("evaluation_scope")
+    assert ctx.get("goal_preflight") == (preflight if candidate_scope == "GOAL" else None)
     assert value["source_output_digest"] == snapshot["output_digest"]
     assert ctx.get("entrypoint_smoke") == snapshot["arguments"].get("entrypoint_smoke")
     import base64

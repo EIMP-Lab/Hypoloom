@@ -92,8 +92,9 @@ EVALUATION_PROTOCOL_ACI_SCHEMA_VERSION = 43
 AUTHORING_PROGRESS_ACI_SCHEMA_VERSION = 44
 ENGINEERING_CHECKS_ACI_SCHEMA_VERSION = 45
 RESEARCH_PROGRESS_ACI_SCHEMA_VERSION = 46
+GOAL_PREFLIGHT_ACI_SCHEMA_VERSION = 47
 AUTHORING_STAGES = frozenset({"GROUNDING", "EXPERIMENT_DESIGN_IMPLEMENT", "VERIFY_IMPLEMENTATION"})
-CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = RESEARCH_PROGRESS_ACI_SCHEMA_VERSION
+CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION = GOAL_PREFLIGHT_ACI_SCHEMA_VERSION
 EXPERIMENT_SUBMISSION_MIN_ACI_VERSION = 11
 GROUNDING_WEB_MIN_ACI_VERSION = 13
 LITERATURE_WEB_MIN_ACI_VERSION = 14
@@ -136,6 +137,7 @@ _READABLE_ACI_SCHEMA_VERSIONS = frozenset(
         AUTHORING_PROGRESS_ACI_SCHEMA_VERSION,
         ENGINEERING_CHECKS_ACI_SCHEMA_VERSION,
         RESEARCH_PROGRESS_ACI_SCHEMA_VERSION,
+        GOAL_PREFLIGHT_ACI_SCHEMA_VERSION,
     }
 )
 LEGACY_AGENT_COMMANDS = (
@@ -187,6 +189,7 @@ _COMMANDS_BY_SCHEMA = {
     AUTHORING_PROGRESS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     ENGINEERING_CHECKS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
     RESEARCH_PROGRESS_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
+    GOAL_PREFLIGHT_ACI_SCHEMA_VERSION: AGENT_COMMANDS,
 }
 _COMMANDS_BY_SCHEMA = {version: tuple(command for command in commands
     if (version >= PAPER_READING_ACI_SCHEMA_VERSION or command is not AgentCommand.PAPER_READ)
@@ -1407,6 +1410,8 @@ def validate_postflight(
                 "a SUPPORTED current component tip must TERMINATE_LINEAGE",
             )
     workspace = {item.path: item.content_bytes() for item in parsed.proposed_workspace_artifacts}
+    if isinstance(candidate, ExperimentSpecCandidate) and request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+        validate_goal_preflight(request, candidate.evaluation_scope, candidate.execution_argv, workspace)
     if isinstance(candidate, GroundingCandidate):
         required = grounding_acceptance_request(request) and candidate.clarification is None
         if (candidate.acceptance is not None) != required:
@@ -1557,6 +1562,8 @@ def _parse_experiment_submission(
         for item in _sequence(arguments["workspace_files"], "workspace_files")
     )
     files = {item.path: item.content_bytes() for item in artifacts}
+    if validate_goal_preflight(request, candidate.evaluation_scope, candidate.execution_argv, files) and "entrypoint_smoke" in arguments:
+        raise AgentACIError("invalid_goal_preflight", "omit entrypoint_smoke for this GOAL: the Host runs the Profile template")
     if candidate.measurement is not None or candidate.evaluation_scope == "GOAL":
         if len(files) != len(artifacts) or "implementation.patch" not in files:
             raise AgentACIError("invalid_workspace", "measurement submission requires unique sources and implementation.patch")
@@ -1630,6 +1637,20 @@ def grounding_acceptance_request(request: AgentRequest) -> bool:
     if len(configs) != 1: raise AgentACIError("invalid_schema", "acceptance requires one node configuration")
     value = _json_object(configs[0].content_bytes(), "node configuration")
     return value.get("goal", {}).get("evaluation") == {"mode": "grounding"}
+
+
+def validate_goal_preflight(request, scope, argv, files):
+    if scope != "GOAL" or request.schema_version < GOAL_PREFLIGHT_ACI_SCHEMA_VERSION:
+        return None
+    ref = f"{request.run_id}--{request.component_id}--expert-config"
+    config = next((_json_object(item.content_bytes(), "expert config") for item in request.input_artifacts if item.ref == ref), {})
+    if preflight := config.get("goal_preflight"):
+        from .goal_preflight import check_submission
+        try:
+            check_submission(preflight, argv, files)
+        except ValueError as exc:
+            raise AgentACIError("invalid_goal_preflight", str(exc)) from exc
+    return preflight
 
 
 def _validate_evaluation_scope(request: AgentRequest, candidate: ExperimentSpecCandidate) -> None:

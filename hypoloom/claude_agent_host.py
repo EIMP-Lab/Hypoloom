@@ -2417,6 +2417,10 @@ def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorks
             "Reduce the submitted sources or cumulative implementation.patch, including tracked and "
             "untracked changes; a separately captured source also appears in its patch. "
             "Encoding and final response metadata need space too. Repair the actual files before completing.") from exc
+    if output["typed_candidate"].get("evaluation_scope") == "GOAL":
+        from .agent_aci import validate_goal_preflight
+        validate_goal_preflight(request, "GOAL", output["typed_candidate"].get("execution_argv"),
+                                {item.path: item.content_bytes() for item in artifacts})
 
 
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):

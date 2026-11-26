@@ -492,6 +492,12 @@ class WorkflowHost:
         if [str(Path(str(value)).resolve()) for value in requested_safety.get("read_roots", ())] != resolved_roots: raise ValueError("resolved read roots differ from research contract")
         config = {"execution": {"allow_gpu": allow_gpu, "delay_seconds": delay, "target": target_record,
             "runtime_prefix": runtime_prefix, "read_roots": resolved_roots}}
+        if preflight := (product or {}).get("goal", {}).get("preflight"):
+            from .agent_aci import GOAL_PREFLIGHT_ACI_SCHEMA_VERSION
+            from .goal_preflight import check_target
+            if int(self.version.agent_aci_version) < GOAL_PREFLIGHT_ACI_SCHEMA_VERSION:
+                raise ValueError("Profile GOAL preflight requires ACI 47")
+            check_target(preflight, target_record)
         if seed := (product or {}).get("goal", {}).get("evaluator_seed"):
             from .evaluator_examples import load_seed
             if int(self.version.agent_aci_version) < 43 or target_record is None or contract.document["goal"].get("evaluation") != {"mode": "grounding"}:
@@ -4739,6 +4745,7 @@ class WorkflowHost:
                 raw_ok, _, _ = evaluation_phase_success(evaluation_observation,
                     has_local=parser.local_parser is not None, has_goal=parser.goal_parser is not None)
                 validation_code = ("invalid_parsed_measurement" if raw_ok else
+                    "goal_preflight_failed" if parser.has_preflight and evaluation_observation.get("returncode") == 74 else
                     "raw_execution_failed" if raw_execution_failed(evaluation_observation) else None)
                 repairable_result_envelope = True
         elif integrity_error is None and reason is AttemptTerminalReason.SUCCEEDED:
