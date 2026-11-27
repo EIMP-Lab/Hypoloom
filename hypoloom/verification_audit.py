@@ -90,6 +90,42 @@ def formal_gate(attempt, context, commands, attempts, observations):
     assert observations[ref]["response"]["typed_candidate"]["verdict"] == "passed"
 
 
+def _check_report_history(request, ctx, commission, commands, attempts, observations):
+    index = {entry["report_ref"]: entry for entry in ctx["prior_reports"]}
+    assert len(index) == len(ctx["prior_reports"])
+    item = next(i.to_dict() for i in request.input_artifacts if i.ref.endswith("--verification-context"))
+    # An infrastructure retry may deliberately replay its earlier frozen view.
+    freezes = [row["started_at"] for ref, row in attempts.items() if row["command_id"] == request.command_id
+               and item in observations[ref].get("request", {}).get("input_artifacts", [])]
+    assert freezes
+    cutoff = min(freezes)
+    available, blockers, resolved, findings = set(), {}, set(), set()
+    for ref, row in attempts.items():
+        if (row["run_id"] != request.run_id or row["command_id"] == request.command_id or row["state"] != "CLOSED"
+                or row["terminal_reason"] != "SUCCEEDED" or row["ended_at"] > cutoff):
+            continue
+        old_request = observations[ref].get("request", {})
+        if old_request.get("command") != "VERIFY_IMPLEMENTATION":
+            continue
+        prior = json.loads(commands[row["command_id"]]["request_json"])["implementation_verification"]
+        if any(prior[k] != commission[k] for k in ("subject_expert", "component_id")):
+            continue
+        report = observations[ref]["response"]["typed_candidate"]
+        if ref in index:
+            assert index[ref] == {"report_ref": ref, "experiment_id": prior["experiment_id"], "phase": prior["phase"],
+                                   "verdict": report["verdict"]}
+            available.add(ref)
+            findings.update(ref + "#" + f["id"] for f in report["findings"])
+        if prior["delivery_id"] == commission["delivery_id"]:
+            blockers.update({ref + "#" + f["id"]: f for f in report["findings"] if f["severity"] == "blocker"})
+            if report["verdict"] == "passed":
+                resolved.update(report["resolved_refs"])
+    opened = {ref: f for ref, f in blockers.items() if ref not in resolved}
+    assert set(index) == available and set(ctx["finding_refs"]) <= findings
+    assert set(ctx["open_blocker_refs"]) == opened.keys() <= set(ctx["finding_refs"])
+    assert {b["ref"]: b["finding"] for b in ctx["open_blockers"]} == opened
+
+
 def request_binding(request, command, commands, attempts, observations, *, requirements=None, preflight=None):
     from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, WorkspaceArtifact
     value = json.loads(command["request_json"])["implementation_verification"]
@@ -135,6 +171,8 @@ def request_binding(request, command, commands, attempts, observations, *, requi
                 assert diagnostic["failure_stage"] in {"provider_structured_output", "provider_output"}
                 assert diagnostic["allowed_supporting_refs"] == source_observation["request"]["immutable_context_refs"]
     ctx = inputs["verification-context"]
+    if request.schema_version >= 48:
+        _check_report_history(request, ctx, value, commands, attempts, observations)
     if request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
         assert ctx.get("implementation_requirements", {}) == (requirements or {})
         if ctx["phase"] == "inspect":

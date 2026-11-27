@@ -272,10 +272,13 @@ def test_host_repairs_probe_then_requires_fresh_evidence_and_review(recovery):
     assert verification.gate("run-fake", "experiment") == (True, None)
     assert len(requests) == 3 and not failures
     review = context(requests[-1])
-    reports = {entry["report_ref"]: entry["report"] for entry in review["prior_reports"]}
+    from hypoloom.verification_history import report_page
+    reports = {entry["report_ref"]: entry for entry in review["prior_reports"]}
     assert review["probe_plan"]["files"] == repaired["files"]
-    assert "probe" not in reports[review["probe_report_ref"]]
-    assert reports[first["report_ref"]]["probe"]["files"] == first["files"]
+    assert all(set(entry) == {"experiment_id", "report_ref", "phase", "verdict"} for entry in reports.values())
+    raw = report_page(host.store, requests[-1], {"report_ref": first["report_ref"]})
+    assert json.loads(raw["text"])["probe"]["files"] == first["files"]
+    assert reports[review["probe_report_ref"]]["verdict"] == "probe_required"
     assert len(review_rows(host.store, "run-fake", phase="inspect")) == 1
     commands = {r["command_id"]: r for r in host.store.inspect("SELECT * FROM workflow_commands")}
     attempts = {r["attempt_id"]: r for r in host.store.list_attempts(run_id="run-fake")}

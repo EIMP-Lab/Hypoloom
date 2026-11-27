@@ -1036,6 +1036,8 @@ class _Compiler:
         if value is None:
             return {}
         self.unknown(value, _BUDGET_FIELDS, location)
+        if value.get("design_retry_policy", "shadow") not in ("shadow", "enforce"):
+            self.block("contract_invalid_value", f"{location}.design_retry_policy", "use shadow or enforce")
         try:
             gpu_memory_reserve_mib(value, 0)
         except ValueError as exc:

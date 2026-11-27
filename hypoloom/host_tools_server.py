@@ -37,6 +37,14 @@ _RESOURCE_ESTIMATE_SCHEMA = {
             "items": {"type": "string", "minLength": 1, "maxLength": 256}, "default": []}},
     "required": ["workload", "peak_memory_mib", "basis"], "additionalProperties": False,
 }
+_REFERENCE = {"type": "string", "minLength": 1, "description": "An experiment reference returned by this execution node."}
+_RECEIPT = {"name": "get_submission_receipt", "description": "Look up the durable receipt for this node's initial submission or named repair, including after a lost response.",
+    "inputSchema": {"type": "object", "properties": {"replaces_experiment_id": _REFERENCE}, "additionalProperties": False},
+    "annotations": {"readOnlyHint": True}}
+_REPORT = {"name": "read_verification_report", "description": "Read the accepted historical report named in this verification input. Continue at next_offset when needed.",
+    "inputSchema": {"type": "object", "properties": {"report_ref": {"type": "string"},
+        "offset": {"type": "integer", "minimum": 0}}, "required": ["report_ref"], "additionalProperties": False},
+    "annotations": {"readOnlyHint": True}}
 _RESOURCE_TOOLS = ({
     "name": "get_resources",
     "description": "Read timestamped authorized resource availability and this expert's bounded measured history. This neither reserves capacity nor changes accepted inputs.",
@@ -147,12 +155,14 @@ _READING_TOOLS = ({"name": "read_papers", "description": "Submit independent que
         "reading_ids": {"type": "array", "maxItems": 32, "uniqueItems": True, "items": {"type": "string"}},
         "max_wait_seconds": {"type": "number", "minimum": 0, "maximum": 600}},
         "required": ["action"], "additionalProperties": False}},)
-_TOOL_SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in (*_TOOLS, *_RESOURCE_TOOLS, *_WEB_TOOLS, *_READING_TOOLS)}
+_TOOL_SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in (*_TOOLS, *_RESOURCE_TOOLS, *_WEB_TOOLS, *_READING_TOOLS, _RECEIPT, _REPORT)}
 
 
 def scoped_tools(scope: str, tools: tuple[str, ...] | None = None, *,
                  candidate_schema: Mapping[str, Any] | None = None, entrypoint_smoke: bool = False) -> tuple[dict[str, Any], ...]:
-    if scope == "execution": selected = (*_TOOLS, *_RESOURCE_TOOLS)
+    references = tools is not None and "get_submission_receipt" in tools
+    if scope == "execution": selected = (*_TOOLS, *_RESOURCE_TOOLS, *((_RECEIPT,) if references else ()))
+    elif scope == "verification": selected = (_REPORT,)
     elif scope == "resources": selected = _RESOURCE_TOOLS
     elif scope in {"grounding", "literature"}: selected = (*_WEB_TOOLS, *(_READING_TOOLS if scope == "literature" and tools is not None else ()))
     else: raise ValueError("unknown Host tool scope")
@@ -160,8 +170,16 @@ def scoped_tools(scope: str, tools: tuple[str, ...] | None = None, *,
         properties = dict(_TOOL_SCHEMAS["submit_experiment"]["properties"])
         if candidate_schema is not None: properties["candidate"] = candidate_schema
         if not entrypoint_smoke: properties.pop("entrypoint_smoke")
-        selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": properties}}
+        extra = {}
+        if references:
+            properties.update(candidate_ref={"type": "string", "description": "Use design for the accepted design, or the predecessor exp_id for a repair. Supply only changed method, acceptance_criteria, execution_argv or resource_preference in candidate. Host supplies frozen parser files."},
+                              resource_estimate_ref=_REFERENCE)
+            extra = {"required": [], "anyOf": [{"required": ["candidate_ref"]}, {"required": ["candidate"]}]}
+        selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": properties, **extra}}
             if item["name"] == "submit_experiment" else item for item in selected)
+        if references:
+            selected = tuple({**item, "inputSchema": {**item["inputSchema"], "properties": {
+                **item["inputSchema"]["properties"], "resource_estimate_ref": _REFERENCE}}} if item["name"] == "get_resources" else item for item in selected)
     if tools is None: return selected
     if not isinstance(tools, tuple) or any(not isinstance(name, str) for name in tools):
         raise ValueError("Host tool scope subset must be a tuple of names")
@@ -202,22 +220,33 @@ class HostToolFieldError(ValueError):
         self.detail = detail
 
 
-def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
+def _arguments(tool: str, arguments: Any, *, references: bool = False) -> dict[str, Any]:
     if tool not in _TOOL_SCHEMAS:
         raise ValueError("unknown Host tool")
     if not isinstance(arguments, dict):
         raise ValueError("tool arguments must be an object")
     schema = _TOOL_SCHEMAS[tool]
-    properties = schema["properties"]
+    properties = dict(schema["properties"])
+    required = set(schema.get("required", ()))
+    if references and tool in {"submit_experiment", "get_resources"}:
+        properties["resource_estimate_ref"] = _REFERENCE
+        if tool == "submit_experiment":
+            properties["candidate_ref"] = _REFERENCE
+            if "candidate_ref" in arguments:
+                required.discard("candidate")
     if set(arguments) - set(properties):
         # Bound field names, never echo arbitrary values (which can hold secrets).
         unknown = ", ".join(json.dumps(str(name)[:64]) for name in sorted(set(arguments) - set(properties), key=str)[:8])
         hint = " Submit action=submit with readings only; collect via action=status or action=wait with max_wait_seconds." if tool == "read_papers" else ""
+        if tool == "get_resources":
+            hint = ' Example: {} to inspect availability, or {"gpus":1}.'
         raise ValueError(f"unknown tool arguments: {unknown}; allowed fields: {', '.join(properties)}." + hint)
-    if set(schema.get("required", ())) - set(arguments):
-        raise ValueError("missing required tool arguments: " + ", ".join(sorted(set(schema["required"]) - set(arguments))))
+    if required - set(arguments):
+        raise ValueError("missing required tool arguments: " + ", ".join(sorted(required - set(arguments))))
     if tool == "web_fetch" and "mode" not in arguments and "url" not in arguments:
         raise ValueError("missing required tool arguments")
+    if "resource_estimate_ref" in arguments and "resource_estimate" in arguments:
+        raise ValueError("Use one of resource_estimate or resource_estimate_ref.")
     for name, value in arguments.items():
         if name in {"sources", "readings", "reading_ids"}:
             valid = isinstance(value, list) and 1 <= len(value) <= (2 if name == "sources" else 32)
@@ -229,9 +258,13 @@ def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
             valid = isinstance(value, str) or (
                 isinstance(value, list) and all(isinstance(part, str) for part in value)
             )
+        elif name == "offset":
+            valid = type(value) is int and 0 <= value <= 2**31 - 1
+        elif name == "reuse_experiments":
+            valid = isinstance(value, list) and all(isinstance(item, str) and item for item in value)
         elif name == "gpus":
             valid = (
-                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                type(value) is int and value >= (1 if tool == "get_resources" else 0)
             )
         elif name in {"max_results", "max_chars"}:
             valid = type(value) is int and 1 <= value <= (10 if name == "max_results" else 100000)
@@ -244,7 +277,16 @@ def _arguments(tool: str, arguments: Any) -> dict[str, Any]:
         else:
             valid = isinstance(value, str) and bool(value)
         if not valid:
-            raise ValueError(f"invalid tool argument: {name}")
+            expected = properties[name].get("type", "string or argv array")
+            hint = ' Example: {"gpus":1}.' if name == "gpus" else ""
+            raise ValueError(f"invalid tool argument: {name} expects {expected}." + hint)
+        if name == "resource_estimate":
+            fields = _RESOURCE_ESTIMATE_SCHEMA["properties"]
+            missing = set(_RESOURCE_ESTIMATE_SCHEMA["required"]) - value.keys()
+            if missing or value.keys() - fields.keys():
+                raise ValueError("resource_estimate expects workload (object), peak_memory_mib (positive integer), "
+                                 "basis (string) and optional measurement_attempt_ids (array). "
+                                 'Example: {"workload":{"batch":"8"},"peak_memory_mib":2048,"basis":"measured peak"}.')
     return dict(arguments)
 
 
@@ -340,7 +382,7 @@ class AgentToolServer:
                     if tool not in endpoint.allowed_tools:
                         raise ValueError("Host tool is not authorized for this invocation scope")
                     diagnostic_tool = tool
-                    arguments = _arguments(tool, document["arguments"])
+                    arguments = _arguments(tool, document["arguments"], references="get_submission_receipt" in endpoint.allowed_tools)
                     call = _PendingCall(tool, arguments)
                     with endpoint._lock:
                         if endpoint._closed.is_set():
@@ -511,9 +553,21 @@ def _call_host(
     return result
 
 
-def call_tool(socket_path: str, tool: str, arguments: Any) -> dict[str, Any]:
+def call_tool(socket_path: str, tool: str, arguments: Any, *, references: bool = False) -> dict[str, Any]:
     """Perform one MCP call; wait polls statuses without blocking Host service."""
-    arguments = _arguments(tool, arguments)
+    arguments = _arguments(tool, arguments, references=references)
+    if references and tool == "submit_experiment":
+        try:
+            return _call_host(socket_path, tool, arguments)
+        except (ValueError, OSError) as exc:
+            if not isinstance(exc, (TimeoutError, ConnectionError)) and not any(word in str(exc).lower() for word in ("expired", "timed out", "oversized host tool response")):
+                raise
+            key = {k: arguments[k] for k in ("replaces_experiment_id",) if k in arguments}
+            receipt = _call_host(socket_path, "get_submission_receipt", key)
+            if receipt.get("receipt"):
+                return {**receipt, "reconciled_after_timeout": True, "content_match": "unconfirmed",
+                        "instruction": "This key already committed. Inspect its experiment; a changed candidate requires an explicit repair."}
+            raise ValueError("Submission response timed out; the key has no committed receipt yet. Query get_submission_receipt before retrying.") from exc
     reading_wait = tool == "read_papers" and arguments.get("action") == "wait"
     document_wait = tool == "web_fetch"
     if tool != "wait_experiment" and not reading_wait and not document_wait:
@@ -564,7 +618,8 @@ def serve_stdio(
     schema = {} if output_schema_path is None else _decode(Path(output_schema_path).read_bytes())
     selected_tools = scoped_tools(scope, tools,
         candidate_schema=schema.get("$defs", {}).get("ExperimentSpecCandidate"), entrypoint_smoke=entrypoint_smoke)
-    return serve_mcp(selected_tools, lambda name, arguments: call_tool(socket_path, name, arguments),
+    return serve_mcp(selected_tools, lambda name, arguments: call_tool(socket_path, name, arguments,
+        references=tools is not None and "get_submission_receipt" in tools),
         max_request_bytes=max_request_bytes)
 
 
@@ -636,7 +691,7 @@ def serve_mcp(selected_tools, invoke, *, max_request_bytes: int,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--socket", required=True)
-    parser.add_argument("--scope", choices=("execution", "resources", "grounding", "literature"), default="execution")
+    parser.add_argument("--scope", choices=("execution", "resources", "grounding", "literature", "verification"), default="execution")
     parser.add_argument("--tool", action="append")
     parser.add_argument("--output-schema")
     parser.add_argument("--entrypoint-smoke", action="store_true")

@@ -11,12 +11,13 @@ import os
 import stat
 from pathlib import Path
 
-from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, EmbeddedInput
+from .agent_aci import EFFICIENT_AGENT_ACI_SCHEMA_VERSION, ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, EmbeddedInput
 from .domain import AttemptTerminalReason
 from .expert_loop import AuxiliaryRequestKind, AuxiliaryTask
 from .lifecycle import Command, ExperimentState, RunState
 from .profile_v4 import resolve_node_runtime
 from .verification_contract import MAX_PROBE_SECONDS, MAX_PROBE_REPAIRS, probe_actions
+from .verification_history import history_view
 
 
 def review_rows(store, run_id, *, experiment_id=None, subject=None, component=None, phase=None, limit=None):
@@ -115,6 +116,9 @@ class ImplementationVerification:
                 # stay relevant; no invented equivalence or cross-run pass cache.
                 keys = lambda args: {k: v for k, v in args.items() if k not in {"replaces_experiment_id", "description"}}
                 if prior and keys(prior[3]["arguments"]) == keys(snapshot["arguments"]) and all(prior[1].get(k) == execution.get(k) for k in ("argv", "environment", "resource_intent")):
+                    if (request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION
+                            and history_view(store, run_id, value, task.command_id)["open_blocker_refs"]):
+                        break
                     value["reused_from"] = report["report_ref"]
                     break
         with store.transaction() as tx:
@@ -157,7 +161,8 @@ class ImplementationVerification:
         aci_version = int(self.host.store.get_run(task.run_id)["agent_aci_version"])
         if validated.output_digest != value["source_output_digest"]:
             raise ValueError("verification source differs from captured submission")
-        prior = self._prior(task.run_id, value["subject_expert"], value["component_id"], task.command_id)
+        compact = aci_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION
+        prior = [] if compact else self._prior(task.run_id, value["subject_expert"], value["component_id"], task.command_id)
         probes = self.host.store.list_attempts(execution_id=value["experiment_id"] + "--implementation-probe")
         evidence = None
         if value.get("probe_report_ref"):
@@ -225,6 +230,18 @@ class ImplementationVerification:
         resolved = {ref for r in prior if r["report"]["verdict"] == "passed" for ref in r["report"]["resolved_refs"]}
         ctx["open_blocker_refs"] = [r["report_ref"] + "#" + f["id"] for r in prior for f in r["report"]["findings"]
             if r["delivery_id"] == value["delivery_id"] and f["severity"] == "blocker" and r["report_ref"] + "#" + f["id"] not in resolved]
+        if compact:
+            ctx.update(history_view(self.host.store, task.run_id, value, task.command_id))
+            if value["phase"] == "inspect":
+                predecessor = snapshot["arguments"].get("replaces_experiment_id")
+                previous = self.source(task.run_id, predecessor) if predecessor else None
+                if previous:
+                    before = previous[4].workspace_files
+                    after = validated.workspace_files
+                    ctx["source_delta"] = {"base_experiment_id": predecessor,
+                        "changed_paths": sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p)),
+                        "changed_execution_fields": [k for k in ("argv", "environment", "resource_intent")
+                            if previous[1].get(k) != execution.get(k)]}
         def embedded(suffix, document):
             return EmbeddedInput.from_bytes(task.command_id + suffix, "application/json",
                 json.dumps(document, ensure_ascii=False, sort_keys=True).encode())

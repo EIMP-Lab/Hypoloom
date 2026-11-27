@@ -29,6 +29,7 @@ from .expert_loop import ResearchNodeSubkind, ResearchNodeTask, chain_session_sc
 from .git_authoring_workspace import (
     GitAuthoringDirtyWorktreeError,
     GitAuthoringIntegrityError,
+    MissingCaptureInput,
     GitAuthoringWorkspaceError,
     GitAuthoringWorkspace,
     PreparedGitAuthoringWorkspace,
@@ -277,7 +278,8 @@ class PreparedSessionWorkspace:
             max_bytes=max_bytes, max_files=max_files, include_commits=True, allow_empty=allow_empty
         )
 
-    def capture_workspace(self, candidate: Mapping[str, Any] | None = None, *, max_bytes: int | None = None) -> list[dict[str, str]]:
+    def capture_workspace(self, candidate: Mapping[str, Any] | None = None, *, max_bytes: int | None = None,
+                          frozen_measurement_files: Mapping[str, bytes] | None = None) -> list[dict[str, str]]:
         budget = self.request.budget.max_output_bytes
         if max_bytes is not None:
             if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
@@ -325,12 +327,13 @@ class PreparedSessionWorkspace:
             if not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(arg, str) or not arg or "\x00" in arg for arg in argv):
                 raise GitAuthoringIntegrityError("measurement execution requires explicit argv")
             paths = set(() if declaration is None else declaration.parser_files)
+            frozen = frozen_measurement_files or {}
             if declaration is not None and self.request.schema_version >= ENGINEERING_CHECKS_ACI_SCHEMA_VERSION:
                 from .evaluator_examples import MEASUREMENT_CASES, fixture_path, measurement_examples
                 manifest = self.worktree_root / MEASUREMENT_CASES
-                if manifest.resolve() != self.worktree_root.resolve() / MEASUREMENT_CASES or not manifest.is_file():
-                    raise GitAuthoringIntegrityError(f"missing regular local measurement examples: {MEASUREMENT_CASES}")
-                cases = measurement_examples(_regular(manifest, budget), declaration)
+                if manifest.resolve() != self.worktree_root.resolve() / MEASUREMENT_CASES or not (manifest.is_file() or MEASUREMENT_CASES in frozen):
+                    raise MissingCaptureInput(f"missing regular local measurement examples: {MEASUREMENT_CASES}", MEASUREMENT_CASES)
+                cases = measurement_examples(_regular(manifest, budget) if manifest.exists() else frozen[MEASUREMENT_CASES], declaration)
                 paths.add(MEASUREMENT_CASES)
                 paths.update(fixture_path(case, name) for case in cases for name in declaration.raw_artifacts)
             for arg in argv:
@@ -358,14 +361,18 @@ class PreparedSessionWorkspace:
                         raise GitAuthoringIntegrityError(
                             f"measurement argv references a directory, not a file: /input/{relative}; "
                             "directories are not captured; use HYPOLOOM_TARGET_ROOT for the submitted source tree")
-                    content = _regular(source_path, budget)
+                    content = frozen[relative] if relative in frozen and not source_path.exists() else _regular(source_path, budget)
+                    if relative in frozen and relative in declaration.parser_files and content != frozen[relative]:
+                        raise GitAuthoringIntegrityError(f"frozen measurement parser differs: /input/{relative}; restore its accepted bytes or remove the local copy to inherit it")
                 except FileNotFoundError:
-                    raise GitAuthoringIntegrityError(f"measurement source is missing: /input/{relative}") from None
+                    raise MissingCaptureInput(f"measurement source is missing: /input/{relative}", relative) from None
                 except OSError as exc:
                     raise GitAuthoringIntegrityError(
                         f"measurement source cannot be read: /input/{relative} ({type(exc).__name__})") from None
                 if not content:
                     raise GitAuthoringIntegrityError("measurement source must not be empty")
+                if len(content) > budget:
+                    raise GitAuthoringIntegrityError("measurement sources exceed the output byte budget")
                 budget -= len(content)
                 captured.append(WorkspaceArtifact.from_bytes(relative, content).to_dict())
             patch = self.capture_patch(max_bytes=budget, max_files=4096, allow_empty=True)
@@ -525,7 +532,7 @@ def same_frozen_task(previous: AgentRequest, request: AgentRequest) -> bool:
         data = value.to_dict()
         for name in ("attempt_id", "attempt_ordinal", "budget", "deadline"):
             data.pop(name)
-        correction = ("--agent-retry-diagnostic", "--candidate-validation-error")
+        correction = ("--agent-retry-diagnostic", "--candidate-validation-error", "--design-checkpoint")
         data["input_artifacts"] = [item for item in data["input_artifacts"] if not item["ref"].endswith(correction)]
         data["immutable_context_refs"] = [ref for ref in data["immutable_context_refs"] if not ref.endswith(correction)]
         return data

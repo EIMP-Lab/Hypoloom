@@ -159,7 +159,7 @@ def audit_sessions(artifact_root: Path, attempts: Sequence[Mapping[str, Any]],
                         for name, value in request.items():
                             if name not in {"attempt_id", "attempt_ordinal", "budget", "deadline", "input_artifacts", "immutable_context_refs"}:
                                 assert prior["request"].get(name) == value
-                        suffixes = ("--agent-retry-diagnostic", "--candidate-validation-error")
+                        suffixes = ("--agent-retry-diagnostic", "--candidate-validation-error", "--design-checkpoint")
                         assert [item for item in request["input_artifacts"] if not item["ref"].endswith(suffixes)] == [
                             item for item in prior["request"]["input_artifacts"] if not item["ref"].endswith(suffixes)]
                         assert [ref for ref in request["immutable_context_refs"] if not ref.endswith(suffixes)] == [

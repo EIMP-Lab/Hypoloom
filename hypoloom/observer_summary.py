@@ -271,6 +271,33 @@ def _token_accounting(stages):
         "unavailable_token_attempts")}
 
 
+def research_efficiency(agents, experiments, elapsed):
+    from .provider_observation import measured_usage
+    wire, by_stage, by_model, by_role = Counter(), defaultdict(Counter), defaultdict(Counter), defaultdict(Counter)
+    shadow = 0
+    for row, observation, request in agents:
+        usage = measured_usage(observation)
+        wire.update(usage)
+        by_stage[request.get("command") or "unknown"].update(usage)
+        by_model[request.get("required_model_identity") or "unknown"].update(usage)
+        by_role[request.get("role") or "unknown"].update(usage)
+        shadow += bool((observation.get("design_checkpoint") or {}).get("would_pause"))
+    scopes = {s: {"preregistered": 0, "comparable": 0} for s in ("LOCAL", "GOAL")}
+    for record in experiments.values():
+        if not record.get("preregistered"):
+            continue
+        group = scopes.setdefault(record["evaluation_scope"], {"preregistered": 0, "comparable": 0})
+        group["preregistered"] += 1
+        group["comparable"] += record.get("outcome") in ("SUCCESS", "CLEAN_REFUTATION")
+    for group in scopes.values():
+        group["comparable_per_hour"] = group["comparable"] * 3600 / elapsed if elapsed else None
+    count = sum(g["comparable"] for g in scopes.values())
+    fresh = wire["uncached_input_tokens"] + wire["output_tokens"]
+    return {"measured_usage": dict(wire), "by_stage": dict(by_stage), "by_role": dict(by_role), "by_requested_model": dict(by_model),
+            "design_repeated_failures": shadow, "outcomes": scopes, "elapsed_seconds": elapsed,
+            "measured_uncached_input_plus_output_per_comparable": fresh / count if count and wire["completed_requests"] else None}
+
+
 def _stage_accounting(stages):
     groups = defaultdict(list)
     for stage in stages:
@@ -461,6 +488,8 @@ def _experiment_records(facts, transitions, agents, experts):
         record = experiments.setdefault(payload["experiment_id"], {})
         if row["fact_type"] == "ExperimentPreregistered":
             record["execution_id"] = payload.get("execution_id")
+            record["preregistered"] = True
+            record["evaluation_scope"] = (payload.get("goal_evaluation") or {}).get("scope") or "UNSPECIFIED"
             record["role"] = hypotheses.get(payload.get("hypothesis_id")) or owners.get(payload.get("component_id"))
         else:
             record["outcome"] = payload.get("outcome")
@@ -601,6 +630,10 @@ def refresh_summary_clock(summary, run_state, observed_at):
     result["clock_observed_at"] = observed_at
     if run_state not in _TERMINAL:
         if result.get("elapsed_seconds") is not None: result["elapsed_seconds"] += delta
+        if (efficiency := result.get("research_efficiency")) and result.get("elapsed_seconds"):
+            efficiency["elapsed_seconds"] = result["elapsed_seconds"]
+            for group in efficiency["outcomes"].values():
+                group["comparable_per_hour"] = group["comparable"] * 3600 / result["elapsed_seconds"]
         if result.get("remaining_seconds") is not None: result["remaining_seconds"] = max(0, result["remaining_seconds"] - delta)
         if run_state == "WAITING_HUMAN": result["waiting_human_seconds"] += delta
     # Compact views share some stage dictionaries; advance each object once.
@@ -805,6 +838,7 @@ def build_run_summary(state_root: str | Path, run_id: str, *, facts, transitions
         "verifier": verifier,
         "grounding_sharing": sharing,
         "reliability": reliability, "accounting": _token_accounting(stages),
+        "research_efficiency": research_efficiency(agents, experiments, elapsed),
         "stage_accounting": _stage_accounting(stages),
         "context_recovery": _context_accounting(stages),
         "host_observation": host_observation, "stages": stages,

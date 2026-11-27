@@ -7,6 +7,7 @@ is scientifically or durably accepted.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import signal
@@ -637,7 +638,7 @@ class ClaudeAgentHost:
                 if host_tool_handler is None:
                     raise AgentHostError("node requires its scoped Host tool handler")
                 endpoint = AgentToolServer(endpoint_root / "tools.sock", request.attempt_id,
-                    host_tool_handler, capture_workspace=tool_workspace.capture_workspace if tool_scope == "execution" else None,
+                    host_tool_handler, capture_workspace=tool_workspace.capture_workspace if tool_scope == "execution" and "get_submission_receipt" not in selected_tools else None,
                     scope=tool_scope, tools=selected_tools, diagnostics=runtime_diagnostics,
                     max_request_bytes=max(4 * 1024 * 1024, request.budget.max_output_bytes * 2))
                 resources.callback(endpoint.close)
@@ -671,6 +672,7 @@ class ClaudeAgentHost:
                 seed_files=getattr(tool_workspace, "evaluator_seed_files", None),
                 measurement_smoke=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and _declared_measurement_request(request),
                 design_implementation=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT",
+                design_checkpoints=request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and request.schema_version >= 48,
                 execution_tool_socket=host_socket if request.command.value == "EXPERIMENT_EXECUTION" else None,
                 candidate_check=_native_candidate_check(request, tool_workspace),
                 final_report_check=tool_workspace.capture_workspace if request.command.value == "FINAL_REPORT" else None,
@@ -2390,7 +2392,7 @@ def _shared_acceptance_schema(*, diagnostics: bool = False) -> dict[str, Any]:
 
 
 def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorkspace,
-                                output: Mapping[str, Any]) -> None:
+                                output: Mapping[str, Any]) -> str | None:
     """Reject already-oversized packages while the native call can still repair.
 
     This partial envelope is a lower bound, never an accepted response or usage
@@ -2421,6 +2423,11 @@ def _native_design_output_check(request: AgentRequest, workspace: AgentToolWorks
         from .agent_aci import validate_goal_preflight
         validate_goal_preflight(request, "GOAL", output["typed_candidate"].get("execution_argv"),
                                 {item.path: item.content_bytes() for item in artifacts})
+    if request.schema_version >= 48:
+        from .design_checkpoint import digest
+        return digest([(item.path, hashlib.sha256(item.content_bytes()).hexdigest())
+                       for item in sorted(artifacts, key=lambda item: item.path)])
+    return None
 
 
 def _native_candidate_check(request: AgentRequest, workspace: PreparedSessionWorkspace):
@@ -2989,7 +2996,17 @@ def _output_schema(
     }
     if request.command.value == "EXPERIMENT_EXECUTION" and any(
             item.ref.endswith("--expert-config") for item in request.input_artifacts):
-        schema["$defs"] = {"ExperimentSpecCandidate": _experiment_candidate_schema(request)}
+        candidate = _experiment_candidate_schema(request)
+        from .agent_aci import EFFICIENT_AGENT_ACI_SCHEMA_VERSION
+        if request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION:
+            # Reference submissions supply a delta. Avoid repeating a frozen
+            # scientific declaration in the tool prefix on every model round.
+            candidate.pop("required")
+            properties = candidate["properties"]
+            if "measurement" in properties:
+                properties["measurement"] = {"type": ["object", "null"]}
+            properties["metrics"] = {"type": "array", "items": {"type": "object"}}
+        schema["$defs"] = {"ExperimentSpecCandidate": candidate}
     if reference_aliases and request.schema_version >= 19:
         from .reference_aliases import aliased_schema, reference_aliases as build_aliases
         return aliased_schema(schema, build_aliases(request, schema))

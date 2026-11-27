@@ -256,7 +256,7 @@ def test_authenticated_legacy_draft_replays_and_only_field_defects_can_close_it(
     assert [issue.code for issue in issues] == ["preflight_control_close_invalid"]
 
 
-def cpu_run(host, *, batch_target=None):
+def cpu_run(host, *, batch_target=None, budget=None):
     metric = {"name": "score", "direction": "MAXIMIZE", "target": "1"}
     component = {"id": "primary.score", "tier": "primary", "name": "score", "owner": "scientist",
         "proposers": ["scientist"], "dependencies": [], "required_inputs": [], "protocol": None,
@@ -288,6 +288,7 @@ def cpu_run(host, *, batch_target=None):
         contract["runtime"]["target_repo"] = str(batch_target)
         execution["target"] = {"checkout": str(batch_target), "commit": subprocess.check_output(
             ["git", "-C", str(batch_target), "rev-parse", "HEAD"], text=True).strip()}
+    contract["budget"].update(budget or {})
     response = host.handle(ControlRequest(1, "create", 0, "CREATE_RUN",
         {"run_id": "run-fake", "research_contract": contract, "execution": execution}))
     assert response.status == "accepted", response.error
@@ -307,19 +308,56 @@ def batch_target():
         yield target
 
 
+class TwoChains(FakeAgent):
+    def invoke(self, request):
+        from hypoloom.agent_aci import with_output_digest
+        from hypoloom.expert_loop import ResearchNodeSubkind
+        reply = super().invoke(request)
+        if request.command is AgentCommand.HYPOTHESIS_PROPOSAL and request.task_context.key.subkind is ResearchNodeSubkind.SYNTHESIS:
+            member = reply.typed_candidate["hypotheses"][0]["candidate"]
+            batch = [{"chain_id": key, "candidate": {**member, "claim": f"Test mechanism {key}"}} for key in ("a", "b")]
+            return with_output_digest(replace(reply, typed_candidate={"schema_version": 1, "hypotheses": batch}))
+        return reply
+
+
+def test_repeated_design_failure_hands_off_one_chain_while_peer_delivers(tmp_path, monkeypatch, batch_target):
+    from hypoloom.domain import AttemptTerminalReason
+    from hypoloom.oracle import Oracle
+    host = WorkflowHost(tmp_path / "state", local_agent=TwoChains())
+    host.initialize()
+    attempts, received = [], []
+    try:
+        cpu_run(host, batch_target=batch_target, budget={"design_retry_policy": "enforce", "max_retries": 6})
+        finish = host._finish_fake_agent
+        def check(request, raw):
+            if request.command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and request.task_context.key.chain == "a":
+                attempts.append(request)
+                return host._agent_failure(request, AttemptTerminalReason.FAILED, "invalid_candidate", retryable=True,
+                    details={"diagnostics": {"structured_output_correction": {"authoring": {"verified_checks": ["output_schema"],
+                        "validation_error": "Missing train.py", "deterministic_failure": {"check": "required_workspace_file",
+                            "field": "train.py", "expected": "regular captured file", "observed": "missing", "evidence_digest": "a"*64}}}}})
+            if request.command is AgentCommand.ADJUDICATE:
+                batch = next(i for i in request.input_artifacts if i.ref.endswith("--batch-context"))
+                received.extend(json.loads(batch.content_bytes()).get("design_repairs", []))
+            return finish(request, raw)
+        monkeypatch.setattr(host, "_finish_fake_agent", check)
+        deadline = time.monotonic() + 30
+        while host.store.latest_transition("run-fake")["state"] != "COMPLETED" and time.monotonic() < deadline:
+            host.tick()
+            assert not host.dispatch_errors
+            time.sleep(.01)
+        assert len(attempts) == 2 and any(i.ref.endswith("--design-checkpoint") for i in attempts[1].input_artifacts)
+        assert received and received[0]["chain"] == "a" and received[0]["check"]["field"] == "train.py"
+        assert len(host.store.list_facts("run-fake", "CanonicalOutcomeAccepted")) == 1
+        report = Oracle(host.store.database_path, host.publisher.root).audit("run-fake")
+        assert report.ok, report
+    finally:
+        host.close()
+
+
 @pytest.mark.parametrize("repair", [False, True])
 def test_withdrawal_releases_the_real_batch_for_adjudication(tmp_path, monkeypatch, batch_target, repair):
-    from hypoloom.agent_aci import with_output_digest
-    from hypoloom.expert_loop import ResearchNodeSubkind
     from hypoloom.oracle import Oracle
-    class TwoChains(FakeAgent):
-        def invoke(self, request):
-            reply = super().invoke(request)
-            if request.command is AgentCommand.HYPOTHESIS_PROPOSAL and request.task_context.key.subkind is ResearchNodeSubkind.SYNTHESIS:
-                member = reply.typed_candidate["hypotheses"][0]["candidate"]
-                batch = [{"chain_id": key, "candidate": {**member, "claim": f"Test mechanism {key}"}} for key in ("a", "b")]
-                return with_output_digest(replace(reply, typed_candidate={"schema_version": 1, "hypotheses": batch}))
-            return reply
     host = WorkflowHost(tmp_path / "state", local_agent=TwoChains())
     host.initialize()
     try:
@@ -327,15 +365,31 @@ def test_withdrawal_releases_the_real_batch_for_adjudication(tmp_path, monkeypat
         send = host.handle_agent_tool
         withdrawn = []
         def intercept(attempt, tool, args):
-            result = send(attempt, tool, args)
+            if repair and tool == "submit_experiment":
+                captured = args["workspace_files"]
+                def lose_reply(point):
+                    if point == "after_submit_commit_before_reply":
+                        raise TimeoutError("reply lost after durable commit")
+                with monkeypatch.context() as patch:
+                    patch.setattr(host, "_crash", lose_reply)
+                    with pytest.raises(TimeoutError):
+                        send(attempt, tool, {"candidate_ref": "design"}, capture_workspace=lambda _: captured)
+                result = send(attempt, "get_submission_receipt", {})["receipt"]
+                assert send(attempt, tool, args) == result
+                with pytest.raises(IdentityConflict):
+                    send(attempt, tool, {**args, "description": "different candidate"})
+            else:
+                result = send(attempt, tool, args)
             if tool == "submit_experiment" and not withdrawn and host.local_execution_agents[attempt].task_context.key.chain == "a":
                 draft = result["exp_id"]
                 withdrawn.append(draft)
                 assert send(attempt, "cancel_experiment", {"exp_id": draft})["status"] == "withdrawn"
                 if repair:
-                    args = {**args, "replaces_experiment_id": draft}
+                    args = {"candidate_ref": result["candidate_ref"], "replaces_experiment_id": draft,
+                            "candidate": {"method": "Repair the implementation"}, "workspace_files": captured}
                     successor = send(attempt, "submit_experiment", args)["exp_id"]
                     assert successor != draft and send(attempt, "submit_experiment", args)["exp_id"] == successor
+                    assert send(attempt, "get_submission_receipt", {"replaces_experiment_id": draft})["receipt"]["exp_id"] == successor
             return result
         monkeypatch.setattr(host, "handle_agent_tool", intercept)
         deadline = time.monotonic() + 60

@@ -2,6 +2,14 @@
 
 [English](implementation-verification.md) · 简体中文
 
+## 查看验证证据和修复实验
+
+从 ACI 48 起，检验者从验证输入的 `start_here` 页开始。初检显示候选文件或本次修复的差异、实际命令、项目要求和未解决的问题。复核按检查列出预期依据和实测结果，缺失的观测也会显示。输入索引提供完整源码、探针和日志。需要旧报告时，检验者可以用 `read_verification_report` 按页读取本次目录中列出的原文。同一交付链上未解决的问题会一直保留，即使报告已早于最近 16 份。
+
+执行专家可用 `{"candidate_ref":"design"}` 提交已接受的设计。修复时，将前次实验 ID 同时填入 `candidate_ref` 和 `replaces_experiment_id`，再提交有变化的候选字段。Host 捕获当前实现，并可从原件继承本地缺失的评分文件和样例。修改已冻结的解析器需要重新声明科学口径。回执中的 `resource_estimate_ref` 可以复用相同工作负载的资源估计。Host 为新提交分配资源时会纳入该负载的最新实测记录。响应丢失后，用 `get_submission_receipt` 查询首次提交或指定前次实验的回执。
+
+设计重试会收到 Host 保存的检查点，包括通过的检查、产物摘要、失败位置和跨尝试用量。`methodology.yaml` 的 `budget.design_retry_policy` 默认为 `shadow`，记录重复的确定性失败。选用 `enforce` 后，定向修复在相同证据上再次遇到相同错误，会结束这个设计节点，并把失败检查交给该批次的上游。其他实验链可以继续。观察器运行摘要的 `research_efficiency` 按角色、阶段和请求模型汇总各次尝试记录的 Token，列出计量缺口和各评估层级每小时的可比较产出。成功和有效反证都计入。
+
 ## 项目专属工程要求
 
 从 ACI 45 起，v4 Profile 可以在 `goal.yaml` 中给独立检验者指定工程要求。检查 ID 可用 1 至 64 个 ASCII 字母、数字、下划线或连字符。`formal_entrypoint` 由 Host 为入口样例保留。

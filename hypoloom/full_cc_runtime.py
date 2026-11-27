@@ -12,7 +12,7 @@ from typing import Mapping
 from . import host_tools_server, native_output, provider_bridge
 from .agent_aci import (AgentRequest, RESOURCE_LEARNING_ACI_SCHEMA_VERSION, ENGINEERING_MEMORY_ACI_SCHEMA_VERSION,
                         ENGINEERING_CHECKS_ACI_SCHEMA_VERSION, RESEARCH_PROGRESS_ACI_SCHEMA_VERSION, GOAL_PREFLIGHT_ACI_SCHEMA_VERSION,
-                        STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
+                        EFFICIENT_AGENT_ACI_SCHEMA_VERSION, STAGE_EVIDENCE_ACI_SCHEMA_VERSION, supports_grounding_web, grounding_acceptance_request)
 from .agent_sessions import PreparedSessionWorkspace, declared_measurement_request
 from .verification_contract import compact_review, structured_submission, verdict_scoped_review
 
@@ -29,7 +29,10 @@ def draft_check_available(request: AgentRequest) -> bool:
 def host_tool_configuration(request: AgentRequest) -> tuple[str | None, tuple[str, ...]]:
     resources = request.schema_version >= RESOURCE_LEARNING_ACI_SCHEMA_VERSION
     if request.command.value == "EXPERIMENT_EXECUTION":
-        return "execution", HOST_TOOLS + (("get_resources",) if resources else ())
+        return "execution", HOST_TOOLS + (("get_resources",) if resources else ()) + (
+            ("get_submission_receipt",) if request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION else ())
+    if request.command.value == "VERIFY_IMPLEMENTATION" and request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION:
+        return "verification", ("read_verification_report",)
     if request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT" and resources:
         return "resources", ("get_resources",)
     if request.command.value == "GROUNDING" and supports_grounding_web(request.schema_version):
@@ -875,6 +878,17 @@ def _stage_instruction(request: AgentRequest) -> str:
             "CPU/AUTO/GPU_REQUIRED expresses a preference, not a GPU authorization. "
         )
     if request.command.value == "EXPERIMENT_EXECUTION" and request.schema_version >= 22:
+        source_guidance = (
+            'Use submit_experiment with {"candidate_ref":"design"} for the initial design. For an implementation repair, '
+            'use its predecessor exp_id for candidate_ref and replaces_experiment_id. Send only edited method, acceptance_criteria, '
+            'execution_argv or resource_preference in candidate. Unchanged frozen parser files and fixtures can be inherited. '
+            'A receipt with resource_estimate_ref can be reused in get_resources or submit_experiment for the same workload. '
+            'After a lost reply check get_submission_receipt with the same predecessor before reissuing. '
+            if request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION else
+            "The submit_experiment candidate uses the same ExperimentSpecCandidate shape as DESIGN, "
+            "also exposed in its MCP input schema and /runtime/output-schema.json $defs. "
+            "Read the accepted EXPERIMENT_DESIGN_IMPLEMENT response's typed_candidate from its supplied input "
+            "as the starting candidate; do not copy required_experiment_spec, a result contract or a final execution summary. ")
         return common + (
             ("Read execution_budget from list_my_experiments before preparing a replacement. "
              "Ordinary repairs and confirmed GPU device recoveries have separate finite allowances. "
@@ -883,10 +897,7 @@ def _stage_instruction(request: AgentRequest) -> str:
              "finish with the recorded technical failure. The Host decides further research under the remaining run budgets. "
              if request.schema_version >= 30 else "")
             +
-            "The submit_experiment candidate uses the same ExperimentSpecCandidate shape as DESIGN, "
-            "also exposed in its MCP input schema and /runtime/output-schema.json $defs. "
-            "Read the accepted EXPERIMENT_DESIGN_IMPLEMENT response's typed_candidate from its supplied input "
-            "as the starting candidate; do not copy required_experiment_spec, a result contract or a final execution summary. "
+            source_guidance +
             "For an ordinary fixed-metric component, pass the program argv in the tool's command field and omit "
             "candidate.execution_argv, measurement and evaluation_scope. Only an admitted declared-measurement "
             "component uses those candidate fields; preserve its accepted declaration and explicit argv. "

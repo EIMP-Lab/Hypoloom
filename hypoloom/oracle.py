@@ -1499,6 +1499,24 @@ def _audit_agent_attempts(
                 )
             )
 
+        checkpoint_inputs = [i for i in request.input_artifacts if i.ref.endswith("--design-checkpoint")] if request else []
+        if request is not None and ("design_checkpoint" in observation or checkpoint_inputs):
+            from .agent_aci import EFFICIENT_AGENT_ACI_SCHEMA_VERSION, canonical_json
+            from .design_checkpoint import build_checkpoint
+            prior = [r for r in ordinal_groups.get((request.owner_workflow_id, request.command_id), ())
+                     if r["run_id"] == request.run_id and r["state"] == "CLOSED" and r["attempt_ordinal"] < request.attempt_ordinal]
+            try:
+                assert request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION and request.command.value == "EXPERIMENT_DESIGN_IMPLEMENT"
+                assert len(checkpoint_inputs) <= 1
+                for item in checkpoint_inputs:
+                    source = item.ref.removesuffix("--design-checkpoint")
+                    assert any(r["attempt_id"] == source for r in prior) and item.ref not in request.immutable_context_refs
+                    assert item.content_bytes() == canonical_json(attempt_payloads[source]["design_checkpoint"])
+                if "design_checkpoint" in observation:
+                    history = [attempt_payloads[r["attempt_id"]] for r in sorted(prior, key=lambda r: r["attempt_ordinal"])]
+                    assert attempt["state"] == "CLOSED" and observation["design_checkpoint"] == build_checkpoint(request, observation, history)
+            except (AssertionError, AttributeError, KeyError, TypeError, ValueError):
+                issues.append(OracleIssue("design_checkpoint_invalid", "design checkpoint differs from its closed attempts", (attempt_id,)))
         if request is not None and any(i.ref.endswith("--verified-engineering-memory") for i in request.input_artifacts):
             from .verification_audit import engineering_memory_binding
             try: engineering_memory_binding(request, attempt, commands_by_id, all_attempts_by_id, attempt_payloads)
@@ -1643,7 +1661,7 @@ def _audit_agent_attempts(
             not {"request", "response"} <= set(observation)
             or not set(observation) <= {
                 "request", "response", "preflight_diagnostics", "diagnostics",
-                "literature_retry_trace", "session_binding", "session", "memory", "web_tool_results", "plugin_update",
+                "literature_retry_trace", "session_binding", "session", "memory", "web_tool_results", "plugin_update", "design_checkpoint",
             }
             or not isinstance(raw_response, Mapping)
             or "preflight_diagnostics" in observation

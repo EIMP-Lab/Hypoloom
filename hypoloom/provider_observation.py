@@ -297,6 +297,20 @@ def empty_generation_response(exchange):
         and all(type(usage.get(key, 0)) is int and usage.get(key, 0) == 0 for key in _TOKEN_FIELDS))
 
 
+def measured_usage(observation):
+    """Disjoint wire categories under either provider input convention."""
+    wire = (observation.get("diagnostics") or {}).get("provider_observed_usage") or {}
+    fields = ("completed_requests", "unmeasured_requests", "total_tokens", "output_tokens",
+              "cache_read_input_tokens", "cache_creation_input_tokens")
+    if any(type(wire.get(k)) is not int or wire[k] < 0 for k in fields):
+        return {"unmetered_attempts": 1}
+    result = {k: wire[k] for k in fields}
+    result["uncached_input_tokens"] = wire["total_tokens"] - sum(wire[k] for k in fields[3:])
+    if not wire["completed_requests"] and not wire["unmeasured_requests"]:
+        result["attempts_without_observed_requests"] = 1
+    return result if result["uncached_input_tokens"] >= 0 else {"unmetered_attempts": 1}
+
+
 def summarize_exchanges(exchanges):
     """Complete observed generation usage, separate from terminal billing."""
     from .context_management import input_usage

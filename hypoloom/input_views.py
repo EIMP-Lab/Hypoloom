@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .agent_aci import READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION, VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
+from .agent_aci import EFFICIENT_AGENT_ACI_SCHEMA_VERSION, READABLE_ENGINEERING_INPUTS_ACI_SCHEMA_VERSION, VERIFIER_COMPLETION_ACI_SCHEMA_VERSION
 
 PAGE_BYTES = 12000
 INLINE_MEMORY_BYTES = 6 * 1024
@@ -38,6 +38,29 @@ def _review_check_status(plan, observation):
                 statuses[row["id"]] = row.get("status")
     return {check["id"]: statuses.get(check["id"]) for check in plan["checks"]
             if isinstance(check, dict) and isinstance(check.get("id"), str)}
+
+
+def verification_focus(ctx):
+    focus = {key: ctx[key] for key in ("phase", "experiment_id", "implementation_requirements",
+             "entrypoint_smoke", "goal_preflight", "open_blockers") if key in ctx}
+    if ctx["phase"] == "inspect":
+        focus.update({key: ctx[key] for key in ("source_delta", "workspace_paths", "argv",
+            "implementation_description") if key in ctx})
+        return focus
+    evidence = ctx["probe_evidence"]
+    observation = evidence["observation"]
+    result = observation.get("check_results")
+    result = result if isinstance(result, dict) else {}
+    report_ref = ctx.get("probe_report_ref")
+    bound = bool(report_ref and result.get("attempt_id") == evidence["attempt_id"] and result.get("report_ref") == report_ref)
+    rows = result.get("checks") if bound else None
+    observed = {r["id"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)} if isinstance(rows, list) else {}
+    focus.update(probe_attempt_id=evidence["attempt_id"], probe_report_ref=report_ref, result_matches_probe=bound,
+                 usable=evidence["usable"], terminal_reason=evidence["terminal_reason"],
+                 result_error=observation.get("check_results_error"), errors=result.get("errors") if bound else None,
+                 checks=[{"id": check["id"], "basis": check["basis"], "required": check["required"],
+                          "observed": observed.get(check["id"])} for check in (ctx.get("probe_plan") or {}).get("checks", [])])
+    return focus
 
 
 def input_views(request):
@@ -83,13 +106,19 @@ def input_views(request):
         def json_pages(label, obj):
             return text_pages(label, json.dumps(readable(obj, label), ensure_ascii=False, indent=2) + "\n")
 
+        compact = (request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION
+                   and item.ref.endswith("--verification-context") and isinstance(value, dict))
+        focused = verification_focus(value) if compact else None
+        focus = json_pages("current verification", focused) if compact else None
         overview = {}
         if isinstance(value, dict) and item.ref.endswith("--implementation-source"):
             for path, source in sorted(value.items()):
                 overview[path] = text_pages(path, source) if isinstance(source, str) else json_pages(path, source)
         elif isinstance(value, dict):
             for key, child in value.items():
-                if key in {"prior_reports", "entries"} and isinstance(child, list):
+                if compact and key == "prior_reports":
+                    overview[key] = json_pages("/prior_reports", child)
+                elif key in {"prior_reports", "entries"} and isinstance(child, list):
                     overview[key] = [json_pages(f"/{key}/{n}", entry) for n, entry in enumerate(child)]
                 elif key in {"probe_plan", "probe_evidence"} and child is not None:
                     overview[key] = json_pages("/" + key, child)
@@ -98,7 +127,8 @@ def input_views(request):
                         # The evidence pages retain the full observations, including
                         # errors. A missing result stays visible for every planned check.
                         overview[key]["usable"] = child.get("usable")
-                        overview[key]["check_status"] = _review_check_status(value.get("probe_plan"), child.get("observation"))
+                        observation = child.get("observation") if not compact or focused["result_matches_probe"] else None
+                        overview[key]["check_status"] = _review_check_status(value.get("probe_plan"), observation)
                 else:
                     overview[key] = readable(child, "/" + key)
         else:
@@ -116,4 +146,7 @@ def input_views(request):
         files[name] = (json.dumps(intro, ensure_ascii=False, indent=2) + "\n").encode()
         advertisements[index] = {"index_path": "/inputs/" + name, "page_bytes_limit": PAGE_BYTES,
             "instruction": "Read index_path first; use its overview and pages instead of searching escaped JSON."}
+        if focus:
+            advertisements[index].update(start_here=focus["reading_pages"],
+                instruction="Read start_here for this phase and all open blockers. The index locates raw evidence and the report directory. Fetch historical report text with read_verification_report when needed.")
     return files, advertisements

@@ -11,6 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
 import json
+import re
 from pathlib import Path
 
 
@@ -118,16 +119,15 @@ def transcript_metrics(content, session_id, started_at, input_refs=(), *, partia
             if not isinstance(args, dict):
                 continue
             path = args.get("file_path")
-            for index, ref in enumerate(input_refs):
-                if path != f"/inputs/{index:04d}.txt":
-                    continue
+            match = re.fullmatch(r"/inputs/([0-9]{4})(\.(?:view|page-[0-9]{4,}))?\.txt", path) if isinstance(path, str) else None
+            if match and int(match[1]) < len(input_refs):
+                ref = input_refs[int(match[1])]
                 offset, limit = args.get("offset", 1), args.get("limit")
                 pages = args.get("pages")
                 if type(offset) is int and offset >= 1 and (limit is None or type(limit) is int and limit > 0) and pages is None:
-                    ranges[(ref, offset, limit)] += 1
-                break
-    entries = [{"ref": ref, "offset": offset, "limit": limit, "count": count}
-        for (ref, offset, limit), count in ranges.items()]
+                    ranges[(ref, match[2], offset, limit)] += 1
+    entries = [{"ref": ref, **({"view": view[1:]} if view else {}), "offset": offset, "limit": limit, "count": count}
+        for (ref, view, offset, limit), count in ranges.items()]
     return {"coverage": "partial" if partial or len(entries) > 256 else "complete",
         "cli_unknown_model_pricing": unknown_pricing,
         "read_calls": reads, "failed_read_calls": errors,
@@ -207,7 +207,7 @@ def recovery_metrics(records, charges):
         duration += metrics.get("native_compaction_duration_ms", 0)
         unknown_duration += metrics.get("native_compaction_duration_unknown", 0)
         for entry in metrics.get("immutable_read_ranges", []):
-            ranges[(entry["ref"], entry["offset"], entry["limit"])] += entry["count"]
+            ranges[(entry["ref"], entry.get("view"), entry["offset"], entry["limit"])] += entry["count"]
     # The initial context failure is separate. Later failures belong to recovery.
     initial_ids = failed_ids - recovery_ids
     result = {"coverage": "complete" if all(value == "complete" for value in coverage) else "partial" if any(value != "unavailable" for value in coverage) else "unavailable",

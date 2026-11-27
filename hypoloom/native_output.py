@@ -146,7 +146,12 @@ def _decode_output(text: str, validator) -> dict[str, Any]:
                     closest = difflib.get_close_matches(error.instance, allowed, n=1)
                     if closest:
                         hint += " Closest allowed reference: " + json.dumps(closest[0]) + "."
-        raise _SchemaMismatch(f"{path}: {error.validator} constraint failed", hint)
+        failure = _SchemaMismatch(f"{path}: {error.validator} constraint failed", hint)
+        failure.field = path
+        failure.constraint = error.validator
+        failure.expected = error.validator_value
+        failure.observed = error.instance
+        raise failure
     return output
 
 
@@ -216,7 +221,7 @@ class NativeOutputValidator:
                  acceptance_smoke: bool = False, measurement_smoke: bool = False,
                  semantic_examples: bool = False, seed_files: Mapping[str, bytes] | None = None,
                  measurement_examples_required: bool = False,
-                 design_implementation: bool = False,
+                 design_implementation: bool = False, design_checkpoints: bool = False,
                  parser_source_root: Path | None = None, parser_smoke_max_bytes: int | None = None,
                  execution_tool_socket: Path | None = None,
                  candidate_check: Callable[[Mapping[str, Any]], Any] | None = None,
@@ -262,6 +267,10 @@ class NativeOutputValidator:
             self._soft_deadline = deadline_at - invocation_wall_seconds + soft_wall_seconds
         self._progress_rank = 0
         self._last_verified = None
+        self.design_checkpoints = design_checkpoints
+        self._verified_checks = []
+        self._artifact_digest = None
+        self._deterministic_failure = None
         self._latest_error = None
         self._latest_validation_stage = None
         self._repeated_errors = 0
@@ -423,6 +432,8 @@ class NativeOutputValidator:
         now = time.monotonic()
         self._progress_rank = rank
         self._last_verified = {"check": check, "at": time.time()}
+        if self.design_checkpoints:
+            self._verified_checks.append(check)
         if self._soft_seconds is not None:
             self._soft_deadline = min(self.deadline_at, max(self._soft_deadline, now + self._soft_seconds))
         self._record_authoring()
@@ -432,6 +443,9 @@ class NativeOutputValidator:
                   "repeated_errors": self._repeated_errors}
         if self._latest_validation_stage:
             status["validation_stage"] = self._latest_validation_stage
+        if self.design_checkpoints:
+            status.update(verified_checks=list(self._verified_checks), artifact_digest=self._artifact_digest,
+                          deterministic_failure=self._deterministic_failure)
         if self._soft_seconds is not None:
             status["progress_due_at"] = time.time() + self._soft_deadline - time.monotonic()
         return status
@@ -463,6 +477,8 @@ class NativeOutputValidator:
                 self._prepared = self._accepted = False
                 self._completion_text = None
             text = document["last_assistant_message"]
+            if self.design_checkpoints:
+                self._deterministic_failure = None
             selected_prepared = False
             try:
                 if prepare and self.compact_review:
@@ -489,7 +505,9 @@ class NativeOutputValidator:
                 self._verified(1, "output_schema")
                 if self.candidate_check is not None:
                     validation_stage = "candidate_validation"
-                    self.candidate_check(output)
+                    artifact = self.candidate_check(output)
+                    if self.design_checkpoints:
+                        self._artifact_digest = artifact
                     self._verified(2, "candidate_validation")
                 if self.final_report_check is not None:
                     validation_stage = "final_report"
@@ -528,6 +546,7 @@ class NativeOutputValidator:
                             source_root=self.parser_source_root, test_root=self.socket_path.parent,
                             semantic_examples=self.semantic_examples, seed_files=self.seed_files,
                             measurement_examples_required=self.measurement_examples_required,
+                            **({"record_check_failure": True} if self.design_checkpoints else {}),
                             declaration_key=key, timeout_seconds=_remaining(self.deadline_at),
                             max_bytes=self.parser_smoke_max_bytes, cancel_event=self._closed,
                             **({"case_verified": lambda count: self._verified(2 + count, f"parser_cases/{count}")}
@@ -550,6 +569,18 @@ class NativeOutputValidator:
                 hint = getattr(exc, "correction_hint", "")
                 if validation_stage == "json_decode" and isinstance(exc, _SchemaMismatch):
                     validation_stage = "output_schema"
+                if self.design_checkpoints:
+                    from .design_checkpoint import digest
+                    from .git_authoring_workspace import MissingCaptureInput
+                    if isinstance(exc, _SchemaMismatch):
+                        self._deterministic_failure = {"check": "output_schema", "field": exc.field,
+                            "constraint": exc.constraint, "evidence_digest": digest([exc.expected, exc.observed])}
+                    elif isinstance(exc.__cause__, MissingCaptureInput):
+                        self._deterministic_failure = {"check": "required_workspace_file", "field": exc.__cause__.missing_path,
+                            "expected": "regular captured file", "observed": "missing",
+                            "evidence_digest": digest(output["typed_candidate"])}
+                    elif smoke and "failed_check" in smoke:
+                        self._deterministic_failure = smoke["failed_check"]
             _remaining(self._current_deadline())
             if self._closed.is_set():
                 raise ValueError("native output validator is closed")
@@ -681,7 +712,7 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                  seed_files: Mapping[str, bytes] | None = None,
                  measurement_examples_required: bool = False, captured_files: Mapping[str, bytes] | None = None,
                  cancel_event: threading.Event | None = None,
-                 case_verified: Callable[[int], None] | None = None) -> dict[str, Any] | None:
+                 case_verified: Callable[[int], None] | None = None, record_check_failure: bool = False) -> dict[str, Any] | None:
     """Snapshot declared fixtures and use the production parser environment.
 
     This runs only on the Host. Each correction gets fresh inputs and output;
@@ -690,7 +721,7 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
     from .measurement_contract import ScientificMeasurement, measurement_answer
     from .measurement_execution import prepare_parser, run_parser
     from .shared_acceptance import SharedAcceptance
-
+    failed_check = None
     try:
         output = _decode(text)
         if declaration_key not in {"acceptance", "measurement"}: raise ValueError("unknown parser declaration")
@@ -727,6 +758,7 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
 
             files = {name: read(name) for name in contract.parser_files}
             def run_case(case, raw, expected, ordinal):
+                nonlocal failed_check
                 root = work / str(ordinal)
                 for name, content in raw.items():
                     destination = root / "raw" / name
@@ -748,6 +780,14 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                         except ValueError as exc:
                             raise ValueError(f"case {case}: {exc}") from exc
                         if (readings, score) != expected:
+                            if record_check_failure:
+                                import hashlib
+                                from .design_checkpoint import digest
+                                inputs = [(name, hashlib.sha256(data).hexdigest()) for name, data in sorted(raw.items())]
+                                failed_check = {"check": "parser_known_answer", "field": case,
+                                    "expected_metric_value": str(expected[1]), "observed_metric_value": str(score),
+                                    "evidence_digest": digest([inputs, result.raw_result, declaration,
+                                        sorted((unit, str(parts)) for unit, parts in expected[0].items())])}
                             mismatched = [unit for unit in readings if readings[unit] != expected[0][unit]]
                             raise ValueError(f"case {case}: expected metric_value {expected[1]}, observed {score}; "
                                              f"check absolute value/baseline in {', '.join(mismatched)}")
@@ -783,7 +823,7 @@ def parser_smoke(text: str, *, source_root: Path, test_root: Path, timeout_secon
                         case_verified(i + 1)
             return {"observation": baseline, "error": None}
     except (ValueError, OSError, TypeError, AttributeError, KeyError) as exc:
-        return {"observation": None, "error": str(exc)[:2048]}
+        return {"observation": None, "error": str(exc)[:2048], **({"failed_check": failed_check} if failed_check else {})}
 
 
 def call_validator(socket_path: str, *, session_id: str, last_assistant_message: str,

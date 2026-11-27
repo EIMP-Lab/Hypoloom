@@ -20,11 +20,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 from .agent_aci import (CURRENT_EXPERT_LOOP_ACI_SCHEMA_VERSION as EXPERT_LOOP_ACI_SCHEMA_VERSION, DEFAULT_REAL_AGENT_BUDGET, AgentACIError, AgentBudget, AgentRequest, AgentResponse, AgentStatus, EmbeddedInput, GroundingCandidate, LiteratureSummaryCandidate, canonical_json, request_digest, required_effect, required_output_schema, supports_experiment_submission, supports_grounding_web, validate_postflight, validate_submission_snapshot, with_output_digest)
-from .agent_aci import ENGINEERING_CHECKS_ACI_SCHEMA_VERSION
+from .agent_aci import EFFICIENT_AGENT_ACI_SCHEMA_VERSION, ENGINEERING_CHECKS_ACI_SCHEMA_VERSION
 from .agent_capabilities import capabilities_for
 from .host_tools_server import HostToolOperation, SubmissionCheckOperation
 from .agent_sessions import (AgentSessions, SessionFinishError, archived_web_results, node_memory_limit, retrieved_session_urls, session_resume_allowed)
 from .context_management import continuation_observation
+from .design_checkpoint import checkpoint as design_checkpoint, handoff as design_handoff
 from .agent_budget import AgentChargeCache, agent_attempt_limits, agent_attempts_exhausted, authoring_wall_budget, effect_attempt_cap, fold_agent_attempts, profile_agent_budget, profile_role_cap, remaining_agent_budget, role_agent_budget_state, usage_projection, validate_new_run_budget, wallclock_expired, wallclock_remaining_seconds
 from .agent_context import RETRYABLE_AGENT_FAILURES as _RETRYABLE_AGENT_FAILURES, RETRYABLE_MODEL_FAILURES as _RETRYABLE_MODEL_FAILURES, agent_failure_stage as _agent_failure_stage, agent_retry_class as _agent_retry_class, agent_retry_inputs, candidate_failure_retryable, draft_repair_inputs, infrastructure_retry_request, preflight_origin, rendezvous_inputs, result_analysis_inputs, retryable_agent_validation_details, unresolved_query_plan_validation, validated_draft_source
 from .artifacts import (AgentArtifactKey, ArtifactDurabilityError, ArtifactError, ArtifactKey, ArtifactPublication, ArtifactPublisher, inventory_relative_paths)
@@ -1917,9 +1918,16 @@ class WorkflowHost:
                 Command.AGENT_ATTEMPT_FINAL_FAILURE, state,
                 payload={"agent_final_failure": True,
                     "attempt_id": str(attempt["attempt_id"]), "failure_code": code,
+                    **self._design_failure_reason(run_id, json.loads(attempt["observation_json"] or "{}"), task),
                     "failed_task_command_id": task.command_id,
                     "role": role, "component_id": component_id})
             tx.append_transition(transition)
+    def _design_failure_reason(self, run_id, observation, task):
+        record = observation.get("design_checkpoint") or {}
+        if record.get("would_pause") and self._research_contract(run_id).document["budget"].get("design_retry_policy") == "enforce":
+            return {"failure_code": "repeated_design_check", "failed_check": record["failure"],
+                    "cycle": task.key.cycle, "chain": task.key.chain}
+        return {}
     def _expert_node_view(self, key: ResearchNodeKey) -> ResearchNodeView:
         task = ResearchNodeTask(key=key)
         attempts = self._expert_attempts(task)
@@ -2308,7 +2316,12 @@ class WorkflowHost:
                 try: repair_inputs = draft_repair_inputs(self.store, self.publisher, run_id, owner_id, origins=origins, replies=replies)
                 except ValueError as exc: raise OperationalHalt(str(exc)) from exc
                 inputs += repair_inputs
-            correction_inputs = agent_retry_inputs(self.store, owner_id, task.command_id); inputs += correction_inputs; correction_refs = frozenset(item.ref for item in (*repair_inputs, *correction_inputs)); immutable_context_refs = tuple(item.ref for item in inputs if item.ref not in correction_refs)
+            correction_inputs = agent_retry_inputs(self.store, owner_id, task.command_id)
+            if command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT:
+                correction_inputs += design_handoff(attempts)
+            inputs += correction_inputs
+            correction_refs = frozenset(item.ref for item in (*repair_inputs, *correction_inputs))
+            immutable_context_refs = tuple(item.ref for item in inputs if item.ref not in correction_refs)
         retrieval = None
         if replay_request is not None and command is AgentCommand.EXPERIMENT_EXECUTION and attempts:
             from .agent_aci import execution_handoff
@@ -2502,12 +2515,17 @@ class WorkflowHost:
                 tx.bind_attempt_process(attempt_id, binding.process_group_id)  # type: ignore[attr-defined]
         try:
             from .provider_traffic import for_request
+            from .full_cc_runtime import host_tool_configuration
+            scope, tool_names = host_tool_configuration(request)
+            tool_handler = self.handle_agent_tool
+            if "get_submission_receipt" in tool_names:
+                tool_handler = partial(tool_handler, capture_workspace=tool_workspace.capture_workspace)
             handle = self.claude_agent_host.start(request, model=request.required_model_identity,
                 provider_environment=self._provider_environment_for(run_id), diagnostics_root=self.state_root,
                 traffic_binding=for_request(self, request),
                 bind_process_group=bind_process, tool_workspace=tool_workspace,
                 **(self._agent_runtime_arguments(run_id) if request.schema_version >= 11 and command is not AgentCommand.PAPER_READ else {}),
-                **({"host_tool_handler": self.handle_agent_tool} if command is AgentCommand.EXPERIMENT_EXECUTION or command is AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT and request.schema_version >= 18 or command is AgentCommand.GROUNDING and supports_grounding_web(request.schema_version) or request_literature_tools(request) else {}))
+                **({"host_tool_handler": tool_handler} if scope is not None else {}))
         except AgentDeadlineExpired:
             _cleanup_tool_workspace(tool_workspace)
             self._agent_failure(request, AttemptTerminalReason.TIMED_OUT, "timed_out", retryable=True); return
@@ -2785,6 +2803,7 @@ class WorkflowHost:
             tx.close_attempt(request.attempt_id, terminal_reason=AttemptTerminalReason.SUCCEEDED,
                 ended_at=time.time(), payload={"request": request.to_dict(),
                     "response": response.to_dict(), **literature_diagnostics,
+                    **design_checkpoint(tx, request, {"diagnostics": diagnostics or {}, "response": {"output_digest": response.output_digest}}),
                     **({"diagnostics": dict(diagnostics)} if diagnostics is not None else {}),
                     **self._grounding_completed_web_metadata(request),
                     **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})})
@@ -2918,6 +2937,11 @@ class WorkflowHost:
         context = {"batch_command_id": batch.command_id, "cycle": cycle, "chains": dict(batch.members),
             "terminal_tips": {chain: None if tip is None else tip.to_dict() for chain, tip in tips.items()},
             "selected_tip": None if batch.selection is None else batch.selection.get("selected_tip")}
+        repairs = [{"chain": r["chain"], "attempt_id": r["attempt_id"], "check": r["failed_check"]}
+                   for r in self._expert_final_failures(run_id) if r.get("failure_code") == "repeated_design_check"
+                   and (r.get("component_id"), r.get("role"), r.get("cycle")) == (component_id, role, cycle)]
+        if repairs:
+            context["design_repairs"] = repairs
         return context, tips, tuple(sorted(set(terminal)))
 
     def _withdrawn_draft_completed(self, run_id, experiment_id, identity):
@@ -3002,6 +3026,7 @@ class WorkflowHost:
             **self._grounding_completed_web_metadata(request),
             **({"session": self.agent_session_metadata[request.attempt_id]} if request.attempt_id in self.agent_session_metadata else {})}
         with self.store.transaction() as tx:
+            observation.update(design_checkpoint(tx, request, observation))
             tx.close_attempt(request.attempt_id, terminal_reason=reason, ended_at=time.time(), payload=observation)
             from .literature_recovery import deferred_attempt
             if deferred_attempt(observation) and tx.latest_transition(request.run_id)["state"] in {"CREATED", "ACTIVE"}:
@@ -3030,6 +3055,7 @@ class WorkflowHost:
                     payload={"rendezvous_id": rendezvous.rendezvous_id, "requester_slot": rendezvous.requester_slot, "rendezvous_reply": reply.to_dict()})); return
             payload = {"agent_final_failure": True,
                 "attempt_id": request.attempt_id, "failure_code": code,
+                **self._design_failure_reason(request.run_id, observation, request.task_context),
                 "role": request.role, "component_id": request.component_id,
                 "method_family_id": request.method_family_id}
             if isinstance(request.task_context, (ResearchNodeTask, AuxiliaryTask)):
@@ -3329,12 +3355,18 @@ class WorkflowHost:
         self._expert_agent_step(run_id, run_id, selected, role, component_id,
             str(chain[-1]["payload"]["method_family_id"]))
 
-    def _agent_tool_request(self, attempt_id: str, *, grounding: bool = False, resources: bool = False) -> AgentRequest:
+    def _agent_tool_request(self, attempt_id: str, *, grounding: bool = False, resources: bool = False, verifier: bool = False) -> AgentRequest:
         attempt = self.store.get_attempt(attempt_id)
         if (attempt is None or attempt["kind"] != "AGENT" or attempt["state"] != "OPEN"
                 or attempt["host_generation"] != self.generation):
             raise AgentACIError("tool_caller_unavailable", "Host tools require the current OPEN Agent Attempt")
         request = AgentRequest.from_dict(json.loads(attempt["observation_json"])["request"])
+        if verifier:
+            if (request.schema_version < EFFICIENT_AGENT_ACI_SCHEMA_VERSION or request.command is not AgentCommand.VERIFY_IMPLEMENTATION
+                    or request.role != "verifier" or not isinstance(request.task_context, AuxiliaryTask)
+                    or request.task_context.kind is not AuxiliaryRequestKind.VERIFY_IMPLEMENTATION):
+                raise AgentACIError("tool_caller_scope", "Historical reports belong to the current verification invocation.")
+            return request
         if resources:
             if (request.schema_version < 18 or request.command not in {AgentCommand.EXPERIMENT_DESIGN_IMPLEMENT, AgentCommand.EXPERIMENT_EXECUTION}
                     or not isinstance(request.task_context, ResearchNodeTask) or request.task_context.key.node_kind.value != request.command.value):
@@ -3521,12 +3553,21 @@ class WorkflowHost:
                 parts.append(stream.read(max_bytes // 2).decode("utf-8", errors="replace"))
         return "\n".join(parts)[-max_bytes:]
 
-    def handle_agent_tool(self, attempt_id: str, tool: str, arguments: Mapping[str, Any]) -> dict[str, Any] | HostToolOperation:
+    def handle_agent_tool(self, attempt_id: str, tool: str, arguments: Mapping[str, Any], *, capture_workspace=None) -> dict[str, Any] | HostToolOperation:
         """Admit one scoped MCP operation on the Host writer thread; never wait."""
         if tool == "read_papers": return self.paper_reading.handle(self._agent_tool_request(attempt_id, grounding=True), arguments)
+        if tool == "read_verification_report":
+            from .verification_history import report_page
+            return report_page(self.store, self._agent_tool_request(attempt_id, verifier=True), arguments)
         if tool == "get_resources":
             request = self._agent_tool_request(attempt_id, resources=True)
             allowed = {"resource_estimate", "gpus"} if request.schema_version >= 27 else set()
+            if (request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION and request.command is AgentCommand.EXPERIMENT_EXECUTION
+                    and "resource_estimate_ref" in arguments):
+                from .submission_references import accepted_arguments, resolve_estimate
+                owned = {item["exp_id"]: item for item in self._owned_tool_experiments(request)}
+                arguments = dict(arguments)
+                resolve_estimate(arguments, accepted_arguments(self, request, arguments["resource_estimate_ref"], owned))
             if not isinstance(arguments, Mapping) or set(arguments) - allowed:
                 raise AgentACIError("tool_arguments", "get_resources accepts only resource_estimate and gpus in ACI 27+")
             if "gpus" in arguments and (type(arguments["gpus"]) is not int or arguments["gpus"] < 1):
@@ -3547,8 +3588,15 @@ class WorkflowHost:
         request = self._agent_tool_request(attempt_id)
         if not isinstance(arguments, Mapping): raise AgentACIError("tool_arguments", "tool arguments must be an object")
         if tool == "submit_experiment":
-            return self._submit_experiment(request, arguments, defer_measurement=attempt_id in self.running_agents)
+            return self._submit_experiment(request, arguments, defer_measurement=attempt_id in self.running_agents,
+                                           capture_workspace=capture_workspace)
         owned = {str(item["exp_id"]): item for item in self._owned_tool_experiments(request)}
+        if tool == "get_submission_receipt" and request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION:
+            predecessor = arguments.get("replaces_experiment_id")
+            if set(arguments) - {"replaces_experiment_id"} or (predecessor is not None and (not isinstance(predecessor, str) or predecessor not in owned)):
+                raise AgentACIError("tool_chain_mismatch", "Use this node's predecessor exp_id, or {} for its initial submission.")
+            previous = self._tool_command(f"{request.command_id}--submit--{predecessor or 'initial'}")
+            return {"receipt": json.loads(previous["result_json"]) if previous else None}
         if tool == "list_my_experiments":
             if arguments: raise AgentACIError("tool_arguments", "list_my_experiments takes no arguments")
             from .execution_budget import execution_budget
@@ -3586,10 +3634,9 @@ class WorkflowHost:
             for row in self._expert_attempts(request.task_context))
 
     def _submit_experiment(self, request: AgentRequest, arguments: Mapping[str, Any], *,
-                           defer_measurement: bool = False, measurement_checked: bool = False) -> dict[str, Any] | HostToolOperation:
+                           defer_measurement: bool = False, measurement_checked: bool = False,
+                           capture_workspace=None) -> dict[str, Any] | HostToolOperation:
         from .agent_aci import validate_experiment_candidate_fields, validate_experiment_submission
-        if self.resource_recovery.for_request(request):
-            raise AgentACIError("resource_infrastructure_blocked", "GPU infrastructure is blocked. End this attempt; the operator must recheck resources. Do not downgrade to CPU.")
         task = request.task_context
         assert isinstance(task, ResearchNodeTask)
         predecessor = arguments.get("replaces_experiment_id")
@@ -3598,6 +3645,17 @@ class WorkflowHost:
         owned = {str(item["exp_id"]): item for item in self._owned_tool_experiments(request)}
         if predecessor is not None and predecessor not in owned:
             raise AgentACIError("tool_chain_mismatch", "repair predecessor does not belong to this chain")
+        if request.schema_version >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION:
+            from .submission_references import expand_submission, inherit_captured_scoring
+            arguments, frozen_files = expand_submission(self, request, arguments, owned)
+            if capture_workspace is not None:
+                arguments["workspace_files"] = capture_workspace(arguments.get("candidate"),
+                    **({"frozen_measurement_files": frozen_files} if frozen_files else {}))
+            elif frozen_files:
+                inherit_captured_scoring(arguments, frozen_files)
+            artifacts = arguments.get("workspace_files")
+            if isinstance(artifacts, list) and all(isinstance(a, dict) and isinstance(a.get("path"), str) for a in artifacts):
+                arguments["workspace_files"] = sorted(artifacts, key=lambda item: item["path"])
         command_id = f"{task.command_id}--submit--{predecessor or 'initial'}"
         normalized_arguments = json.loads(_canonical(dict(arguments)))
         previous = self._tool_command(command_id)
@@ -3607,6 +3665,8 @@ class WorkflowHost:
                 raise IdentityConflict("accepted submit key already has a different immutable candidate")
             self._submission_source(command_id)
             return dict(json.loads(previous["result_json"]))
+        if self.resource_recovery.for_request(request):
+            raise AgentACIError("resource_infrastructure_blocked", "GPU infrastructure is blocked. End this attempt; the operator must recheck resources. Do not downgrade to CPU.")
         if request.run_id in self.dispatch_errors:
             raise AgentACIError("dispatch_paused", "Host dispatch is quarantined; a new experiment cannot be scheduled")
         validate_experiment_candidate_fields(normalized_arguments.get("candidate"))
@@ -4032,6 +4092,9 @@ class WorkflowHost:
                     "expected_revision": 0, "command_type": Command.CREATE_EXPERIMENT.value,
                     "request": submission[1], "status": "accepted", "revision": 1,
                     "result": {"exp_id": experiment_id, "queue_position": sum(row["state"] != ExperimentState.TERMINAL.value for row in self.store.list_workflow_heads(run_id, "EXPERIMENT")),
+                        **({"candidate_ref": experiment_id, **({"resource_estimate_ref": experiment_id}
+                            if "resource_estimate" in submission[1]["source_snapshot"]["arguments"] else {})}
+                            if submission[1]["source_request"]["schema_version"] >= EFFICIENT_AGENT_ACI_SCHEMA_VERSION else {}),
                         **({"source_comparison": submission[1]["source_comparison"]} if submission[1].get("source_comparison") else {})}})
             transition = self._transition_record(tx, run_id, experiment_id, "EXPERIMENT", Command.CREATE_EXPERIMENT, ExperimentState.DRAFTED,
                 command_id=submit_id, next_command=Command.PREREGISTER.value if submission is not None else Command.REQUEST_SPEC_CANDIDATE.value,

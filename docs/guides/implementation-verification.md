@@ -2,6 +2,14 @@
 
 English · [简体中文](implementation-verification.zh-CN.md)
 
+## Reading and repairing an experiment
+
+In ACI 48 the verifier opens the pages listed under `start_here` in the verification input. Inspection starts with the candidate files or repair delta, the admitted command, project requirements and open blockers. Review starts with the admitted check basis and the recorded result for each check. A missing observation stays visible. The input index locates the complete source, probe and logs. `read_verification_report` pages through an accepted report listed in this invocation’s directory. Unresolved blockers on the same delivery remain visible beyond the recent 16 reports.
+
+An execution agent can submit its accepted design with `{"candidate_ref":"design"}`. For a repair, use the predecessor’s experiment ID as both `candidate_ref` and `replaces_experiment_id`, and supply changed candidate fields. The Host captures the current implementation and can inherit missing scoring files and fixtures. An edited frozen parser requires a new scientific declaration. A receipt’s `resource_estimate_ref` reuses the estimate for the same workload. The Host includes newer measurements when planning a new submission. After a lost response, `get_submission_receipt` reads the initial key or the named predecessor’s key.
+
+Design retries receive a Host checkpoint with verified checks, artifact identity, the failing check and measured usage across attempts. `methodology.yaml` accepts `budget.design_retry_policy`. The default `shadow` records repeated deterministic failures. Select `enforce` to close a design node after a targeted repair repeats the same failure on the same evidence. Other chains continue and the batch receives the failed check. The observer run summary exposes `research_efficiency` with token categories from attempt diagnostics grouped by role, stage and requested model, metering gaps, and comparable results per hour by evaluation scope. Successful results and clean refutations both count.
+
 ## Project-specific engineering requirements
 
 Starting with ACI 45, a v4 Profile can give the independent verifier explicit requirements in `goal.yaml`. Each ID uses 1–64 ASCII letters, digits, underscores or hyphens. The Host reserves `formal_entrypoint` for the command sample.

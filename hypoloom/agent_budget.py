@@ -32,7 +32,7 @@ PROFILE_BUDGET_FIELDS = frozenset({
     "gpu_vram_reserve_mb", "gpu_vram_reserve_percent", "initial_vram_per_experiment", "max_turns",
     "total_budget_usd", "per_expert_budget_usd", "max_active_agents",
     "max_active_processes", "max_active_reviews", "provider_auth_cooldown_seconds",
-    "provider_rpm_limit", "provider_max_in_flight", "stage_wall_seconds",
+    "provider_rpm_limit", "provider_max_in_flight", "stage_wall_seconds", "design_retry_policy",
 })
 ROLE_BUDGET_FIELDS = frozenset({
     "per_expert_tokens", "max_experiments", "max_papers", "timeout", "max_turns", "per_expert_budget_usd",
@@ -275,6 +275,9 @@ def agent_attempts_exhausted(
     closed = [row for row in closed if not (row["terminal_reason"] == "SUCCEEDED"
         and execution_handoff(json.loads(row["observation_json"])))]
     if not closed: return False
+    if (document.get("budget", {}).get("design_retry_policy") == "enforce"
+            and (json.loads(closed[-1]["observation_json"]).get("design_checkpoint") or {}).get("would_pause") is True):
+        return True
     limits = agent_attempt_limits(document, model_fallback=model_fallback,
                                   infrastructure_fallback=infrastructure_fallback)
     counts = {"MODEL": 0, "INFRASTRUCTURE": 0}; latest: str | None = None
@@ -364,6 +367,8 @@ def validate_new_run_budget(document: Mapping[str, Any], fallback: AgentBudget) 
         raise ValueError(f"budget has unknown fields: {sorted(unknown)!r}")
     validate_initial_vram_budget(budget)
     validate_stage_wall_seconds(budget)
+    if budget.get("design_retry_policy", "shadow") not in ("shadow", "enforce"):
+        raise ValueError("budget.design_retry_policy must be shadow or enforce")
     gpu_memory_reserve_mib(budget, 0)
     if not isinstance(budget["agent_invocation"], Mapping):
         raise ValueError("new runs require budget.agent_invocation to be an object")

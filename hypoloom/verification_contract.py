@@ -310,9 +310,10 @@ def review_schema(request):
     if structured_probe(request):
         ctx = context(request)
         prior = list(ctx.get("finding_refs", ()))
-        finding["properties"]["followup_of"] = {"enum": [None, *prior]}
-        # An empty enum is invalid JSON Schema; false items admits only [].
-        result["properties"]["resolved_refs"]["items"] = {"type": "string", "enum": prior} if prior else False
+        if request.schema_version < 48:
+            finding["properties"]["followup_of"] = {"enum": [None, *prior]}
+            # An empty enum is invalid JSON Schema; false items admits only [].
+            result["properties"]["resolved_refs"]["items"] = {"type": "string", "enum": prior} if prior else False
         verdicts = ["probe_required", "changes_required", "inconclusive"] if ctx["phase"] == "inspect" else ["passed", "changes_required", "inconclusive"]
         if can_repair_probe(request, ctx): verdicts.append("probe_required")
         result["properties"]["verdict"] = {"enum": verdicts}
@@ -358,6 +359,10 @@ def instructions(request):
             "Otherwise decide passed/changes_required/inconclusive.\n"
             if can_repair_probe(request, ctx) else
             "REVIEW: independently read the candidate, probe source and actual observations. Decide passed/changes_required/inconclusive; do not request another probe.\n"))
+    if request.schema_version >= 48:
+        result += ("Start with verification-context.reading_view.start_here for the current checks and unresolved findings. "
+                   "Consult the captured source and current probe evidence for the decision. Use read_verification_report "
+                   "only when a historical detail is needed; the phase view indexes accepted reports.\n")
     if ctx.get("implementation_requirements"):
         result += ("For each implementation_requirements entry exercise its actual implementation using a required assertion "
                    "with the exact same ID. Trace the admitted command and load its real outputs when required. "

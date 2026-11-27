@@ -44,6 +44,12 @@ class GitAuthoringIntegrityError(GitAuthoringWorkspaceError):
     """The disposable worktree no longer has an acceptable shape."""
 
 
+class MissingCaptureInput(GitAuthoringIntegrityError):
+    def __init__(self, message: str, path: str):
+        super().__init__(message)
+        self.missing_path = path
+
+
 class GitAuthoringDirtyWorktreeError(GitAuthoringIntegrityError):
     """A retained dirty checkout is a by-design safe terminal cleanup state."""
 
