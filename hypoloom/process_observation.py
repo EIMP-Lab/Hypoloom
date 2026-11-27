@@ -61,19 +61,20 @@ def sample_gpu_pressure(host, attempt, attempt_id, handle, pressure):
     """Observe one owned Process without treating another user's occupancy as its budget."""
     from .compute_resources import ResourceUnavailable, gpu_pressure_attribution
     devices = {}
+    summaries = []
     for tracker in pressure[0]:
         try:
-            device = host.resource_controls.compute(attempt["run_id"]).observe_runtime(tracker.summary.gpu_uuid)
+            device = host.resource_controls.compute(attempt["run_id"]).observe_runtime(tracker.gpu_uuid)
             devices[device.uuid] = device
-            tracker.sample(device)
+            summaries.append(tracker.sample(device))
         except ResourceUnavailable:
-            pass
+            tracker.miss_sample()
+            summaries.append(tracker.summary)
     budget = None
     if host.shared_gpu is not None:
         host.shared_gpu.sample_owned(attempt_id, handle,
-            tuple(tracker.summary.gpu_uuid for tracker in pressure[0]), devices)
+            tuple(tracker.gpu_uuid for tracker in pressure[0]), devices)
         budget = host.shared_gpu.pressure_workload_budget(attempt)
-    summaries = tuple(tracker.summary for tracker in pressure[0])
     for summary in (item for item in summaries if item.pressure_exceeded):
         owned = (host.shared_gpu.owned_latest_memory_mib(attempt_id, summary.gpu_uuid)
             if host.shared_gpu is not None else None)
@@ -83,7 +84,7 @@ def sample_gpu_pressure(host, attempt, attempt_id, handle, pressure):
             workload_memory_mib=budget), owned)
     cancel = any(pressure[2][item.gpu_uuid][0] not in {"external", "within_budget"}
         for item in summaries if item.pressure_exceeded)
-    return summaries, cancel
+    return tuple(summaries), cancel
 
 
 def observe_gpu_failure(host, attempt, payload, stderr_path):
@@ -104,6 +105,9 @@ def process_activity(host, attempt):
         "process_alive": running, "liveness_source": "owned_process" if running is not None else "unavailable",
         "pid": handle.pid if isinstance(handle, RunningProcess) else None,
         "resource_grant": None, "logs": [], "progress": "unknown"}
+    pressure = host.gpu_pressure.get(identity)
+    if pressure is not None:
+        result["gpu_usage"] = [tracker.summary.to_dict() for tracker in pressure[0]]
     result["remaining_seconds"] = (max(0, handle.started_at + handle.request.timeout_seconds - time.monotonic())
         if running and handle.request.timeout_seconds is not None else None)
     result["work_units"] = observed_work_units(host.state_root / "artifacts" / "work", identity)

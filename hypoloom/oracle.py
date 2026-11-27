@@ -7,7 +7,7 @@ independent outcome oracle rather than another runtime authority.
 
 from __future__ import annotations
 
-from .compute_resources import gpu_memory_reserve_mib
+from .compute_resources import gpu_memory_reserve_mib, valid_gpu_activity
 
 import base64
 import binascii
@@ -5947,9 +5947,10 @@ def _audit_process_resource_observation(
     } if renamed else set()
     valid = (
         isinstance(usage, Mapping)
-        and set(usage) - optional_keys == expected_keys
+        and set(usage) - optional_keys - ({"gpu_activity"} if renamed else set()) == expected_keys
         and all(type(usage[key]) is int and usage[key] >= 0
                 for key in optional_keys & set(usage))
+        and ("gpu_activity" not in usage or valid_gpu_activity(usage["gpu_activity"], usage.get("sample_count")))
     )
     if valid and resource.get("attributable") is True:
         try:

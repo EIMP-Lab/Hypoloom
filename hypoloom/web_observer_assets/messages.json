@@ -711,6 +711,8 @@
   "minimum free VRAM": "最低空闲显存",
   "latest free VRAM": "最近空闲显存",
   "latest utilization": "最近利用率",
+  "GPU sampling": "GPU 采样",
+  "Whole GPU mean {0}% ({1} s covered) · {2} W ({3} s covered) · sample span {4} s": "整卡平均利用率 {0}%（覆盖 {1} 秒）· 平均功率 {2} W（覆盖 {3} 秒）· 采样跨度 {4} 秒",
   "own sampled latest / peak": "自身采样最近值 / 峰值",
   "own sample coverage": "自身采样覆盖",
   "reserve pressure": "预留压力",

@@ -34,6 +34,7 @@ from .agent_aci import (
     validate_postflight,
 )
 from .collaboration import derive_rendezvous_records
+from .compute_resources import valid_gpu_activity
 from .contract_normalization import EXPERT_LOOP_RESEARCH_LOOP
 from .control_protocol import ControlRequest, request_over_socket
 from .domain import HypothesisAssessment, ResearchContract, ScientificOutcome
@@ -460,6 +461,9 @@ def _gpu_usage(value: object) -> tuple[dict[str, Any], ...]:
             number = _optional_int(item.get(name) if name == "sample_count" else item.get(f"gpu_{name}", item.get(name)))
             device[name] = number if number is not None and number >= 0 and (name != "latest_utilization_percent" or number <= 100) else None
         device["pressure_exceeded"] = item.get("pressure_exceeded") if isinstance(item.get("pressure_exceeded"), bool) else None
+        activity = item.get("gpu_activity")
+        if valid_gpu_activity(activity, device["sample_count"]):
+            device["gpu_activity"] = dict(activity)
         if "owned_memory" in item:
             device["owned_memory"] = _owned_gpu_memory(item["owned_memory"], device["total_memory_mib"])
         result.append(device)

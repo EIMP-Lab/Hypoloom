@@ -83,6 +83,21 @@ replace the implementation's forward/backward/checkpoint smoke. CPU experiments
 and measurement parsers retain their CPU isolation. Existing runs keep their
 frozen runtime; applying this change requires a new run, not editing its bundle.
 
+## Interpreting GPU activity
+
+Live Host status, completed Process observations and the observer report a separate
+`gpu_activity` window for each granted UUID. Mean board power (mW in JSON, W in the
+observer) and utilization are weighted by elapsed monotonic time. Each metric uses
+the trapezoid between consecutive available readings. The window reports each metric's
+covered seconds, the full polling span, longest poll gap and number of failed polls.
+A failed poll breaks both adjacent intervals. A missing sensor reading breaks only
+its own metric. A single reading gives no mean. Historical attempts retain their
+original observations.
+
+These readings include all workloads on a shared device and all phases of the Process.
+Use application phase timings and completed examples to measure training throughput.
+Include the polling span and coverage when comparing device means.
+
 ## What the budget means
 
 The Host admits the maximum of the Profile floor, the Agent's estimate, the

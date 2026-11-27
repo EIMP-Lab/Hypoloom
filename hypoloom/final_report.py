@@ -7,6 +7,7 @@ from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 
+from .compute_resources import valid_gpu_activity
 
 _COMPARABLE_OUTCOMES = frozenset({"SUCCESS", "CLEAN_REFUTATION"})
 
@@ -222,6 +223,9 @@ def run_outcome_context(facts, attempts, final_failures, *, artifacts=()):
                 "gpu_uuid", "sample_count", "gpu_initial_free_memory_mib", "gpu_latest_free_memory_mib",
                 "gpu_minimum_free_memory_mib", "pressure_exceeded", "pressure_attribution", "owned_memory")}
                 for item in resources]
+            for raw, summary in zip(resources, bounded_resources):
+                if valid_gpu_activity(raw.get("gpu_activity"), raw.get("sample_count")):
+                    summary["gpu_activity"] = raw["gpu_activity"]
             detail["resource_usage"] = (bounded_resources[0]
                 if isinstance(raw_resource, dict) else bounded_resources)
         if isinstance(observation.get("gpu_diagnostic"), dict):

@@ -1291,6 +1291,10 @@
       const bytes = (process.logs || []).reduce((sum, row) => sum + row.bytes, 0);
       const ages = (process.logs || []).filter(row => row.bytes > 0).map(row => row.age_seconds);
       waitsContainer.append(element("p", "panel-copy", t("Process {0} · {1} · {2} · logs {3} bytes", process.experiment_id, [grant.kind || t("resource unknown"), ...(grant.gpu_uuids || [])].join(" "), process.process_alive === true ? "alive" : process.process_alive === false ? t("exited, collection pending") : t("liveness unknown"), bytes) + (ages.length ? t(" · last write {0} s ago", Math.round(Math.min(...ages))) : t(" · no output observed"))));
+      for (const device of list(process.gpu_usage)) {
+        const activity = gpuActivityText(device);
+        if (activity) waitsContainer.append(element("p", "panel-copy", device.gpu_uuid + " · " + activity));
+      }
       const units = process.work_units;
       if (units) waitsContainer.append(element("p", "panel-copy", t("Reported stage {0} · completed {1} · running {2} · failed {3}", units.stage, units.completed, units.running, units.failed) + (units.partial ? t(" · partial sample") : "")));
       else waitsContainer.append(element("p", "panel-copy", t("Work stage unreported")));
@@ -2804,6 +2808,8 @@
         appendDefinition(grid, t("minimum free VRAM"), `${device.minimum_free_memory_mib ?? "?"} MiB`);
         appendDefinition(grid, t("latest free VRAM"), `${device.latest_free_memory_mib ?? "?"} MiB`);
         appendDefinition(grid, t("latest utilization"), `${device.latest_utilization_percent ?? "?"}%`);
+        const activity = gpuActivityText(device);
+        if (activity) appendDefinition(grid, t("GPU sampling"), activity);
         if (device.owned_memory) {
           const own = object(device.owned_memory);
           appendDefinition(grid, t("own sampled latest / peak"), `${own.latest_sample_memory_mib ?? "?"} / ${own.sampled_peak_memory_mib ?? "?"} MiB`);
@@ -3409,6 +3415,15 @@
     return typeof value === "number" && Number.isFinite(value) ? `${value.toLocaleString()} MiB` : "unavailable";
   }
 
+  function gpuActivityText(device) {
+    const activity = device.gpu_activity;
+    if (!activity) return "";
+    const number = (key, scale = 1) => Number.isFinite(activity[key]) ? (activity[key] / scale).toFixed(1) : "?";
+    return t("Whole GPU mean {0}% ({1} s covered) · {2} W ({3} s covered) · sample span {4} s",
+      number("mean_utilization_percent"), number("utilization_covered_seconds"),
+      number("mean_power_mw", 1000), number("power_covered_seconds"), number("sample_span_seconds"));
+  }
+
   function resourceMetric(parent, label, value, className = "") {
     const metric = element("div", `resource-metric ${className}`);
     metric.append(element("dt", "", label), element("dd", "", value));
@@ -3448,6 +3463,8 @@
         resourceMetric(samples, t("Own sampled peak"), memoryLabel(owned.sampled_peak_memory_mib));
         resourceMetric(samples, "Samples / unknown", `${displayValue(owned.sample_count)} / ${displayValue(owned.unknown_sample_count)}`, owned.unknown_sample_count === 0 ? "" : "resource-unknown");
         resourceMetric(samples, "Coverage", owned.coverage || "unknown", owned.coverage === "complete" ? "" : "resource-unknown");
+        const activity = gpuActivityText(device);
+        if (activity) resourceMetric(samples, t("GPU sampling"), activity);
         process.append(samples);
       });
       if (!devices.length) process.append(element("p", "panel-copy", t("Per-device sampled peak, sample count and coverage are unavailable.")));

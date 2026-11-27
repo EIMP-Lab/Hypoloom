@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes
 import json
 import math
+import sys
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from typing import Any
 from .domain import ResourceGrant, ResourceIntent, ResourceKind, ResourcePreference, validate_physical_gpu_uuid
 
 
-COMPUTE_RESOURCES_VERSION = "local-compute/8"
+COMPUTE_RESOURCES_VERSION = "local-compute/9"
 COMPUTE_CAPABILITIES_SCHEMA_VERSION = 3
 COMPUTE_CAPABILITIES_MEDIA_TYPE = "application/json"
 _MIB = 1024 * 1024
@@ -189,6 +190,34 @@ class GpuRuntimeObservation:
         }
 
 
+def valid_gpu_activity(value: object, sample_count: object) -> bool:
+    """Validate an optional whole-device activity window from a Process observation."""
+    if not isinstance(value, Mapping) or set(value) != {
+        "scope", "sample_span_seconds", "max_poll_gap_seconds", "unavailable_samples",
+        "utilization_covered_seconds", "mean_utilization_percent", "power_covered_seconds", "mean_power_mw",
+    } or value["scope"] != "whole_device" or type(sample_count) is not int or sample_count < 1:
+        return False
+
+    def nonnegative(number):
+        return type(number) in (int, float) and 0 <= number <= sys.float_info.max
+
+    span, gap, missed = value["sample_span_seconds"], value["max_poll_gap_seconds"], value["unavailable_samples"]
+    if not nonnegative(span) or not nonnegative(gap) or gap > span or type(missed) is not int or missed < 0:
+        return False
+    if span > 0 and (gap == 0 or sample_count + missed == 1):
+        return False
+    for metric, mean_key in (("utilization", "mean_utilization_percent"), ("power", "mean_power_mw")):
+        covered, mean = value[f"{metric}_covered_seconds"], value[mean_key]
+        if not nonnegative(covered) or (covered > span and not math.isclose(covered, span, rel_tol=1e-12)):
+            return False
+        if covered == 0:
+            if mean is not None:
+                return False
+        elif sample_count < 2 or not nonnegative(mean) or (metric == "utilization" and mean > 100):
+            return False
+    return True
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GpuPressureSummary:
     """Compact device-level usage summary produced by ``GpuPressureTracker``."""
@@ -206,6 +235,7 @@ class GpuPressureSummary:
     gpu_latest_power_limit_mw: int | None = None
     gpu_latest_temperature_c: int | None = None
     gpu_latest_sm_clock_mhz: int | None = None
+    gpu_activity: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -218,6 +248,7 @@ class GpuPressureSummary:
             "gpu_latest_utilization_percent": self.gpu_latest_utilization_percent,
             "sample_count": self.sample_count,
             "pressure_exceeded": self.pressure_exceeded,
+            **({"gpu_activity": self.gpu_activity} if self.gpu_activity is not None else {}),
             **{name: getattr(self, name) for name in
                ("gpu_latest_power_draw_mw", "gpu_latest_power_limit_mw",
                 "gpu_latest_temperature_c", "gpu_latest_sm_clock_mhz")
@@ -262,7 +293,13 @@ class GpuPressureTracker:
         self._minimum_free_memory_mib = initial_observation.free_memory_mib
         self._latest = initial_observation
         self._sample_count = 1
+        self._first_sample_at = observed_at
         self._last_sample_at = observed_at
+        self._max_poll_gap = 0.0
+        self._unavailable_samples = 0
+        self._previous_available = True
+        self._utilization_seconds = self._percent_seconds = 0.0
+        self._power_seconds = self._mw_seconds = 0.0
         self._low_free_since = (
             observed_at
             if initial_observation.free_memory_mib < reserve_memory_mib
@@ -271,6 +308,10 @@ class GpuPressureTracker:
         self._pressure_exceeded = (
             self._low_free_since is not None and self._grace_seconds == 0
         )
+
+    @property
+    def gpu_uuid(self) -> str:
+        return self._gpu_uuid
 
     @property
     def summary(self) -> GpuPressureSummary:
@@ -288,7 +329,33 @@ class GpuPressureTracker:
             gpu_latest_power_limit_mw=self._latest.power_limit_mw,
             gpu_latest_temperature_c=self._latest.temperature_c,
             gpu_latest_sm_clock_mhz=self._latest.sm_clock_mhz,
+            gpu_activity={
+                "scope": "whole_device",
+                "sample_span_seconds": self._last_sample_at - self._first_sample_at,
+                "max_poll_gap_seconds": self._max_poll_gap,
+                "unavailable_samples": self._unavailable_samples,
+                "utilization_covered_seconds": self._utilization_seconds,
+                "mean_utilization_percent": min(100.0, self._percent_seconds / self._utilization_seconds)
+                    if self._utilization_seconds else None,
+                "power_covered_seconds": self._power_seconds,
+                "mean_power_mw": self._mw_seconds / self._power_seconds if self._power_seconds else None,
+            },
         )
+
+    def _advance_poll(self) -> float:
+        observed_at = _clock_value(self._now)
+        interval = observed_at - self._last_sample_at
+        if interval < 0:
+            raise ValueError("GPU pressure tracker clock moved backwards")
+        self._last_sample_at = observed_at
+        self._max_poll_gap = max(self._max_poll_gap, interval)
+        return interval
+
+    def miss_sample(self) -> None:
+        """An unavailable probe breaks both adjacent activity intervals."""
+        self._advance_poll()
+        self._unavailable_samples += 1
+        self._previous_available = False
 
     def sample(self, observation: GpuRuntimeObservation) -> GpuPressureSummary:
         if not isinstance(observation, GpuRuntimeObservation):
@@ -298,10 +365,18 @@ class GpuPressureTracker:
             or observation.total_memory_mib != self._total_memory_mib
         ):
             raise ValueError("GPU runtime observation identity or total memory changed")
-        observed_at = _clock_value(self._now)
-        if observed_at < self._last_sample_at:
-            raise ValueError("GPU pressure tracker clock moved backwards")
-        self._last_sample_at = observed_at
+        interval = self._advance_poll()
+        observed_at = self._last_sample_at
+        if self._previous_available:
+            previous, current = self._latest.utilization_percent, observation.utilization_percent
+            if previous is not None and current is not None:
+                self._utilization_seconds += interval
+                self._percent_seconds += interval * ((previous + current) / 2)
+            previous, current = self._latest.power_draw_mw, observation.power_draw_mw
+            if previous is not None and current is not None:
+                self._power_seconds += interval
+                self._mw_seconds += interval * ((previous + current) / 2)
+        self._previous_available = True
         self._latest = observation
         self._sample_count += 1
         self._minimum_free_memory_mib = min(

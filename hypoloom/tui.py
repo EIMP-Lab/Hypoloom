@@ -146,6 +146,18 @@ def _value(value: object) -> str:
     return escape("-" if value is None else str(value))
 
 
+def _gpu_activity_line(device):
+    activity = device.get("gpu_activity")
+    if not activity:
+        return ""
+    def number(key, scale=1):
+        value = activity.get(key)
+        return "?" if value is None else f"{value / scale:.1f}"
+    return tr("Whole GPU mean {0}% ({1} s covered) · {2} W ({3} s covered) · sample span {4} s",
+              number("mean_utilization_percent"), number("utilization_covered_seconds"),
+              number("mean_power_mw", 1000), number("power_covered_seconds"), number("sample_span_seconds"))
+
+
 def _short_text(value: object, *, limit: int = 160) -> str:
     text = " ".join(str(value or "").split()) or "-"
     if len(text) > limit:
@@ -885,6 +897,9 @@ class SummaryPanel(CockpitPanel):
                 log_bytes,
             )))
             units = process.get("work_units")
+            for device in process.get("gpu_usage", []):
+                if line := _gpu_activity_line(device):
+                    health.append(f"{_value(device['gpu_uuid'])} · {line}")
             if units:
                 health.append(escape(tr("Reported stage {0} · completed {1} · running {2} · failed {3}",
                     units["stage"], units["completed"], units["running"], units["failed"])
@@ -1575,6 +1590,8 @@ class AttemptsPanel(CockpitPanel):
                         pressure,
                     )
                 )
+                if line := _gpu_activity_line(device):
+                    lines.append(f"      {line}")
                 owned = device.get("owned_memory")
                 if isinstance(owned, Mapping):
                     lines.append(

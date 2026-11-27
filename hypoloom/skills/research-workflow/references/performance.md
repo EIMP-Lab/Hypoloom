@@ -135,6 +135,12 @@ test outcomes.
 
 ## Report and evolve within this run
 
+Use per-device `gpu_activity` means with their metric-specific covered seconds and
+polling span when available. Shared-device power and utilization include other jobs.
+For training throughput, compare completed supervised examples per training-phase
+second under the same scientific configuration. Keep validation and setup time
+separate and identify which phase each comparison covers.
+
 In existing notes/CYCLE_REPORT, retain the workload conditions, original log or
 Attempt references, predicted versus observed phase time, the demonstrated
 bottleneck, correctness comparison, measured speed/memory tradeoff and unresolved
